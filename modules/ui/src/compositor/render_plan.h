@@ -90,7 +90,7 @@ struct RenderPass {
     /** True when this effect pass filters pixels already rendered below a node. */
     bool backdrop = false;
     MaskDescriptor mask{};
-    /** Opaque content/effect key used by the native renderer's result cache. */
+    /** Structural content/effect key; execution adds only reachable resource generations. */
     uint64_t cache_key = 0;
 };
 

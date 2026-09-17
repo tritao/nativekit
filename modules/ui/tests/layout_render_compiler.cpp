@@ -8,6 +8,7 @@
 #include <cmath>
 #include <iostream>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 using namespace nkui;
@@ -40,8 +41,10 @@ class RecordingRenderer final : public UiRenderer {
         ++pass_count;
         return true;
     }
-    bool beginEffectPass(ResourceId, uint64_t, int, int, bool &cache_hit) override {
-        cache_hit = false;
+    bool beginEffectPass(ResourceId, uint64_t cache_key, int, int, bool &cache_hit) override {
+        cache_hit = cache_key != 0 && !effect_cache_keys.insert(cache_key).second;
+        if (cache_hit)
+            ++effect_cache_hits;
         ++pass_count;
         return true;
     }
@@ -121,9 +124,29 @@ class RecordingRenderer final : public UiRenderer {
     uint32_t mask_count = 0;
     uint32_t surface_mesh_count = 0;
     uint32_t commit_count = 0;
+    uint32_t effect_cache_hits = 0;
+    std::unordered_set<uint64_t> effect_cache_keys;
     bool last_scissor_enabled = false;
     std::array<float, 4> last_scissor{};
     std::string error;
+};
+
+class MutableSurfaceProducer final : public SurfaceProducer {
+  public:
+    bool ready() const override { return true; }
+    bool describe(int requested_width, int requested_height,
+                  SurfaceDescriptor &description) const override {
+        description = {requested_width, requested_height, SurfacePixelFormat::Rgba8,
+                       SurfaceAlphaMode::Premultiplied};
+        return true;
+    }
+    uint32_t generation() const override { return generation_value; }
+    SurfaceRenderResult render(UiRenderer &, ResourceId,
+                               const SurfaceDescriptor &) override {
+        return SurfaceRenderResult::Rendered;
+    }
+
+    uint32_t generation_value = 1;
 };
 
 } // namespace
@@ -494,6 +517,109 @@ int main() {
                              &execution_error) ||
         backend.mask_count != 1 || backend.commit_count != 3)
         return 28;
+
+    // Effect cache identity follows only the targets that feed an effect. An
+    // unrelated external surface in the final composition must not evict the
+    // static blur, while source and mask generations must invalidate the
+    // dependent effect chain.
+    const ResourceId cache_main = make_resource_id(ResourceKind::RenderTarget, 1, 460);
+    const ResourceId cache_source = make_resource_id(ResourceKind::RenderTarget, 1, 461);
+    const ResourceId cache_blur = make_resource_id(ResourceKind::RenderTarget, 1, 462);
+    const ResourceId cache_mask = make_resource_id(ResourceKind::RenderTarget, 1, 463);
+    const ResourceId cache_output = make_resource_id(ResourceKind::RenderTarget, 1, 464);
+    const ResourceId cache_surface = make_resource_id(ResourceKind::RenderTarget, 1, 465);
+    const ResourceId cache_source_image = make_resource_id(ResourceKind::Image, 1, 466);
+    const ResourceId cache_mask_image = make_resource_id(ResourceKind::Image, 1, 467);
+    PreparedTexture cache_source_texture;
+    cache_source_texture.width = cache_source_texture.height = 1;
+    cache_source_texture.pixels = {255, 255, 255, 255};
+    PreparedTexture cache_mask_texture = cache_source_texture;
+    MutableSurfaceProducer cache_surface_producer;
+    FrameResources cache_resources;
+    if (!cache_resources.bind_image(cache_source_image, cache_source_texture, 10) ||
+        !cache_resources.bind_image(cache_mask_image, cache_mask_texture, 20) ||
+        !cache_resources.bind_surface(cache_surface, cache_surface_producer))
+        return 29;
+
+    RenderPlan cache_plan;
+    RenderPass cache_source_pass;
+    cache_source_pass.target = cache_source;
+    RenderCommand cache_image_command;
+    cache_image_command.kind = RenderCommandKind::Image;
+    cache_image_command.resource = cache_source_image;
+    cache_image_command.width = cache_image_command.height = 10.0f;
+    cache_source_pass.commands.push_back(cache_image_command);
+    cache_plan.passes.push_back(std::move(cache_source_pass));
+
+    RenderPass cache_blur_pass;
+    cache_blur_pass.target = cache_blur;
+    cache_blur_pass.kind = RenderPassKind::Effect;
+    cache_blur_pass.input_target = cache_source;
+    cache_blur_pass.effect.kind = EffectKind::ColorMatrix;
+    cache_blur_pass.effect.color_matrix[0] = 1.0f;
+    cache_blur_pass.effect.color_matrix[6] = 1.0f;
+    cache_blur_pass.effect.color_matrix[12] = 1.0f;
+    cache_blur_pass.effect.color_matrix[18] = 1.0f;
+    cache_blur_pass.cache_key = 0x1001;
+    cache_plan.passes.push_back(std::move(cache_blur_pass));
+
+    RenderPass cache_mask_pass;
+    cache_mask_pass.target = cache_mask;
+    cache_mask_pass.kind = RenderPassKind::Mask;
+    cache_mask_pass.input_target = cache_blur;
+    cache_mask_pass.mask.kind = MaskKind::Image;
+    cache_mask_pass.mask.image = cache_mask_image;
+    cache_mask_pass.cache_key = 0x1002;
+    cache_plan.passes.push_back(std::move(cache_mask_pass));
+
+    RenderPass cache_output_pass;
+    cache_output_pass.target = cache_output;
+    cache_output_pass.kind = RenderPassKind::Effect;
+    cache_output_pass.input_target = cache_mask;
+    cache_output_pass.effect.kind = EffectKind::ColorMatrix;
+    cache_output_pass.effect.color_matrix[0] = 1.0f;
+    cache_output_pass.effect.color_matrix[6] = 1.0f;
+    cache_output_pass.effect.color_matrix[12] = 1.0f;
+    cache_output_pass.effect.color_matrix[18] = 1.0f;
+    cache_output_pass.cache_key = 0x1003;
+    cache_plan.passes.push_back(std::move(cache_output_pass));
+
+    RenderPass cache_main_pass;
+    cache_main_pass.target = cache_main;
+    RenderCommand cache_surface_command;
+    cache_surface_command.kind = RenderCommandKind::CompositeTarget;
+    cache_surface_command.resource = cache_surface;
+    cache_surface_command.width = cache_surface_command.height = 10.0f;
+    cache_main_pass.commands.push_back(cache_surface_command);
+    RenderCommand cache_output_command;
+    cache_output_command.kind = RenderCommandKind::CompositeTarget;
+    cache_output_command.resource = cache_output;
+    cache_output_command.width = cache_output_command.height = 10.0f;
+    cache_main_pass.commands.push_back(cache_output_command);
+    cache_plan.passes.push_back(std::move(cache_main_pass));
+    cache_plan.dependencies.push_back({cache_output, cache_main});
+    cache_plan.dependencies.push_back({cache_surface, cache_main});
+
+    RecordingRenderer cache_backend;
+    auto execute_cache_plan = [&] {
+        return execute_render_plan(cache_backend, cache_plan, cache_resources,
+                                   {cache_main, frame_target}, &execution_error);
+    };
+    if (!execute_cache_plan() || cache_backend.effect_cache_keys.size() != 2 ||
+        cache_backend.effect_cache_hits != 0 || cache_backend.effect_count != 2)
+        return 30;
+    cache_surface_producer.generation_value = 2;
+    if (!execute_cache_plan() || cache_backend.effect_cache_keys.size() != 2 ||
+        cache_backend.effect_cache_hits != 2 || cache_backend.effect_count != 2)
+        return 31;
+    if (!cache_resources.bind_image(cache_source_image, cache_source_texture, 11) ||
+        !execute_cache_plan() || cache_backend.effect_cache_keys.size() != 4 ||
+        cache_backend.effect_cache_hits != 2 || cache_backend.effect_count != 4)
+        return 32;
+    if (!cache_resources.bind_image(cache_mask_image, cache_mask_texture, 21) ||
+        !execute_cache_plan() || cache_backend.effect_cache_keys.size() != 5 ||
+        cache_backend.effect_cache_hits != 3 || cache_backend.effect_count != 5)
+        return 33;
 
     LayoutSnapshot recolored = snapshot;
     for (auto &primitive : recolored.primitives) {
