@@ -7,7 +7,6 @@ import LayoutAxis;
 import LayoutPositioning;
 import LayoutStyle;
 import LayoutVisualKind;
-import NativeKit.TextEditAction;
 import NativeKitEventValue.NativeKitTextEdit;
 import ParagraphStyle;
 import Rect;
@@ -20,6 +19,7 @@ import nativekit.ui.core.ResolvedTextStyle;
 import nativekit.ui.core.RenderNode;
 import nativekit.ui.core.State;
 import nativekit.ui.core.TextStyleOverride;
+import nativekit.ui.core.TextInputBridge;
 import nativekit.ui.core.UiEvent;
 import nativekit.ui.core.UiEventKind;
 import nativekit.ui.core.UiModifier;
@@ -97,9 +97,13 @@ class TextField implements View {
 			resolved = new ResolvedTextStyle(resolved.textStyle, paragraph, resolved.textColor);
 			var stored:State<TextEditorState> = acquireState(context, id, value, resolved);
 			var editor:TextEditorState = stored.value;
+			var document:TextDocumentEngine = editor.documentEngine;
 			editor.updateStyle(resolved.textStyle, resolved.paragraphStyle);
 			if (editor.syncExternal(value))
 				editor.resetCaretBlink(context.gestures.timeSeconds());
+			var documentText = document.text();
+			var documentSelection = document.selection();
+			var documentComposition = document.composition();
 
 			var flags = context.interactionStates.get(id);
 			flags = StyleStateUtil.withState(flags, StyleState.Disabled, !enabled);
@@ -116,12 +120,12 @@ class TextField implements View {
 			node.focusable = enabled;
 			node.enabled = enabled;
 			var semantics = new Semantics(semanticRole,
-				label == null ? key : label, editor.text);
+				label == null ? key : label, documentText);
 			semantics.actions = semanticActions;
 			semantics.textStart = 0;
-			semantics.documentLength = editor.documentLength();
-			semantics.selectionStart = editor.selectionStart;
-			semantics.selectionEnd = editor.selectionEnd;
+			semantics.documentLength = document.documentLength();
+			semantics.selectionStart = documentSelection.start;
+			semantics.selectionEnd = documentSelection.end;
 			if (!enabled)
 				semantics.states |= AccessibilityState.Disabled;
 			if (editor.focused)
@@ -154,10 +158,10 @@ class TextField implements View {
 			selectionNode.hitTestSelf = false;
 			selectionNode.onPaint(function(canvas, _) {
 				if (!editor.isDisposed())
-					paintSelection(canvas, editor, context.textInput.isOwner(id), context.theme);
+					paintSelection(canvas, document, editor, context.textInput.isOwner(id), context.theme);
 			});
 			editorContent.add(selectionNode);
-			var showsPlaceholder = editor.layoutText().length == 0 && placeholder != null &&
+			var showsPlaceholder = documentText.length == 0 && placeholder != null &&
 				placeholder.length > 0;
 			var textNode = new RenderNode(context.id("text"),
 				showsPlaceholder ? LayoutVisualKind.Text : LayoutVisualKind.Custom, textNodeStyle);
@@ -193,18 +197,21 @@ class TextField implements View {
 			paintNode.hitTestSelf = false;
 			paintNode.onPaint(function(canvas, _) {
 				if (!editor.isDisposed())
-					paintEditorDecorations(canvas, editor, context.textInput.isOwner(id),
+					paintEditorDecorations(canvas, document, editor, context.textInput.isOwner(id),
 						context.theme, context.gestures.timeSeconds());
 			});
 			editorContent.add(paintNode);
 			node.add(editorContent);
 
 			var updateState = function() {
-				value = editor.layoutText();
+				documentText = document.text();
+				documentSelection = document.selection();
+				documentComposition = document.composition();
+				value = documentText;
 				semantics.value = value;
-				semantics.documentLength = editor.documentLength();
-				semantics.selectionStart = editor.selectionStart;
-				semantics.selectionEnd = editor.selectionEnd;
+				semantics.documentLength = document.documentLength();
+				semantics.selectionStart = documentSelection.start;
+				semantics.selectionEnd = documentSelection.end;
 				stored.update(editor);
 				if (multiline && editorContent.resolved != null &&
 					editor.ensureCaretVisible(editorContent.resolved.height))
@@ -216,22 +223,34 @@ class TextField implements View {
 					onChange(value);
 			};
 			var publishDiagnostics = function(caretRect:Null<Rect>) {
-				if (onDiagnostics == null)
+				var diagnostics = onDiagnostics;
+				if (diagnostics == null)
 					return;
-				var compositionText = editor.compositionStart >= 0 &&
-					editor.compositionEnd >= editor.compositionStart
-					? editor.documentOffsets().sliceCodepoints(editor.compositionStart,
-						editor.compositionEnd) : "";
-				onDiagnostics(new TextEditorDiagnostics(key, label == null ? key : label,
-					editor.focused, editor.selectionStart, editor.selectionEnd,
-					editor.selectionFocus, editor.compositionStart, editor.compositionEnd,
+				var compositionText = "";
+				var diagnosticsCompositionRange = documentComposition.range;
+				if (diagnosticsCompositionRange != null) {
+					var offsets = new TextOffsetMap(documentText);
+					compositionText = offsets.sliceCodepoints(diagnosticsCompositionRange.start,
+						diagnosticsCompositionRange.end);
+				}
+				diagnostics(new TextEditorDiagnostics(key, label == null ? key : label,
+					editor.focused, documentSelection.start, documentSelection.end,
+					documentSelection.focus,
+					diagnosticsCompositionRange == null ? -1 : diagnosticsCompositionRange.start,
+					diagnosticsCompositionRange == null ? -1 : diagnosticsCompositionRange.end,
 					compositionText, caretRect, context.textInput.platformSupported,
 					context.textInput.platformActive));
 			};
 			var syncCursor = function(geometry:ResolvedLayoutItem) {
 				var scrollDelta = multiline ? editor.scrollOffsetY - builtScrollOffset : 0.0;
 				var transform:Transform2D = cast geometry.transform;
-				var caret = editor.layout.caret(editor.focusPosition());
+				var caretResult = document.layout(new TextRange(documentSelection.focus,
+					documentSelection.focus));
+				var caret = caretResult.caret;
+				if (caret == null) {
+					publishDiagnostics(null);
+					return;
+				}
 				var topX = geometry.x + caret.x + caret.ascender * caret.slope;
 				var topY = geometry.y + caret.y + caret.ascender;
 				var bottomX = geometry.x + caret.x + caret.descender * caret.slope;
@@ -257,23 +276,29 @@ class TextField implements View {
 					return;
 				var selectionGeometry:Array<Rect> = [];
 				var selectionRangeGeometry:Array<TextRangeRect> = [];
-				if (editor.selectionStart != editor.selectionEnd)
-					for (rect in editor.layout.selectionRects(editor.anchorPosition(), editor.focusPosition()))
-						selectionGeometry.push(transformTextRect(rect, geometry, transform, scrollDelta));
-				if (editor.selectionStart != editor.selectionEnd)
-					for (rect in editor.layout.selectionRangeRects(editor.anchorPosition(), editor.focusPosition()))
+				if (!documentSelection.isCollapsed()) {
+					var selectionLayout = document.layout(new TextRange(documentSelection.start,
+						documentSelection.end));
+					for (rect in selectionLayout.rects) {
+						var geometryRect = new Rect(rect.x, rect.y, rect.width, rect.height);
+						selectionGeometry.push(transformTextRect(geometryRect, geometry, transform, scrollDelta));
 						selectionRangeGeometry.push(transformTextRangeRect(rect, geometry, transform, scrollDelta));
+					}
+				}
 				var compositionGeometry:Array<Rect> = [];
 				var compositionRangeGeometry:Array<TextRangeRect> = [];
-				if (editor.compositionStart >= 0 && editor.compositionEnd > editor.compositionStart)
-					for (rect in editor.compositionRects())
-						compositionGeometry.push(transformTextRect(rect, geometry, transform, scrollDelta));
-				if (editor.compositionStart >= 0 && editor.compositionEnd > editor.compositionStart)
-					for (rect in editor.compositionRangeRects())
-						compositionRangeGeometry.push(transformTextRangeRect(rect, geometry, transform, scrollDelta));
-				context.textInput.update(editor.layoutText(), editor.documentLength(),
-					editor.selectionStart, editor.selectionEnd, editor.compositionStart,
-					editor.compositionEnd, 0,
+				if (documentComposition.isActive()) {
+					var compositionRange = documentComposition.range;
+					if (compositionRange != null) {
+						var compositionLayout = document.layout(compositionRange);
+						for (rect in compositionLayout.rects) {
+							var geometryRect = new Rect(rect.x, rect.y, rect.width, rect.height);
+							compositionGeometry.push(transformTextRect(geometryRect, geometry, transform, scrollDelta));
+							compositionRangeGeometry.push(transformTextRangeRect(rect, geometry, transform, scrollDelta));
+						}
+					}
+				}
+				context.textInput.update(document, 0,
 					multiline ? 1 : 0,
 					caretRect, selectionGeometry, compositionGeometry, selectionRangeGeometry,
 					compositionRangeGeometry);
@@ -312,7 +337,7 @@ class TextField implements View {
 					return;
 				// A platform may deliver focus loss before its final IME commit. Keep
 				// the preedit in the document and drop only composition metadata.
-				editor.commitComposition();
+				commitDocumentComposition(document);
 				editor.focused = false;
 				editor.draggingSelection = false;
 				editor.cancelPointerClick();
@@ -327,14 +352,14 @@ class TextField implements View {
 			node.on(UiEventKind.PointerDown, function(event) {
 				if (!enabled || event.button != 0 || textNode.resolved == null)
 					return;
-				if (editor.queryComposition() != null) {
-					editor.commitComposition();
+				if (document.composition().isActive()) {
+					commitDocumentComposition(document);
 					updateState();
 				}
 				event.capturePointer();
 				var geometry:ResolvedLayoutItem = cast textNode.resolved;
 				var point = geometry.viewportToLayout(event.x, event.y);
-				var position = editor.hitTest(point.x - geometry.x, point.y - geometry.y);
+				var position = document.hitTest(new TextPoint(point.x - geometry.x, point.y - geometry.y));
 				editor.resetCaretBlink(context.gestures.timeSeconds());
 				var extend = (event.modifiers & UiModifier.Shift) != 0;
 				if (extend)
@@ -357,7 +382,7 @@ class TextField implements View {
 				editor.cancelPointerClickIfMoved(event.x, event.y);
 				var geometry:ResolvedLayoutItem = cast textNode.resolved;
 				var point = geometry.viewportToLayout(event.x, event.y);
-				var position = editor.hitTest(point.x - geometry.x, point.y - geometry.y);
+				var position = document.hitTest(new TextPoint(point.x - geometry.x, point.y - geometry.y));
 				if (editor.placeCaretAt(position, true)) {
 					editor.resetCaretBlink(context.gestures.timeSeconds());
 					editor.cancelPointerClick();
@@ -382,29 +407,33 @@ class TextField implements View {
 					multiline, macStyle);
 				var handled = command != null;
 				var changed = false;
-				if (handled && editor.queryComposition() != null) {
-					editor.commitComposition();
+				if (handled && document.composition().isActive()) {
+					commitDocumentComposition(document);
 					updateState();
 				}
-				var previousText = editor.layoutText();
+				var previousText = document.text();
 				if (command == TextEditorCommand.CopySelection)
-					copySelection(context.clipboard, editor);
+					copySelection(context.clipboard, document);
 				else if (command == TextEditorCommand.CutSelection) {
-					copySelection(context.clipboard, editor);
-					changed = editor.executeCommand(command, extend, macStyle);
+					copySelection(context.clipboard, document);
+					changed = applyDeleteSelection(document, TextEditorHistoryKind.Generic);
 				} else if (command == TextEditorCommand.Paste) {
 					context.clipboard.readText(function(pasted) {
 						if (editor.isDisposed() || !editor.focused)
 							return;
-						var beforePaste = editor.layoutText();
-						if (editor.insert(pasted, TextEditorHistoryKind.Paste)) {
+						var beforePaste = document.text();
+						if (applyInsert(document, pasted, TextEditorHistoryKind.Paste)) {
 							editor.resetCaretBlink(context.gestures.timeSeconds());
 							publishTextChange(beforePaste);
 						}
 					});
 				} else if (command == TextEditorCommand.Submit) {
 					if (onSubmit != null)
-						onSubmit(editor.layoutText());
+						onSubmit(document.text());
+				} else if (command == TextEditorCommand.Undo) {
+					changed = document.undo();
+				} else if (command == TextEditorCommand.Redo) {
+					changed = document.redo();
 				} else if (command != null)
 					changed = editor.executeCommand(command, extend, macStyle);
 				if (changed)
@@ -418,8 +447,8 @@ class TextField implements View {
 			node.on(UiEventKind.KeyRepeat, handleKey);
 
 			node.on(UiEventKind.TextInput, function(event) {
-				var previousText = editor.layoutText();
-				if (enabled && editor.insert(event.text, TextEditorHistoryKind.Typing)) {
+				var previousText = document.text();
+				if (enabled && applyInsert(document, event.text, TextEditorHistoryKind.Typing)) {
 					editor.resetCaretBlink(context.gestures.timeSeconds());
 					publishTextChange(previousText);
 				}
@@ -428,15 +457,16 @@ class TextField implements View {
 				if (!enabled || event.data == null)
 					return;
 				var edit:NativeKitTextEdit = cast event.data;
-				var previousText = editor.layoutText();
-				if (editor.applyTextEdit(edit)) {
+				var previousText = document.text();
+				var transaction = TextInputBridge.transactionForEdit(edit, document);
+				if (transaction != null && applyDocumentTransaction(document, transaction)) {
 					editor.resetCaretBlink(context.gestures.timeSeconds());
 					publishTextChange(previousText);
 				}
 			});
 			node.on(UiEventKind.AccessibilitySetValue, function(event) {
-				var previousText = editor.layoutText();
-				if (enabled && editor.replaceRange(0, editor.documentLength(), event.text)) {
+				var previousText = document.text();
+				if (enabled && applyReplaceDocument(document, event.text)) {
 					editor.resetCaretBlink(context.gestures.timeSeconds());
 					publishTextChange(previousText);
 				}
@@ -445,7 +475,7 @@ class TextField implements View {
 				if (!enabled || event.data == null)
 					return;
 				var request:AccessibilityActionData = cast event.data;
-				if (editor.setSelection(request.selectionStart, request.selectionEnd)) {
+				if (applySelection(document, request.selectionStart, request.selectionEnd)) {
 					editor.resetCaretBlink(context.gestures.timeSeconds());
 					updateState();
 				}
@@ -467,38 +497,136 @@ class TextField implements View {
 			function(editor:TextEditorState) { editor.dispose(); });
 	}
 
-	static function copySelection(clipboard:nativekit.ui.core.ClipboardService,
-			editor:TextEditorState):Void {
-		if (editor.selectionStart != editor.selectionEnd)
-			clipboard.writeText(editor.documentOffsets().sliceCodepoints(editor.selectionStart,
-				editor.selectionEnd));
+	static function applyInsert(document:TextDocumentEngine, value:Null<String>,
+			historyKind:TextEditorHistoryKind):Bool {
+		if (document == null || value == null || value.length == 0)
+			return false;
+		var selection = document.selection();
+		var actualKind = historyKind;
+		if (actualKind == TextEditorHistoryKind.Typing && value.indexOf("\n") >= 0)
+			actualKind = TextEditorHistoryKind.Generic;
+		var count = TextOffsetMap.countCodepoints(value);
+		return applyDocumentTransaction(document, new EditTransaction(selection.start, selection.end,
+			value, selection.start + count, selection.start + count, false, -1, -1, 0, null,
+			actualKind));
 	}
 
-	static function paintSelection(canvas:Canvas, editor:TextEditorState,
+	static function applyReplaceDocument(document:TextDocumentEngine, value:Null<String>):Bool {
+		var replacement = value == null ? "" : value;
+		var count = TextOffsetMap.countCodepoints(replacement);
+		return applyDocumentTransaction(document, new EditTransaction(0,
+			document.documentLength(), replacement, count, count));
+	}
+
+	static function applyDeleteSelection(document:TextDocumentEngine,
+			historyKind:TextEditorHistoryKind):Bool {
+		var selection = document.selection();
+		if (selection.isCollapsed())
+			return false;
+		return applyDocumentTransaction(document, new EditTransaction(selection.start, selection.end, "",
+			selection.start, selection.start, false, -1, -1, 0, null, historyKind));
+	}
+
+	static function applySelection(document:TextDocumentEngine, start:Int, end:Int):Bool {
+		var selection = document.selection();
+		var composition = document.composition();
+		var compositionRange = composition.range;
+		var hasComposition = compositionRange != null;
+		var compositionStart = -1;
+		var compositionEnd = -1;
+		if (compositionRange != null) {
+			compositionStart = compositionRange.start;
+			compositionEnd = compositionRange.end;
+		}
+		return applyDocumentTransaction(document, new EditTransaction(selection.start, selection.start, "",
+			start, end, hasComposition, compositionStart, compositionEnd));
+	}
+
+	static function commitDocumentComposition(document:TextDocumentEngine):Bool {
+		var selection = document.selection();
+		return applyDocumentTransaction(document, new EditTransaction(selection.start, selection.start, "",
+			selection.start, selection.end));
+	}
+
+	static function applyDocumentTransaction(document:TextDocumentEngine,
+			transaction:EditTransaction):Bool {
+		if (document == null || transaction == null)
+			return false;
+		var beforeText = document.text();
+		var beforeSelection = document.selection();
+		var beforeComposition = document.composition();
+		document.applyEdit(transaction);
+		var afterSelection = document.selection();
+		var afterComposition = document.composition();
+		return beforeText != document.text() || !sameSelection(beforeSelection, afterSelection) ||
+			!sameComposition(beforeComposition, afterComposition);
+	}
+
+	static function sameSelection(first:SelectionState, second:SelectionState):Bool {
+		return first.start == second.start && first.end == second.end &&
+			first.anchor == second.anchor && first.focus == second.focus &&
+			first.anchorAffinity == second.anchorAffinity &&
+			first.focusAffinity == second.focusAffinity;
+	}
+
+	static function sameComposition(first:CompositionState, second:CompositionState):Bool {
+		if (first.range == null || second.range == null)
+			return first.range == null && second.range == null &&
+				first.attributes.length == second.attributes.length;
+		if (first.range.start != second.range.start || first.range.end != second.range.end ||
+			first.attributes.length != second.attributes.length)
+			return false;
+		for (index in 0...first.attributes.length) {
+			var left = first.attributes[index];
+			var right = second.attributes[index];
+			if (left.start != right.start || left.end != right.end ||
+				left.selected != right.selected || left.target != right.target)
+				return false;
+		}
+		return true;
+	}
+
+	static function copySelection(clipboard:nativekit.ui.core.ClipboardService,
+			document:TextDocumentEngine):Void {
+		var selection = document.selection();
+		if (!selection.isCollapsed())
+			clipboard.writeText(new TextOffsetMap(document.text()).sliceCodepoints(selection.start,
+				selection.end));
+	}
+
+	static function paintSelection(canvas:Canvas, document:TextDocumentEngine,
+			editor:TextEditorState,
 			active:Bool, theme:nativekit.ui.theme.Theme):Void {
-		if (editor.selectionStart != editor.selectionEnd) {
+		var selection = document.selection();
+		if (!selection.isCollapsed()) {
 			canvas.translate(0.0, -editor.scrollOffsetY);
-			for (rect in editor.layout.selectionRects(editor.anchorPosition(), editor.focusPosition()))
-				canvas.fillRectIfPositive(rect, active ? theme.textSelection : theme.textSelectionInactive);
+			for (rect in document.layout(new TextRange(selection.start, selection.end)).rects)
+				canvas.fillRectIfPositive(new Rect(rect.x, rect.y, rect.width, rect.height),
+					active ? theme.textSelection : theme.textSelectionInactive);
 		}
 	}
 
-	static function paintEditorDecorations(canvas:Canvas, editor:TextEditorState,
+	static function paintEditorDecorations(canvas:Canvas, document:TextDocumentEngine,
+			editor:TextEditorState,
 			active:Bool, theme:nativekit.ui.theme.Theme, timeSeconds:Float):Void {
 		if (editor.scrollOffsetY != 0.0)
 			canvas.translate(0.0, -editor.scrollOffsetY);
-		if (active && editor.compositionStart >= 0 && editor.compositionStart != editor.compositionEnd) {
-			for (attribute in editor.compositionAttributes) {
+		var composition = document.composition();
+		if (active && composition.isActive()) {
+			for (attribute in composition.attributes) {
 				var color = attribute.selected ? theme.textCompositionSelected :
 					attribute.target ? theme.textCompositionTarget : theme.textComposition;
-				for (rect in editor.compositionRectsFor(attribute))
+				for (rect in document.layout(new TextRange(attribute.start, attribute.end)).rects)
 					canvas.fillRectIfPositive(new Rect(rect.x, rect.y + rect.height - 1.0,
 						rect.width, 1.0), color);
 			}
 		}
-		if (active && editor.selectionStart == editor.selectionEnd &&
+		var selection = document.selection();
+		if (active && selection.isCollapsed() &&
 				editor.isCaretVisible(timeSeconds)) {
-			var caret = editor.layout.caret(editor.focusPosition());
+			var caret = document.layout(new TextRange(selection.focus, selection.focus)).caret;
+			if (caret == null)
+				return;
 			var topX = caret.x + caret.ascender * caret.slope;
 			var topY = caret.y + caret.ascender;
 			var bottomX = caret.x + caret.descender * caret.slope;

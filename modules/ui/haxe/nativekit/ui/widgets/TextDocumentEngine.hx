@@ -12,6 +12,8 @@ interface TextDocumentEngine {
 
 	function text():String;
 
+	function documentLength():CodepointOffset;
+
 	function selection():SelectionState;
 
 	function composition():CompositionState;

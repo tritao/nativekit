@@ -2,10 +2,14 @@ package nativekit.ui.core;
 
 import NativeKitSurface;
 import NativeKit.Result;
+import NativeKit.TextEditAction;
+import NativeKitEventValue.NativeKitTextEdit;
 import NativeKitTextInput;
 import Rect;
+import nativekit.ui.widgets.EditTransaction;
+import nativekit.ui.widgets.TextDocumentEngine;
 
-/** Synchronizes Haxe editor state with NativeKit's custom-surface IME API. */
+/** Synchronizes a document engine with NativeKit's custom-surface IME API. */
 class TextInputBridge {
 	var surface:Null<NativeKitSurface>;
 	var requestedActive:Bool;
@@ -67,25 +71,65 @@ class TextInputBridge {
 		return owner != null && activeOwner != null && activeOwner.equals(owner);
 
 	/** Publishes the active document, selection, composition and screen caret. */
-	public function update(text:String, documentLength:Int, selectionStart:Int,
-			selectionEnd:Int, compositionStart:Int, compositionEnd:Int,
-			inputType:Int, flags:Int, cursor:Rect, selectionRects:Array<Rect>,
+	public function update(document:TextDocumentEngine, inputType:Int, flags:Int,
+			cursor:Rect, selectionRects:Array<Rect>,
 			compositionRects:Array<Rect>, ?selectionRangeRects:Array<TextRangeRect>,
 			?compositionRangeRects:Array<TextRangeRect>):Void {
 		ensureLive();
+		if (document == null)
+			throw "Text input requires a document engine";
 		if (surface == null || surface.isDisposed() || !requestedActive || cursor == null ||
 			(platformChecked && !platformSupported))
 			return;
+		var text = document.text();
+		var selection = document.selection();
+		var composition = document.composition();
+		var compositionStart = composition.range == null ? -1 : composition.range.start;
+		var compositionEnd = composition.range == null ? -1 : composition.range.end;
 		var result = NativeKitTextInput.updateResult(surface, text == null ? "" : text, 0,
-			documentLength, selectionStart,
-			selectionEnd, compositionStart, compositionEnd, cast inputType, cast flags,
+			document.documentLength(), selection.start,
+			selection.end, compositionStart, compositionEnd, cast inputType, cast flags,
 			null, cursor.x, cursor.y, cursor.width, cursor.height);
 		if (!checkPlatformResult(result, "text-input update"))
 			return;
-		result = NativeKitTextInput.updateGeometryResult(surface, selectionStart, selectionEnd,
+		result = NativeKitTextInput.updateGeometryResult(surface, selection.start, selection.end,
 			compositionStart, compositionEnd, encodeGeometry(selectionRects, selectionRangeRects),
 			encodeGeometry(compositionRects, compositionRangeRects));
 		checkPlatformResult(result, "text-input geometry update");
+	}
+
+	/** Converts one platform edit event into the normalized document protocol. */
+	public static function transactionForEdit(edit:NativeKitTextEdit,
+			document:TextDocumentEngine):Null<EditTransaction> {
+		if (edit == null || document == null)
+			return null;
+		var current = document.selection();
+		switch (edit.action) {
+			case TextEditAction.Compose:
+				return new EditTransaction(edit.replaceStart, edit.replaceEnd, edit.text,
+					edit.selectionStart, edit.selectionEnd, true,
+					edit.compositionStart, edit.compositionEnd);
+			case TextEditAction.Commit | TextEditAction.Delete:
+				return new EditTransaction(edit.replaceStart, edit.replaceEnd,
+					edit.action == TextEditAction.Delete ? "" : edit.text,
+					edit.selectionStart, edit.selectionEnd);
+			case TextEditAction.SetSelection:
+				return new EditTransaction(current.start, current.start, "",
+					edit.selectionStart, edit.selectionEnd,
+					hasComposition(edit.compositionStart, edit.compositionEnd),
+					edit.compositionStart, edit.compositionEnd);
+			case TextEditAction.SetComposition:
+				return new EditTransaction(current.start, current.start, "",
+					current.start, current.end,
+					hasComposition(edit.compositionStart, edit.compositionEnd),
+					edit.compositionStart, edit.compositionEnd);
+			case TextEditAction.FinishComposition:
+				return new EditTransaction(current.start, current.start, "",
+					edit.selectionStart, edit.selectionEnd);
+			case _:
+				return null;
+			}
+		return null;
 	}
 
 	public function dispose():Void {
@@ -176,4 +220,7 @@ class TextInputBridge {
 
 	static inline function finite(value:Float):Bool
 		return value == value && value - value == 0.0;
+
+	static inline function hasComposition(start:Int, end:Int):Bool
+		return start >= 0 && end >= start;
 }

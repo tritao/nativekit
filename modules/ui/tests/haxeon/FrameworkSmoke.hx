@@ -305,7 +305,8 @@ class FrameworkSmoke {
 		var boundaryEditor = new TextEditorState(fonts, "ab");
 		var documentEngine:TextDocumentEngine = boundaryEditor.documentEngine;
 		var initialSelection = documentEngine.selection();
-		if (documentEngine.text() != "ab" || !initialSelection.isCollapsed() ||
+		if (documentEngine.text() != "ab" || documentEngine.documentLength() != 2 ||
+			!initialSelection.isCollapsed() ||
 			initialSelection.start != 2 || documentEngine.composition().isActive())
 			return 262;
 		documentEngine.applyEdit(new EditTransaction(1, 1, "🙂", 2, 2));

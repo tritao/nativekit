@@ -25,6 +25,9 @@ class HaxeTextDocumentEngine implements TextDocumentEngine {
 	public function text():String
 		return state.layoutText();
 
+	public function documentLength():CodepointOffset
+		return state.documentLength();
+
 	public function selection():SelectionState
 		return new SelectionState(state.selectionStart, state.selectionEnd,
 			state.selectionAnchor, state.selectionFocus,
