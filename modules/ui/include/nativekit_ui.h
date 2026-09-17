@@ -566,10 +566,7 @@ enum NK_ENUM(nkui_image_format) {
 
 /** Sampling filter used when an image is scaled. */
 typedef uint32_t nkui_image_filter;
-enum NK_ENUM(nkui_image_filter) {
-    NKUI_IMAGE_FILTER_LINEAR = 1,
-    NKUI_IMAGE_FILTER_NEAREST = 2
-};
+enum NK_ENUM(nkui_image_filter) { NKUI_IMAGE_FILTER_LINEAR = 1, NKUI_IMAGE_FILTER_NEAREST = 2 };
 
 /* ------------------------------------------------------------------------- */
 /* Display-list APIs                                                         */
@@ -808,10 +805,11 @@ NKUI_API nkui_result nkui_image_create(uint32_t width, uint32_t height, nkui_ima
                                        uint32_t pixel_bytes, nkui_resource *out_image NKUI_OUT);
 
 /** Creates an image with an explicit scaling filter. */
-NKUI_API nkui_result nkui_image_create_filtered(
-    uint32_t width, uint32_t height, nkui_image_format format,
-    const uint8_t *pixels NKUI_IN_ARRAY(pixel_bytes), uint32_t pixel_bytes,
-    nkui_image_filter filter, nkui_resource *out_image NKUI_OUT);
+NKUI_API nkui_result nkui_image_create_filtered(uint32_t width, uint32_t height,
+                                                nkui_image_format format,
+                                                const uint8_t *pixels NKUI_IN_ARRAY(pixel_bytes),
+                                                uint32_t pixel_bytes, nkui_image_filter filter,
+                                                nkui_resource *out_image NKUI_OUT);
 
 /** Decodes a PNG, JPEG, BMP, TGA, GIF, PSD, HDR, PIC, or PNM file as RGBA8. */
 NKUI_API nkui_result nkui_image_load_file(const char *path NKUI_UTF8, nkui_image_filter filter,

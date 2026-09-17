@@ -1888,9 +1888,10 @@ extern "C" nkui_result nkui_image_create(uint32_t width, uint32_t height, nkui_i
                                       NKUI_IMAGE_FILTER_LINEAR, out_image);
 }
 
-extern "C" nkui_result nkui_image_create_filtered(
-    uint32_t width, uint32_t height, nkui_image_format format, const uint8_t *pixels,
-    uint32_t pixel_bytes, nkui_image_filter filter, nkui_resource *out_image) {
+extern "C" nkui_result nkui_image_create_filtered(uint32_t width, uint32_t height,
+                                                  nkui_image_format format, const uint8_t *pixels,
+                                                  uint32_t pixel_bytes, nkui_image_filter filter,
+                                                  nkui_resource *out_image) {
     const uint32_t bytes_per_pixel = format == NKUI_IMAGE_R8      ? 1
                                      : format == NKUI_IMAGE_RGBA8 ? 4
                                                                   : 0;
@@ -1919,8 +1920,8 @@ extern "C" nkui_result nkui_image_create_filtered(
 }
 
 extern "C" nkui_result nkui_image_load_file(const char *path, nkui_image_filter filter,
-                                             uint32_t *out_width, uint32_t *out_height,
-                                             nkui_resource *out_image) {
+                                            uint32_t *out_width, uint32_t *out_height,
+                                            nkui_resource *out_image) {
     if (!path || !*path || !out_width || !out_height || !out_image ||
         (filter != NKUI_IMAGE_FILTER_LINEAR && filter != NKUI_IMAGE_FILTER_NEAREST))
         return NKUI_ERROR_INVALID_ARGUMENT;
