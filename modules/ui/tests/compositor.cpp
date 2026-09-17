@@ -460,6 +460,39 @@ int main() {
         plan.passes[7].commands[0].opacity != 0.6f)
         return 46;
 
+    CustomEffectDescriptor mixed_custom{};
+    mixed_custom.registration_id = 77;
+    mixed_custom.parameter_count = 1;
+    mixed_custom.pass_count = 1;
+    mixed_custom.sampling_inputs = 1;
+    mixed_custom.parameters[0] = 0.5f;
+    EffectOpCommand mixed_custom_operation{};
+    mixed_custom_operation.kind = EffectKind::Custom;
+    mixed_custom_operation.custom = mixed_custom;
+    const std::vector<EffectOpCommand> mixed_operations{
+        chained_blur, matrix_before, mixed_custom_operation, chained_blur, matrix_after};
+    DisplayList mixed_effects;
+    if (!mixed_effects.begin_layer(0.8f, bounds, mixed_operations) ||
+        !mixed_effects.draw_path(path) || !mixed_effects.end_layer() ||
+        !compositor.compile(mixed_effects, main_target, plan, &error) ||
+        plan.passes.size() != 10 || plan.dependencies.size() != 1)
+        return 52;
+    const EffectKind mixed_kinds[] = {EffectKind::Blur,       EffectKind::Blur,
+                                      EffectKind::ColorMatrix, EffectKind::Custom,
+                                      EffectKind::Blur,        EffectKind::Blur,
+                                      EffectKind::ColorMatrix};
+    for (size_t index = 0; index < sizeof(mixed_kinds) / sizeof(mixed_kinds[0]); ++index) {
+        const auto &pass = plan.passes[2 + index];
+        if (pass.kind != RenderPassKind::Effect || pass.effect.kind != mixed_kinds[index])
+            return 53;
+    }
+    if (plan.passes[5].custom_effect.registration_id != mixed_custom.registration_id ||
+        plan.passes[5].custom_effect.parameter_count != mixed_custom.parameter_count ||
+        plan.passes[5].custom_effect.parameters[0] != mixed_custom.parameters[0] ||
+        plan.passes[9].kind != RenderPassKind::Draw || plan.passes[9].commands.size() != 1 ||
+        plan.passes[9].commands[0].resource.value != plan.passes[8].target.value)
+        return 54;
+
     DisplayList duplicate_surface;
     const auto external = make_resource_id(ResourceKind::RenderTarget, 1, 12);
     if (!duplicate_surface.draw_render_target(external, 0.0f, 0.0f, 10.0f, 10.0f) ||

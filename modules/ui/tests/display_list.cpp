@@ -310,6 +310,13 @@ static bool validates_variable_effect_programs() {
                                   sizeof(EffectOpCommand))
         return false;
     list.reset();
+    if (!list.begin_layer(1.0f, bounds, std::vector<EffectOpCommand>{}) || !list.end_layer() ||
+        !validate_display_list(list.data(), list.size()))
+        return false;
+    std::memcpy(&header, list.data(), sizeof(header));
+    if (header.version != kLayerCommandVersion || header.size != sizeof(BeginLayerCommand))
+        return false;
+    list.reset();
     if (!list.begin_layer(1.0f, bounds, eight) || !list.end_layer() ||
         !validate_display_list(list.data(), list.size()))
         return false;
