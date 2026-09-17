@@ -249,9 +249,10 @@ class FrameworkSmoke {
 			return 37;
 		editor.insert("hi");
 		var composition = new NativeKitTextEdit(TextEditAction.Compose, "á", 2, 2,
-			4, 4, 2, 4);
+			4, 4, 2, 4, 1);
 		if (!editor.applyTextEdit(composition) || editor.text != "hiá" ||
-			editor.selectionEnd != 4 || editor.compositionStart != 2 || editor.compositionEnd != 4)
+			editor.selectionEnd != 4 || editor.selectionFocusAffinity != 1 ||
+			editor.compositionStart != 2 || editor.compositionEnd != 4)
 			return 33;
 		editor.dispose();
 
@@ -498,10 +499,10 @@ class FrameworkSmoke {
 		if (field.value != "🙂" || fieldEditor.selectionEnd != 0)
 			return 43;
 		var compositionEdit = new NativeKitTextEdit(TextEditAction.Compose, "x", 1, 1,
-			2, 2, 1, 2);
+			2, 2, 1, 2, 1);
 		context.text(UiEventKind.TextEdit, null, compositionEdit);
 		if (field.value != "🙂x" || fieldEditor.compositionStart != 1 ||
-			fieldEditor.compositionEnd != 2)
+			fieldEditor.compositionEnd != 2 || fieldEditor.selectionFocusAffinity != 1)
 			return 44;
 		fieldRoot = context.submit(field, new LayoutFrame(256.0, 192.0));
 		if (fieldDiagnostics == null || !fieldDiagnostics.focused ||

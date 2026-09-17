@@ -434,8 +434,10 @@ typedef struct nk_text_edit_event {
     nk_text_position composition_start;
     /** Exclusive active composition end after applying the transaction, or NONE. */
     nk_text_position composition_end;
+    /** Resulting caret affinity for the selection focus. */
+    uint32_t selection_affinity;
     /** Reserved for future use; initialize to zero. */
-    uint32_t reserved[3];
+    uint32_t reserved[2];
 } nk_text_edit_event;
 
 /** State published by a custom editor to synchronize the platform IME. */

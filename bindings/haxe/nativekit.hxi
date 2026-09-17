@@ -4664,9 +4664,13 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 */
 		composition_end: nk_text_position @offset(32);
 		/**
+		 * Resulting caret affinity for the selection focus.
+		 */
+		selection_affinity: u32 @offset(36);
+		/**
 		 * Reserved for future use; initialize to zero.
 		 */
-		reserved: array<u32, 3> @offset(36);
+		reserved: array<u32, 2> @offset(40);
 	}
 	/**
 	 * Payload of NK_EVENT_TEXT_INPUT containing committed Unicode text.

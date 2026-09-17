@@ -108,24 +108,26 @@ class TextInputBridge {
 			case TextEditAction.Compose:
 				return new EditTransaction(edit.replaceStart, edit.replaceEnd, edit.text,
 					edit.selectionStart, edit.selectionEnd, true,
-					edit.compositionStart, edit.compositionEnd);
+					edit.compositionStart, edit.compositionEnd, edit.selectionAffinity);
 			case TextEditAction.Commit | TextEditAction.Delete:
 				return new EditTransaction(edit.replaceStart, edit.replaceEnd,
 					edit.action == TextEditAction.Delete ? "" : edit.text,
-					edit.selectionStart, edit.selectionEnd);
+					edit.selectionStart, edit.selectionEnd, false, -1, -1,
+					edit.selectionAffinity);
 			case TextEditAction.SetSelection:
 				return new EditTransaction(current.start, current.start, "",
 					edit.selectionStart, edit.selectionEnd,
 					hasComposition(edit.compositionStart, edit.compositionEnd),
-					edit.compositionStart, edit.compositionEnd);
+					edit.compositionStart, edit.compositionEnd, edit.selectionAffinity);
 			case TextEditAction.SetComposition:
 				return new EditTransaction(current.start, current.start, "",
 					current.start, current.end,
 					hasComposition(edit.compositionStart, edit.compositionEnd),
-					edit.compositionStart, edit.compositionEnd);
+					edit.compositionStart, edit.compositionEnd, edit.selectionAffinity);
 			case TextEditAction.FinishComposition:
 				return new EditTransaction(current.start, current.start, "",
-					edit.selectionStart, edit.selectionEnd);
+					edit.selectionStart, edit.selectionEnd, false, -1, -1,
+					edit.selectionAffinity);
 			case _:
 				return null;
 			}

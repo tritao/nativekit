@@ -24,7 +24,7 @@ class NativeKitInputEvents {
 		case EventKind.TextEdit:
 			NativeKitEventBytes.requireMinimumSize(c.data,48); var v:TextEditEvent=c.data;
 			var text=NativeKitEventBytes.readUtf8Slice(c.data,v.get_text_offset(),v.get_text_length(),48);
-			TextEdit(c.source,new NativeKitTextEdit(v.get_action(),text,v.get_replace_start(),v.get_replace_end(),v.get_selection_start(),v.get_selection_end(),v.get_composition_start(),v.get_composition_end()));
+			TextEdit(c.source,new NativeKitTextEdit(v.get_action(),text,v.get_replace_start(),v.get_replace_end(),v.get_selection_start(),v.get_selection_end(),v.get_composition_start(),v.get_composition_end(),v.get_selection_affinity()));
 		case EventKind.AccessibilityAction:
 			NativeKitEventBytes.requireMinimumSize(c.data,32);
 			var nodeId = NativeKitEventBytes.readU32(c.data, 0);

@@ -884,6 +884,7 @@ void emit_text_transaction(WinWindowResource &resource,
     payload.selection_end = transaction.selection_end;
     payload.composition_start = transaction.composition_start;
     payload.composition_end = transaction.composition_end;
+    payload.selection_affinity = transaction.selection_affinity;
     emit_text_edit(resource, payload, transaction.replacement_text);
 }
 

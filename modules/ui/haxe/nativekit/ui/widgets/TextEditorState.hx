@@ -343,22 +343,26 @@ class TextEditorState {
 			case TextEditAction.Compose:
 				return applyTransaction(new EditTransaction(edit.replaceStart, edit.replaceEnd,
 					edit.text, edit.selectionStart, edit.selectionEnd, true,
-					edit.compositionStart, edit.compositionEnd));
+					edit.compositionStart, edit.compositionEnd, edit.selectionAffinity));
 			case TextEditAction.Commit | TextEditAction.Delete:
 				return applyTransaction(new EditTransaction(edit.replaceStart, edit.replaceEnd,
 					edit.action == TextEditAction.Delete ? "" : edit.text,
-					edit.selectionStart, edit.selectionEnd));
+					edit.selectionStart, edit.selectionEnd, false, -1, -1,
+					edit.selectionAffinity));
 			case TextEditAction.SetSelection:
 				return applyTransactionInternal(new EditTransaction(selectionStart, selectionStart, "",
 					edit.selectionStart, edit.selectionEnd, hasValidComposition(edit.compositionStart,
-						edit.compositionEnd), edit.compositionStart, edit.compositionEnd), false);
+					edit.compositionEnd), edit.compositionStart, edit.compositionEnd,
+					edit.selectionAffinity), false);
 			case TextEditAction.SetComposition:
 				return applyTransactionInternal(new EditTransaction(selectionStart, selectionStart, "",
 					selectionStart, selectionEnd, hasValidComposition(edit.compositionStart,
-						edit.compositionEnd), edit.compositionStart, edit.compositionEnd), false);
+					edit.compositionEnd), edit.compositionStart, edit.compositionEnd,
+					edit.selectionAffinity), false);
 			case TextEditAction.FinishComposition:
 				return applyTransaction(new EditTransaction(selectionStart, selectionStart, "",
-					edit.selectionStart, edit.selectionEnd));
+					edit.selectionStart, edit.selectionEnd, false, -1, -1,
+					edit.selectionAffinity));
 			case _:
 				return false;
 		}

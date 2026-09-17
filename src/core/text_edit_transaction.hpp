@@ -17,6 +17,8 @@ struct TextEditTransaction {
     nk_text_position selection_end = NK_TEXT_POSITION_NONE;
     nk_text_position composition_start = NK_TEXT_POSITION_NONE;
     nk_text_position composition_end = NK_TEXT_POSITION_NONE;
+    /** Caret affinity for the resulting selection focus. */
+    uint32_t selection_affinity = 0;
 
     bool valid() const noexcept {
         if (selection_start == NK_TEXT_POSITION_NONE || selection_end == NK_TEXT_POSITION_NONE ||
@@ -35,6 +37,8 @@ struct TextEditTransaction {
         if ((composition_start == NK_TEXT_POSITION_NONE) !=
                 (composition_end == NK_TEXT_POSITION_NONE) ||
             (has_composition && composition_start > composition_end))
+            return false;
+        if (selection_affinity > 4u)
             return false;
 
         switch (action) {

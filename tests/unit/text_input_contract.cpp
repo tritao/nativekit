@@ -188,6 +188,16 @@ int main() {
                                                           NK_TEXT_POSITION_NONE,
                                                           NK_TEXT_POSITION_NONE};
     assert(!selection_with_replacement.valid());
+    const TextEditTransaction invalid_affinity{NK_TEXT_EDIT_COMMIT,
+                                               1,
+                                               1,
+                                               "x",
+                                               2,
+                                               2,
+                                               NK_TEXT_POSITION_NONE,
+                                               NK_TEXT_POSITION_NONE,
+                                               5};
+    assert(!invalid_affinity.valid());
 
     nk_text_input_rect selection_rect{sizeof(nk_text_input_rect), 4.0f, 8.0f, 32.0f, 18.0f};
     std::vector<uint8_t> packed(sizeof(selection_rect));
