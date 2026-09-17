@@ -334,6 +334,7 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                                             std::size_t primitive_index) -> bool {
             out.plan_.isolated_layers += custom_plan.isolated_layers;
             out.plan_.bounded_layers += custom_plan.bounded_layers;
+            const auto &primitive = snapshot.primitives[primitive_index];
             std::unordered_map<uint32_t, ResourceId> remapped_targets;
             for (const auto &pass : custom_plan.passes) {
                 if (pass.target.value == main_target.value ||
@@ -379,6 +380,8 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                 RenderPass pass = source_pass;
                 pass.target = remap(pass.target);
                 pass.input_target = remap(pass.input_target);
+                float target_origin_delta_x = 0.0f;
+                float target_origin_delta_y = 0.0f;
                 if (pass.target_descriptor.logical_width > 0.0f ||
                     pass.target_descriptor.logical_height > 0.0f) {
                     if (!std::isfinite(pass.target_descriptor.logical_width) ||
@@ -387,10 +390,24 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                         pass.target_descriptor.logical_height <= 0.0f)
                         return fail(error, primitive_index,
                                     "custom render-target bounds are invalid");
-                    const double width = static_cast<double>(pass.target_descriptor.logical_width) *
-                                         pixel_scale;
+                    const LayoutRect logical_bounds{pass.target_descriptor.origin_x,
+                                                    pass.target_descriptor.origin_y,
+                                                    pass.target_descriptor.logical_width,
+                                                    pass.target_descriptor.logical_height};
+                    const LayoutRect transformed_bounds =
+                        transform_bounds(logical_bounds, primitive.transform);
+                    if (!finite_rect(transformed_bounds))
+                        return fail(error, primitive_index,
+                                    "custom render-target transform is invalid");
+                    target_origin_delta_x = transformed_bounds.x - pass.target_descriptor.origin_x;
+                    target_origin_delta_y = transformed_bounds.y - pass.target_descriptor.origin_y;
+                    pass.target_descriptor.origin_x = transformed_bounds.x;
+                    pass.target_descriptor.origin_y = transformed_bounds.y;
+                    pass.target_descriptor.logical_width = transformed_bounds.width;
+                    pass.target_descriptor.logical_height = transformed_bounds.height;
+                    const double width = static_cast<double>(transformed_bounds.width) * pixel_scale;
                     const double height =
-                        static_cast<double>(pass.target_descriptor.logical_height) * pixel_scale;
+                        static_cast<double>(transformed_bounds.height) * pixel_scale;
                     if (!std::isfinite(width) || !std::isfinite(height) ||
                         width > std::numeric_limits<int>::max() ||
                         height > std::numeric_limits<int>::max())
@@ -413,6 +430,12 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                     return fail(error, primitive_index, "custom mask parameters are too large");
                 for (auto &command : pass.commands) {
                     command.resource = remap(command.resource);
+                    command.transform[4] -= target_origin_delta_x;
+                    command.transform[5] -= target_origin_delta_y;
+                    if (command.has_scissor) {
+                        command.scissor_x -= target_origin_delta_x;
+                        command.scissor_y -= target_origin_delta_y;
+                    }
                     command.transform = device_transform(command.transform, pixel_scale);
                     command.scissor_x *= pixel_scale;
                     command.scissor_y *= pixel_scale;

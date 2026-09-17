@@ -63,11 +63,10 @@ void main() {
         return;
     }
     vec2 direction = value.y > 0.5 ? vec2(0.0, value.w) : vec2(value.z, 0.0);
-    // Use paired bilinear samples at half-step positions. The previous
-    // kernel sampled at 0.75 * sigma, 1.5 * sigma, ... which left large
-    // unsampled gaps and produced visibly stepped halos for normal UI
-    // radii. Six pairs give a smooth 13-tap effective kernel while keeping
-    // the pass separable and bounded on every backend.
+    // Sample symmetrically at half-step intervals so linear filtering fills
+    // the interval between neighboring Gaussian samples. Six pairs provide
+    // a smooth 13-tap effective kernel while keeping the pass separable and
+    // bounded on every backend.
     float sample_step = max(1.0, sigma * 0.5);
     vec4 result = source;
     float weight_sum = 1.0;
