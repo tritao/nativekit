@@ -127,6 +127,7 @@ cases=(
     "ui-overlays-compact|700x800|uiVisual=20||"
     "ui-gestures-compact|700x800|uiVisual=21||"
     "ui-graphics-compact|700x800|uiVisual=22||"
+    "ui-graphics-decorations|1200x800|uiVisual=33||"
     "ui-overview-zoom-110|1200x800|uiVisual=0|||1.1"
 )
 
@@ -145,7 +146,8 @@ if [[ -n "$gallery_dir" ]]; then
         "ui-graphics-images|1200x800|uiVisual=29||"
         "ui-graphics-rendering|1200x800|uiVisual=30||"
         "ui-graphics-gradients|1200x800|uiVisual=31||"
-		"ui-graphics-3d|1200x800|uiVisual=32||"
+        "ui-graphics-decorations|1200x800|uiVisual=33||"
+        "ui-graphics-3d|1200x800|uiVisual=32||"
     )
 fi
 
@@ -198,7 +200,7 @@ for visual_case in "${cases[@]}"; do
     fi
     if [[ -n "$gallery_dir" ]]; then
         case "$case_name" in
-			ui-overview|ui-controls|ui-text|ui-layout|ui-lists|ui-overlays|ui-gestures|ui-graphics|ui-graphics-paths|ui-graphics-text|ui-graphics-images|ui-graphics-rendering|ui-graphics-gradients|ui-graphics-3d) ;;
+            ui-overview|ui-controls|ui-text|ui-layout|ui-lists|ui-overlays|ui-gestures|ui-graphics|ui-graphics-paths|ui-graphics-text|ui-graphics-images|ui-graphics-rendering|ui-graphics-gradients|ui-graphics-decorations|ui-graphics-3d) ;;
             *) continue ;;
         esac
     fi

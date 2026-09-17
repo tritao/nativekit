@@ -61,8 +61,8 @@ tools/test-web-visual.sh --update  # intentionally refresh baselines
 ```
 
 `--ui-only` is a faster component-focused loop. The explorer also exposes
-`uiVisual=23` as a deterministic active-composition state for targeted browser
-capture. UI baselines live beside the
+`uiVisual=23` as a deterministic active-composition state and `uiVisual=33` as
+the Decorations page for targeted browser capture. UI baselines live beside the
 Graphics Lab references in `modules/ui/tests/golden/`; mismatches produce
 `*-actual.png` and `*-diff.png` artifacts under `build-web/visual-diffs/`.
 
