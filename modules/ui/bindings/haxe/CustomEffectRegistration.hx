@@ -39,8 +39,10 @@ class CustomEffectRegistration {
 		result.set_hlsl5_fragment(hlsl5Fragment);
 		result.set_metal_macos_fragment(metalMacosFragment);
 		result.set_parameter_components(definition.componentCount);
-		result.set_pass_count(definition.passCount);
-		result.set_sampling_inputs(definition.samplingInputs);
+		// The current native contract is one source-sampling pass. Keep the
+		// wire fields explicit while reserving broader custom graphs for later.
+		result.set_pass_count(1);
+		result.set_sampling_inputs(1);
 		result.set_ink_overflow(0, definition.overflow.left);
 		result.set_ink_overflow(1, definition.overflow.top);
 		result.set_ink_overflow(2, definition.overflow.right);

@@ -51,6 +51,13 @@ static_assert(sizeof(nkui_composite_command) == sizeof(nkui::SetCompositeModeCom
 static_assert(sizeof(nkui_rect_command) == sizeof(nkui::ClipRectCommand));
 static_assert(sizeof(nkui_draw_rect_command) == sizeof(nkui::DrawRectResourceCommand));
 static_assert(sizeof(nkui_layer_command) == sizeof(nkui::BeginLayerCommand));
+static_assert(sizeof(nkui_layer_v1_unbounded_command) == sizeof(nkui::BeginLayerUnboundedV1Command));
+static_assert(sizeof(nkui_layer_v1_command) == sizeof(nkui::BeginLayerV1Command));
+static_assert(sizeof(nkui_layer_v1_effect_command) == sizeof(nkui::BeginLayerEffectV1Command));
+static_assert(sizeof(nkui_layer_v1_mask_command) == sizeof(nkui::BeginLayerMaskV1Command));
+static_assert(sizeof(nkui_layer_v1_backdrop_command) == sizeof(nkui::BeginLayerBackdropV1Command));
+static_assert(sizeof(nkui_layer_v1_custom_effect_command) ==
+              sizeof(nkui::BeginLayerCustomEffectV1Command));
 static_assert(sizeof(nkui_custom_effect_descriptor) == sizeof(nkui::CustomEffectDescriptor));
 static_assert(sizeof(nkui_effect_op_command) == sizeof(nkui::EffectOpCommand));
 static_assert(sizeof(nkui_stroke_path_command) == sizeof(nkui::StrokePathCommand));

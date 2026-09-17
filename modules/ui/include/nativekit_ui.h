@@ -265,6 +265,8 @@ enum NK_ENUM(nkui_command_opcode) {
 
 /** Version value required in every command header. */
 enum { NKUI_COMMAND_VERSION = 1 };
+/** Version emitted for the variable-length NKUI_COMMAND_BEGIN_LAYER record. */
+enum { NKUI_LAYER_COMMAND_VERSION = 2 };
 
 /** Alpha compositing mode supported by the current UI renderer. */
 typedef uint32_t nkui_composite_mode;
@@ -308,9 +310,9 @@ typedef struct nkui_custom_effect_descriptor {
     uint32_t registration_id;
     /** Number of meaningful entries in parameters. */
     uint32_t parameter_count;
-    /** Number of native effect passes required by this registration. */
+    /** Reserved; must be 1 until multipass custom effects are introduced. */
     uint32_t pass_count;
-    /** Bitmask of declared sampled inputs: source=1, backdrop=2. */
+    /** Reserved; must be 1 (source input) until explicit custom graphs are introduced. */
     uint32_t sampling_inputs;
     /** Logical ink expansion: left, top, right, bottom. */
     float ink_overflow[4];
@@ -346,9 +348,9 @@ typedef struct nkui_custom_effect_registration {
     const char *metal_macos_fragment NKUI_NULLABLE_UTF8;
     /** Number of meaningful float components in the custom descriptor. */
     uint32_t parameter_components;
-    /** Number of passes; the current runtime supports one registered pass. */
+    /** Reserved; must be 1; the current runtime supports one registered pass. */
     uint32_t pass_count;
-    /** Declared sampled inputs: source=1, backdrop=2. */
+    /** Reserved; must be 1 (source input). */
     uint32_t sampling_inputs;
     /** Logical ink expansion: left, top, right, bottom. */
     float ink_overflow[4];
@@ -369,7 +371,7 @@ enum NK_ENUM(nkui_mask_kind) {
 typedef struct nkui_command_header {
     /** One of the NKUI_COMMAND_* opcode values. */
     nkui_command_opcode opcode;
-    /** Must be NKUI_COMMAND_VERSION. */
+    /** Must match the opcode: NKUI_COMMAND_VERSION, or NKUI_LAYER_COMMAND_VERSION for BeginLayer. */
     uint16_t version;
     /** Total record size in bytes, including this header; must be 4-byte aligned. */
     uint32_t size;
@@ -497,7 +499,7 @@ typedef struct nkui_mask_descriptor {
     float values[8];
 } nkui_mask_descriptor;
 
-/** Payload for NKUI_COMMAND_BEGIN_LAYER. */
+/** Fixed prefix for the variable-length version 2 NKUI_COMMAND_BEGIN_LAYER record. */
 typedef struct nkui_layer_command {
     /** Command record header. */
     nkui_command_header header;
@@ -515,17 +517,59 @@ typedef struct nkui_layer_command {
     float height;
     /** Combination of nkui_layer_flags. */
     nkui_layer_flags flags;
-    /** Number of active foreground operations in foreground[]. */
-    uint32_t foreground_count;
-    /** Number of active backdrop operations in backdrop[]. */
-    uint32_t backdrop_count;
     /** Source-alpha mask; use NKUI_MASK_NONE when no mask is present. */
     nkui_mask_descriptor mask;
-    /** Ordered foreground operations, applied from first to last. */
-    nkui_effect_op_command foreground[NKUI_EFFECT_PROGRAM_MAX_OPS];
-    /** Ordered backdrop operations, applied from first to last. */
-    nkui_effect_op_command backdrop[NKUI_EFFECT_PROGRAM_MAX_OPS];
+    /** Number of active foreground operations following this prefix. */
+    uint32_t foreground_count;
+    /** Number of active backdrop operations following the foreground operations. */
+    uint32_t backdrop_count;
 } nkui_layer_command;
+
+/** Version 1 unbounded layer record retained for wire decoding. */
+typedef struct nkui_layer_v1_unbounded_command {
+    nkui_command_header header;
+    float opacity;
+    nkui_composite_mode composite_mode;
+} nkui_layer_v1_unbounded_command;
+
+/** Common version 1 bounded layer prefix retained for wire decoding. */
+typedef struct nkui_layer_v1_command {
+    nkui_command_header header;
+    float opacity;
+    nkui_composite_mode composite_mode;
+    float x;
+    float y;
+    float width;
+    float height;
+    nkui_layer_flags flags;
+} nkui_layer_v1_command;
+
+typedef struct nkui_layer_v1_effect_command {
+    nkui_layer_v1_command base;
+    nkui_effect_kind effect_kind;
+    float effect_matrix[20];
+} nkui_layer_v1_effect_command;
+
+typedef struct nkui_layer_v1_mask_command {
+    nkui_layer_v1_command base;
+    nkui_effect_kind effect_kind;
+    float effect_matrix[20];
+    nkui_mask_descriptor mask;
+} nkui_layer_v1_mask_command;
+
+typedef struct nkui_layer_v1_backdrop_command {
+    nkui_layer_v1_command base;
+    nkui_effect_kind effect_kind;
+    float effect_matrix[20];
+    nkui_mask_descriptor mask;
+    nkui_effect_kind backdrop_effect_kind;
+    float backdrop_effect_matrix[20];
+} nkui_layer_v1_backdrop_command;
+
+typedef struct nkui_layer_v1_custom_effect_command {
+    nkui_layer_v1_command base;
+    nkui_custom_effect_descriptor effect;
+} nkui_layer_v1_custom_effect_command;
 
 /* ------------------------------------------------------------------------- */
 /* Text and layout types                                                      */

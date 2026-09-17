@@ -29,6 +29,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <initializer_list>
 #include <thread>
 #include <vector>
 
@@ -46,7 +47,7 @@ nkui_layer_command make_layer(float opacity, float x = 0.0f, float y = 0.0f,
                                float width = 0.0f, float height = 0.0f,
                                nkui_layer_flags flags = 0) {
     nkui_layer_command layer{};
-    layer.header = {NKUI_COMMAND_BEGIN_LAYER, NKUI_COMMAND_VERSION, sizeof(layer)};
+    layer.header = {NKUI_COMMAND_BEGIN_LAYER, NKUI_LAYER_COMMAND_VERSION, sizeof(layer)};
     layer.opacity = opacity;
     layer.composite_mode = NKUI_COMPOSITE_SOURCE_OVER;
     layer.x = x;
@@ -55,6 +56,21 @@ nkui_layer_command make_layer(float opacity, float x = 0.0f, float y = 0.0f,
     layer.height = height;
     layer.flags = flags;
     return layer;
+}
+
+void append_layer(std::vector<uint8_t> &bytes, nkui_layer_command layer,
+                  std::initializer_list<nkui_effect_op_command> foreground = {},
+                  std::initializer_list<nkui_effect_op_command> backdrop = {}) {
+    layer.foreground_count = static_cast<uint32_t>(foreground.size());
+    layer.backdrop_count = static_cast<uint32_t>(backdrop.size());
+    layer.header.size = static_cast<uint32_t>(sizeof(layer) +
+                                              (foreground.size() + backdrop.size()) *
+                                                  sizeof(nkui_effect_op_command));
+    append(bytes, layer);
+    for (const auto &operation : foreground)
+        append(bytes, operation);
+    for (const auto &operation : backdrop)
+        append(bytes, operation);
 }
 
 struct PixelBounds {
@@ -185,14 +201,14 @@ int main(int argc, char **argv) {
         std::vector<uint8_t> custom_commands;
         auto custom_layer = make_layer(1.0f, 72.0f, 82.0f, 112.0f, 70.0f,
                                        NKUI_LAYER_ISOLATED | NKUI_LAYER_HAS_BOUNDS);
-        custom_layer.foreground_count = 1;
-        custom_layer.foreground[0].kind = NKUI_EFFECT_CUSTOM;
-        custom_layer.foreground[0].custom.registration_id = 77;
-        custom_layer.foreground[0].custom.parameter_count = 1;
-        custom_layer.foreground[0].custom.pass_count = 1;
-        custom_layer.foreground[0].custom.sampling_inputs = 1;
-        custom_layer.foreground[0].custom.parameters[0] = 1.0f;
-        append(custom_commands, custom_layer);
+        nkui_effect_op_command custom_operation{};
+        custom_operation.kind = NKUI_EFFECT_CUSTOM;
+        custom_operation.custom.registration_id = 77;
+        custom_operation.custom.parameter_count = 1;
+        custom_operation.custom.pass_count = 1;
+        custom_operation.custom.sampling_inputs = 1;
+        custom_operation.custom.parameters[0] = 1.0f;
+        append_layer(custom_commands, custom_layer, {custom_operation});
         append(custom_commands,
                nkui_draw_rect_command{{NKUI_COMMAND_DRAW_IMAGE, NKUI_COMMAND_VERSION,
                                        sizeof(nkui_draw_rect_command)},
@@ -269,10 +285,10 @@ int main(int argc, char **argv) {
                                          sizeof(nkui_command_header)});
     auto blur_layer = make_layer(1.0f, 72.0f, 82.0f, 112.0f, 70.0f,
                                  NKUI_LAYER_ISOLATED | NKUI_LAYER_HAS_BOUNDS);
-    blur_layer.foreground_count = 1;
-    blur_layer.foreground[0].kind = NKUI_EFFECT_BLUR;
-    blur_layer.foreground[0].color_matrix[0] = 2.0f;
-    append(commands, blur_layer);
+    nkui_effect_op_command blur_operation{};
+    blur_operation.kind = NKUI_EFFECT_BLUR;
+    blur_operation.color_matrix[0] = 2.0f;
+    append_layer(commands, blur_layer, {blur_operation});
     append(commands, nkui_draw_rect_command{{NKUI_COMMAND_DRAW_IMAGE, NKUI_COMMAND_VERSION,
                                              sizeof(nkui_draw_rect_command)},
                                             image,
@@ -289,12 +305,12 @@ int main(int argc, char **argv) {
     std::vector<uint8_t> drop_shadow_commands;
     auto drop_shadow_layer = make_layer(1.0f, 72.0f, 82.0f, 112.0f, 70.0f,
                                         NKUI_LAYER_ISOLATED | NKUI_LAYER_HAS_BOUNDS);
-    drop_shadow_layer.foreground_count = 1;
-    drop_shadow_layer.foreground[0].kind = NKUI_EFFECT_DROP_SHADOW;
-    drop_shadow_layer.foreground[0].color_matrix[0] = 2.0f;
-    drop_shadow_layer.foreground[0].color_matrix[3] = 6.0f;
-    drop_shadow_layer.foreground[0].color_matrix[7] = 0.35f;
-    append(drop_shadow_commands, drop_shadow_layer);
+    nkui_effect_op_command drop_shadow_operation{};
+    drop_shadow_operation.kind = NKUI_EFFECT_DROP_SHADOW;
+    drop_shadow_operation.color_matrix[0] = 2.0f;
+    drop_shadow_operation.color_matrix[3] = 6.0f;
+    drop_shadow_operation.color_matrix[7] = 0.35f;
+    append_layer(drop_shadow_commands, drop_shadow_layer, {drop_shadow_operation});
     append(drop_shadow_commands,
            nkui_draw_rect_command{{NKUI_COMMAND_DRAW_IMAGE, NKUI_COMMAND_VERSION,
                                    sizeof(nkui_draw_rect_command)},
@@ -316,7 +332,7 @@ int main(int argc, char **argv) {
                                          NKUI_LAYER_ISOLATED | NKUI_LAYER_HAS_BOUNDS);
     rounded_mask_layer.mask.kind = NKUI_MASK_ROUNDED_RECT;
     rounded_mask_layer.mask.values[0] = 10.0f;
-    append(mask_commands, rounded_mask_layer);
+    append_layer(mask_commands, rounded_mask_layer);
     append(mask_commands,
            nkui_draw_rect_command{{NKUI_COMMAND_DRAW_IMAGE, NKUI_COMMAND_VERSION,
                                    sizeof(nkui_draw_rect_command)},
@@ -336,7 +352,7 @@ int main(int argc, char **argv) {
     nkui_layer_command image_mask_layer = rounded_mask_layer;
     image_mask_layer.mask.kind = NKUI_MASK_IMAGE;
     image_mask_layer.mask.image = image;
-    append(image_mask_commands, image_mask_layer);
+    append_layer(image_mask_commands, image_mask_layer);
     append(image_mask_commands,
            nkui_draw_rect_command{{NKUI_COMMAND_DRAW_IMAGE, NKUI_COMMAND_VERSION,
                                    sizeof(nkui_draw_rect_command)},
@@ -362,14 +378,14 @@ int main(int argc, char **argv) {
                                   70.0f});
     auto backdrop_layer = make_layer(1.0f, 72.0f, 82.0f, 112.0f, 70.0f,
                                      NKUI_LAYER_ISOLATED | NKUI_LAYER_HAS_BOUNDS);
-    backdrop_layer.backdrop_count = 1;
-    backdrop_layer.backdrop[0].kind = NKUI_EFFECT_COLOR_MATRIX;
-    backdrop_layer.backdrop[0].color_matrix[0] = 1.0f;
-    backdrop_layer.backdrop[0].color_matrix[6] = 1.0f;
-    backdrop_layer.backdrop[0].color_matrix[12] = 1.0f;
-    backdrop_layer.backdrop[0].color_matrix[18] = 1.0f;
-    backdrop_layer.backdrop[0].color_matrix[4] = 0.1f;
-    append(backdrop_commands, backdrop_layer);
+    nkui_effect_op_command backdrop_operation{};
+    backdrop_operation.kind = NKUI_EFFECT_COLOR_MATRIX;
+    backdrop_operation.color_matrix[0] = 1.0f;
+    backdrop_operation.color_matrix[6] = 1.0f;
+    backdrop_operation.color_matrix[12] = 1.0f;
+    backdrop_operation.color_matrix[18] = 1.0f;
+    backdrop_operation.color_matrix[4] = 0.1f;
+    append_layer(backdrop_commands, backdrop_layer, {}, {backdrop_operation});
     append(backdrop_commands,
            nkui_draw_rect_command{{NKUI_COMMAND_DRAW_IMAGE, NKUI_COMMAND_VERSION,
                                    sizeof(nkui_draw_rect_command)},

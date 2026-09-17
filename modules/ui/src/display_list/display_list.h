@@ -63,6 +63,8 @@ enum class EffectKind : uint32_t {
 constexpr size_t kColorMatrixComponents = 20;
 /** Maximum number of semantic operations carried by one layer side. */
 constexpr size_t kEffectProgramMaxOps = 8;
+/** New variable-length layer record version; all other commands remain version 1. */
+constexpr uint16_t kLayerCommandVersion = 2;
 
 /** Concrete shader descriptor used by a render-plan effect pass. */
 struct EffectDescriptor {
@@ -191,6 +193,7 @@ struct DrawRectResourceCommand {
     float height;
 };
 
+/** Fixed prefix of the variable-length version 2 layer record. */
 struct BeginLayerCommand {
     CommandHeader header;
     float opacity;
@@ -200,11 +203,50 @@ struct BeginLayerCommand {
     float width;
     float height;
     uint32_t flags;
+    MaskDescriptor mask;
     uint32_t foreground_count;
     uint32_t backdrop_count;
+};
+
+/** Version 1 layer records retained only for wire decoding. */
+struct BeginLayerUnboundedV1Command {
+    CommandHeader header;
+    float opacity;
+    CompositeMode mode;
+};
+
+struct BeginLayerV1Command {
+    CommandHeader header;
+    float opacity;
+    CompositeMode mode;
+    float x;
+    float y;
+    float width;
+    float height;
+    uint32_t flags;
+};
+
+struct BeginLayerEffectV1Command {
+    BeginLayerV1Command base;
+    EffectDescriptor effect;
+};
+
+struct BeginLayerMaskV1Command {
+    BeginLayerV1Command base;
+    EffectDescriptor effect;
     MaskDescriptor mask;
-    EffectOpCommand foreground[kEffectProgramMaxOps];
-    EffectOpCommand backdrop[kEffectProgramMaxOps];
+};
+
+struct BeginLayerBackdropV1Command {
+    BeginLayerV1Command base;
+    EffectDescriptor effect;
+    MaskDescriptor mask;
+    EffectDescriptor backdrop_effect;
+};
+
+struct BeginLayerCustomEffectV1Command {
+    BeginLayerV1Command base;
+    CustomEffectDescriptor effect;
 };
 
 struct LayerBounds {
@@ -278,6 +320,9 @@ class DisplayList {
     bool has_backdrop_effects() const;
 
   private:
+    bool append_layer(BeginLayerCommand value,
+                      const std::vector<EffectOpCommand> &foreground,
+                      const std::vector<EffectOpCommand> &backdrop);
     template <class T> bool append(const T &command);
     bool reserve_record(size_t size);
 

@@ -1,12 +1,19 @@
 #include "compositor/compositor.h"
 
 #include <array>
+#include <cstring>
 #include <limits>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 using namespace nkui;
+
+template <class T> void append_record(std::vector<uint8_t> &bytes, const T &value) {
+    const auto offset = bytes.size();
+    bytes.resize(offset + sizeof(value));
+    std::memcpy(bytes.data() + offset, &value, sizeof(value));
+}
 
 int main() {
     const auto main_target = make_resource_id(ResourceKind::RenderTarget, 1, 1);
@@ -35,6 +42,30 @@ int main() {
         plan.passes[2].commands[0].kind != RenderCommandKind::CompositeTarget ||
         plan.passes[2].commands[1].kind != RenderCommandKind::Path || !plan.passes[2].load_existing)
         return 4;
+
+    BeginLayerEffectV1Command legacy_layer{};
+    legacy_layer.base.header = {CommandOpcode::BeginLayer, 1, sizeof(legacy_layer)};
+    legacy_layer.base.opacity = 1.0f;
+    legacy_layer.base.mode = CompositeMode::SourceOver;
+    legacy_layer.base.x = 10.0f;
+    legacy_layer.base.y = 10.0f;
+    legacy_layer.base.width = 40.0f;
+    legacy_layer.base.height = 30.0f;
+    legacy_layer.base.flags = LayerIsolated | LayerHasBounds;
+    legacy_layer.effect.kind = EffectKind::Blur;
+    legacy_layer.effect.color_matrix[0] = 2.0f;
+    DrawResourceCommand legacy_draw{{CommandOpcode::DrawPath, 1, sizeof(legacy_draw)}, path};
+    ScopeCommand legacy_end{{CommandOpcode::EndLayer, 1, sizeof(legacy_end)}};
+    std::vector<uint8_t> legacy_bytes;
+    append_record(legacy_bytes, legacy_layer);
+    append_record(legacy_bytes, legacy_draw);
+    append_record(legacy_bytes, legacy_end);
+    DisplayList legacy;
+    if (!legacy.assign_validated(legacy_bytes.data(), legacy_bytes.size()) ||
+        !compositor.compile(legacy, main_target, plan, &error) || plan.passes.size() != 5 ||
+        plan.passes[2].kind != RenderPassKind::Effect ||
+        plan.passes[2].effect.kind != EffectKind::Blur)
+        return 48;
 
     DisplayList direct;
     if (!direct.begin_layer(1.0f) || !direct.draw_path(path) || !direct.end_layer() ||
@@ -360,6 +391,23 @@ int main() {
         plan.passes[5].mask.kind != MaskKind::RoundedRect || plan.passes[6].commands.size() != 1 ||
         plan.passes[6].commands[0].resource.value != plan.passes[5].target.value)
         return 44;
+
+    DisplayList backdrop_margin;
+    const LayerBounds backdrop_bounds{20.0f, 20.0f, 88.0f, 34.0f};
+    EffectDescriptor backdrop_margin_blur{};
+    backdrop_margin_blur.kind = EffectKind::Blur;
+    backdrop_margin_blur.color_matrix[0] = 2.0f;
+    if (!backdrop_margin.begin_layer(1.0f, backdrop_bounds, EffectDescriptor{}, MaskDescriptor{},
+                                     backdrop_margin_blur) ||
+        !backdrop_margin.draw_path(path) || !backdrop_margin.end_layer() ||
+        !compositor.compile(backdrop_margin, main_target, plan, &error) || plan.passes.size() != 6 ||
+        !plan.passes[1].has_input_rect || plan.passes[1].input_rect !=
+                                               std::array<float, 4>{14.0f, 14.0f, 100.0f, 46.0f} ||
+        plan.passes[1].target_descriptor.origin_x != 14.0f ||
+        plan.passes[1].target_descriptor.origin_y != 14.0f ||
+        plan.passes[1].target_descriptor.logical_width != 100.0f ||
+        plan.passes[1].target_descriptor.logical_height != 46.0f)
+        return 47;
 
     EffectOpCommand matrix_before{};
     matrix_before.kind = EffectKind::ColorMatrix;

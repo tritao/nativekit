@@ -231,30 +231,115 @@ void assign_effect_cache_keys(RenderPlan &plan) {
 }
 
 bool read_layer(const uint8_t *record, uint32_t size, LayerCommandValues &result) {
-    if (size == sizeof(BeginLayerCommand)) {
+    result = {};
+    const auto add_operation = [&](const EffectOpCommand &command) {
+        EffectOp operation;
+        if (!decode_effect_op(command, operation))
+            return false;
+        result.effects.push_back(operation);
+        return true;
+    };
+    const auto add_backdrop_operation = [&](const EffectOpCommand &command) {
+        EffectOp operation;
+        if (!decode_effect_op(command, operation))
+            return false;
+        result.backdrop_effects.push_back(operation);
+        return true;
+    };
+    const auto wire_operation = [](const EffectDescriptor &descriptor) {
+        EffectOpCommand command{};
+        command.kind = descriptor.kind;
+        command.color_matrix = descriptor.color_matrix;
+        return command;
+    };
+    const auto custom_operation = [](const CustomEffectDescriptor &descriptor) {
+        EffectOpCommand command{};
+        command.kind = EffectKind::Custom;
+        command.custom = descriptor;
+        return command;
+    };
+    const auto set_base = [&](float opacity, CompositeMode mode, float x, float y, float width,
+                              float height, uint32_t flags) {
+        result.opacity = opacity;
+        result.mode = mode;
+        result.bounds = {x, y, width, height};
+        result.flags = flags;
+        result.has_bounds = (flags & LayerHasBounds) != 0;
+    };
+    if (size >= sizeof(BeginLayerCommand) &&
+        read<CommandHeader>(record).version == kLayerCommandVersion) {
         const auto value = read<BeginLayerCommand>(record);
-        result.opacity = value.opacity;
-        result.mode = value.mode;
-        result.bounds = {value.x, value.y, value.width, value.height};
-        result.flags = value.flags;
-        result.has_bounds = (value.flags & LayerHasBounds) != 0;
-        result.effects.reserve(value.foreground_count);
-        for (uint32_t index = 0; index < value.foreground_count; ++index) {
-            EffectOp operation;
-            if (!decode_effect_op(value.foreground[index], operation))
-                return false;
-            result.effects.push_back(operation);
-        }
-        result.backdrop_effects.reserve(value.backdrop_count);
-        for (uint32_t index = 0; index < value.backdrop_count; ++index) {
-            EffectOp operation;
-            if (!decode_effect_op(value.backdrop[index], operation))
-                return false;
-            result.backdrop_effects.push_back(operation);
-        }
+        const size_t operation_count = static_cast<size_t>(value.foreground_count) +
+                                       static_cast<size_t>(value.backdrop_count);
+        if (size != sizeof(BeginLayerCommand) + operation_count * sizeof(EffectOpCommand))
+            return false;
+        set_base(value.opacity, value.mode, value.x, value.y, value.width, value.height,
+                 value.flags);
         result.mask = value.mask;
         result.has_mask = value.mask.kind != MaskKind::None;
+        const auto *operations = record + sizeof(BeginLayerCommand);
+        for (uint32_t index = 0; index < value.foreground_count; ++index) {
+            const auto operation = read<EffectOpCommand>(
+                operations + static_cast<size_t>(index) * sizeof(EffectOpCommand));
+            if (!add_operation(operation))
+                return false;
+        }
+        const auto backdrop_offset = static_cast<size_t>(value.foreground_count) *
+                                     sizeof(EffectOpCommand);
+        for (uint32_t index = 0; index < value.backdrop_count; ++index) {
+            const auto operation = read<EffectOpCommand>(
+                operations + backdrop_offset + static_cast<size_t>(index) * sizeof(EffectOpCommand));
+            if (!add_backdrop_operation(operation))
+                return false;
+        }
         return true;
+    }
+    const auto header = read<CommandHeader>(record);
+    if (header.version != 1)
+        return false;
+    if (size == sizeof(BeginLayerUnboundedV1Command)) {
+        const auto value = read<BeginLayerUnboundedV1Command>(record);
+        set_base(value.opacity, value.mode, 0.0f, 0.0f, 0.0f, 0.0f, 0);
+        return true;
+    }
+    if (size == sizeof(BeginLayerV1Command)) {
+        const auto value = read<BeginLayerV1Command>(record);
+        set_base(value.opacity, value.mode, value.x, value.y, value.width, value.height,
+                 value.flags);
+        return true;
+    }
+    if (size == sizeof(BeginLayerEffectV1Command)) {
+        const auto value = read<BeginLayerEffectV1Command>(record);
+        set_base(value.base.opacity, value.base.mode, value.base.x, value.base.y, value.base.width,
+                 value.base.height, value.base.flags);
+        return value.effect.kind == EffectKind::None || add_operation(wire_operation(value.effect));
+    }
+    if (size == sizeof(BeginLayerMaskV1Command)) {
+        const auto value = read<BeginLayerMaskV1Command>(record);
+        set_base(value.base.opacity, value.base.mode, value.base.x, value.base.y, value.base.width,
+                 value.base.height, value.base.flags);
+        result.mask = value.mask;
+        result.has_mask = value.mask.kind != MaskKind::None;
+        return (value.effect.kind == EffectKind::None || add_operation(wire_operation(value.effect)));
+    }
+    if (size == sizeof(BeginLayerBackdropV1Command)) {
+        const auto value = read<BeginLayerBackdropV1Command>(record);
+        set_base(value.base.opacity, value.base.mode, value.base.x, value.base.y, value.base.width,
+                 value.base.height, value.base.flags);
+        result.mask = value.mask;
+        result.has_mask = value.mask.kind != MaskKind::None;
+        if (value.effect.kind != EffectKind::None && !add_operation(wire_operation(value.effect)))
+            return false;
+        if (value.backdrop_effect.kind != EffectKind::None &&
+            !add_backdrop_operation(wire_operation(value.backdrop_effect)))
+            return false;
+        return true;
+    }
+    if (size == sizeof(BeginLayerCustomEffectV1Command)) {
+        const auto value = read<BeginLayerCustomEffectV1Command>(record);
+        set_base(value.base.opacity, value.base.mode, value.base.x, value.base.y, value.base.width,
+                 value.base.height, value.base.flags);
+        return add_operation(custom_operation(value.effect));
     }
     return false;
 }
@@ -458,7 +543,13 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
             LayerCommandValues value{};
             if (!read_layer(record, header.size, value))
                 return fail(error, index, "invalid layer begin");
-            const LayerBounds backdrop_bounds = value.bounds;
+            LayerBounds backdrop_bounds = value.bounds;
+            // Capture the backdrop with the full program's ink margin. The expanded result is
+            // placed behind the visible layer bounds and clipped by the isolated group, so a
+            // blur at the panel edge can still sample the background outside the panel.
+            if (value.has_bounds &&
+                !expand_effect_bounds(backdrop_bounds, value.backdrop_effects))
+                return fail(error, index, "backdrop effect bounds overflow");
             if (value.has_bounds && !expand_effect_bounds(value.bounds, value.effects))
                 return fail(error, index, "effect bounds overflow");
             const bool has_effects = !value.effects.empty();
