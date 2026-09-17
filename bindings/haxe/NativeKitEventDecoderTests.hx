@@ -6,6 +6,7 @@ import NativeKit.Key;
 import NativeKit.Modifiers;
 import NativeKit.NavigationError;
 import NativeKit.TextEditAction;
+import NativeKit.TextInputAction;
 
 /** Synthetic payload tests for decoder validation and fallback behavior. */
 class NativeKitEventDecoderTests {
@@ -28,6 +29,7 @@ class NativeKitEventDecoderTests {
 		var shortKey = new NativeKitEventContext(EventKind.Key, handle(0), zero, 0, 0, 0, haxe.io.Bytes.alloc(15));
 		var shortWindow = new NativeKitEventContext(EventKind.WindowResize, handle(0), zero, 0, 0, 0, haxe.io.Bytes.alloc(7));
 		var shortEdit = new NativeKitEventContext(EventKind.TextEdit, handle(0), zero, 0, 0, 0, haxe.io.Bytes.alloc(47));
+		var shortAction = new NativeKitEventContext(EventKind.TextAction, handle(0), zero, 0, 0, 0, haxe.io.Bytes.alloc(7));
 		var messagePayload = haxe.io.Bytes.alloc(4);
 		putU32(messagePayload, 0, 3);
 		var messageContext = new NativeKitEventContext(EventKind.DialogMessageComplete, handle(0), zero, 0, 4, 0, messagePayload);
@@ -52,6 +54,14 @@ class NativeKitEventDecoderTests {
 		var editContext = new NativeKitEventContext(EventKind.TextEdit, handle(9), zero, 0, 0, 0, editPayload);
 		var editOk = switch NativeKitEvent.decodeContext(editContext) {
 			case TextEdit(source, edit): source.rawValue() == 9 && edit.action == TextEditAction.Compose && edit.text == "é" && edit.replaceStart == 1 && edit.compositionEnd == 2;
+			case _: false;
+		};
+		var actionPayload = haxe.io.Bytes.alloc(8);
+		putU32(actionPayload, 0, TextInputAction.Search);
+		var actionContext = new NativeKitEventContext(EventKind.TextAction, handle(10), zero, 0, 0, 0,
+			actionPayload);
+		var actionOk = switch NativeKitEvent.decodeContext(actionContext) {
+			case TextAction(source, action): source.rawValue() == 10 && action == TextInputAction.Search;
 			case _: false;
 		};
 		var invalidUtf8 = haxe.io.Bytes.alloc(50);
@@ -104,13 +114,14 @@ class NativeKitEventDecoderTests {
 
 		if (!messageOk) throw "message completion decoding failed";
 		if (!resourcesOk) throw "resource completion decoding failed";
-		return rawOk && nonMatch && editOk && typedKeyOk && typedHatOk && typedNavigationOk && accessibilityOk
+		return rawOk && nonMatch && editOk && actionOk && typedKeyOk && typedHatOk && typedNavigationOk && accessibilityOk
 			&& throws(function() { NativeKitEventBytes.requireSize(haxe.io.Bytes.alloc(3), 4); })
 			&& throws(function() { NativeKitEventBytes.readU32(haxe.io.Bytes.alloc(3), 0); })
 			&& throws(function() { NativeKitEventBytes.decodeClipboardFiles(unterminated, 1); })
 			&& throws(function() { NativeKitEventBytes.decodeResourceList(badResource, 0); })
 			&& throws(function() { NativeKitInputEvents.decode(shortKey); })
 			&& throws(function() { NativeKitInputEvents.decode(shortEdit); })
+			&& throws(function() { NativeKitInputEvents.decode(shortAction); })
 			&& throws(function() { NativeKitInputEvents.decode(unterminatedAccessibilityContext); })
 			&& throws(function() { NativeKitWindowEvents.decode(shortWindow); })
 			&& throws(function() { NativeKitEventBytes.readUtf8Slice(invalidUtf8,48,2,48); });

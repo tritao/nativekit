@@ -63,7 +63,8 @@ enum class TextInputEventType : uint8_t {
     delete_backward,
     delete_forward,
     finish_composition,
-    selection
+    selection,
+    editor_action
 };
 
 struct TextInputEvent {
@@ -74,6 +75,7 @@ struct TextInputEvent {
     uint32_t replacement_end = NK_TEXT_POSITION_NONE;
     uint32_t selection_start = NK_TEXT_POSITION_NONE;
     uint32_t selection_end = NK_TEXT_POSITION_NONE;
+    nk_text_input_action action = NK_TEXT_INPUT_ACTION_DEFAULT;
 };
 
 struct AccessibilityActionEvent {

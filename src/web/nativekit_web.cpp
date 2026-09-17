@@ -1442,6 +1442,17 @@ void on_touch(const nk::web::TouchEvent &event, void *user_data) {
     });
 }
 
+void queue_text_action(WebSurfaceResource &surface, nk_text_input_action action) {
+    if (action < NK_TEXT_INPUT_ACTION_DEFAULT || action > NK_TEXT_INPUT_ACTION_NONE)
+        return;
+    const nk_text_input_action_event payload{action, 0};
+    nk::core::QueuedEvent queued;
+    queued.kind = NK_EVENT_TEXT_ACTION;
+    queued.source = surface.handle;
+    queued.data = bytes_of(payload);
+    nk::core::push_event(std::move(queued));
+}
+
 void queue_text_edit(WebSurfaceResource &surface, nk_text_edit_action action,
                      const std::string &text, nk_text_position replace_start,
                      nk_text_position replace_end, nk_text_position selection_start,
@@ -1491,6 +1502,11 @@ void on_text_input(const nk::web::TextInputEvent &event, void *user_data) {
         auto surface = get_surface(window->text_input_surface);
         if (!surface || !surface->text_input_active || !surface->text_input_state_set)
             return;
+
+        if (event.type == nk::web::TextInputEventType::editor_action) {
+            queue_text_action(*surface, event.action);
+            return;
+        }
 
         const auto &state = surface->text_input_state;
         const auto text_end = static_cast<nk_text_position>(

@@ -15,10 +15,12 @@
 static void set_text_state(nk_surface surface, const char *text, nk_text_position document_length,
                            nk_text_position selection_start, nk_text_position selection_end,
                            nk_text_position composition_start,
-                           nk_text_position composition_end) {
+                           nk_text_position composition_end, nk_text_input_flags flags,
+                           nk_text_input_action action) {
     nk_text_input_state state = {0};
     state.struct_size = sizeof(state);
-    state.flags = NK_TEXT_INPUT_MULTILINE;
+    state.flags = flags;
+    state.action = action;
     state.text = text;
     state.text_start = 10;
     state.document_length = document_length;
@@ -70,6 +72,30 @@ static void expect_edit(nk_surface surface, nk_text_edit_action action,
         assert(nk_text_edit_event_text(&event, &text, &length) == NK_OK);
         assert(length == (uint32_t)strlen(replacement));
         assert(length == 0 || (text && memcmp(text, replacement, length) == 0));
+        nk_event_release(&event);
+        return;
+    }
+}
+
+static void expect_action(nk_surface surface, nk_text_input_action action) {
+    nk_event event = {0};
+    event.struct_size = sizeof(event);
+    for (;;) {
+        assert(nk_poll_event(&event) == NK_OK);
+        if (event.kind == NK_EVENT_NONE) {
+            nk_event_release(&event);
+            test_failure();
+        }
+        if (event.source != surface || event.kind != NK_EVENT_TEXT_ACTION) {
+            nk_event_release(&event);
+            event.struct_size = sizeof(event);
+            continue;
+        }
+        assert(event.data_size == sizeof(nk_text_input_action_event));
+        const nk_text_input_action_event *payload =
+            (const nk_text_input_action_event *)event.data;
+        assert(payload->action == action);
+        assert(payload->reserved == 0);
         nk_event_release(&event);
         return;
     }
@@ -208,6 +234,30 @@ static int dispatch_composition_finish(void) {
         return 1;
     });
 }
+
+static int dispatch_editor_action(void) {
+    return EM_ASM_INT({
+        const input = document.querySelector("[id^='__nativekit_text_input_']");
+        if (!input)
+            return 0;
+        input.dispatchEvent(new InputEvent("beforeinput", {
+            bubbles: true, cancelable: true, data: null, inputType: "insertParagraph"
+        }));
+        return 1;
+    });
+}
+
+static int dispatch_editor_action_keydown(void) {
+    return EM_ASM_INT({
+        const input = document.querySelector("[id^='__nativekit_text_input_']");
+        if (!input)
+            return 0;
+        input.dispatchEvent(new KeyboardEvent("keydown", {
+            bubbles: true, cancelable: true, key: "Enter"
+        }));
+        return 1;
+    });
+}
 #endif
 
 int main(void) {
@@ -232,7 +282,8 @@ int main(void) {
     assert(nk_surface_create(window, &surface_options, &surface) == NK_OK);
 
     set_text_state(surface, "A\xf0\x9f\x98\x80" "B", 13, 11, 12,
-                   NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
+                   NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
+                   NK_TEXT_INPUT_MULTILINE, NK_TEXT_INPUT_ACTION_DEFAULT);
     assert(nk_surface_set_text_input_active(surface, 1) == NK_OK);
 
 #ifdef __EMSCRIPTEN__
@@ -248,20 +299,23 @@ int main(void) {
                 NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
 
     set_text_state(surface, "A\xe3\x81\x8b\xe3\x81\xaa" "B", 14, 10, 10,
-                   NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
+                   NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
+                   NK_TEXT_INPUT_MULTILINE, NK_TEXT_INPUT_ACTION_DEFAULT);
     assert(dispatch_selection());
     expect_edit(surface, NK_TEXT_EDIT_SET_SELECTION, NK_TEXT_POSITION_NONE,
                 NK_TEXT_POSITION_NONE, "", 10, 13, NK_TEXT_POSITION_NONE,
                 NK_TEXT_POSITION_NONE);
 
     set_text_state(surface, "A\xe3\x81\x8b\xe3\x81\xaa" "B", 14, 13, 13,
-                   NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
+                   NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
+                   NK_TEXT_INPUT_MULTILINE, NK_TEXT_INPUT_ACTION_DEFAULT);
     assert(dispatch_delete_backward());
     expect_edit(surface, NK_TEXT_EDIT_DELETE, 12, 13, "", 12, 12,
                 NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
 
     set_text_state(surface, "A\xe3\x81\x8b" "B", 13, 12, 12,
-                   NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
+                   NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
+                   NK_TEXT_INPUT_MULTILINE, NK_TEXT_INPUT_ACTION_DEFAULT);
     assert(dispatch_composition());
     expect_edit(surface, NK_TEXT_EDIT_COMPOSE, 12, 12, "\xe6\x97\xa5", 13, 13, 12, 13);
     assert(dispatch_composition_commit());
@@ -269,13 +323,24 @@ int main(void) {
                 NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
 
     set_text_state(surface, "A\xe3\x81\x8b\xe6\x97\xa5" "B", 14, 13, 13,
-                   NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
+                   NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
+                   NK_TEXT_INPUT_MULTILINE, NK_TEXT_INPUT_ACTION_DEFAULT);
     assert(dispatch_composition_cancel());
     expect_edit(surface, NK_TEXT_EDIT_COMPOSE, 13, 13, "x", 14, 14, 13, 14);
     assert(dispatch_composition_finish());
     expect_edit(surface, NK_TEXT_EDIT_FINISH_COMPOSITION, NK_TEXT_POSITION_NONE,
                 NK_TEXT_POSITION_NONE, "", 14, 14, NK_TEXT_POSITION_NONE,
                 NK_TEXT_POSITION_NONE);
+    set_text_state(surface, "A\xe3\x81\x8b\xe6\x97\xa5" "B", 14, 14, 14,
+                   NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE, 0,
+                   NK_TEXT_INPUT_ACTION_DONE);
+    assert(dispatch_editor_action());
+    expect_action(surface, NK_TEXT_INPUT_ACTION_DONE);
+    set_text_state(surface, "A\xe3\x81\x8b\xe6\x97\xa5" "B", 14, 14, 14,
+                   NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE, 0,
+                   NK_TEXT_INPUT_ACTION_NEXT);
+    assert(dispatch_editor_action_keydown());
+    expect_action(surface, NK_TEXT_INPUT_ACTION_NEXT);
     EM_ASM({ document.documentElement.dataset.nativekitWebTextInputResult = "passed"; });
 #endif
 

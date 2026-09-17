@@ -505,6 +505,13 @@ EM_JS(void, nk_web_configure_text_input,
                                 selectionStart === undefined ? -1 : selectionStart,
                                 selectionEnd === undefined ? -1 : selectionEnd]);
               };
+              const emitAction = action => {
+                  if (!input._nkActive || !Module.ccall || !Number.isInteger(action) ||
+                      action < 0 || action > 6)
+                      return;
+                  Module.ccall("nk_web_host_text_input_action", null,
+                               ["number", "number"], [input._nkRoute || 0, action]);
+              };
               const suppressInput = () => {
                   input._nkSkipInput = true;
                   Promise.resolve().then(() => {
@@ -525,6 +532,13 @@ EM_JS(void, nk_web_configure_text_input,
                       emit(1, event.data, -1, -1, -1, -1);
                   else
                       emit(4, "", -1, -1, -1, -1);
+              });
+              input.addEventListener("keydown", event => {
+                  if (!input._nkActive || input._nkMultiline || event.key !== "Enter")
+                      return;
+                  event.preventDefault();
+                  suppressInput();
+                  emitAction(input._nkAction);
               });
               const codePointOffset = (value, utf16Offset) => {
                   if (!Number.isInteger(utf16Offset) || utf16Offset < 0 ||
@@ -641,6 +655,14 @@ EM_JS(void, nk_web_configure_text_input,
                       return;
                   }
 
+                  if (!input._nkMultiline &&
+                      (type === "insertLineBreak" || type === "insertParagraph")) {
+                      event.preventDefault();
+                      suppressInput();
+                      emitAction(input._nkAction);
+                      return;
+                  }
+
                   const replacement = codePointRangeForEvent(event);
                   if (!replacement)
                       return;
@@ -728,6 +750,8 @@ EM_JS(void, nk_web_configure_text_input,
 
           input._nkRoute = route;
           input._nkActive = !!active;
+          input._nkMultiline = multiline;
+          input._nkAction = action;
           input._nkTextStart = text_start;
           input._nkDocumentLength = document_length;
           input._nkCompositionStart = composition_start;
@@ -1939,6 +1963,17 @@ extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_text_input_event(
                                 : static_cast<uint32_t>(selection_start);
     event.selection_end = selection_end < 0 ? NK_TEXT_POSITION_NONE
                                             : static_cast<uint32_t>(selection_end);
+    state->callbacks.text_input(event, state->user_data);
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_text_input_action(uint32_t route, int action) {
+    auto *state = state_for_route(route);
+    if (!state || !state->callbacks.text_input || action < NK_TEXT_INPUT_ACTION_DEFAULT ||
+        action > NK_TEXT_INPUT_ACTION_NONE)
+        return;
+    nk::web::TextInputEvent event{};
+    event.type = nk::web::TextInputEventType::editor_action;
+    event.action = static_cast<nk_text_input_action>(action);
     state->callbacks.text_input(event, state->user_data);
 }
 
