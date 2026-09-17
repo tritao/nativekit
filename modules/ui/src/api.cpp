@@ -1927,26 +1927,17 @@ extern "C" nkui_result nkui_image_load_file(const char *path, nkui_image_filter 
     *out_width = 0;
     *out_height = 0;
     out_image->id = 0;
-    int width = 0;
-    int height = 0;
-    uint8_t *pixels = nkui::decode_image_file(path, width, height);
-    if (!pixels || width <= 0 || height <= 0) {
-        if (pixels)
-            nkui::free_decoded_image(pixels);
+    nkui::DecodedImage decoded;
+    if (!nkui::default_image_decoder().decode_file(path, decoded))
         return NKUI_ERROR_INVALID_ARGUMENT;
-    }
-    const uint64_t byte_count = static_cast<uint64_t>(width) * height * 4u;
-    if (byte_count > UINT32_MAX) {
-        nkui::free_decoded_image(pixels);
+    if (decoded.rgba8.size() > UINT32_MAX)
         return NKUI_ERROR_OUT_OF_MEMORY;
-    }
     const nkui_result result = nkui_image_create_filtered(
-        static_cast<uint32_t>(width), static_cast<uint32_t>(height), NKUI_IMAGE_RGBA8, pixels,
-        static_cast<uint32_t>(byte_count), filter, out_image);
-    nkui::free_decoded_image(pixels);
+        decoded.width, decoded.height, NKUI_IMAGE_RGBA8, decoded.rgba8.data(),
+        static_cast<uint32_t>(decoded.rgba8.size()), filter, out_image);
     if (result == NKUI_OK) {
-        *out_width = static_cast<uint32_t>(width);
-        *out_height = static_cast<uint32_t>(height);
+        *out_width = decoded.width;
+        *out_height = decoded.height;
     }
     return result;
 }
