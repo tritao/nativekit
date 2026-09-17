@@ -35,6 +35,8 @@ class TextEditorState {
 	public var draggingSelection:Bool;
 	/** Incremental paragraph-backed geometry and shaping for this document. */
 	public final layout:TextEditorLayout;
+	/** Backend-neutral editor contract for platform and future engine adapters. */
+	public final documentEngine:TextDocumentEngine;
 	/** Retained custom content used to paint the editor's paragraph layouts. */
 	public final renderContent:LayoutRenderableContent;
 	public final textStyle:TextStyle;
@@ -112,6 +114,7 @@ class TextEditorState {
 		renderContent = new LayoutRenderableContent(renderMeasurement, function(canvas, _) {
 			layout.paint(canvas, renderColor);
 		});
+		documentEngine = new HaxeTextDocumentEngine(this);
 		lastLayoutWidth = 1.0;
 		lastLayoutText = layoutText();
 		lastPointerClickTime = -1.0;

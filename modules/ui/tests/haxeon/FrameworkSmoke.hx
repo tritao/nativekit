@@ -86,6 +86,8 @@ import nativekit.ui.widgets.SizedBox;
 import nativekit.ui.widgets.Text;
 import nativekit.ui.core.TextStyleOverride;
 import nativekit.ui.widgets.TextEditorState;
+import nativekit.ui.widgets.TextDocumentEngine;
+import nativekit.ui.widgets.TextPoint;
 import nativekit.ui.widgets.TextEditorLayout;
 import nativekit.ui.widgets.TextEditorDiagnostics;
 import nativekit.ui.widgets.EditTransaction;
@@ -299,6 +301,30 @@ class FrameworkSmoke {
 			transactionEditor.queryComposition() != null)
 			return 239;
 		transactionEditor.dispose();
+
+		var boundaryEditor = new TextEditorState(fonts, "ab");
+		var documentEngine:TextDocumentEngine = boundaryEditor.documentEngine;
+		var initialSelection = documentEngine.selection();
+		if (documentEngine.text() != "ab" || !initialSelection.isCollapsed() ||
+			initialSelection.start != 2 || documentEngine.composition().isActive())
+			return 262;
+		documentEngine.applyEdit(new EditTransaction(1, 1, "🙂", 2, 2));
+		var insertedSelection = documentEngine.selection();
+		var insertedLayout = documentEngine.layout(new nativekit.ui.widgets.TextRange(1, 2));
+		if (documentEngine.text() != "a🙂b" || insertedSelection.start != 2 ||
+			insertedSelection.end != 2 || insertedLayout.rects.length == 0 ||
+			documentEngine.hitTest(new TextPoint(0.0, 0.0)) == null)
+			return 263;
+		documentEngine.applyEdit(new EditTransaction(2, 2, "か", 3, 3, true, 2, 3));
+		var boundaryComposition = documentEngine.composition();
+		if (!boundaryComposition.isActive() || boundaryComposition.range == null ||
+			boundaryComposition.range.start != 2 || boundaryComposition.range.end != 3)
+			return 264;
+		documentEngine.applyEdit(new EditTransaction(3, 3, "", 3, 3));
+		if (!documentEngine.undo() || documentEngine.text() != "a🙂b" ||
+			!documentEngine.redo() || documentEngine.text() != "a🙂かb")
+			return 265;
+		boundaryEditor.dispose();
 
 		var blinkEditor = new TextEditorState(fonts, "caret");
 		blinkEditor.focused = true;
