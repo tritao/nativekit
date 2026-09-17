@@ -91,13 +91,14 @@ inline TextInputHitTest text_input_hit_test_range(
     return {};
 }
 
-inline TextInputHitTest text_input_hit_test_range_rects(
+inline const nk_text_input_range_rect *text_input_range_rect_at_point(
     const std::vector<nk_text_input_range_rect> &selection_rects,
     const std::vector<nk_text_input_range_rect> &composition_rects, float x, float y) noexcept {
     if (!std::isfinite(x) || !std::isfinite(y))
-        return {};
+        return nullptr;
 
-    const auto hit = [x, y](const std::vector<nk_text_input_range_rect> &rects) {
+    const auto hit = [x, y](const std::vector<nk_text_input_range_rect> &rects)
+        -> const nk_text_input_range_rect * {
         for (const auto &rect : rects) {
             if (rect.range_start == NK_TEXT_POSITION_NONE ||
                 rect.range_end == NK_TEXT_POSITION_NONE || rect.range_start > rect.range_end)
@@ -106,17 +107,39 @@ inline TextInputHitTest text_input_hit_test_range_rects(
             const float bottom = rect.y + std::max(1.0f, rect.height);
             if (x < rect.x || x > right || y < rect.y || y > bottom)
                 continue;
-            const float midpoint = rect.x + std::max(1.0f, rect.width) * 0.5f;
-            return TextInputHitTest{true,
-                                    x <= midpoint ? rect.range_start : rect.range_end};
+            return &rect;
         }
-        return TextInputHitTest{};
+        return nullptr;
     };
 
-    auto result = hit(composition_rects);
-    if (result.matched)
+    if (const auto *result = hit(composition_rects))
         return result;
     return hit(selection_rects);
+}
+
+inline TextInputHitTest text_input_hit_test_range_rects(
+    const std::vector<nk_text_input_range_rect> &selection_rects,
+    const std::vector<nk_text_input_range_rect> &composition_rects, float x, float y) noexcept {
+    const auto *rect = text_input_range_rect_at_point(selection_rects, composition_rects, x, y);
+    if (!rect)
+        return {};
+    const float midpoint = rect->x + std::max(1.0f, rect->width) * 0.5f;
+    return TextInputHitTest{true, x <= midpoint ? rect->range_start : rect->range_end};
+}
+
+inline const nk_text_input_range_rect *text_input_first_range_rect(
+    const std::vector<nk_text_input_range_rect> &rects, nk_text_position start,
+    nk_text_position end) noexcept {
+    if (start == NK_TEXT_POSITION_NONE || end == NK_TEXT_POSITION_NONE || start >= end)
+        return nullptr;
+    for (const auto &rect : rects) {
+        if (rect.range_start == NK_TEXT_POSITION_NONE ||
+            rect.range_end == NK_TEXT_POSITION_NONE || rect.range_start > rect.range_end)
+            continue;
+        if (rect.range_end > start && rect.range_start < end)
+            return &rect;
+    }
+    return nullptr;
 }
 
 inline bool decode_text_input_rects(const uint8_t *bytes, uint32_t byte_count,

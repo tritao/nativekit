@@ -221,6 +221,8 @@ struct IOSSurface final : nk::core::Resource {
     nk_text_input_state text_input_state{};
     std::vector<nk_text_input_rect> text_input_selection_rects;
     std::vector<nk_text_input_rect> text_input_composition_rects;
+    std::vector<nk_text_input_range_rect> text_input_selection_range_rects;
+    std::vector<nk_text_input_range_rect> text_input_composition_range_rects;
     bool text_input_active = false;
     bool text_composing = false;
     nk_text_position text_composition_start = NK_TEXT_POSITION_NONE;
@@ -2243,6 +2245,52 @@ void cancel_dialogs_for_parent(nk_handle parent);
     });
 }
 
+- (UITextPosition *)closestPositionToPoint:(CGPoint)point {
+    auto resource = surface(self.surface);
+    if (!resource)
+        return nil;
+    const auto range_hit = nk::core::text_input_range_rect_at_point(
+        resource->text_input_selection_range_rects,
+        resource->text_input_composition_range_rects, point.x, point.y);
+    const auto hit = nk::core::text_input_hit_test_range(
+        resource->text_input_state, resource->text_input_selection_rects,
+        resource->text_input_composition_rects, point.x, point.y);
+    const auto position = range_hit
+                              ? (point.x <= range_hit->x +
+                                         std::max(1.0f, range_hit->width) * 0.5f
+                                     ? range_hit->range_start
+                                     : range_hit->range_end)
+                              : (hit.matched ? hit.position : NK_TEXT_POSITION_NONE);
+    if (position != NK_TEXT_POSITION_NONE) {
+        const NSRange native = native_range_for_positions(*resource, position, position);
+        if (native.location != NSNotFound)
+            return [self positionFromPosition:self.beginningOfDocument
+                                         offset:static_cast<NSInteger>(native.location)];
+    }
+    const CGRect caret = CGRectMake(resource->text_input_state.cursor_x,
+                                    resource->text_input_state.cursor_y,
+                                    std::max(1.0f, resource->text_input_state.cursor_width),
+                                    std::max(1.0f, resource->text_input_state.cursor_height));
+    if (CGRectContainsPoint(caret, point))
+        return [self positionFromPosition:self.beginningOfDocument
+                                     offset:static_cast<NSInteger>(self.selectedRange.location)];
+    return nil;
+}
+
+- (UITextRange *)characterRangeAtPoint:(CGPoint)point {
+    auto resource = surface(self.surface);
+    if (!resource)
+        return nil;
+    const auto *rect = nk::core::text_input_range_rect_at_point(
+        resource->text_input_selection_range_rects,
+        resource->text_input_composition_range_rects, point.x, point.y);
+    if (!rect)
+        return nil;
+    const NSRange native = native_range_for_positions(*resource, rect->range_start,
+                                                       rect->range_end);
+    return native.location == NSNotFound ? nil : native_text_range(self, native);
+}
+
 - (CGRect)firstRectForRange:(UITextRange *)range {
     auto resource = surface(self.surface);
     if (!resource)
@@ -2251,6 +2299,12 @@ void cancel_dialogs_for_parent(nk_handle parent);
     nk_text_position end = 0;
     if (range && codepoint_range_for_native_range(*resource,
             native_range_for_text_range(self, range), start, end)) {
+        const nk_text_input_range_rect *range_rect =
+            nk::core::text_input_first_range_rect(resource->text_input_composition_range_rects,
+                                                   start, end);
+        if (!range_rect)
+            range_rect = nk::core::text_input_first_range_rect(
+                resource->text_input_selection_range_rects, start, end);
         const std::vector<nk_text_input_rect> *rectangles = nullptr;
         if (start == resource->text_input_state.selection_start &&
             end == resource->text_input_state.selection_end)
@@ -2258,6 +2312,9 @@ void cancel_dialogs_for_parent(nk_handle parent);
         else if (start == resource->text_input_state.composition_start &&
                  end == resource->text_input_state.composition_end)
             rectangles = &resource->text_input_composition_rects;
+        if (range_rect)
+            return CGRectMake(range_rect->x, range_rect->y, std::max(1.f, range_rect->width),
+                              std::max(1.f, range_rect->height));
         if (rectangles && !rectangles->empty()) {
             const auto &rect = rectangles->front();
             return CGRectMake(rect.x, rect.y, std::max(1.f, rect.width),
@@ -4062,6 +4119,8 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
             resource->text_input_state.text = resource->text_input_text.c_str();
             resource->text_input_selection_rects.clear();
             resource->text_input_composition_rects.clear();
+            resource->text_input_selection_range_rects.clear();
+            resource->text_input_composition_range_rects.clear();
             resource->text_composition_start = state->composition_start;
             resource->text_composition_end = state->composition_end;
             resource->text_composing = state->composition_start != NK_TEXT_POSITION_NONE;
@@ -4105,6 +4164,10 @@ nk_result NK_CALL nk_surface_set_text_input_geometry(
                 return NK_ERROR_INVALID_ARGUMENT;
             resource->text_input_selection_rects = std::move(geometry.selection_rects);
             resource->text_input_composition_rects = std::move(geometry.composition_rects);
+            resource->text_input_selection_range_rects =
+                std::move(geometry.selection_range_rects);
+            resource->text_input_composition_range_rects =
+                std::move(geometry.composition_range_rects);
             return NK_OK;
         });
 }

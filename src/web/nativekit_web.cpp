@@ -167,6 +167,8 @@ struct WebSurfaceResource final : nk::core::Resource {
     nk::core::TextOffsetMap text_input_offsets;
     std::vector<nk_text_input_rect> text_input_selection_rects;
     std::vector<nk_text_input_rect> text_input_composition_rects;
+    std::vector<nk_text_input_range_rect> text_input_selection_range_rects;
+    std::vector<nk_text_input_range_rect> text_input_composition_range_rects;
     std::unordered_map<nk_accessibility_node_id, WebAccessibilityNode> accessibility_nodes;
     nk_accessibility_node_id accessibility_focus = NK_ACCESSIBILITY_ROOT;
 
@@ -3229,6 +3231,8 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
     surface->text_input_state.text = surface->text_input_text.c_str();
     surface->text_input_selection_rects.clear();
     surface->text_input_composition_rects.clear();
+    surface->text_input_selection_range_rects.clear();
+    surface->text_input_composition_range_rects.clear();
     surface->text_input_state_set = true;
     if (surface->text_input_active)
         configure_text_input(*surface);
@@ -3256,6 +3260,9 @@ nk_result NK_CALL nk_surface_set_text_input_geometry(
         return invalid_argument("text input geometry ranges do not match the current state");
     surface->text_input_selection_rects = std::move(geometry.selection_rects);
     surface->text_input_composition_rects = std::move(geometry.composition_rects);
+    surface->text_input_selection_range_rects = std::move(geometry.selection_range_rects);
+    surface->text_input_composition_range_rects =
+        std::move(geometry.composition_range_rects);
     if (surface->text_input_active)
         configure_text_input(*surface);
     return NK_OK;

@@ -81,6 +81,27 @@ int main() {
                                               anchor_composition, 61.0f, 75.0f);
     assert(hit.matched && hit.position == 4);
 
+    std::vector<nk_text_input_range_rect> range_selection{
+        {sizeof(nk_text_input_range_rect), 20.0f, 30.0f, 12.0f, 18.0f, 3, 4},
+        {sizeof(nk_text_input_range_rect), 34.0f, 30.0f, 16.0f, 18.0f, 4, 6}};
+    std::vector<nk_text_input_range_rect> range_composition{
+        {sizeof(nk_text_input_range_rect), 60.0f, 70.0f, 20.0f, 18.0f, 8, 10}};
+    const auto *range_hit = nk::core::text_input_range_rect_at_point(
+        range_selection, range_composition, 22.0f, 35.0f);
+    assert(range_hit && range_hit->range_start == 3 && range_hit->range_end == 4);
+    range_hit = nk::core::text_input_range_rect_at_point(
+        range_selection, range_composition, 0.0f, 0.0f);
+    assert(!range_hit);
+    hit = nk::core::text_input_hit_test_range_rects(range_selection, range_composition, 45.0f,
+                                                    35.0f);
+    assert(hit.matched && hit.position == 6);
+    hit = nk::core::text_input_hit_test_range_rects(range_selection, range_composition, 65.0f,
+                                                    75.0f);
+    assert(hit.matched && hit.position == 8);
+    const auto *first_range = nk::core::text_input_first_range_rect(range_selection, 3, 6);
+    assert(first_range && first_range->range_start == 3);
+    assert(!nk::core::text_input_first_range_rect(range_selection, 4, 4));
+
     nk_text_input_state state{};
     state.struct_size = sizeof(state);
     state.text_start = 10;

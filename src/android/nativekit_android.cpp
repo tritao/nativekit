@@ -97,6 +97,8 @@ struct AndroidSurface final : nk::core::Resource {
     bool text_input_state_set = false;
     std::vector<nk_text_input_rect> text_input_selection_rects;
     std::vector<nk_text_input_rect> text_input_composition_rects;
+    std::vector<nk_text_input_range_rect> text_input_selection_range_rects;
+    std::vector<nk_text_input_range_rect> text_input_composition_range_rects;
 };
 
 struct AndroidJoystick final : nk::core::Resource {
@@ -1947,6 +1949,8 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
         resource->text_input_state_set = true;
         resource->text_input_selection_rects.clear();
         resource->text_input_composition_rects.clear();
+        resource->text_input_selection_range_rects.clear();
+        resource->text_input_composition_range_rects.clear();
     }
     return result;
 }
@@ -2028,6 +2032,9 @@ nk_result NK_CALL nk_surface_set_text_input_geometry(
     if (result == NK_OK) {
         resource->text_input_selection_rects = std::move(geometry.selection_rects);
         resource->text_input_composition_rects = std::move(geometry.composition_rects);
+        resource->text_input_selection_range_rects = std::move(geometry.selection_range_rects);
+        resource->text_input_composition_range_rects =
+            std::move(geometry.composition_range_rects);
     }
     return result;
 }

@@ -280,6 +280,8 @@ struct WinWindowResource final : nk::core::Resource {
     nk_text_input_state text_input_state{};
     std::vector<nk_text_input_rect> text_input_selection_rects;
     std::vector<nk_text_input_rect> text_input_composition_rects;
+    std::vector<nk_text_input_range_rect> text_input_selection_range_rects;
+    std::vector<nk_text_input_range_rect> text_input_composition_range_rects;
     bool text_input_active = false;
     bool text_composing = false;
     nk_text_position text_composition_start = NK_TEXT_POSITION_NONE;
@@ -3653,6 +3655,10 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
             resource->text_input_text = text;
             resource->text_input_state = *state;
             resource->text_input_state.text = resource->text_input_text.c_str();
+            resource->text_input_selection_rects.clear();
+            resource->text_input_composition_rects.clear();
+            resource->text_input_selection_range_rects.clear();
+            resource->text_input_composition_range_rects.clear();
             resource->text_composition_start = state->composition_start;
             resource->text_composition_end = state->composition_end;
             resource->text_composing = state->composition_start != NK_TEXT_POSITION_NONE;
@@ -3686,6 +3692,10 @@ nk_result NK_CALL nk_surface_set_text_input_geometry(
                             "text input geometry ranges do not match the current state");
             resource->text_input_selection_rects = std::move(geometry.selection_rects);
             resource->text_input_composition_rects = std::move(geometry.composition_rects);
+            resource->text_input_selection_range_rects =
+                std::move(geometry.selection_range_rects);
+            resource->text_input_composition_range_rects =
+                std::move(geometry.composition_range_rects);
             update_text_input_anchor(*resource);
             return NK_OK;
         });
