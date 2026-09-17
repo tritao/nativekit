@@ -253,6 +253,16 @@ LayoutRect transform_bounds(LayoutRect rect, const LayoutTransform &transform) {
     return {left, top, std::max({x0, x1, x2, x3}) - left, std::max({y0, y1, y2, y3}) - top};
 }
 
+std::array<float, 6> compose_transform(const LayoutTransform &outer,
+                                       const std::array<float, 6> &inner) {
+    return {outer.a * inner[0] + outer.c * inner[1],
+            outer.b * inner[0] + outer.d * inner[1],
+            outer.a * inner[2] + outer.c * inner[3],
+            outer.b * inner[2] + outer.d * inner[3],
+            outer.a * inner[4] + outer.c * inner[5] + outer.tx,
+            outer.b * inner[4] + outer.d * inner[5] + outer.ty};
+}
+
 } // namespace
 
 void LayoutRenderFrame::reset() {
@@ -357,6 +367,9 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                 if (source_pass.target.value == main_target.value) {
                     for (auto command : source_pass.commands) {
                         command.resource = remap(command.resource);
+                        if (command.kind == RenderCommandKind::CompositeTarget)
+                            command.transform = compose_transform(primitive.transform,
+                                                                  command.transform);
                         command.transform = device_transform(command.transform, pixel_scale);
                         command.scissor_x *= pixel_scale;
                         command.scissor_y *= pixel_scale;

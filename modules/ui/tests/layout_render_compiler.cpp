@@ -360,6 +360,8 @@ int main() {
     bounded_descriptor.origin_y = 3.0f;
     bounded_custom_plan.passes.push_back({bounded_target, bounded_descriptor, false,
                                           {}});
+    bounded_custom_plan.passes.front().commands.push_back(
+        {RenderCommandKind::CompositeTarget, bounded_target, 2.0f, 3.0f, 20.0f, 10.0f});
     RenderCommand bounded_command{RenderCommandKind::Path, custom_path};
     bounded_command.transform = {1.0f, 0.0f, 0.0f, 1.0f, 20.0f, 30.0f};
     bounded_command.has_scissor = true;
@@ -376,6 +378,11 @@ int main() {
         bounded_frame.plan().passes.size() != 2)
         return 23;
     const auto &bounded_pass = bounded_frame.plan().passes[1];
+    const auto bounded_composite = std::find_if(
+        bounded_frame.plan().passes.front().commands.begin(),
+        bounded_frame.plan().passes.front().commands.end(), [](const RenderCommand &command) {
+            return command.kind == RenderCommandKind::CompositeTarget && command.custom_payload;
+        });
     if (bounded_pass.target_descriptor.logical_width != 20.0f ||
         bounded_pass.target_descriptor.logical_height != 10.0f ||
         bounded_pass.target_descriptor.width != 30 || bounded_pass.target_descriptor.height != 15 ||
@@ -386,7 +393,10 @@ int main() {
         bounded_pass.commands.front().scissor_x != -9.0f ||
         bounded_pass.commands.front().scissor_y != -1.5f ||
         bounded_pass.commands.front().scissor_width != 9.0f ||
-        bounded_pass.commands.front().scissor_height != 10.5f)
+        bounded_pass.commands.front().scissor_height != 10.5f ||
+        bounded_composite == bounded_frame.plan().passes.front().commands.end() ||
+        bounded_composite->transform != std::array<float, 6>{1.5f, 0.0f, 0.0f, 1.5f, 15.0f,
+                                                              9.0f})
         return 24;
 
     const ResourceId scaled_effect_input = make_resource_id(ResourceKind::RenderTarget, 1, 448);
