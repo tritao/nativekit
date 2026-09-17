@@ -3773,8 +3773,7 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
             [[NKContentView alloc] initWithFrame:NSMakeRect(0, 0, options->width, options->height)];
         resource->content.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         resource->content.resource = resource.get();
-        resource->content.allowedTouchTypes =
-            @[ @(NSTouchTypeDirect), @(NSTouchTypeIndirect) ];
+        resource->content.allowedTouchTypes = @[ @(NSTouchTypeDirect), @(NSTouchTypeIndirect) ];
         resource->content.wantsRestingTouches = YES;
         resource->window.acceptsMouseMovedEvents = YES;
         resource->window.contentView = resource->content;
@@ -5979,7 +5978,8 @@ nk_result NK_CALL nk_notification_show(const nk_notification_options *options,
                                 NSString *description = error.localizedDescription;
                                 emit_notification(
                                     NK_EVENT_NOTIFICATION_FAILED, request, NK_ERROR_UNSUPPORTED,
-                                    description ? description : @"notification permission was denied");
+                                    description ? description
+                                                : @"notification permission was denied");
                                 return;
                             }
                             [center getNotificationCategoriesWithCompletionHandler:^(
