@@ -85,6 +85,7 @@ enum NK_FLAGS(nk_capabilities) {
     NK_CAP_SYSTEM_FONTS = UINT64_C(1) << 30,
     /** The backend can keep the application display awake with leases. */
     NK_CAP_KEEP_AWAKE = UINT64_C(1) << 31,
+#if !defined(_MSC_VER)
     /** The backend can report physical device orientation. */
     NK_CAP_DEVICE_ORIENTATION = UINT64_C(1) << 32,
     /** The backend can report application display orientation. */
@@ -97,7 +98,18 @@ enum NK_FLAGS(nk_capabilities) {
     NK_CAP_SURFACE_FRAME_CALLBACK = UINT64_C(1) << 36,
     /** The backend supports app-provided non-client hit-test regions. */
     NK_CAP_WINDOW_CUSTOM_DECORATIONS = UINT64_C(1) << 37
+#endif
 };
+
+#if defined(_MSC_VER)
+/* MSVC C and C++ keep enum values in a 32-bit underlying type by default. */
+#define NK_CAP_DEVICE_ORIENTATION (UINT64_C(1) << 32)
+#define NK_CAP_DISPLAY_ORIENTATION (UINT64_C(1) << 33)
+#define NK_CAP_HTTP_CLIENT (UINT64_C(1) << 34)
+#define NK_CAP_HTTP_STREAMING (UINT64_C(1) << 35)
+#define NK_CAP_SURFACE_FRAME_CALLBACK (UINT64_C(1) << 36)
+#define NK_CAP_WINDOW_CUSTOM_DECORATIONS (UINT64_C(1) << 37)
+#endif
 
 /** Discriminator identifying the platform representation in nk_native_window. */
 typedef uint32_t nk_native_window_kind;
