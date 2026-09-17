@@ -2432,6 +2432,8 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
                 command.transform = device_transform(command.transform, frame_info->pixel_scale);
                 valid = frame_resources.bind_image(prepared_id, *prepared_image,
                                                    static_cast<uint64_t>(source_resource));
+            } else if (command.kind == nkui::RenderCommandKind::BoxShadow) {
+                command.transform = device_transform(command.transform, frame_info->pixel_scale);
             } else if (command.kind == nkui::RenderCommandKind::GlyphBatch) {
                 const uint32_t source_resource = command.resource.value;
                 auto *layout = resolve_retained(nkui_resource{command.resource.value},

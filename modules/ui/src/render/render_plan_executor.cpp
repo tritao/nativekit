@@ -317,6 +317,11 @@ bool execute_render_plan(UiRenderer &renderer, const RenderPlan &plan,
                                                        command.width, command.height,
                                                        command.transform.data(), command.opacity);
             } break;
+            case RenderCommandKind::BoxShadow:
+                rendered = renderer.drawBoxShadow(command.x, command.y, command.width,
+                                                  command.height, command.transform.data(),
+                                                  command.opacity, command.box_shadow);
+                break;
             }
             if (!rendered)
                 return fail_command(command_index, renderer.lastError());

@@ -2,6 +2,7 @@
 #define NATIVEKIT_UI_RENDERER_H
 
 #include "nativekit_graphics.h"
+#include "compositor/render_plan.h"
 #include "display_list/display_list.h"
 #include "prepare/nanovg_path.h"
 #include "prepare/skribidi_adapter.h"
@@ -138,6 +139,10 @@ class UiRenderer {
                           const float transform[6], float opacity = 1.0f) = 0;
     virtual bool drawImage(const PreparedTexture &image, float x, float y, float width,
                            float height, const float transform[6], float opacity = 1.0f) = 0;
+    /** Paints a geometry-aware rounded-rectangle shadow without filtering a subtree. */
+    virtual bool drawBoxShadow(float x, float y, float width, float height,
+                               const float transform[6], float opacity,
+                               const BoxShadowDescriptor &shadow) = 0;
     virtual bool uploadAtlases(SkribidiAdapter &adapter, bool include_clean = false) = 0;
     virtual bool drawGlyphs(const PreparedGlyphs &glyphs, float opacity = 1.0f) = 0;
     virtual bool drawGlyphs(const PreparedGlyphs &glyphs, const float transform[6], float origin_x,

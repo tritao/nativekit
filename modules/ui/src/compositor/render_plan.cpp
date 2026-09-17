@@ -63,6 +63,26 @@ bool valid_mask_descriptor(const MaskDescriptor &mask) {
     return true;
 }
 
+bool valid_box_shadow_descriptor(const RenderCommand &command) {
+    if (command.width <= 0.0f || command.height <= 0.0f ||
+        !std::isfinite(command.x) || !std::isfinite(command.y) ||
+        !std::isfinite(command.width) || !std::isfinite(command.height) ||
+        !std::isfinite(command.opacity) || command.opacity < 0.0f || command.opacity > 1.0f)
+        return false;
+    const auto &shadow = command.box_shadow;
+    if (!std::isfinite(shadow.offset_x) || !std::isfinite(shadow.offset_y) ||
+        !std::isfinite(shadow.blur_radius) || shadow.blur_radius < 0.0f ||
+        !std::isfinite(shadow.spread))
+        return false;
+    for (const float value : shadow.radii)
+        if (!std::isfinite(value) || value < 0.0f)
+            return false;
+    for (const float value : shadow.color)
+        if (!std::isfinite(value) || value < 0.0f || value > 1.0f)
+            return false;
+    return true;
+}
+
 bool valid_input_rect(const RenderPass &pass) {
     if (!pass.has_input_rect)
         return true;
@@ -376,6 +396,14 @@ bool schedule_render_plan(const RenderPlan &plan, std::vector<uint32_t> &order,
             if (error)
                 *error = {index, "invalid render-target descriptor"};
             return false;
+        }
+        for (const auto &command : pass.commands) {
+            if (command.kind == RenderCommandKind::BoxShadow &&
+                !valid_box_shadow_descriptor(command)) {
+                if (error)
+                    *error = {index, "invalid box-shadow command"};
+                return false;
+            }
         }
         // Passes writing the same target are semantic continuations. Preserve
         // their order even when an unrelated dependency temporarily blocks a

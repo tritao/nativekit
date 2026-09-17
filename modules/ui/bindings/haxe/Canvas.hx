@@ -250,6 +250,20 @@ class Canvas {
 	public function drawSurface(surface:GraphicsSurface, rect:Rect):Void
 		commands.drawSurface(surface, rect.x, rect.y, rect.width, rect.height);
 
+	/** Paints a rounded-rectangle shadow directly with the native geometry renderer. */
+	public function drawBoxShadow(rect:Rect, offsetX:Float, offsetY:Float, blurRadius:Float,
+		spread:Float, radii:Array<Float>, color:Color):Void {
+		if (rect == null || color == null || rect.width <= 0.0 || rect.height <= 0.0 ||
+			!Math.isFinite(offsetX) || !Math.isFinite(offsetY) || !Math.isFinite(blurRadius) ||
+			blurRadius < 0.0 || !Math.isFinite(spread) || radii == null || radii.length != 4)
+			throw "Box shadow requires positive bounds, finite parameters, four radii, and a color";
+		for (radius in radii)
+			if (!Math.isFinite(radius) || radius < 0.0)
+				throw "Box shadow radii must be finite and non-negative";
+		commands.drawBoxShadow(rect.x, rect.y, rect.width, rect.height, offsetX, offsetY,
+			blurRadius, spread, radii, color);
+	}
+
 	public function drawText(layout:TextLayout, x:Float, y:Float):Void
 		commands.drawText(layout, x, y);
 
