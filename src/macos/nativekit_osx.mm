@@ -583,11 +583,10 @@ decoration_region_at(const std::vector<nk_window_decoration_region> &regions, fl
     return NK_WINDOW_DECORATION_CLIENT;
 }
 
-uint32_t decoration_cursor_shape_at(
-    const std::vector<nk_window_decoration_region> &regions, float x, float y) {
+uint32_t decoration_cursor_shape_at(const std::vector<nk_window_decoration_region> &regions,
+                                    float x, float y) {
     for (auto iter = regions.rbegin(); iter != regions.rend(); ++iter) {
-        if (x >= iter->x && y >= iter->y && x < iter->x + iter->width &&
-            y < iter->y + iter->height)
+        if (x >= iter->x && y >= iter->y && x < iter->x + iter->width && y < iter->y + iter->height)
             return iter->cursor_shape;
     }
     return 0;

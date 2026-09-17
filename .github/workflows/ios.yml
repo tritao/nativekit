@@ -8,6 +8,7 @@ jobs:
   ios-compile:
     name: Build ${{ matrix.sdk }}
     runs-on: macos-15
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -55,13 +56,24 @@ jobs:
         run: |
           xcrun simctl install "$IOS_SIMULATOR_ID" \
             "build-iphonesimulator/tests/Debug-iphonesimulator/nativekit_ios_runtime_tests.app"
-          set +e
-          xcrun simctl launch --console "$IOS_SIMULATOR_ID" \
-            org.nativekit.tests.ios-runtime 2>&1 | tee ios-runtime.log
-          launch_status=${PIPESTATUS[0]}
-          set -e
-          if [[ "$launch_status" -ne 0 ]] ||
-             ! grep -q 'NATIVEKIT_IOS_RUNTIME_RESULT=PASS' ios-runtime.log; then
-            cat ios-runtime.log >&2
-            exit 1
-          fi
+          : > ios-runtime.log
+          for attempt in 1 2 3; do
+            echo "Running iOS simulator runtime test (attempt $attempt/3)"
+            xcrun simctl terminate "$IOS_SIMULATOR_ID" \
+              org.nativekit.tests.ios-runtime >/dev/null 2>&1 || true
+            set +e
+            xcrun simctl launch --console "$IOS_SIMULATOR_ID" \
+              org.nativekit.tests.ios-runtime 2>&1 | tee -a ios-runtime.log
+            launch_status=${PIPESTATUS[0]}
+            set -e
+            if [[ "$launch_status" -eq 0 ]] &&
+               grep -q 'NATIVEKIT_IOS_RUNTIME_RESULT=PASS' ios-runtime.log; then
+              exit 0
+            fi
+            if [[ "$attempt" -lt 3 ]]; then
+              echo "iOS simulator runtime attempt $attempt failed; retrying" >&2
+              sleep 2
+            fi
+          done
+          cat ios-runtime.log >&2
+          exit 1

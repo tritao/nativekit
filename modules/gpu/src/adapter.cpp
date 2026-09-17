@@ -395,8 +395,8 @@ static nkgpu_result prepare_resource_destroy(Handle handle, bool &backend_availa
 #define sg_query_view_state(...) (runtime_gfx()->query_view_state(__VA_ARGS__))
 #define sg_reset_state_cache(...) (runtime_gfx()->reset_state_cache(__VA_ARGS__))
 
-static const nk_sokol_api *api_for_graphics_api(
-    nk_graphics_api api, nk_surface surface = NK_INVALID_HANDLE) {
+static const nk_sokol_api *api_for_graphics_api(nk_graphics_api api,
+                                                nk_surface surface = NK_INVALID_HANDLE) {
 #if defined(NK_SOKOL_MULTI_CONTEXT)
     static nk_surface primary_runtime_surface = NK_INVALID_HANDLE;
 #endif
@@ -443,10 +443,9 @@ static const nk_sokol_api *api_for_graphics_api(
             primary_runtime_surface = surface;
         else if (surface != primary_runtime_surface) {
 #if defined(NK_SOKOL_RUNTIME_MATRIX)
-            runtime = api == NK_GRAPHICS_OPENGL ? nk_sokol_glcore_secondary_get_api()
-                                                 : api == NK_GRAPHICS_OPENGL_ES
-                                                       ? nk_sokol_gles3_secondary_get_api()
-                                                       : nullptr;
+            runtime = api == NK_GRAPHICS_OPENGL      ? nk_sokol_glcore_secondary_get_api()
+                      : api == NK_GRAPHICS_OPENGL_ES ? nk_sokol_gles3_secondary_get_api()
+                                                     : nullptr;
 #else
             runtime = nk_sokol_secondary_get_api();
 #endif

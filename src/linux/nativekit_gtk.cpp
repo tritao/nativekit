@@ -2276,11 +2276,10 @@ decoration_region_at(const std::vector<nk_window_decoration_region> &regions, fl
     return NK_WINDOW_DECORATION_CLIENT;
 }
 
-uint32_t decoration_cursor_shape_at(
-    const std::vector<nk_window_decoration_region> &regions, float x, float y) {
+uint32_t decoration_cursor_shape_at(const std::vector<nk_window_decoration_region> &regions,
+                                    float x, float y) {
     for (auto iter = regions.rbegin(); iter != regions.rend(); ++iter) {
-        if (x >= iter->x && y >= iter->y && x < iter->x + iter->width &&
-            y < iter->y + iter->height)
+        if (x >= iter->x && y >= iter->y && x < iter->x + iter->width && y < iter->y + iter->height)
             return iter->cursor_shape;
     }
     return 0;
@@ -2574,8 +2573,7 @@ const char *cursor_name(uint32_t shape) {
     }
 }
 
-GdkCursor *decoration_cursor(GtkWindowResource &resource, GdkDisplay *display,
-                             uint32_t shape) {
+GdkCursor *decoration_cursor(GtkWindowResource &resource, GdkDisplay *display, uint32_t shape) {
     if (resource.decoration_cursor_shape == shape)
         return resource.decoration_cursor;
     if (resource.decoration_cursor)
@@ -2594,9 +2592,9 @@ nk_result apply_pointer_cursor(GtkWindowResource &resource) {
     if (!native)
         return fail(NK_ERROR_UNKNOWN, "GTK window is not realized");
     GdkDisplay *display = gdk_window_get_display(native);
-    const auto kind = decoration_region_at(resource.decoration_regions,
-                                           static_cast<float>(resource.pointer_x),
-                                           static_cast<float>(resource.pointer_y));
+    const auto kind =
+        decoration_region_at(resource.decoration_regions, static_cast<float>(resource.pointer_x),
+                             static_cast<float>(resource.pointer_y));
     auto shape = decoration_cursor_shape_at(resource.decoration_regions,
                                             static_cast<float>(resource.pointer_x),
                                             static_cast<float>(resource.pointer_y));
