@@ -30,6 +30,7 @@ fi
     --output="$build_dir/haxeon-ui-transaction.hl" \
     --entry=Transaction \
     --root="$module_dir/tests/haxeon" \
+    --root="$module_dir/haxe" \
     --root="$module_dir/bindings/haxe" \
     --root="$repo_dir/bindings/haxe" \
     --ffi-interface="$repo_dir/bindings/haxe/nativekit.hxi" \
@@ -37,6 +38,7 @@ fi
     --ffi-interface="$module_dir/bindings/nativekit-ui.hxi" \
     --ffi-projection="$module_dir/bindings/nativekit-ui.hxmap" \
     "$module_dir/tests/haxeon/Transaction.hx" \
+    "$module_dir/haxe/nativekit/ui/style/"*.hx \
     "$repo_dir/bindings/haxe/GraphicsImageRef.hx" \
     "$module_dir/bindings/haxe/"*.hx)
 

@@ -171,7 +171,7 @@ class ShowcaseDesktop {
                         }
                         graphics.setViewport(frameState.logicalWidth, frameState.logicalHeight);
                         frameState.graphics = graphics;
-                    }, uiStaticFrame);
+                    }, uiStaticFrame, Sys.getEnv("NKUI_SHOWCASE_IMAGE_PATH"));
                 } catch (error:Dynamic) {
                     fonts.dispose();
                     throw error;

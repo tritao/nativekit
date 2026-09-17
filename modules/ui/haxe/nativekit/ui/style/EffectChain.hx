@@ -1,6 +1,10 @@
 package nativekit.ui.style;
 
 import nativekit.ui.style.ColorMatrixEffect;
+import nativekit.ui.style.BrightnessEffect;
+import nativekit.ui.style.ContrastEffect;
+import nativekit.ui.style.SaturateEffect;
+import nativekit.ui.style.HueRotateEffect;
 
 /** Ordered, value-semantic collection of post-layout visual effects. */
 class EffectChain {

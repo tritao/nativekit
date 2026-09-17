@@ -1,5 +1,7 @@
 package nativekit.ui.style;
 
+import nativekit.ui.style.EffectParameterTypeUtil;
+
 /**
  * Renderer-owned contract for one custom effect implementation.
  *

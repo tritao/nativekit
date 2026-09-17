@@ -343,7 +343,8 @@ nk_result get_string(nk_system_string_kind kind, std::string &out_value) {
     out_value = linux_device_string(path);
     return out_value.empty() ? NK_ERROR_UNSUPPORTED : NK_OK;
 }
-#else
+#elif !defined(NK_BACKEND_WINDOWS) && !defined(NK_BACKEND_MACOS) &&                                \
+    !defined(NK_BACKEND_ANDROID) && !defined(NK_BACKEND_IOS) && !defined(NK_BACKEND_WEB)
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((weak))
 #endif

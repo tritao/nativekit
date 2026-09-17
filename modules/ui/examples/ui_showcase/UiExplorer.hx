@@ -131,7 +131,7 @@ class UiExplorer {
 	var diagnosticStage:Int = 0;
 
 	public function new(fonts:FontCollection, platformLabel:String,
-			onOpenGraphics:Void->Void, ?staticSubmitReuse:Bool) {
+			onOpenGraphics:Void->Void, ?staticSubmitReuse:Bool, ?demoImagePath:String) {
 		if (fonts == null || fonts.isDisposed())
 			throw "UI Explorer requires a live font collection";
 		this.fonts = fonts;
@@ -158,7 +158,7 @@ class UiExplorer {
 		demoImage = createDemoImage(160, 96);
 		demoOverlayImage = createOverlayImage(64);
 		demoNineSliceImage = createNineSliceImage(48);
-		demoLoadedImage = loadDemoImage();
+		demoLoadedImage = loadDemoImage(demoImagePath);
 		demoPixelLinear = createPixelImage(ImageFilter.Linear);
 		demoPixelNearest = createPixelImage(ImageFilter.Nearest);
 	}
@@ -412,8 +412,7 @@ class UiExplorer {
 		return Image.create(size, size, ImageFormat.RGBA8, pixels);
 	}
 
-	static function loadDemoImage():Image {
-		var path = Sys.getEnv("NKUI_SHOWCASE_IMAGE_PATH");
+	static function loadDemoImage(path:Null<String>):Image {
 		if (path != null && path.length > 0) {
 			try {
 				return Image.loadFile(path);
