@@ -81,15 +81,16 @@ class CanvasCommandBuffer {
 			backdrop.length > NativeKitUIConstants.NKUI_EFFECT_PROGRAM_MAX_OPS)
 			throw "Effect chains exceed the native operation limit";
 		var hasMask = mask != null;
-		var isolated = opacity < 1.0 || foreground.length > 0 || backdrop.length > 0 || hasMask;
+		var isolated = opacity < 1.0 || bounds != null || foreground.length > 0 || backdrop.length > 0 || hasMask;
 		var flags = isolated ? 1 : 0;
 		if (bounds != null)
 			flags |= 2;
-		// header + layer fields + mask + two fixed operation arrays.
+		// Fixed prefix + only the active foreground and backdrop operations.
 		var operationBytes = 4 + 20 * 4 + 4 * 4 + 4 * 4 + 20 * 4;
-		var commandSize = 8 + 4 + 4 + 16 + 4 + 4 + 4 + 40 +
-			NativeKitUIConstants.NKUI_EFFECT_PROGRAM_MAX_OPS * operationBytes * 2;
-		header(NativeKitUI.CommandOpcode.BeginLayer, commandSize);
+		var prefixBytes = 8 + 4 + 4 + 16 + 4 + 40 + 4 + 4;
+		var commandSize = prefixBytes + (foreground.length + backdrop.length) * operationBytes;
+		header(NativeKitUI.CommandOpcode.BeginLayer, commandSize,
+			NativeKitUIConstants.NKUI_LAYER_COMMAND_VERSION);
 		float(opacity);
 		word(cast mode);
 		if (bounds == null) {
@@ -98,17 +99,13 @@ class CanvasCommandBuffer {
 			float(bounds.x); float(bounds.y); float(bounds.width); float(bounds.height);
 		}
 		word(flags);
+		writeMask(mask);
 		word(foreground.length);
 		word(backdrop.length);
-		writeMask(mask);
 		for (effect in foreground)
 			writeEffect(effect);
-		for (index in foreground.length...NativeKitUIConstants.NKUI_EFFECT_PROGRAM_MAX_OPS)
-			writeEmptyEffect();
 		for (effect in backdrop)
 			writeEffect(effect);
-		for (index in backdrop.length...NativeKitUIConstants.NKUI_EFFECT_PROGRAM_MAX_OPS)
-			writeEmptyEffect();
 	}
 
 	function writeEffect(value:Effect):Void {
@@ -147,8 +144,8 @@ class CanvasCommandBuffer {
 			var custom:CustomEffect = cast value;
 			word(custom.definition.id);
 			word(custom.components.length);
-			word(custom.definition.passCount);
-			word(custom.definition.samplingInputs);
+			word(1);
+			word(1);
 			float(custom.definition.overflow.left);
 			float(custom.definition.overflow.top);
 			float(custom.definition.overflow.right);
@@ -157,17 +154,6 @@ class CanvasCommandBuffer {
 				float(index < custom.components.length ? custom.components[index] : 0.0);
 		} else
 			writeEmptyCustom();
-	}
-
-	function writeEffectEmptyMatrix():Void {
-		for (index in 0...20)
-			float(0.0);
-	}
-
-	function writeEmptyEffect():Void {
-		word(0);
-		writeEffectEmptyMatrix();
-		writeEmptyCustom();
 	}
 
 	function writeEmptyCustom():Void {
@@ -252,12 +238,13 @@ class CanvasCommandBuffer {
 		float(x); float(y); float(width); float(height);
 	}
 
-	function header(opcode:NativeKitUI.CommandOpcode, size:Int):Void {
+	function header(opcode:NativeKitUI.CommandOpcode, size:Int,
+		version:Int = NativeKitUIConstants.NKUI_COMMAND_VERSION):Void {
 		require(size);
 		var rawOpcode:Int = cast opcode;
 		bytes.set(length, rawOpcode & 255);
 		bytes.set(length + 1, (rawOpcode >> 8) & 255);
-		bytes.set(length + 2, NativeKitUIConstants.NKUI_COMMAND_VERSION);
+		bytes.set(length + 2, version);
 		bytes.set(length + 3, 0);
 		bytes.setInt32(length + 4, size);
 		length += 8;

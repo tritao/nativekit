@@ -1546,16 +1546,17 @@ class FrameworkSmoke {
 			normalizedEffects.effects[1].kind != EffectKind.Blur ||
 			normalizedEffects.effects[2].kind != EffectKind.ColorMatrix)
 			return 242;
-		var rejectedCustomDefinition = false;
-		try {
-			new CustomEffectDefinition(7, "wave", [
-				EffectParameterType.Float, EffectParameterType.Color
-			], new InkOverflow(2.0, 3.0, 4.0, 5.0), 2);
-		} catch (_:Dynamic) {
-			rejectedCustomDefinition = true;
-		}
-		if (!rejectedCustomDefinition)
-			return 250;
+		var blurThenMatrix = EffectChain.of([
+			BlurEffect.withSigma(2.0), new BrightnessEffect(1.2)
+		]).normalized();
+		var multipleBlurs = EffectChain.of([
+			BlurEffect.withSigma(2.0), BlurEffect.withSigma(4.0)
+		]).normalized();
+		if (blurThenMatrix.effects.length != 2 ||
+			blurThenMatrix.effects[0].kind != EffectKind.Blur ||
+			blurThenMatrix.effects[1].kind != EffectKind.ColorMatrix ||
+			multipleBlurs.effects.length != 2)
+			return 246;
 		var customDefinition = new CustomEffectDefinition(7, "wave", [
 			EffectParameterType.Float, EffectParameterType.Color
 		], new InkOverflow(2.0, 3.0, 4.0, 5.0));
@@ -1571,11 +1572,19 @@ class FrameworkSmoke {
 		if (custom.components.length != 5 || custom.components[0] != 0.25 ||
 			custom.components[4] != 0.4 || !custom.isEqual(customCopy) ||
 			custom.inkOverflow().right != 4.0 || Math.abs(customMid.components[0] - 0.5) > 0.00001 ||
-			Math.abs(customMid.components[1] - 0.3) > 0.00001 || customDefinition.passCount != 1)
+			Math.abs(customMid.components[1] - 0.3) > 0.00001)
 			return 250;
 		var customRuntime = new CustomEffect(new CustomEffectDefinition(8, "multiply", [
 			EffectParameterType.Float
 		], new InkOverflow(1.0, 1.0, 1.0, 1.0)), [EffectParameter.scalar(0.75)]);
+		var mixedCustom = EffectChain.of([
+			new BrightnessEffect(1.2), customRuntime, BlurEffect.withSigma(3.0)
+		]).normalized();
+		if (mixedCustom.effects.length != 3 ||
+			mixedCustom.effects[0].kind != EffectKind.ColorMatrix ||
+			mixedCustom.effects[1].kind != EffectKind.Custom ||
+			mixedCustom.effects[2].kind != EffectKind.Blur)
+			return 246;
 		var interpolatedEffects = EffectChain.interpolate(
 			EffectChain.of([BlurEffect.withSigma(4.0), new BrightnessEffect(1.0)]),
 			EffectChain.of([BlurEffect.withSigma(12.0), new BrightnessEffect(2.0)]), 0.5);
@@ -1608,6 +1617,14 @@ class FrameworkSmoke {
 			return 246;
 		var dropShadow = new DropShadowEffect(0.0, 6.0, 12.0,
 			Color.rgba(0.0, 0.0, 0.0, 0.35));
+		var matrixDropMatrix = EffectChain.of([
+			new BrightnessEffect(1.2), dropShadow, new ContrastEffect(0.8)
+		]).normalized();
+		if (matrixDropMatrix.effects.length != 3 ||
+			matrixDropMatrix.effects[0].kind != EffectKind.ColorMatrix ||
+			matrixDropMatrix.effects[1].kind != EffectKind.DropShadow ||
+			matrixDropMatrix.effects[2].kind != EffectKind.ColorMatrix)
+			return 246;
 		var dropOverflow = dropShadow.inkOverflow();
 		if (dropOverflow.left != 36.0 || dropOverflow.top != 30.0 ||
 			dropOverflow.right != 36.0 || dropOverflow.bottom != 42.0)
@@ -1660,6 +1677,15 @@ class FrameworkSmoke {
 		if (effectList.info().commandCount != 4)
 			return 248;
 		effectList.dispose();
+		effectCanvas.reset();
+		var boundedEmptyList = DisplayList.create();
+		effectCanvas.withLayer(1.0, function(_) {}, CompositeMode.SourceOver,
+			new Rect(4.0, 6.0, 24.0, 18.0));
+		effectCanvas.update(boundedEmptyList);
+		var boundedEmptyInfo = boundedEmptyList.info();
+		if (boundedEmptyInfo.commandCount != 2 || boundedEmptyInfo.commandBytes >= 3220)
+			return 256;
+		boundedEmptyList.dispose();
 		effectCanvas.reset();
 		var customList = DisplayList.create();
 		effectCanvas.withLayer(1.0, function(canvas) {
@@ -1736,6 +1762,29 @@ class FrameworkSmoke {
 			return 255;
 		backdropList.dispose();
 		effectCanvas.reset();
+		var eightOperations = EffectChain.of([
+			BlurEffect.withSigma(1.0), BlurEffect.withSigma(2.0), BlurEffect.withSigma(3.0),
+			BlurEffect.withSigma(4.0), BlurEffect.withSigma(5.0), BlurEffect.withSigma(6.0),
+			BlurEffect.withSigma(7.0), BlurEffect.withSigma(8.0)
+		]);
+		var eightOperationCanvas = new Canvas();
+		var eightOperationList = DisplayList.create();
+		eightOperationCanvas.beginLayer(1.0, CompositeMode.SourceOver, null, eightOperations);
+		eightOperationCanvas.endLayer();
+		eightOperationCanvas.update(eightOperationList);
+		eightOperationList.dispose();
+		var rejectedNineOperations = false;
+		try {
+			new Canvas().beginLayer(1.0, CompositeMode.SourceOver, null, EffectChain.of([
+				BlurEffect.withSigma(1.0), BlurEffect.withSigma(2.0), BlurEffect.withSigma(3.0),
+				BlurEffect.withSigma(4.0), BlurEffect.withSigma(5.0), BlurEffect.withSigma(6.0),
+				BlurEffect.withSigma(7.0), BlurEffect.withSigma(8.0), BlurEffect.withSigma(9.0)
+			]));
+		} catch (_:Dynamic) {
+			rejectedNineOperations = true;
+		}
+		if (!rejectedNineOperations)
+			return 257;
 		var responsiveSheet = new StyleSheet("ResponsiveSheet");
 		responsiveSheet.rule(StyleSelector.widget("button"),
 			[StyleValue.paddingSymmetric(12.0, 8.0)]);

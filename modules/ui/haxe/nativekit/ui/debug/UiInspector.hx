@@ -170,8 +170,7 @@ class UiInspector {
 						result++;
 						colorPending = false;
 					}
-					var custom:CustomEffect = cast effect;
-					result += custom.definition.passCount;
+					result++;
 				default:
 			}
 		}

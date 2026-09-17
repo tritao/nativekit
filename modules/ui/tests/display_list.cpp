@@ -6,6 +6,12 @@
 
 using namespace nkui;
 
+template <class T> static void append_record(std::vector<uint8_t> &bytes, const T &value) {
+    const auto offset = bytes.size();
+    bytes.resize(offset + sizeof(value));
+    std::memcpy(bytes.data() + offset, &value, sizeof(value));
+}
+
 static bool valid_list_and_growth() {
     DisplayList list(8);
     const float transform[] = {1.0f, 0.0f, 0.0f, 1.0f, 10.0f, 20.0f};
@@ -199,6 +205,108 @@ static bool rejects_bad_streams() {
     return true;
 }
 
+static bool accepts_v1_layer_records() {
+    const auto exercise = [](const auto &layer, bool expect_backdrop = false) {
+        std::vector<uint8_t> bytes;
+        append_record(bytes, layer);
+        ScopeCommand end{};
+        end.header = {CommandOpcode::EndLayer, 1, sizeof(end)};
+        append_record(bytes, end);
+        DisplayList list;
+        ValidationError error{};
+        return list.assign_validated(bytes.data(), bytes.size()) &&
+               list.has_backdrop_effects() == expect_backdrop;
+    };
+    BeginLayerUnboundedV1Command unbounded{};
+    unbounded.header = {CommandOpcode::BeginLayer, 1, sizeof(unbounded)};
+    unbounded.opacity = 1.0f;
+    unbounded.mode = CompositeMode::SourceOver;
+    if (!exercise(unbounded))
+        return false;
+
+    BeginLayerV1Command bounded{};
+    bounded.header = {CommandOpcode::BeginLayer, 1, sizeof(bounded)};
+    bounded.opacity = 1.0f;
+    bounded.mode = CompositeMode::SourceOver;
+    bounded.x = 4.0f;
+    bounded.y = 8.0f;
+    bounded.width = 32.0f;
+    bounded.height = 24.0f;
+    bounded.flags = LayerIsolated | LayerHasBounds;
+    if (!exercise(bounded))
+        return false;
+
+    EffectDescriptor effect{};
+    effect.kind = EffectKind::Blur;
+    effect.color_matrix[0] = 2.0f;
+    BeginLayerEffectV1Command effect_layer{};
+    effect_layer.base = bounded;
+    effect_layer.base.header.size = sizeof(effect_layer);
+    effect_layer.effect = effect;
+    if (!exercise(effect_layer))
+        return false;
+
+    BeginLayerMaskV1Command mask_layer{};
+    mask_layer.base = bounded;
+    mask_layer.base.header.size = sizeof(mask_layer);
+    mask_layer.mask.kind = MaskKind::RoundedRect;
+    mask_layer.mask.values[0] = 4.0f;
+    if (!exercise(mask_layer))
+        return false;
+
+    BeginLayerBackdropV1Command backdrop_layer{};
+    backdrop_layer.base = bounded;
+    backdrop_layer.base.header.size = sizeof(backdrop_layer);
+    backdrop_layer.backdrop_effect.kind = EffectKind::Blur;
+    backdrop_layer.backdrop_effect.color_matrix[0] = 2.0f;
+    if (!exercise(backdrop_layer, true))
+        return false;
+
+    BeginLayerCustomEffectV1Command custom_layer{};
+    custom_layer.base = bounded;
+    custom_layer.base.header.size = sizeof(custom_layer);
+    custom_layer.effect.registration_id = 42;
+    custom_layer.effect.pass_count = 1;
+    custom_layer.effect.sampling_inputs = 1;
+    if (!exercise(custom_layer))
+        return false;
+    return true;
+}
+
+static bool validates_variable_effect_programs() {
+    EffectOpCommand blur{};
+    blur.kind = EffectKind::Blur;
+    blur.color_matrix[0] = 2.0f;
+    EffectOpCommand matrix{};
+    matrix.kind = EffectKind::ColorMatrix;
+    matrix.color_matrix[0] = 1.0f;
+    matrix.color_matrix[6] = 1.0f;
+    matrix.color_matrix[12] = 1.0f;
+    matrix.color_matrix[18] = 1.0f;
+    const LayerBounds bounds{4.0f, 8.0f, 32.0f, 24.0f};
+    std::vector<EffectOpCommand> eight(8, blur);
+    DisplayList list;
+    if (!list.begin_layer(1.0f, bounds, {blur, matrix}) || !list.end_layer())
+        return false;
+    CommandHeader header{};
+    std::memcpy(&header, list.data(), sizeof(header));
+    if (header.version != kLayerCommandVersion ||
+        header.size != sizeof(BeginLayerCommand) + 2 * sizeof(EffectOpCommand) ||
+        header.size >= sizeof(BeginLayerCommand) + 2 * kEffectProgramMaxOps *
+                                  sizeof(EffectOpCommand))
+        return false;
+    list.reset();
+    if (!list.begin_layer(1.0f, bounds, eight) || !list.end_layer() ||
+        !validate_display_list(list.data(), list.size()))
+        return false;
+    list.reset();
+    eight.push_back(blur);
+    return !list.begin_layer(1.0f, bounds, eight);
+}
+
 int main() {
-    return valid_list_and_growth() && rejects_bad_streams() ? 0 : 1;
+    return valid_list_and_growth() && rejects_bad_streams() && accepts_v1_layer_records() &&
+                   validates_variable_effect_programs()
+               ? 0
+               : 1;
 }

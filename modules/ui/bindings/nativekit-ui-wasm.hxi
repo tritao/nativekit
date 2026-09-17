@@ -8,6 +8,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	const NKUI_CUSTOM_EFFECT_PARAMETER_COMPONENTS = 20;
 	const NKUI_EFFECT_PROGRAM_MAX_OPS = 8;
 	const NKUI_GRADIENT_MAX_STOPS = 8;
+	const NKUI_LAYER_COMMAND_VERSION = 2;
 	const NKUI_LAYOUT_API_VERSION = 17;
 	const NKUI_LAYOUT_MAX_TRANSACTION_BYTES = 16777216;
 	/**
@@ -845,7 +846,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		 */
 		opcode: nkui_command_opcode @offset(0);
 		/**
-		 * Must be NKUI_COMMAND_VERSION.
+		 * Must match the opcode: NKUI_COMMAND_VERSION, or NKUI_LAYER_COMMAND_VERSION for BeginLayer.
 		 */
 		version: u16 @offset(2);
 		/**
@@ -879,11 +880,11 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		 */
 		parameter_count: u32 @offset(4);
 		/**
-		 * Number of native effect passes required by this registration.
+		 * Reserved; must be 1 until multipass custom effects are introduced.
 		 */
 		pass_count: u32 @offset(8);
 		/**
-		 * Bitmask of declared sampled inputs: source=1, backdrop=2.
+		 * Reserved; must be 1 (source input) until explicit custom graphs are introduced.
 		 */
 		sampling_inputs: u32 @offset(12);
 		/**
@@ -932,11 +933,11 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		 */
 		parameter_components: u32 @offset(28);
 		/**
-		 * Number of passes; the current runtime supports one registered pass.
+		 * Reserved; must be 1; the current runtime supports one registered pass.
 		 */
 		pass_count: u32 @offset(32);
 		/**
-		 * Declared sampled inputs: source=1, backdrop=2.
+		 * Reserved; must be 1 (source input).
 		 */
 		sampling_inputs: u32 @offset(36);
 		/**
@@ -1033,9 +1034,9 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		color: nkui_color @offset(4);
 	}
 	/**
-	 * Payload for NKUI_COMMAND_BEGIN_LAYER.
+	 * Fixed prefix for the variable-length version 2 NKUI_COMMAND_BEGIN_LAYER record.
 	 */
-	struct nkui_layer_command @layout(3220, 4) {
+	struct nkui_layer_command @layout(84, 4) {
 		/**
 		 * Command record header.
 		 */
@@ -1069,25 +1070,61 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		 */
 		flags: nkui_layer_flags @offset(32);
 		/**
-		 * Number of active foreground operations in foreground[].
-		 */
-		foreground_count: u32 @offset(36);
-		/**
-		 * Number of active backdrop operations in backdrop[].
-		 */
-		backdrop_count: u32 @offset(40);
-		/**
 		 * Source-alpha mask; use NKUI_MASK_NONE when no mask is present.
 		 */
-		mask: nkui_mask_descriptor @offset(44);
+		mask: nkui_mask_descriptor @offset(36);
 		/**
-		 * Ordered foreground operations, applied from first to last.
+		 * Number of active foreground operations following this prefix.
 		 */
-		foreground: array<nkui_effect_op_command, 8> @offset(84);
+		foreground_count: u32 @offset(76);
 		/**
-		 * Ordered backdrop operations, applied from first to last.
+		 * Number of active backdrop operations following the foreground operations.
 		 */
-		backdrop: array<nkui_effect_op_command, 8> @offset(1652);
+		backdrop_count: u32 @offset(80);
+	}
+	struct nkui_layer_v1_backdrop_command @layout(244, 4) {
+		base: nkui_layer_v1_command @offset(0);
+		effect_kind: nkui_effect_kind @offset(36);
+		effect_matrix: array<f32, 20> @offset(40);
+		mask: nkui_mask_descriptor @offset(120);
+		backdrop_effect_kind: nkui_effect_kind @offset(160);
+		backdrop_effect_matrix: array<f32, 20> @offset(164);
+	}
+	/**
+	 * Common version 1 bounded layer prefix retained for wire decoding.
+	 */
+	struct nkui_layer_v1_command @layout(36, 4) {
+		header: nkui_command_header @offset(0);
+		opacity: f32 @offset(8);
+		composite_mode: nkui_composite_mode @offset(12);
+		x: f32 @offset(16);
+		y: f32 @offset(20);
+		width: f32 @offset(24);
+		height: f32 @offset(28);
+		flags: nkui_layer_flags @offset(32);
+	}
+	struct nkui_layer_v1_custom_effect_command @layout(148, 4) {
+		base: nkui_layer_v1_command @offset(0);
+		effect: nkui_custom_effect_descriptor @offset(36);
+	}
+	struct nkui_layer_v1_effect_command @layout(120, 4) {
+		base: nkui_layer_v1_command @offset(0);
+		effect_kind: nkui_effect_kind @offset(36);
+		effect_matrix: array<f32, 20> @offset(40);
+	}
+	struct nkui_layer_v1_mask_command @layout(160, 4) {
+		base: nkui_layer_v1_command @offset(0);
+		effect_kind: nkui_effect_kind @offset(36);
+		effect_matrix: array<f32, 20> @offset(40);
+		mask: nkui_mask_descriptor @offset(120);
+	}
+	/**
+	 * Version 1 unbounded layer record retained for wire decoding.
+	 */
+	struct nkui_layer_v1_unbounded_command @layout(16, 4) {
+		header: nkui_command_header @offset(0);
+		opacity: f32 @offset(8);
+		composite_mode: nkui_composite_mode @offset(12);
 	}
 	/**
 	 * Per-submission logical viewport and layout timing.

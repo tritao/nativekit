@@ -10,27 +10,20 @@ import nativekit.ui.style.EffectParameterTypeUtil;
  * backend-specific mapping remain native concerns.
  */
 class CustomEffectDefinition {
-	public static inline var SourceInput:Int = 1;
-	public static inline var BackdropInput:Int = 2;
-
 	public final id:Int;
 	public final name:String;
 	public final parameterTypes:Array<EffectParameterType>;
-	public final passCount:Int;
-	public final samplingInputs:Int;
 	public final overflow:InkOverflow;
 	public final componentCount:Int;
 
 	public function new(id:Int, name:String, parameterTypes:Array<EffectParameterType>,
-			overflow:InkOverflow = null, passCount:Int = 1, samplingInputs:Int = SourceInput) {
+			overflow:InkOverflow = null) {
 		if (id <= 0)
 			throw "Custom effect registrations require a positive ID";
 		if (name == null || name.length == 0)
 			throw "Custom effect registrations require a name";
 		if (parameterTypes == null)
 			throw "Custom effect registrations require parameter types";
-		if (passCount != 1 || samplingInputs != SourceInput)
-			throw "Custom effects currently require one source-sampling pass";
 		var components = 0;
 		for (type in parameterTypes) {
 			if (type == null || EffectParameterTypeUtil.componentCount(type) <= 0)
@@ -42,8 +35,6 @@ class CustomEffectDefinition {
 		this.id = id;
 		this.name = name;
 		this.parameterTypes = parameterTypes.copy();
-		this.passCount = passCount;
-		this.samplingInputs = samplingInputs;
 		this.overflow = overflow == null ? InkOverflow.zero() : overflow;
 		for (value in [this.overflow.left, this.overflow.top, this.overflow.right, this.overflow.bottom])
 			Effect.requireNonNegative(value, "Custom effect ink overflow must be finite and non-negative");
@@ -51,8 +42,8 @@ class CustomEffectDefinition {
 	}
 
 	public function isEqual(other:CustomEffectDefinition):Bool {
-		if (other == null || id != other.id || name != other.name || passCount != other.passCount ||
-			samplingInputs != other.samplingInputs || componentCount != other.componentCount ||
+		if (other == null || id != other.id || name != other.name ||
+			componentCount != other.componentCount ||
 			!overflow.isEqual(other.overflow) || parameterTypes.length != other.parameterTypes.length)
 			return false;
 		for (index in 0...parameterTypes.length)
