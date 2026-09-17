@@ -484,6 +484,20 @@ typedef struct nk_text_input_rect {
     float height;
 } nk_text_input_rect;
 
+/** One text rectangle with the code-point range it represents. */
+typedef struct nk_text_input_range_rect {
+    /** Set to sizeof(nk_text_input_range_rect) in each packed record. */
+    uint32_t struct_size NK_STRUCT_SIZE;
+    float x;
+    float y;
+    float width;
+    float height;
+    /** Inclusive start of the represented half-open code-point range. */
+    nk_text_position range_start;
+    /** Exclusive end of the represented code-point range. */
+    nk_text_position range_end;
+} nk_text_input_range_rect;
+
 /* ------------------------------------------------------------------------- */
 /* Text input event helpers                                                  */
 /* ------------------------------------------------------------------------- */
@@ -664,12 +678,15 @@ NK_API nk_result NK_CALL nk_surface_set_text_input_state(nk_handle target,
 /**
  * Publishes selection and composition geometry for the current text-input state.
  *
- * The rectangle buffers contain packed `nk_text_input_rect` records and are copied
- * during the call. Coordinates are surface-local logical pixels and are ordered
- * in visual reading order. The ranges must match the selection and composition
- * ranges most recently supplied to nk_surface_set_text_input_state(). Pass both
- * composition positions as NK_TEXT_POSITION_NONE and an empty composition buffer
- * when there is no active composition.
+ * The rectangle buffers contain packed `nk_text_input_rect` records and may also
+ * contain extended `nk_text_input_range_rect` records. The extended records use
+ * the same first five fields and add an absolute code-point range; they let a
+ * platform map point queries back to the exact visual text segment. Coordinates
+ * are surface-local logical pixels and are ordered in visual reading order. The
+ * ranges must match the selection and composition ranges most recently supplied
+ * to nk_surface_set_text_input_state(). Pass both composition positions as
+ * NK_TEXT_POSITION_NONE and an empty composition buffer when there is no active
+ * composition.
  */
 NK_API nk_result NK_CALL nk_surface_set_text_input_geometry(
     nk_handle target, nk_text_position selection_start, nk_text_position selection_end,

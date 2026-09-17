@@ -70,7 +70,8 @@ class TextInputBridge {
 	public function update(text:String, documentLength:Int, selectionStart:Int,
 			selectionEnd:Int, compositionStart:Int, compositionEnd:Int,
 			inputType:Int, flags:Int, cursor:Rect, selectionRects:Array<Rect>,
-			compositionRects:Array<Rect>):Void {
+			compositionRects:Array<Rect>, ?selectionRangeRects:Array<TextRangeRect>,
+			?compositionRangeRects:Array<TextRangeRect>):Void {
 		ensureLive();
 		if (surface == null || surface.isDisposed() || !requestedActive || cursor == null ||
 			(platformChecked && !platformSupported))
@@ -82,7 +83,8 @@ class TextInputBridge {
 		if (!checkPlatformResult(result, "text-input update"))
 			return;
 		result = NativeKitTextInput.updateGeometryResult(surface, selectionStart, selectionEnd,
-			compositionStart, compositionEnd, encodeRects(selectionRects), encodeRects(compositionRects));
+			compositionStart, compositionEnd, encodeGeometry(selectionRects, selectionRangeRects),
+			encodeGeometry(compositionRects, compositionRangeRects));
 		checkPlatformResult(result, "text-input geometry update");
 	}
 
@@ -131,24 +133,44 @@ class TextInputBridge {
 			throw "Text input bridge has been disposed";
 	}
 
-	static function encodeRects(rects:Null<Array<Rect>>):haxe.io.Bytes {
-		if (rects == null || rects.length == 0)
+	static function encodeGeometry(rects:Null<Array<Rect>>,
+			rangeRects:Null<Array<TextRangeRect>>):haxe.io.Bytes {
+		var rectCount = rects == null ? 0 : rects.length;
+		var rangeCount = rangeRects == null ? 0 : rangeRects.length;
+		if (rectCount == 0 && rangeCount == 0)
 			return haxe.io.Bytes.alloc(0);
-		if (rects.length > Std.int(0x7fffffff / 20))
+		if (rectCount > Std.int(0x7fffffff / 20) || rangeCount > Std.int(0x7fffffff / 28) ||
+			rectCount > Std.int((0x7fffffff - rangeCount * 28) / 20))
 			throw "Text input geometry contains too many rectangles";
-		var bytes = haxe.io.Bytes.alloc(rects.length * 20);
-		for (index in 0...rects.length) {
-			var rect = rects[index];
-			if (rect == null || !finite(rect.x) || !finite(rect.y) || !finite(rect.width) ||
-				!finite(rect.height) || rect.width < 0.0 || rect.height < 0.0)
-				throw "Text input geometry contains an invalid rectangle";
-			var offset = index * 20;
-			bytes.setInt32(offset, 20);
-			bytes.setFloat(offset + 4, rect.x);
-			bytes.setFloat(offset + 8, rect.y);
-			bytes.setFloat(offset + 12, rect.width);
-			bytes.setFloat(offset + 16, rect.height);
-		}
+		var bytes = haxe.io.Bytes.alloc(rectCount * 20 + rangeCount * 28);
+		var offset = 0;
+		if (rects != null)
+			for (rect in rects) {
+				if (rect == null || !finite(rect.x) || !finite(rect.y) || !finite(rect.width) ||
+					!finite(rect.height) || rect.width < 0.0 || rect.height < 0.0)
+					throw "Text input geometry contains an invalid rectangle";
+				bytes.setInt32(offset, 20);
+				bytes.setFloat(offset + 4, rect.x);
+				bytes.setFloat(offset + 8, rect.y);
+				bytes.setFloat(offset + 12, rect.width);
+				bytes.setFloat(offset + 16, rect.height);
+				offset += 20;
+			}
+		if (rangeRects != null)
+			for (rect in rangeRects) {
+				if (rect == null || rect.start < 0 || rect.end < rect.start || !finite(rect.x) ||
+					!finite(rect.y) || !finite(rect.width) || !finite(rect.height) ||
+					rect.width < 0.0 || rect.height < 0.0)
+					throw "Text input range geometry contains an invalid rectangle";
+				bytes.setInt32(offset, 28);
+				bytes.setFloat(offset + 4, rect.x);
+				bytes.setFloat(offset + 8, rect.y);
+				bytes.setFloat(offset + 12, rect.width);
+				bytes.setFloat(offset + 16, rect.height);
+				bytes.setInt32(offset + 20, rect.start);
+				bytes.setInt32(offset + 24, rect.end);
+				offset += 28;
+			}
 		return bytes;
 	}
 

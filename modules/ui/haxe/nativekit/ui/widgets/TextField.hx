@@ -256,18 +256,27 @@ class TextField implements View {
 					context.platformSurface.isDisposed())
 					return;
 				var selectionGeometry:Array<Rect> = [];
+				var selectionRangeGeometry:Array<TextRangeRect> = [];
 				if (editor.selectionStart != editor.selectionEnd)
 					for (rect in editor.layout.selectionRects(editor.anchorPosition(), editor.focusPosition()))
 						selectionGeometry.push(transformTextRect(rect, geometry, transform, scrollDelta));
+				if (editor.selectionStart != editor.selectionEnd)
+					for (rect in editor.layout.selectionRangeRects(editor.anchorPosition(), editor.focusPosition()))
+						selectionRangeGeometry.push(transformTextRangeRect(rect, geometry, transform, scrollDelta));
 				var compositionGeometry:Array<Rect> = [];
+				var compositionRangeGeometry:Array<TextRangeRect> = [];
 				if (editor.compositionStart >= 0 && editor.compositionEnd > editor.compositionStart)
 					for (rect in editor.compositionRects())
 						compositionGeometry.push(transformTextRect(rect, geometry, transform, scrollDelta));
+				if (editor.compositionStart >= 0 && editor.compositionEnd > editor.compositionStart)
+					for (rect in editor.compositionRangeRects())
+						compositionRangeGeometry.push(transformTextRangeRect(rect, geometry, transform, scrollDelta));
 				context.textInput.update(editor.layoutText(), editor.documentLength(),
 					editor.selectionStart, editor.selectionEnd, editor.compositionStart,
 					editor.compositionEnd, 0,
 					multiline ? 1 : 0,
-					caretRect, selectionGeometry, compositionGeometry);
+					caretRect, selectionGeometry, compositionGeometry, selectionRangeGeometry,
+					compositionRangeGeometry);
 			};
 			editorContent.onResolved(function(geometry) {
 				if (multiline) {
@@ -525,6 +534,14 @@ class TextField implements View {
 		var maxY = Math.max(Math.max(y0, y1), Math.max(y2, y3));
 		return new Rect(minX, minY, Math.max(0.0, maxX - minX),
 			Math.max(0.0, maxY - minY));
+	}
+
+	static function transformTextRangeRect(rect:TextRangeRect, geometry:ResolvedLayoutItem,
+			transform:Transform2D, scrollDelta:Float):TextRangeRect {
+		var transformed = transformTextRect(new Rect(rect.x, rect.y, rect.width, rect.height),
+			geometry, transform, scrollDelta);
+		return new TextRangeRect(rect.start, rect.end, transformed.x, transformed.y,
+			transformed.width, transformed.height);
 	}
 
 	static function defaultStyle(multiline:Bool):LayoutStyle {

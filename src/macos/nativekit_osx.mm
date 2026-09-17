@@ -181,6 +181,8 @@ struct MacWindowResource final : nk::core::Resource {
     nk_text_input_state text_input_state{};
     std::vector<nk_text_input_rect> text_input_selection_rects;
     std::vector<nk_text_input_rect> text_input_composition_rects;
+    std::vector<nk_text_input_range_rect> text_input_selection_range_rects;
+    std::vector<nk_text_input_range_rect> text_input_composition_range_rects;
     bool text_input_active = false;
     bool text_composing = false;
     nk_text_position text_composition_start = NK_TEXT_POSITION_NONE;
@@ -3093,8 +3095,13 @@ void emit_window_state(MacWindowResource &resource) noexcept {
     const auto hit = nk::core::text_input_hit_test_range(
         resource->text_input_state, resource->text_input_selection_rects,
         resource->text_input_composition_rects, localPoint.x, localPoint.y);
-    if (hit.matched) {
-        const NSRange range = native_range_for_positions(*resource, hit.position, hit.position);
+    const auto range_hit = nk::core::text_input_hit_test_range_rects(
+        resource->text_input_selection_range_rects,
+        resource->text_input_composition_range_rects, localPoint.x, localPoint.y);
+    const auto resolved_hit = range_hit.matched ? range_hit : hit;
+    if (resolved_hit.matched) {
+        const NSRange range =
+            native_range_for_positions(*resource, resolved_hit.position, resolved_hit.position);
         if (range.location != NSNotFound)
             return range.location;
     }
@@ -4424,6 +4431,8 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
             resource->text_input_state.text = resource->text_input_text.c_str();
             resource->text_input_selection_rects.clear();
             resource->text_input_composition_rects.clear();
+            resource->text_input_selection_range_rects.clear();
+            resource->text_input_composition_range_rects.clear();
             resource->text_composition_start = state->composition_start;
             resource->text_composition_end = state->composition_end;
             resource->text_composing = state->composition_start != NK_TEXT_POSITION_NONE;
@@ -4479,6 +4488,10 @@ nk_result NK_CALL nk_surface_set_text_input_geometry(
                 return NK_ERROR_INVALID_ARGUMENT;
             resource->text_input_selection_rects = std::move(geometry.selection_rects);
             resource->text_input_composition_rects = std::move(geometry.composition_rects);
+            resource->text_input_selection_range_rects =
+                std::move(geometry.selection_range_rects);
+            resource->text_input_composition_range_rects =
+                std::move(geometry.composition_range_rects);
             return NK_OK;
         });
 }

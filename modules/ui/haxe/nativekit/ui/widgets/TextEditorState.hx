@@ -963,6 +963,15 @@ class TextEditorState {
 		return layout.selectionRects(new TextPosition(start, 0), new TextPosition(end, 0));
 	}
 
+	/** Returns grapheme geometry for the active composition with document ranges. */
+	public function compositionRangeRects():Array<TextRangeRect> {
+		ensureLive();
+		if (!hasActiveComposition() || compositionStart == compositionEnd)
+			return [];
+		return layout.selectionRangeRects(new TextPosition(compositionStart, 0),
+			new TextPosition(compositionEnd, 0));
+	}
+
 	/** Selects the word under a pointer position using the shaped text engine's boundaries. */
 	public function selectWordAt(position:TextPosition):Bool {
 		ensureLive();

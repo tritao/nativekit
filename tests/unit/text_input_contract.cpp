@@ -177,6 +177,16 @@ int main() {
         nullptr, 0, &geometry));
     assert(geometry.selection_rects.size() == 1);
     assert(geometry.selection_rects.front().x == 4.0f);
+    nk_text_input_range_rect range_rect{sizeof(nk_text_input_range_rect), 4.0f, 8.0f, 12.0f,
+                                        18.0f, 1, 3};
+    std::vector<uint8_t> range_packed(sizeof(range_rect));
+    std::memcpy(range_packed.data(), &range_rect, sizeof(range_rect));
+    assert(nk::core::decode_text_input_geometry(
+        1, 3, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE, range_packed.data(),
+        range_packed.size(), nullptr, 0, &geometry));
+    assert(geometry.selection_range_rects.size() == 1);
+    assert(geometry.selection_range_rects.front().range_start == 1);
+    assert(geometry.selection_range_rects.front().range_end == 3);
     assert(!nk::core::decode_text_input_geometry(
         3, 1, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE, packed.data(), packed.size(),
         nullptr, 0, &geometry));

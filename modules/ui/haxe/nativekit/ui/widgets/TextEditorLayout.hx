@@ -264,6 +264,35 @@ class TextEditorLayout {
 		return result;
 	}
 
+	/** Returns Skribidi-backed rectangles with their absolute code-point ranges. */
+	public function selectionRangeRects(start:TextPosition, end:TextPosition):Array<TextRangeRect> {
+		ensureLive();
+		if (start == null || end == null)
+			throw "Text selection endpoints cannot be null";
+		var first = clamp(start.offset, 0, offsets.codepointCount);
+		var last = clamp(end.offset, 0, offsets.codepointCount);
+		if (last < first) {
+			var swap = first;
+			first = last;
+			last = swap;
+		}
+		if (first == last)
+			return [];
+		var result:Array<TextRangeRect> = [];
+		for (record in paragraphs) {
+			var localStart:Int = first > record.start ? first : record.start;
+			var localEnd:Int = last < record.end ? last : record.end;
+			if (localEnd <= localStart)
+				continue;
+			for (rect in record.layout.selectionRangeRects(
+				new TextPosition(localStart - record.start, start.affinity),
+				new TextPosition(localEnd - record.start, end.affinity)))
+				result.push(new TextRangeRect(rect.start + record.start, rect.end + record.start,
+					rect.x, rect.y + record.y, rect.width, rect.height));
+		}
+		return result;
+	}
+
 	public function nextGrapheme(offset:Int):Int {
 		ensureLive();
 		var recordIndex = paragraphIndexAtOffset(offset);

@@ -20,6 +20,8 @@ struct TextInputGeometry {
     nk_text_position composition_end = NK_TEXT_POSITION_NONE;
     std::vector<nk_text_input_rect> selection_rects;
     std::vector<nk_text_input_rect> composition_rects;
+    std::vector<nk_text_input_range_rect> selection_range_rects;
+    std::vector<nk_text_input_range_rect> composition_range_rects;
 };
 
 struct TextInputHitTest {
@@ -89,23 +91,78 @@ inline TextInputHitTest text_input_hit_test_range(
     return {};
 }
 
+inline TextInputHitTest text_input_hit_test_range_rects(
+    const std::vector<nk_text_input_range_rect> &selection_rects,
+    const std::vector<nk_text_input_range_rect> &composition_rects, float x, float y) noexcept {
+    if (!std::isfinite(x) || !std::isfinite(y))
+        return {};
+
+    const auto hit = [x, y](const std::vector<nk_text_input_range_rect> &rects) {
+        for (const auto &rect : rects) {
+            if (rect.range_start == NK_TEXT_POSITION_NONE ||
+                rect.range_end == NK_TEXT_POSITION_NONE || rect.range_start > rect.range_end)
+                continue;
+            const float right = rect.x + std::max(1.0f, rect.width);
+            const float bottom = rect.y + std::max(1.0f, rect.height);
+            if (x < rect.x || x > right || y < rect.y || y > bottom)
+                continue;
+            const float midpoint = rect.x + std::max(1.0f, rect.width) * 0.5f;
+            return TextInputHitTest{true,
+                                    x <= midpoint ? rect.range_start : rect.range_end};
+        }
+        return TextInputHitTest{};
+    };
+
+    auto result = hit(composition_rects);
+    if (result.matched)
+        return result;
+    return hit(selection_rects);
+}
+
 inline bool decode_text_input_rects(const uint8_t *bytes, uint32_t byte_count,
-                                    std::vector<nk_text_input_rect> *out) noexcept {
-    if (!out || (byte_count != 0 && !bytes) || byte_count % sizeof(nk_text_input_rect) != 0)
+                                    std::vector<nk_text_input_rect> *out,
+                                    std::vector<nk_text_input_range_rect> *range_out = nullptr) noexcept {
+    if (!out || (byte_count != 0 && !bytes))
         return false;
     try {
-        out->resize(byte_count / sizeof(nk_text_input_rect));
+        out->clear();
+        if (range_out)
+            range_out->clear();
     } catch (...) {
         return false;
     }
-    for (std::size_t index = 0; index < out->size(); ++index) {
+    std::size_t offset = 0;
+    while (offset < byte_count) {
+        if (byte_count - offset < sizeof(uint32_t))
+            return false;
+        uint32_t struct_size = 0;
+        std::memcpy(&struct_size, bytes + offset, sizeof(struct_size));
+        if (struct_size < sizeof(nk_text_input_rect) || struct_size > byte_count - offset)
+            return false;
         nk_text_input_rect rect{};
-        std::memcpy(&rect, bytes + index * sizeof(rect), sizeof(rect));
+        std::memcpy(&rect, bytes + offset, sizeof(rect));
         if (rect.struct_size < sizeof(rect) || !std::isfinite(rect.x) ||
             !std::isfinite(rect.y) || !std::isfinite(rect.width) ||
             !std::isfinite(rect.height) || rect.width < 0.0f || rect.height < 0.0f)
             return false;
-        (*out)[index] = rect;
+        try {
+            out->push_back(rect);
+        } catch (...) {
+            return false;
+        }
+        if (range_out && struct_size >= sizeof(nk_text_input_range_rect)) {
+            nk_text_input_range_rect range{};
+            std::memcpy(&range, bytes + offset, sizeof(range));
+            if (range.range_start == NK_TEXT_POSITION_NONE ||
+                range.range_end == NK_TEXT_POSITION_NONE || range.range_start > range.range_end)
+                return false;
+            try {
+                range_out->push_back(range);
+            } catch (...) {
+                return false;
+            }
+        }
+        offset += struct_size;
     }
     return true;
 }
@@ -129,10 +186,17 @@ inline bool decode_text_input_geometry(
     decoded.composition_start = composition_start;
     decoded.composition_end = composition_end;
     if (!decode_text_input_rects(selection_rects, selection_rect_bytes,
-                                 &decoded.selection_rects) ||
+                                 &decoded.selection_rects, &decoded.selection_range_rects) ||
         !decode_text_input_rects(composition_rects, composition_rect_bytes,
-                                 &decoded.composition_rects))
+                                 &decoded.composition_rects,
+                                 &decoded.composition_range_rects))
         return false;
+    for (const auto &rect : decoded.selection_range_rects)
+        if (rect.range_start < selection_start || rect.range_end > selection_end)
+            return false;
+    for (const auto &rect : decoded.composition_range_rects)
+        if (rect.range_start < composition_start || rect.range_end > composition_end)
+            return false;
     try {
         *out = std::move(decoded);
     } catch (...) {
