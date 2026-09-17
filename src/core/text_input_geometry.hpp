@@ -22,6 +22,27 @@ struct TextInputGeometry {
     std::vector<nk_text_input_rect> composition_rects;
 };
 
+/**
+ * Selects the best platform anchor for candidate or composition UI.
+ *
+ * Composition geometry takes precedence because it identifies the active IME
+ * clause. A non-collapsed selection is the next best anchor, with the
+ * published caret rectangle as the fallback for collapsed selections and
+ * backends that do not receive range geometry.
+ */
+inline nk_text_input_rect text_input_anchor_rect(
+    const nk_text_input_state &state, const std::vector<nk_text_input_rect> &selection_rects,
+    const std::vector<nk_text_input_rect> &composition_rects) noexcept {
+    nk_text_input_rect fallback{sizeof(nk_text_input_rect), state.cursor_x, state.cursor_y,
+                                state.cursor_width, state.cursor_height};
+    if (state.composition_start != NK_TEXT_POSITION_NONE &&
+        state.composition_end != NK_TEXT_POSITION_NONE && !composition_rects.empty())
+        return composition_rects.front();
+    if (state.selection_start != state.selection_end && !selection_rects.empty())
+        return selection_rects.front();
+    return fallback;
+}
+
 inline bool decode_text_input_rects(const uint8_t *bytes, uint32_t byte_count,
                                     std::vector<nk_text_input_rect> *out) noexcept {
     if (!out || (byte_count != 0 && !bytes) || byte_count % sizeof(nk_text_input_rect) != 0)

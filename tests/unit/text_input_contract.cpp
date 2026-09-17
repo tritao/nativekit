@@ -43,6 +43,30 @@ int main() {
     assert(!offset_map.codepointOffsetForUtf16(2, &codepoint_offset));
     assert(!offset_map.assign(std::string_view("\xf0\x9f\x98", 3)));
 
+    nk_text_input_state anchor_state{};
+    anchor_state.cursor_x = 4.0f;
+    anchor_state.cursor_y = 8.0f;
+    anchor_state.cursor_width = 1.0f;
+    anchor_state.cursor_height = 18.0f;
+    anchor_state.selection_start = 3;
+    anchor_state.selection_end = 5;
+    std::vector<nk_text_input_rect> anchor_selection{
+        {sizeof(nk_text_input_rect), 20.0f, 30.0f, 40.0f, 18.0f}};
+    std::vector<nk_text_input_rect> anchor_composition{
+        {sizeof(nk_text_input_rect), 60.0f, 70.0f, 20.0f, 18.0f}};
+    auto anchor = nk::core::text_input_anchor_rect(anchor_state, anchor_selection, {});
+    assert(anchor.x == 20.0f && anchor.y == 30.0f);
+    anchor_state.composition_start = 4;
+    anchor_state.composition_end = 5;
+    anchor = nk::core::text_input_anchor_rect(anchor_state, anchor_selection, anchor_composition);
+    assert(anchor.x == 60.0f && anchor.y == 70.0f);
+    anchor_state.composition_start = NK_TEXT_POSITION_NONE;
+    anchor_state.composition_end = NK_TEXT_POSITION_NONE;
+    anchor_state.selection_start = 5;
+    anchor_state.selection_end = 5;
+    anchor = nk::core::text_input_anchor_rect(anchor_state, anchor_selection, anchor_composition);
+    assert(anchor.x == 4.0f && anchor.y == 8.0f);
+
     nk_text_input_state state{};
     state.struct_size = sizeof(state);
     state.text_start = 10;

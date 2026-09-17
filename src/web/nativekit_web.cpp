@@ -924,10 +924,12 @@ void configure_text_input(WebSurfaceResource &surface) {
         config.selection_end = state.selection_end;
         config.composition_start = state.composition_start;
         config.composition_end = state.composition_end;
-        config.cursor_x = state.cursor_x;
-        config.cursor_y = state.cursor_y;
-        config.cursor_width = state.cursor_width;
-        config.cursor_height = state.cursor_height;
+        const auto anchor = nk::core::text_input_anchor_rect(
+            state, surface.text_input_selection_rects, surface.text_input_composition_rects);
+        config.cursor_x = anchor.x;
+        config.cursor_y = anchor.y;
+        config.cursor_width = anchor.width;
+        config.cursor_height = anchor.height;
     }
     auto window = get_window(surface.parent);
     if (window)
@@ -3254,6 +3256,8 @@ nk_result NK_CALL nk_surface_set_text_input_geometry(
         return invalid_argument("text input geometry ranges do not match the current state");
     surface->text_input_selection_rects = std::move(geometry.selection_rects);
     surface->text_input_composition_rects = std::move(geometry.composition_rects);
+    if (surface->text_input_active)
+        configure_text_input(*surface);
     return NK_OK;
 }
 

@@ -89,6 +89,20 @@ static int dispatch_input_sequence(void) {
     });
 }
 
+static int geometry_anchor_is_published(void) {
+    return EM_ASM_INT({
+        const input = document.querySelector("[id^='__nativekit_text_input_']");
+        const canvas = document.querySelector("canvas");
+        if (!input || !canvas)
+            return 0;
+        const canvasRect = canvas.getBoundingClientRect();
+        const left = Number.parseFloat(input.style.left);
+        const top = Number.parseFloat(input.style.top);
+        return Math.abs(left - (canvasRect.left + 22)) < 1 &&
+               Math.abs(top - (canvasRect.top + 33)) < 1 ? 1 : 0;
+    });
+}
+
 static int dispatch_selection(void) {
     return EM_ASM_INT({
         const input = document.querySelector("[id^='__nativekit_text_input_']");
@@ -192,6 +206,12 @@ int main(void) {
     assert(nk_surface_set_text_input_active(surface, 1) == NK_OK);
 
 #ifdef __EMSCRIPTEN__
+    nk_text_input_rect selection_rect = {sizeof(nk_text_input_rect), 22.0f, 33.0f, 12.0f,
+                                         18.0f};
+    assert(nk_surface_set_text_input_geometry(
+               surface, 11, 12, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
+               (const uint8_t *)&selection_rect, sizeof(selection_rect), NULL, 0) == NK_OK);
+    assert(geometry_anchor_is_published());
     assert(dispatch_input_sequence());
     expect_edit(surface, NK_TEXT_EDIT_COMMIT, 11, 12, "\xe3\x81\x8b\xe3\x81\xaa", 13, 13,
                 NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);

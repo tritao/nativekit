@@ -703,6 +703,29 @@ double dpi_scale(HWND window) {
     return std::max(1.0, static_cast<double>(query_window_dpi(window)) / 96.0);
 }
 
+void update_text_input_anchor(WinWindowResource &resource) {
+    if (!resource.window)
+        return;
+    const auto anchor = nk::core::text_input_anchor_rect(
+        resource.text_input_state, resource.text_input_selection_rects,
+        resource.text_input_composition_rects);
+    HIMC context = ImmGetContext(resource.window);
+    if (!context)
+        return;
+    const auto scale = dpi_scale(resource.window);
+    COMPOSITIONFORM composition{};
+    composition.dwStyle = CFS_POINT;
+    composition.ptCurrentPos.x = static_cast<LONG>(std::lround(anchor.x * scale));
+    composition.ptCurrentPos.y = static_cast<LONG>(std::lround(anchor.y * scale));
+    ImmSetCompositionWindow(context, &composition);
+    CANDIDATEFORM candidate{};
+    candidate.dwIndex = 0;
+    candidate.dwStyle = CFS_CANDIDATEPOS;
+    candidate.ptCurrentPos = composition.ptCurrentPos;
+    ImmSetCandidateWindow(context, &candidate);
+    ImmReleaseContext(resource.window, context);
+}
+
 nk_pointer_button pointer_button_from_windows(UINT message, WPARAM wparam) {
     switch (message) {
     case WM_LBUTTONDOWN:
@@ -3633,23 +3656,7 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
             resource->text_composition_start = state->composition_start;
             resource->text_composition_end = state->composition_end;
             resource->text_composing = state->composition_start != NK_TEXT_POSITION_NONE;
-            HIMC context = ImmGetContext(resource->window);
-            if (context) {
-                const auto scale = dpi_scale(resource->window);
-                COMPOSITIONFORM composition{};
-                composition.dwStyle = CFS_POINT;
-                composition.ptCurrentPos.x =
-                    static_cast<LONG>(std::lround(state->cursor_x * scale));
-                composition.ptCurrentPos.y =
-                    static_cast<LONG>(std::lround(state->cursor_y * scale));
-                ImmSetCompositionWindow(context, &composition);
-                CANDIDATEFORM candidate{};
-                candidate.dwIndex = 0;
-                candidate.dwStyle = CFS_CANDIDATEPOS;
-                candidate.ptCurrentPos = composition.ptCurrentPos;
-                ImmSetCandidateWindow(context, &candidate);
-                ImmReleaseContext(resource->window, context);
-            }
+            update_text_input_anchor(*resource);
             return NK_OK;
         });
 }
@@ -3679,6 +3686,7 @@ nk_result NK_CALL nk_surface_set_text_input_geometry(
                             "text input geometry ranges do not match the current state");
             resource->text_input_selection_rects = std::move(geometry.selection_rects);
             resource->text_input_composition_rects = std::move(geometry.composition_rects);
+            update_text_input_anchor(*resource);
             return NK_OK;
         });
 }

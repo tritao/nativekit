@@ -2389,6 +2389,19 @@ std::shared_ptr<GtkWindowResource> text_input_window(nk_handle target) {
     return graphics_surface ? window(graphics_surface->parent) : nullptr;
 }
 
+void update_text_input_anchor(GtkWindowResource &resource) {
+    if (!resource.im_context)
+        return;
+    const auto anchor = nk::core::text_input_anchor_rect(
+        resource.text_input_state, resource.text_input_selection_rects,
+        resource.text_input_composition_rects);
+    GdkRectangle cursor{static_cast<gint>(std::lround(anchor.x)),
+                        static_cast<gint>(std::lround(anchor.y)),
+                        std::max(static_cast<gint>(std::lround(anchor.width)), 1),
+                        std::max(static_cast<gint>(std::lround(anchor.height)), 1)};
+    gtk_im_context_set_cursor_location(resource.im_context, &cursor);
+}
+
 std::shared_ptr<GtkCursorResource> cursor(nk_handle handle) {
     return std::dynamic_pointer_cast<GtkCursorResource>(
         nk::core::handles().get(handle, nk::core::ResourceType::cursor));
@@ -4003,14 +4016,7 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
             resource->text_input_state.text = resource->text_input_text.c_str();
             resource->text_input_selection_rects.clear();
             resource->text_input_composition_rects.clear();
-            if (resource->im_context) {
-                GdkRectangle cursor{
-                    static_cast<gint>(std::lround(state->cursor_x)),
-                    static_cast<gint>(std::lround(state->cursor_y)),
-                    std::max(static_cast<gint>(std::lround(state->cursor_width)), 1),
-                    std::max(static_cast<gint>(std::lround(state->cursor_height)), 1)};
-                gtk_im_context_set_cursor_location(resource->im_context, &cursor);
-            }
+            update_text_input_anchor(*resource);
             return NK_OK;
         });
 }
@@ -4040,6 +4046,7 @@ nk_result NK_CALL nk_surface_set_text_input_geometry(
                             "text input geometry ranges do not match the current state");
             resource->text_input_selection_rects = std::move(geometry.selection_rects);
             resource->text_input_composition_rects = std::move(geometry.composition_rects);
+            update_text_input_anchor(*resource);
             return NK_OK;
         });
 }
