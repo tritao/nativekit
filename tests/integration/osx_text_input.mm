@@ -90,6 +90,11 @@ int main(void) {
     assert(nk_surface_set_text_input_state(window, &state) == NK_OK);
     assert(nk_surface_set_text_input_active(window, 1) == NK_OK);
 
+    // The second UTF-16 code unit is inside the emoji surrogate pair and must
+    // not be exposed as an editor position.
+    assert([input_view attributedSubstringForProposedRange:NSMakeRange(2, 0)
+                                                 actualRange:nullptr] == nil);
+
     [input_view setMarkedText:@"かな"
                 selectedRange:NSMakeRange(2, 0)
              replacementRange:NSMakeRange(1, 2)];

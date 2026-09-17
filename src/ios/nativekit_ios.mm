@@ -20,6 +20,7 @@
 #include "core/system_internal.hpp"
 #include "core/text_input_contract.hpp"
 #include "core/text_input_geometry.hpp"
+#include "core/text_offsets.hpp"
 #include "ios/joystick.hpp"
 #include "core/resource_events.hpp"
 
@@ -216,6 +217,7 @@ struct IOSSurface final : nk::core::Resource {
     std::unordered_map<uintptr_t, IOSTouchState> touch_pointers;
     uint32_t next_touch_pointer_id = 1;
     std::string text_input_text;
+    nk::core::TextOffsetMap text_input_offsets;
     nk_text_input_state text_input_state{};
     std::vector<nk_text_input_rect> text_input_selection_rects;
     std::vector<nk_text_input_rect> text_input_composition_rects;
@@ -1058,8 +1060,6 @@ uint32_t codepoint_index_for_utf16(const std::vector<uint32_t> &codepoints,
 
 NSRange native_range_for_positions(const IOSSurface &resource, nk_text_position start,
                                    nk_text_position end) {
-    std::vector<uint32_t> points;
-    decode_utf8(resource.text_input_text, points);
     const auto local_start =
         start == NK_TEXT_POSITION_NONE || start < resource.text_input_state.text_start
             ? 0u
@@ -1068,8 +1068,12 @@ NSRange native_range_for_positions(const IOSSurface &resource, nk_text_position 
         end == NK_TEXT_POSITION_NONE || end < resource.text_input_state.text_start
             ? local_start
             : end - resource.text_input_state.text_start;
-    const NSUInteger start_offset = utf16_offset_for_codepoint(points, local_start);
-    const NSUInteger end_offset = utf16_offset_for_codepoint(points, local_end);
+    std::size_t start_offset = 0;
+    std::size_t end_offset = 0;
+    if (!resource.text_input_offsets.utf16CodeUnitOffset(local_start, &start_offset) ||
+        !resource.text_input_offsets.utf16CodeUnitOffset(local_end, &end_offset) ||
+        end_offset < start_offset)
+        return NSMakeRange(NSNotFound, 0);
     return NSMakeRange(start_offset, end_offset >= start_offset ? end_offset - start_offset : 0);
 }
 
@@ -1077,18 +1081,14 @@ bool codepoint_range_for_native_range(const IOSSurface &resource, NSRange range,
                                       nk_text_position &out_start, nk_text_position &out_end) {
     if (range.location == NSNotFound)
         return false;
-    std::vector<uint32_t> points;
-    if (!decode_utf8(resource.text_input_text, points))
+    if (range.length > std::numeric_limits<NSUInteger>::max() - range.location)
         return false;
-    if (points.size() > std::numeric_limits<uint32_t>::max())
+    const NSUInteger range_end = range.location + range.length;
+    uint32_t local_start = 0;
+    uint32_t local_end = 0;
+    if (!resource.text_input_offsets.codepointOffsetForUtf16(range.location, &local_start) ||
+        !resource.text_input_offsets.codepointOffsetForUtf16(range_end, &local_end))
         return false;
-    const NSUInteger total_units =
-        utf16_offset_for_codepoint(points, static_cast<uint32_t>(points.size()));
-    const uint64_t range_end = static_cast<uint64_t>(range.location) + range.length;
-    if (range_end > total_units)
-        return false;
-    const auto local_start = codepoint_index_for_utf16(points, range.location);
-    const auto local_end = codepoint_index_for_utf16(points, static_cast<NSUInteger>(range_end));
     out_start = static_cast<nk_text_position>(resource.text_input_state.text_start + local_start);
     out_end = static_cast<nk_text_position>(resource.text_input_state.text_start + local_end);
     return true;
@@ -1111,37 +1111,38 @@ void sync_input_view(IOSSurface &resource) {
     [resource.input_view reloadInputViews];
 }
 
-void update_text_snapshot(IOSSurface &resource, nk_text_position replace_start,
+bool update_text_snapshot(IOSSurface &resource, nk_text_position replace_start,
                           nk_text_position replace_end, std::string_view inserted) {
-    std::vector<uint32_t> old_codepoints;
-    if (!decode_utf8(resource.text_input_text, old_codepoints) ||
+    if (!resource.text_input_offsets.valid() ||
         replace_start < resource.text_input_state.text_start || replace_end < replace_start ||
         static_cast<uint64_t>(replace_end) >
-            static_cast<uint64_t>(resource.text_input_state.text_start) + old_codepoints.size())
-        return;
+            static_cast<uint64_t>(resource.text_input_state.text_start) +
+                resource.text_input_offsets.codepointCount())
+        return false;
     std::vector<uint32_t> inserted_codepoints;
     if (!decode_utf8(inserted, inserted_codepoints))
-        return;
+        return false;
     const auto first =
         static_cast<std::size_t>(replace_start - resource.text_input_state.text_start);
     const auto last = static_cast<std::size_t>(replace_end - resource.text_input_state.text_start);
-    const auto byte_offset = [&](std::size_t codepoint_index) {
-        std::size_t bytes = 0;
-        for (std::size_t index = 0; index < codepoint_index; ++index) {
-            const auto value = old_codepoints[index];
-            bytes += value < 0x80 ? 1u : (value < 0x800 ? 2u : (value < 0x10000 ? 3u : 4u));
-        }
-        return bytes;
-    };
+    std::size_t first_byte = 0;
+    std::size_t last_byte = 0;
+    if (!resource.text_input_offsets.utf8ByteOffset(static_cast<uint32_t>(first), &first_byte) ||
+        !resource.text_input_offsets.utf8ByteOffset(static_cast<uint32_t>(last), &last_byte))
+        return false;
     std::string updated = resource.text_input_text;
-    updated.replace(byte_offset(first), byte_offset(last) - byte_offset(first), inserted.data(),
-                    inserted.size());
+    updated.replace(first_byte, last_byte - first_byte, inserted.data(), inserted.size());
     const int64_t delta =
         static_cast<int64_t>(inserted_codepoints.size()) - static_cast<int64_t>(last - first);
+    nk::core::TextOffsetMap updated_offsets;
+    if (!updated_offsets.assign(updated))
+        return false;
     resource.text_input_text = std::move(updated);
+    resource.text_input_offsets = std::move(updated_offsets);
     resource.text_input_state.text = resource.text_input_text.c_str();
     resource.text_input_state.document_length = static_cast<nk_text_position>(std::max<int64_t>(
         0, static_cast<int64_t>(resource.text_input_state.document_length) + delta));
+    return true;
 }
 
 void emit_text_edit(IOSSurface &resource, nk_text_edit_event payload,
@@ -1160,8 +1161,9 @@ void apply_text_edit_state(IOSSurface &resource, nk_text_edit_action action,
                            const std::string &text, nk_text_position selection_start,
                            nk_text_position selection_end, nk_text_position composition_start,
                            nk_text_position composition_end) {
-    if (replace_start != NK_TEXT_POSITION_NONE && replace_end != NK_TEXT_POSITION_NONE)
-        update_text_snapshot(resource, replace_start, replace_end, text);
+    if (replace_start != NK_TEXT_POSITION_NONE && replace_end != NK_TEXT_POSITION_NONE &&
+        !update_text_snapshot(resource, replace_start, replace_end, text))
+        return;
     resource.text_input_state.selection_start = selection_start;
     resource.text_input_state.selection_end = selection_end;
     resource.text_input_state.composition_start = composition_start;
@@ -2091,6 +2093,9 @@ void cancel_dialogs_for_parent(nk_handle parent);
         std::vector<uint32_t> points;
         if (!decode_utf8(text, points))
             return;
+        nk::core::TextOffsetMap text_offsets;
+        if (!text_offsets.assign(text))
+            return;
         NSRange replacement =
             resource->text_composing
                 ? native_range_for_positions(*resource, resource->text_composition_start,
@@ -2102,28 +2107,39 @@ void cancel_dialogs_for_parent(nk_handle parent);
             start = text_replacement_start(*resource);
             end = text_replacement_end(*resource);
         }
-        if (points.size() > std::numeric_limits<uint32_t>::max())
+        std::size_t text_units = 0;
+        if (!text_offsets.utf16CodeUnitOffset(static_cast<uint32_t>(points.size()), &text_units))
             return;
-        const NSUInteger text_units =
-            utf16_offset_for_codepoint(points, static_cast<uint32_t>(points.size()));
         const NSUInteger selected_start =
             selectedRange.location == NSNotFound
                 ? text_units
                 : std::min<NSUInteger>(selectedRange.location, text_units);
+        if (selectedRange.location != NSNotFound &&
+            selectedRange.length > std::numeric_limits<NSUInteger>::max() -
+                                       selectedRange.location)
+            return;
+        const NSUInteger selected_end_value = selectedRange.location == NSNotFound
+                                                  ? selected_start
+                                                  : selectedRange.location + selectedRange.length;
         const NSUInteger selected_end =
             selectedRange.location == NSNotFound
                 ? selected_start
-                : std::min<NSUInteger>(selectedRange.location + selectedRange.length, text_units);
-        const auto selection_start = static_cast<nk_text_position>(
-            start + codepoint_index_for_utf16(points, selected_start));
-        const auto selection_end =
-            static_cast<nk_text_position>(start + codepoint_index_for_utf16(points, selected_end));
+                : std::min<NSUInteger>(selected_end_value, text_units);
+        uint32_t selected_start_codepoint = 0;
+        uint32_t selected_end_codepoint = 0;
+        if (!text_offsets.codepointOffsetForUtf16(selected_start, &selected_start_codepoint) ||
+            !text_offsets.codepointOffsetForUtf16(selected_end, &selected_end_codepoint))
+            return;
+        const auto selection_start =
+            static_cast<nk_text_position>(start + selected_start_codepoint);
+        const auto selection_end = static_cast<nk_text_position>(start + selected_end_codepoint);
         const auto composition_end = static_cast<nk_text_position>(start + points.size());
         if (resource->text_input_active) {
             apply_text_edit_state(*resource, NK_TEXT_EDIT_COMPOSE, start, end, text,
                                   selection_start, selection_end, start, composition_end);
         } else {
-            update_text_snapshot(*resource, start, end, text);
+            if (!update_text_snapshot(*resource, start, end, text))
+                return;
             resource->text_composing = true;
             resource->text_composition_start = start;
             resource->text_composition_end = composition_end;
@@ -4038,6 +4054,10 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
                 return NK_ERROR_INVALID_HANDLE;
             }
             resource->text_input_text = text;
+            if (!resource->text_input_offsets.assign(resource->text_input_text)) {
+                nk::core::set_error("iOS text input offset mapping failed");
+                return NK_ERROR_OUT_OF_MEMORY;
+            }
             resource->text_input_state = *state;
             resource->text_input_state.text = resource->text_input_text.c_str();
             resource->text_input_selection_rects.clear();

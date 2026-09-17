@@ -33,6 +33,16 @@ int main() {
     assert(!utf16_to_codepoint_offset(std::u16string_view(unpaired_low), 1,
                                       &codepoint_offset));
 
+    nk::core::TextOffsetMap offset_map;
+    assert(offset_map.assign("a\U0001f600e\xcc\x81"));
+    std::size_t byte_offset = 0;
+    std::size_t unit_offset = 0;
+    assert(offset_map.utf8ByteOffset(2, &byte_offset) && byte_offset == 5);
+    assert(offset_map.utf16CodeUnitOffset(2, &unit_offset) && unit_offset == 3);
+    assert(offset_map.codepointOffsetForUtf16(3, &codepoint_offset) && codepoint_offset == 2);
+    assert(!offset_map.codepointOffsetForUtf16(2, &codepoint_offset));
+    assert(!offset_map.assign(std::string_view("\xf0\x9f\x98", 3)));
+
     nk_text_input_state state{};
     state.struct_size = sizeof(state);
     state.text_start = 10;
