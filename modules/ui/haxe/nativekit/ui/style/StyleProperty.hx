@@ -190,8 +190,11 @@ class StyleProperty<T> {
 		"shadowOffsetX", 0.0, false, StyleImpact.Paint, floatInterpolate);
 	public static final ShadowOffsetY:StyleProperty<Float> = new StyleProperty(
 		"shadowOffsetY", 0.0, false, StyleImpact.Paint, floatInterpolate);
+	/** UI-facing blur radius. The native renderer converts it to Gaussian sigma. */
 	public static final ShadowBlur:StyleProperty<Float> = new StyleProperty(
 		"shadowBlur", 0.0, false, StyleImpact.Paint, floatInterpolate);
+	public static final ShadowSpread:StyleProperty<Float> = new StyleProperty(
+		"shadowSpread", 0.0, false, StyleImpact.Paint, floatInterpolate);
 	public static final Opacity:StyleProperty<Float> = new StyleProperty(
 		"opacity", 1.0, false, StyleImpact.Composite, floatInterpolate);
 	/** Ordered post-layout filters applied to this node and its descendants. */
@@ -253,6 +256,7 @@ class StyleProperty<T> {
 				dynamicProperty(LetterSpacing), dynamicProperty(BorderColor), dynamicProperty(BorderWidth),
 				dynamicProperty(OutlineColor), dynamicProperty(OutlineWidth), dynamicProperty(ShadowColor),
 				dynamicProperty(ShadowOffsetX), dynamicProperty(ShadowOffsetY), dynamicProperty(ShadowBlur),
+				dynamicProperty(ShadowSpread),
 				dynamicProperty(Opacity), dynamicProperty(Effects), dynamicProperty(BackdropEffects),
 				dynamicProperty(StyleProperty.Mask),
 				dynamicProperty(ProgressTrackColor), dynamicProperty(ProgressFillColor),

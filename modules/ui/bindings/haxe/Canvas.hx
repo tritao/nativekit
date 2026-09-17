@@ -250,7 +250,11 @@ class Canvas {
 	public function drawSurface(surface:GraphicsSurface, rect:Rect):Void
 		commands.drawSurface(surface, rect.x, rect.y, rect.width, rect.height);
 
-	/** Paints a rounded-rectangle shadow directly with the native geometry renderer. */
+	/**
+	 * Paints a rounded-rectangle shadow directly with the native geometry renderer.
+	 * `blurRadius` is the UI-facing visible blur radius; the backend converts it to
+	 * the Gaussian sigma used by the shader so the radius remains stable across backends.
+	 */
 	public function drawBoxShadow(rect:Rect, offsetX:Float, offsetY:Float, blurRadius:Float,
 		spread:Float, radii:Array<Float>, color:Color):Void {
 		if (rect == null || color == null || rect.width <= 0.0 || rect.height <= 0.0 ||
@@ -261,7 +265,7 @@ class Canvas {
 			if (!Math.isFinite(radius) || radius < 0.0)
 				throw "Box shadow radii must be finite and non-negative";
 		commands.drawBoxShadow(rect.x, rect.y, rect.width, rect.height, offsetX, offsetY,
-			blurRadius, spread, radii, color);
+			blurRadius / 3.0, spread, radii, color);
 	}
 
 	public function drawText(layout:TextLayout, x:Float, y:Float):Void

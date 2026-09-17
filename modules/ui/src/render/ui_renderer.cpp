@@ -1777,7 +1777,7 @@ bool UiRendererImpl::drawBoxShadow(float x, float y, float width, float height,
         if (!std::isfinite(value) || value < 0.0f || value > 1.0f)
             return fail(*state_, "invalid box-shadow color");
     if (!std::isfinite(shadow.offset_x) || !std::isfinite(shadow.offset_y) ||
-        !std::isfinite(shadow.blur_radius) || shadow.blur_radius < 0.0f ||
+        !std::isfinite(shadow.blur_sigma) || shadow.blur_sigma < 0.0f ||
         !std::isfinite(shadow.spread))
         return fail(*state_, "invalid box-shadow parameters");
     for (int index = 0; index < 6; ++index)
@@ -1793,7 +1793,7 @@ bool UiRendererImpl::drawBoxShadow(float x, float y, float width, float height,
         return fail(*state_, "box-shadow geometry overflow");
     if (shape_width <= 0.0f || shape_height <= 0.0f)
         return true;
-    const float blur_extent = shadow.blur_radius * 3.0f;
+    const float blur_extent = shadow.blur_sigma * 3.0f;
     if (!std::isfinite(blur_extent))
         return fail(*state_, "box-shadow blur is too large");
     const float left = shape_x - blur_extent;
@@ -1812,7 +1812,7 @@ bool UiRendererImpl::drawBoxShadow(float x, float y, float width, float height,
     const std::vector<uint32_t> indices = {0, 1, 2, 0, 2, 3};
     BoxShadowUniforms uniforms{};
     uniforms.value[0] = {x, y, width, height};
-    uniforms.value[1] = {shadow.offset_x, shadow.offset_y, shadow.blur_radius, shadow.spread};
+    uniforms.value[1] = {shadow.offset_x, shadow.offset_y, shadow.blur_sigma, shadow.spread};
     uniforms.value[2] = shadow.radii;
     uniforms.value[3] = {shadow.color[0], shadow.color[1], shadow.color[2],
                           shadow.color[3] * opacity};

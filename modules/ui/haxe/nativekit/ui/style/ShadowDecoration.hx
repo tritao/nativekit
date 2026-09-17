@@ -10,14 +10,15 @@ class ShadowDecoration implements Decoration {
 	public final color:Null<Color>;
 	public final offsetX:Null<Float>;
 	public final offsetY:Null<Float>;
-	public final blur:Null<Float>;
+	/** Optional UI-facing blur radius override. */
+	public final blurRadius:Null<Float>;
 	public final spread:Null<Float>;
 
-	public function new(?color:Color, ?offsetX:Float, ?offsetY:Float, ?blur:Float, ?spread:Float) {
+	public function new(?color:Color, ?offsetX:Float, ?offsetY:Float, ?blurRadius:Float, ?spread:Float) {
 		this.color = color;
 		this.offsetX = offsetX;
 		this.offsetY = offsetY;
-		this.blur = blur;
+		this.blurRadius = blurRadius;
 		this.spread = spread;
 	}
 
@@ -25,14 +26,14 @@ class ShadowDecoration implements Decoration {
 		var shadowColor = color == null ? style.get(StyleProperty.ShadowColor) : color;
 		var x = offsetX == null ? style.get(StyleProperty.ShadowOffsetX) : offsetX;
 		var y = offsetY == null ? style.get(StyleProperty.ShadowOffsetY) : offsetY;
-		var radius = blur == null ? style.get(StyleProperty.ShadowBlur) : blur;
+		var radius = blurRadius == null ? style.get(StyleProperty.ShadowBlur) : blurRadius;
 		if (shadowColor == null || shadowColor.alpha <= 0.0)
 			return;
 		var topLeft = style.get(StyleProperty.RadiusTopLeft);
 		var topRight = style.get(StyleProperty.RadiusTopRight);
 		var bottomRight = style.get(StyleProperty.RadiusBottomRight);
 		var bottomLeft = style.get(StyleProperty.RadiusBottomLeft);
-		var resolvedSpread = spread == null ? 0.0 : spread;
+		var resolvedSpread = spread == null ? style.get(StyleProperty.ShadowSpread) : spread;
 		canvas.drawBoxShadow(new Rect(0.0, 0.0, geometry.width, geometry.height), x, y, radius,
 			resolvedSpread, [topLeft, topRight, bottomRight, bottomLeft], shadowColor);
 	}

@@ -71,7 +71,7 @@ bool valid_box_shadow_descriptor(const RenderCommand &command) {
         return false;
     const auto &shadow = command.box_shadow;
     if (!std::isfinite(shadow.offset_x) || !std::isfinite(shadow.offset_y) ||
-        !std::isfinite(shadow.blur_radius) || shadow.blur_radius < 0.0f ||
+        !std::isfinite(shadow.blur_sigma) || shadow.blur_sigma < 0.0f ||
         !std::isfinite(shadow.spread))
         return false;
     for (const float value : shadow.radii)

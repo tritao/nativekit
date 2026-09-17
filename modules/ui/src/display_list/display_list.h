@@ -133,6 +133,17 @@ struct MaskDescriptor {
     std::array<float, 8> values{};
 };
 
+/** Geometry-aware decoration shadow; unlike DropShadow it does not filter a subtree. */
+struct BoxShadowDescriptor {
+    float offset_x = 0.0f;
+    float offset_y = 0.0f;
+    /** Gaussian sigma in renderer space; the public UI property is a blur radius. */
+    float blur_sigma = 0.0f;
+    float spread = 0.0f;
+    std::array<float, 4> radii{};
+    std::array<float, 4> color{};
+};
+
 struct CommandHeader {
     CommandOpcode opcode{};
     uint16_t version = 1;
@@ -193,7 +204,7 @@ struct DrawBoxShadowCommand {
     float height;
     float offset_x;
     float offset_y;
-    float blur_radius;
+    float blur_sigma;
     float spread;
     float radii[4];
     float color[4];
@@ -332,7 +343,7 @@ class DisplayList {
     bool end_layer();
     bool draw_render_target(ResourceId target, float x, float y, float width, float height);
     bool draw_box_shadow(float x, float y, float width, float height, float offset_x,
-                         float offset_y, float blur_radius, float spread,
+                         float offset_y, float blur_sigma, float spread,
                          const float radii[4], const float color[4]);
     /** Returns whether the validated command stream contains a backdrop layer. */
     bool has_backdrop_effects() const;

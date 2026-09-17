@@ -150,7 +150,7 @@ void hash_command(uint64_t &hash, const RenderCommand &command) {
     hash_u64(hash, command.content_generation);
     hash_float(hash, command.box_shadow.offset_x);
     hash_float(hash, command.box_shadow.offset_y);
-    hash_float(hash, command.box_shadow.blur_radius);
+    hash_float(hash, command.box_shadow.blur_sigma);
     hash_float(hash, command.box_shadow.spread);
     for (const float value : command.box_shadow.radii)
         hash_float(hash, value);
@@ -540,7 +540,7 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
             auto &command = pass->commands.back();
             command.box_shadow.offset_x = value.offset_x;
             command.box_shadow.offset_y = value.offset_y;
-            command.box_shadow.blur_radius = value.blur_radius;
+            command.box_shadow.blur_sigma = value.blur_sigma;
             command.box_shadow.spread = value.spread;
             std::copy(std::begin(value.radii), std::end(value.radii),
                       command.box_shadow.radii.begin());

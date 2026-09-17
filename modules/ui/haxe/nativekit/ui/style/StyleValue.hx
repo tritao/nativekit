@@ -108,6 +108,9 @@ class StyleValue {
 	public static function shadowBlur(value:Float):StyleValue
 		return of(StyleProperty.ShadowBlur, value);
 
+	public static function shadowSpread(value:Float):StyleValue
+		return of(StyleProperty.ShadowSpread, value);
+
 	public static function opacity(value:Float):StyleValue
 		return of(StyleProperty.Opacity, value);
 

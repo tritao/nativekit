@@ -2,7 +2,6 @@
 #define NATIVEKIT_UI_RENDERER_H
 
 #include "nativekit_graphics.h"
-#include "compositor/render_plan.h"
 #include "display_list/display_list.h"
 #include "prepare/nanovg_path.h"
 #include "prepare/skribidi_adapter.h"
