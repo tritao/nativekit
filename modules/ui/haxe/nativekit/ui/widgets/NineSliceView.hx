@@ -10,6 +10,10 @@ import nativekit.ui.core.View;
 import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.Semantics;
 import nativekit.ui.style.NineSliceDecoration;
+import nativekit.ui.style.DecorationChain;
+import nativekit.ui.style.StyleProperty;
+import nativekit.ui.style.StyleSource;
+import nativekit.ui.style.StyleTarget;
 
 /** Accessible image view that preserves four edge insets while stretching its center. */
 class NineSliceView implements View {
@@ -39,10 +43,23 @@ class NineSliceView implements View {
 
 	public function build(context:BuildContext):RenderNode {
 		return context.withScope(new Key(key), function() {
-			var node = new RenderNode(context.id("nine-slice"), LayoutVisualKind.Custom, style);
+			var nodeId = context.id("nine-slice");
+			var computed = context.resolveStyle(new StyleTarget("nine-slice", key, key,
+				null, ["nine-slice"], context.interactionStates.get(nodeId)), style);
+			var resolvedDecorations = computed.get(StyleProperty.Decorations);
+			var decorationSource = computed.source(StyleProperty.Decorations);
+			if ((resolvedDecorations == null || resolvedDecorations.decorations.length == 0) &&
+				decorationSource != null && decorationSource.stylesheet == "framework" &&
+				decorationSource.selector == "default")
+				computed.set(StyleProperty.Decorations, DecorationChain.of([
+					new NineSliceDecoration(image, left, top, right, bottom)
+				]), new StyleSource("framework", "nine-slice", -1, "default"));
+			var node = new RenderNode(nodeId, LayoutVisualKind.Custom, computed.toLayoutStyle());
+			node.setStyleIdentity("nine-slice", key, key, null, ["nine-slice"]);
+			node.states = context.interactionStates.get(nodeId);
+			node.computedStyle = computed;
 			if (label != null)
 				node.semantics = new Semantics(AccessibilityRole.Image, label);
-			node.addDecoration(new NineSliceDecoration(image, left, top, right, bottom));
 			return node;
 		});
 	}

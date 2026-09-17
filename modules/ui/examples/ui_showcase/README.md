@@ -3,7 +3,7 @@
 `ui_showcase` is the flagship interactive example for Haxeon UI, backed by
 NativeKit for native platform and rendering services. A searchable component catalog leads into pages for Overview,
 Controls, Text & Input, Layout, Scrolling & Data, Navigation & Overlays,
-Gestures & Motion, and Graphics Lab. The app includes a global light/dark
+Gestures & Motion, and Graphics Lab, including a dedicated Decorations page. The app includes a global light/dark
 switch and a collapsible inspector. Hover or click a preview widget to inspect
 its resolved bounds, clipping, focus/hover/press state, semantic role/actions,
 and nearby render tree; the inspector also includes a short API synopsis and
@@ -37,7 +37,12 @@ respectively. `--static-frame` renders one canonical Graphics Lab frame, and
 modules/ui/tools/showcase.sh --ui-smoke-test
 modules/ui/tools/showcase.sh --smoke-test
 modules/ui/tools/showcase.sh --static-frame --stats
+modules/ui/tools/showcase.sh --ui-visual-case=33 --stats
 ```
+
+The native `--ui-visual-case=N` mode renders one deterministic Explorer page
+and exits, which is useful for headless captures and focused resize/regression
+checks. Case 33 is the Decorations page.
 
 The WebGL host starts in the UI Explorer. The visual suite captures both the
 Graphics Lab and deterministic UI Explorer states: overview, dark/light and

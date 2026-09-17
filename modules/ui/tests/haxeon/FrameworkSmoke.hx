@@ -118,6 +118,7 @@ import nativekit.ui.style.StyleDiff;
 import nativekit.ui.style.StyleResolver;
 import nativekit.ui.style.StyleProperty;
 import nativekit.ui.style.StyleImpact;
+import nativekit.ui.style.StyleSource;
 import nativekit.ui.style.StyleDiff;
 import nativekit.ui.style.StyleSelector;
 import nativekit.ui.style.StyleSheet;
@@ -738,8 +739,14 @@ class FrameworkSmoke {
 		var nineSliceRoot = context.submit(new NineSliceView("nine-slice-smoke", image,
 			1.0, 1.0, 1.0, 1.0, "Scalable frame"), new LayoutFrame(256.0, 192.0));
 		var nineSliceSemantics:Semantics = cast nineSliceRoot.semantics;
+		var nineSliceDecorations:DecorationChain = nineSliceRoot.computedStyle == null ? null :
+			nineSliceRoot.computedStyle.get(StyleProperty.Decorations);
+		var nineSliceDecorationSource:Null<StyleSource> = nineSliceRoot.computedStyle == null ? null :
+			nineSliceRoot.computedStyle.source(StyleProperty.Decorations);
 		if (nineSliceSemantics == null || nineSliceSemantics.role != AccessibilityRole.Image ||
-			nineSliceSemantics.label != "Scalable frame")
+			nineSliceSemantics.label != "Scalable frame" || nineSliceDecorations == null ||
+			nineSliceDecorations.decorations.length != 1 || nineSliceDecorationSource == null ||
+			nineSliceDecorationSource.layer != "default")
 			return 238;
 		var imageCanvas = new Canvas();
 		var imageList = DisplayList.create();

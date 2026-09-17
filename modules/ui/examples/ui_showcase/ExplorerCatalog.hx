@@ -1,4 +1,5 @@
 import pages.ControlsPage;
+import pages.DecorationsPage;
 import pages.EffectsPage;
 import pages.GesturesPage;
 import pages.GraphicsPage;
@@ -43,6 +44,9 @@ class ExplorerCatalog {
 		new ExplorerPage("graphics-gradients", "Gradients", "graphics", "Linear gradients, color stops and transparency",
 			["gradient", "linear", "color stops", "alpha", "interpolation"],
 			function(explorer, items) { GraphicsPage.buildGradients(explorer, items); }),
+		new ExplorerPage("graphics-decorations", "Decorations", "graphics", "Stylesheet-driven backgrounds, borders, images and shadows",
+			["decoration", "background", "gradient", "border", "shadow", "image", "nine slice", "style"],
+			function(explorer, items) { DecorationsPage.build(explorer, items); }),
 		new ExplorerPage("graphics-effects", "Effects", "graphics", "Blur, color effects, masks and backdrop composition",
 			["effects", "blur", "brightness", "contrast", "saturate", "hue", "shadow", "mask", "backdrop"],
 			function(explorer, items) { EffectsPage.build(explorer, items); }),

@@ -51,6 +51,7 @@ import TextWrap;
 import nativekit.ui.widgets.VirtualList;
 import nativekit.ui.widgets.WindowChrome;
 import ExplorerCatalog;
+import pages.DecorationsPage;
 import pages.EffectsPage;
 import shell.ExplorerShell;
 import shell.OverlayHost;
@@ -67,6 +68,7 @@ import pages.ListsPage;
 /** Interactive showcase for the Haxeon UI framework. */
 @:allow(pages.GraphicsPage)
 @:allow(pages.ControlsPage)
+@:allow(pages.DecorationsPage)
 @:allow(pages.EffectsPage)
 @:allow(pages.GesturesPage)
 @:allow(pages.LayoutPage)
@@ -167,6 +169,7 @@ class UiExplorer {
 		demoLoadedImage = loadDemoImage(demoImagePath);
 		demoPixelLinear = createPixelImage(ImageFilter.Linear);
 		demoPixelNearest = createPixelImage(ImageFilter.Nearest);
+		DecorationsPage.installStyles(this);
 	}
 
 	/** Installs the native surface used by text editing, IME state, and accessibility. */
@@ -253,7 +256,7 @@ class UiExplorer {
 		ExplorerSmokeSequence.apply(state, frame);
 	}
 
-	/** Selects one of the deterministic browser screenshot states, 0-23. */
+	/** Selects one of the deterministic browser screenshot states, 0-33. */
 	public function setVisualCase(caseId:Int):Bool {
 		return ExplorerVisualCases.apply(this, caseId);
 	}
