@@ -156,7 +156,7 @@ int main() {
         embedded_destination.passes[1].target_descriptor.width != 80 ||
         embedded_destination.passes[1].target_descriptor.height != 40 ||
         embedded_destination.passes[1].commands.front().transform !=
-            std::array<float, 6>{1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f} ||
+            std::array<float, 6>{1.0f, 0.0f, 0.0f, 1.0f, -30.0f, -40.0f} ||
         embedded_destination.passes.front().commands.front().transform !=
             std::array<float, 6>{0.0f, 1.0f, -1.0f, 0.0f, 100.0f, 50.0f} ||
         embedded_destination.passes.front().commands.front().resource.value !=

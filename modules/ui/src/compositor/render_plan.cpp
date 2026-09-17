@@ -222,18 +222,12 @@ bool valid_embed_clip(const RenderPlanEmbedOptions &options) {
 void place_main_command(RenderCommand &command, const RenderPlanEmbedOptions &options) {
     const bool implicit_extent = command.kind == RenderCommandKind::CompositeTarget &&
                                  (command.width <= 0.0f || command.height <= 0.0f);
-    if (!implicit_extent)
+    // Custom paint commands already carry the resolved node transform from
+    // the Canvas display list. Only compositor-owned target composites are
+    // local to the embedded plan and need the embedding placement applied.
+    if (command.kind == RenderCommandKind::CompositeTarget && !implicit_extent)
         command.transform = compose_transform(options.placement, command.transform);
 
-    if (command.has_scissor) {
-        const EmbedBounds transformed =
-            transform_bounds(command.scissor_x, command.scissor_y, command.scissor_width,
-                             command.scissor_height, options.placement);
-        command.scissor_x = transformed.x;
-        command.scissor_y = transformed.y;
-        command.scissor_width = transformed.width;
-        command.scissor_height = transformed.height;
-    }
     if (options.has_clip) {
         const EmbedBounds clip{options.clip[0], options.clip[1], options.clip[2], options.clip[3]};
         const EmbedBounds current = command.has_scissor
@@ -326,6 +320,9 @@ bool append_embedded_render_plan(const RenderPlan &source, const RenderPlanEmbed
         RenderPass pass = source_pass;
         pass.target = remap_embedding_resource(pass.target, options);
         pass.input_target = remap_embedding_resource(pass.input_target, options);
+        float target_origin_delta_x = 0.0f;
+        float target_origin_delta_y = 0.0f;
+        bool has_bounded_target = false;
         if (pass.target_descriptor.logical_width > 0.0f ||
             pass.target_descriptor.logical_height > 0.0f) {
             if (!std::isfinite(pass.target_descriptor.logical_width) ||
@@ -339,6 +336,9 @@ bool append_embedded_render_plan(const RenderPlan &source, const RenderPlanEmbed
                                  pass.target_descriptor.logical_height, options.placement);
             if (!finite_bounds(transformed))
                 return fail_embed("embedded render-target transform is invalid");
+            target_origin_delta_x = transformed.x - pass.target_descriptor.origin_x;
+            target_origin_delta_y = transformed.y - pass.target_descriptor.origin_y;
+            has_bounded_target = true;
             pass.target_descriptor.origin_x = transformed.x;
             pass.target_descriptor.origin_y = transformed.y;
             const double width =
@@ -355,6 +355,16 @@ bool append_embedded_render_plan(const RenderPlan &source, const RenderPlanEmbed
             return fail_embed("embedded render-pass parameters are too large");
         for (auto &command : pass.commands) {
             command.resource = remap_embedding_resource(command.resource, options);
+            if (has_bounded_target) {
+                // Bounded pass commands are local to the source target origin.
+                // Rebase them when embedding moves that origin in the parent.
+                command.transform[4] -= target_origin_delta_x;
+                command.transform[5] -= target_origin_delta_y;
+                if (command.has_scissor) {
+                    command.scissor_x -= target_origin_delta_x;
+                    command.scissor_y -= target_origin_delta_y;
+                }
+            }
             command.transform = scale_transform(command.transform, options.pixel_scale);
             command.scissor_x *= options.pixel_scale;
             command.scissor_y *= options.pixel_scale;
