@@ -468,8 +468,7 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
                 }
                 if (!std::isfinite(spread) || !std::isfinite(left) || !std::isfinite(top) ||
                     !std::isfinite(right) || !std::isfinite(bottom) ||
-                    !std::isfinite(value.bounds.x - left) ||
-                    !std::isfinite(value.bounds.y - top) ||
+                    !std::isfinite(value.bounds.x - left) || !std::isfinite(value.bounds.y - top) ||
                     !std::isfinite(value.bounds.width + left + right) ||
                     !std::isfinite(value.bounds.height + top + bottom))
                     return fail(error, index, "effect bounds overflow");
@@ -557,11 +556,10 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
                 }
                 pass = &continue_pass(plan, current_target, layer_descriptor);
             }
-            layers.push_back({parent_target, layer_target, value.opacity, value.mode,
-                              value.bounds, value.has_bounds, parent_origin_x, parent_origin_y,
-                              layer_descriptor, value.effect, value.custom_effect,
-                              value.has_effect, value.mask, value.has_mask,
-                              value.backdrop_effect, value.has_backdrop, isolated});
+            layers.push_back({parent_target, layer_target, value.opacity, value.mode, value.bounds,
+                              value.has_bounds, parent_origin_x, parent_origin_y, layer_descriptor,
+                              value.effect, value.custom_effect, value.has_effect, value.mask,
+                              value.has_mask, value.backdrop_effect, value.has_backdrop, isolated});
             break;
         }
         case CommandOpcode::EndLayer: {
@@ -574,7 +572,7 @@ bool Compositor::compile(const DisplayList &display_list, ResourceId main_target
                 ResourceId composite_target = layer.layer_target;
                 if (layer.has_effect) {
                     const auto append_effect_pass = [&](ResourceId target, ResourceId input,
-                                                         EffectDescriptor effect) {
+                                                        EffectDescriptor effect) {
                         RenderPass effect_pass;
                         effect_pass.target = target;
                         effect_pass.target_descriptor = layer.target_descriptor;

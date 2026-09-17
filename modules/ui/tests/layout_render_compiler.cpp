@@ -28,7 +28,10 @@ class RecordingRenderer final : public UiRenderer {
     bool initialize() override { return true; }
     bool valid() const override { return true; }
     bool lost() const override { return false; }
-    bool beginFrame() override { ++frame_count; return true; }
+    bool beginFrame() override {
+        ++frame_count;
+        return true;
+    }
     bool beginWindowPass(int, int, bool) override {
         ++pass_count;
         return true;
@@ -65,8 +68,8 @@ class RecordingRenderer final : public UiRenderer {
         ++path_count;
         return true;
     }
-    bool drawPath(const PreparedPathData &path, uint32_t operation_index,
-                  const float[6], float) override {
+    bool drawPath(const PreparedPathData &path, uint32_t operation_index, const float[6],
+                  float) override {
         if (operation_index >= path.operations().size())
             return false;
         ++path_count;
@@ -81,8 +84,7 @@ class RecordingRenderer final : public UiRenderer {
         ++text_count;
         return true;
     }
-    bool drawGlyphs(const PreparedGlyphs &glyphs, const float[6], float, float,
-                    float) override {
+    bool drawGlyphs(const PreparedGlyphs &glyphs, const float[6], float, float, float) override {
         if (glyphs.vertices.empty())
             return false;
         ++text_count;
@@ -92,7 +94,9 @@ class RecordingRenderer final : public UiRenderer {
         return true;
     }
     bool compositeImage(nk_graphics_image, float, float, float, float, const float[6],
-                        float) override { return true; }
+                        float) override {
+        return true;
+    }
     bool applyEffect(ResourceId, const EffectDescriptor &) override {
         ++effect_count;
         return true;
@@ -102,7 +106,10 @@ class RecordingRenderer final : public UiRenderer {
         return true;
     }
     bool endPass() override { return true; }
-    bool endFrame() override { ++commit_count; return true; }
+    bool endFrame() override {
+        ++commit_count;
+        return true;
+    }
     UiRendererStats stats() const override { return {}; }
     const char *lastError() const override { return error.c_str(); }
 
@@ -173,8 +180,7 @@ int main() {
 
     LayoutSnapshot snapshot;
     LayoutError layout_error;
-    if (!engine.layout(nodes, 320.0f, 200.0f, 1.0f / 60.0f, snapshot,
-                       &layout_error))
+    if (!engine.layout(nodes, 320.0f, 200.0f, 1.0f / 60.0f, snapshot, &layout_error))
         return 4;
 
     LayoutRenderCompiler compiler;
@@ -212,7 +218,8 @@ int main() {
                 return 9;
             const float clip_x = (button_item->bounds.x + 10.0f) * 1.5f;
             const float clip_y = (button_item->bounds.y + 6.0f) * 1.5f;
-            if (!command.has_scissor || command.scissor_x != clip_x || command.scissor_y != clip_y ||
+            if (!command.has_scissor || command.scissor_x != clip_x ||
+                command.scissor_y != clip_y ||
                 command.scissor_width != button_item->bounds.width * 1.5f ||
                 command.scissor_height != button_item->bounds.height * 1.5f)
                 return 9;
@@ -223,7 +230,8 @@ int main() {
         }
     }
     const uint32_t expected_text_commands = static_cast<uint32_t>(std::count_if(
-        snapshot.primitives.begin(), snapshot.primitives.end(), [](const LayoutPrimitive &primitive) {
+        snapshot.primitives.begin(), snapshot.primitives.end(),
+        [](const LayoutPrimitive &primitive) {
             return primitive.kind == LayoutPrimitiveKind::Text && !primitive.text.empty();
         }));
     if (path_commands < 2 || text_commands != expected_text_commands)
@@ -252,17 +260,16 @@ int main() {
         rtl_nodes.push_back(rtl_text);
 
         LayoutSnapshot rtl_snapshot;
-        if (!engine.layout(rtl_nodes, 320.0f, 80.0f, 1.0f / 60.0f, rtl_snapshot,
-                           &layout_error))
+        if (!engine.layout(rtl_nodes, 320.0f, 80.0f, 1.0f / 60.0f, rtl_snapshot, &layout_error))
             return 14;
         const auto rtl_primitive = std::find_if(
             rtl_snapshot.primitives.begin(), rtl_snapshot.primitives.end(),
             [](const LayoutPrimitive &primitive) {
                 return primitive.kind == LayoutPrimitiveKind::Text && primitive.node_id == 11;
             });
-        const auto rtl_layout = std::find_if(
-            rtl_snapshot.text_layouts.begin(), rtl_snapshot.text_layouts.end(),
-            [](const LayoutTextLayout &layout) { return layout.node_id == 11; });
+        const auto rtl_layout =
+            std::find_if(rtl_snapshot.text_layouts.begin(), rtl_snapshot.text_layouts.end(),
+                         [](const LayoutTextLayout &layout) { return layout.node_id == 11; });
         const LayoutItem *rtl_item = rtl_snapshot.find(11);
         if (rtl_primitive == rtl_snapshot.primitives.end() ||
             rtl_layout == rtl_snapshot.text_layouts.end() || rtl_layout->lines.size() != 1 ||
@@ -276,8 +283,8 @@ int main() {
             return 14;
 
         LayoutRenderFrame rtl_frame;
-        if (!compiler.compile(rtl_snapshot, main_target, 1.0f, rtl_frame, &compile_error,
-                              false, engine.text_adapter()))
+        if (!compiler.compile(rtl_snapshot, main_target, 1.0f, rtl_frame, &compile_error, false,
+                              engine.text_adapter()))
             return 14;
         const auto rtl_command = std::find_if(
             rtl_frame.plan().passes.front().commands.begin(),
@@ -309,9 +316,11 @@ int main() {
     // Custom display-list commands join the ordered layout stream at the
     // node marker, before that node's descendants.
     LayoutSnapshot ordered_snapshot = snapshot;
-    const auto label_primitive = std::find_if(
-        ordered_snapshot.primitives.begin(), ordered_snapshot.primitives.end(),
-        [](const LayoutPrimitive &primitive) { return primitive.kind == LayoutPrimitiveKind::Text; });
+    const auto label_primitive =
+        std::find_if(ordered_snapshot.primitives.begin(), ordered_snapshot.primitives.end(),
+                     [](const LayoutPrimitive &primitive) {
+                         return primitive.kind == LayoutPrimitiveKind::Text;
+                     });
     if (label_primitive == ordered_snapshot.primitives.end())
         return 20;
     LayoutPrimitive custom_marker;
@@ -333,13 +342,13 @@ int main() {
     custom_plan.passes.front().commands.push_back(custom_command);
     LayoutRenderCompiler::CustomPaintPlans custom_paints{{2, &custom_plan}};
     LayoutRenderFrame ordered_frame;
-    if (!compiler.compile(ordered_snapshot, main_target, 1.5f, ordered_frame, &compile_error,
-                          false, engine.text_adapter(), &custom_paints))
+    if (!compiler.compile(ordered_snapshot, main_target, 1.5f, ordered_frame, &compile_error, false,
+                          engine.text_adapter(), &custom_paints))
         return 21;
     const auto &ordered_commands = ordered_frame.plan().passes.front().commands;
-    const auto custom_position = std::find_if(
-        ordered_commands.begin(), ordered_commands.end(),
-        [](const RenderCommand &command) { return command.custom_payload; });
+    const auto custom_position =
+        std::find_if(ordered_commands.begin(), ordered_commands.end(),
+                     [](const RenderCommand &command) { return command.custom_payload; });
     if (custom_position == ordered_commands.end() || custom_position == ordered_commands.begin() ||
         custom_position + 1 == ordered_commands.end() ||
         (custom_position - 1)->kind != RenderCommandKind::Path ||
@@ -358,8 +367,7 @@ int main() {
     bounded_descriptor.logical_height = 10.0f;
     bounded_descriptor.origin_x = 2.0f;
     bounded_descriptor.origin_y = 3.0f;
-    bounded_custom_plan.passes.push_back({bounded_target, bounded_descriptor, false,
-                                          {}});
+    bounded_custom_plan.passes.push_back({bounded_target, bounded_descriptor, false, {}});
     bounded_custom_plan.passes.front().commands.push_back(
         {RenderCommandKind::CompositeTarget, bounded_target, 2.0f, 3.0f, 20.0f, 10.0f});
     RenderCommand bounded_command{RenderCommandKind::Path, custom_path};
@@ -373,8 +381,8 @@ int main() {
     bounded_custom_plan.dependencies.push_back({bounded_target, main_target});
     LayoutRenderCompiler::CustomPaintPlans bounded_paints{{2, &bounded_custom_plan}};
     LayoutRenderFrame bounded_frame;
-    if (!compiler.compile(ordered_snapshot, main_target, 1.5f, bounded_frame, &compile_error,
-                          false, engine.text_adapter(), &bounded_paints) ||
+    if (!compiler.compile(ordered_snapshot, main_target, 1.5f, bounded_frame, &compile_error, false,
+                          engine.text_adapter(), &bounded_paints) ||
         bounded_frame.plan().passes.size() != 2)
         return 23;
     const auto &bounded_pass = bounded_frame.plan().passes[1];
@@ -388,15 +396,14 @@ int main() {
         bounded_pass.target_descriptor.width != 30 || bounded_pass.target_descriptor.height != 15 ||
         bounded_pass.target_descriptor.origin_x != 12.0f ||
         bounded_pass.target_descriptor.origin_y != 9.0f ||
-        bounded_pass.commands.front().transform != std::array<float, 6>{1.5f, 0.0f, 0.0f, 1.5f,
-                                                                          30.0f, 45.0f} ||
+        bounded_pass.commands.front().transform !=
+            std::array<float, 6>{1.5f, 0.0f, 0.0f, 1.5f, 30.0f, 45.0f} ||
         bounded_pass.commands.front().scissor_x != 6.0f ||
         bounded_pass.commands.front().scissor_y != 7.5f ||
         bounded_pass.commands.front().scissor_width != 9.0f ||
         bounded_pass.commands.front().scissor_height != 10.5f ||
         bounded_composite == bounded_frame.plan().passes.front().commands.end() ||
-        bounded_composite->transform != std::array<float, 6>{1.5f, 0.0f, 0.0f, 1.5f, 15.0f,
-                                                              9.0f})
+        bounded_composite->transform != std::array<float, 6>{1.5f, 0.0f, 0.0f, 1.5f, 15.0f, 9.0f})
         return 24;
 
     const ResourceId scaled_effect_input = make_resource_id(ResourceKind::RenderTarget, 1, 448);
@@ -442,8 +449,8 @@ int main() {
     frame_target.width = 480;
     frame_target.height = 300;
     RenderExecutionError execution_error;
-    if (!execute_render_plan(backend, frame.plan(), frame.resources(),
-                             {main_target, frame_target}, &execution_error) ||
+    if (!execute_render_plan(backend, frame.plan(), frame.resources(), {main_target, frame_target},
+                             &execution_error) ||
         backend.pass_count != 1 || backend.path_count != path_commands ||
         backend.text_count != text_commands || backend.commit_count != 1)
         return 12;
@@ -463,8 +470,8 @@ int main() {
     effect_pass.effect.color_matrix[12] = 1.0f;
     effect_pass.effect.color_matrix[18] = 1.0f;
     effect_plan.passes.push_back(effect_pass);
-    if (!execute_render_plan(backend, effect_plan, frame.resources(),
-                             {main_target, frame_target}, &execution_error) ||
+    if (!execute_render_plan(backend, effect_plan, frame.resources(), {main_target, frame_target},
+                             &execution_error) ||
         backend.effect_count != 1 || backend.commit_count != 2)
         return 25;
 
@@ -483,8 +490,8 @@ int main() {
     mask_pass.mask.values[4] = 0.0f;
     mask_pass.mask.values[5] = 1.0f;
     mask_plan.passes.push_back(mask_pass);
-    if (!execute_render_plan(backend, mask_plan, frame.resources(),
-                             {main_target, frame_target}, &execution_error) ||
+    if (!execute_render_plan(backend, mask_plan, frame.resources(), {main_target, frame_target},
+                             &execution_error) ||
         backend.mask_count != 1 || backend.commit_count != 3)
         return 28;
 
@@ -535,7 +542,8 @@ int main() {
         return 17;
     const auto *transformed_path = frame.resources().path(clipped_command.resource);
     if (!transformed_path ||
-        transformed_path->path->operations()[transformed_path->operation_index].bounds[0] != 30.0f ||
+        transformed_path->path->operations()[transformed_path->operation_index].bounds[0] !=
+            30.0f ||
         transformed_path->path->operations()[transformed_path->operation_index].bounds[1] != 45.0f)
         return 18;
 

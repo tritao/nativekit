@@ -69,9 +69,9 @@ int main() {
     for (const auto &batch : glyphs.batches) {
         bool matched_generation = false;
         for (const auto &upload : first_query)
-            matched_generation = matched_generation ||
-                                 (upload.texture.value == batch.atlas.value &&
-                                  upload.generation == batch.atlas_generation);
+            matched_generation =
+                matched_generation || (upload.texture.value == batch.atlas.value &&
+                                       upload.generation == batch.atlas_generation);
         if (!matched_generation)
             return 11;
     }
@@ -83,8 +83,8 @@ int main() {
     for (const auto &upload : first_query)
         if (!upload.texture.value || !upload.pixels ||
             (upload.bytes_per_pixel != 1 && upload.bytes_per_pixel != 4) || upload.width <= 0 ||
-            upload.height <= 0 || upload.row_pitch <= 0 ||
-            !upload.generation || !upload.dirty_epoch ||
+            upload.height <= 0 || upload.row_pitch <= 0 || !upload.generation ||
+            !upload.dirty_epoch ||
             !adapter.acknowledge_atlas_upload(upload.texture, upload.dirty_epoch))
             return 13;
     if (!adapter.pending_atlas_uploads().empty())
@@ -159,7 +159,8 @@ int main() {
     }
     if (!replaced_first_epoch || !adapter.pending_atlas_uploads().empty())
         return 29;
-    if (adapter.layout_build_count() != 1 || adapter.layout_generation() != stable_layout_generation)
+    if (adapter.layout_build_count() != 1 ||
+        adapter.layout_generation() != stable_layout_generation)
         return 30;
 
     if (!adapter.layout_utf8("😀", 80.0f, 32.0f))
@@ -202,8 +203,7 @@ int main() {
         for (std::size_t right = left + 1; right < mixed_rects.size(); ++right) {
             const auto &a = mixed_rects[left];
             const auto &b = mixed_rects[right];
-            const float overlap_width =
-                std::min(a.x + a.width, b.x + b.width) - std::max(a.x, b.x);
+            const float overlap_width = std::min(a.x + a.width, b.x + b.width) - std::max(a.x, b.x);
             const float overlap_height =
                 std::min(a.y + a.height, b.y + b.height) - std::max(a.y, b.y);
             if (overlap_width > 0.01f && overlap_height > 0.01f)
@@ -227,7 +227,7 @@ int main() {
     wrapped_options.wrap = TextWrapMode::WordCharacter;
     TextLayoutResult wrapped;
     if (!adapter.layout_utf8("Skribidi owns paragraph wrapping in NativeKit", 90.0f,
-                            wrapped_options, &wrapped) ||
+                             wrapped_options, &wrapped) ||
         !wrapped.id || wrapped.lines.size() < 2)
         return 39;
     PreparedGlyphs first_line;
@@ -255,8 +255,7 @@ int main() {
         adapter.layout_build_count() != direction_builds + 2)
         return 45;
     direction_options.direction = TextDirection::Auto;
-    if (!adapter.layout_utf8("NativeKit", 300.0f, direction_options,
-                             &automatic_direction_again) ||
+    if (!adapter.layout_utf8("NativeKit", 300.0f, direction_options, &automatic_direction_again) ||
         automatic_direction_again.id != automatic_direction.id ||
         adapter.layout_build_count() != direction_builds + 2)
         return 46;
@@ -276,10 +275,10 @@ int main() {
     const uint32_t retained_builds = adapter.layout_build_count();
     PreparedGlyphs retained_first_glyphs;
     PreparedGlyphs retained_second_glyphs;
-    if (!adapter.prepare_glyphs_for_line(retained_first.id, 0, 0.0f, 0.0f, 1.0f,
-                                         GlyphMode::Alpha, retained_first_glyphs) ||
-        !adapter.prepare_glyphs_for_line(retained_second.id, 0, 0.0f, 0.0f, 1.0f,
-                                         GlyphMode::Alpha, retained_second_glyphs) ||
+    if (!adapter.prepare_glyphs_for_line(retained_first.id, 0, 0.0f, 0.0f, 1.0f, GlyphMode::Alpha,
+                                         retained_first_glyphs) ||
+        !adapter.prepare_glyphs_for_line(retained_second.id, 0, 0.0f, 0.0f, 1.0f, GlyphMode::Alpha,
+                                         retained_second_glyphs) ||
         retained_first_glyphs.layout_id != retained_first.id ||
         retained_second_glyphs.layout_id != retained_second.id ||
         adapter.layout_build_count() != retained_builds)

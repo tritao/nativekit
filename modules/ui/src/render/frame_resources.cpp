@@ -36,7 +36,7 @@ bool FrameResources::bind_text(ResourceId id, const PreparedGlyphs &glyphs,
 }
 
 bool FrameResources::bind_surface(ResourceId id, SurfaceProducer &producer,
-                                   uint64_t content_generation) {
+                                  uint64_t content_generation) {
     if (!is_resource_id(id, ResourceKind::RenderTarget))
         return false;
     surfaces_[id.value] = &producer;
@@ -45,7 +45,7 @@ bool FrameResources::bind_surface(ResourceId id, SurfaceProducer &producer,
 }
 
 bool FrameResources::bind_graphics_image(ResourceId id, nk_graphics_image image,
-                                          uint64_t content_generation) {
+                                         uint64_t content_generation) {
     if (!is_resource_id(id, ResourceKind::RenderTarget) || !image.id)
         return false;
     graphics_images_[id.value] = image;

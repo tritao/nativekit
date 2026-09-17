@@ -2259,11 +2259,10 @@ std::shared_ptr<GtkWindowResource> window(nk_handle handle) {
         nk::core::handles().get(handle, nk::core::ResourceType::window));
 }
 
-nk_window_decoration_region_kind decoration_region_at(
-    const std::vector<nk_window_decoration_region> &regions, float x, float y) {
+nk_window_decoration_region_kind
+decoration_region_at(const std::vector<nk_window_decoration_region> &regions, float x, float y) {
     for (auto iter = regions.rbegin(); iter != regions.rend(); ++iter) {
-        if (x >= iter->x && y >= iter->y && x < iter->x + iter->width &&
-            y < iter->y + iter->height)
+        if (x >= iter->x && y >= iter->y && x < iter->x + iter->width && y < iter->y + iter->height)
             return iter->kind;
     }
     return NK_WINDOW_DECORATION_CLIENT;
@@ -2273,8 +2272,7 @@ bool begin_decoration_drag(GtkWindowResource &resource, GdkEventButton &event) {
     if (resource.decorated || resource.wrapped || event.type != GDK_BUTTON_PRESS ||
         event.button != 1)
         return false;
-    const auto kind = decoration_region_at(resource.decoration_regions,
-                                           static_cast<float>(event.x),
+    const auto kind = decoration_region_at(resource.decoration_regions, static_cast<float>(event.x),
                                            static_cast<float>(event.y));
     if (kind == NK_WINDOW_DECORATION_DRAG) {
         gtk_window_begin_move_drag(GTK_WINDOW(resource.window), event.button, event.x_root,
@@ -4065,8 +4063,9 @@ nk_result NK_CALL nk_window_set_decorated(nk_handle h, uint32_t enabled) {
     return NK_OK;
 }
 
-nk_result NK_CALL nk_window_set_decoration_regions(
-    nk_handle h, const nk_window_decoration_region *regions, uint32_t region_count) {
+nk_result NK_CALL nk_window_set_decoration_regions(nk_handle h,
+                                                   const nk_window_decoration_region *regions,
+                                                   uint32_t region_count) {
     try {
         if (const auto result = enter_ui(); result != NK_OK)
             return result;

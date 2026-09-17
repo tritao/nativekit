@@ -102,8 +102,8 @@ bool near(float left, float right) {
 }
 
 bool matches_recorded(const PreparedGeometry &direct, const PreparedPathData &recorded,
-                     uint32_t operation_index, bool compare_fill_rule = true,
-                     bool compare_fringe = true) {
+                      uint32_t operation_index, bool compare_fill_rule = true,
+                      bool compare_fringe = true) {
     if (operation_index >= recorded.operations().size())
         return false;
     const auto &operation = recorded.operations()[operation_index];
@@ -115,7 +115,7 @@ bool matches_recorded(const PreparedGeometry &direct, const PreparedPathData &re
     if (operation.kind == PreparedPathKind::Fill)
         for (size_t index = 0; index < direct.bounds.size(); ++index)
             if (!near(direct.bounds[index], operation.bounds[index]))
-            return false;
+                return false;
     uint32_t vertex_offset = UINT32_MAX;
     uint32_t vertex_end = 0;
     for (uint32_t index = 0; index < operation.path_count; ++index) {
@@ -243,8 +243,7 @@ bool direct_matches_compatibility() {
 
     PathPreparationParams hole_params;
     PreparedGeometry hole;
-    if (!prepare_fill(hole_path, hole_params, hole) ||
-        !matches_recorded(hole, recorder.data(), 3))
+    if (!prepare_fill(hole_path, hole_params, hole) || !matches_recorded(hole, recorder.data(), 3))
         return false;
     hole_params.fill_rule = PathFillRule::EvenOdd;
     PreparedGeometry even_odd_hole;
@@ -259,8 +258,9 @@ bool direct_matches_compatibility() {
     transformed_stroke_params.edge_antialias = false;
     transformed_stroke_params.fringe_width = 0.0f;
     transformed_stroke_params.stroke_width =
-        5.5f * (std::sqrt(transformed[0] * transformed[0] + transformed[2] * transformed[2]) +
-                std::sqrt(transformed[1] * transformed[1] + transformed[3] * transformed[3])) *
+        5.5f *
+        (std::sqrt(transformed[0] * transformed[0] + transformed[2] * transformed[2]) +
+         std::sqrt(transformed[1] * transformed[1] + transformed[3] * transformed[3])) *
         0.5f;
     transformed_stroke_params.line_cap = PathLineCap::Butt;
     transformed_stroke_params.line_join = PathLineJoin::Miter;
@@ -297,8 +297,7 @@ int main() {
     fill_params.fill_rule = PathFillRule::EvenOdd;
     PreparedGeometry fill;
     if (!prepare_fill(path, fill_params, fill) || fill.paths.empty() || fill.vertices.empty() ||
-        fill.fill_rule != PathFillRule::EvenOdd || fill.bounds[0] < 25.0f ||
-        fill.bounds[1] < 27.0f)
+        fill.fill_rule != PathFillRule::EvenOdd || fill.bounds[0] < 25.0f || fill.bounds[1] < 27.0f)
         return 3;
     auto shared_fill = std::make_shared<const PreparedGeometry>(fill);
     PreparedPath shared_path;

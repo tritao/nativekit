@@ -158,16 +158,14 @@ class UiRenderer {
         return applyEffect(source, effect);
     }
     /** Applies a registered custom effect; shader and pipeline ownership stays native. */
-    virtual bool applyCustomEffect(ResourceId source,
-                                   const CustomEffectDescriptor &effect) {
+    virtual bool applyCustomEffect(ResourceId source, const CustomEffectDescriptor &effect) {
         (void)source;
         (void)effect;
         return false;
     }
     /** Region variant used by bounded capture passes. */
-    virtual bool applyCustomEffectRegion(ResourceId source,
-                                         const CustomEffectDescriptor &effect, float x, float y,
-                                         float width, float height) {
+    virtual bool applyCustomEffectRegion(ResourceId source, const CustomEffectDescriptor &effect,
+                                         float x, float y, float width, float height) {
         (void)x;
         (void)y;
         (void)width;

@@ -104,8 +104,8 @@ struct CApiShowcase {
             if (nkui_font_collection_add_data(fonts, "IBMPlexSans-Regular", font_data, font_bytes,
                                               NKUI_FONT_FAMILY_DEFAULT) != NKUI_OK)
                 return false;
-        } else if (nkui_font_collection_add(fonts, NKUI_TEST_FONT_PATH,
-                                            NKUI_FONT_FAMILY_DEFAULT) != NKUI_OK) {
+        } else if (nkui_font_collection_add(fonts, NKUI_TEST_FONT_PATH, NKUI_FONT_FAMILY_DEFAULT) !=
+                   NKUI_OK) {
             return false;
         }
 
@@ -121,17 +121,17 @@ struct CApiShowcase {
         const nkui_resource panel_paint = retain(make_paint(0.09f, 0.13f, 0.23f));
         const nkui_resource green = retain(make_paint(0.12f, 0.72f, 0.48f));
         const nkui_resource cyan = retain(make_paint(0.12f, 0.67f, 0.9f));
-        if (!background.id || !panel.id || !badge.id || !navy.id || !panel_paint.id ||
-            !green.id || !cyan.id)
+        if (!background.id || !panel.id || !badge.id || !navy.id || !panel_paint.id || !green.id ||
+            !cyan.id)
             return false;
 
         nkui_resource title{}, subtitle{}, details{};
         if (nkui_text_layout_create(fonts, "NativeKit C UI", 600.0f, 34.0f, &title) != NKUI_OK ||
             nkui_text_layout_create(fonts, "The intentionally small opaque-handle ABI example",
                                     600.0f, 18.0f, &subtitle) != NKUI_OK ||
-            nkui_text_layout_create(fonts,
-                                    "create resources\nencode a transaction\nsubmit and render\ndestroy",
-                                    240.0f, 22.0f, &details) != NKUI_OK)
+            nkui_text_layout_create(
+                fonts, "create resources\nencode a transaction\nsubmit and render\ndestroy", 240.0f,
+                22.0f, &details) != NKUI_OK)
             return false;
         resources.push_back(title);
         resources.push_back(subtitle);
@@ -176,10 +176,9 @@ struct CApiShowcase {
                                   0.72f, NKUI_COMPOSITE_SOURCE_OVER});
         set_paint(commands, cyan);
         draw_path(commands, badge);
-        append(commands,
-               nkui_draw_rect_command{
-                   header(NKUI_COMMAND_DRAW_IMAGE, sizeof(nkui_draw_rect_command)), image, 492.0f,
-                   250.0f, 276.0f, 196.0f});
+        append(commands, nkui_draw_rect_command{
+                             header(NKUI_COMMAND_DRAW_IMAGE, sizeof(nkui_draw_rect_command)), image,
+                             492.0f, 250.0f, 276.0f, 196.0f});
         append(commands,
                nkui_command_header{header(NKUI_COMMAND_END_LAYER, sizeof(nkui_command_header))});
         append(commands,
@@ -401,8 +400,7 @@ struct WebShowcase {
     }
 
     void handle_event(const nk_event &event) {
-        if (event.kind == NK_EVENT_RESOURCE_DATA_COMPLETE &&
-            event.request_id == asset_request) {
+        if (event.kind == NK_EVENT_RESOURCE_DATA_COMPLETE && event.request_id == asset_request) {
             if (event.result != NK_OK || event.data_size == 0 || !event.data ||
                 event.data_size > UINT32_MAX)
                 result = 7;

@@ -182,33 +182,32 @@ bool execute_render_plan(UiRenderer &renderer, const RenderPlan &plan,
         bool effect_cache_hit = false;
         const bool began =
             pass.kind == RenderPassKind::Effect
-                ? renderer.beginEffectPass(
-                      pass.target,
-                      frame_effect_cache_key(pass.cache_key, external_generation,
-                                             window.frame_target),
-                      pass_width, pass_height, effect_cache_hit)
-                : (window_pass ? renderer.beginWindowPass(pass_width, pass_height, !pass.load_existing)
-                               : renderer.beginTargetPass(pass.target, pass_width, pass_height,
-                                                          pass.load_existing));
+                ? renderer.beginEffectPass(pass.target,
+                                           frame_effect_cache_key(pass.cache_key,
+                                                                  external_generation,
+                                                                  window.frame_target),
+                                           pass_width, pass_height, effect_cache_hit)
+                : (window_pass
+                       ? renderer.beginWindowPass(pass_width, pass_height, !pass.load_existing)
+                       : renderer.beginTargetPass(pass.target, pass_width, pass_height,
+                                                  pass.load_existing));
         if (!began)
             return fail(error, pass_index, 0, renderer.lastError());
         if (pass.kind == RenderPassKind::Effect) {
             if (effect_cache_hit)
                 continue;
-            const bool applied = pass.effect.kind == EffectKind::Custom
-                                     ? (pass.has_input_rect
-                                            ? renderer.applyCustomEffectRegion(
-                                                  pass.input_target, pass.custom_effect,
-                                                  pass.input_rect[0], pass.input_rect[1],
-                                                  pass.input_rect[2], pass.input_rect[3])
-                                            : renderer.applyCustomEffect(pass.input_target,
-                                                                          pass.custom_effect))
-                                     : (pass.has_input_rect
-                                            ? renderer.applyEffectRegion(
-                                                  pass.input_target, pass.effect, pass.input_rect[0],
-                                                  pass.input_rect[1], pass.input_rect[2],
-                                                  pass.input_rect[3])
-                                            : renderer.applyEffect(pass.input_target, pass.effect));
+            const bool applied =
+                pass.effect.kind == EffectKind::Custom
+                    ? (pass.has_input_rect
+                           ? renderer.applyCustomEffectRegion(
+                                 pass.input_target, pass.custom_effect, pass.input_rect[0],
+                                 pass.input_rect[1], pass.input_rect[2], pass.input_rect[3])
+                           : renderer.applyCustomEffect(pass.input_target, pass.custom_effect))
+                    : (pass.has_input_rect
+                           ? renderer.applyEffectRegion(pass.input_target, pass.effect,
+                                                        pass.input_rect[0], pass.input_rect[1],
+                                                        pass.input_rect[2], pass.input_rect[3])
+                           : renderer.applyEffect(pass.input_target, pass.effect));
             if (!applied) {
                 renderer.endPass();
                 return fail(error, pass_index, 0, renderer.lastError());

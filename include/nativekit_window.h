@@ -444,8 +444,7 @@ NK_API nk_result NK_CALL nk_window_set_decorated(nk_window window, nk_bool enabl
  * NULL with a zero count to clear all regions.
  */
 NK_API nk_result NK_CALL nk_window_set_decoration_regions(
-    nk_window window,
-    const nk_window_decoration_region *regions NK_IN_ARRAY(region_count),
+    nk_window window, const nk_window_decoration_region *regions NK_IN_ARRAY(region_count),
     uint32_t region_count);
 
 /** Enables or disables keeping the window above its peers. */

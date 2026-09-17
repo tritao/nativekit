@@ -295,8 +295,7 @@ class DisplayList {
                      CompositeMode mode = CompositeMode::SourceOver);
     bool begin_layer(float opacity, const CustomEffectDescriptor &effect,
                      CompositeMode mode = CompositeMode::SourceOver);
-    bool begin_layer(float opacity, const LayerBounds &bounds,
-                     const CustomEffectDescriptor &effect,
+    bool begin_layer(float opacity, const LayerBounds &bounds, const CustomEffectDescriptor &effect,
                      CompositeMode mode = CompositeMode::SourceOver);
     bool end_layer();
     bool draw_render_target(ResourceId target, float x, float y, float width, float height);

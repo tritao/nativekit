@@ -57,9 +57,8 @@ bool valid_mask_descriptor(const MaskDescriptor &mask) {
     if ((mask.kind == MaskKind::RoundedRect || mask.kind == MaskKind::Circle) &&
         mask.values[0] < 0.0f)
         return false;
-    if (mask.kind == MaskKind::LinearGradient &&
-        (mask.values[4] < 0.0f || mask.values[4] > 1.0f || mask.values[5] < 0.0f ||
-         mask.values[5] > 1.0f))
+    if (mask.kind == MaskKind::LinearGradient && (mask.values[4] < 0.0f || mask.values[4] > 1.0f ||
+                                                  mask.values[5] < 0.0f || mask.values[5] > 1.0f))
         return false;
     return true;
 }
@@ -70,8 +69,8 @@ bool valid_input_rect(const RenderPass &pass) {
     for (const float value : pass.input_rect)
         if (!std::isfinite(value))
             return false;
-    return pass.input_rect[0] >= 0.0f && pass.input_rect[1] >= 0.0f &&
-           pass.input_rect[2] > 0.0f && pass.input_rect[3] > 0.0f;
+    return pass.input_rect[0] >= 0.0f && pass.input_rect[1] >= 0.0f && pass.input_rect[2] > 0.0f &&
+           pass.input_rect[3] > 0.0f;
 }
 
 bool finite_transform(const std::array<float, 6> &transform) {
@@ -91,8 +90,7 @@ std::array<float, 6> compose_transform(const std::array<float, 6> &outer,
             outer[1] * inner[4] + outer[3] * inner[5] + outer[5]};
 }
 
-std::array<float, 6> scale_transform(const std::array<float, 6> &transform,
-                                     float pixel_scale) {
+std::array<float, 6> scale_transform(const std::array<float, 6> &transform, float pixel_scale) {
     auto result = transform;
     for (float &value : result)
         value *= pixel_scale;
@@ -124,14 +122,12 @@ EmbedBounds transform_bounds(float x, float y, float width, float height,
     const float y3 = point_y(x + width, y + height);
     const float left = std::min({x0, x1, x2, x3});
     const float top = std::min({y0, y1, y2, y3});
-    return {left, top, std::max({x0, x1, x2, x3}) - left,
-            std::max({y0, y1, y2, y3}) - top};
+    return {left, top, std::max({x0, x1, x2, x3}) - left, std::max({y0, y1, y2, y3}) - top};
 }
 
 bool finite_bounds(const EmbedBounds &bounds) {
-    return std::isfinite(bounds.x) && std::isfinite(bounds.y) &&
-           std::isfinite(bounds.width) && std::isfinite(bounds.height) && bounds.width >= 0.0f &&
-           bounds.height >= 0.0f;
+    return std::isfinite(bounds.x) && std::isfinite(bounds.y) && std::isfinite(bounds.width) &&
+           std::isfinite(bounds.height) && bounds.width >= 0.0f && bounds.height >= 0.0f;
 }
 
 EmbedBounds intersect_bounds(EmbedBounds left, const EmbedBounds &right) {
@@ -184,8 +180,7 @@ bool scale_input_region(RenderPass &pass, float pixel_scale) {
     return true;
 }
 
-ResourceId remap_embedding_resource(ResourceId resource,
-                                    const RenderPlanEmbedOptions &options) {
+ResourceId remap_embedding_resource(ResourceId resource, const RenderPlanEmbedOptions &options) {
     if (resource.value == options.source_main_target.value)
         return options.destination_main_target;
     if (options.target_remap) {
@@ -211,9 +206,9 @@ void place_main_command(RenderCommand &command, const RenderPlanEmbedOptions &op
         command.transform = compose_transform(options.placement, command.transform);
 
     if (command.has_scissor) {
-        const EmbedBounds transformed = transform_bounds(
-            command.scissor_x, command.scissor_y, command.scissor_width, command.scissor_height,
-            options.placement);
+        const EmbedBounds transformed =
+            transform_bounds(command.scissor_x, command.scissor_y, command.scissor_width,
+                             command.scissor_height, options.placement);
         command.scissor_x = transformed.x;
         command.scissor_y = transformed.y;
         command.scissor_width = transformed.width;
@@ -266,12 +261,10 @@ bool scale_render_plan_parameters(RenderPass &pass, float pixel_scale) {
     return (pass.kind != RenderPassKind::Effect ||
             (scale_effect_parameters(pass.effect, pixel_scale) &&
              scale_input_region(pass, pixel_scale))) &&
-           (pass.kind != RenderPassKind::Mask ||
-            scale_mask_parameters(pass.mask, pixel_scale));
+           (pass.kind != RenderPassKind::Mask || scale_mask_parameters(pass.mask, pixel_scale));
 }
 
-bool append_embedded_render_plan(const RenderPlan &source,
-                                 const RenderPlanEmbedOptions &options,
+bool append_embedded_render_plan(const RenderPlan &source, const RenderPlanEmbedOptions &options,
                                  RenderPlan &destination, RenderPlanEmbedError *error) {
     if (error)
         *error = {};
@@ -320,21 +313,20 @@ bool append_embedded_render_plan(const RenderPlan &source,
                 pass.target_descriptor.logical_width <= 0.0f ||
                 pass.target_descriptor.logical_height <= 0.0f)
                 return fail_embed("embedded render-target bounds are invalid");
-            const EmbedBounds transformed = transform_bounds(
-                pass.target_descriptor.origin_x, pass.target_descriptor.origin_y,
-                pass.target_descriptor.logical_width, pass.target_descriptor.logical_height,
-                options.placement);
+            const EmbedBounds transformed =
+                transform_bounds(pass.target_descriptor.origin_x, pass.target_descriptor.origin_y,
+                                 pass.target_descriptor.logical_width,
+                                 pass.target_descriptor.logical_height, options.placement);
             if (!finite_bounds(transformed))
                 return fail_embed("embedded render-target transform is invalid");
             pass.target_descriptor.origin_x = transformed.x;
             pass.target_descriptor.origin_y = transformed.y;
-            const double width = static_cast<double>(pass.target_descriptor.logical_width) *
-                                 options.pixel_scale;
-            const double height = static_cast<double>(pass.target_descriptor.logical_height) *
-                                  options.pixel_scale;
+            const double width =
+                static_cast<double>(pass.target_descriptor.logical_width) * options.pixel_scale;
+            const double height =
+                static_cast<double>(pass.target_descriptor.logical_height) * options.pixel_scale;
             if (!std::isfinite(width) || !std::isfinite(height) ||
-                width > std::numeric_limits<int>::max() ||
-                height > std::numeric_limits<int>::max())
+                width > std::numeric_limits<int>::max() || height > std::numeric_limits<int>::max())
                 return fail_embed("embedded render-target bounds are too large");
             pass.target_descriptor.width = std::max(1, static_cast<int>(std::ceil(width)));
             pass.target_descriptor.height = std::max(1, static_cast<int>(std::ceil(height)));
@@ -380,7 +372,7 @@ bool schedule_render_plan(const RenderPlan &plan, std::vector<uint32_t> &order,
                    ? (pass.effect.kind == EffectKind::Custom
                           ? !valid_custom_effect_descriptor(pass.custom_effect)
                           : !valid_effect_descriptor(pass.effect))
-                                                   : !valid_mask_descriptor(pass.mask))))) {
+                   : !valid_mask_descriptor(pass.mask))))) {
             if (error)
                 *error = {index, "invalid render-target descriptor"};
             return false;

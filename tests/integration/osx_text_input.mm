@@ -72,8 +72,7 @@ int main(void) {
     assert(nk_window_get_native(window, &native) == NK_OK);
     assert(native.kind == NK_NATIVE_WINDOW_COCOA);
     assert(native.view != 0);
-    id<NSTextInputClient> input_view =
-        (__bridge id<NSTextInputClient>)(void *)native.view;
+    id<NSTextInputClient> input_view = (__bridge id<NSTextInputClient>)(void *)native.view;
 
     const char initial_text[] = "A\xF0\x9F\x98\x80\xE6\x97\xA5\xE6\x9C\xAC";
     nk_text_input_state state = {0};
@@ -92,8 +91,8 @@ int main(void) {
     assert(nk_surface_set_text_input_active(window, 1) == NK_OK);
 
     [input_view setMarkedText:@"かな"
-                 selectedRange:NSMakeRange(2, 0)
-              replacementRange:NSMakeRange(1, 2)];
+                selectedRange:NSMakeRange(2, 0)
+             replacementRange:NSMakeRange(1, 2)];
     nk_event compose = wait_for_edit(window, NK_TEXT_EDIT_COMPOSE);
     verify_edit(&compose, NK_TEXT_EDIT_COMPOSE, 1, 2, 3, 3, 1, 3, "かな");
     nk_event_release(&compose);
@@ -111,8 +110,8 @@ int main(void) {
     assert(NSEqualRanges([input_view selectedRange], NSMakeRange(3, 0)));
 
     [input_view setMarkedText:@"かなじ"
-                 selectedRange:NSMakeRange(3, 0)
-              replacementRange:NSMakeRange(1, 2)];
+                selectedRange:NSMakeRange(3, 0)
+             replacementRange:NSMakeRange(1, 2)];
     nk_event compose_update = wait_for_edit(window, NK_TEXT_EDIT_COMPOSE);
     verify_edit(&compose_update, NK_TEXT_EDIT_COMPOSE, 1, 3, 4, 4, 1, 4, "かなじ");
     nk_event_release(&compose_update);
@@ -130,8 +129,8 @@ int main(void) {
     assert(NSEqualRanges([input_view selectedRange], NSMakeRange(4, 0)));
 
     NSRange actual_range = NSMakeRange(NSNotFound, 0);
-    NSRect caret_rect =
-        [input_view firstRectForCharacterRange:NSMakeRange(4, 0) actualRange:&actual_range];
+    NSRect caret_rect = [input_view firstRectForCharacterRange:NSMakeRange(4, 0)
+                                                   actualRange:&actual_range];
     assert(actual_range.location == 4 && actual_range.length == 0);
     assert(caret_rect.size.width > 0.0 && caret_rect.size.height > 0.0);
 

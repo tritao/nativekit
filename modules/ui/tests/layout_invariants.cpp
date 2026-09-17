@@ -19,9 +19,7 @@ struct Rng {
         return state;
     }
 
-    float unit() {
-        return static_cast<float>(next() & 0xffffu) / 65535.0f;
-    }
+    float unit() { return static_cast<float>(next() & 0xffffu) / 65535.0f; }
 };
 
 bool close(float left, float right) {
@@ -34,9 +32,8 @@ bool finite_rect(const LayoutRect &rect) {
 }
 
 bool finite_transform(const LayoutTransform &transform) {
-    return std::isfinite(transform.a) && std::isfinite(transform.b) &&
-           std::isfinite(transform.c) && std::isfinite(transform.d) &&
-           std::isfinite(transform.tx) && std::isfinite(transform.ty);
+    return std::isfinite(transform.a) && std::isfinite(transform.b) && std::isfinite(transform.c) &&
+           std::isfinite(transform.d) && std::isfinite(transform.tx) && std::isfinite(transform.ty);
 }
 
 LayoutAxis random_axis(Rng &rng) {
@@ -75,8 +72,8 @@ std::vector<LayoutNode> random_tree(Rng &rng) {
     root.parent = -1;
     root.style.width = {LayoutSizing::Fixed, 320.0f};
     root.style.height = {LayoutSizing::Fixed, 240.0f};
-    root.style.direction = (rng.next() & 1u) ? LayoutDirection::LeftToRight
-                                             : LayoutDirection::TopToBottom;
+    root.style.direction =
+        (rng.next() & 1u) ? LayoutDirection::LeftToRight : LayoutDirection::TopToBottom;
     root.style.padding_left = static_cast<uint16_t>(rng.next() % 9u);
     root.style.padding_right = static_cast<uint16_t>(rng.next() % 9u);
     root.style.padding_top = static_cast<uint16_t>(rng.next() % 9u);
@@ -99,8 +96,8 @@ std::vector<LayoutNode> random_tree(Rng &rng) {
         node.visual_kind = rng.next() % 5u == 0 ? LayoutVisualKind::Text : LayoutVisualKind::Box;
         node.style.width = random_axis(rng);
         node.style.height = random_axis(rng);
-        node.style.direction = (rng.next() & 1u) ? LayoutDirection::LeftToRight
-                                                 : LayoutDirection::TopToBottom;
+        node.style.direction =
+            (rng.next() & 1u) ? LayoutDirection::LeftToRight : LayoutDirection::TopToBottom;
         node.style.padding_left = static_cast<uint16_t>(rng.next() % 5u);
         node.style.padding_right = static_cast<uint16_t>(rng.next() % 5u);
         node.style.padding_top = static_cast<uint16_t>(rng.next() % 5u);
@@ -127,10 +124,10 @@ std::vector<LayoutNode> random_tree(Rng &rng) {
         if (node.visual_kind == LayoutVisualKind::Text) {
             node.text = "fuzzed text content for intrinsic measurement";
             node.text_style.font_size = 10.0f + rng.unit() * 14.0f;
-            node.paragraph_style.wrap = (rng.next() & 1u) ? TextWrapMode::Word
-                                                          : TextWrapMode::WordCharacter;
-            node.paragraph_style.line_height = rng.next() % 3u == 0 ? 12.0f + rng.unit() * 10.0f
-                                                                      : 0.0f;
+            node.paragraph_style.wrap =
+                (rng.next() & 1u) ? TextWrapMode::Word : TextWrapMode::WordCharacter;
+            node.paragraph_style.line_height =
+                rng.next() % 3u == 0 ? 12.0f + rng.unit() * 10.0f : 0.0f;
         } else if (rng.next() % 7u == 0) {
             // Keep the aspect-ratio case meaningful: Clay resolves the
             // missing height from a known width.
@@ -155,9 +152,9 @@ bool check_snapshot(const std::vector<LayoutNode> &nodes, const LayoutSnapshot &
     }
     for (std::size_t index = 0; index < nodes.size(); ++index) {
         const LayoutItem *item = snapshot.find(nodes[index].id);
-        const float determinant = item ? item->transform.a * item->transform.d -
-                                             item->transform.b * item->transform.c
-                                       : 0.0f;
+        const float determinant =
+            item ? item->transform.a * item->transform.d - item->transform.b * item->transform.c
+                 : 0.0f;
         if (!item || !finite_rect(item->bounds) || !finite_rect(item->clip_bounds) ||
             !finite_rect(item->content_bounds) || !finite_transform(item->transform) ||
             !std::isfinite(determinant) || std::abs(determinant) < 0.000001f ||
@@ -203,23 +200,50 @@ bool check_snapshot(const std::vector<LayoutNode> &nodes, const LayoutSnapshot &
 }
 
 bool same_geometry(const LayoutSnapshot &left, const LayoutSnapshot &right) {
-    if (left.items.size() != right.items.size() || left.primitives.size() != right.primitives.size())
+    if (left.items.size() != right.items.size() ||
+        left.primitives.size() != right.primitives.size())
         return false;
     for (std::size_t index = 0; index < left.items.size(); ++index) {
         const LayoutItem &a = left.items[index];
         const LayoutItem &b = right.items[index];
-        const float a_values[] = {
-            a.bounds.x,       a.bounds.y,       a.bounds.width,       a.bounds.height,
-            a.clip_bounds.x,  a.clip_bounds.y,  a.clip_bounds.width,  a.clip_bounds.height,
-            a.content_bounds.x, a.content_bounds.y, a.content_bounds.width,
-            a.content_bounds.height, a.transform.a, a.transform.b, a.transform.c,
-            a.transform.d, a.transform.tx, a.transform.ty, a.baseline};
-        const float b_values[] = {
-            b.bounds.x,       b.bounds.y,       b.bounds.width,       b.bounds.height,
-            b.clip_bounds.x,  b.clip_bounds.y,  b.clip_bounds.width,  b.clip_bounds.height,
-            b.content_bounds.x, b.content_bounds.y, b.content_bounds.width,
-            b.content_bounds.height, b.transform.a, b.transform.b, b.transform.c,
-            b.transform.d, b.transform.tx, b.transform.ty, b.baseline};
+        const float a_values[] = {a.bounds.x,
+                                  a.bounds.y,
+                                  a.bounds.width,
+                                  a.bounds.height,
+                                  a.clip_bounds.x,
+                                  a.clip_bounds.y,
+                                  a.clip_bounds.width,
+                                  a.clip_bounds.height,
+                                  a.content_bounds.x,
+                                  a.content_bounds.y,
+                                  a.content_bounds.width,
+                                  a.content_bounds.height,
+                                  a.transform.a,
+                                  a.transform.b,
+                                  a.transform.c,
+                                  a.transform.d,
+                                  a.transform.tx,
+                                  a.transform.ty,
+                                  a.baseline};
+        const float b_values[] = {b.bounds.x,
+                                  b.bounds.y,
+                                  b.bounds.width,
+                                  b.bounds.height,
+                                  b.clip_bounds.x,
+                                  b.clip_bounds.y,
+                                  b.clip_bounds.width,
+                                  b.clip_bounds.height,
+                                  b.content_bounds.x,
+                                  b.content_bounds.y,
+                                  b.content_bounds.width,
+                                  b.content_bounds.height,
+                                  b.transform.a,
+                                  b.transform.b,
+                                  b.transform.c,
+                                  b.transform.d,
+                                  b.transform.tx,
+                                  b.transform.ty,
+                                  b.baseline};
         for (std::size_t value = 0; value < sizeof(a_values) / sizeof(a_values[0]); ++value)
             if (!close(a_values[value], b_values[value]))
                 return false;
@@ -267,8 +291,9 @@ int main() {
         LayoutSnapshot first;
         LayoutError error;
         if (!engine.layout(nodes, 320.0f, 240.0f, 1.0f / 60.0f, first, &error)) {
-            std::cerr << "case " << case_index << " failed: "
-                      << (error.message ? error.message : "unknown layout error") << "\n";
+            std::cerr << "case " << case_index
+                      << " failed: " << (error.message ? error.message : "unknown layout error")
+                      << "\n";
             return 4;
         }
         if (!check_snapshot(nodes, first, case_index))

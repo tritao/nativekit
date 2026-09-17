@@ -68,8 +68,7 @@ int main(int argc, char **argv) {
 
     LayoutSnapshot snapshot;
     LayoutError error;
-    if (!engine.layout(nodes, 420.0f, 240.0f, 1.0f / 60.0f, snapshot,
-                       &error)) {
+    if (!engine.layout(nodes, 420.0f, 240.0f, 1.0f / 60.0f, snapshot, &error)) {
         std::cerr << (error.message ? error.message : "layout failed") << "\n";
         return 4;
     }
@@ -81,9 +80,9 @@ int main(int argc, char **argv) {
         return 5;
     if (snapshot.primitives.size() < 3)
         return 6;
-    const auto text_layout = std::find_if(
-        snapshot.text_layouts.begin(), snapshot.text_layouts.end(),
-        [](const LayoutTextLayout &layout) { return layout.node_id == 2; });
+    const auto text_layout =
+        std::find_if(snapshot.text_layouts.begin(), snapshot.text_layouts.end(),
+                     [](const LayoutTextLayout &layout) { return layout.node_id == 2; });
     if (text_layout == snapshot.text_layouts.end() || text_layout->id == 0 ||
         text_layout->lines.size() < 2 || !text_layout->has_baseline ||
         !std::isfinite(text_layout->first_line_baseline))
@@ -100,8 +99,7 @@ int main(int argc, char **argv) {
     if (title_line_count != text_layout->lines.size())
         return 12;
     const uint32_t stable_text_layout_builds = engine.text_adapter()->layout_build_count();
-    if (!engine.layout(nodes, 420.0f, 240.0f, 1.0f / 60.0f, snapshot,
-                       &error) ||
+    if (!engine.layout(nodes, 420.0f, 240.0f, 1.0f / 60.0f, snapshot, &error) ||
         engine.text_adapter()->layout_build_count() != stable_text_layout_builds)
         return 13;
     panel_item = snapshot.find(3);
@@ -136,9 +134,9 @@ int main(int argc, char **argv) {
         geometry_child_item->clip_bounds.width != 100.0f ||
         geometry_child_item->clip_bounds.height != 80.0f || hidden_child_item->visible)
         return 20;
-    const auto hidden_primitive = std::find_if(
-        snapshot.primitives.begin(), snapshot.primitives.end(),
-        [](const LayoutPrimitive &primitive) { return primitive.node_id == 302; });
+    const auto hidden_primitive =
+        std::find_if(snapshot.primitives.begin(), snapshot.primitives.end(),
+                     [](const LayoutPrimitive &primitive) { return primitive.node_id == 302; });
     if (hidden_primitive == snapshot.primitives.end() || hidden_primitive->visible)
         return 21;
 
@@ -163,8 +161,7 @@ int main(int argc, char **argv) {
     const auto scrolled_row_primitive = std::find_if(
         snapshot.primitives.begin(), snapshot.primitives.end(),
         [](const LayoutPrimitive &primitive) {
-            return primitive.node_id == 323 &&
-                   primitive.kind == LayoutPrimitiveKind::Rectangle;
+            return primitive.node_id == 323 && primitive.kind == LayoutPrimitiveKind::Rectangle;
         });
     if (scrolled_row_primitive == snapshot.primitives.end() ||
         scrolled_row_primitive->transform.ty != -13248.0f)
@@ -221,9 +218,9 @@ int main(int argc, char **argv) {
     const auto *lower_item = snapshot.find(401);
     const auto *upper_item = snapshot.find(402);
     if (lower_draw == snapshot.primitives.end() || upper_draw == snapshot.primitives.end() ||
-        lower_draw >= upper_draw || !lower_item || !upper_item ||
-        lower_item->bounds.x != 10.0f || lower_item->bounds.y != 12.0f ||
-        upper_item->bounds.x != 18.0f || upper_item->bounds.y != 16.0f)
+        lower_draw >= upper_draw || !lower_item || !upper_item || lower_item->bounds.x != 10.0f ||
+        lower_item->bounds.y != 12.0f || upper_item->bounds.x != 18.0f ||
+        upper_item->bounds.y != 16.0f)
         return 24;
 
     LayoutNode clip_root = box(410, -1);
@@ -259,7 +256,8 @@ int main(int argc, char **argv) {
     geometry_nodes[1].style.transform.b = 1.0f;
     geometry_nodes[1].style.transform.c = -1.0f;
     if (engine.layout(geometry_nodes, 100.0f, 80.0f, 1.0f / 60.0f, snapshot, &error) ||
-        !error.message || std::string(error.message) != "rotated or skewed clipping is not supported")
+        !error.message ||
+        std::string(error.message) != "rotated or skewed clipping is not supported")
         return 22;
 
     constexpr std::size_t text_layout_cache_limit = 128;
@@ -268,11 +266,9 @@ int main(int argc, char **argv) {
     crowded_root.style.height = {LayoutSizing::Fixed, 240.0f};
     std::vector<LayoutNode> crowded_nodes{crowded_root};
     for (std::size_t index = 0; index < text_layout_cache_limit + 2; ++index)
-        crowded_nodes.push_back(
-            text(static_cast<uint32_t>(201 + index), 0,
-                 ("visible paragraph " + std::to_string(index)).c_str()));
-    if (!engine.layout(crowded_nodes, 420.0f, 240.0f, 1.0f / 60.0f,
-                       snapshot, &error) ||
+        crowded_nodes.push_back(text(static_cast<uint32_t>(201 + index), 0,
+                                     ("visible paragraph " + std::to_string(index)).c_str()));
+    if (!engine.layout(crowded_nodes, 420.0f, 240.0f, 1.0f / 60.0f, snapshot, &error) ||
         snapshot.text_layouts.size() != text_layout_cache_limit + 2)
         return 14;
     for (const auto &layout : snapshot.text_layouts)
@@ -290,8 +286,7 @@ int main(int argc, char **argv) {
         cache_nodes[1].text = "cache paragraph " + std::to_string(index);
         const float width = 300.0f + static_cast<float>(index);
         cache_nodes[0].style.width = {LayoutSizing::Fixed, width};
-        if (!engine.layout(cache_nodes, 600.0f, 240.0f, 1.0f / 60.0f,
-                           snapshot, &error) ||
+        if (!engine.layout(cache_nodes, 600.0f, 240.0f, 1.0f / 60.0f, snapshot, &error) ||
             snapshot.text_layouts.size() != 1)
             return 16;
         churned_layouts.push_back(snapshot.text_layouts.front().id);
@@ -321,9 +316,8 @@ int main(int argc, char **argv) {
         return 29;
     const auto *bounded_item = snapshot.find(501);
     const auto *aspect_item = snapshot.find(502);
-    if (!bounded_item || bounded_item->bounds.width < 48.0f ||
-        bounded_item->bounds.width > 90.0f || !aspect_item ||
-        std::abs(aspect_item->bounds.width - 80.0f) > 0.01f ||
+    if (!bounded_item || bounded_item->bounds.width < 48.0f || bounded_item->bounds.width > 90.0f ||
+        !aspect_item || std::abs(aspect_item->bounds.width - 80.0f) > 0.01f ||
         std::abs(aspect_item->bounds.height - 40.0f) > 0.01f)
         return 30;
 
@@ -368,8 +362,8 @@ int main(int argc, char **argv) {
         return 34;
 
     const float expected_distribution_positions[][3] = {
-        {0.0f, 30.0f, 60.0f},    // start
-        {60.0f, 90.0f, 120.0f},  // center
+        {0.0f, 30.0f, 60.0f},     // start
+        {60.0f, 90.0f, 120.0f},   // center
         {120.0f, 150.0f, 180.0f}, // end
         {0.0f, 90.0f, 180.0f},    // space-between
         {20.0f, 90.0f, 160.0f},   // space-around
@@ -381,8 +375,7 @@ int main(int argc, char **argv) {
         distribution_root.style.height = {LayoutSizing::Fixed, 40.0f};
         distribution_root.style.direction = LayoutDirection::LeftToRight;
         distribution_root.style.child_gap = 10;
-        distribution_root.style.child_distribution =
-            static_cast<LayoutDistribution>(distribution);
+        distribution_root.style.child_distribution = static_cast<LayoutDistribution>(distribution);
         std::vector<LayoutNode> distribution_nodes{distribution_root};
         for (int child = 0; child < 3; ++child) {
             LayoutNode item = box(701 + child, 0);
@@ -394,8 +387,10 @@ int main(int argc, char **argv) {
             return 35;
         for (int child = 0; child < 3; ++child) {
             const auto *item = snapshot.find(701 + child);
-            if (!item || std::abs(item->bounds.x - expected_distribution_positions[distribution][child]) >
-                             0.01f || std::abs(item->bounds.y) > 0.01f) {
+            if (!item ||
+                std::abs(item->bounds.x - expected_distribution_positions[distribution][child]) >
+                    0.01f ||
+                std::abs(item->bounds.y) > 0.01f) {
                 std::cerr << "distribution " << distribution << " child " << child;
                 if (item)
                     std::cerr << " got " << item->bounds.x << "," << item->bounds.y;
@@ -446,8 +441,7 @@ int main(int argc, char **argv) {
     if (!baseline_text_item || !baseline_control_item || !baseline_text_item->has_baseline ||
         baseline_control_item->has_baseline ||
         std::abs(baseline_text_item->baseline -
-                 (baseline_control_item->bounds.y + baseline_control_item->bounds.height)) >
-            0.01f)
+                 (baseline_control_item->bounds.y + baseline_control_item->bounds.height)) > 0.01f)
         return 40;
 
     LayoutNode wrapped_row_root = box(730, -1);
@@ -508,8 +502,7 @@ int main(int argc, char **argv) {
         std::abs(wrapped_grow_root_item->bounds.height - 25.5f) > 0.01f ||
         std::abs(wrapped_grow_child_item->bounds.x) > 0.01f ||
         std::abs(wrapped_grow_child_item->bounds.y - 15.5f) > 0.01f ||
-        std::abs(wrapped_grow_child_item->bounds.width - 120.0f) > 0.01f)
-    {
+        std::abs(wrapped_grow_child_item->bounds.width - 120.0f) > 0.01f) {
         return 46;
     }
 
@@ -537,8 +530,8 @@ int main(int argc, char **argv) {
     const auto *wrapped_column_first_item = snapshot.find(741);
     const auto *wrapped_column_second_item = snapshot.find(742);
     const auto *wrapped_column_third_item = snapshot.find(743);
-    if (!wrapped_column_root_item || !wrapped_column_first_item ||
-        !wrapped_column_second_item || !wrapped_column_third_item ||
+    if (!wrapped_column_root_item || !wrapped_column_first_item || !wrapped_column_second_item ||
+        !wrapped_column_third_item ||
         std::abs(wrapped_column_root_item->bounds.width - 57.25f) > 0.01f ||
         std::abs(wrapped_column_second_item->bounds.y - 39.5f) > 0.01f ||
         std::abs(wrapped_column_third_item->bounds.x - 27.25f) > 0.01f ||

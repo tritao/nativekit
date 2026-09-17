@@ -14,8 +14,8 @@ int main(void) {
     const nk_sokol_api *gles3 = nk_sokol_gles3_get_api();
     if (!glcore || !gles3 || glcore == gles3 || !glcore->gfx || !gles3->gfx ||
         !glcore->runtime_acquire || !gles3->runtime_acquire ||
-        glcore->runtime_acquire == gles3->runtime_acquire ||
-        glcore->gfx == gles3->gfx || glcore->gfx->make_image == gles3->gfx->make_image)
+        glcore->runtime_acquire == gles3->runtime_acquire || glcore->gfx == gles3->gfx ||
+        glcore->gfx->make_image == gles3->gfx->make_image)
         return 2;
     return 0;
 }

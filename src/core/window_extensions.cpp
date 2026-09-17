@@ -40,8 +40,8 @@ nk_result NK_CALL nk_window_set_resizable(nk_handle, uint32_t) {
 nk_result NK_CALL nk_window_set_decorated(nk_handle, uint32_t) {
     return unsupported_window_extension();
 }
-nk_result NK_CALL nk_window_set_decoration_regions(
-    nk_handle, const nk_window_decoration_region *, uint32_t) {
+nk_result NK_CALL nk_window_set_decoration_regions(nk_handle, const nk_window_decoration_region *,
+                                                   uint32_t) {
     return unsupported_window_extension();
 }
 nk_result NK_CALL nk_window_set_floating(nk_handle, uint32_t) {

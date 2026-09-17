@@ -7,15 +7,15 @@
 #include <cstdio>
 #include <thread>
 
-#define EXPECT_RESULT(expression, expected)                                                         \
-    do {                                                                                            \
-        const nkgpu_result actual_result = (expression);                                            \
-        if (actual_result != (expected)) {                                                          \
-            std::fprintf(stderr, "%s returned %d, expected %d: %s\n", #expression, actual_result, \
-                         (expected), nkgpu_last_error());                                            \
-            result = __LINE__;                                                                      \
-            goto cleanup;                                                                           \
-        }                                                                                           \
+#define EXPECT_RESULT(expression, expected)                                                        \
+    do {                                                                                           \
+        const nkgpu_result actual_result = (expression);                                           \
+        if (actual_result != (expected)) {                                                         \
+            std::fprintf(stderr, "%s returned %d, expected %d: %s\n", #expression, actual_result,  \
+                         (expected), nkgpu_last_error());                                          \
+            result = __LINE__;                                                                     \
+            goto cleanup;                                                                          \
+        }                                                                                          \
     } while (0)
 
 int main() {
@@ -137,15 +137,15 @@ int main() {
         nkgpu_render_target foreign_target{};
         EXPECT_RESULT(nkgpu_render_target_create(foreign_renderer, 8, 8, 0, &foreign_target),
                       NKGPU_OK);
-        EXPECT_RESULT(nkgpu_render_target_get_image(foreign_renderer, foreign_target,
-                                                    &foreign_image),
-                      NKGPU_OK);
+        EXPECT_RESULT(
+            nkgpu_render_target_get_image(foreign_renderer, foreign_target, &foreign_image),
+            NKGPU_OK);
         EXPECT_RESULT(nk_graphics_image_retain(foreign_image), NK_OK);
         EXPECT_RESULT(nkgpu_render_target_destroy(foreign_renderer, foreign_target), NKGPU_OK);
         EXPECT_RESULT(nkgpu_frame_begin(first), NKGPU_OK);
-        EXPECT_RESULT(nkgpu_begin_window_pass(first, window_options.width,
-                                              window_options.height, 1),
-                      NKGPU_OK);
+        EXPECT_RESULT(
+            nkgpu_begin_window_pass(first, window_options.width, window_options.height, 1),
+            NKGPU_OK);
         EXPECT_RESULT(nkgpu_apply_graphics_image(first, 0, foreign_image),
                       NKGPU_ERROR_INVALID_HANDLE);
         EXPECT_RESULT(nkgpu_end_frame(first), NKGPU_OK);
@@ -227,8 +227,8 @@ int main() {
         nkgpu_image failed_image{};
         nkgpu_buffer failed_buffer{};
         nkgpu_test_fail_next_image_creation();
-        EXPECT_RESULT(nkgpu_image_create(first, 1, 1, NKGPU_IMAGEFORMAT_RGBA8, pixel,
-                                         sizeof(pixel), 0, &failed_image),
+        EXPECT_RESULT(nkgpu_image_create(first, 1, 1, NKGPU_IMAGEFORMAT_RGBA8, pixel, sizeof(pixel),
+                                         0, &failed_image),
                       NKGPU_ERROR_OUT_OF_MEMORY);
         nkgpu_test_fail_next_buffer_creation();
         EXPECT_RESULT(nkgpu_buffer_create(first, pixel, sizeof(pixel), &failed_buffer),

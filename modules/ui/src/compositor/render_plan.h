@@ -135,10 +135,8 @@ struct RenderPlanEmbedError {
  * keeps rasterization local and makes the final composite responsible for the
  * parent transform.
  */
-bool append_embedded_render_plan(const RenderPlan &source,
-                                 const RenderPlanEmbedOptions &options,
-                                 RenderPlan &destination,
-                                 RenderPlanEmbedError *error = nullptr);
+bool append_embedded_render_plan(const RenderPlan &source, const RenderPlanEmbedOptions &options,
+                                 RenderPlan &destination, RenderPlanEmbedError *error = nullptr);
 
 /** Scales effect, mask, and backdrop-region parameters for a device pixel ratio. */
 bool scale_render_plan_parameters(RenderPass &pass, float pixel_scale);

@@ -152,13 +152,13 @@ uint64_t primitive_content_generation(const LayoutPrimitive &primitive,
     uint64_t hash = kContentHashOffset;
     hash_u32(hash, static_cast<uint32_t>(primitive.kind));
     hash_u32(hash, primitive.node_id);
-    for (const float value : {primitive.bounds.x, primitive.bounds.y, primitive.bounds.width,
-                              primitive.bounds.height, primitive.transform.a,
-                              primitive.transform.b, primitive.transform.c, primitive.transform.d,
-                              primitive.transform.tx, primitive.transform.ty, primitive.color.red,
-                              primitive.color.green, primitive.color.blue, primitive.color.alpha,
-                              primitive.radius_top_left, primitive.radius_top_right,
-                              primitive.radius_bottom_left, primitive.radius_bottom_right})
+    for (const float value :
+         {primitive.bounds.x, primitive.bounds.y, primitive.bounds.width, primitive.bounds.height,
+          primitive.transform.a, primitive.transform.b, primitive.transform.c,
+          primitive.transform.d, primitive.transform.tx, primitive.transform.ty,
+          primitive.color.red, primitive.color.green, primitive.color.blue, primitive.color.alpha,
+          primitive.radius_top_left, primitive.radius_top_right, primitive.radius_bottom_left,
+          primitive.radius_bottom_right})
         hash_float(hash, value);
     hash_u32(hash, primitive.visible ? 1u : 0u);
     hash_string(hash, primitive.text);
@@ -296,14 +296,13 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                     make_resource_id(ResourceKind::RenderTarget, 1,
                                      static_cast<uint16_t>(transient_target_slot++)));
             }
-            std::array<float, 6> placement{primitive.transform.a, primitive.transform.b,
-                                           primitive.transform.c, primitive.transform.d,
+            std::array<float, 6> placement{primitive.transform.a,  primitive.transform.b,
+                                           primitive.transform.c,  primitive.transform.d,
                                            primitive.transform.tx, primitive.transform.ty};
             std::array<float, 4> clip{};
             const bool has_clip = !clips.empty();
             if (has_clip) {
-                clip = {clips.back().x, clips.back().y, clips.back().width,
-                        clips.back().height};
+                clip = {clips.back().x, clips.back().y, clips.back().width, clips.back().height};
             }
             RenderPlanEmbedOptions options;
             options.source_main_target = main_target;
@@ -317,7 +316,7 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
             if (!append_embedded_render_plan(custom_plan, options, out.plan_, &embed_error))
                 return fail(error, primitive_index,
                             embed_error.message ? embed_error.message
-                                                 : "custom render-plan embedding failed");
+                                                : "custom render-plan embedding failed");
             return true;
         };
         for (std::size_t index = 0; index < snapshot.primitives.size(); ++index) {

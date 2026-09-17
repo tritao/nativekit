@@ -33,8 +33,8 @@ void write_color(std::vector<uint8_t> &bytes, std::size_t offset, float red, flo
 
 std::vector<uint8_t> transaction() {
     constexpr uint32_t node_count = 3;
-    constexpr std::size_t string_offset = NKUI_LAYOUT_TRANSACTION_HEADER_BYTES +
-                                           NKUI_LAYOUT_NODE_RECORD_BYTES * node_count;
+    constexpr std::size_t string_offset =
+        NKUI_LAYOUT_TRANSACTION_HEADER_BYTES + NKUI_LAYOUT_NODE_RECORD_BYTES * node_count;
     const char text[] = "Press";
     std::vector<uint8_t> bytes(string_offset + sizeof(text) - 1);
     write_u32(bytes, 0, NKUI_LAYOUT_TRANSACTION_VERSION);
@@ -63,7 +63,8 @@ std::vector<uint8_t> transaction() {
     write_float(bytes, record(0) + NKUI_LAYOUT_NODE_WIDTH_VALUE_OFFSET, 256.0f);
     write_u32(bytes, record(0) + NKUI_LAYOUT_NODE_HEIGHT_SIZING_OFFSET, NKUI_LAYOUT_SIZING_FIXED);
     write_float(bytes, record(0) + NKUI_LAYOUT_NODE_HEIGHT_VALUE_OFFSET, 192.0f);
-    write_u32(bytes, record(0) + NKUI_LAYOUT_NODE_DIRECTION_OFFSET, NKUI_LAYOUT_DIRECTION_TOP_TO_BOTTOM);
+    write_u32(bytes, record(0) + NKUI_LAYOUT_NODE_DIRECTION_OFFSET,
+              NKUI_LAYOUT_DIRECTION_TOP_TO_BOTTOM);
     write_color(bytes, record(0) + NKUI_LAYOUT_NODE_BACKGROUND_OFFSET, 0.1f, 0.1f, 0.1f, 1.0f);
     write_float(bytes, record(0) + NKUI_LAYOUT_NODE_FONT_SIZE_OFFSET, 16.0f);
     write_u32(bytes, record(0) + NKUI_LAYOUT_NODE_TEXT_OFFSET_OFFSET, string_offset);
@@ -75,7 +76,8 @@ std::vector<uint8_t> transaction() {
     write_float(bytes, record(1) + NKUI_LAYOUT_NODE_WIDTH_VALUE_OFFSET, 160.0f);
     write_u32(bytes, record(1) + NKUI_LAYOUT_NODE_HEIGHT_SIZING_OFFSET, NKUI_LAYOUT_SIZING_FIXED);
     write_float(bytes, record(1) + NKUI_LAYOUT_NODE_HEIGHT_VALUE_OFFSET, 64.0f);
-    write_u32(bytes, record(1) + NKUI_LAYOUT_NODE_DIRECTION_OFFSET, NKUI_LAYOUT_DIRECTION_TOP_TO_BOTTOM);
+    write_u32(bytes, record(1) + NKUI_LAYOUT_NODE_DIRECTION_OFFSET,
+              NKUI_LAYOUT_DIRECTION_TOP_TO_BOTTOM);
     write_float(bytes, record(1) + NKUI_LAYOUT_NODE_TRANSFORM_TX_OFFSET, 12.0f);
     write_float(bytes, record(1) + NKUI_LAYOUT_NODE_TRANSFORM_TY_OFFSET, 20.0f);
     write_color(bytes, record(1) + NKUI_LAYOUT_NODE_BACKGROUND_OFFSET, 0.2f, 0.5f, 0.9f, 1.0f);
@@ -87,7 +89,8 @@ std::vector<uint8_t> transaction() {
     write_u32(bytes, record(2) + NKUI_LAYOUT_NODE_VISUAL_KIND_OFFSET, NKUI_LAYOUT_VISUAL_TEXT);
     write_u32(bytes, record(2) + NKUI_LAYOUT_NODE_WIDTH_SIZING_OFFSET, NKUI_LAYOUT_SIZING_FIT);
     write_u32(bytes, record(2) + NKUI_LAYOUT_NODE_HEIGHT_SIZING_OFFSET, NKUI_LAYOUT_SIZING_FIT);
-    write_u32(bytes, record(2) + NKUI_LAYOUT_NODE_DIRECTION_OFFSET, NKUI_LAYOUT_DIRECTION_TOP_TO_BOTTOM);
+    write_u32(bytes, record(2) + NKUI_LAYOUT_NODE_DIRECTION_OFFSET,
+              NKUI_LAYOUT_DIRECTION_TOP_TO_BOTTOM);
     write_u32(bytes, record(2) + NKUI_LAYOUT_NODE_TEXT_OFFSET_OFFSET, string_offset);
     write_u32(bytes, record(2) + NKUI_LAYOUT_NODE_TEXT_LENGTH_OFFSET, sizeof(text) - 1);
     write_color(bytes, record(2) + NKUI_LAYOUT_NODE_TEXT_COLOR_OFFSET, 1.0f, 1.0f, 1.0f, 1.0f);
@@ -97,8 +100,8 @@ std::vector<uint8_t> transaction() {
 }
 
 std::vector<uint8_t> transaction_with_nodes(uint32_t node_count) {
-    const std::size_t string_offset = NKUI_LAYOUT_TRANSACTION_HEADER_BYTES +
-                                      NKUI_LAYOUT_NODE_RECORD_BYTES * node_count;
+    const std::size_t string_offset =
+        NKUI_LAYOUT_TRANSACTION_HEADER_BYTES + NKUI_LAYOUT_NODE_RECORD_BYTES * node_count;
     std::vector<uint8_t> bytes(string_offset);
     write_u32(bytes, 0, NKUI_LAYOUT_TRANSACTION_VERSION);
     write_u32(bytes, 4, node_count);
@@ -106,16 +109,14 @@ std::vector<uint8_t> transaction_with_nodes(uint32_t node_count) {
     write_u32(bytes, 12, static_cast<uint32_t>(string_offset));
     for (uint32_t index = 0; index < node_count; ++index) {
         const std::size_t offset = NKUI_LAYOUT_TRANSACTION_HEADER_BYTES +
-                                   static_cast<std::size_t>(index) *
-                                       NKUI_LAYOUT_NODE_RECORD_BYTES;
+                                   static_cast<std::size_t>(index) * NKUI_LAYOUT_NODE_RECORD_BYTES;
         write_u32(bytes, offset + NKUI_LAYOUT_NODE_ID_OFFSET, index + 1);
         write_i32(bytes, offset + NKUI_LAYOUT_NODE_PARENT_OFFSET, index == 0 ? -1 : 0);
         write_u32(bytes, offset + NKUI_LAYOUT_NODE_VISUAL_KIND_OFFSET, NKUI_LAYOUT_VISUAL_BOX);
         write_u32(bytes, offset + NKUI_LAYOUT_NODE_WIDTH_SIZING_OFFSET, NKUI_LAYOUT_SIZING_FIXED);
         write_float(bytes, offset + NKUI_LAYOUT_NODE_WIDTH_VALUE_OFFSET,
                     index == 0 ? 256.0f : 1.0f);
-        write_u32(bytes, offset + NKUI_LAYOUT_NODE_HEIGHT_SIZING_OFFSET,
-                  NKUI_LAYOUT_SIZING_FIXED);
+        write_u32(bytes, offset + NKUI_LAYOUT_NODE_HEIGHT_SIZING_OFFSET, NKUI_LAYOUT_SIZING_FIXED);
         write_float(bytes, offset + NKUI_LAYOUT_NODE_HEIGHT_VALUE_OFFSET,
                     index == 0 ? 192.0f : 1.0f);
         write_float(bytes, offset + NKUI_LAYOUT_NODE_FONT_SIZE_OFFSET, 16.0f);
@@ -172,16 +173,16 @@ int main() {
     if (nkui_layout_session_get_resolved_items(session, nullptr, &resolved_bytes) !=
         NKUI_ERROR_INVALID_ARGUMENT)
         return 12;
-    const nkui_result initial_status = nkui_layout_session_submit(
-        session, bytes.data(), bytes.size(), &frame);
+    const nkui_result initial_status =
+        nkui_layout_session_submit(session, bytes.data(), bytes.size(), &frame);
     if (initial_status != NKUI_OK) {
         std::cerr << "initial submit failed: " << initial_status << "\n";
         return 4;
     }
 
     auto constraints = transaction_with_nodes(2);
-    const std::size_t constraints_record = NKUI_LAYOUT_TRANSACTION_HEADER_BYTES +
-                                           NKUI_LAYOUT_NODE_RECORD_BYTES;
+    const std::size_t constraints_record =
+        NKUI_LAYOUT_TRANSACTION_HEADER_BYTES + NKUI_LAYOUT_NODE_RECORD_BYTES;
     write_u32(constraints, constraints_record + NKUI_LAYOUT_NODE_WIDTH_SIZING_OFFSET,
               NKUI_LAYOUT_SIZING_FIT);
     write_float(constraints, constraints_record + NKUI_LAYOUT_NODE_WIDTH_MIN_OFFSET, 40.0f);
@@ -190,12 +191,12 @@ int main() {
               NKUI_LAYOUT_SIZING_FIXED);
     write_float(constraints, constraints_record + NKUI_LAYOUT_NODE_HEIGHT_VALUE_OFFSET, 30.0f);
     if (nkui_layout_session_submit(session, constraints.data(), constraints.size(), &frame) !=
-        NKUI_OK ||
+            NKUI_OK ||
         nkui_layout_session_get_resolved_items(session, nullptr, &resolved_bytes) != NKUI_OK)
         return 27;
     std::vector<uint8_t> constraints_resolved(resolved_bytes);
     if (nkui_layout_session_get_resolved_items(session, constraints_resolved.data(),
-                                                &resolved_bytes) != NKUI_OK)
+                                               &resolved_bytes) != NKUI_OK)
         return 28;
     nkui_layout_item constrained_item{};
     std::memcpy(&constrained_item, constraints_resolved.data() + sizeof(nkui_layout_item),
@@ -224,25 +225,22 @@ int main() {
         return 31;
 
     auto invalid_constraints = constraints;
-    write_float(invalid_constraints,
-                constraints_record + NKUI_LAYOUT_NODE_WIDTH_MAX_OFFSET, 79.0f);
-    write_float(invalid_constraints,
-                constraints_record + NKUI_LAYOUT_NODE_WIDTH_MIN_OFFSET, 80.0f);
-    if (nkui_layout_session_submit(session, invalid_constraints.data(),
-                                   invalid_constraints.size(), &frame) !=
-        NKUI_ERROR_INVALID_TRANSACTION)
+    write_float(invalid_constraints, constraints_record + NKUI_LAYOUT_NODE_WIDTH_MAX_OFFSET, 79.0f);
+    write_float(invalid_constraints, constraints_record + NKUI_LAYOUT_NODE_WIDTH_MIN_OFFSET, 80.0f);
+    if (nkui_layout_session_submit(session, invalid_constraints.data(), invalid_constraints.size(),
+                                   &frame) != NKUI_ERROR_INVALID_TRANSACTION)
         return 32;
 
     auto invalid_weight = constraints;
     write_u32(invalid_weight, constraints_record + NKUI_LAYOUT_NODE_WIDTH_SIZING_OFFSET,
               NKUI_LAYOUT_SIZING_GROW);
-    write_float(invalid_weight,
-                constraints_record + NKUI_LAYOUT_NODE_WIDTH_GROW_WEIGHT_OFFSET, 0.0f);
+    write_float(invalid_weight, constraints_record + NKUI_LAYOUT_NODE_WIDTH_GROW_WEIGHT_OFFSET,
+                0.0f);
     if (nkui_layout_session_submit(session, invalid_weight.data(), invalid_weight.size(), &frame) !=
         NKUI_ERROR_INVALID_TRANSACTION)
         return 33;
-    write_float(invalid_weight,
-                constraints_record + NKUI_LAYOUT_NODE_WIDTH_GROW_WEIGHT_OFFSET, NAN);
+    write_float(invalid_weight, constraints_record + NKUI_LAYOUT_NODE_WIDTH_GROW_WEIGHT_OFFSET,
+                NAN);
     if (nkui_layout_session_submit(session, invalid_weight.data(), invalid_weight.size(), &frame) !=
         NKUI_ERROR_INVALID_TRANSACTION)
         return 34;
@@ -250,8 +248,8 @@ int main() {
     // Custom-paint lists are retained by their layout session, and only
     // custom-visual nodes in the latest submission may own one.
     auto custom_tree = bytes;
-    const std::size_t custom_record = NKUI_LAYOUT_TRANSACTION_HEADER_BYTES +
-                                      NKUI_LAYOUT_NODE_RECORD_BYTES;
+    const std::size_t custom_record =
+        NKUI_LAYOUT_TRANSACTION_HEADER_BYTES + NKUI_LAYOUT_NODE_RECORD_BYTES;
     write_u32(custom_tree, custom_record + NKUI_LAYOUT_NODE_VISUAL_KIND_OFFSET,
               NKUI_LAYOUT_VISUAL_CUSTOM);
     if (nkui_layout_session_submit(session, custom_tree.data(), custom_tree.size(), &frame) !=
@@ -318,14 +316,13 @@ int main() {
     if (nkui_layout_session_get_resolved_items(session, large_resolved.data(),
                                                &large_resolved_bytes) != NKUI_OK)
         return 22;
-    if (nkui_layout_session_submit(session, large.data(),
-                                   NKUI_LAYOUT_MAX_TRANSACTION_BYTES + 1u, &frame) !=
-        NKUI_ERROR_INVALID_TRANSACTION)
+    if (nkui_layout_session_submit(session, large.data(), NKUI_LAYOUT_MAX_TRANSACTION_BYTES + 1u,
+                                   &frame) != NKUI_ERROR_INVALID_TRANSACTION)
         return 23;
 
     auto centered = bytes;
-    const std::size_t panel_record = NKUI_LAYOUT_TRANSACTION_HEADER_BYTES +
-                                     NKUI_LAYOUT_NODE_RECORD_BYTES;
+    const std::size_t panel_record =
+        NKUI_LAYOUT_TRANSACTION_HEADER_BYTES + NKUI_LAYOUT_NODE_RECORD_BYTES;
     write_u32(centered, panel_record + NKUI_LAYOUT_NODE_CHILD_ALIGNMENT_OFFSET,
               NKUI_LAYOUT_ALIGNMENT_CENTER | (NKUI_LAYOUT_ALIGNMENT_CENTER << 8));
     write_u32(centered, panel_record + NKUI_LAYOUT_NODE_CHILD_DISTRIBUTION_OFFSET,
@@ -336,16 +333,16 @@ int main() {
         return 16;
     std::memcpy(&button_item, resolved.data() + sizeof(root_item), sizeof(button_item));
     std::memcpy(&text_item, resolved.data() + 2 * sizeof(root_item), sizeof(text_item));
-    if (std::abs(text_item.x -
-                 (button_item.x + (button_item.width - text_item.width) * 0.5f)) > 0.01f ||
-        std::abs(text_item.y -
-                 (button_item.y + (button_item.height - text_item.height) * 0.5f)) > 0.01f)
+    if (std::abs(text_item.x - (button_item.x + (button_item.width - text_item.width) * 0.5f)) >
+            0.01f ||
+        std::abs(text_item.y - (button_item.y + (button_item.height - text_item.height) * 0.5f)) >
+            0.01f)
         return 17;
 
     measure_state.calls = 0;
     auto measured = transaction_with_nodes(2);
-    const std::size_t measured_record = NKUI_LAYOUT_TRANSACTION_HEADER_BYTES +
-                                        NKUI_LAYOUT_NODE_RECORD_BYTES;
+    const std::size_t measured_record =
+        NKUI_LAYOUT_TRANSACTION_HEADER_BYTES + NKUI_LAYOUT_NODE_RECORD_BYTES;
     write_u32(measured, measured_record + NKUI_LAYOUT_NODE_VISUAL_KIND_OFFSET,
               NKUI_LAYOUT_VISUAL_CUSTOM);
     write_u32(measured, measured_record + NKUI_LAYOUT_NODE_WIDTH_SIZING_OFFSET,
@@ -358,7 +355,7 @@ int main() {
         return 44;
     std::vector<uint8_t> measured_resolved(resolved_bytes);
     if (nkui_layout_session_get_resolved_items(session, measured_resolved.data(),
-                                                &resolved_bytes) != NKUI_OK)
+                                               &resolved_bytes) != NKUI_OK)
         return 45;
     std::memcpy(&button_item, measured_resolved.data() + sizeof(root_item), sizeof(button_item));
     if (button_item.width != 48.0f || button_item.height != 20.0f ||
@@ -387,8 +384,8 @@ int main() {
     resolved_bytes = static_cast<uint32_t>(resolved.size());
 
     auto floating = bytes;
-    const std::size_t text_record = NKUI_LAYOUT_TRANSACTION_HEADER_BYTES +
-                                    2 * NKUI_LAYOUT_NODE_RECORD_BYTES;
+    const std::size_t text_record =
+        NKUI_LAYOUT_TRANSACTION_HEADER_BYTES + 2 * NKUI_LAYOUT_NODE_RECORD_BYTES;
     write_u32(floating, text_record + NKUI_LAYOUT_NODE_FLAGS_OFFSET,
               NKUI_LAYOUT_NODE_VISIBLE | NKUI_LAYOUT_NODE_FLOATING |
                   NKUI_LAYOUT_NODE_CLIP_TO_PARENT);
@@ -417,8 +414,7 @@ int main() {
     auto wrapped = bytes;
     write_u32(wrapped, panel_record + NKUI_LAYOUT_NODE_DIRECTION_OFFSET,
               NKUI_LAYOUT_DIRECTION_LEFT_TO_RIGHT);
-    write_u32(wrapped, panel_record + NKUI_LAYOUT_NODE_WRAP_MODE_OFFSET,
-              NKUI_LAYOUT_WRAP_WRAP);
+    write_u32(wrapped, panel_record + NKUI_LAYOUT_NODE_WRAP_MODE_OFFSET, NKUI_LAYOUT_WRAP_WRAP);
     write_float(wrapped, panel_record + NKUI_LAYOUT_NODE_ROW_GAP_OFFSET, 6.5f);
     write_float(wrapped, panel_record + NKUI_LAYOUT_NODE_COLUMN_GAP_OFFSET, 4.25f);
     write_u32(wrapped, panel_record + NKUI_LAYOUT_NODE_ALIGN_SELF_OFFSET,

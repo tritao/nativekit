@@ -77,11 +77,10 @@ HWND notification_window = nullptr;
 
 UINT query_window_dpi(HWND window);
 
-nk_window_decoration_region_kind decoration_region_at(
-    const std::vector<nk_window_decoration_region> &regions, float x, float y) {
+nk_window_decoration_region_kind
+decoration_region_at(const std::vector<nk_window_decoration_region> &regions, float x, float y) {
     for (auto iter = regions.rbegin(); iter != regions.rend(); ++iter) {
-        if (x >= iter->x && y >= iter->y && x < iter->x + iter->width &&
-            y < iter->y + iter->height)
+        if (x >= iter->x && y >= iter->y && x < iter->x + iter->width && y < iter->y + iter->height)
             return iter->kind;
     }
     return NK_WINDOW_DECORATION_CLIENT;
@@ -1387,9 +1386,9 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             POINT point{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
             ScreenToClient(window, &point);
             const auto scale = dpi_scale(window);
-            const auto kind = decoration_region_at(
-                resource->decoration_regions, static_cast<float>(point.x / scale),
-                static_cast<float>(point.y / scale));
+            const auto kind = decoration_region_at(resource->decoration_regions,
+                                                   static_cast<float>(point.x / scale),
+                                                   static_cast<float>(point.y / scale));
             if (kind != NK_WINDOW_DECORATION_CLIENT)
                 return decoration_hit_test(kind);
         }
@@ -2987,8 +2986,7 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
         const auto title = wide(options->title);
         DWORD style = (options->flags & NK_WINDOW_BORDERLESS) ? WS_POPUP : WS_OVERLAPPEDWINDOW;
         DWORD extended_style = options->kind == NK_WINDOW_UTILITY ? WS_EX_TOOLWINDOW : 0;
-        if ((options->flags & NK_WINDOW_BORDERLESS) &&
-            (options->flags & NK_WINDOW_RESIZABLE))
+        if ((options->flags & NK_WINDOW_BORDERLESS) && (options->flags & NK_WINDOW_RESIZABLE))
             style |= WS_THICKFRAME | WS_MAXIMIZEBOX;
         if (!(options->flags & NK_WINDOW_RESIZABLE))
             style &= ~(WS_THICKFRAME | WS_MAXIMIZEBOX);
@@ -3959,8 +3957,9 @@ nk_result NK_CALL nk_window_set_decorated(nk_handle h, uint32_t enabled) {
     return NK_OK;
 }
 
-nk_result NK_CALL nk_window_set_decoration_regions(
-    nk_handle h, const nk_window_decoration_region *regions, uint32_t region_count) {
+nk_result NK_CALL nk_window_set_decoration_regions(nk_handle h,
+                                                   const nk_window_decoration_region *regions,
+                                                   uint32_t region_count) {
     try {
         if (const auto r = enter_ui(); r != NK_OK)
             return r;

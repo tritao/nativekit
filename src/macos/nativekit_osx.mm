@@ -573,11 +573,10 @@ std::shared_ptr<MacWindowResource> window(nk_handle handle) {
         nk::core::handles().get(handle, nk::core::ResourceType::window));
 }
 
-nk_window_decoration_region_kind decoration_region_at(
-    const std::vector<nk_window_decoration_region> &regions, float x, float y) {
+nk_window_decoration_region_kind
+decoration_region_at(const std::vector<nk_window_decoration_region> &regions, float x, float y) {
     for (auto iter = regions.rbegin(); iter != regions.rend(); ++iter) {
-        if (x >= iter->x && y >= iter->y && x < iter->x + iter->width &&
-            y < iter->y + iter->height)
+        if (x >= iter->x && y >= iter->y && x < iter->x + iter->width && y < iter->y + iter->height)
             return iter->kind;
     }
     return NK_WINDOW_DECORATION_CLIENT;
@@ -1808,14 +1807,14 @@ void update_decoration_resize(MacWindowResource &resource) {
     }
 
     const NSRect content_frame = resource.window.contentView.frame;
-    const CGFloat frame_delta_width = resource.decoration_resize_frame.size.width -
-                                      content_frame.size.width;
-    const CGFloat frame_delta_height = resource.decoration_resize_frame.size.height -
-                                       content_frame.size.height;
-    const CGFloat min_width = std::max(1.0, resource.window.contentMinSize.width +
-                                                frame_delta_width);
-    const CGFloat min_height = std::max(1.0, resource.window.contentMinSize.height +
-                                                  frame_delta_height);
+    const CGFloat frame_delta_width =
+        resource.decoration_resize_frame.size.width - content_frame.size.width;
+    const CGFloat frame_delta_height =
+        resource.decoration_resize_frame.size.height - content_frame.size.height;
+    const CGFloat min_width =
+        std::max(1.0, resource.window.contentMinSize.width + frame_delta_width);
+    const CGFloat min_height =
+        std::max(1.0, resource.window.contentMinSize.height + frame_delta_height);
     const CGFloat max_width = resource.window.contentMaxSize.width > 0.0
                                   ? resource.window.contentMaxSize.width + frame_delta_width
                                   : CGFLOAT_MAX;
@@ -4643,8 +4642,9 @@ nk_result NK_CALL nk_window_set_decorated(nk_handle h, uint32_t enabled) {
     return NK_OK;
 }
 
-nk_result NK_CALL nk_window_set_decoration_regions(
-    nk_handle h, const nk_window_decoration_region *regions, uint32_t region_count) {
+nk_result NK_CALL nk_window_set_decoration_regions(nk_handle h,
+                                                   const nk_window_decoration_region *regions,
+                                                   uint32_t region_count) {
     try {
         if (const auto r = enter_ui(); r != NK_OK)
             return r;
