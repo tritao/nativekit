@@ -91,6 +91,24 @@ int main() {
                                         2,
                                         4};
     assert(selection.valid());
+    const TextEditTransaction finish{NK_TEXT_EDIT_FINISH_COMPOSITION,
+                                     NK_TEXT_POSITION_NONE,
+                                     NK_TEXT_POSITION_NONE,
+                                     {},
+                                     4,
+                                     4,
+                                     NK_TEXT_POSITION_NONE,
+                                     NK_TEXT_POSITION_NONE};
+    assert(finish.valid());
+    const TextEditTransaction finish_with_replacement{NK_TEXT_EDIT_FINISH_COMPOSITION,
+                                                       4,
+                                                       4,
+                                                       {},
+                                                       4,
+                                                       4,
+                                                       NK_TEXT_POSITION_NONE,
+                                                       NK_TEXT_POSITION_NONE};
+    assert(!finish_with_replacement.valid());
     const TextEditTransaction malformed{NK_TEXT_EDIT_COMMIT, 4, 2, "x", 4, 4,
                                         NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE};
     assert(!malformed.valid());

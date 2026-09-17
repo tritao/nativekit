@@ -81,7 +81,8 @@ fi
 for test_artifact in \
     "$build_dir/tests/nativekit_platform_parity.html" \
     "$build_dir/tests/nativekit_web_accessibility.html" \
-    "$build_dir/tests/nativekit_web_system_equivalents.html"; do
+    "$build_dir/tests/nativekit_web_system_equivalents.html" \
+    "$build_dir/tests/nativekit_web_text_input.html"; do
     if [[ ! -f "$test_artifact" ]]; then
         echo "Web integration artifact is missing: $test_artifact" >&2
         exit 1
@@ -97,4 +98,6 @@ python3 "$repo_dir/tools/web_dataset_smoke.py" \
     --test-page "http://127.0.0.1:${http_port}/tests/nativekit_web_system_equivalents.html" \
     --dataset-key nativekitSystemResult \
     --test-page "http://127.0.0.1:${http_port}/tests/nativekit_web_system_equivalents.html?orientation-smoke" \
-    --dataset-key nativekitSystemResult
+    --dataset-key nativekitSystemResult \
+    --test-page "http://127.0.0.1:${http_port}/tests/nativekit_web_text_input.html" \
+    --dataset-key nativekitWebTextInputResult

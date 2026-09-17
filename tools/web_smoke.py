@@ -197,7 +197,7 @@ def main():
 
             if not probe_sent:
                 probe_sent = bool(websocket.evaluate(
-                    "(()=>{const input=document.getElementById('__nativekit_text_input');"
+                    "(()=>{const input=document.querySelector(\"[id^='__nativekit_text_input_']\");"
                     "if(!input)return false;"
                     "input.dispatchEvent(new InputEvent('beforeinput',{bubbles:true,cancelable:true,"
                     "data:'A',inputType:'insertText'}));return true;})()",

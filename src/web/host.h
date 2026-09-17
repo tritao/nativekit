@@ -69,8 +69,11 @@ enum class TextInputEventType : uint8_t {
 struct TextInputEvent {
     TextInputEventType type = TextInputEventType::commit;
     const char *text = nullptr;
-    uint32_t selection_start = 0;
-    uint32_t selection_end = 0;
+    // Replacement and selection positions are relative code-point offsets in the proxy value.
+    uint32_t replacement_start = NK_TEXT_POSITION_NONE;
+    uint32_t replacement_end = NK_TEXT_POSITION_NONE;
+    uint32_t selection_start = NK_TEXT_POSITION_NONE;
+    uint32_t selection_end = NK_TEXT_POSITION_NONE;
 };
 
 struct AccessibilityActionEvent {

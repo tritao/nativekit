@@ -16,11 +16,13 @@
 #include "core/graphics_image_registry.h"
 #include "core/gamepad_events.hpp"
 #include "core/runtime.hpp"
+#include "core/text_edit_transaction.hpp"
 #include "core/resource_events.hpp"
 #include "web/gamepad.hpp"
 #include "web/host.h"
-#include "core/text_input_contract.hpp"
 #include "core/text_input_geometry.hpp"
+#include "core/text_input_contract.hpp"
+#include "core/text_offsets.hpp"
 
 #include <algorithm>
 #include <array>
@@ -162,6 +164,7 @@ struct WebSurfaceResource final : nk::core::Resource {
     bool text_input_state_set = false;
     nk_text_input_state text_input_state{};
     std::string text_input_text;
+    nk::core::TextOffsetMap text_input_offsets;
     std::vector<nk_text_input_rect> text_input_selection_rects;
     std::vector<nk_text_input_rect> text_input_composition_rects;
     std::unordered_map<nk_accessibility_node_id, WebAccessibilityNode> accessibility_nodes;
@@ -374,24 +377,6 @@ bool valid_web_uri(const char *uri) {
         return false;
     const auto scheme_end = std::strchr(uri, ':');
     return scheme_end && scheme_end != uri;
-}
-
-uint32_t utf8_codepoints(const std::string &text) {
-    uint32_t result = 0;
-    return nk::core::decode_utf8_codepoint_count(text, &result) ? result : 0;
-}
-
-std::size_t utf8_byte_offset(const std::string &text, uint32_t codepoint) {
-    std::size_t offset = 0;
-    while (offset < text.size()) {
-        if ((static_cast<unsigned char>(text[offset]) & 0xc0u) != 0x80u) {
-            if (codepoint == 0)
-                return offset;
-            --codepoint;
-        }
-        ++offset;
-    }
-    return offset;
 }
 
 bool decode_utf8(const char *value, uint32_t *out_count) {
@@ -949,34 +934,63 @@ void configure_text_input(WebSurfaceResource &surface) {
         nk::web::configure_text_input(window->selector.c_str(), window->handle, config);
 }
 
-void update_text_input_state(WebSurfaceResource &surface, nk_text_position replace_start,
+bool update_text_input_state(WebSurfaceResource &surface, nk_text_position replace_start,
                              nk_text_position replace_end, const std::string &text,
                              nk_text_position selection_start, nk_text_position selection_end,
                              nk_text_position composition_start, nk_text_position composition_end) {
     if (!surface.text_input_state_set)
-        return;
+        return false;
     auto &state = surface.text_input_state;
-    const auto text_end =
-        static_cast<uint64_t>(state.text_start) + utf8_codepoints(surface.text_input_text);
-    if (replace_start < state.text_start || replace_end < replace_start || replace_end > text_end)
-        return;
-    const auto relative_start = replace_start - state.text_start;
-    const auto relative_end = replace_end - state.text_start;
-    const auto byte_start = utf8_byte_offset(surface.text_input_text, relative_start);
-    const auto byte_end = utf8_byte_offset(surface.text_input_text, relative_end);
-    surface.text_input_text.replace(byte_start, byte_end - byte_start, text);
-    const auto removed = replace_end - replace_start;
-    const auto inserted = utf8_codepoints(text);
-    const auto document_delta = static_cast<int64_t>(inserted) - removed;
-    if (document_delta < 0)
-        state.document_length -= static_cast<uint32_t>(-document_delta);
-    else
-        state.document_length += static_cast<uint32_t>(document_delta);
+    const bool has_replacement = replace_start != NK_TEXT_POSITION_NONE &&
+                                 replace_end != NK_TEXT_POSITION_NONE;
+    if ((replace_start == NK_TEXT_POSITION_NONE) != (replace_end == NK_TEXT_POSITION_NONE))
+        return false;
+
+    if (has_replacement) {
+        const auto text_end = static_cast<uint64_t>(state.text_start) +
+                              surface.text_input_offsets.codepointCount();
+        if (replace_start < state.text_start || replace_end < replace_start ||
+            replace_end > text_end)
+            return false;
+        const auto relative_start = replace_start - state.text_start;
+        const auto relative_end = replace_end - state.text_start;
+        std::size_t byte_start = 0;
+        std::size_t byte_end = 0;
+        if (!surface.text_input_offsets.utf8ByteOffset(relative_start, &byte_start) ||
+            !surface.text_input_offsets.utf8ByteOffset(relative_end, &byte_end))
+            return false;
+
+        nk::core::TextOffsetMap inserted_offsets;
+        if (!inserted_offsets.assign(text))
+            return false;
+        std::string updated = surface.text_input_text;
+        updated.replace(byte_start, byte_end - byte_start, text);
+        nk::core::TextOffsetMap updated_offsets;
+        if (!updated_offsets.assign(updated))
+            return false;
+
+        const auto removed = replace_end - replace_start;
+        const auto inserted = inserted_offsets.codepointCount();
+        const auto document_delta = static_cast<int64_t>(inserted) - removed;
+        if (document_delta < 0 && state.document_length < static_cast<uint32_t>(-document_delta))
+            return false;
+        if (document_delta > 0 &&
+            state.document_length > std::numeric_limits<uint32_t>::max() -
+                                        static_cast<uint32_t>(document_delta))
+            return false;
+        surface.text_input_text = std::move(updated);
+        surface.text_input_offsets = std::move(updated_offsets);
+        if (document_delta < 0)
+            state.document_length -= static_cast<uint32_t>(-document_delta);
+        else
+            state.document_length += static_cast<uint32_t>(document_delta);
+    }
     state.selection_start = selection_start;
     state.selection_end = selection_end;
     state.composition_start = composition_start;
     state.composition_end = composition_end;
     state.text = surface.text_input_text.c_str();
+    return true;
 }
 
 const char *cursor_name(nk_cursor_shape shape) {
@@ -1429,6 +1443,20 @@ void queue_text_edit(WebSurfaceResource &surface, nk_text_edit_action action,
                      nk_text_position replace_end, nk_text_position selection_start,
                      nk_text_position selection_end, nk_text_position composition_start,
                      nk_text_position composition_end) {
+    nk::core::TextEditTransaction transaction{};
+    transaction.action = action;
+    transaction.replacement_start = replace_start;
+    transaction.replacement_end = replace_end;
+    transaction.replacement_text = text;
+    transaction.selection_start = selection_start;
+    transaction.selection_end = selection_end;
+    transaction.composition_start = composition_start;
+    transaction.composition_end = composition_end;
+    if (!transaction.valid() ||
+        !update_text_input_state(surface, replace_start, replace_end, text, selection_start,
+                                 selection_end, composition_start, composition_end))
+        return;
+
     nk_text_edit_event payload{};
     payload.action = action;
     payload.text_offset = text.empty() ? 0u : sizeof(payload);
@@ -1447,9 +1475,7 @@ void queue_text_edit(WebSurfaceResource &surface, nk_text_edit_action action,
     std::memcpy(queued.data.data(), &payload, sizeof(payload));
     if (!text.empty())
         std::memcpy(queued.data.data() + sizeof(payload), text.c_str(), text.size() + 1);
-    if (nk::core::push_event(std::move(queued)) == NK_OK)
-        update_text_input_state(surface, replace_start, replace_end, text, selection_start,
-                                selection_end, composition_start, composition_end);
+    nk::core::push_event(std::move(queued));
 }
 
 void on_text_input(const nk::web::TextInputEvent &event, void *user_data) {
@@ -1464,7 +1490,8 @@ void on_text_input(const nk::web::TextInputEvent &event, void *user_data) {
 
         const auto &state = surface->text_input_state;
         const auto text_end = static_cast<nk_text_position>(
-            static_cast<uint64_t>(state.text_start) + utf8_codepoints(surface->text_input_text));
+            static_cast<uint64_t>(state.text_start) +
+            surface->text_input_offsets.codepointCount());
         const bool has_composition = state.composition_start != NK_TEXT_POSITION_NONE &&
                                      state.composition_end != NK_TEXT_POSITION_NONE &&
                                      state.composition_start <= state.composition_end &&
@@ -1478,6 +1505,28 @@ void on_text_input(const nk::web::TextInputEvent &event, void *user_data) {
         nk_text_position composition_end = state.composition_end;
         nk_text_edit_action action = NK_TEXT_EDIT_COMMIT;
         std::string text = event.text ? event.text : "";
+        nk::core::TextOffsetMap inserted_offsets;
+        if (!inserted_offsets.assign(text))
+            return;
+        if (inserted_offsets.codepointCount() > std::numeric_limits<nk_text_position>::max())
+            return;
+        const auto inserted = static_cast<nk_text_position>(inserted_offsets.codepointCount());
+
+        const bool has_event_replacement =
+            event.replacement_start != NK_TEXT_POSITION_NONE &&
+            event.replacement_end != NK_TEXT_POSITION_NONE;
+        if ((event.replacement_start == NK_TEXT_POSITION_NONE) !=
+            (event.replacement_end == NK_TEXT_POSITION_NONE))
+            return;
+        if (has_event_replacement) {
+            const auto relative_limit = surface->text_input_offsets.codepointCount();
+            if (event.replacement_start > relative_limit ||
+                event.replacement_end < event.replacement_start ||
+                event.replacement_end > relative_limit)
+                return;
+            replace_start = state.text_start + event.replacement_start;
+            replace_end = state.text_start + event.replacement_end;
+        }
 
         switch (event.type) {
         case nk::web::TextInputEventType::compose:
@@ -1485,7 +1534,7 @@ void on_text_input(const nk::web::TextInputEvent &event, void *user_data) {
                 replace_start = state.composition_start;
                 replace_end = state.composition_end;
             }
-            selection_start = replace_start + utf8_codepoints(text);
+            selection_start = replace_start + inserted;
             selection_end = selection_start;
             composition_start = replace_start;
             composition_end = selection_start;
@@ -1496,7 +1545,7 @@ void on_text_input(const nk::web::TextInputEvent &event, void *user_data) {
                 replace_start = state.composition_start;
                 replace_end = state.composition_end;
             }
-            selection_start = replace_start + utf8_codepoints(text);
+            selection_start = replace_start + inserted;
             selection_end = selection_start;
             composition_start = NK_TEXT_POSITION_NONE;
             composition_end = NK_TEXT_POSITION_NONE;
@@ -1528,26 +1577,33 @@ void on_text_input(const nk::web::TextInputEvent &event, void *user_data) {
             composition_end = NK_TEXT_POSITION_NONE;
             break;
         case nk::web::TextInputEventType::finish_composition:
-            replace_start = state.selection_start;
-            replace_end = replace_start;
-            selection_start = replace_start;
-            selection_end = replace_start;
+            selection_start = state.selection_start;
+            selection_end = state.selection_end;
+            replace_start = NK_TEXT_POSITION_NONE;
+            replace_end = NK_TEXT_POSITION_NONE;
             composition_start = NK_TEXT_POSITION_NONE;
             composition_end = NK_TEXT_POSITION_NONE;
             action = NK_TEXT_EDIT_FINISH_COMPOSITION;
             text.clear();
             break;
         case nk::web::TextInputEventType::selection: {
-            const auto relative_start =
-                std::min(event.selection_start, text_end - state.text_start);
-            const auto relative_end = std::min(event.selection_end, text_end - state.text_start);
+            if (event.selection_start == NK_TEXT_POSITION_NONE ||
+                event.selection_end == NK_TEXT_POSITION_NONE)
+                return;
+            const auto relative_limit = text_end - state.text_start;
+            if (event.selection_start > relative_limit || event.selection_end > relative_limit)
+                return;
+            const auto relative_start = event.selection_start;
+            const auto relative_end = event.selection_end;
             selection_start = state.text_start + std::min(relative_start, relative_end);
             selection_end = state.text_start + std::max(relative_start, relative_end);
-            replace_start = state.selection_start;
-            replace_end = state.selection_end;
+            replace_start = NK_TEXT_POSITION_NONE;
+            replace_end = NK_TEXT_POSITION_NONE;
             action = NK_TEXT_EDIT_SET_SELECTION;
             break;
         }
+        default:
+            return;
         }
 
         queue_text_edit(*surface, action, text, replace_start, replace_end, selection_start,
@@ -3162,7 +3218,11 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
     auto surface = get_surface(handle);
     if (!surface)
         return invalid_handle("invalid web text-input surface handle");
+    nk::core::TextOffsetMap offsets;
+    if (!offsets.assign(text))
+        return invalid_argument("text input text is not valid UTF-8");
     surface->text_input_text = text;
+    surface->text_input_offsets = std::move(offsets);
     surface->text_input_state = *state;
     surface->text_input_state.text = surface->text_input_text.c_str();
     surface->text_input_selection_rects.clear();

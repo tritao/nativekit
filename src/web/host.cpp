@@ -466,7 +466,7 @@ EM_JS(void, nk_web_configure_text_input,
           if (!canvas)
               return;
 
-          const id = "__nativekit_text_input";
+          const id = "__nativekit_text_input_" + route;
           const multiline = !!(flags & 1);
           let input = document.getElementById(id);
           const expectedTag = multiline ? "TEXTAREA" : "INPUT";
@@ -492,12 +492,18 @@ EM_JS(void, nk_web_configure_text_input,
               input._nkComposing = false;
               input._nkIgnoreInput = false;
               input._nkSkipInput = false;
-              const emit = (type, value, start, end) => {
+              const emit = (type, value, replacementStart, replacementEnd,
+                            selectionStart, selectionEnd) => {
                   if (!input._nkActive || !Module.ccall)
                       return;
                   Module.ccall("nk_web_host_text_input_event", null,
-                               ["number", "number", "string", "number", "number"],
-                               [input._nkRoute || 0, type, value || "", start || 0, end || 0]);
+                               ["number", "number", "string", "number", "number", "number",
+                                "number"],
+                               [input._nkRoute || 0, type, value || "",
+                                replacementStart === undefined ? -1 : replacementStart,
+                                replacementEnd === undefined ? -1 : replacementEnd,
+                                selectionStart === undefined ? -1 : selectionStart,
+                                selectionEnd === undefined ? -1 : selectionEnd]);
               };
               const suppressInput = () => {
                   input._nkSkipInput = true;
@@ -510,16 +516,66 @@ EM_JS(void, nk_web_configure_text_input,
               });
               input.addEventListener("compositionupdate", event => {
                   input._nkComposing = true;
-                  emit(0, event.data || "", 0, 0);
+                  emit(0, event.data || "", -1, -1, -1, -1);
               });
               input.addEventListener("compositionend", event => {
                   input._nkComposing = false;
                   input._nkIgnoreInput = true;
                   if (event.data)
-                      emit(1, event.data, 0, 0);
+                      emit(1, event.data, -1, -1, -1, -1);
                   else
-                      emit(4, "", 0, 0);
+                      emit(4, "", -1, -1, -1, -1);
               });
+              const codePointOffset = (value, utf16Offset) => {
+                  if (!Number.isInteger(utf16Offset) || utf16Offset < 0 ||
+                      utf16Offset > value.length)
+                      return -1;
+                  if (utf16Offset > 0 && utf16Offset < value.length &&
+                      value.charCodeAt(utf16Offset - 1) >= 0xd800 &&
+                      value.charCodeAt(utf16Offset - 1) <= 0xdbff &&
+                      value.charCodeAt(utf16Offset) >= 0xdc00 &&
+                      value.charCodeAt(utf16Offset) <= 0xdfff)
+                      return -1;
+                  let count = 0;
+                  for (let index = 0; index < utf16Offset;) {
+                      const codepoint = value.codePointAt(index);
+                      index += codepoint > 0xffff ? 2 : 1;
+                      count++;
+                  }
+                  return count;
+              };
+              const codePointToUtf16 = (value, position) => {
+                  if (!Number.isInteger(position) || position < 0)
+                      return -1;
+                  let index = 0;
+                  let count = 0;
+                  for (const character of value) {
+                      if (count >= position)
+                          return index;
+                      index += character.length;
+                      count++;
+                  }
+                  return count === position ? index : -1;
+              };
+              const codePointRangeForEvent = event => {
+                  let start = input.selectionStart == null ? 0 : input.selectionStart;
+                  let end = input.selectionEnd == null ? start : input.selectionEnd;
+                  if (event && typeof event.getTargetRanges === "function") {
+                      const ranges = event.getTargetRanges();
+                      if (ranges && ranges.length) {
+                          const range = ranges[0];
+                          if (range.startContainer === input || !range.startContainer) {
+                              start = range.startOffset;
+                              end = range.endOffset;
+                          }
+                      }
+                  }
+                  const value = input.value;
+                  const codepointStart = codePointOffset(value, start);
+                  const codepointEnd = codePointOffset(value, end);
+                  return codepointStart < 0 || codepointEnd < codepointStart
+                      ? null : [codepointStart, codepointEnd];
+              };
               input.addEventListener("beforeinput", event => {
                   if (!input._nkActive)
                       return;
@@ -543,6 +599,9 @@ EM_JS(void, nk_web_configure_text_input,
                       return;
                   }
 
+                  const replacement = codePointRangeForEvent(event);
+                  if (!replacement)
+                      return;
                   let eventType = -1;
                   let value = event.data || "";
                   switch (type) {
@@ -577,7 +636,7 @@ EM_JS(void, nk_web_configure_text_input,
                       return;
                   event.preventDefault();
                   suppressInput();
-                  emit(eventType, value, 0, 0);
+                  emit(eventType, value, replacement[0], replacement[1], -1, -1);
               });
               input.addEventListener("input", event => {
                   if (input._nkSkipInput) {
@@ -590,42 +649,38 @@ EM_JS(void, nk_web_configure_text_input,
                   }
                   if (input._nkComposing)
                       return;
+                  const replacement = codePointRangeForEvent(null);
+                  if (!replacement)
+                      return;
                   if (event.inputType === "deleteContentBackward")
-                      emit(2, "", 0, 0);
+                      emit(2, "", replacement[0], replacement[1], -1, -1);
                   else if (event.inputType === "deleteContentForward")
-                      emit(3, "", 0, 0);
+                      emit(3, "", replacement[0], replacement[1], -1, -1);
                   else if (event.inputType === "insertLineBreak")
-                      emit(1, "\n", 0, 0);
+                      emit(1, "\n", replacement[0], replacement[1], -1, -1);
                   else {
                       let value = event.data || "";
                       if (!value && event.dataTransfer)
                           value = event.dataTransfer.getData("text/plain") || "";
                       if (value)
-                          emit(1, value, 0, 0);
+                          emit(1, value, replacement[0], replacement[1], -1, -1);
                   }
               });
-              const codePointToUtf16 = (value, position) => {
-                  let index = 0;
-                  let count = 0;
-                  for (const character of value) {
-                      if (count >= position)
-                          break;
-                      index += character.length;
-                      count++;
-                  }
-                  return index;
-              };
               const emitSelection = () => {
                   if (!input._nkActive)
                       return;
                   const value = input.value;
-                  const start = Array.from(value.slice(0, input.selectionStart)).length;
-                  const end = Array.from(value.slice(0, input.selectionEnd)).length;
-                  emit(5, "", start, end);
+                  const start = codePointOffset(value, input.selectionStart);
+                  const end = codePointOffset(value, input.selectionEnd);
+                  if (start < 0 || end < start)
+                      return;
+                  emit(5, "", -1, -1, start, end);
               };
               input.addEventListener("select", emitSelection);
               input.addEventListener("keyup", emitSelection);
+              input._nkCodePointOffset = codePointOffset;
               input._nkCodePointToUtf16 = codePointToUtf16;
+              input._nkCodePointRangeForEvent = codePointRangeForEvent;
               canvas.parentElement.appendChild(input);
           }
 
@@ -649,15 +704,24 @@ EM_JS(void, nk_web_configure_text_input,
                          : input_type === 1 ? "email"
                          : input_type === 2 ? "url" : "text";
           input.value = UTF8ToString(text);
-          input.style.left = Math.max(0, cursor_x) + "px";
-          input.style.top = Math.max(0, cursor_y) + "px";
-          input.style.width = Math.max(1, cursor_width) + "px";
-          input.style.height = Math.max(1, cursor_height) + "px";
+          const canvasRect = canvas.getBoundingClientRect();
+          const logicalWidth = canvas.clientWidth || canvasRect.width || 1;
+          const logicalHeight = canvas.clientHeight || canvasRect.height || 1;
+          const scaleX = canvasRect.width > 0 && logicalWidth > 0
+              ? canvasRect.width / logicalWidth : 1;
+          const scaleY = canvasRect.height > 0 && logicalHeight > 0
+              ? canvasRect.height / logicalHeight : 1;
+          input.style.left = (canvasRect.left + Math.max(0, cursor_x) * scaleX) + "px";
+          input.style.top = (canvasRect.top + Math.max(0, cursor_y) * scaleY) + "px";
+          input.style.width = Math.max(1, cursor_width * scaleX) + "px";
+          input.style.height = Math.max(1, cursor_height * scaleY) + "px";
           const toUtf16 = input._nkCodePointToUtf16;
           const relativeStart = Math.max(0, selection_start - text_start);
           const relativeEnd = Math.max(relativeStart, selection_end - text_start);
-          input.setSelectionRange(toUtf16(input.value, relativeStart),
-                                  toUtf16(input.value, relativeEnd));
+          const utf16Start = toUtf16(input.value, relativeStart);
+          const utf16End = toUtf16(input.value, relativeEnd);
+          if (utf16Start >= 0 && utf16End >= utf16Start)
+              input.setSelectionRange(utf16Start, utf16End);
           if (active) {
               if (document.activeElement !== input)
                   input.focus({preventScroll: true});
@@ -1813,18 +1877,26 @@ EM_JS(int, nk_web_write_resource, (const char *uri, const void *data, uint32_t s
 
 // clang-format on
 
-extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_text_input_event(uint32_t route, int type,
-                                                                  const char *text,
-                                                                  int selection_start,
-                                                                  int selection_end) {
+extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_text_input_event(
+    uint32_t route, int type, const char *text, int replacement_start, int replacement_end,
+    int selection_start, int selection_end) {
     auto *state = state_for_route(route);
     if (!state || !state->callbacks.text_input)
         return;
     nk::web::TextInputEvent event{};
     event.type = static_cast<nk::web::TextInputEventType>(type);
     event.text = text;
-    event.selection_start = selection_start < 0 ? 0u : static_cast<uint32_t>(selection_start);
-    event.selection_end = selection_end < 0 ? 0u : static_cast<uint32_t>(selection_end);
+    event.replacement_start = replacement_start < 0
+                                  ? NK_TEXT_POSITION_NONE
+                                  : static_cast<uint32_t>(replacement_start);
+    event.replacement_end = replacement_end < 0
+                                ? NK_TEXT_POSITION_NONE
+                                : static_cast<uint32_t>(replacement_end);
+    event.selection_start = selection_start < 0
+                                ? NK_TEXT_POSITION_NONE
+                                : static_cast<uint32_t>(selection_start);
+    event.selection_end = selection_end < 0 ? NK_TEXT_POSITION_NONE
+                                            : static_cast<uint32_t>(selection_end);
     state->callbacks.text_input(event, state->user_data);
 }
 

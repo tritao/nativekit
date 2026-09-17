@@ -30,12 +30,12 @@ emcmake cmake -S "$repo_dir" -B "$build_dir" -G Ninja \
     -DNKUI_HAXEON_BUNDLE_FONTS="$bundle_fonts" \
     -DNKUI_HAXEON_SUBSET_FONTS="$subset_fonts" \
     -DNK_SOKOL_BACKEND=gles3
-
 web_targets=(
     nativekit_ui_c_api
     nativekit_platform_parity
     nativekit_web_accessibility
     nativekit_web_system_equivalents
+    nativekit_web_text_input
 )
 haxeon_available=0
 target_help=$(cmake --build "$build_dir" --target help)
@@ -59,6 +59,7 @@ fi
 echo "  $build_dir/tests/nativekit_platform_parity.html"
 echo "  $build_dir/tests/nativekit_web_accessibility.html"
 echo "  $build_dir/tests/nativekit_web_system_equivalents.html"
+echo "  $build_dir/tests/nativekit_web_text_input.html"
 echo
 if [[ "$haxeon_available" == 1 && ("$bundle_fonts" == "ON" || "$bundle_fonts" == "1") ]]; then
     echo "Serve it over HTTP (fonts are bundled in nativekit_ui_haxeon.data; browser tests use the build root):"
