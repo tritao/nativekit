@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -30,7 +30,7 @@ jobs:
           python3-fonttools xvfb
 
       - name: Cache web toolchain
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             .tools
@@ -51,7 +51,7 @@ jobs:
         run: ./tools/build-web.sh
 
       - name: Upload Web build
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: web-build
           path: |
@@ -65,16 +65,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Download Web build
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: web-build
           path: build-web
 
       - name: Install Chrome
-        uses: browser-actions/setup-chrome@v1
+        uses: browser-actions/setup-chrome@v2
         with:
           chrome-version: stable
 
@@ -96,7 +96,7 @@ jobs:
 
       - name: Upload Wasm benchmark reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: haxeon-wasm-benchmarks
           path: out/web-benchmarks/*.json
@@ -107,16 +107,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Download Web build
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: web-build
           path: build-web
 
       - name: Install Chrome
-        uses: browser-actions/setup-chrome@v1
+        uses: browser-actions/setup-chrome@v2
         with:
           chrome-version: stable
 
@@ -125,7 +125,7 @@ jobs:
 
       - name: Upload visual regression differences
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: haxeon-visual-diffs
           path: build-web/visual-diffs/
@@ -135,7 +135,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -153,7 +153,7 @@ jobs:
           python3-fonttools xvfb
 
       - name: Cache web toolchain
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             .tools
@@ -165,7 +165,7 @@ jobs:
         run: ./scripts/bootstrap-tools.sh
 
       - name: Install Chrome
-        uses: browser-actions/setup-chrome@v1
+        uses: browser-actions/setup-chrome@v2
         with:
           chrome-version: stable
 
@@ -191,7 +191,7 @@ jobs:
 
       - name: Upload Wasm profile reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: haxeon-wasm-profiles
           path: out/web-benchmarks/*.json

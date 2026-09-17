@@ -8,6 +8,7 @@
 #if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
 #include <GLES3/gl3.h>
 #elif defined(__APPLE__)
+#define GL_SILENCE_DEPRECATION
 #include <OpenGL/gl3.h>
 #elif defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN

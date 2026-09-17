@@ -3,6 +3,7 @@
 #import <CoreGraphics/CoreGraphics.h>
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <UserNotifications/UserNotifications.h>
 #import <WebKit/WebKit.h>
 
@@ -580,6 +581,15 @@ decoration_region_at(const std::vector<nk_window_decoration_region> &regions, fl
             return iter->kind;
     }
     return NK_WINDOW_DECORATION_CLIENT;
+}
+
+uint32_t decoration_cursor_shape_at(const std::vector<nk_window_decoration_region> &regions,
+                                    float x, float y) {
+    for (auto iter = regions.rbegin(); iter != regions.rend(); ++iter) {
+        if (x >= iter->x && y >= iter->y && x < iter->x + iter->width && y < iter->y + iter->height)
+            return iter->cursor_shape;
+    }
+    return 0;
 }
 
 bool is_decoration_resize_kind(nk_window_decoration_region_kind kind) {
@@ -1924,6 +1934,79 @@ NSCursor *diagonal_resize_cursor(bool northwest_southeast) {
     return [[NSCursor alloc] initWithImage:image hotSpot:NSMakePoint(16, 16)];
 }
 
+uint32_t default_decoration_cursor_shape(nk_window_decoration_region_kind kind) {
+    switch (kind) {
+    case NK_WINDOW_DECORATION_DRAG:
+        return NK_CURSOR_MOVE;
+    case NK_WINDOW_DECORATION_RESIZE_NORTH:
+    case NK_WINDOW_DECORATION_RESIZE_SOUTH:
+        return NK_CURSOR_VERTICAL_RESIZE;
+    case NK_WINDOW_DECORATION_RESIZE_WEST:
+    case NK_WINDOW_DECORATION_RESIZE_EAST:
+        return NK_CURSOR_HORIZONTAL_RESIZE;
+    case NK_WINDOW_DECORATION_RESIZE_NORTHWEST:
+    case NK_WINDOW_DECORATION_RESIZE_SOUTHEAST:
+        return NK_CURSOR_NWSE_RESIZE;
+    case NK_WINDOW_DECORATION_RESIZE_NORTHEAST:
+    case NK_WINDOW_DECORATION_RESIZE_SOUTHWEST:
+        return NK_CURSOR_NESW_RESIZE;
+    case NK_WINDOW_DECORATION_CLIENT:
+    default:
+        return 0;
+    }
+}
+
+NSCursor *cursor_for_shape(uint32_t shape) {
+    static __strong NSCursor *northwest_southeast = nil;
+    static __strong NSCursor *northeast_southwest = nil;
+    switch (shape) {
+    case NK_CURSOR_ARROW:
+        return [NSCursor arrowCursor];
+    case NK_CURSOR_IBEAM:
+        return [NSCursor IBeamCursor];
+    case NK_CURSOR_CROSSHAIR:
+        return [NSCursor crosshairCursor];
+    case NK_CURSOR_HAND:
+        return [NSCursor pointingHandCursor];
+    case NK_CURSOR_HORIZONTAL_RESIZE:
+        return [NSCursor resizeLeftRightCursor];
+    case NK_CURSOR_VERTICAL_RESIZE:
+        return [NSCursor resizeUpDownCursor];
+    case NK_CURSOR_NWSE_RESIZE:
+        if (!northwest_southeast)
+            northwest_southeast = diagonal_resize_cursor(true);
+        return northwest_southeast;
+    case NK_CURSOR_NESW_RESIZE:
+        if (!northeast_southwest)
+            northeast_southwest = diagonal_resize_cursor(false);
+        return northeast_southwest;
+    case NK_CURSOR_MOVE:
+        return [NSCursor closedHandCursor];
+    case NK_CURSOR_NOT_ALLOWED:
+        return [NSCursor operationNotAllowedCursor];
+    default:
+        return nil;
+    }
+}
+
+void apply_pointer_cursor(MacWindowResource &resource, NSPoint point) {
+    if (resource.cursor_mode != NK_CURSOR_MODE_NORMAL ||
+        (resource.window.styleMask & NSWindowStyleMaskTitled)) {
+        apply_cursor(resource);
+        return;
+    }
+    const auto kind = decoration_region_at(resource.decoration_regions, point.x, point.y);
+    auto shape = decoration_cursor_shape_at(resource.decoration_regions, point.x, point.y);
+    if (shape == 0)
+        shape = default_decoration_cursor_shape(kind);
+    if (NSCursor *cursor = cursor_for_shape(shape)) {
+        set_cursor_hidden(resource, false);
+        [cursor set];
+    } else {
+        apply_cursor(resource);
+    }
+}
+
 void release_cursor_capture(MacWindowResource &resource) {
     if (resource.pointer_captured) {
         CGAssociateMouseAndMouseCursorPosition(true);
@@ -2215,10 +2298,13 @@ void finish_message_dialog(nk_request_id request, NSInteger response) noexcept {
 }
 
 void configure_file_panel(NSSavePanel *panel, const nk_file_dialog_options *options) {
-    panel.title = string(options->title) ?: @"";
+    NSString *title = string(options->title);
+    panel.title = title ? title : @"";
     panel.showsHiddenFiles = (options->flags & NK_DIALOG_SHOW_HIDDEN) != 0;
-    if (options->suggested_name)
-        panel.nameFieldStringValue = string(options->suggested_name) ?: @"";
+    if (options->suggested_name) {
+        NSString *suggested_name = string(options->suggested_name);
+        panel.nameFieldStringValue = suggested_name ? suggested_name : @"";
+    }
     if (options->initial_path) {
         NSString *path = string(options->initial_path);
         if (path) {
@@ -2235,8 +2321,23 @@ void configure_file_panel(NSSavePanel *panel, const nk_file_dialog_options *opti
                 [extensions addObject:[pattern substringFromIndex:2]];
         }
     }
-    if (extensions.count)
+    if (!extensions.count)
+        return;
+    if (@available(macOS 11.0, *)) {
+        NSMutableArray<UTType *> *content_types = [NSMutableArray array];
+        for (NSString *extension in extensions) {
+            UTType *type = [UTType typeWithFilenameExtension:extension];
+            if (type)
+                [content_types addObject:type];
+        }
+        if (content_types.count)
+            panel.allowedContentTypes = content_types;
+    } else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
         panel.allowedFileTypes = extensions;
+#pragma clang diagnostic pop
+    }
 }
 
 nk_result start_file_dialog(nk_handle parent_handle, const nk_file_dialog_options *options,
@@ -2367,12 +2468,6 @@ NSURL *directory_url(nk_system_directory_kind kind) {
                               error:nil];
 }
 
-nk_result unsupported() {
-    if (const auto result = enter_ui(); result != NK_OK)
-        return result;
-    return fail(NK_ERROR_UNSUPPORTED, "this macOS service is not implemented yet");
-}
-
 nk_result unsupported(const char *message) {
     if (const auto result = enter_ui(); result != NK_OK)
         return result;
@@ -2463,8 +2558,16 @@ void emit_window_state(MacWindowResource &resource) noexcept {
          withCompletionHandler:(void (^)(UNNotificationPresentationOptions))completionHandler {
     (void)center;
     (void)notification;
-    completionHandler(UNNotificationPresentationOptionAlert |
-                      UNNotificationPresentationOptionSound);
+    UNNotificationPresentationOptions options = UNNotificationPresentationOptionSound;
+    if (@available(macOS 11.0, *)) {
+        options |= UNNotificationPresentationOptionList | UNNotificationPresentationOptionBanner;
+    } else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        options |= UNNotificationPresentationOptionAlert;
+#pragma clang diagnostic pop
+    }
+    completionHandler(options);
 }
 @end
 
@@ -2595,7 +2698,10 @@ void emit_window_state(MacWindowResource &resource) noexcept {
     if (resource) {
         nk::core::callback_boundary([&] {
             resource->hovered = true;
-            apply_cursor(*resource);
+            const NSPoint point = local_pointer_position(self, event);
+            resource->pointer_x = point.x;
+            resource->pointer_y = point.y;
+            apply_pointer_cursor(*resource, point);
             emit_pointer_enter(*resource, true);
         });
     }
@@ -2621,6 +2727,7 @@ void emit_window_state(MacWindowResource &resource) noexcept {
             const NSPoint point = local_pointer_position(self, event);
             resource->pointer_x = point.x;
             resource->pointer_y = point.y;
+            apply_pointer_cursor(*resource, point);
         }
         const nk_pointer_move_event payload{resource->pointer_x, resource->pointer_y};
         queue_input_event(NK_EVENT_POINTER_MOVE, resource->handle, bytes_of(payload));
@@ -2833,7 +2940,7 @@ void emit_window_state(MacWindowResource &resource) noexcept {
             [value isKindOfClass:[NSAttributedString class]]
                 ? [(NSAttributedString *)value string]
                 : ([value isKindOfClass:[NSString class]] ? value : [value description]);
-        const auto text = utf8(text_value ?: @"");
+        const auto text = utf8(text_value ? text_value : @"");
         std::vector<uint32_t> points;
         if (!decode_utf8(text, points))
             return;
@@ -2928,7 +3035,7 @@ void emit_window_state(MacWindowResource &resource) noexcept {
             [value isKindOfClass:[NSAttributedString class]]
                 ? [(NSAttributedString *)value string]
                 : ([value isKindOfClass:[NSString class]] ? value : [value description]);
-        const auto text = utf8(text_value ?: @"");
+        const auto text = utf8(text_value ? text_value : @"");
         std::vector<uint32_t> points;
         if (!decode_utf8(text, points))
             return;
@@ -3098,7 +3205,7 @@ void emit_window_state(MacWindowResource &resource) noexcept {
     if ([attribute isEqualToString:NSAccessibilityParentAttribute])
         return self.nativeParent;
     if ([attribute isEqualToString:NSAccessibilityChildrenAttribute])
-        return self.nativeChildren ?: @[];
+        return self.nativeChildren ? self.nativeChildren : @[];
     if ([attribute isEqualToString:NSAccessibilitySelectedChildrenAttribute]) {
         NSMutableArray<NKMacAccessibilityElement *> *selected = [NSMutableArray array];
         for (NKMacAccessibilityElement *element in self.nativeChildren) {
@@ -3416,7 +3523,7 @@ void emit_window_state(MacWindowResource &resource) noexcept {
     if ([attribute isEqualToString:NSAccessibilityRoleDescriptionAttribute])
         return NSAccessibilityRoleDescription(NSAccessibilityGroupRole, nil);
     if ([attribute isEqualToString:NSAccessibilityChildrenAttribute])
-        return self.elements ?: @[];
+        return self.elements ? self.elements : @[];
     if ([attribute isEqualToString:NSAccessibilityEnabledAttribute])
         return @YES;
     if ([attribute isEqualToString:NKMacAccessibilityFrameAttribute]) {
@@ -3456,8 +3563,7 @@ void emit_window_state(MacWindowResource &resource) noexcept {
 
 - (id)accessibilityHitTest:(NSPoint)point {
     for (NKMacAccessibilityElement *element in self.allElements) {
-        NSValue *frame = [element accessibilityAttributeValue:NKMacAccessibilityFrameAttribute];
-        if (frame && NSPointInRect(point, frame.rectValue))
+        if (NSPointInRect(point, element.nativeFrame))
             return element;
     }
     return self;
@@ -3553,7 +3659,7 @@ void emit_window_state(MacWindowResource &resource) noexcept {
         return;
     NSString *value = json_text(message.body);
     emit_webview_text(NK_EVENT_WEBVIEW_MESSAGE, resource->handle,
-                      value ?: @"JavaScript message is not JSON-serializable",
+                      value ? value : @"JavaScript message is not JSON-serializable",
                       value ? NK_OK : NK_ERROR_UNKNOWN);
 }
 - (void)observeValueForKeyPath:(NSString *)keyPath
@@ -3745,14 +3851,15 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
                                             defer:NO];
         if (!resource->window)
             return fail(NK_ERROR_UNKNOWN, "could not create Cocoa window");
-        resource->window.title = string(options->title) ?: @"";
+        NSString *title = string(options->title);
+        resource->window.title = title ? title : @"";
         resource->window.releasedWhenClosed = NO;
         resource->window.movable = YES;
         resource->content =
             [[NKContentView alloc] initWithFrame:NSMakeRect(0, 0, options->width, options->height)];
         resource->content.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         resource->content.resource = resource.get();
-        resource->content.acceptsTouchEvents = YES;
+        resource->content.allowedTouchTypes = NSTouchTypeDirect | NSTouchTypeIndirect;
         resource->content.wantsRestingTouches = YES;
         resource->window.acceptsMouseMovedEvents = YES;
         resource->window.contentView = resource->content;
@@ -3872,7 +3979,7 @@ nk_result NK_CALL nk_window_set_title(nk_handle handle, const char *title) {
     NSString *value = string(title);
     if (title && *title && !value)
         return fail(NK_ERROR_INVALID_ARGUMENT, "title is not valid UTF-8");
-    resource->window.title = value ?: @"";
+    resource->window.title = value ? value : @"";
     return NK_OK;
 }
 
@@ -4201,7 +4308,7 @@ nk_result NK_CALL nk_window_set_cursor(nk_handle window_handle, nk_handle cursor
     if (cursor_handle != NK_INVALID_HANDLE && !selected)
         return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale cursor handle");
     resource->cursor = std::move(selected);
-    apply_cursor(*resource);
+    apply_pointer_cursor(*resource, NSMakePoint(resource->pointer_x, resource->pointer_y));
     return NK_OK;
 }
 
@@ -4661,13 +4768,16 @@ nk_result NK_CALL nk_window_set_decoration_regions(nk_handle h,
             if (!std::isfinite(region.x) || !std::isfinite(region.y) ||
                 !std::isfinite(region.width) || !std::isfinite(region.height) || region.x < 0.0f ||
                 region.y < 0.0f || region.width <= 0.0f || region.height <= 0.0f ||
-                region.kind > NK_WINDOW_DECORATION_RESIZE_SOUTHEAST)
+                region.kind > NK_WINDOW_DECORATION_RESIZE_SOUTHEAST ||
+                region.cursor_shape > NK_CURSOR_NOT_ALLOWED)
                 return fail(NK_ERROR_INVALID_ARGUMENT, "invalid decoration region");
         }
         if (region_count == 0)
             w->decoration_regions.clear();
         else
             w->decoration_regions.assign(regions, regions + region_count);
+        if (w->hovered)
+            apply_pointer_cursor(*w, NSMakePoint(w->pointer_x, w->pointer_y));
         return NK_OK;
     } catch (const std::bad_alloc &) {
         return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while setting decoration regions");
@@ -4757,7 +4867,7 @@ nk_result NK_CALL nk_window_wrap_native(const nk_native_window *native, nk_handl
         }
         auto resource = std::make_shared<MacWindowResource>();
         resource->window = (NSWindow *)object;
-        resource->native_content = view ?: resource->window.contentView;
+        resource->native_content = view ? view : resource->window.contentView;
         resource->owns_window = false;
         resource->handle = nk::core::handles().insert(nk::core::ResourceType::window, resource);
         if (resource->handle == NK_INVALID_HANDLE)
@@ -5528,8 +5638,10 @@ nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
             context->kind = NK_DIALOG_MESSAGE;
             context->parent = parent ? parent->window : nil;
             NSAlert *alert = [NSAlert new];
-            alert.messageText = string(options->title) ?: @"";
-            alert.informativeText = string(options->message) ?: @"";
+            NSString *title = string(options->title);
+            NSString *message = string(options->message);
+            alert.messageText = title ? title : @"";
+            alert.informativeText = message ? message : @"";
             if (options->kind == NK_MESSAGE_WARNING)
                 alert.alertStyle = NSAlertStyleWarning;
             else if (options->kind == NK_MESSAGE_ERROR)
@@ -5627,7 +5739,9 @@ nk_result NK_CALL nk_share(const nk_share_options *options) {
             return fail(NK_ERROR_INVALID_ARGUMENT, "resource URI is not a valid URL");
         [items addObject:url];
     }
-    NSWindow *window = NSApp.keyWindow ?: NSApp.mainWindow;
+    NSWindow *window = NSApp.keyWindow;
+    if (!window)
+        window = NSApp.mainWindow;
     NSView *anchor = window.contentView;
     if (!anchor)
         return fail(NK_ERROR_UNSUPPORTED, "macOS sharing requires an application window");
@@ -5903,7 +6017,9 @@ nk_result NK_CALL nk_notification_show(const nk_notification_options *options,
             return fail(NK_ERROR_UNSUPPORTED, "notifications require a bundled macOS application");
         *out_request = NK_INVALID_REQUEST_ID;
         NSString *title = string(options->title);
-        NSString *body = string(options->body) ?: @"";
+        NSString *body = string(options->body);
+        if (!body)
+            body = @"";
         UNMutableNotificationContent *content = [UNMutableNotificationContent new];
         content.title = title;
         content.body = body;
@@ -5948,10 +6064,11 @@ nk_result NK_CALL nk_notification_show(const nk_notification_options *options,
                                 return;
                             if (!granted) {
                                 take_notification(request);
-                                emit_notification(NK_EVENT_NOTIFICATION_FAILED, request,
-                                                  NK_ERROR_UNSUPPORTED,
-                                                  error.localizedDescription
-                                                      ?: @"notification permission was denied");
+                                NSString *description = error.localizedDescription;
+                                emit_notification(
+                                    NK_EVENT_NOTIFICATION_FAILED, request, NK_ERROR_UNSUPPORTED,
+                                    description ? description
+                                                : @"notification permission was denied");
                                 return;
                             }
                             [center getNotificationCategoriesWithCompletionHandler:^(

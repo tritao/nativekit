@@ -128,6 +128,21 @@ var titleBar = new WindowChrome("title-bar", WindowDecorationRegionKind.Drag,
     ]));
 ```
 
+The fourth argument optionally overrides the cursor for that decoration region
+with a standard `CursorShape`. When omitted, the framework selects the cursor
+implied by the decoration kind and the native backend supplies the same default
+for regions that are outside the Haxe hit-test layer:
+
+```haxe
+var customZone = new WindowChrome("custom-zone", WindowDecorationRegionKind.Client,
+    zoneContent, CursorShape.Hand);
+```
+
+This is useful for custom drag, resize, or client regions without creating a
+window-global cursor override. Standard cursor images remain platform-owned;
+custom cursor resources can still be applied through the normal window cursor
+API when a whole-window cursor is needed.
+
 After each layout submission, `UiContext` projects the visible, clipped node
 bounds into `nk_window_set_decoration_regions`. Child declarations are emitted
 after their parents, so a `Client` node can carve an interactive hole out of a

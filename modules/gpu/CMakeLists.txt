@@ -21,7 +21,22 @@ if(NK_BUILD_GPU_BACKEND_MATRIX)
             SOKOL_GFX_SYMBOL_PREFIX=${symbol_prefix}
             NK_SOKOL_API_PREFIX=${symbol_prefix}
             NK_SOKOL_RUNTIME_PREFIX=${symbol_prefix}runtime_)
-        set_target_properties(${target} PROPERTIES
+    set_target_properties(${target} PROPERTIES
+            POSITION_INDEPENDENT_CODE ON
+            C_VISIBILITY_PRESET hidden)
+        # OpenGL contexts share textures and programs, but not vertex-array
+        # state. Keep an independent Sokol state cache for each surface
+        # context while retaining the existing backend API contract.
+        set(secondary_prefix "${symbol_prefix}secondary_")
+        add_library(${target}_secondary OBJECT src/sokol/runtime.c src/sokol/api.c)
+        target_include_directories(${target}_secondary PRIVATE
+            "${PROJECT_SOURCE_DIR}/include" "${NK_VENDOR_DIR}/sokol"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/sokol" ${graphics_include_dirs})
+        target_compile_definitions(${target}_secondary PRIVATE ${backend}
+            SOKOL_GFX_SYMBOL_PREFIX=${secondary_prefix}
+            NK_SOKOL_API_PREFIX=${secondary_prefix}
+            NK_SOKOL_RUNTIME_PREFIX=${secondary_prefix}runtime_)
+        set_target_properties(${target}_secondary PROPERTIES
             POSITION_INDEPENDENT_CODE ON
             C_VISIBILITY_PRESET hidden)
     endfunction()
@@ -32,8 +47,11 @@ if(NK_BUILD_GPU_BACKEND_MATRIX)
         NK_SOKOL_BACKEND_GLES3=1 nk_sokol_gles3_ "${NK_SOKOL_MATRIX_GLES3_INCLUDE_DIR}")
     target_sources(nativekit_gpu PRIVATE
         $<TARGET_OBJECTS:nativekit_gpu_sokol_glcore_objects>
-        $<TARGET_OBJECTS:nativekit_gpu_sokol_gles3_objects>)
+        $<TARGET_OBJECTS:nativekit_gpu_sokol_glcore_objects_secondary>
+        $<TARGET_OBJECTS:nativekit_gpu_sokol_gles3_objects>
+        $<TARGET_OBJECTS:nativekit_gpu_sokol_gles3_objects_secondary>)
     target_compile_definitions(nativekit_gpu PRIVATE NK_SOKOL_RUNTIME_MATRIX=1)
+    target_compile_definitions(nativekit_gpu PRIVATE NK_SOKOL_MULTI_CONTEXT=1)
     target_link_libraries(nativekit_gpu PRIVATE OpenGL::GL
         "${NK_SOKOL_MATRIX_GLES3_LIBRARY}")
 else()
@@ -46,6 +64,27 @@ else()
             $<$<COMPILE_LANGUAGE:OBJCXX>:-fblocks>)
     else()
         target_sources(nativekit_gpu PRIVATE src/sokol/runtime.c src/sokol/api.c)
+        # OpenGL contexts share textures and programs, but not vertex-array
+        # state. Keep an independent Sokol state cache for each surface
+        # context while retaining the existing backend API contract.
+        if(NK_SOKOL_BACKEND STREQUAL "glcore" OR NK_SOKOL_BACKEND STREQUAL "gles3")
+            add_library(nativekit_gpu_sokol_secondary_objects OBJECT
+                src/sokol/runtime.c src/sokol/api.c)
+            target_include_directories(nativekit_gpu_sokol_secondary_objects PRIVATE
+                "${PROJECT_SOURCE_DIR}/include" "${NK_VENDOR_DIR}/sokol"
+                "${CMAKE_CURRENT_SOURCE_DIR}/src/sokol" ${NK_SOKOL_GRAPHICS_INCLUDE_DIRS})
+            target_compile_definitions(nativekit_gpu_sokol_secondary_objects PRIVATE
+                ${NK_SOKOL_COMPILE_DEFINITION}
+                SOKOL_GFX_SYMBOL_PREFIX=nk_sokol_secondary_
+                NK_SOKOL_API_PREFIX=nk_sokol_secondary_
+                NK_SOKOL_RUNTIME_PREFIX=nk_sokol_secondary_runtime_)
+            set_target_properties(nativekit_gpu_sokol_secondary_objects PROPERTIES
+                POSITION_INDEPENDENT_CODE ON
+                C_VISIBILITY_PRESET hidden)
+            target_sources(nativekit_gpu PRIVATE
+                $<TARGET_OBJECTS:nativekit_gpu_sokol_secondary_objects>)
+            target_compile_definitions(nativekit_gpu PRIVATE NK_SOKOL_MULTI_CONTEXT=1)
+        endif()
     endif()
     target_link_libraries(nativekit_gpu PRIVATE
         ${NK_SOKOL_GRAPHICS_LIBRARIES})

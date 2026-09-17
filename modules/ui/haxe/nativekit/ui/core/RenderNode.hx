@@ -36,6 +36,8 @@ class RenderNode {
 	public var cursor:Null<CursorShape>;
 	/** Native hit-test behavior assigned to this node's resolved bounds. */
 	public var windowDecoration:Null<WindowDecorationRegionKind>;
+	/** Optional native cursor override for this node's window-chrome region. */
+	public var windowDecorationCursor:Null<CursorShape>;
 	public var semantics:Null<Semantics>;
 	final handlers:Map<String, Array<UiEvent->Void>>;
 	final outsidePointerDownHandlers:Array<UiEvent->Void>;
@@ -67,6 +69,7 @@ class RenderNode {
 		tabIndex = 0;
 		cursor = null;
 		windowDecoration = null;
+		windowDecorationCursor = null;
 		semantics = null;
 		handlers = new Map();
 		outsidePointerDownHandlers = [];
@@ -147,11 +150,33 @@ class RenderNode {
 	}
 
 	/** Assigns this node's bounds to the native window-chrome hit-test map. */
-	public function setWindowDecoration(kind:WindowDecorationRegionKind):RenderNode {
+	public function setWindowDecoration(kind:WindowDecorationRegionKind,
+			?decorationCursor:CursorShape):RenderNode {
 		if (kind == null)
 			throw "Window decoration regions require a kind";
 		windowDecoration = kind;
+		windowDecorationCursor = decorationCursor;
+		if (decorationCursor != null)
+			cursor = decorationCursor;
+		if (cursor == null)
+			cursor = cursorForWindowDecoration(kind);
 		return this;
+	}
+
+	static function cursorForWindowDecoration(kind:WindowDecorationRegionKind):CursorShape {
+		return switch kind {
+			case WindowDecorationRegionKind.Drag: CursorShape.Move;
+			case WindowDecorationRegionKind.ResizeNorth | WindowDecorationRegionKind.ResizeSouth:
+				CursorShape.VerticalResize;
+			case WindowDecorationRegionKind.ResizeWest | WindowDecorationRegionKind.ResizeEast:
+				CursorShape.HorizontalResize;
+			case WindowDecorationRegionKind.ResizeNorthwest | WindowDecorationRegionKind.ResizeSoutheast:
+				CursorShape.DiagonalResize;
+			case WindowDecorationRegionKind.ResizeNortheast | WindowDecorationRegionKind.ResizeSouthwest:
+				CursorShape.DiagonalResizeNesw;
+			case WindowDecorationRegionKind.Client: CursorShape.Arrow;
+			case _: CursorShape.Arrow;
+		};
 	}
 
 	/**

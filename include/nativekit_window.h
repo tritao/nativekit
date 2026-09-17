@@ -6,6 +6,7 @@
 /* ------------------------------------------------------------------------- */
 
 #include "nativekit.h"
+#include "nativekit_input.h"
 
 /* ------------------------------------------------------------------------- */
 /* C linkage                                                                 */
@@ -297,8 +298,11 @@ typedef struct nk_window_decoration_region {
     float height;
     /** Native behavior assigned to the region. */
     nk_window_decoration_region_kind kind;
-    /** Reserved for compatible extensions; initialize to zero. */
-    uint32_t reserved;
+    /**
+     * Optional standard cursor shape for this region. Set to zero to use the
+     * native default implied by kind; otherwise use an NK_CURSOR_* value.
+     */
+    nk_cursor_shape cursor_shape;
 } nk_window_decoration_region;
 
 typedef uint32_t nk_window_state_flags;

@@ -1610,15 +1610,23 @@ bool UiRendererImpl::setScissor(bool enabled, float x, float y, float width, flo
     int32_t right = 0;
     int32_t bottom = 0;
     if (enabled) {
+        const double x_coordinate = static_cast<double>(x);
+        const double y_coordinate = static_cast<double>(y);
+        const double right_coordinate = x_coordinate + static_cast<double>(width);
+        const double bottom_coordinate = y_coordinate + static_cast<double>(height);
+        const double min_coordinate = static_cast<double>(std::numeric_limits<int32_t>::min());
+        const double max_coordinate = static_cast<double>(std::numeric_limits<int32_t>::max());
         if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(width) ||
-            !std::isfinite(height) || width < 0.0f || height < 0.0f || x < INT32_MIN ||
-            x > INT32_MAX || y < INT32_MIN || y > INT32_MAX || x + width < INT32_MIN ||
-            x + width > INT32_MAX || y + height < INT32_MIN || y + height > INT32_MAX)
+            !std::isfinite(height) || width < 0.0f || height < 0.0f ||
+            x_coordinate < min_coordinate || x_coordinate > max_coordinate ||
+            y_coordinate < min_coordinate || y_coordinate > max_coordinate ||
+            right_coordinate < min_coordinate || right_coordinate > max_coordinate ||
+            bottom_coordinate < min_coordinate || bottom_coordinate > max_coordinate)
             return fail(*state_, "invalid UI scissor rectangle");
         left = static_cast<int32_t>(std::floor(x));
         top = static_cast<int32_t>(std::floor(y));
-        right = static_cast<int32_t>(std::ceil(x + width));
-        bottom = static_cast<int32_t>(std::ceil(y + height));
+        right = static_cast<int32_t>(std::ceil(right_coordinate));
+        bottom = static_cast<int32_t>(std::ceil(bottom_coordinate));
     }
     return gpu_result(*state_, nkgpu_apply_scissor(state_->renderer, enabled ? 1 : 0, left, top,
                                                    enabled ? std::max(0, right - left) : 0,

@@ -4909,9 +4909,10 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 */
 		kind: nk_window_decoration_region_kind @offset(16);
 		/**
-		 * Reserved for compatible extensions; initialize to zero.
+		 * Optional standard cursor shape for this region. Set to zero to use the
+		 * native default implied by kind; otherwise use an NK_CURSOR_* value.
 		 */
-		reserved: u32 @offset(20);
+		cursor_shape: nk_cursor_shape @offset(20);
 	}
 	/**
 	 * Non-client frame extents returned in logical screen pixels.

@@ -28,6 +28,14 @@ typedef struct nk_sokol_api {
 const nk_sokol_api *nk_sokol_get_api(void);
 const nk_sokol_api *nk_sokol_glcore_get_api(void);
 const nk_sokol_api *nk_sokol_gles3_get_api(void);
+#if defined(NK_SOKOL_MULTI_CONTEXT)
+#if defined(NK_SOKOL_RUNTIME_MATRIX)
+const nk_sokol_api *nk_sokol_glcore_secondary_get_api(void);
+const nk_sokol_api *nk_sokol_gles3_secondary_get_api(void);
+#else
+const nk_sokol_api *nk_sokol_secondary_get_api(void);
+#endif
+#endif
 
 #ifdef __cplusplus
 }

@@ -8,7 +8,10 @@ enum abstract CursorShape(Int) from Int to Int {
 	var Hand = 3;
 	var HorizontalResize = 4;
 	var VerticalResize = 5;
+	/** Northwest-southeast diagonal resize; retained as DiagonalResize for compatibility. */
 	var DiagonalResize = 6;
 	var Move = 7;
 	var NotAllowed = 8;
+	/** Northeast-southwest diagonal resize. */
+	var DiagonalResizeNesw = 9;
 }

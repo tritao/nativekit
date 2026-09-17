@@ -261,8 +261,8 @@ elseif(APPLE)
         $<$<COMPILE_LANGUAGE:OBJCXX>:-fblocks>)
     target_link_libraries(nativekit PRIVATE "-framework Cocoa" "-framework Carbon"
         "-framework CoreGraphics" "-framework WebKit"
-        "-framework UserNotifications" "-framework Metal" "-framework QuartzCore"
-        "-framework GameController")
+        "-framework UserNotifications" "-framework UniformTypeIdentifiers"
+        "-framework Metal" "-framework QuartzCore" "-framework GameController")
 elseif(TARGET PkgConfig::GTK3 AND TARGET PkgConfig::WEBKITGTK)
     set(NK_BACKEND_GTK_AVAILABLE TRUE)
     target_sources(nativekit PRIVATE
@@ -329,6 +329,13 @@ if(MSVC)
     target_compile_options(nativekit PRIVATE /W4 /permissive- /EHsc)
 else()
     target_compile_options(nativekit PRIVATE -Wall -Wextra -Wpedantic)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        # _Nullable is retained in public headers for Haxeon's Clang importer;
+        # Clang diagnoses that intentional extension under -Wpedantic.
+        add_compile_options(-Wno-nullability-extension -Wno-nullability-completeness)
+        target_compile_options(nativekit PRIVATE
+            -Wno-nullability-extension -Wno-nullability-completeness)
+    endif()
 endif()
 
 if(NK_ENABLE_SANITIZERS AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")

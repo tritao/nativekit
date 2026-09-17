@@ -2450,7 +2450,19 @@ class FrameworkSmoke {
 			result = root.windowDecoration == WindowDecorationRegionKind.Drag &&
 				root.children.length == 1 &&
 				root.children[0].windowDecoration == WindowDecorationRegionKind.Client &&
+				root.cursor == UiCursorShape.Move &&
+				root.children[0].cursor == UiCursorShape.Arrow &&
 				root.resolved != null && root.resolved.width > 0.0 && root.resolved.height > 0.0;
+			var diagonal = context.submit(new WindowChrome("chrome-diagonal",
+				WindowDecorationRegionKind.ResizeNortheast, new Text("Resize")),
+				new LayoutFrame(320.0, 192.0));
+			result = result && diagonal.cursor == UiCursorShape.DiagonalResizeNesw &&
+				diagonal.windowDecorationCursor == null;
+			var custom = context.submit(new WindowChrome("chrome-custom",
+				WindowDecorationRegionKind.Client, new Text("Custom"), UiCursorShape.Hand),
+				new LayoutFrame(320.0, 192.0));
+			result = result && custom.cursor == UiCursorShape.Hand &&
+				custom.windowDecorationCursor == UiCursorShape.Hand;
 		} catch (_:Dynamic) {
 		}
 		if (attached) {

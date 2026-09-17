@@ -15,6 +15,7 @@ import NativeKit.Capabilities;
 import NativeKit.WindowDecorationRegion;
 import NativeKit.WindowDecorationRegionKind;
 import NativeKit.WindowHandle;
+import nativekit.ui.core.CursorShape as UiCursorShape;
 import nativekit.ui.semantics.AccessibilityBridge;
 import nativekit.ui.semantics.AccessibilityActionData;
 import nativekit.ui.semantics.AccessibilityRequest;
@@ -699,7 +700,8 @@ class UiContext {
 			region.set_height(bottom - top);
 			var kind:WindowDecorationRegionKind = cast node.windowDecoration;
 			region.set_kind(kind);
-			region.set_reserved(0);
+			region.set_cursor_shape(node.windowDecorationCursor == null
+				? 0 : nativeCursorShape(node.windowDecorationCursor));
 			regions.push(region);
 		});
 		var window:WindowHandle = cast decorationWindow;
@@ -745,6 +747,22 @@ class UiContext {
 		var bottom = Math.min(item.clipBounds.y + item.clipBounds.height,
 			Math.max(Math.max(y0, y1), Math.max(y2, y3)));
 		return new Rect(left, top, Math.max(0.0, right - left), Math.max(0.0, bottom - top));
+	}
+
+	static function nativeCursorShape(shape:UiCursorShape):Int {
+		return cast switch shape {
+			case UiCursorShape.Arrow: NativeKit.CursorShape.Arrow;
+			case UiCursorShape.Text: NativeKit.CursorShape.Ibeam;
+			case UiCursorShape.Crosshair: NativeKit.CursorShape.Crosshair;
+			case UiCursorShape.Hand: NativeKit.CursorShape.Hand;
+			case UiCursorShape.HorizontalResize: NativeKit.CursorShape.HorizontalResize;
+			case UiCursorShape.VerticalResize: NativeKit.CursorShape.VerticalResize;
+			case UiCursorShape.DiagonalResize: NativeKit.CursorShape.NwseResize;
+			case UiCursorShape.DiagonalResizeNesw: NativeKit.CursorShape.NeswResize;
+			case UiCursorShape.Move: NativeKit.CursorShape.Move;
+			case UiCursorShape.NotAllowed: NativeKit.CursorShape.NotAllowed;
+			case _: NativeKit.CursorShape.Arrow;
+		};
 	}
 
 	function dispatchFocusChange(previous:Null<WidgetId>, next:Null<WidgetId>):Void {
