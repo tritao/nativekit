@@ -32,6 +32,7 @@ class BuildContext {
 	public var viewportHeight(default, null):Float;
 	var styleParent:Null<ComputedStyle>;
 	var focusRequester:WidgetId->Bool;
+	var focusNextRequester:Void->Null<WidgetId>;
 	final claimed:Map<Int, String>;
 	var scope:KeyScope;
 	var textStyleStack:Array<ResolvedTextStyle>;
@@ -59,6 +60,7 @@ class BuildContext {
 		viewportWidth = 0.0;
 		viewportHeight = 0.0;
 		focusRequester = function(_) { return false; };
+		focusNextRequester = function() { return null; };
 		claimed = new Map();
 		scope = new KeyScope();
 		textStyleStack = [ResolvedTextStyle.fromTheme(this.theme)];
@@ -124,6 +126,17 @@ class BuildContext {
 
 	public function requestFocus(id:WidgetId):Bool
 		return id != null && focusRequester(id);
+
+	/** Installs the UiContext focus traversal route used by editor actions. */
+	public function setFocusNextRequester(requester:Void->Null<WidgetId>):Void {
+		if (requester == null)
+			throw "Build context requires a focus traversal route";
+		focusNextRequester = requester;
+	}
+
+	/** Moves focus to the next eligible widget in document order. */
+	public function focusNext():Null<WidgetId>
+		return focusNextRequester();
 
 	/** Provides the font collection used by text-layout-backed widgets. */
 	public function setFonts(fonts:FontCollection):Void {

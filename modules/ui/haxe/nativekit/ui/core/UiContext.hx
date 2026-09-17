@@ -102,6 +102,7 @@ class UiContext {
 		submittedStyleSheet = null;
 		disposed = false;
 		buildContext.setFocusRequester(function(id) { return focusWidget(id); });
+		buildContext.setFocusNextRequester(function() { return focusNext(); });
 		customCanvases = new Map();
 		customLists = new Map();
 		customGeometries = new Map();

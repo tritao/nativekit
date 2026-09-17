@@ -778,6 +778,10 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 */
 		NK_EVENT_TEXT_EDIT = 17;
 		/**
+		 * An IME requested the configured editor action.
+		 */
+		NK_EVENT_TEXT_ACTION = 18;
+		/**
 		 * A monitor became available.
 		 */
 		NK_EVENT_MONITOR_CONNECTED = 20;
@@ -4671,6 +4675,19 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 * Reserved for future use; initialize to zero.
 		 */
 		reserved: array<u32, 2> @offset(40);
+	}
+	/**
+	 * Payload of NK_EVENT_TEXT_ACTION; the document is not mutated by this event.
+	 */
+	struct nk_text_input_action_event @layout(8, 4) {
+		/**
+		 * Requested editor action, such as Done, Next, Search, or Send.
+		 */
+		action: nk_text_input_action @offset(0);
+		/**
+		 * Reserved for future use; initialize to zero.
+		 */
+		reserved: u32 @offset(4);
 	}
 	/**
 	 * Payload of NK_EVENT_TEXT_INPUT containing committed Unicode text.

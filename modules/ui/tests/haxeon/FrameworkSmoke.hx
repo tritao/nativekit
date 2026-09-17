@@ -35,6 +35,7 @@ import NativeKit.WindowOptions;
 import NativeKit.TouchAction;
 import NativeKit.TouchTool;
 import NativeKit.TextEditAction;
+import NativeKit.TextInputAction;
 import NativeKitEventValue;
 import NativeKitEventValue.NativeKitTextEdit;
 import NativeKitEvents;
@@ -489,6 +490,9 @@ class FrameworkSmoke {
 			fieldDiagnostics.selectionStart != 5 || fieldDiagnostics.selectionEnd != 5 ||
 			fieldDiagnostics.caretOffset != 5 || fieldDiagnostics.caretRect == null)
 			return 209;
+		context.text(UiEventKind.TextAction, null, TextInputAction.Done);
+		if (submittedValue != "hello")
+			return 214;
 		context.key(UiEventKind.KeyDown, UiKey.A, UiModifier.Control);
 		context.text(UiEventKind.TextInput, "á🙂");
 		if (field.value != "á🙂" || editedValue != "á🙂" || fieldEditor.selectionEnd != 3)

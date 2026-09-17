@@ -440,6 +440,14 @@ typedef struct nk_text_edit_event {
     uint32_t reserved[2];
 } nk_text_edit_event;
 
+/** Payload of NK_EVENT_TEXT_ACTION; the document is not mutated by this event. */
+typedef struct nk_text_input_action_event {
+    /** Requested editor action, such as Done, Next, Search, or Send. */
+    nk_text_input_action action;
+    /** Reserved for future use; initialize to zero. */
+    uint32_t reserved;
+} nk_text_input_action_event;
+
 /** State published by a custom editor to synchronize the platform IME. */
 typedef struct nk_text_input_state {
     /** Set to sizeof(nk_text_input_state) before calling NativeKit. */

@@ -24,6 +24,7 @@ enum NativeKitEventValue {
 	Key(source:NativeKit.Handle, key:NativeKit.Key, scancode:Int, action:NativeKit.InputAction, modifiers:NativeKit.Modifiers);
 	TextInput(source:NativeKit.Handle, codepoint:Int);
 	TextEdit(source:NativeKit.Handle, edit:NativeKitTextEdit);
+	TextAction(source:NativeKit.Handle, action:NativeKit.TextInputAction);
 	AccessibilityAction(source:NativeKit.Handle, nodeId:Int, action:Int, value:Null<String>,
 		selectionStart:Int, selectionEnd:Int, granularity:Int);
 	PointerMove(source:NativeKit.Handle, x:Float, y:Float);

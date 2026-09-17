@@ -7,6 +7,7 @@ import LayoutAxis;
 import LayoutPositioning;
 import LayoutStyle;
 import LayoutVisualKind;
+import NativeKit.TextInputAction;
 import NativeKitEventValue.NativeKitTextEdit;
 import ParagraphStyle;
 import Rect;
@@ -463,6 +464,17 @@ class TextField implements View {
 					editor.resetCaretBlink(context.gestures.timeSeconds());
 					publishTextChange(previousText);
 				}
+			});
+			node.on(UiEventKind.TextAction, function(event) {
+				if (!enabled || event.data == null)
+					return;
+				var action:TextInputAction = cast event.data;
+				if (action == TextInputAction.Next)
+					context.focusNext();
+				else if (onSubmit != null && (action == TextInputAction.Default ||
+					action == TextInputAction.Done || action == TextInputAction.Go ||
+					action == TextInputAction.Search || action == TextInputAction.Send))
+					onSubmit(document.text());
 			});
 			node.on(UiEventKind.AccessibilitySetValue, function(event) {
 				var previousText = document.text();

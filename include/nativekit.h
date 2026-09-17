@@ -212,6 +212,8 @@ enum NK_ENUM(nk_event_kind) {
     NK_EVENT_TOUCH = 16,
     /** A structured text-edit transaction was produced by an IME. */
     NK_EVENT_TEXT_EDIT = 17,
+    /** An IME requested the configured editor action. */
+    NK_EVENT_TEXT_ACTION = 18,
     /** A monitor became available. */
     NK_EVENT_MONITOR_CONNECTED = 20,
     /** A monitor was disconnected and its handle invalidated. */

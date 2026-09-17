@@ -13,6 +13,7 @@ class UiEventKind {
 	public static inline var Activate:String = "activate";
 	public static inline var TextInput:String = "textInput";
 	public static inline var TextEdit:String = "textEdit";
+	public static inline var TextAction:String = "textAction";
 	public static inline var HoverEnter:String = "hoverEnter";
 	public static inline var HoverLeave:String = "hoverLeave";
 	public static inline var Focus:String = "focus";

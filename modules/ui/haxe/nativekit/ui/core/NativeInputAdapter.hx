@@ -106,6 +106,9 @@ class NativeInputAdapter {
 			case TextEdit(eventSource, edit) if (matches(eventSource)):
 				context.text(UiEventKind.TextEdit, edit.text, edit);
 				true;
+			case TextAction(eventSource, action) if (matches(eventSource)):
+				context.text(UiEventKind.TextAction, null, action);
+				true;
 			case AccessibilityAction(eventSource, nodeId, action, value, selectionStart,
 				selectionEnd, granularity) if (eventSource == accessibilitySource):
 				context.accessibilityAction(nodeId, action, value, selectionStart,

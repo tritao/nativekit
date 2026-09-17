@@ -35,6 +35,9 @@ _Static_assert(sizeof(nk_init_options) == 16 + 2 * sizeof(const char *),
 _Static_assert(sizeof(nk_system_info) == 40, "system info ABI layout is stable");
 _Static_assert(sizeof(nk_system_orientation) == 32, "system orientation ABI layout is stable");
 _Static_assert(sizeof(nk_orientation_event) == 32, "orientation event ABI layout is stable");
+_Static_assert(NK_EVENT_TEXT_ACTION == 18, "text action event value is stable");
+_Static_assert(sizeof(nk_text_input_action_event) == 8,
+               "text action event payload ABI layout is stable");
 _Static_assert(sizeof(nk_window_decoration_region) == 24,
                "window decoration region ABI layout is stable");
 _Static_assert(offsetof(nk_window_decoration_region, kind) == 16,

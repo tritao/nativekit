@@ -3380,6 +3380,7 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnTextEdit(
     payload.selection_end = transaction.selection_end;
     payload.composition_start = transaction.composition_start;
     payload.composition_end = transaction.composition_end;
+    payload.selection_affinity = transaction.selection_affinity;
     nk::core::QueuedEvent event;
     event.kind = NK_EVENT_TEXT_EDIT;
     event.source = resource->handle;
@@ -3389,6 +3390,20 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnTextEdit(
     if (!transaction.replacement_text.empty())
         std::memcpy(event.data.data() + sizeof(payload), transaction.replacement_text.c_str(),
                     transaction.replacement_text.size() + 1);
+    nk::core::push_event(std::move(event));
+}
+
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnTextAction(
+    JNIEnv *, jclass, jlong handle_value, jint action) {
+    auto resource = surface(static_cast<nk_handle>(handle_value));
+    if (!resource || action < NK_TEXT_INPUT_ACTION_DEFAULT ||
+        action > NK_TEXT_INPUT_ACTION_NONE)
+        return;
+    const nk_text_input_action_event payload{static_cast<nk_text_input_action>(action), 0};
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_TEXT_ACTION;
+    event.source = resource->handle;
+    event.data = bytes_of(payload);
     nk::core::push_event(std::move(event));
 }
 

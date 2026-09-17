@@ -902,6 +902,15 @@ final class NativeKitBridge {
                 }
 
                 @Override
+                public boolean performEditorAction(int actionCode) {
+                    int action = NativeKitBridge.nativeTextInputAction(actionCode);
+                    if (action < 0)
+                        return false;
+                    nativeOnTextAction(nativeHandle, action);
+                    return true;
+                }
+
+                @Override
                 public boolean setSelection(int start, int end) {
                     if (!NativeKitTextInputOffsets.isExactBoundary(editable, start) ||
                         !NativeKitTextInputOffsets.isExactBoundary(editable, end))
@@ -1252,6 +1261,19 @@ final class NativeKitBridge {
 
         private float logical(float value) {
             return value / getResources().getDisplayMetrics().density;
+        }
+    }
+
+    static int nativeTextInputAction(int actionCode) {
+        switch (actionCode) {
+        case EditorInfo.IME_ACTION_DONE: return TEXT_INPUT_ACTION_DONE;
+        case EditorInfo.IME_ACTION_GO: return TEXT_INPUT_ACTION_GO;
+        case EditorInfo.IME_ACTION_NEXT: return TEXT_INPUT_ACTION_NEXT;
+        case EditorInfo.IME_ACTION_SEARCH: return TEXT_INPUT_ACTION_SEARCH;
+        case EditorInfo.IME_ACTION_SEND: return TEXT_INPUT_ACTION_SEND;
+        case EditorInfo.IME_ACTION_NONE: return TEXT_INPUT_ACTION_NONE;
+        case EditorInfo.IME_ACTION_UNSPECIFIED: return TEXT_INPUT_ACTION_DEFAULT;
+        default: return -1;
         }
     }
 
@@ -2393,6 +2415,7 @@ final class NativeKitBridge {
                                                 int replaceStart, int replaceEnd,
                                                 int selectionStart, int selectionEnd,
                                                 int compositionStart, int compositionEnd);
+    private static native void nativeOnTextAction(long handle, int action);
     private static native void nativeOnAccessibilityAction(long handle, int node, int action,
                                                            String value, int selectionStart,
                                                            int selectionEnd, int granularity);
