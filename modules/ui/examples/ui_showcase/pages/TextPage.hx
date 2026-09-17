@@ -79,7 +79,7 @@ class TextPage {
 		], explorer.rowStyle(8.0))),
 			explorer.keyed("tab-hint", explorer.caption("Tab order: Display name → Arabic → Hebrew → Japanese → Emoji → Multilingual notes. Shift+Tab reverses it.")),
 			explorer.keyed("clipboard-status", explorer.label(explorer.state.textLastClipboardAction)),
-			explorer.keyed("submit-status", explorer.label("Submit: ${explorer.state.textLastSubmit}"))
+			explorer.keyed("submit-status", explorer.label('Submit: ${explorer.state.textLastSubmit}'))
 		])));
 
 		items.push(explorer.keyed("text-diagnostics", explorer.panel("text-diagnostics-card", [
