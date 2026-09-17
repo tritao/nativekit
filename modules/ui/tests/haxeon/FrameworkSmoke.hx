@@ -261,7 +261,7 @@ class FrameworkSmoke {
 		if (!transactionEditor.applyTransaction(new EditTransaction(1, 1, "か", 2, 2, true, 1, 2,
 			0, [new TextCompositionSpan(1, 2, false, true)])))
 			return 233;
-		var compositionRange:Null<TextRange> = transactionEditor.queryComposition();
+		var compositionRange:Null<nativekit.ui.widgets.TextRange> = transactionEditor.queryComposition();
 		if (compositionRange == null || compositionRange.start != 1 || compositionRange.end != 2 ||
 			transactionEditor.text != "aか" || transactionEditor.compositionAttributes.length != 1 ||
 			!transactionEditor.compositionAttributes[0].target)
