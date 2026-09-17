@@ -99,7 +99,7 @@ class ShowcaseDesktop {
             var windowOptions = new WindowOptions();
             windowOptions.set_width(initialWidth);
             windowOptions.set_height(initialHeight);
-            windowOptions.set_title("NativeKit UI Explorer");
+            windowOptions.set_title("Haxeon UI Explorer");
             windowOptions.set_flags(WindowFlags.Resizable);
             windowOptions.set_owner(WindowHandle.invalid());
             windowOptions.set_kind(WindowKind.Normal);

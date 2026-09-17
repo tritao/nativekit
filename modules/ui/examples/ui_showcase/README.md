@@ -1,7 +1,7 @@
-# NativeKit UI Explorer
+# Haxeon UI Explorer
 
-`ui_showcase` is the flagship interactive example for NativeKit's Haxe UI
-framework. A searchable component catalog leads into eight pages: Overview,
+`ui_showcase` is the flagship interactive example for Haxeon UI, backed by
+NativeKit for native platform and rendering services. A searchable component catalog leads into pages for Overview,
 Controls, Text & Input, Layout, Scrolling & Data, Navigation & Overlays,
 Gestures & Motion, and Graphics Lab. The app includes a global light/dark
 switch and a collapsible inspector. Hover or click a preview widget to inspect

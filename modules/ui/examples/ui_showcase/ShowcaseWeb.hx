@@ -118,7 +118,7 @@ class ShowcaseWeb {
             var windowOptions = new WindowOptions();
             windowOptions.set_width(requestedWidth);
             windowOptions.set_height(requestedHeight);
-            windowOptions.set_title("NativeKit UI Explorer");
+            windowOptions.set_title("Haxeon UI Explorer");
             windowOptions.set_flags(WindowFlags.Resizable);
             windowOptions.set_owner(WindowHandle.invalid());
             windowOptions.set_kind(WindowKind.Normal);

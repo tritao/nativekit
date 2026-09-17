@@ -22,9 +22,9 @@ class TopBar {
 		style.padding = new Insets(22.0, 0.0, 22.0, 0.0);
 		style.background = explorer.paletteSidebar();
 		var brand = new Row("top-brand", [
-			explorer.keyed("brand-mark", explorer.text("NK",
+			explorer.keyed("brand-mark", explorer.text("HX",
 				explorer.context.buildContext.theme.accent)),
-			explorer.keyed("brand", explorer.heading("NativeKit UI Explorer"))
+			explorer.keyed("brand", explorer.heading("Haxeon UI Explorer"))
 		], clusterStyle(12.0));
 		var actions:Array<KeyedView> = [
 			explorer.keyed("platform", explorer.caption(explorer.platformLabel)),

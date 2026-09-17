@@ -7,65 +7,104 @@ import LayoutAxis;
 import LayoutStyle;
 import nativekit.ui.widgets.Column;
 import nativekit.ui.widgets.KeyedView;
-import nativekit.ui.widgets.ProgressBar;
 import nativekit.ui.widgets.Row;
-import nativekit.ui.widgets.Toggle;
 
-/** At-a-glance explanation of the NativeKit UI runtime and live controls. */
+/** Landing page for the Haxeon UI framework and its live catalog. */
 class OverviewPage {
 	public static function build(explorer:UiExplorer, items:Array<KeyedView>):Void {
-		explorer.pageHeading(items, "Haxe UI, rendered by NativeKit",
-			"A live explorer for composition, native layout, input and rendering.");
-		var cards = DemoGrid.build("overview-cards", [
-			explorer.keyed("platform-card", DemoCard.build("platform-card", "PLATFORM",
-				explorer.platformLabel, "NativeKit owns the window, input and graphics surface.",
-				explorer.panelStyle(),
-				UiExplorer.color(0.40, 0.74, 0.92))),
-			explorer.keyed("composition-card", DemoCard.build("composition-card", "COMPOSITION",
-				"Haxe widgets", "Stable widget IDs keep focus and state across frames.",
-				explorer.panelStyle(),
-				UiExplorer.color(0.40, 0.74, 0.92))),
-			explorer.keyed("layout-card", DemoCard.build("layout-card", "LAYOUT", "Native engine",
-				"Submit the tree, resolve bounds, then render the result.", explorer.panelStyle(),
-				UiExplorer.color(0.40, 0.74, 0.92)))
-		], explorer.rowStyle(0.0));
-		items.push(explorer.keyed("overview-cards", cards));
-		items.push(explorer.keyed("overview-quick-start", explorer.panel("quick-start", [
-			explorer.keyed("quick-title", explorer.heading("Try the framework")),
-			explorer.keyed("quick-copy", explorer.caption("Switch pages from the catalog. Edit the multilingual text field, tab through controls, scroll the virtual list, or open the live inspector.")),
-			explorer.keyed("quick-controls", new Row("quick-controls", [
-				explorer.keyed("toggle", new Toggle("overview-toggle", "Enable preview", explorer.state.controls.enabled,
-					function(value) { explorer.state.controls.enabled = value; })),
-				explorer.keyed("progress", progressPreview(explorer))
-			], explorer.rowStyle(18.0)))
+		explorer.pageHeading(items, "Haxeon UI",
+			"A Haxe-native UI framework for stateful applications, accessible controls and rich graphics.");
+
+		var metrics = explorer.context.frameMetrics;
+		var nodeSummary = metrics == null
+			? "Frame metrics become available after the first presentation."
+			: '${metrics.nodeCount} retained nodes in the most recently completed frame.';
+		items.push(explorer.keyed("overview-runtime", DemoGrid.build("overview-runtime-grid", [
+			explorer.keyed("framework-card", DemoCard.build("framework-card", "FRAMEWORK",
+				"Haxeon UI", "Widgets, state, styling, layout and semantics are owned in Haxe.",
+				explorer.panelStyle(), explorer.context.buildContext.theme.accent)),
+			explorer.keyed("host-card", DemoCard.build("host-card", "NATIVE DEPENDENCY",
+				explorer.platformLabel, "NativeKit supplies the window, platform input and graphics surface.",
+				explorer.panelStyle(), explorer.context.buildContext.theme.accent)),
+			explorer.keyed("viewport-card", DemoCard.build("viewport-card", "LIVE VIEWPORT",
+				'${Std.int(explorer.width)} × ${Std.int(explorer.height)}',
+				nodeSummary,
+				explorer.panelStyle(), explorer.context.buildContext.theme.accent))
+		], explorer.rowStyle(10.0))));
+
+		items.push(explorer.keyed("overview-explore", explorer.panel("overview-explore-panel", [
+			explorer.keyed("explore-title", explorer.heading("Explore Haxeon UI")),
+			explorer.keyed("explore-copy", explorer.caption(
+				"Start with a capability, then use Inspect to examine its layout, style and accessibility semantics.")),
+			explorer.keyed("explore-row-one", new Row("explore-row-one", [
+				explorer.keyed("controls", destination(explorer, "Controls & state",
+					"Buttons, selection, ranges and progress.", "controls")),
+				explorer.keyed("divider-one", divider(explorer, "divider-one")),
+				explorer.keyed("text", destination(explorer, "Text & input",
+					"Editing, selection, IME and multilingual text.", "text")),
+				explorer.keyed("divider-two", divider(explorer, "divider-two")),
+				explorer.keyed("layout", destination(explorer, "Layout & data",
+					"Responsive composition, scrolling and virtualization.", "lists"))
+			], explorer.rowStyle(0.0))),
+			explorer.keyed("explore-row-two", new Row("explore-row-two", [
+				explorer.keyed("graphics", destination(explorer, "Graphics & 3D",
+					"Paths, gradients, images and live 3D surfaces.", "graphics-paths")),
+				explorer.keyed("divider-one", divider(explorer, "divider-one")),
+				explorer.keyed("motion", destination(explorer, "Gestures & motion",
+					"Pointer gestures, tweens and spring animation.", "gestures")),
+				explorer.keyed("divider-two", divider(explorer, "divider-two")),
+				explorer.keyed("overlays", destination(explorer, "Navigation & overlays",
+					"Tabs, menus, popups, tooltips and dialogs.", "overlays"))
+			], explorer.rowStyle(0.0)))
 		])));
-		items.push(explorer.keyed("overview-pipeline", explorer.panel("pipeline", [
-			explorer.keyed("pipeline-title", explorer.heading("One application, two runtimes")),
-			explorer.keyed("pipeline-copy", explorer.caption("NativeKit provides platform, IME and graphics services. Haxe owns the UI tree, state and semantics. The same showcase runs on desktop and WebAssembly."))
-		])));
-		items.push(explorer.keyed("overview-motion", explorer.panel("motion", [
-			explorer.keyed("motion-title", explorer.heading("Haxe-owned motion")),
-			explorer.keyed("motion-copy", explorer.caption('Tween ${Std.int(explorer.state.gestures.tweenValue * 100)}%  ·  Spring ${Std.int(explorer.state.gestures.springValue * 100)}%')),
-			explorer.keyed("motion-actions", new Row("motion-actions", [
-				explorer.keyed("play-tween", explorer.button("Play tween", "play-tween", function() {
-					explorer.tweenController.play(0.0, 1.0, 0.8);
-				})),
-				explorer.keyed("play-spring", explorer.button("Spring bounce", "play-spring", function() {
-					explorer.springController.setTarget(explorer.state.gestures.springValue < 0.5 ? 1.0 : 0.18);
-				}))
-			], explorer.rowStyle(10.0)))
+
+		items.push(explorer.keyed("overview-pipeline", explorer.panel("overview-pipeline-panel", [
+			explorer.keyed("pipeline-title", explorer.heading("From Haxe to pixels")),
+			explorer.keyed("pipeline-copy", explorer.caption(
+				"Haxeon keeps application behavior and UI policy together while its NativeKit dependency handles platform integration and presentation.")),
+			explorer.keyed("pipeline-stages", DemoGrid.build("pipeline-stages", [
+				explorer.keyed("tree", stage(explorer, "1 · COMPOSE", "Widget tree",
+					"Stable keys preserve state and focus.")),
+				explorer.keyed("resolve", stage(explorer, "2 · RESOLVE", "Style & layout",
+					"Theme rules become measured bounds.")),
+				explorer.keyed("retain", stage(explorer, "3 · RETAIN", "Display list",
+					"Unchanged work is reused across frames.")),
+				explorer.keyed("present", stage(explorer, "4 · PRESENT", "NativeKit",
+					"The native dependency composites and presents."))
+		], explorer.rowStyle(10.0)))
 		])));
 	}
 
-	static function progressPreview(explorer:UiExplorer):Column {
+	static function destination(explorer:UiExplorer, title:String, description:String,
+			page:String):Column {
+		return new Column("destination-" + page, [
+			explorer.keyed("title", explorer.label(title)),
+			explorer.keyed("description", explorer.caption(description)),
+			explorer.keyed("open", explorer.button("Open", "open-" + page, function() {
+				explorer.state.selectedPage = page;
+			}))
+		], destinationStyle(explorer));
+	}
+
+	static function destinationStyle(explorer:UiExplorer):LayoutStyle {
+		var style = explorer.panelStyle();
+		style.width = LayoutAxis.percent(0.332);
+		style.padding.left = 16.0;
+		style.padding.right = 16.0;
+		return style;
+	}
+
+	static function divider(explorer:UiExplorer, key:String):Column {
 		var style = new LayoutStyle();
-		style.width = LayoutAxis.fixed(200.0);
-		style.childGap = 6.0;
-		return new Column("preview-progress-group", [
-			explorer.keyed("label", explorer.caption(
-				'Preview readiness  ·  ${Std.int(explorer.state.controls.progress * 100)}%')),
-			explorer.keyed("bar", new ProgressBar("overview-progress",
-				explorer.state.controls.progress, 0.0, 1.0, "Preview readiness"))
-		], style);
+		style.width = LayoutAxis.fixed(1.0);
+		style.height = LayoutAxis.grow();
+		style.background = explorer.context.buildContext.theme.tokens.border;
+		return new Column(key, [], style);
+	}
+
+	static function stage(explorer:UiExplorer, eyebrow:String, title:String,
+			description:String):Column {
+		return DemoCard.build("pipeline-" + title.toLowerCase().split(" ").join("-"), eyebrow,
+			title, description, explorer.panelStyle(), explorer.context.buildContext.theme.accent);
 	}
 }

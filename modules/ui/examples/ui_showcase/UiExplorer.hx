@@ -56,7 +56,7 @@ import components.PageHeader;
 import components.ShowcaseKit;
 import pages.ListsPage;
 
-/** Interactive, Haxe-composed showcase for NativeKit's UI framework. */
+/** Interactive showcase for the Haxeon UI framework. */
 @:allow(pages.GraphicsPage)
 @:allow(pages.ControlsPage)
 @:allow(pages.GesturesPage)

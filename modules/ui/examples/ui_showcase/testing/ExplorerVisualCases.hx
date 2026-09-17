@@ -27,12 +27,12 @@ class ExplorerVisualCases {
 		state.controls.selectValue = "comfortable";
 		state.controls.comboValue = "comfortable";
 		state.controls.selectedTab = "preview";
-		state.controls.nameValue = "NativeKit UI";
-		state.controls.notesValue = "مرحبا NativeKit — שלום — こんにちは 👋";
+		state.controls.nameValue = "Haxeon UI";
+		state.controls.notesValue = "مرحبا Haxeon — שלום — こんにちは 👋";
 		state.textArabicValue = "مرحبا بالعالم";
 		state.textHebrewValue = "שלום עולם";
 		state.textJapaneseValue = "こんにちは世界";
-		state.textEmojiValue = "NativeKit 👋 🌍 ✨";
+		state.textEmojiValue = "Haxeon 👋 🌍 ✨";
 		state.controls.menuSelection = "No command selected";
 		state.listController.jumpTo(0.0, 0.0);
 		state.visualFocusLabel = null;

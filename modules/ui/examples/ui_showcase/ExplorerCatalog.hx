@@ -7,11 +7,11 @@ import pages.OverlaysPage;
 import pages.OverviewPage;
 import pages.TextPage;
 
-/** Canonical inventory for the NativeKit UI Explorer's pages and navigation. */
+/** Canonical inventory for the Haxeon UI Explorer's pages and navigation. */
 class ExplorerCatalog {
 	static final pageList:Array<ExplorerPage> = [
-		new ExplorerPage("overview", "Overview", "start", "Framework and runtime overview",
-			["welcome", "native", "wasm", "runtime"],
+		new ExplorerPage("overview", "Overview", "start", "Haxeon framework and runtime overview",
+			["welcome", "haxeon", "native", "runtime"],
 			function(explorer, items) { OverviewPage.build(explorer, items); }),
 		new ExplorerPage("controls", "Controls", "components", "Interactive control states",
 			["button", "checkbox", "toggle", "radio", "select", "slider", "progress", "spinner", "loading", "indeterminate"],

@@ -29,7 +29,7 @@ class ExplorerState {
 	public var textArabicValue:String = "مرحبا بالعالم";
 	public var textHebrewValue:String = "שלום עולם";
 	public var textJapaneseValue:String = "こんにちは世界";
-	public var textEmojiValue:String = "NativeKit 👋 🌍 ✨";
+	public var textEmojiValue:String = "Haxeon 👋 🌍 ✨";
 
 	public function new() {
 		inspector = new InspectorState();

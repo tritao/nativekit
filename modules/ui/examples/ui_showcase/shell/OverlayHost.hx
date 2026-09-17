@@ -20,7 +20,7 @@ class OverlayHost {
 			contentStyle.width = LayoutAxis.grow();
 			contentStyle.height = LayoutAxis.fit();
 			contentStyle.childGap = 12.0;
-			var dialog = new Dialog("showcase-dialog", "NativeKit dialog",
+			var dialog = new Dialog("showcase-dialog", "Haxeon dialog",
 				new Column("dialog-content", [
 					explorer.keyed("copy", explorer.caption(
 						"A modal overlay rendered in the same resolved UI tree.")),

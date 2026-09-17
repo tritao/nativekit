@@ -36,7 +36,7 @@ class GraphicsPage {
 		])));
 		items.push(explorer.keyed("graphics-pipeline", explorer.panel("graphics-pipeline", [
 			explorer.keyed("heading", explorer.heading("One compositor, two authoring levels")),
-			explorer.keyed("copy", explorer.caption("Framework-native previews compose CanvasView with ordinary UI. The full lab exercises the lower-level typed graphics API directly. Both produce retained display lists consumed by NativeKit's renderer."))
+			explorer.keyed("copy", explorer.caption("Haxeon previews compose CanvasView with ordinary UI. The full lab exercises the lower-level typed graphics API directly. Both produce retained display lists consumed by the NativeKit rendering dependency."))
 		])));
 	}
 
@@ -56,10 +56,10 @@ class GraphicsPage {
 			"Exercise script direction, fallback fonts, emoji, and caret-aware text geometry.");
 		items.push(explorer.keyed("script-samples", explorer.panel("script-samples", [
 			explorer.keyed("heading", explorer.heading("One paragraph engine, multiple scripts")),
-			explorer.keyed("latin", explorer.text("NativeKit shapes text across platform and WebAssembly runtimes.")),
+			explorer.keyed("latin", explorer.text("Haxeon shapes text consistently across supported runtimes.")),
 			explorer.keyed("arabic", explorer.text("مرحبا بالعالم — تخطيط من اليمين إلى اليسار")),
 			explorer.keyed("hebrew", explorer.text("שלום עולם — טקסט דו־כיווני")),
-			explorer.keyed("japanese", explorer.text("こんにちは世界 — NativeKit UI")),
+			explorer.keyed("japanese", explorer.text("こんにちは世界 — Haxeon UI")),
 			explorer.keyed("emoji", explorer.text("Fallback clusters stay together: 👋 🌍 ✨")),
 			explorer.keyed("hint", explorer.caption("Try this: inspect each text node, then compare its resolved geometry and semantic label."))
 		])));
@@ -98,7 +98,7 @@ class GraphicsPage {
 		])));
 		items.push(explorer.keyed("3d-pipeline", explorer.panel("3d-pipeline", [
 			explorer.keyed("heading", explorer.heading("Mesh to depth pass to sampled surface to compositor")),
-			explorer.keyed("copy", explorer.caption("The producer submits 24 colored vertices and 36 indices with a model-view-projection matrix. NativeKit renders offscreen with depth testing and samples the result in the UI display list."))
+			explorer.keyed("copy", explorer.caption("The producer submits 24 colored vertices and 36 indices with a model-view-projection matrix. The NativeKit rendering dependency draws offscreen with depth testing and Haxeon samples the result in its display list."))
 		])));
 	}
 
@@ -199,7 +199,7 @@ class GraphicsPage {
 
 	public static function buildRendering(explorer:UiExplorer, items:Array<KeyedView>):Void {
 		explorer.pageHeading(items, "Rendering & Performance",
-			"See what NativeKit retains, reuses, and submits each frame.");
+			"See what Haxeon retains, reuses, and submits each frame.");
 		items.push(explorer.keyed("pipeline", explorer.panel("pipeline", [
 			explorer.keyed("heading", explorer.heading("Submit → resolve → retain → render")),
 			explorer.keyed("copy", explorer.caption("Stable widget IDs preserve state. Layout resolves geometry. Custom paint compiles into display lists. Unchanged submissions and paint caches can be reused across frames.")),

@@ -25,7 +25,7 @@ class WidgetDocsRegistry {
 				code: 'new RadioGroup("density", options, selected, onChange)'
 			};
 			case AccessibilityRole.TextField: {
-				description: "An editable text control backed by framework editor state and NativeKit text-input services.",
+				description: "An editable text control backed by Haxeon editor state and native text-input services.",
 				behavior: "Pointer hit testing positions the caret; keyboard selection/editing and platform clipboard and IME are supported where available.",
 				code: 'new TextField("name", value, onChange, style, "Display name")'
 			};
@@ -92,7 +92,7 @@ class WidgetDocsRegistry {
 			default: {
 				description: "A render primitive produced by a Haxe widget or layout composition.",
 				behavior: "Geometry and clipping are resolved natively; events and semantic identity remain connected to this Haxe node.",
-				code: 'new Text("Hello, NativeKit UI")'
+				code: 'new Text("Hello, Haxeon UI")'
 			};
 		};
 	}
