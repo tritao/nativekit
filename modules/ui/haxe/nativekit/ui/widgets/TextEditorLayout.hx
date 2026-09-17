@@ -172,6 +172,33 @@ class TextEditorLayout {
 		nextOffsets.setGraphemeBoundaries(boundaries);
 	}
 
+	function syncGraphemeBoundariesRange(nextOffsets:TextOffsetMap,
+			next:Array<TextEditorParagraphRecord>, firstIndex:Int, lastIndex:Int):Void {
+		var firstRecord = next[firstIndex];
+		var boundaries:Array<Int> = [firstRecord.start];
+		for (index in firstIndex...(lastIndex + 1)) {
+			var record = next[index];
+			var hasFollowingLineFeed = record.end < nextOffsets.codepointCount;
+			var endsCrLf = hasFollowingLineFeed && record.text.length > 0 &&
+				record.text.charCodeAt(record.text.length - 1) == 0x0d;
+			for (boundaryIndex in 1...record.graphemeBoundaries.length)
+				appendBoundary(boundaries, record.start + record.graphemeBoundaries[boundaryIndex]);
+			if (hasFollowingLineFeed) {
+				if (!endsCrLf)
+					appendBoundary(boundaries, record.end);
+				appendBoundary(boundaries, record.end + 1);
+			} else {
+				appendBoundary(boundaries, record.end);
+			}
+		}
+		var endRecord = next[lastIndex];
+		var rangeEnd = endRecord.end < nextOffsets.codepointCount
+			? endRecord.end + 1 : endRecord.end;
+		if (boundaries[boundaries.length - 1] != rangeEnd)
+			appendBoundary(boundaries, rangeEnd);
+		nextOffsets.replaceGraphemeBoundariesForRange(firstRecord.start, rangeEnd, boundaries);
+	}
+
 	static function appendBoundary(boundaries:Array<Int>, value:Int):Void {
 		if (value > boundaries[boundaries.length - 1])
 			boundaries.push(value);
@@ -179,6 +206,103 @@ class TextEditorLayout {
 
 	public function setText(value:String, ?offsetMap:TextOffsetMap):Void
 		update(value, width, textStyle, paragraphStyle, offsetMap);
+
+	/**
+	 * Updates paragraph records after one document replacement. Unaffected
+	 * records are carried by paragraph index, so a keystroke does not rebuild a
+	 * document-wide text-to-record lookup table or reslice every paragraph.
+	 */
+	public function setTextAfterEdit(value:String, nextOffsets:TextOffsetMap,
+			oldStart:Int, oldEnd:Int, newStart:Int, newEnd:Int,
+			oldDocumentLength:Int):Void {
+		ensureLive();
+		if (nextOffsets == null || nextOffsets.text != (value == null ? "" : value)) {
+			update(value, width, textStyle, paragraphStyle, nextOffsets);
+			return;
+		}
+		if (paragraphs.length == 0) {
+			update(value, width, textStyle, paragraphStyle, nextOffsets);
+			return;
+		}
+
+		var previous = paragraphs;
+		var oldFirst = paragraphIndexAtOffsetIn(previous, oldStart, oldDocumentLength);
+		var oldLast = paragraphIndexAtOffsetIn(previous, oldEnd, oldDocumentLength);
+		oldFirst = oldFirst > 0 ? oldFirst - 1 : oldFirst;
+		oldLast = oldLast + 1 < previous.length ? oldLast + 1 : oldLast;
+
+		var nextCount = nextOffsets.paragraphCount();
+		var newFirst = nextOffsets.paragraphIndexAtOffset(newStart);
+		var newLast = nextOffsets.paragraphIndexAtOffset(newEnd);
+		newFirst = newFirst > 0 ? newFirst - 1 : newFirst;
+		newLast = newLast + 1 < nextCount ? newLast + 1 : newLast;
+
+		var oldDirtyCount = oldLast - oldFirst + 1;
+		var newDirtyCount = newLast - newFirst + 1;
+		var paragraphDelta = newDirtyCount - oldDirtyCount;
+		var reusable = new Map<String, Array<TextEditorParagraphRecord>>();
+		for (index in oldFirst...(oldLast + 1)) {
+			var oldRecord = previous[index];
+			var records = reusable.get(oldRecord.text);
+			if (records == null) {
+				records = [];
+				reusable.set(oldRecord.text, records);
+			}
+			records.push(oldRecord);
+		}
+		var usedDirty:Array<TextEditorParagraphRecord> = [];
+		var next:Array<TextEditorParagraphRecord> = [];
+		for (index in 0...nextCount) {
+			var range = nextOffsets.paragraphRangeAtIndex(index);
+			var record:TextEditorParagraphRecord = null;
+			var paragraphText:Null<String> = null;
+			if (index < newFirst) {
+				// The edit is after this prefix, so its record text is unchanged.
+				record = previous[index];
+			} else if (index > newLast) {
+				// Paragraph indexes after the dirty window shift by the local delta.
+				var oldIndex = index - paragraphDelta;
+				if (oldIndex >= 0 && oldIndex < previous.length)
+					record = previous[oldIndex];
+			}
+
+			if (record == null) {
+				paragraphText = nextOffsets.sliceCodepoints(range.start, range.end);
+				var matching = reusable.get(paragraphText);
+				if (matching != null)
+					while (matching.length > 0 && record == null) {
+						var candidate = matching.pop();
+						if (candidate != null && !containsRecord(usedDirty, candidate))
+							record = candidate;
+					}
+				if (record == null)
+					record = new TextEditorParagraphRecord(paragraphText,
+						TextLayout.create(fonts, paragraphText, width, textStyle, paragraphStyle));
+				else if (record.text != paragraphText) {
+					record.layout.update(paragraphText, width, textStyle, paragraphStyle);
+					record.text = paragraphText;
+					record.intrinsic = record.layout.intrinsicMetrics();
+					record.graphemeBoundaries = record.layout.graphemeBoundaries();
+				}
+				usedDirty.push(record);
+			}
+			record.start = range.start;
+			record.end = range.end;
+			record.y = 0.0;
+			next.push(record);
+		}
+		for (index in oldFirst...(oldLast + 1)) {
+			var oldRecord = previous[index];
+			if (!containsRecord(usedDirty, oldRecord))
+				oldRecord.layout.dispose();
+		}
+
+		syncGraphemeBoundariesRange(nextOffsets, next, newFirst, newLast);
+		text = value == null ? "" : value;
+		offsets = nextOffsets;
+		paragraphs = next;
+		recomputeMetrics();
+	}
 
 	public function measure():TextMetrics
 		return new TextMetrics(0.0, 0.0, contentWidth, contentHeight);
@@ -455,13 +579,18 @@ class TextEditorLayout {
 		return paragraphs[paragraphIndexAtOffset(offset)];
 
 	function paragraphIndexAtOffset(offset:Int):Int {
-		var value = clamp(offset, 0, offsets.codepointCount);
+		return paragraphIndexAtOffsetIn(paragraphs, offset, offsets.codepointCount);
+	}
+
+	static function paragraphIndexAtOffsetIn(records:Array<TextEditorParagraphRecord>,
+			offset:Int, documentLength:Int):Int {
+		var value = clamp(offset, 0, documentLength);
 		var low = 0;
-		var high = paragraphs.length - 1;
+		var high = records.length - 1;
 		var result = high;
 		while (low <= high) {
 			var middle = (low + high) >> 1;
-			var record = paragraphs[middle];
+			var record = records[middle];
 			if (value < record.start)
 				high = middle - 1;
 			else if (value > record.end)
@@ -469,7 +598,7 @@ class TextEditorLayout {
 			else
 				return middle;
 		}
-		return clamp(low, 0, paragraphs.length - 1);
+		return clamp(low, 0, records.length - 1);
 	}
 
 	function ensureLive():Void {

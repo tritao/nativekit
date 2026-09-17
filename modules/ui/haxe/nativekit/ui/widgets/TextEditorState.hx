@@ -64,6 +64,12 @@ class TextEditorState {
 	var undoStack:Array<TextEditorHistoryEntry>;
 	var redoStack:Array<TextEditorHistoryEntry>;
 	var compositionHistoryBefore:Null<TextEditorSnapshot>;
+	var compositionHistoryBeforeEditStart:Int;
+	var compositionHistoryBeforeEditEnd:Int;
+	var compositionHistoryBeforeEditText:String;
+	var compositionHistoryAfterEditStart:Int;
+	var compositionHistoryAfterEditEnd:Int;
+	var compositionHistoryAfterEditText:String;
 	/** Full-document map reused by every transaction and platform conversion. */
 	var documentOffsetMap:TextOffsetMap;
 	var activeParagraphOffsetMap:TextOffsetMap;
@@ -129,6 +135,12 @@ class TextEditorState {
 		undoStack = [];
 		redoStack = [];
 		compositionHistoryBefore = null;
+		compositionHistoryBeforeEditStart = -1;
+		compositionHistoryBeforeEditEnd = -1;
+		compositionHistoryBeforeEditText = "";
+		compositionHistoryAfterEditStart = -1;
+		compositionHistoryAfterEditEnd = -1;
+		compositionHistoryAfterEditText = "";
 		disposed = false;
 	}
 
@@ -281,19 +293,40 @@ class TextEditorState {
 			return false;
 		var before = snapshot();
 		var beforeComposition = hasActiveComposition();
+		var editRange = normalizedEditRange(transaction, documentLength());
+		var replacement = transaction.replacementText == null ? "" : transaction.replacementText;
+		var replacementCount = TextOffsetMap.countCodepoints(replacement);
+		var beforeReplacement = documentOffsetMap.sliceCodepoints(editRange[0], editRange[1]);
 		var changed = applyTransactionInternal(transaction, true);
 		if (!changed)
 			return false;
 		var after = snapshot();
 		if (transaction.hasComposition) {
-			if (compositionHistoryBefore == null)
+			if (compositionHistoryBefore == null) {
 				compositionHistoryBefore = before;
+				compositionHistoryBeforeEditStart = editRange[0];
+				compositionHistoryBeforeEditEnd = editRange[1];
+				compositionHistoryBeforeEditText = beforeReplacement;
+			}
+			compositionHistoryAfterEditStart = editRange[0];
+			compositionHistoryAfterEditEnd = editRange[0] + replacementCount;
+			compositionHistoryAfterEditText = replacement;
 		} else if (beforeComposition) {
 			var compositionBefore = compositionHistoryBefore == null ? before : compositionHistoryBefore;
-			recordHistory(compositionBefore, after, TextEditorHistoryKind.Composition);
+			recordHistory(compositionBefore, after, TextEditorHistoryKind.Composition,
+				compositionHistoryBeforeEditStart, compositionHistoryBeforeEditEnd,
+				compositionHistoryBeforeEditText, compositionHistoryAfterEditStart,
+				compositionHistoryAfterEditEnd, compositionHistoryAfterEditText);
 			compositionHistoryBefore = null;
+			compositionHistoryBeforeEditStart = -1;
+			compositionHistoryBeforeEditEnd = -1;
+			compositionHistoryBeforeEditText = "";
+			compositionHistoryAfterEditStart = -1;
+			compositionHistoryAfterEditEnd = -1;
+			compositionHistoryAfterEditText = "";
 		} else if (before.text != after.text) {
-			recordHistory(before, after, transaction.historyKind);
+			recordHistory(before, after, transaction.historyKind, editRange[0], editRange[1],
+				beforeReplacement, editRange[0], editRange[0] + replacementCount, replacement);
 		}
 		return true;
 	}
@@ -389,6 +422,12 @@ class TextEditorState {
 		undoStack = [];
 		redoStack = [];
 		compositionHistoryBefore = null;
+		compositionHistoryBeforeEditStart = -1;
+		compositionHistoryBeforeEditEnd = -1;
+		compositionHistoryBeforeEditText = "";
+		compositionHistoryAfterEditStart = -1;
+		compositionHistoryAfterEditEnd = -1;
+		compositionHistoryAfterEditText = "";
 	}
 
 	/** Undoes one editor-owned document transaction. */
@@ -399,7 +438,8 @@ class TextEditorState {
 		if (undoStack.length == 0)
 			return false;
 		var entry = undoStack.pop();
-		var changed = restoreSnapshot(entry.before);
+		var changed = restoreSnapshot(entry.before, entry.afterEditStart, entry.afterEditEnd,
+			entry.beforeEditStart, entry.beforeEditEnd, entry.beforeEditText);
 		if (changed)
 			redoStack.push(entry);
 		return changed;
@@ -413,7 +453,8 @@ class TextEditorState {
 		if (redoStack.length == 0)
 			return false;
 		var entry = redoStack.pop();
-		var changed = restoreSnapshot(entry.after);
+		var changed = restoreSnapshot(entry.after, entry.beforeEditStart, entry.beforeEditEnd,
+			entry.afterEditStart, entry.afterEditEnd, entry.afterEditText);
 		if (changed)
 			undoStack.push(entry);
 		return changed;
@@ -440,8 +481,9 @@ class TextEditorState {
 			last = swap;
 		}
 		var replacement = transaction.replacementText == null ? "" : transaction.replacementText;
+		var replacementCount = TextOffsetMap.countCodepoints(replacement);
 		var next = documentOffsetMap.replaceCodepoints(first, last, replacement);
-		var nextCount = count - (last - first) + TextOffsetMap.countCodepoints(replacement);
+		var nextCount = count - (last - first) + replacementCount;
 
 		var nextSelectionStart = clamp(transaction.selectionStart, 0, nextCount);
 		var nextSelectionEnd = clamp(transaction.selectionEnd, 0, nextCount);
@@ -495,7 +537,8 @@ class TextEditorState {
 			activeParagraphOffsetMap = null;
 			activeParagraphStart = -1;
 			activeParagraphEnd = -1;
-			layout.setText(layoutText(), documentOffsetMap);
+			layout.setTextAfterEdit(layoutText(), documentOffsetMap, first, last, first,
+				first + replacementCount, count);
 			renderMeasurement.invalidate();
 			lastLayoutText = layoutText();
 		}
@@ -795,6 +838,17 @@ class TextEditorState {
 		return replace(selectionEnd, next, "", TextEditorHistoryKind.DeleteForward);
 	}
 
+	function normalizedEditRange(transaction:EditTransaction, count:Int):Array<Int> {
+		var first = clamp(transaction.replacementStart, 0, count);
+		var last = clamp(transaction.replacementEnd, 0, count);
+		if (last < first) {
+			var swap = first;
+			first = last;
+			last = swap;
+		}
+		return [first, last];
+	}
+
 	function snapshot():TextEditorSnapshot {
 		return new TextEditorSnapshot(layoutText(), selectionStart, selectionEnd,
 			selectionAnchor, selectionFocus, selectionAnchorLayoutOffset,
@@ -803,18 +857,34 @@ class TextEditorState {
 	}
 
 	function recordHistory(before:TextEditorSnapshot, after:TextEditorSnapshot,
-			kind:TextEditorHistoryKind):Void {
+			kind:TextEditorHistoryKind, beforeEditStart:Int = -1,
+			beforeEditEnd:Int = -1, beforeEditText:String = "",
+			afterEditStart:Int = -1, afterEditEnd:Int = -1,
+			afterEditText:String = ""):Void {
 		if (before == null || after == null || before.text == after.text)
 			return;
 		if (undoStack.length > 0) {
 			var previous = undoStack[undoStack.length - 1];
 			if (canCoalesce(previous, before, kind)) {
 				previous.after = after;
+				if (kind == TextEditorHistoryKind.DeleteBackward)
+					previous.beforeEditStart = beforeEditStart;
+				else if (kind == TextEditorHistoryKind.DeleteForward)
+					previous.beforeEditEnd = beforeEditEnd;
+				if (kind == TextEditorHistoryKind.Typing)
+					previous.afterEditText += afterEditText;
+				else if (kind == TextEditorHistoryKind.DeleteBackward)
+					previous.beforeEditText = beforeEditText + previous.beforeEditText;
+				else if (kind == TextEditorHistoryKind.DeleteForward)
+					previous.beforeEditText += beforeEditText;
+				previous.afterEditStart = afterEditStart;
+				previous.afterEditEnd = afterEditEnd;
 				redoStack = [];
 				return;
 			}
 		}
-		undoStack.push(new TextEditorHistoryEntry(before, after, kind));
+		undoStack.push(new TextEditorHistoryEntry(before, after, kind, beforeEditStart,
+			beforeEditEnd, beforeEditText, afterEditStart, afterEditEnd, afterEditText));
 		redoStack = [];
 	}
 
@@ -842,7 +912,9 @@ class TextEditorState {
 			first.selectionFocusAffinity == second.selectionFocusAffinity;
 	}
 
-	function restoreSnapshot(value:TextEditorSnapshot):Bool {
+	function restoreSnapshot(value:TextEditorSnapshot, oldStart:Int = -1,
+			oldEnd:Int = -1, newStart:Int = -1, newEnd:Int = -1,
+			replacementText:Null<String> = null):Bool {
 		if (value == null)
 			return false;
 		var nextText = value.text == null ? "" : value.text;
@@ -863,14 +935,38 @@ class TextEditorState {
 		if (!changed)
 			return false;
 		if (layoutText() != nextText) {
-			text = nextText;
-			documentOffsetMap = new TextOffsetMap(nextText);
-			activeParagraphOffsetMap = null;
-			activeParagraphStart = -1;
-			activeParagraphEnd = -1;
-			layout.setText(layoutText(), documentOffsetMap);
-			renderMeasurement.invalidate();
-			lastLayoutText = layoutText();
+			var restoredIncrementally = false;
+			var currentCount = documentLength();
+			if (oldStart >= 0 && oldEnd >= oldStart && newStart >= 0 && newEnd >= newStart &&
+				oldEnd <= currentCount) {
+				var replacement = replacementText == null ? "" : replacementText;
+				if (newEnd - newStart == TextOffsetMap.countCodepoints(replacement) &&
+					newEnd <= TextOffsetMap.countCodepoints(nextText)) {
+					var next = documentOffsetMap.replaceCodepoints(oldStart, oldEnd, replacement);
+					if (next == nextText) {
+						documentOffsetMap.replaceCodepointsIncremental(oldStart, oldEnd, replacement, next);
+						text = next;
+						layout.setTextAfterEdit(layoutText(), documentOffsetMap, oldStart, oldEnd,
+							newStart, newEnd, currentCount);
+						activeParagraphOffsetMap = null;
+						activeParagraphStart = -1;
+						activeParagraphEnd = -1;
+						renderMeasurement.invalidate();
+						lastLayoutText = layoutText();
+						restoredIncrementally = true;
+					}
+				}
+			}
+			if (!restoredIncrementally) {
+				text = nextText;
+				documentOffsetMap = new TextOffsetMap(nextText);
+				activeParagraphOffsetMap = null;
+				activeParagraphStart = -1;
+				activeParagraphEnd = -1;
+				layout.setText(layoutText(), documentOffsetMap);
+				renderMeasurement.invalidate();
+				lastLayoutText = layoutText();
+			}
 		}
 		selectionStart = nextSelectionStart;
 		selectionEnd = nextSelectionEnd;

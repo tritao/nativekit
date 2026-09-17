@@ -20,28 +20,30 @@ class TextOffsetMap {
 	var codepointToUtf8:Array<Int>;
 	var codepointToUtf16:Array<Int>;
 	var codepoints:Array<Int>;
+	/** Encoded document bytes reused by paragraph slicing and replacement queries. */
+	var utf8Bytes:Bytes;
 	var paragraphStarts:Array<Int>;
 	var paragraphEnds:Array<Int>;
 	var graphemeBoundaries:Array<Int>;
 
 	public function new(value:String, ?boundaries:Array<Int>) {
 		text = value == null ? "" : value;
-		var bytes = Bytes.ofString(text);
+		utf8Bytes = Bytes.ofString(text);
 		codepointToUtf8 = [0];
 		codepointToUtf16 = [0];
 		codepoints = [];
 		var byteOffset = 0;
 		var utf16Offset = 0;
-		while (byteOffset < bytes.length) {
-			var codepoint = decodeCodepoint(bytes, byteOffset);
+		while (byteOffset < utf8Bytes.length) {
+			var codepoint = decodeCodepoint(utf8Bytes, byteOffset);
 			codepoints.push(codepoint);
-			byteOffset = nextOffset(bytes, byteOffset);
+			byteOffset = nextOffset(utf8Bytes, byteOffset);
 			utf16Offset += codepoint > 0xffff ? 2 : 1;
 			codepointToUtf8.push(byteOffset);
 			codepointToUtf16.push(utf16Offset);
 		}
 		codepointCount = codepoints.length;
-		utf8ByteLength = bytes.length;
+		utf8ByteLength = utf8Bytes.length;
 		utf16Length = utf16Offset;
 		paragraphStarts = [0];
 		paragraphEnds = [];
@@ -178,10 +180,9 @@ class TextOffsetMap {
 		var first:Int = start;
 		var last:Int = end;
 		checkRange(first, last);
-		var bytes = Bytes.ofString(text);
 		var byteStart = codepointToUtf8[first];
 		var byteEnd = codepointToUtf8[last];
-		return bytes.sub(byteStart, byteEnd - byteStart).toString();
+		return utf8Bytes.sub(byteStart, byteEnd - byteStart).toString();
 	}
 
 	public function replaceCodepoints(start:CodepointOffset, end:CodepointOffset,
@@ -337,6 +338,7 @@ class TextOffsetMap {
 			graphemeBoundaries[index] += codepointDelta;
 
 		text = next;
+		utf8Bytes = Bytes.ofString(next);
 		codepointCount = oldCount + codepointDelta;
 		utf8ByteLength += byteDelta;
 		utf16Length += utf16Delta;
@@ -356,6 +358,10 @@ class TextOffsetMap {
 	/** Returns the number of paragraph records, including empty paragraphs. */
 	public function paragraphCount():Int
 		return paragraphStarts.length;
+
+	/** Returns the paragraph number containing a code-point offset. */
+	public function paragraphIndexAtOffset(position:CodepointOffset):Int
+		return paragraphIndexAt(position);
 
 	/** Returns a paragraph range by its stable document-order number. */
 	public function paragraphRangeAtIndex(index:Int):TextRange {
@@ -382,6 +388,27 @@ class TextOffsetMap {
 			previous = boundary;
 		}
 		graphemeBoundaries = copy;
+	}
+
+	/** Replaces authoritative shaping boundaries for one document subrange. */
+	public function replaceGraphemeBoundariesForRange(start:CodepointOffset,
+			end:CodepointOffset, boundaries:Array<Int>):Void {
+		var first:Int = start;
+		var last:Int = end;
+		checkRange(first, last);
+		if (boundaries == null || boundaries.length == 0 || boundaries[0] != first ||
+			boundaries[boundaries.length - 1] != last)
+			throw "Grapheme range boundaries must include the range bounds";
+		var previous = first - 1;
+		for (boundary in boundaries) {
+			if (boundary < first || boundary > last || boundary <= previous)
+				throw "Grapheme range boundaries must be sorted and unique";
+			previous = boundary;
+		}
+		var boundaryStart = boundaryIndex(first);
+		var boundaryEnd = boundaryIndex(last);
+		replaceArrayRange(graphemeBoundaries, boundaryStart,
+			boundaryEnd - boundaryStart + 1, boundaries);
 	}
 
 	public function graphemeBoundaryCount():Int
