@@ -388,6 +388,23 @@ int main() {
         custom_position->scissor_width != 4.5f || custom_position->scissor_height != 6.0f)
         return 22;
 
+    // A style decoration may target an ordinary box without changing its
+    // native layout visual kind. Its retained paint joins immediately after
+    // that box's own primitive instead of being silently dropped.
+    LayoutRenderCompiler::CustomPaintPlans decorated_paints{{2, &custom_plan}};
+    LayoutRenderFrame decorated_frame;
+    if (!compiler.compile(snapshot, main_target, 1.5f, decorated_frame, &compile_error, false,
+                          engine.text_adapter(), &decorated_paints))
+        return 23;
+    const auto &decorated_commands = decorated_frame.plan().passes.front().commands;
+    const auto decorated_position =
+        std::find_if(decorated_commands.begin(), decorated_commands.end(),
+                     [](const RenderCommand &command) { return command.custom_payload; });
+    if (decorated_position == decorated_commands.end() || decorated_position == decorated_commands.begin() ||
+        (decorated_position - 1)->kind != RenderCommandKind::Path ||
+        decorated_position->resource.value != custom_path.value)
+        return 24;
+
     RenderPlan bounded_custom_plan;
     bounded_custom_plan.passes.push_back({main_target, {}, false, {}});
     const ResourceId bounded_target = make_resource_id(ResourceKind::RenderTarget, 1, 445);

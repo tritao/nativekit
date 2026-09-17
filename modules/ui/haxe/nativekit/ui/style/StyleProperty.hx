@@ -83,6 +83,9 @@ class StyleProperty<T> {
 	static function maskEqual(left:Mask, right:Mask):Bool
 		return left == right || (left != null && right != null && left.isEqual(right));
 
+	static function decorationChainEqual(left:DecorationChain, right:DecorationChain):Bool
+		return left == right || (left != null && right != null && left.isEqual(right));
+
 	static function floatInterpolate(left:Float, right:Float, amount:Float):Float
 		return left + (right - left) * amount;
 
@@ -195,6 +198,10 @@ class StyleProperty<T> {
 		"shadowBlur", 0.0, false, StyleImpact.Paint, floatInterpolate);
 	public static final ShadowSpread:StyleProperty<Float> = new StyleProperty(
 		"shadowSpread", 0.0, false, StyleImpact.Paint, floatInterpolate);
+	/** Ordered post-layout geometry and image decorations. */
+	public static final Decorations:StyleProperty<DecorationChain> = new StyleProperty(
+		"decorations", DecorationChain.empty(), false, StyleImpact.Paint,
+		DecorationChain.interpolate, null, null, decorationChainEqual);
 	public static final Opacity:StyleProperty<Float> = new StyleProperty(
 		"opacity", 1.0, false, StyleImpact.Composite, floatInterpolate);
 	/** Ordered post-layout filters applied to this node and its descendants. */
@@ -257,6 +264,7 @@ class StyleProperty<T> {
 				dynamicProperty(OutlineColor), dynamicProperty(OutlineWidth), dynamicProperty(ShadowColor),
 				dynamicProperty(ShadowOffsetX), dynamicProperty(ShadowOffsetY), dynamicProperty(ShadowBlur),
 				dynamicProperty(ShadowSpread),
+				dynamicProperty(Decorations),
 				dynamicProperty(Opacity), dynamicProperty(Effects), dynamicProperty(BackdropEffects),
 				dynamicProperty(StyleProperty.Mask),
 				dynamicProperty(ProgressTrackColor), dynamicProperty(ProgressFillColor),

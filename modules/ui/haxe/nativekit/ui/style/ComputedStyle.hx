@@ -52,7 +52,7 @@ class ComputedStyle {
 		if (value == null && !values.exists(property.name))
 			return property.defaultValue;
 		return shared || property.name == "effects" || property.name == "backdropEffects" ||
-			property.name == "mask"
+			property.name == "decorations" || property.name == "mask"
 			? cast copyValue(cast property, value) : cast value;
 	}
 
@@ -184,6 +184,9 @@ class ComputedStyle {
 			case "effects" | "backdropEffects":
 				var effects:EffectChain = cast value;
 				effects == null ? null : effects.copy();
+			case "decorations":
+				var decorations:DecorationChain = cast value;
+				decorations == null ? null : decorations.copy();
 			case "mask":
 				var mask:Mask = cast value;
 				mask == null ? null : mask.copy();

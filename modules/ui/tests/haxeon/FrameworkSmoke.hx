@@ -108,6 +108,11 @@ import nativekit.ui.theme.Theme;
 import nativekit.ui.theme.ThemeTokens;
 import nativekit.ui.theme.TextRole;
 import nativekit.ui.style.ComputedStyle;
+import nativekit.ui.style.DecorationChain;
+import nativekit.ui.style.Decoration;
+import nativekit.ui.style.BackgroundDecoration;
+import nativekit.ui.style.BorderDecoration;
+import nativekit.ui.style.GradientDecoration;
 import nativekit.ui.style.ShadowDecoration;
 import nativekit.ui.style.StyleDiff;
 import nativekit.ui.style.StyleResolver;
@@ -1680,6 +1685,9 @@ class FrameworkSmoke {
 			effectComputed.entries().length < StyleProperty.all().length ||
 			effectDescription.indexOf("[blur(12") != 0)
 			return 244;
+		var decorationContractResult = decorationStyleContract();
+		if (decorationContractResult != 0)
+			return decorationContractResult;
 		var colorAdjustments = EffectChain.of([
 			new BrightnessEffect(2.0), new ContrastEffect(0.5)
 		]);
@@ -2477,6 +2485,17 @@ class FrameworkSmoke {
 			return 235;
 		gradientCanvas.reset();
 		gradientList.dispose();
+		var gradientDecorationCanvas = new Canvas();
+		var gradientDecorationList = DisplayList.create();
+		new GradientDecoration(Color.rgba(0.2, 0.4, 0.8, 1.0),
+			Color.rgba(0.2, 0.8, 0.4, 1.0)).paint(gradientDecorationCanvas,
+			new ResolvedLayoutItem(602, 1, 0.0, 0.0, 32.0, 16.0,
+				new Rect(0.0, 0.0, 32.0, 16.0), new Rect(0.0, 0.0, 32.0, 16.0),
+				Transform2D.identity(), 0.0), new ComputedStyle());
+		gradientDecorationCanvas.update(gradientDecorationList);
+		if (gradientDecorationList.info().commandCount != 2)
+			return 264;
+		gradientDecorationList.dispose();
 
 		var cachedBuilds = 0;
 		var cachedFrame = new LayoutFrame(256.0, 192.0);
@@ -2513,6 +2532,86 @@ class FrameworkSmoke {
 			return 31;
 		fonts.dispose();
 		Sys.println("PASS: Haxe framework, 4,000-node layout pressure, and NativeKit input routing");
+		return 0;
+	}
+
+	static function decorationStyleContract():Int {
+		var decorationsA = DecorationChain.of([
+			new BackgroundDecoration(Color.rgba(0.1, 0.2, 0.3, 1.0)),
+			new GradientDecoration(Color.rgba(0.0, 0.2, 0.8, 1.0),
+				Color.rgba(0.2, 0.8, 0.4, 1.0)),
+			new BorderDecoration(Color.rgba(0.8, 0.9, 1.0, 1.0), 2.0)
+		]);
+		var decorationsB = DecorationChain.of([
+			new BackgroundDecoration(Color.rgba(0.8, 0.2, 0.1, 1.0)),
+			new GradientDecoration(Color.rgba(1.0, 0.2, 0.0, 1.0),
+				Color.rgba(0.8, 0.1, 0.5, 1.0)),
+			new BorderDecoration(Color.rgba(1.0, 0.8, 0.2, 1.0), 4.0)
+		]);
+		if (decorationsA.decorations.length != 3 || !decorationsA.isEqual(decorationsA.copy()) ||
+			decorationsA.isEqual(decorationsB))
+			return 260;
+		var directMid:GradientDecoration = cast DecorationChain.interpolate(decorationsA, decorationsB,
+			0.5).decorations[1];
+		if (directMid == null || Math.abs(directMid.start.red - 0.5) > 0.00001 ||
+			Math.abs(directMid.end.green - 0.45) > 0.00001)
+			return 264;
+		var customDecorationA = new Decoration();
+		var customDecorationB = new Decoration();
+		var customChainA = DecorationChain.of([customDecorationA]);
+		var customChainB = DecorationChain.of([customDecorationB]);
+		var customEarly = DecorationChain.interpolate(customChainA, customChainB, 0.25);
+		var customLate = DecorationChain.interpolate(customChainA, customChainB, 0.75);
+		if (!customChainA.isEqual(customChainA.copy()) || customChainA.isEqual(customChainB) ||
+			customEarly.decorations[0] != customDecorationA ||
+			customLate.decorations[0] != customDecorationB)
+			return 265;
+		var decorationSheet = new StyleSheet("DecorationSheet");
+		decorationSheet.rule(StyleSelector.widget("panel"),
+			[StyleValue.decorations(decorationsA)]);
+		decorationSheet.rule(StyleSelector.widget("panel").state(StyleState.Hovered),
+			[StyleValue.decorations(decorationsB)]);
+		var decorationResolver = new StyleResolver();
+		var decorationTarget = new StyleTarget("panel", "decoration-key", "decoration-id",
+			null, null, 0);
+		var normalDecorated = decorationResolver.resolve(decorationTarget, null, null,
+			decorationSheet);
+		decorationTarget = new StyleTarget("panel", "decoration-key", "decoration-id",
+			null, null, StyleState.Hovered);
+		var hoveredDecorated = decorationResolver.resolve(decorationTarget, null, null,
+			decorationSheet);
+		var decorationSource = hoveredDecorated.source(StyleProperty.Decorations);
+		if (!normalDecorated.get(StyleProperty.Decorations).isEqual(decorationsA) ||
+			!hoveredDecorated.get(StyleProperty.Decorations).isEqual(decorationsB) ||
+			decorationSource == null || decorationSource.selector != "panel:hovered" ||
+			StyleDiff.compare(normalDecorated, hoveredDecorated).impact != StyleImpact.Paint)
+			return 261;
+		var decorationTransitionSheet = new StyleSheet("DecorationTransitionSheet");
+		decorationTransitionSheet.rule(StyleSelector.widget("panel"),
+			[StyleValue.decorations(decorationsA)]);
+		decorationTransitionSheet.rule(StyleSelector.widget("panel").state(StyleState.Hovered),
+			[StyleValue.decorations(decorationsB)]);
+		decorationTransitionSheet.transition(StyleProperty.Decorations, 0.1, Easing.Linear);
+		var decorationScheduler = new AnimationScheduler();
+		var decorationTransitionResolver = new StyleResolver(decorationScheduler);
+		var decorationTransitionTarget = new StyleTarget("panel", "decoration-transition-key",
+			"decoration-transition-id", null, null, 0);
+		decorationTransitionResolver.resolve(decorationTransitionTarget, null, null,
+			decorationTransitionSheet);
+		decorationTransitionTarget = new StyleTarget("panel", "decoration-transition-key",
+			"decoration-transition-id", null, null, StyleState.Hovered);
+		decorationTransitionResolver.resolve(decorationTransitionTarget, null, null,
+			decorationTransitionSheet);
+		if (decorationScheduler.activeCount != 1)
+			return 262;
+		decorationScheduler.advance(0.05);
+		var midDecorated = decorationTransitionResolver.resolve(decorationTransitionTarget, null, null,
+			decorationTransitionSheet);
+		var midChain:DecorationChain = midDecorated.get(StyleProperty.Decorations);
+		var midGradient:GradientDecoration = cast midChain.decorations[1];
+		if (midGradient == null || Math.abs(midGradient.start.red - 0.5) > 0.00001 ||
+			Math.abs(midGradient.end.green - 0.45) > 0.00001)
+			return 263;
 		return 0;
 	}
 

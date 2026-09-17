@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <unordered_set>
 
 namespace nkui {
 namespace {
@@ -281,6 +282,7 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
         uint32_t transient_target_slot =
             (static_cast<uint16_t>(main_target.value) == 0x8000u) ? 0x8001 : 0x8000;
         auto &commands = out.plan_.passes.front().commands;
+        std::unordered_set<uint32_t> appended_custom_nodes;
         const auto append_custom_plan = [&](const RenderPlan &custom_plan,
                                             std::size_t primitive_index) -> bool {
             const auto &primitive = snapshot.primitives[primitive_index];
@@ -319,6 +321,16 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                                                 : "custom render-plan embedding failed");
             return true;
         };
+        const auto append_custom_for_primitive = [&](std::size_t primitive_index) -> bool {
+            if (!custom_paints)
+                return true;
+            const auto &primitive = snapshot.primitives[primitive_index];
+            if (!appended_custom_nodes.insert(primitive.node_id).second)
+                return true;
+            const auto found = custom_paints->find(primitive.node_id);
+            return found == custom_paints->end() || !found->second ||
+                   append_custom_plan(*found->second, primitive_index);
+        };
         for (std::size_t index = 0; index < snapshot.primitives.size(); ++index) {
             const auto &primitive = snapshot.primitives[index];
             if (primitive.kind == LayoutPrimitiveKind::ClipBegin) {
@@ -344,12 +356,8 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                 (primitive.kind == LayoutPrimitiveKind::Rectangle && !valid_radii(primitive)))
                 return fail(error, index, "layout primitive is invalid");
             if (primitive.kind == LayoutPrimitiveKind::Custom) {
-                if (custom_paints) {
-                    const auto found = custom_paints->find(primitive.node_id);
-                    if (found != custom_paints->end() && found->second &&
-                        !append_custom_plan(*found->second, index))
-                        return false;
-                }
+                if (!append_custom_for_primitive(index))
+                    return false;
                 continue;
             }
             if (primitive.kind == LayoutPrimitiveKind::Rectangle) {
@@ -378,6 +386,8 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                     set_scissor(command, clips.back(), pixel_scale);
                 commands.push_back(command);
                 out.paths_.push_back(std::move(prepared));
+                if (!append_custom_for_primitive(index))
+                    return false;
                 continue;
             }
             if (primitive.kind == LayoutPrimitiveKind::Text) {
@@ -442,6 +452,8 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                     set_scissor(command, clips.back(), pixel_scale);
                 commands.push_back(command);
                 out.glyphs_.push_back(std::move(glyphs));
+                if (!append_custom_for_primitive(index))
+                    return false;
             }
         }
         if (!clips.empty())
