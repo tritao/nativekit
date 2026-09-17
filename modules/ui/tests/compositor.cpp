@@ -330,13 +330,14 @@ int main() {
     if (!box_shadow.draw_box_shadow(12.0f, 14.0f, 80.0f, 40.0f, 2.0f, 3.0f, 8.0f, 1.0f,
                                    shadow_radii, shadow_color) ||
         !compositor.compile(box_shadow, main_target, plan, &error) || plan.passes.size() != 1 ||
+        plan.isolated_layers != 0 || plan.bounded_layers != 0 ||
         plan.passes[0].commands.size() != 1 ||
         plan.passes[0].commands[0].kind != RenderCommandKind::BoxShadow)
         return 50;
     const auto &shadow_command = plan.passes[0].commands[0];
     if (shadow_command.box_shadow.offset_x != 2.0f ||
         shadow_command.box_shadow.offset_y != 3.0f ||
-        shadow_command.box_shadow.blur_radius != 8.0f || shadow_command.box_shadow.spread != 1.0f ||
+        shadow_command.box_shadow.blur_sigma != 8.0f || shadow_command.box_shadow.spread != 1.0f ||
         shadow_command.box_shadow.radii[2] != 9.0f || shadow_command.box_shadow.color[3] != 0.5f ||
         !shadow_command.opacity)
         return 51;

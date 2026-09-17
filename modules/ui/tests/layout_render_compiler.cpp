@@ -532,7 +532,7 @@ int main() {
     box_shadow_command.y = 14.0f;
     box_shadow_command.width = 80.0f;
     box_shadow_command.height = 40.0f;
-    box_shadow_command.box_shadow.blur_radius = 8.0f;
+    box_shadow_command.box_shadow.blur_sigma = 8.0f;
     box_shadow_command.box_shadow.color = {0.1f, 0.2f, 0.3f, 0.5f};
     box_shadow_plan.passes.front().commands.push_back(box_shadow_command);
     if (!execute_render_plan(backend, box_shadow_plan, frame.resources(),

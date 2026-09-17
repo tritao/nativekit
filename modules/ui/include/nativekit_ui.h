@@ -454,7 +454,8 @@ typedef struct nkui_draw_box_shadow_command {
     float height;
     float offset_x;
     float offset_y;
-    float blur_radius;
+    /** Gaussian sigma; high-level ShadowBlur values are converted before encoding. */
+    float blur_sigma;
     float spread;
     float radii[4];
     float color[4];

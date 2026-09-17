@@ -108,6 +108,7 @@ import nativekit.ui.theme.Theme;
 import nativekit.ui.theme.ThemeTokens;
 import nativekit.ui.theme.TextRole;
 import nativekit.ui.style.ComputedStyle;
+import nativekit.ui.style.ShadowDecoration;
 import nativekit.ui.style.StyleDiff;
 import nativekit.ui.style.StyleResolver;
 import nativekit.ui.style.StyleProperty;
@@ -744,6 +745,27 @@ class FrameworkSmoke {
 		imageList.clear();
 		imageList.dispose();
 		image.dispose();
+		var shadowStyle = new ComputedStyle();
+		shadowStyle.set(StyleProperty.ShadowColor, Color.rgba(0.05, 0.08, 0.12, 0.7), null);
+		shadowStyle.set(StyleProperty.ShadowOffsetX, 2.0, null);
+		shadowStyle.set(StyleProperty.ShadowOffsetY, 3.0, null);
+		shadowStyle.set(StyleProperty.ShadowBlur, 9.0, null);
+		shadowStyle.set(StyleProperty.ShadowSpread, 2.0, null);
+		shadowStyle.set(StyleProperty.RadiusTopLeft, 3.0, null);
+		shadowStyle.set(StyleProperty.RadiusTopRight, 5.0, null);
+		shadowStyle.set(StyleProperty.RadiusBottomRight, 7.0, null);
+		shadowStyle.set(StyleProperty.RadiusBottomLeft, 9.0, null);
+		var shadowGeometry = new ResolvedLayoutItem(501, 1, 0.0, 0.0, 80.0, 40.0,
+			new Rect(0.0, 0.0, 80.0, 40.0), new Rect(0.0, 0.0, 80.0, 40.0),
+			Transform2D.identity(), 0.0);
+		var shadowCanvas = new Canvas();
+		var shadowList = DisplayList.create();
+		new ShadowDecoration().paint(shadowCanvas, shadowGeometry, shadowStyle);
+		shadowCanvas.update(shadowList);
+		var shadowInfo = shadowList.info();
+		if (shadowInfo.commandCount != 1 || shadowInfo.commandBytes != 72)
+			return 240;
+		shadowList.dispose();
 		var canvasEvents = 0;
 		var canvasView = new CanvasView("canvas-smoke", function(canvas, geometry) {
 			canvas.fillRect(new Rect(0.0, 0.0, geometry.width, geometry.height),

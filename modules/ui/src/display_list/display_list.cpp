@@ -35,7 +35,7 @@ bool valid_rect(float x, float y, float width, float height) {
 bool valid_box_shadow(const DrawBoxShadowCommand &value) {
     if (!valid_rect(value.x, value.y, value.width, value.height) || value.width <= 0.0f ||
         value.height <= 0.0f || !finite(value.offset_x) || !finite(value.offset_y) ||
-        !finite(value.blur_radius) || value.blur_radius < 0.0f || !finite(value.spread))
+        !finite(value.blur_sigma) || value.blur_sigma < 0.0f || !finite(value.spread))
         return false;
     for (const float radius : value.radii)
         if (!finite(radius) || radius < 0.0f)
@@ -689,7 +689,7 @@ bool DisplayList::draw_render_target(ResourceId target, float x, float y, float 
 }
 
 bool DisplayList::draw_box_shadow(float x, float y, float width, float height, float offset_x,
-                                  float offset_y, float blur_radius, float spread,
+                                  float offset_y, float blur_sigma, float spread,
                                   const float radii[4], const float color[4]) {
     if (!radii || !color)
         return false;
@@ -700,7 +700,7 @@ bool DisplayList::draw_box_shadow(float x, float y, float width, float height, f
     value.height = height;
     value.offset_x = offset_x;
     value.offset_y = offset_y;
-    value.blur_radius = blur_radius;
+    value.blur_sigma = blur_sigma;
     value.spread = spread;
     std::copy_n(radii, 4, value.radii);
     std::copy_n(color, 4, value.color);

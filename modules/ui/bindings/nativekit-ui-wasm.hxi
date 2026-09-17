@@ -960,7 +960,10 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		height: f32 @offset(20);
 		offset_x: f32 @offset(24);
 		offset_y: f32 @offset(28);
-		blur_radius: f32 @offset(32);
+		/**
+		 * Gaussian sigma; high-level ShadowBlur values are converted before encoding.
+		 */
+		blur_sigma: f32 @offset(32);
 		spread: f32 @offset(36);
 		radii: array<f32, 4> @offset(40);
 		color: array<f32, 4> @offset(56);

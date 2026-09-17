@@ -142,6 +142,7 @@ int main(int argc, char **argv) {
     nkui_display_list image_mask_list{};
     nkui_display_list backdrop_list{};
     nkui_display_list custom_effect_list{};
+    nkui_display_list box_shadow_list{};
     nkui_renderer renderer{};
     if (nkui_path_create(path_elements, 5, &path) != NKUI_OK ||
         nkui_paint_create_solid({0.08f, 0.45f, 0.16f, 1.0f}, &paint) != NKUI_OK ||
@@ -158,6 +159,7 @@ int main(int argc, char **argv) {
         nkui_display_list_create(&list) != NKUI_OK ||
         nkui_display_list_create(&backdrop_list) != NKUI_OK ||
         nkui_display_list_create(&custom_effect_list) != NKUI_OK ||
+        nkui_display_list_create(&box_shadow_list) != NKUI_OK ||
         nkui_renderer_create(&renderer) != NKUI_OK)
         return 4;
 
@@ -400,6 +402,49 @@ int main(int argc, char **argv) {
     if (nkui_display_list_submit(backdrop_list, backdrop_commands.data(),
                                  backdrop_commands.size()) != NKUI_OK)
         return 5;
+    std::vector<uint8_t> box_shadow_commands;
+    append(box_shadow_commands,
+           nkui_transform_command{{NKUI_COMMAND_SET_TRANSFORM, NKUI_COMMAND_VERSION,
+                                    sizeof(nkui_transform_command)},
+                                   {0.98f, 0.12f, -0.08f, 0.98f, 18.0f, 18.0f}});
+    append(box_shadow_commands,
+           nkui_scalar_command{{NKUI_COMMAND_SET_GLOBAL_ALPHA, NKUI_COMMAND_VERSION,
+                                sizeof(nkui_scalar_command)},
+                               0.78f});
+    append(box_shadow_commands,
+           nkui_rect_command{{NKUI_COMMAND_CLIP_RECT, NKUI_COMMAND_VERSION,
+                              sizeof(nkui_rect_command)},
+                             18.0f,
+                             18.0f,
+                             180.0f,
+                             130.0f});
+    nkui_draw_box_shadow_command box_shadow_command{
+        {NKUI_COMMAND_DRAW_BOX_SHADOW, NKUI_COMMAND_VERSION,
+         sizeof(nkui_draw_box_shadow_command)},
+        34.0f,
+        34.0f,
+        92.0f,
+        58.0f,
+        3.0f,
+        4.0f,
+        4.0f,
+        5.0f,
+        {3.0f, 9.0f, 15.0f, 6.0f},
+        {0.04f, 0.08f, 0.16f, 0.72f}};
+    append(box_shadow_commands, box_shadow_command);
+    nkui_draw_box_shadow_command crisp_shadow_command = box_shadow_command;
+    crisp_shadow_command.x = 142.0f;
+    crisp_shadow_command.y = 42.0f;
+    crisp_shadow_command.blur_sigma = 0.0f;
+    crisp_shadow_command.spread = -2.0f;
+    crisp_shadow_command.radii[0] = 12.0f;
+    crisp_shadow_command.radii[1] = 4.0f;
+    crisp_shadow_command.radii[2] = 8.0f;
+    crisp_shadow_command.radii[3] = 2.0f;
+    append(box_shadow_commands, crisp_shadow_command);
+    if (nkui_display_list_submit(box_shadow_list, box_shadow_commands.data(),
+                                 box_shadow_commands.size()) != NKUI_OK)
+        return 5;
     if (nkui_display_list_create(&scale_list) != NKUI_OK)
         return 5;
     std::vector<uint8_t> scale_commands;
@@ -484,6 +529,9 @@ int main(int argc, char **argv) {
         if (!result && render_result == NKUI_OK && frames == 0)
             render_result =
                 nkui_renderer_render_frame(renderer, drop_shadow_list, surface, &frame_info);
+        if (!result && render_result == NKUI_OK && frames == 0)
+            render_result =
+                nkui_renderer_render_frame(renderer, box_shadow_list, surface, &frame_info);
         if (!result && render_result == NKUI_OK)
             render_result = nkui_renderer_render_frame(renderer, list, surface, &frame_info);
         if (render_result != NKUI_OK) {
@@ -735,6 +783,7 @@ int main(int argc, char **argv) {
     nkui_display_list_destroy(image_mask_list);
     nkui_display_list_destroy(backdrop_list);
     nkui_display_list_destroy(custom_effect_list);
+    nkui_display_list_destroy(box_shadow_list);
     nkui_display_list_destroy(list);
     nkui_resource_destroy(text);
     nkui_resource_destroy(scale_text);
