@@ -44,8 +44,17 @@ fi
 	"$module_dir/haxe/nativekit/ui/widgets/"*.hx \
 	"$module_dir/bindings/haxe/"*.hx)
 
-(cd "$haxeon_dir/out" && \
-	NKUI_TEST_FONT_PATH="${NKUI_TEST_FONT_PATH:-$repo_dir/vendor/skribidi/example/data/IBMPlexSans-Regular.ttf}" \
-	NKUI_TEST_IMAGE_PATH="${NKUI_TEST_IMAGE_PATH:-$repo_dir/vendor/sokol/assets/logo_s_small.png}" \
-	LD_LIBRARY_PATH="$build_dir/modules/ui:$build_dir:$haxeon_dir/out:$haxeon_dir/.tools/hashlink:$haxeon_dir/vendor/hashlink${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
-	"$hashlink_runtime" "$artifact")
+runtime_library_path="$build_dir/modules/ui:$build_dir:$haxeon_dir/out:$haxeon_dir/.tools/hashlink:$haxeon_dir/vendor/hashlink${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+if command -v xvfb-run >/dev/null; then
+	(cd "$haxeon_dir/out" && \
+		NKUI_TEST_FONT_PATH="${NKUI_TEST_FONT_PATH:-$repo_dir/vendor/skribidi/example/data/IBMPlexSans-Regular.ttf}" \
+		NKUI_TEST_IMAGE_PATH="${NKUI_TEST_IMAGE_PATH:-$repo_dir/vendor/sokol/assets/logo_s_small.png}" \
+		xvfb-run -a env LD_LIBRARY_PATH="$runtime_library_path" \
+		"$hashlink_runtime" "$artifact")
+else
+	(cd "$haxeon_dir/out" && \
+		NKUI_TEST_FONT_PATH="${NKUI_TEST_FONT_PATH:-$repo_dir/vendor/skribidi/example/data/IBMPlexSans-Regular.ttf}" \
+		NKUI_TEST_IMAGE_PATH="${NKUI_TEST_IMAGE_PATH:-$repo_dir/vendor/sokol/assets/logo_s_small.png}" \
+		LD_LIBRARY_PATH="$runtime_library_path" \
+		"$hashlink_runtime" "$artifact")
+fi
