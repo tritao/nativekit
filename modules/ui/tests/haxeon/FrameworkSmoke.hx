@@ -87,6 +87,7 @@ import nativekit.ui.widgets.Text;
 import nativekit.ui.core.TextStyleOverride;
 import nativekit.ui.widgets.TextEditorState;
 import nativekit.ui.widgets.TextDocumentEngine;
+import SkribidiTextDocumentEngine;
 import nativekit.ui.widgets.TextPoint;
 import nativekit.ui.widgets.TextEditorLayout;
 import nativekit.ui.widgets.TextEditorDiagnostics;
@@ -194,6 +195,11 @@ class FrameworkSmoke {
 			return 261;
 		if (!retainedEditorIntrinsicMetricsSmoke(fonts))
 			return 262;
+		var haxeDocumentEditor = new TextEditorState(fonts, "á🙂");
+		var haxeDocumentValid = textDocumentEngineContractSmoke(haxeDocumentEditor.documentEngine);
+		haxeDocumentEditor.dispose();
+		if (!haxeDocumentValid || !skribidiDocumentEngineSmoke(fonts))
+			return 266;
 		var mappedEditor = new TextEditorState(fonts, "one\ntwo");
 		if (mappedEditor.layout.paragraphCount != 2 ||
 			mappedEditor.layout.nextGrapheme(3) != 4 ||
@@ -3294,6 +3300,52 @@ class FrameworkSmoke {
 		multi.dispose();
 		hardBreaks.dispose();
 		empty.dispose();
+		return valid;
+	}
+
+	static function skribidiDocumentEngineSmoke(fonts:FontCollection):Bool {
+		var engine = SkribidiTextDocumentEngine.create(fonts, "á🙂", 240.0);
+		var valid = textDocumentEngineContractSmoke(engine);
+		engine.dispose();
+		return valid;
+	}
+
+	static function textDocumentEngineContractSmoke(engine:TextDocumentEngine):Bool {
+		var initialText = engine.text();
+		var initialLength = engine.documentLength();
+		var initialSelection = engine.selection();
+		var valid = initialText == "á🙂" && initialLength == 3;
+		var initialSelectionValid = initialSelection.start == 3 && initialSelection.end == 3;
+		valid = valid && initialSelectionValid;
+		var insert = new EditTransaction(3, 3, " 日本", 6, 6);
+		engine.applyEdit(insert);
+		var insertedText = engine.text();
+		var insertedLength = engine.documentLength();
+		var insertedValid = insertedText == "á🙂 日本" && insertedLength == 6;
+		valid = valid && insertedValid;
+		var undone = engine.undo();
+		var afterUndo = engine.text();
+		var redone = engine.redo();
+		var afterRedo = engine.text();
+		var historyValid = undone && afterUndo == "á🙂" && redone &&
+			afterRedo == "á🙂 日本";
+		valid = valid && historyValid;
+		var composition = new EditTransaction(6, 6, "語", 7, 7, true, 6, 7,
+			0, [new TextCompositionSpan(6, 7, false, true)]);
+		engine.applyEdit(composition);
+		var compositionState = engine.composition();
+		var compositionValid = engine.text() == "á🙂 日本語" && compositionState.isActive() &&
+			compositionState.range != null && compositionState.range.start == 6 &&
+			compositionState.range.end == 7 && compositionState.attributes.length == 1 &&
+			compositionState.attributes[0].target;
+		valid = valid && compositionValid;
+		var layout = engine.layout(new nativekit.ui.widgets.TextRange(0, engine.documentLength()));
+		var caretLayout = engine.layout(new nativekit.ui.widgets.TextRange(engine.documentLength(),
+			engine.documentLength()));
+		var hit = engine.hitTest(new TextPoint(1.0, 1.0));
+		var geometryValid = layout.rects.length > 0 && caretLayout.caret != null && hit.offset >= 0 &&
+			hit.offset <= engine.documentLength();
+		valid = valid && geometryValid && historyValid;
 		return valid;
 	}
 

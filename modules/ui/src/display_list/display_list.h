@@ -15,6 +15,7 @@ enum class ResourceKind : uint8_t {
     RenderTarget,
     Paint,
     FontCollection,
+    TextDocument,
 };
 
 struct ResourceId {

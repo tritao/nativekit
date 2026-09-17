@@ -734,6 +734,25 @@ typedef struct nkui_text_rect {
     float height;
 } nkui_text_rect;
 
+/** Selection snapshot owned by a text document engine. */
+typedef struct nkui_text_document_selection {
+    uint32_t struct_size NK_STRUCT_SIZE;
+    int32_t start;
+    int32_t end;
+    int32_t anchor;
+    int32_t focus;
+    uint32_t anchor_affinity;
+    uint32_t focus_affinity;
+} nkui_text_document_selection;
+
+/** Generic composition range owned by a text document engine. */
+typedef struct nkui_text_document_composition {
+    uint32_t struct_size NK_STRUCT_SIZE;
+    int32_t start;
+    int32_t end;
+    uint32_t active;
+} nkui_text_document_composition;
+
 /* ------------------------------------------------------------------------- */
 /* Path, color, and image types                                              */
 /* ------------------------------------------------------------------------- */
@@ -1000,6 +1019,60 @@ NKUI_API nkui_result nkui_text_layout_move_paragraph(nkui_resource layout, int32
 NKUI_API nkui_result nkui_text_layout_word_range(nkui_resource layout, nkui_text_position position,
                                                  int32_t *out_start NKUI_OUT,
                                                  int32_t *out_end NKUI_OUT);
+
+/* ------------------------------------------------------------------------- */
+/* Skribidi-backed document engine APIs                                      */
+/* ------------------------------------------------------------------------- */
+
+/** Creates a document engine whose storage, undo model, selection, and geometry are Skribidi-owned. */
+NKUI_API nkui_result nkui_text_document_create(
+    nkui_resource fonts, const char *text NKUI_NULLABLE_UTF8, float width,
+    const nkui_text_style *text_style, const nkui_paragraph_style *paragraph_style,
+    nkui_resource *out_document NKUI_OUT);
+
+/** Applies one atomic code-point transaction to a Skribidi-backed document. */
+NKUI_API nkui_result nkui_text_document_apply_edit(
+    nkui_resource document, int32_t replacement_start, int32_t replacement_end,
+    const char *replacement_text NKUI_NULLABLE_UTF8, int32_t selection_start,
+    int32_t selection_end, uint32_t selection_affinity, uint32_t has_composition,
+    int32_t composition_start, int32_t composition_end);
+
+/** Returns the document text as UTF-8. Query the required byte count by passing NULL. */
+NKUI_API nkui_result nkui_text_document_get_text(
+    nkui_resource document, uint8_t *out_buffer NKUI_OUT_BUFFER(inout_bytes),
+    uint32_t *inout_bytes NKUI_INOUT);
+
+/** Returns the document length in Unicode code points. */
+NKUI_API nkui_result nkui_text_document_get_length(nkui_resource document,
+                                                   int32_t *out_length NKUI_OUT);
+
+/** Returns the current selection snapshot. */
+NKUI_API nkui_result nkui_text_document_get_selection(
+    nkui_resource document, nkui_text_document_selection *out_selection NKUI_OUT);
+
+/** Returns the current composition range, if any. */
+NKUI_API nkui_result nkui_text_document_get_composition(
+    nkui_resource document, nkui_text_document_composition *out_composition NKUI_OUT);
+
+/** Undoes one document transaction. */
+NKUI_API nkui_result nkui_text_document_undo(nkui_resource document);
+
+/** Redoes one document transaction. */
+NKUI_API nkui_result nkui_text_document_redo(nkui_resource document);
+
+/** Hit-tests document geometry in editor-local coordinates. */
+NKUI_API nkui_result nkui_text_document_hit_test(nkui_resource document, float x, float y,
+                                                 nkui_text_position *out_position NKUI_OUT);
+
+/** Returns visual caret geometry for a document position. */
+NKUI_API nkui_result nkui_text_document_caret(nkui_resource document,
+                                              nkui_text_position position,
+                                              nkui_text_caret *out_caret NKUI_OUT);
+
+/** Returns visual rectangles covered by a document range. */
+NKUI_API nkui_result nkui_text_document_get_layout(
+    nkui_resource document, nkui_text_position start, nkui_text_position end,
+    uint8_t *out_buffer NKUI_OUT_BUFFER(inout_bytes), uint32_t *inout_bytes NKUI_INOUT);
 
 /* ------------------------------------------------------------------------- */
 /* Path, paint, and image APIs                                                */

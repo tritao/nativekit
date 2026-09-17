@@ -30,6 +30,7 @@ class NativeKitUIResource {
 	@:allow(ShowcaseCube)
 	@:allow(TextLayout)
 	@:allow(LayoutSession)
+	@:allow(SkribidiTextDocumentEngine)
 	private function nativeHandle():nkui_resource {
 		if (disposed)
 			throw "NativeKit UI resource has been disposed";

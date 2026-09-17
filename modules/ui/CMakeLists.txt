@@ -21,6 +21,7 @@ add_library(nativekit_ui ${NK_LIBRARY_TYPE}
     src/layout/layout_render_compiler.cpp
     src/prepare/nanovg_path.cpp
     src/prepare/skribidi_adapter.cpp
+    src/prepare/skribidi_document_engine.cpp
     src/prepare/system_fonts.cpp
     src/render/frame_resources.cpp
     src/render/render_plan_executor.cpp
@@ -123,6 +124,11 @@ if(NK_BUILD_TESTS)
         NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
     target_link_libraries(nativekit_ui_abi_test PRIVATE NativeKit::ui)
     add_test(NAME nativekit_ui_abi COMMAND nativekit_ui_abi_test)
+    add_executable(nativekit_ui_text_document_test tests/text_document.cpp)
+    target_compile_definitions(nativekit_ui_text_document_test PRIVATE
+        NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
+    target_link_libraries(nativekit_ui_text_document_test PRIVATE NativeKit::ui)
+    add_test(NAME nativekit_ui_text_document COMMAND nativekit_ui_text_document_test)
     add_executable(nativekit_ui_display_list_test
         tests/display_list.cpp
         src/display_list/display_list.cpp)
@@ -631,6 +637,17 @@ if(NK_BUILD_EXAMPLES)
                 _nkui_text_layout_update
                 _nkui_text_layout_word_range_at
                 _nkui_text_layout_word_range
+                _nkui_text_document_apply_edit
+                _nkui_text_document_caret
+                _nkui_text_document_create
+                _nkui_text_document_get_composition
+                _nkui_text_document_get_layout
+                _nkui_text_document_get_length
+                _nkui_text_document_get_selection
+                _nkui_text_document_get_text
+                _nkui_text_document_hit_test
+                _nkui_text_document_redo
+                _nkui_text_document_undo
                 _nkui_showcase_cube_create
                 _nkui_showcase_cube_set_rotation
                 _nkui_showcase_diagnostic_report

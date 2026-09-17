@@ -743,6 +743,50 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	 */
 	extern fn nkui_resource_destroy(resource: nkui_resource) -> nkui_result;
 	/**
+	 * Applies one atomic code-point transaction to a Skribidi-backed document.
+	 */
+	extern fn nkui_text_document_apply_edit(document: nkui_resource, replacement_start: i32, replacement_end: i32, replacement_text: nullable<utf8>, selection_start: i32, selection_end: i32, selection_affinity: u32, has_composition: u32, composition_start: i32, composition_end: i32) -> nkui_result;
+	/**
+	 * Returns visual caret geometry for a document position.
+	 */
+	extern fn nkui_text_document_caret(document: nkui_resource, position: nkui_text_position, out_caret: ptr<nkui_text_caret> @out) -> nkui_result;
+	/**
+	 * Creates a document engine whose storage, undo model, selection, and geometry are Skribidi-owned.
+	 */
+	extern fn nkui_text_document_create(fonts: nkui_resource, text: nullable<utf8>, width: f32, text_style: ptr<const<nkui_text_style>>, paragraph_style: ptr<const<nkui_paragraph_style>>, out_document: ptr<nkui_resource> @out) -> nkui_result;
+	/**
+	 * Returns the current composition range, if any.
+	 */
+	extern fn nkui_text_document_get_composition(document: nkui_resource, out_composition: ptr<nkui_text_document_composition> @out) -> nkui_result;
+	/**
+	 * Returns visual rectangles covered by a document range.
+	 */
+	extern fn nkui_text_document_get_layout(document: nkui_resource, start: nkui_text_position, end: nkui_text_position, out_buffer: nullable<ptr<u8>> @out_buffer("inout_bytes"), inout_bytes: ptr<u32> @inout) -> nkui_result;
+	/**
+	 * Returns the document length in Unicode code points.
+	 */
+	extern fn nkui_text_document_get_length(document: nkui_resource, out_length: ptr<i32> @out) -> nkui_result;
+	/**
+	 * Returns the current selection snapshot.
+	 */
+	extern fn nkui_text_document_get_selection(document: nkui_resource, out_selection: ptr<nkui_text_document_selection> @out) -> nkui_result;
+	/**
+	 * Returns the document text as UTF-8. Query the required byte count by passing NULL.
+	 */
+	extern fn nkui_text_document_get_text(document: nkui_resource, out_buffer: nullable<ptr<u8>> @out_buffer("inout_bytes"), inout_bytes: ptr<u32> @inout) -> nkui_result;
+	/**
+	 * Hit-tests document geometry in editor-local coordinates.
+	 */
+	extern fn nkui_text_document_hit_test(document: nkui_resource, x: f32, y: f32, out_position: ptr<nkui_text_position> @out) -> nkui_result;
+	/**
+	 * Redoes one document transaction.
+	 */
+	extern fn nkui_text_document_redo(document: nkui_resource) -> nkui_result;
+	/**
+	 * Undoes one document transaction.
+	 */
+	extern fn nkui_text_document_undo(document: nkui_resource) -> nkui_result;
+	/**
 	 * Returns the nearest grapheme boundary to `offset`.
 	 */
 	extern fn nkui_text_layout_align_grapheme(layout: nkui_resource, offset: i32, out_offset: ptr<i32> @out) -> nkui_result;
@@ -1657,6 +1701,27 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		 * Text-direction code at the caret; preserve it when selecting a visual direction.
 		 */
 		direction: nkui_text_direction @offset(24);
+	}
+	/**
+	 * Generic composition range owned by a text document engine.
+	 */
+	struct nkui_text_document_composition @layout(16, 4) {
+		struct_size: u32 @offset(0) @struct_size;
+		start: i32 @offset(4);
+		end: i32 @offset(8);
+		active: u32 @offset(12);
+	}
+	/**
+	 * Selection snapshot owned by a text document engine.
+	 */
+	struct nkui_text_document_selection @layout(28, 4) {
+		struct_size: u32 @offset(0) @struct_size;
+		start: i32 @offset(4);
+		end: i32 @offset(8);
+		anchor: i32 @offset(12);
+		focus: i32 @offset(16);
+		anchor_affinity: u32 @offset(20);
+		focus_affinity: u32 @offset(24);
 	}
 	/**
 	 * Legal intrinsic widths and natural baseline metrics for a text layout.
