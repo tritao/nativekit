@@ -32,5 +32,5 @@ class ImageDecoration extends Decoration {
 		return Decoration.discrete(this, other, amount);
 
 	override public function describe():String
-		return 'image(${image.width}x${image.height}):${Std.string(image)}';
+		return 'image(${image.identity},${image.width}x${image.height})';
 }

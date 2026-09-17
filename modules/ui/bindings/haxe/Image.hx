@@ -3,6 +3,10 @@ import ImageFormat;
 
 /** An immutable image resource uploaded to the UI renderer. */
 class Image extends NativeKitUIResource {
+	static var nextIdentity:Int = 1;
+
+	/** Stable process-local identity used by value caches and diagnostics. */
+	public final identity:Int;
 	public final width:Int;
 	public final height:Int;
 	public final format:ImageFormat;
@@ -11,6 +15,7 @@ class Image extends NativeKitUIResource {
 	private function new(value:nkui_resource, width:Int, height:Int, format:ImageFormat,
 			filter:ImageFilter) {
 		super(value);
+		identity = nextIdentity++;
 		this.width = width;
 		this.height = height;
 		this.format = format;

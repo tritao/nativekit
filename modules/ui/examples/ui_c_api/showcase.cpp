@@ -172,7 +172,8 @@ struct CApiShowcase {
                nkui_rect_command{header(NKUI_COMMAND_CLIP_RECT, sizeof(nkui_rect_command)), 480.0f,
                                  238.0f, 300.0f, 220.0f});
         append(commands,
-               nkui_layer_command{header(NKUI_COMMAND_BEGIN_LAYER, sizeof(nkui_layer_command)),
+               nkui_layer_command{{NKUI_COMMAND_BEGIN_LAYER, NKUI_LAYER_COMMAND_VERSION,
+                                   sizeof(nkui_layer_command)},
                                   0.72f, NKUI_COMPOSITE_SOURCE_OVER});
         set_paint(commands, cyan);
         draw_path(commands, badge);
