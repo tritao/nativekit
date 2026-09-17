@@ -57,6 +57,7 @@ jobs:
           xcrun simctl install "$IOS_SIMULATOR_ID" \
             "build-iphonesimulator/tests/Debug-iphonesimulator/nativekit_ios_runtime_tests.app"
           : > ios-runtime.log
+          : > ios-simulator-diagnostics.log
           for attempt in 1 2 3; do
             echo "Running iOS simulator runtime test (attempt $attempt/3)"
             xcrun simctl terminate "$IOS_SIMULATOR_ID" \
@@ -66,14 +67,31 @@ jobs:
               org.nativekit.tests.ios-runtime 2>&1 | tee -a ios-runtime.log
             launch_status=${PIPESTATUS[0]}
             set -e
+            echo "simctl launch status: $launch_status"
             if [[ "$launch_status" -eq 0 ]] &&
                grep -q 'NATIVEKIT_IOS_RUNTIME_RESULT=PASS' ios-runtime.log; then
               exit 0
             fi
             if [[ "$attempt" -lt 3 ]]; then
+              {
+                echo "--- simulator diagnostics after attempt $attempt ---"
+                xcrun simctl spawn "$IOS_SIMULATOR_ID" log show --last 3m \
+                  --style compact \
+                  --predicate 'process == "nativekit_ios_runtime_tests" OR eventMessage CONTAINS[c] "NATIVEKIT_IOS_RUNTIME_STAGE"' || true
+              } | tee -a ios-simulator-diagnostics.log >&2
               echo "iOS simulator runtime attempt $attempt failed; retrying" >&2
               sleep 2
             fi
           done
           cat ios-runtime.log >&2
           exit 1
+      - name: Upload iOS simulator diagnostics
+        if: always() && matrix.sdk == 'iphonesimulator'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-simulator-diagnostics
+          path: |
+            ios-runtime.log
+            ios-simulator-diagnostics.log
+          if-no-files-found: ignore
+          retention-days: 7

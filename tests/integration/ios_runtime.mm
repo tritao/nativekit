@@ -11,6 +11,7 @@
 #include "nativekit_window.h"
 
 #import <dispatch/dispatch.h>
+#import <os/log.h>
 #import <UIKit/UIKit.h>
 
 #include <cstdio>
@@ -19,6 +20,12 @@
 #include <vector>
 
 namespace {
+
+void report_stage(const char *stage) {
+    std::fprintf(stderr, "NATIVEKIT_IOS_RUNTIME_STAGE=%s\n", stage);
+    std::fflush(stderr);
+    os_log(OS_LOG_DEFAULT, "NATIVEKIT_IOS_RUNTIME_STAGE=%{public}s", stage);
+}
 
 bool check_result(const char *operation, nk_result result) {
     if (result == NK_OK)
@@ -103,6 +110,7 @@ enum class NKRuntimeStage {
     if (_finished)
         return;
     _finished = true;
+    report_stage("finish.begin");
     [_timer invalidate];
     _timer = nil;
     if (_webview != NK_INVALID_HANDLE)
@@ -113,6 +121,7 @@ enum class NKRuntimeStage {
         success = check_result("nk_mobile_host_destroy", nk_mobile_host_destroy(_host)) && success;
     if (_initialized)
         nk_shutdown();
+    report_stage(success ? "finish.pass" : "finish.fail");
     std::fprintf(stdout, "NATIVEKIT_IOS_RUNTIME_RESULT=%s\n", success ? "PASS" : "FAIL");
     std::fflush(stdout);
     std::exit(success ? EXIT_SUCCESS : EXIT_FAILURE);
@@ -123,6 +132,7 @@ enum class NKRuntimeStage {
 }
 
 - (void)beginWebView {
+    report_stage("webview.create.begin");
     nk_webview_options options = {};
     options.struct_size = sizeof(options);
     options.flags = NK_WEBVIEW_HIDDEN;
@@ -139,18 +149,22 @@ enum class NKRuntimeStage {
         [self fail];
         return;
     }
+    report_stage("webview.create.complete");
     _stage = NKRuntimeStage::wait_html_navigation;
 }
 
 - (void)beginEvaluation {
+    report_stage("webview.evaluation.begin");
     if (!check_result("nk_webview_eval", nk_webview_eval(_webview, "1 + 1", &_evaluation))) {
         [self fail];
         return;
     }
+    report_stage("webview.evaluation.complete");
     _stage = NKRuntimeStage::wait_evaluation;
 }
 
 - (void)beginServices {
+    report_stage("services.begin");
     nk_system_appearance appearance = {};
     appearance.struct_size = sizeof(appearance);
     if (!check_result("nk_system_get_appearance", nk_system_get_appearance(&appearance)) ||
@@ -171,10 +185,12 @@ enum class NKRuntimeStage {
         [self fail];
         return;
     }
+    report_stage("services.clipboard.complete");
     _stage = NKRuntimeStage::wait_clipboard;
 }
 
 - (void)finishShare {
+    report_stage("share.complete");
     UIViewController *presented = _hostView.window.rootViewController.presentedViewController;
     [presented dismissViewControllerAnimated:NO completion:nil];
     uint32_t joystick_count = 0;
@@ -203,6 +219,7 @@ enum class NKRuntimeStage {
     if (_stage == NKRuntimeStage::wait_frame) {
         if (_frameCount == 0)
             return;
+        report_stage("surface.first_frame");
         [self beginWebView];
         return;
     }
@@ -234,6 +251,7 @@ enum class NKRuntimeStage {
         }
         if (_stage == NKRuntimeStage::wait_html_navigation && event.source == _webview &&
             event.kind == NK_EVENT_WEBVIEW_NAVIGATED) {
+            report_stage("webview.html_navigated");
             const nk_result result = nk_webview_navigate(_webview, "about:blank");
             nk_event_release(&event);
             if (!check_result("nk_webview_navigate", result)) {
@@ -245,12 +263,14 @@ enum class NKRuntimeStage {
         }
         if (_stage == NKRuntimeStage::wait_url_navigation && event.source == _webview &&
             event.kind == NK_EVENT_WEBVIEW_NAVIGATED) {
+            report_stage("webview.url_navigated");
             nk_event_release(&event);
             [self beginEvaluation];
             return;
         }
         if (_stage == NKRuntimeStage::wait_evaluation &&
             event.kind == NK_EVENT_WEBVIEW_EVAL_COMPLETE && event.request_id == _evaluation) {
+            report_stage("webview.evaluation.event");
             const bool valid = event.result == NK_OK && event.data_size == 1 && event.data &&
                                std::memcmp(event.data, "2", 1) == 0;
             if (!valid)
@@ -266,6 +286,7 @@ enum class NKRuntimeStage {
         if (_stage == NKRuntimeStage::wait_clipboard &&
             event.kind == NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE &&
             event.request_id == _clipboardRequest) {
+            report_stage("services.clipboard.event");
             nk_resource_view resource = {};
             resource.struct_size = sizeof(resource);
             const bool valid =
@@ -296,14 +317,17 @@ enum class NKRuntimeStage {
 }
 
 - (void)start {
+    report_stage("runner.start");
     nk_init_options init = {};
     init.struct_size = sizeof(init);
     init.api_version = NK_API_VERSION;
+    report_stage("nk_init.begin");
     if (!check_result("nk_init", nk_init(&init))) {
         [self fail];
         return;
     }
     _initialized = true;
+    report_stage("nk_init.complete");
     if (!check_capabilities(nk_get_capabilities())) {
         [self fail];
         return;
@@ -313,6 +337,7 @@ enum class NKRuntimeStage {
     host_options.struct_size = sizeof(host_options);
     host_options.kind = NK_MOBILE_HOST_UIKIT_VIEW;
     host_options.native_view = reinterpret_cast<uintptr_t>((__bridge void *)_hostView);
+    report_stage("mobile_host.attach.begin");
     if (!check_result("nk_mobile_host_attach", nk_mobile_host_attach(&host_options, &_host)) ||
         !check_result("nk_mobile_host_set_drop_enabled(true)",
                       nk_mobile_host_set_drop_enabled(_host, 1)) ||
@@ -323,6 +348,7 @@ enum class NKRuntimeStage {
         [self fail];
         return;
     }
+    report_stage("mobile_host.attach.complete");
 
     nk_surface_options surface_options = {};
     surface_options.struct_size = sizeof(surface_options);
@@ -330,6 +356,7 @@ enum class NKRuntimeStage {
     surface_options.api = NK_GRAPHICS_METAL;
     surface_options.width = 320;
     surface_options.height = 240;
+    report_stage("surface.create.begin");
     if (!check_result("nk_surface_create", nk_surface_create(_host, &surface_options, &_surface)) ||
         !check_result("nk_surface_show", nk_surface_show(_surface, 1)) ||
         !check_result("nk_surface_set_bounds", nk_surface_set_bounds(_surface, 0, 0, 320, 240)) ||
@@ -337,8 +364,10 @@ enum class NKRuntimeStage {
         [self fail];
         return;
     }
+    report_stage("surface.create.complete");
     nk_surface_frame_target target = {};
     target.struct_size = sizeof(target);
+    report_stage("surface.frame_target.begin");
     if (!check_result("nk_surface_get_frame_target",
                       nk_surface_get_frame_target(_surface, &target)) ||
         target.api != NK_GRAPHICS_METAL || target.width <= 0 || target.height <= 0 ||
@@ -350,6 +379,7 @@ enum class NKRuntimeStage {
         [self fail];
         return;
     }
+    report_stage("surface.frame_target.complete");
 
     nk_text_input_state text_state = {};
     text_state.struct_size = sizeof(text_state);
@@ -361,6 +391,7 @@ enum class NKRuntimeStage {
     text_state.composition_end = NK_TEXT_POSITION_NONE;
     text_state.cursor_width = 1.0f;
     text_state.cursor_height = 18.0f;
+    report_stage("text_input.begin");
     if (!check_result("nk_surface_set_text_input_state",
                       nk_surface_set_text_input_state(_surface, &text_state)) ||
         !check_result("nk_surface_set_text_input_active(true)",
@@ -370,6 +401,7 @@ enum class NKRuntimeStage {
         [self fail];
         return;
     }
+    report_stage("text_input.complete");
 
     nk_accessibility_node node = {};
     node.struct_size = sizeof(node);
@@ -384,6 +416,7 @@ enum class NKRuntimeStage {
     node.value = "hello";
     node.document_length = 5;
     nk_accessibility_text_range range = {0, 5, 0, 0, 160, 32};
+    report_stage("accessibility.begin");
     if (!check_result("nk_surface_accessibility_set_node",
                       nk_surface_accessibility_set_node(_surface, &node)) ||
         !check_result("nk_surface_accessibility_set_focus",
@@ -394,11 +427,13 @@ enum class NKRuntimeStage {
         [self fail];
         return;
     }
+    report_stage("accessibility.complete");
     _timer = [NSTimer scheduledTimerWithTimeInterval:0.01
                                               target:self
                                             selector:@selector(poll:)
-                                            userInfo:nil
+                                             userInfo:nil
                                              repeats:YES];
+    report_stage("runner.polling");
 }
 @end
 
@@ -422,6 +457,7 @@ enum class NKRuntimeStage {
     didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
     (void)application;
     (void)launchOptions;
+    report_stage("application.did_finish.begin");
     self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
     self.window.rootViewController = [NKRuntimeViewController new];
     [self.window makeKeyAndVisible];
@@ -430,13 +466,16 @@ enum class NKRuntimeStage {
       [host_view layoutIfNeeded];
       self.runner = [[NKRuntimeTestRunner alloc] initWithHostView:host_view];
       [self.runner start];
+      report_stage("application.runner.started");
     });
+    report_stage("application.did_finish.complete");
     return YES;
 }
 @end
 
 int main(int argc, char *argv[]) {
     @autoreleasepool {
+        report_stage("main");
         return UIApplicationMain(argc, argv, nil, NSStringFromClass([NKRuntimeAppDelegate class]));
     }
 }
