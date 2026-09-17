@@ -178,7 +178,10 @@ public final class MainActivity extends Activity {
         MotionEvent button = generic(now, MotionEvent.ACTION_BUTTON_PRESS,
                                      InputDevice.SOURCE_MOUSE, 0, MotionEvent.BUTTON_SECONDARY,
                                      mouse, mouseValues);
-        view.dispatchGenericMotionEvent(button);
+        // Generic motion dispatch is filtered differently by View on various API levels
+        // (notably for synthetic mouse button events). Drive the bridge callback directly so
+        // this probe verifies NativeSurfaceView's input conversion rather than framework routing.
+        view.onGenericMotionEvent(button);
         button.recycle();
 
         KeyEvent keyDown = new KeyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_A, 0,
@@ -250,7 +253,7 @@ public final class MainActivity extends Activity {
                                         int device, MotionEvent.PointerProperties[] properties,
                                         MotionEvent.PointerCoords[] coordinates) {
         MotionEvent event = generic(time, action, source, device, 0, properties, coordinates);
-        view.dispatchGenericMotionEvent(event);
+        view.onGenericMotionEvent(event);
         event.recycle();
     }
 

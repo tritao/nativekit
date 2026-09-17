@@ -6,6 +6,7 @@ artifact_dir=${NATIVEKIT_WEB_ARTIFACT_DIR:-"$repo_dir/build-web/modules/ui"}
 output=${NATIVEKIT_WEB_BENCHMARK_JSON:-"$repo_dir/out/benchmark-web-haxeon.json"}
 warmup=${NATIVEKIT_WEB_BENCHMARK_WARMUP:-120}
 frames=${NATIVEKIT_WEB_BENCHMARK_FRAMES:-600}
+benchmark_timeout=${NATIVEKIT_WEB_BENCHMARK_TIMEOUT:-180}
 mode=${NATIVEKIT_WEB_BENCHMARK_MODE:-browser}
 scenario=${NATIVEKIT_WEB_BENCHMARK_SCENARIO:-full}
 profile=${NATIVEKIT_WEB_BENCHMARK_PROFILE:-0}
@@ -90,4 +91,4 @@ for _ in $(seq 1 100); do
 done
 
 python3 -B "$repo_dir/tools/web_benchmark.py" --debug-port "$debug_port" \
-    --page-url "$page_url" --output "$output" --timeout 90
+    --page-url "$page_url" --output "$output" --timeout "$benchmark_timeout"
