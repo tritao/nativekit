@@ -3090,6 +3090,14 @@ void emit_window_state(MacWindowResource &resource) noexcept {
         return NSNotFound;
     const NSPoint windowPoint = [self.window convertPointFromScreen:screenPoint];
     const NSPoint localPoint = [self convertPoint:windowPoint fromView:nil];
+    const auto hit = nk::core::text_input_hit_test_range(
+        resource->text_input_state, resource->text_input_selection_rects,
+        resource->text_input_composition_rects, localPoint.x, localPoint.y);
+    if (hit.matched) {
+        const NSRange range = native_range_for_positions(*resource, hit.position, hit.position);
+        if (range.location != NSNotFound)
+            return range.location;
+    }
     const NSRect caret =
         NSMakeRect(resource->text_input_state.cursor_x, resource->text_input_state.cursor_y,
                    std::max(1.f, resource->text_input_state.cursor_width),

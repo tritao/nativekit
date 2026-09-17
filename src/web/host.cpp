@@ -558,23 +558,65 @@ EM_JS(void, nk_web_configure_text_input,
                   return count === position ? index : -1;
               };
               const codePointRangeForEvent = event => {
-                  let start = input.selectionStart == null ? 0 : input.selectionStart;
-                  let end = input.selectionEnd == null ? start : input.selectionEnd;
+                  const value = input.value;
                   if (event && typeof event.getTargetRanges === "function") {
-                      const ranges = event.getTargetRanges();
-                      if (ranges && ranges.length) {
-                          const range = ranges[0];
-                          if (range.startContainer === input || !range.startContainer) {
-                              start = range.startOffset;
-                              end = range.endOffset;
+                      try {
+                          const ranges = event.getTargetRanges();
+                          if (ranges && ranges.length) {
+                              const range = ranges[0];
+                              const startContainer = range.startContainer;
+                              const endContainer = range.endContainer;
+                              const sameInput = container => !container || container === input ||
+                                  container.parentNode === input;
+                              if (sameInput(startContainer) && sameInput(endContainer) &&
+                                  Number.isInteger(range.startOffset) &&
+                                  Number.isInteger(range.endOffset)) {
+                                  const targetStart = codePointOffset(value, range.startOffset);
+                                  const targetEnd = codePointOffset(value, range.endOffset);
+                                  if (targetStart >= 0 && targetEnd >= targetStart)
+                                      return [targetStart, targetEnd];
+                              }
                           }
+                      } catch (error) {
+                          // Some browsers reject getTargetRanges() for native controls.
                       }
                   }
-                  const value = input.value;
+                  let start = input.selectionStart == null ? 0 : input.selectionStart;
+                  let end = input.selectionEnd == null ? start : input.selectionEnd;
                   const codepointStart = codePointOffset(value, start);
                   const codepointEnd = codePointOffset(value, end);
                   return codepointStart < 0 || codepointEnd < codepointStart
                       ? null : [codepointStart, codepointEnd];
+              };
+              input._nkGetSurroundingText = (beforeLength, afterLength) => {
+                  const value = input.value;
+                  const selectionStart = input.selectionStart == null ? 0 : input.selectionStart;
+                  const selectionEnd = input.selectionEnd == null ? selectionStart : input.selectionEnd;
+                  const before = Number.isInteger(beforeLength) ? Math.max(0, beforeLength) : 0;
+                  const after = Number.isInteger(afterLength) ? Math.max(0, afterLength) : 0;
+                  let start = Math.max(0, selectionStart - before);
+                  let end = Math.min(value.length, selectionEnd + after);
+                  if (start > 0 && start < value.length &&
+                      value.charCodeAt(start - 1) >= 0xd800 &&
+                      value.charCodeAt(start - 1) <= 0xdbff &&
+                      value.charCodeAt(start) >= 0xdc00 &&
+                      value.charCodeAt(start) <= 0xdfff)
+                      start--;
+                  if (end > 0 && end < value.length &&
+                      value.charCodeAt(end - 1) >= 0xd800 &&
+                      value.charCodeAt(end - 1) <= 0xdbff &&
+                      value.charCodeAt(end) >= 0xdc00 &&
+                      value.charCodeAt(end) <= 0xdfff)
+                      end++;
+                  const startCodepoint = codePointOffset(value, start);
+                  const selectionStartCodepoint = codePointOffset(value, selectionStart);
+                  const selectionEndCodepoint = codePointOffset(value, selectionEnd);
+                  return startCodepoint < 0 || selectionStartCodepoint < startCodepoint ||
+                      selectionEndCodepoint < selectionStartCodepoint
+                      ? null
+                      : {text: value.slice(start, end), textStart: startCodepoint,
+                         selectionStart: selectionStartCodepoint - startCodepoint,
+                         selectionEnd: selectionEndCodepoint - startCodepoint};
               };
               input.addEventListener("beforeinput", event => {
                   if (!input._nkActive)

@@ -103,6 +103,36 @@ static int geometry_anchor_is_published(void) {
     });
 }
 
+static int query_text_input_ranges(void) {
+    return EM_ASM_INT({
+        const input = document.querySelector("[id^='__nativekit_text_input_']");
+        if (!input || typeof input._nkGetSurroundingText !== "function" ||
+            typeof input._nkCodePointRangeForEvent !== "function")
+            return 0;
+        input.value = "A\ud83d\ude00B";
+        input.setSelectionRange(3, 3);
+        const surrounding = input._nkGetSurroundingText(1, 1);
+        if (!surrounding || surrounding.text !== "\ud83d\ude00B" ||
+            surrounding.textStart !== 1 || surrounding.selectionStart !== 1 ||
+            surrounding.selectionEnd !== 1)
+            return 0;
+        const target = input._nkCodePointRangeForEvent({
+            getTargetRanges: () => [{startContainer: input, startOffset: 1,
+                                     endContainer: input, endOffset: 3}]
+        });
+        if (!target || target[0] !== 1 || target[1] !== 2)
+            return 0;
+        const textNodeTarget = input._nkCodePointRangeForEvent({
+            getTargetRanges: () => {
+                const textNode = {parentNode: input};
+                return [{startContainer: textNode, startOffset: 1,
+                         endContainer: textNode, endOffset: 3}];
+            }
+        });
+        return textNodeTarget && textNodeTarget[0] === 1 && textNodeTarget[1] === 2 ? 1 : 0;
+    });
+}
+
 static int dispatch_selection(void) {
     return EM_ASM_INT({
         const input = document.querySelector("[id^='__nativekit_text_input_']");
@@ -212,6 +242,7 @@ int main(void) {
                surface, 11, 12, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
                (const uint8_t *)&selection_rect, sizeof(selection_rect), NULL, 0) == NK_OK);
     assert(geometry_anchor_is_published());
+    assert(query_text_input_ranges());
     assert(dispatch_input_sequence());
     expect_edit(surface, NK_TEXT_EDIT_COMMIT, 11, 12, "\xe3\x81\x8b\xe3\x81\xaa", 13, 13,
                 NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);

@@ -22,6 +22,11 @@ struct TextInputGeometry {
     std::vector<nk_text_input_rect> composition_rects;
 };
 
+struct TextInputHitTest {
+    bool matched = false;
+    nk_text_position position = NK_TEXT_POSITION_NONE;
+};
+
 /**
  * Selects the best platform anchor for candidate or composition UI.
  *
@@ -41,6 +46,47 @@ inline nk_text_input_rect text_input_anchor_rect(
     if (state.selection_start != state.selection_end && !selection_rects.empty())
         return selection_rects.front();
     return fallback;
+}
+
+/**
+ * Resolves a point inside published range geometry to the nearest endpoint of
+ * that range. The full character hit-test remains owned by Skribidi; native
+ * text services only receive the compact range geometry published here.
+ */
+inline TextInputHitTest text_input_hit_test_range(
+    const nk_text_input_state &state, const std::vector<nk_text_input_rect> &selection_rects,
+    const std::vector<nk_text_input_rect> &composition_rects, float x, float y) noexcept {
+    if (!std::isfinite(x) || !std::isfinite(y))
+        return {};
+
+    const auto hit = [x, y](nk_text_position start, nk_text_position end,
+                            const std::vector<nk_text_input_rect> &rects) {
+        if (start == NK_TEXT_POSITION_NONE || end == NK_TEXT_POSITION_NONE || start > end)
+            return TextInputHitTest{};
+        for (const auto &rect : rects) {
+            const float right = rect.x + std::max(1.0f, rect.width);
+            const float bottom = rect.y + std::max(1.0f, rect.height);
+            if (x < rect.x || x > right || y < rect.y || y > bottom)
+                continue;
+            const float midpoint = rect.x + std::max(1.0f, rect.width) * 0.5f;
+            return TextInputHitTest{true, x <= midpoint ? start : end};
+        }
+        return TextInputHitTest{};
+    };
+
+    if (state.composition_start != NK_TEXT_POSITION_NONE &&
+        state.composition_end != NK_TEXT_POSITION_NONE) {
+        const auto result = hit(state.composition_start, state.composition_end,
+                                composition_rects);
+        if (result.matched)
+            return result;
+    }
+    if (state.selection_start != state.selection_end) {
+        const auto result = hit(state.selection_start, state.selection_end, selection_rects);
+        if (result.matched)
+            return result;
+    }
+    return {};
 }
 
 inline bool decode_text_input_rects(const uint8_t *bytes, uint32_t byte_count,

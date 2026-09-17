@@ -66,6 +66,20 @@ int main() {
     anchor_state.selection_end = 5;
     anchor = nk::core::text_input_anchor_rect(anchor_state, anchor_selection, anchor_composition);
     assert(anchor.x == 4.0f && anchor.y == 8.0f);
+    anchor_state.selection_start = 3;
+    anchor_state.selection_end = 5;
+    auto hit = nk::core::text_input_hit_test_range(anchor_state, anchor_selection, {}, 21.0f,
+                                                   35.0f);
+    assert(hit.matched && hit.position == 3);
+    hit = nk::core::text_input_hit_test_range(anchor_state, anchor_selection, {}, 59.0f, 35.0f);
+    assert(hit.matched && hit.position == 5);
+    hit = nk::core::text_input_hit_test_range(anchor_state, anchor_selection, {}, 20.0f, 55.0f);
+    assert(!hit.matched);
+    anchor_state.composition_start = 4;
+    anchor_state.composition_end = 5;
+    hit = nk::core::text_input_hit_test_range(anchor_state, anchor_selection,
+                                              anchor_composition, 61.0f, 75.0f);
+    assert(hit.matched && hit.position == 4);
 
     nk_text_input_state state{};
     state.struct_size = sizeof(state);
