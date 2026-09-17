@@ -330,7 +330,8 @@ get_orientation(nk_system_orientation &out_orientation) noexcept {
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((weak))
 #endif
-nk_result request_device_orientation(nk_request_id) noexcept {
+nk_result
+request_device_orientation(nk_request_id) noexcept {
     return NK_ERROR_UNSUPPORTED;
 }
 
