@@ -43,6 +43,21 @@ int main() {
     assert(!offset_map.codepointOffsetForUtf16(2, &codepoint_offset));
     assert(!offset_map.assign(std::string_view("\xf0\x9f\x98", 3)));
 
+    // The mapping cache is code-point based, but must remain exact across the
+    // scalar boundaries used by IME APIs even when the text contains combining
+    // marks, ZWJ sequences, flags, modifiers, and RTL text.
+    const std::string complex_unicode = u8"e\u0301👨‍👩‍👧‍👦🇵🇹👍🏽אב";
+    assert(offset_map.assign(complex_unicode));
+    for (uint32_t position = 0; position <= offset_map.codepointCount(); ++position) {
+        assert(offset_map.utf8ByteOffset(position, &byte_offset));
+        assert(offset_map.utf16CodeUnitOffset(position, &unit_offset));
+        uint32_t round_trip = 0;
+        assert(offset_map.codepointOffsetForUtf16(unit_offset, &round_trip));
+        assert(round_trip == position);
+    }
+    assert(offset_map.utf16CodeUnitOffset(2, &unit_offset) && unit_offset == 2);
+    assert(!offset_map.codepointOffsetForUtf16(3, &codepoint_offset));
+
     nk_text_input_state anchor_state{};
     anchor_state.cursor_x = 4.0f;
     anchor_state.cursor_y = 8.0f;
@@ -251,5 +266,33 @@ int main() {
         composition_packed.data(), composition_packed.size(), &geometry));
     assert(geometry.composition_rects.size() == 1);
     assert(geometry.composition_rects.front().y == 26.0f);
+
+    nk_text_input_range_rect state_selection_range{
+        sizeof(nk_text_input_range_rect), 4.0f, 8.0f, 32.0f, 18.0f, 11, 12};
+    nk_text_input_range_rect state_composition_range{
+        sizeof(nk_text_input_range_rect), 7.0f, 26.0f, 18.0f, 18.0f, 11, 12};
+    std::vector<uint8_t> state_selection_packed(sizeof(state_selection_range));
+    std::vector<uint8_t> state_composition_packed(sizeof(state_composition_range));
+    std::memcpy(state_selection_packed.data(), &state_selection_range,
+                sizeof(state_selection_range));
+    std::memcpy(state_composition_packed.data(), &state_composition_range,
+                sizeof(state_composition_range));
+    state.composition_start = 11;
+    state.composition_end = 12;
+    assert(nk::core::decode_text_input_geometry(
+        state.selection_start, state.selection_end, state.composition_start,
+        state.composition_end, state_selection_packed.data(), state_selection_packed.size(),
+        state_composition_packed.data(), state_composition_packed.size(), &geometry));
+    assert(geometry.selection_range_rects.size() == 1);
+    assert(geometry.composition_range_rects.size() == 1);
+    assert(nk::core::text_input_geometry_matches_state(geometry, state));
+
+    state_selection_range.range_start = 10;
+    std::memcpy(state_selection_packed.data(), &state_selection_range,
+                sizeof(state_selection_range));
+    assert(!nk::core::decode_text_input_geometry(
+        state.selection_start, state.selection_end, state.composition_start,
+        state.composition_end, state_selection_packed.data(), state_selection_packed.size(),
+        state_composition_packed.data(), state_composition_packed.size(), &geometry));
     return 0;
 }

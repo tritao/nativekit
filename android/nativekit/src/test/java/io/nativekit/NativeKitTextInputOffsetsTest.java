@@ -4,6 +4,7 @@ import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
@@ -58,5 +59,28 @@ public final class NativeKitTextInputOffsetsTest {
         assertArrayEquals(new int[] {0, 4}, NativeKitTextInputOffsets.surroundingRange(
             text, 1, 3, 1, 1));
         assertNull(NativeKitTextInputOffsets.surroundingRange(text, 2, 2, 1, 0));
+    }
+
+    @Test
+    public void complexUnicodeStaysOnScalarBoundaries() {
+        String family = "👨‍👩‍👧‍👦";
+        String text = "e\u0301" + family + "🇵🇹👍🏽אב";
+        int codePointCount = text.codePointCount(0, text.length());
+
+        for (int position = 0; position <= codePointCount; ++position) {
+            int utf16 = text.offsetByCodePoints(0, position);
+            assertEquals(position, NativeKitTextInputOffsets.codePointOffset(text, utf16));
+            assertEquals(utf16, NativeKitTextInputOffsets.utf16Offset(text, position));
+        }
+
+        int familyStart = text.indexOf(family);
+        assertTrue(familyStart >= 0);
+        assertEquals(NativeKitTextInputOffsets.INVALID,
+                     NativeKitTextInputOffsets.codePointOffset(text, familyStart + 1));
+
+        int familyEnd = familyStart + family.length();
+        assertArrayEquals(new int[] {familyEnd - 2, familyEnd + 2},
+                          NativeKitTextInputOffsets.surroundingRange(
+                              text, familyEnd, familyEnd, 1, 1));
     }
 }

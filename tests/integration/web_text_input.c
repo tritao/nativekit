@@ -115,7 +115,7 @@ static int dispatch_input_sequence(void) {
     });
 }
 
-static int geometry_anchor_is_published(void) {
+static int geometry_anchor_is_published(float expected_x, float expected_y) {
     return EM_ASM_INT({
         const input = document.querySelector("[id^='__nativekit_text_input_']");
         const canvas = document.querySelector("canvas");
@@ -124,9 +124,9 @@ static int geometry_anchor_is_published(void) {
         const canvasRect = canvas.getBoundingClientRect();
         const left = Number.parseFloat(input.style.left);
         const top = Number.parseFloat(input.style.top);
-        return Math.abs(left - (canvasRect.left + 22)) < 1 &&
-               Math.abs(top - (canvasRect.top + 33)) < 1 ? 1 : 0;
-    });
+        return Math.abs(left - (canvasRect.left + $0)) < 1 &&
+               Math.abs(top - (canvasRect.top + $1)) < 1 ? 1 : 0;
+    }, expected_x, expected_y);
 }
 
 static int query_text_input_ranges(void) {
@@ -287,12 +287,16 @@ int main(void) {
     assert(nk_surface_set_text_input_active(surface, 1) == NK_OK);
 
 #ifdef __EMSCRIPTEN__
-    nk_text_input_rect selection_rect = {sizeof(nk_text_input_rect), 22.0f, 33.0f, 12.0f,
-                                         18.0f};
+    nk_text_input_range_rect selection_rect = {sizeof(nk_text_input_range_rect), 22.0f, 33.0f,
+                                               12.0f, 18.0f, 11, 12};
+    assert(nk_surface_set_text_input_geometry(
+               surface, 10, 12, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
+               (const uint8_t *)&selection_rect, sizeof(selection_rect), NULL, 0) ==
+           NK_ERROR_INVALID_ARGUMENT);
     assert(nk_surface_set_text_input_geometry(
                surface, 11, 12, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
                (const uint8_t *)&selection_rect, sizeof(selection_rect), NULL, 0) == NK_OK);
-    assert(geometry_anchor_is_published());
+    assert(geometry_anchor_is_published(22.0f, 33.0f));
     assert(query_text_input_ranges());
     assert(dispatch_input_sequence());
     expect_edit(surface, NK_TEXT_EDIT_COMMIT, 11, 12, "\xe3\x81\x8b\xe3\x81\xaa", 13, 13,

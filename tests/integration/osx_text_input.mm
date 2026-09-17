@@ -91,6 +91,10 @@ int main(void) {
     nk_text_input_range_rect selection_rect = {sizeof(nk_text_input_range_rect), 32.0f, 48.0f,
                                                40.0f, 18.0f, 1, 2};
     assert(nk_surface_set_text_input_geometry(
+               window, 0, 2, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
+               (const uint8_t *)&selection_rect, sizeof(selection_rect), NULL, 0) ==
+           NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_surface_set_text_input_geometry(
                window, 1, 2, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
                (const uint8_t *)&selection_rect, sizeof(selection_rect), NULL, 0) == NK_OK);
     NSRect selection_screen_rect =
@@ -122,6 +126,19 @@ int main(void) {
     assert([input_view hasMarkedText]);
     assert(NSEqualRanges([input_view markedRange], NSMakeRange(1, 2)));
     assert(NSEqualRanges([input_view selectedRange], NSMakeRange(3, 0)));
+
+    nk_text_input_range_rect composition_rect = {sizeof(nk_text_input_range_rect), 80.0f, 100.0f,
+                                                 40.0f, 18.0f, 1, 3};
+    assert(nk_surface_set_text_input_geometry(
+               window, 3, 3, 1, 3, NULL, 0, (const uint8_t *)&composition_rect,
+               sizeof(composition_rect)) == NK_OK);
+    NSView *native_input_view = (__bridge NSView *)(void *)native.view;
+    NSPoint composition_local_point = NSMakePoint(85.0f, 109.0f);
+    NSPoint composition_window_point =
+        [native_input_view convertPoint:composition_local_point toView:nil];
+    NSPoint composition_screen_point =
+        [native_input_view.window convertPointToScreen:composition_window_point];
+    assert([input_view characterIndexForPoint:composition_screen_point] == 1);
 
     [input_view setMarkedText:@"かなじ"
                 selectedRange:NSMakeRange(3, 0)

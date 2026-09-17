@@ -259,6 +259,15 @@ int main(void) {
     state.cursor_width = 1.0f;
     state.cursor_height = 18.0f;
     assert(nk_surface_set_text_input_state(window, &state) == NK_OK);
+    nk_text_input_range_rect selection_rect = {sizeof(nk_text_input_range_rect), 47.0f, 83.0f,
+                                               1.0f, 18.0f, 2, 2};
+    assert(nk_surface_set_text_input_geometry(
+               window, 1, 2, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
+               (const uint8_t *)&selection_rect, sizeof(selection_rect), NULL, 0) ==
+           NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_surface_set_text_input_geometry(
+               window, 2, 2, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
+               (const uint8_t *)&selection_rect, sizeof(selection_rect), NULL, 0) == NK_OK);
     assert(nk_surface_set_text_input_active(window, 1) == NK_OK);
 
     HIMC context = ImmGetContext(hwnd);
