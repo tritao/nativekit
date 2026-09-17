@@ -163,7 +163,8 @@ class TextEditorState {
 		if (activeParagraphOffsetMap == null || activeParagraphStart != start ||
 			activeParagraphEnd != end) {
 			activeParagraphOffsetMap = new TextOffsetMap(
-				documentOffsetMap.sliceCodepoints(start, end));
+				documentOffsetMap.sliceCodepoints(start, end),
+				documentOffsetMap.graphemeBoundariesForRange(start, end));
 			activeParagraphStart = start;
 			activeParagraphEnd = end;
 		}

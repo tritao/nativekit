@@ -196,6 +196,22 @@ class TextLayout extends NativeKitUIResource {
 		return result.out_offset;
 	}
 
+	/** Returns all grapheme boundaries reported by Skribidi. */
+	public function graphemeBoundaries():Array<Int> {
+		var result:Array<Int> = [0];
+		var offset = 0;
+		while (true) {
+			var next = nextGrapheme(offset);
+			if (next == offset)
+				break;
+			if (next < offset)
+				throw "Text layout returned a decreasing grapheme boundary";
+			result.push(next);
+			offset = next;
+		}
+		return result;
+	}
+
 	/** Returns Skribidi's word range containing a code-point offset. */
 	public function wordRangeAt(offset:Int):TextRange {
 		if (offset < 0)

@@ -155,6 +155,25 @@ class TextOffsetMap {
 		return nextBoundary(value);
 	}
 
+	/**
+	 * Returns global grapheme boundaries within a code-point range as
+	 * subrange-local offsets. Both range edges are included so paragraph
+	 * views remain valid when a grapheme crosses a paragraph boundary.
+	 */
+	public function graphemeBoundariesForRange(start:CodepointOffset,
+			end:CodepointOffset):Array<Int> {
+		var first:Int = start;
+		var last:Int = end;
+		checkRange(first, last);
+		var result:Array<Int> = [0];
+		for (boundary in graphemeBoundaries)
+			if (boundary > first && boundary < last)
+				result.push(boundary - first);
+		if (last > first)
+			result.push(last - first);
+		return result;
+	}
+
 	public function sliceCodepoints(start:CodepointOffset, end:CodepointOffset):String {
 		var first:Int = start;
 		var last:Int = end;

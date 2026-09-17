@@ -3045,7 +3045,58 @@ class FrameworkSmoke {
 			map.nextGraphemeBoundary(end) == end;
 	}
 
+	static function checkLayoutMapParity(editor:TextEditorState):Bool {
+		var expected:Array<Int> = [0];
+		var offset = 0;
+		while (offset < editor.documentLength()) {
+			var next = editor.layout.nextGrapheme(offset);
+			if (next <= offset)
+				return false;
+			expected.push(next);
+			offset = next;
+		}
+		var map = editor.documentOffsets();
+		if (map.graphemeBoundaryCount() != expected.length)
+			return false;
+		for (index in 0...expected.length)
+			if (map.graphemeBoundaryAt(index) != expected[index])
+				return false;
+		return true;
+	}
+
 	static function unicodeEditorMatrixSmoke(fonts:FontCollection):Bool {
+		var parityValues = [
+			"é👨‍👩‍👧‍👦🇺🇸👍🏽क्‍ष\nאבג",
+			"각한글\nمرحبا بالعالم",
+			"देवनागरी क्‍ष\nÁ ZWJ 👩‍🚀"
+		];
+		for (value in parityValues) {
+			var parityEditor = new TextEditorState(fonts, value);
+			var parityOk = checkLayoutMapParity(parityEditor);
+			parityEditor.dispose();
+			if (!parityOk)
+				return false;
+		}
+		var parityEditor = new TextEditorState(fonts, "각👨‍👩‍👧‍👦\nabc");
+		parityEditor.setSelection(0, 0);
+		var firstParagraphMap = parityEditor.activeParagraphOffsets();
+		var firstParagraphBoundaries = parityEditor.documentOffsets().graphemeBoundariesForRange(0, 10);
+		if (!checkLayoutMapParity(parityEditor) || firstParagraphMap.text != "각👨‍👩‍👧‍👦" ||
+			firstParagraphMap.graphemeBoundaryCount() != 3 ||
+			firstParagraphMap.graphemeBoundaryAt(1) != 3 ||
+			firstParagraphMap.graphemeBoundaryAt(2) != 10 ||
+			firstParagraphBoundaries.length != 3 || firstParagraphBoundaries[1] != 3 ||
+			firstParagraphBoundaries[2] != 10) {
+			parityEditor.dispose();
+			return false;
+		}
+		parityEditor.dispose();
+		var crlfEditor = new TextEditorState(fonts, "a\r\nb");
+		var crlfOk = checkGraphemeBoundaries(crlfEditor.documentOffsets(), [0, 1, 3, 4]);
+		crlfEditor.dispose();
+		if (!crlfOk)
+			return false;
+
 		var editor = new TextEditorState(fonts, "A👨‍👩‍👧‍👦\nمرحبا");
 		var map = editor.documentOffsets();
 		if (map.codepointCount != 14 || map.utf8ByteLength != 37 || map.utf16Length != 18 ||

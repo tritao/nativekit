@@ -105,9 +105,12 @@ class TextEditorLayout {
 			if (record == null && previousRecord != null && !containsRecord(used, previousRecord))
 				record = previousRecord;
 			if (record != null) {
-				if (record.text != paragraphText || record.layout.width != nextWidth || styleChanged) {
+				var textChanged = record.text != paragraphText;
+				if (textChanged || record.layout.width != nextWidth || styleChanged) {
 					record.layout.update(paragraphText, nextWidth, textStyle, paragraphStyle);
 					record.text = paragraphText;
+					if (textChanged)
+						record.graphemeBoundaries = record.layout.graphemeBoundaries();
 				}
 			} else {
 				record = new TextEditorParagraphRecord(paragraphText,
@@ -123,12 +126,44 @@ class TextEditorLayout {
 		for (record in previous)
 			if (!containsRecord(used, record))
 				record.layout.dispose();
+		syncGraphemeBoundaries(nextOffsets, next);
 
 		text = actualText;
 		width = nextWidth;
 		offsets = nextOffsets;
 		paragraphs = next;
 		recomputeMetrics();
+	}
+
+	/** Replaces fallback boundaries with boundaries reported by Skribidi. */
+	function syncGraphemeBoundaries(nextOffsets:TextOffsetMap,
+			next:Array<TextEditorParagraphRecord>):Void {
+		var boundaries:Array<Int> = [0];
+		for (record in next) {
+			var hasFollowingLineFeed = record.end < nextOffsets.codepointCount;
+			var endsCrLf = hasFollowingLineFeed && record.text.length > 0 &&
+				record.text.charCodeAt(record.text.length - 1) == 0x0d;
+			for (index in 1...record.graphemeBoundaries.length) {
+				var boundary = record.start + record.graphemeBoundaries[index];
+				if (!endsCrLf || boundary != record.end)
+					appendBoundary(boundaries, boundary);
+			}
+			if (hasFollowingLineFeed) {
+				if (!endsCrLf)
+					appendBoundary(boundaries, record.end);
+				appendBoundary(boundaries, record.end + 1);
+			} else {
+				appendBoundary(boundaries, record.end);
+			}
+		}
+		if (boundaries[boundaries.length - 1] != nextOffsets.codepointCount)
+			appendBoundary(boundaries, nextOffsets.codepointCount);
+		nextOffsets.setGraphemeBoundaries(boundaries);
+	}
+
+	static function appendBoundary(boundaries:Array<Int>, value:Int):Void {
+		if (value > boundaries[boundaries.length - 1])
+			boundaries.push(value);
 	}
 
 	public function setText(value:String, ?offsetMap:TextOffsetMap):Void
@@ -404,6 +439,7 @@ class TextEditorParagraphRecord {
 	public var text:String;
 	public var y:Float;
 	public var height:Float;
+	public var graphemeBoundaries:Array<Int>;
 	public final layout:TextLayout;
 
 	public function new(text:String, layout:TextLayout) {
@@ -413,5 +449,6 @@ class TextEditorParagraphRecord {
 		end = 0;
 		y = 0.0;
 		height = 0.0;
+		graphemeBoundaries = layout.graphemeBoundaries();
 	}
 }
