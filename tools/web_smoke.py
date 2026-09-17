@@ -199,8 +199,8 @@ def main():
                 probe_sent = bool(websocket.evaluate(
                     "(()=>{const input=document.getElementById('__nativekit_text_input');"
                     "if(!input)return false;"
-                    "input.dispatchEvent(new InputEvent('input',{bubbles:true,data:'A',"
-                    "inputType:'insertText'}));return true;})()",
+                    "input.dispatchEvent(new InputEvent('beforeinput',{bubbles:true,cancelable:true,"
+                    "data:'A',inputType:'insertText'}));return true;})()",
                     2,
                 ))
             if not resize_sent:

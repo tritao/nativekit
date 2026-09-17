@@ -491,12 +491,19 @@ EM_JS(void, nk_web_configure_text_input,
               input.style.outline = "none";
               input._nkComposing = false;
               input._nkIgnoreInput = false;
+              input._nkSkipInput = false;
               const emit = (type, value, start, end) => {
                   if (!input._nkActive || !Module.ccall)
                       return;
                   Module.ccall("nk_web_host_text_input_event", null,
                                ["number", "number", "string", "number", "number"],
                                [input._nkRoute || 0, type, value || "", start || 0, end || 0]);
+              };
+              const suppressInput = () => {
+                  input._nkSkipInput = true;
+                  Promise.resolve().then(() => {
+                      input._nkSkipInput = false;
+                  });
               };
               input.addEventListener("compositionstart", () => {
                   input._nkComposing = true;
@@ -513,7 +520,70 @@ EM_JS(void, nk_web_configure_text_input,
                   else
                       emit(4, "", 0, 0);
               });
+              input.addEventListener("beforeinput", event => {
+                  if (!input._nkActive)
+                      return;
+
+                  const type = event.inputType || "";
+                  if (input._nkIgnoreInput) {
+                      // compositionend has already emitted the commit. Suppress the
+                      // browser's follow-up insertFromComposition/input event.
+                      event.preventDefault();
+                      input._nkIgnoreInput = false;
+                      suppressInput();
+                      return;
+                  }
+                  if (input._nkComposing) {
+                      // compositionupdate is the authoritative preedit event. Keep the
+                      // hidden control from applying a second browser-side mutation.
+                      if (type === "insertCompositionText" || type === "deleteCompositionText") {
+                          event.preventDefault();
+                          suppressInput();
+                      }
+                      return;
+                  }
+
+                  let eventType = -1;
+                  let value = event.data || "";
+                  switch (type) {
+                  case "insertText":
+                  case "insertReplacementText":
+                  case "insertFromComposition":
+                      eventType = 1;
+                      break;
+                  case "insertFromPaste":
+                  case "insertFromDrop":
+                      eventType = 1;
+                      if (!value && event.dataTransfer)
+                          value = event.dataTransfer.getData("text/plain") || "";
+                      break;
+                  case "insertLineBreak":
+                  case "insertParagraph":
+                      eventType = 1;
+                      value = "\\n";
+                      break;
+                  case "deleteContentBackward":
+                      eventType = 2;
+                      value = "";
+                      break;
+                  case "deleteContentForward":
+                      eventType = 3;
+                      value = "";
+                      break;
+                  default:
+                      return;
+                  }
+                  if (eventType === 1 && !value)
+                      return;
+                  event.preventDefault();
+                  suppressInput();
+                  emit(eventType, value, 0, 0);
+              });
               input.addEventListener("input", event => {
+                  if (input._nkSkipInput) {
+                      input._nkSkipInput = false;
+                      return;
+                  }
                   if (input._nkIgnoreInput) {
                       input._nkIgnoreInput = false;
                       return;
@@ -526,8 +596,13 @@ EM_JS(void, nk_web_configure_text_input,
                       emit(3, "", 0, 0);
                   else if (event.inputType === "insertLineBreak")
                       emit(1, "\n", 0, 0);
-                  else if (event.data !== null)
-                      emit(1, event.data, 0, 0);
+                  else {
+                      let value = event.data || "";
+                      if (!value && event.dataTransfer)
+                          value = event.dataTransfer.getData("text/plain") || "";
+                      if (value)
+                          emit(1, value, 0, 0);
+                  }
               });
               const codePointToUtf16 = (value, position) => {
                   let index = 0;
