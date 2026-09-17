@@ -1117,8 +1117,8 @@ bool create_shader(UiRendererImpl::State &state, UiShaderKind kind, nkgpu_shader
                                                             NKGPU_SHADERSTAGE_FRAGMENT, "tex_smp")))
         return false;
     if (kind == UiShaderKind::Mask &&
-        !gpu_result(state,
-                    nkgpu_shader_texture(builder, 1, 1, NKGPU_SHADERSTAGE_FRAGMENT, "mask_smp")))
+        !gpu_result(state, nkgpu_shader_texture(builder, 1, 1, NKGPU_SHADERSTAGE_FRAGMENT,
+                                                "mask_tex_mask_smp")))
         return false;
     return gpu_result(state, nkgpu_shader_end(builder, &out_shader));
 }
