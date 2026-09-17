@@ -66,8 +66,6 @@ class CatalogSidebar {
 		children.push(explorer.keyed("catalog-navigation", new ScrollView("catalog-navigation-scroll",
 			new Column("catalog-navigation-items", navItems, navStyle), navScrollStyle,
 			ScrollAxis.Vertical)));
-		children.push(explorer.keyed("catalog-foot",
-			explorer.caption("Haxe composition\nNative layout + render")));
 		return new Column("component-catalog", children, style);
 	}
 
