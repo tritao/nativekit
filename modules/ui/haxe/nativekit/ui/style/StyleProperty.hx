@@ -68,7 +68,9 @@ class StyleProperty<T> {
 
 	static function axisEqual(left:LayoutAxis, right:LayoutAxis):Bool
 		return left == right || (left != null && right != null &&
-			left.sizing == right.sizing && left.value == right.value);
+			left.sizing == right.sizing && left.value == right.value &&
+			left.min == right.min && left.max == right.max &&
+			left.growWeight == right.growWeight);
 
 	static function transformEqual(left:Transform2D, right:Transform2D):Bool
 		return left == right || (left != null && right != null &&

@@ -175,10 +175,8 @@ class StyleResolver {
 
 	static function localFingerprint(local:LayoutStyle):Int {
 		var result = 17;
-		result = mix(result, Std.int(local.width.sizing));
-		result = mix(result, floatFingerprint(local.width.value));
-		result = mix(result, Std.int(local.height.sizing));
-		result = mix(result, floatFingerprint(local.height.value));
+		result = axisFingerprint(result, local.width);
+		result = axisFingerprint(result, local.height);
 		result = mix(result, Std.int(local.direction));
 		result = mix(result, Std.int(local.childAlignX));
 		result = mix(result, Std.int(local.childAlignY));
@@ -239,9 +237,24 @@ class StyleResolver {
 	static inline function mix(seed:Int, value:Int):Int
 		return seed * 31 + value;
 
+	static function axisFingerprint(seed:Int, value:LayoutAxis):Int {
+		if (value == null)
+			return mix(seed, 0);
+		var result = mix(seed, Std.int(value.sizing));
+		result = mix(result, floatFingerprint(value.value));
+		result = mix(result, floatFingerprint(value.min));
+		result = mix(result, floatFingerprint(value.max));
+		return mix(result, floatFingerprint(value.growWeight));
+	}
+
+	static function sameAxis(left:LayoutAxis, right:LayoutAxis):Bool
+		return left == right || (left != null && right != null &&
+			left.sizing == right.sizing && left.value == right.value &&
+			left.min == right.min && left.max == right.max &&
+			left.growWeight == right.growWeight);
+
 	static function sameLayoutStyle(left:LayoutStyle, right:LayoutStyle):Bool
-		return left.width.sizing == right.width.sizing && left.width.value == right.width.value &&
-			left.height.sizing == right.height.sizing && left.height.value == right.height.value &&
+		return sameAxis(left.width, right.width) && sameAxis(left.height, right.height) &&
 			left.direction == right.direction && left.childAlignX == right.childAlignX &&
 			left.childAlignY == right.childAlignY && left.childDistribution == right.childDistribution &&
 			left.positioning == right.positioning && left.aspectRatio == right.aspectRatio &&
@@ -284,7 +297,8 @@ class StyleResolver {
 		return value == null ? "null" : value.red + "," + value.green + "," + value.blue + "," + value.alpha;
 
 	static function axisKey(value:LayoutAxis):String
-		return value == null ? "null" : Std.string(value.sizing) + "," + value.value;
+		return value == null ? "null" : Std.string(value.sizing) + "," + value.value + "," +
+			value.min + "," + value.max + "," + value.growWeight;
 
 	static function insetsKey(value:Insets):String
 		return value == null ? "null" : value.left + "," + value.top + "," + value.right + "," + value.bottom;
@@ -318,9 +332,9 @@ class StyleResolver {
 			return;
 		var source = new StyleSource("local", "widget", -1, "local");
 		var defaults = new LayoutStyle();
-		if (local.width.sizing != defaults.width.sizing || local.width.value != defaults.width.value)
+		if (!sameAxis(local.width, defaults.width))
 			result.set(StyleProperty.Width, local.width, source);
-		if (local.height.sizing != defaults.height.sizing || local.height.value != defaults.height.value)
+		if (!sameAxis(local.height, defaults.height))
 			result.set(StyleProperty.Height, local.height, source);
 		if (local.direction != defaults.direction)
 			result.set(StyleProperty.Direction, local.direction, source);

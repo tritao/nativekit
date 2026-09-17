@@ -101,6 +101,7 @@ import nativekit.ui.theme.Theme;
 import nativekit.ui.theme.ThemeTokens;
 import nativekit.ui.theme.TextRole;
 import nativekit.ui.style.ComputedStyle;
+import nativekit.ui.style.StyleDiff;
 import nativekit.ui.style.StyleResolver;
 import nativekit.ui.style.StyleProperty;
 import nativekit.ui.style.StyleSelector;
@@ -1416,6 +1417,31 @@ class FrameworkSmoke {
 		if (cacheResolver.cacheHits != 2 || cachedThird.get(StyleProperty.Background).red != 0.3 ||
 			cachedThird.get(StyleProperty.Width).value != 0.0)
 			return 231;
+		var localAxis = new LayoutStyle();
+		localAxis.width = LayoutAxis.fit(100.0, 500.0);
+		var localAxisResolver = new StyleResolver();
+		var localAxisTarget = new StyleTarget("box", "local-axis");
+		var localAxisFirst = localAxisResolver.resolve(localAxisTarget, null, null, null, localAxis);
+		var localAxisFirstValue = localAxisFirst.get(StyleProperty.Width);
+		if (localAxisResolver.cacheMisses != 1 || !localAxisFirst.has(StyleProperty.Width) ||
+			localAxisFirstValue.min != 100.0 || localAxisFirstValue.max != 500.0)
+			return 237;
+		localAxis.width = LayoutAxis.grow(100.0, 500.0, 3.0);
+		var localAxisSecond = localAxisResolver.resolve(localAxisTarget, null, null, null, localAxis);
+		var localAxisSecondValue = localAxisSecond.get(StyleProperty.Width);
+		if (localAxisResolver.cacheMisses != 2 || localAxisResolver.cacheHits != 0 ||
+			localAxisSecondValue.sizing != LayoutSizing.Grow || localAxisSecondValue.growWeight != 3.0)
+			return 238;
+		localAxis.width.growWeight = 4.0;
+		var localAxisThird = localAxisResolver.resolve(localAxisTarget, null, null, null, localAxis);
+		if (localAxisResolver.cacheMisses != 3 || localAxisThird.get(StyleProperty.Width).growWeight != 4.0)
+			return 239;
+		var axisBefore = new ComputedStyle();
+		axisBefore.set(StyleProperty.Width, LayoutAxis.grow(100.0, 500.0, 3.0), null);
+		var axisAfter = new ComputedStyle();
+		axisAfter.set(StyleProperty.Width, LayoutAxis.grow(100.0, 500.0, 4.0), null);
+		if (!StyleDiff.compare(axisBefore, axisAfter).changed)
+			return 240;
 		cacheSheet.rule(StyleSelector.widget("button"),
 			[StyleValue.background(Color.rgba(0.6, 0.6, 0.6, 1.0))]);
 		var revised = cacheResolver.resolve(cacheTarget, null, null, cacheSheet);
