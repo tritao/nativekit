@@ -482,6 +482,15 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 		NKUI_TEXT_DIRECTION_RTL = 2;
 	}
 	/**
+	 * Flags returned in nkui_text_intrinsic_metrics.flags.
+	 */
+	flags nkui_text_intrinsic_flags : u32 {
+		/**
+		 * The first-baseline value is valid.
+		 */
+		NKUI_TEXT_INTRINSIC_HAS_BASELINE = 1;
+	}
+	/**
 	 * Text navigation convention used by text editors.
 	 */
 	enum nkui_text_navigation_behavior : u32 {
@@ -774,6 +783,10 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	 * position to nkui_text_layout_caret() when its visual geometry is needed.
 	 */
 	extern fn nkui_text_layout_hit_test(layout: nkui_resource, x: f32, y: f32, out_position: ptr<nkui_text_position> @out) -> nkui_result;
+	/**
+	 * Returns legal intrinsic widths, natural height, and optional first baseline.
+	 */
+	extern fn nkui_text_layout_intrinsic_metrics(layout: nkui_resource, out_metrics: ptr<nkui_text_intrinsic_metrics> @out) -> nkui_result;
 	/**
 	 * Returns the visual line range containing the code-point `offset`.
 	 */
@@ -1644,6 +1657,32 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 		 * Text-direction code at the caret; preserve it when selecting a visual direction.
 		 */
 		direction: nkui_text_direction @offset(24);
+	}
+	/**
+	 * Legal intrinsic widths and natural baseline metrics for a text layout.
+	 */
+	struct nkui_text_intrinsic_metrics @layout(24, 4) {
+		/**
+		 * Set to sizeof(nkui_text_intrinsic_metrics) when returned by the API.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Largest segment that cannot legally break under the paragraph policy.
+		 */
+		min_content_width: f32 @offset(4);
+		/**
+		 * Width of the unwrapped paragraph.
+		 */
+		max_content_width: f32 @offset(8);
+		/**
+		 * Natural height before an external width constraint is applied.
+		 */
+		natural_height: f32 @offset(12);
+		/**
+		 * First baseline relative to the text layout origin.
+		 */
+		first_baseline: f32 @offset(16);
+		flags: nkui_text_intrinsic_flags @offset(20);
 	}
 	/**
 	 * Bounding rectangle returned for a text layout.

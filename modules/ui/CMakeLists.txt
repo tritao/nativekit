@@ -620,6 +620,7 @@ if(NK_BUILD_EXAMPLES)
                 _nkui_text_layout_hit_test
                 _nkui_text_layout_line_range_at
                 _nkui_text_layout_measure
+                _nkui_text_layout_intrinsic_metrics
                 _nkui_text_layout_move_paragraph
                 _nkui_text_layout_move_word
                 _nkui_text_layout_next_grapheme

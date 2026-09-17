@@ -100,6 +100,16 @@ class TextLayout extends NativeKitUIResource {
 			measured.out_metrics.get_height());
 	}
 
+	/** Returns Skribidi's legal intrinsic widths and natural baseline metrics. */
+	public function intrinsicMetrics():TextIntrinsicMetrics {
+		var measured = NativeKitUI.nkui_text_layout_intrinsic_metrics(nativeHandle());
+		UiResult.check(measured.status, "textLayout.intrinsicMetrics");
+		return new TextIntrinsicMetrics(measured.out_metrics.get_min_content_width(),
+			measured.out_metrics.get_max_content_width(), measured.out_metrics.get_natural_height(),
+			measured.out_metrics.get_first_baseline(),
+			(measured.out_metrics.get_flags() & 1) != 0);
+	}
+
 	public function hitTest(x:Float, y:Float):TextPosition {
 		var hit = NativeKitUI.nkui_text_layout_hit_test(nativeHandle(), x, y);
 		UiResult.check(hit.status, "textLayout.hitTest");
@@ -317,6 +327,24 @@ class TextMetrics {
 		this.y = y;
 		this.width = width;
 		this.height = height;
+	}
+}
+
+/** Legal intrinsic widths and natural baseline metrics for a text layout. */
+class TextIntrinsicMetrics {
+	public final minContentWidth:Float;
+	public final maxContentWidth:Float;
+	public final naturalHeight:Float;
+	public final firstBaseline:Float;
+	public final hasBaseline:Bool;
+
+	public function new(minContentWidth:Float, maxContentWidth:Float, naturalHeight:Float,
+			firstBaseline:Float, hasBaseline:Bool) {
+		this.minContentWidth = minContentWidth;
+		this.maxContentWidth = maxContentWidth;
+		this.naturalHeight = naturalHeight;
+		this.firstBaseline = firstBaseline;
+		this.hasBaseline = hasBaseline;
 	}
 }
 

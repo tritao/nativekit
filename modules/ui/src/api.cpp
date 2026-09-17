@@ -32,6 +32,7 @@
 
 static_assert(sizeof(nkui_command_header) == sizeof(nkui::CommandHeader));
 static_assert(sizeof(nkui_text_metrics) == 5 * sizeof(uint32_t));
+static_assert(sizeof(nkui_text_intrinsic_metrics) == 6 * sizeof(uint32_t));
 static_assert(sizeof(nkui_text_position) == 2 * sizeof(uint32_t));
 static_assert(sizeof(nkui_text_caret) == 7 * sizeof(uint32_t));
 static_assert(sizeof(nkui_text_rect) == 5 * sizeof(uint32_t));
@@ -88,6 +89,7 @@ struct ResourceSlot {
     std::shared_ptr<nkui::SkribidiFontCollection> font_collection;
     bool system_fallbacks = false;
     std::unique_ptr<nkui::SkribidiAdapter> text;
+    std::string text_value;
     std::unique_ptr<nkui::SurfaceProducer> surface;
     nk_graphics_image graphics_image{};
     nkui::PreparedGlyphs text_glyphs;
@@ -734,6 +736,7 @@ nkui_result create_text_layout_locked(nkui_resource fonts, const char *text, flo
         return allocated;
     try {
         layout_slot->text = std::make_unique<nkui::SkribidiAdapter>(shared_fonts);
+        layout_slot->text_value = text ? text : "";
     } catch (...) {
         release_resource_slot(*layout_slot);
         out_layout->id = 0;
@@ -741,7 +744,7 @@ nkui_result create_text_layout_locked(nkui_resource fonts, const char *text, flo
     }
     bool valid = layout_slot->text->valid() &&
                  layout_slot->text->set_atlas_namespace(static_cast<uint16_t>(out_layout->id));
-    valid = valid && layout_slot->text->layout_utf8(text, width, options);
+    valid = valid && layout_slot->text->layout_utf8(layout_slot->text_value.c_str(), width, options);
     valid = valid && layout_slot->text->prepare_glyphs(0.0f, 0.0f, 1.0f, nkui::GlyphMode::Alpha,
                                                        layout_slot->text_glyphs);
     if (!valid) {
@@ -1028,6 +1031,7 @@ void release_resource_slot(ResourceSlot &slot) {
     }
     slot.surface.reset();
     slot.text.reset();
+    slot.text_value.clear();
     slot.text_glyphs = {};
     slot.scaled_text_glyphs.clear();
     slot.text_color = {1.0f, 1.0f, 1.0f, 1.0f};
@@ -1636,8 +1640,14 @@ extern "C" nkui_result nkui_text_layout_update(nkui_resource layout, const char 
     auto *slot = resolve(layout, nkui::ResourceKind::TextLayout);
     if (!slot || !slot->text)
         return NKUI_ERROR_INVALID_HANDLE;
+    std::string next_text;
+    try {
+        next_text = text ? text : "";
+    } catch (...) {
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    }
     nkui::TextLayoutResult shaped;
-    if (!slot->text->layout_utf8(text ? text : "", width, options, &shaped))
+    if (!slot->text->layout_utf8(next_text.c_str(), width, options, &shaped))
         return NKUI_ERROR_INVALID_ARGUMENT;
     nkui::PreparedGlyphs updated;
     if (!slot->text->prepare_glyphs(0.0f, 0.0f, 1.0f, nkui::GlyphMode::Alpha, updated))
@@ -1645,6 +1655,7 @@ extern "C" nkui_result nkui_text_layout_update(nkui_resource layout, const char 
     tint_text_glyphs(updated, slot->text_color);
     slot->text_width = width;
     slot->text_options = options;
+    slot->text_value = std::move(next_text);
     slot->text_glyphs = std::move(updated);
     slot->scaled_text_glyphs.clear();
     slot->text->prune_layout_cache({shaped.id}, 1);
@@ -1656,14 +1667,21 @@ extern "C" nkui_result nkui_text_layout_set_text(nkui_resource layout, const cha
     auto *slot = resolve(layout, nkui::ResourceKind::TextLayout);
     if (!slot || !slot->text || slot->text_width <= 0.0f)
         return NKUI_ERROR_INVALID_HANDLE;
+    std::string next_text;
+    try {
+        next_text = text ? text : "";
+    } catch (...) {
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    }
     nkui::TextLayoutResult shaped;
-    if (!slot->text->layout_utf8(text ? text : "", slot->text_width, slot->text_options, &shaped))
+    if (!slot->text->layout_utf8(next_text.c_str(), slot->text_width, slot->text_options, &shaped))
         return NKUI_ERROR_INVALID_ARGUMENT;
     nkui::PreparedGlyphs updated;
     if (!slot->text->prepare_glyphs(0.0f, 0.0f, 1.0f, nkui::GlyphMode::Alpha, updated))
         return NKUI_ERROR_RENDERING;
     tint_text_glyphs(updated, slot->text_color);
     slot->text_glyphs = std::move(updated);
+    slot->text_value = std::move(next_text);
     slot->scaled_text_glyphs.clear();
     slot->text->prune_layout_cache({shaped.id}, 1);
     return NKUI_OK;
@@ -1693,6 +1711,24 @@ extern "C" nkui_result nkui_text_layout_measure(nkui_resource layout,
         return NKUI_ERROR_INVALID_HANDLE;
     const auto bounds = slot->text->bounds();
     *out_metrics = {sizeof(*out_metrics), bounds.x, bounds.y, bounds.width, bounds.height};
+    return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_text_layout_intrinsic_metrics(
+    nkui_resource layout, nkui_text_intrinsic_metrics *out_metrics) {
+    if (!out_metrics)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(resources_mutex);
+    auto *slot = resolve(layout, nkui::ResourceKind::TextLayout);
+    if (!slot || !slot->text)
+        return NKUI_ERROR_INVALID_HANDLE;
+    nkui::TextIntrinsicMetrics metrics;
+    if (!slot->text->measure_intrinsic_utf8(slot->text_value.c_str(), slot->text_options,
+                                            &metrics))
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    *out_metrics = {sizeof(*out_metrics), metrics.min_content_width, metrics.max_content_width,
+                    metrics.natural_height, metrics.first_baseline,
+                    metrics.has_baseline ? NKUI_TEXT_INTRINSIC_HAS_BASELINE : 0u};
     return NKUI_OK;
 }
 

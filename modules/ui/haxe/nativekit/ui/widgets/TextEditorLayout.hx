@@ -23,6 +23,11 @@ class TextEditorLayout {
 	var offsets:TextOffsetMap;
 	var contentWidth:Float;
 	var contentHeight:Float;
+	var minContentWidth:Float;
+	var maxContentWidth:Float;
+	var naturalHeight:Float;
+	var firstBaseline:Float;
+	var hasBaseline:Bool;
 	var disposed:Bool;
 
 	public function new(fonts:FontCollection, value:String, width:Float, textStyle:TextStyle,
@@ -38,6 +43,11 @@ class TextEditorLayout {
 		offsets = null;
 		contentWidth = 0.0;
 		contentHeight = 0.0;
+		minContentWidth = 0.0;
+		maxContentWidth = 0.0;
+		naturalHeight = 0.0;
+		firstBaseline = 0.0;
+		hasBaseline = false;
 		disposed = false;
 		update(value, width, this.textStyle, this.paragraphStyle, offsetMap);
 	}
@@ -109,6 +119,7 @@ class TextEditorLayout {
 				if (textChanged || record.layout.width != nextWidth || styleChanged) {
 					record.layout.update(paragraphText, nextWidth, textStyle, paragraphStyle);
 					record.text = paragraphText;
+					record.intrinsic = record.layout.intrinsicMetrics();
 					if (textChanged)
 						record.graphemeBoundaries = record.layout.graphemeBoundaries();
 				}
@@ -172,6 +183,13 @@ class TextEditorLayout {
 	public function measure():TextMetrics
 		return new TextMetrics(0.0, 0.0, contentWidth, contentHeight);
 
+	/** Returns aggregated intrinsic metrics for the retained paragraph set. */
+	public function intrinsicMetrics():TextIntrinsicMetrics {
+		ensureLive();
+		return new TextIntrinsicMetrics(minContentWidth, maxContentWidth, naturalHeight,
+			firstBaseline, hasBaseline);
+	}
+
 	/** Measures this retained content against the constraints of a Custom node. */
 	public function measureForConstraints(constraints:LayoutMeasureConstraints):LayoutMeasureResult {
 		ensureLive();
@@ -179,20 +197,22 @@ class TextEditorLayout {
 			constraints.maxHeight < constraints.minHeight)
 			throw "Editor layout constraints are invalid";
 		var measured = measure();
-		var measuredWidth = Math.max(measured.width, constraints.minWidth);
+		var measuredWidth = Math.max(measured.width,
+			Math.max(constraints.minWidth, minContentWidth));
 		if (Math.isFinite(constraints.maxWidth))
 			measuredWidth = Math.min(measuredWidth, constraints.maxWidth);
 		var measuredHeight = Math.max(measured.height, constraints.minHeight);
 		if (Math.isFinite(constraints.maxHeight))
 			measuredHeight = Math.min(measuredHeight, constraints.maxHeight);
-		var baseline = 0.0;
-		var hasBaseline = paragraphs.length > 0 && paragraphs[0].height > 0.0;
-		if (hasBaseline) {
+		var baseline = firstBaseline;
+		var measuredHasBaseline = hasBaseline && Math.isFinite(baseline) && baseline >= 0.0 &&
+			baseline <= measuredHeight;
+		if (!measuredHasBaseline && paragraphs.length > 0 && paragraphs[0].height > 0.0) {
 			var firstCaret = paragraphs[0].layout.caret(new TextPosition(0, 0));
 			baseline = firstCaret.y;
-			hasBaseline = Math.isFinite(baseline) && baseline >= 0.0 && baseline <= measuredHeight;
+			measuredHasBaseline = Math.isFinite(baseline) && baseline >= 0.0 && baseline <= measuredHeight;
 		}
-		return new LayoutMeasureResult(measuredWidth, measuredHeight, baseline, hasBaseline);
+		return new LayoutMeasureResult(measuredWidth, measuredHeight, baseline, measuredHasBaseline);
 	}
 
 	/** Paints each retained paragraph in document order at its cached y offset. */
@@ -395,9 +415,15 @@ class TextEditorLayout {
 	function recomputeMetrics():Void {
 		contentWidth = 0.0;
 		contentHeight = 0.0;
+		minContentWidth = 0.0;
+		maxContentWidth = 0.0;
+		naturalHeight = 0.0;
+		firstBaseline = 0.0;
+		hasBaseline = false;
 		for (record in paragraphs) {
 			record.y = contentHeight;
 			var metrics = record.layout.measure();
+			var intrinsic = record.intrinsic;
 			var lineHeight = paragraphStyle.lineHeight == null ? 0.0 : paragraphStyle.lineHeight;
 			if (lineHeight <= 0.0) {
 				var caret = record.layout.caret(new TextPosition(0, 0));
@@ -405,6 +431,13 @@ class TextEditorLayout {
 			}
 			record.height = Math.max(metrics.height, Math.max(1.0, lineHeight));
 			contentWidth = Math.max(contentWidth, metrics.width);
+			minContentWidth = Math.max(minContentWidth, intrinsic.minContentWidth);
+			maxContentWidth = Math.max(maxContentWidth, intrinsic.maxContentWidth);
+			naturalHeight += intrinsic.naturalHeight;
+			if (!hasBaseline && intrinsic.hasBaseline) {
+				firstBaseline = record.y + intrinsic.firstBaseline;
+				hasBaseline = Math.isFinite(firstBaseline) && firstBaseline >= 0.0;
+			}
 			contentHeight += record.height;
 		}
 	}
@@ -469,6 +502,7 @@ class TextEditorParagraphRecord {
 	public var y:Float;
 	public var height:Float;
 	public var graphemeBoundaries:Array<Int>;
+	public var intrinsic:TextIntrinsicMetrics;
 	public final layout:TextLayout;
 
 	public function new(text:String, layout:TextLayout) {
@@ -479,5 +513,6 @@ class TextEditorParagraphRecord {
 		y = 0.0;
 		height = 0.0;
 		graphemeBoundaries = layout.graphemeBoundaries();
+		intrinsic = layout.intrinsicMetrics();
 	}
 }

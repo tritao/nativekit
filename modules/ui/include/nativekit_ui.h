@@ -676,6 +676,28 @@ typedef struct nkui_text_metrics {
     float height;
 } nkui_text_metrics;
 
+/** Flags returned in nkui_text_intrinsic_metrics.flags. */
+typedef uint32_t nkui_text_intrinsic_flags;
+enum NK_FLAGS(nkui_text_intrinsic_flags) {
+    /** The first-baseline value is valid. */
+    NKUI_TEXT_INTRINSIC_HAS_BASELINE = 1u << 0
+};
+
+/** Legal intrinsic widths and natural baseline metrics for a text layout. */
+typedef struct nkui_text_intrinsic_metrics {
+    /** Set to sizeof(nkui_text_intrinsic_metrics) when returned by the API. */
+    uint32_t struct_size NK_STRUCT_SIZE;
+    /** Largest segment that cannot legally break under the paragraph policy. */
+    float min_content_width;
+    /** Width of the unwrapped paragraph. */
+    float max_content_width;
+    /** Natural height before an external width constraint is applied. */
+    float natural_height;
+    /** First baseline relative to the text layout origin. */
+    float first_baseline;
+    nkui_text_intrinsic_flags flags;
+} nkui_text_intrinsic_metrics;
+
 /** A text caret position measured in Unicode code points. */
 typedef struct nkui_text_position {
     /** Zero-based code-point offset in the original UTF-8 text. */
@@ -897,6 +919,10 @@ NKUI_API nkui_result nkui_text_layout_set_color(nkui_resource layout, nkui_color
 /** Returns the layout bounds in `out_metrics`. */
 NKUI_API nkui_result nkui_text_layout_measure(nkui_resource layout,
                                               nkui_text_metrics *out_metrics NKUI_OUT);
+
+/** Returns legal intrinsic widths, natural height, and optional first baseline. */
+NKUI_API nkui_result nkui_text_layout_intrinsic_metrics(
+    nkui_resource layout, nkui_text_intrinsic_metrics *out_metrics NKUI_OUT);
 
 /**
  * Converts a logical-space point into the nearest text caret position.

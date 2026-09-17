@@ -140,6 +140,13 @@ int main(void) {
         nkui_text_layout_hit_test(layout, 0.0f, 0.0f, &position) != NKUI_OK ||
         nkui_text_layout_caret(layout, position, &caret) != NKUI_OK)
         return 8;
+    nkui_text_intrinsic_metrics intrinsic = {0};
+    if (nkui_text_layout_intrinsic_metrics(layout, &intrinsic) != NKUI_OK ||
+        intrinsic.min_content_width <= 0.0f ||
+        intrinsic.max_content_width < intrinsic.min_content_width ||
+        intrinsic.natural_height <= 0.0f ||
+        !(intrinsic.flags & NKUI_TEXT_INTRINSIC_HAS_BASELINE))
+        return 23;
     uint32_t selection_bytes = 0;
     const nkui_text_position selection_start = {0, 0};
     const nkui_text_position selection_end = {9, 0};
