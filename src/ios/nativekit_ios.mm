@@ -18,6 +18,7 @@
 #include "core/handle_registry.hpp"
 #include "core/runtime.hpp"
 #include "core/system_internal.hpp"
+#include "core/text_input_contract.hpp"
 #include "core/text_input_geometry.hpp"
 #include "ios/joystick.hpp"
 #include "core/resource_events.hpp"
@@ -4027,26 +4028,7 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
                 nk::core::set_error("iOS text input state text is not valid UTF-8");
                 return NK_ERROR_INVALID_ARGUMENT;
             }
-            const uint64_t text_end = static_cast<uint64_t>(state->text_start) + points.size();
-            const bool no_composition = state->composition_start == NK_TEXT_POSITION_NONE &&
-                                        state->composition_end == NK_TEXT_POSITION_NONE;
-            const bool valid_composition = state->composition_start != NK_TEXT_POSITION_NONE &&
-                                           state->composition_end != NK_TEXT_POSITION_NONE &&
-                                           state->composition_start <= state->composition_end &&
-                                           state->composition_start >= state->text_start &&
-                                           state->composition_end <= text_end;
-            const bool valid_cursor =
-                std::isfinite(state->cursor_x) && std::isfinite(state->cursor_y) &&
-                std::isfinite(state->cursor_width) && std::isfinite(state->cursor_height) &&
-                state->cursor_width >= 0.f && state->cursor_height >= 0.f;
-            if ((state->flags & ~(NK_TEXT_INPUT_MULTILINE | NK_TEXT_INPUT_AUTOCORRECT |
-                                  NK_TEXT_INPUT_CAPITALIZE_SENTENCES)) ||
-                state->text_start > state->document_length || text_end > state->document_length ||
-                state->selection_start > state->selection_end ||
-                state->selection_start < state->text_start || state->selection_end > text_end ||
-                (!no_composition && !valid_composition) ||
-                state->input_type > NK_TEXT_INPUT_PASSWORD ||
-                state->action > NK_TEXT_INPUT_ACTION_NONE || !valid_cursor) {
+            if (!nk::core::validate_text_input_state(*state, std::string_view(text))) {
                 nk::core::set_error("iOS text input ranges or hints are invalid");
                 return NK_ERROR_INVALID_ARGUMENT;
             }
@@ -4062,7 +4044,7 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
             resource->text_input_composition_rects.clear();
             resource->text_composition_start = state->composition_start;
             resource->text_composition_end = state->composition_end;
-            resource->text_composing = !no_composition;
+            resource->text_composing = state->composition_start != NK_TEXT_POSITION_NONE;
             resource->marked_native_range =
                 resource->text_composing
                     ? native_range_for_positions(*resource, state->composition_start,

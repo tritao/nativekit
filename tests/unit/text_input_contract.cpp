@@ -1,14 +1,17 @@
 #include "core/text_edit_transaction.hpp"
+#include "core/text_input_contract.hpp"
 #include "core/text_offsets.hpp"
 #include "core/text_input_geometry.hpp"
 
 #include <cassert>
+#include <cmath>
 #include <cstring>
 #include <string>
 #include <vector>
 
 int main() {
     using nk::core::TextEditTransaction;
+    using nk::core::TextInputStateValidation;
     using nk::core::utf16_to_codepoint_offset;
 
     const std::u16string unicode = u"A\U0001f600B";
@@ -29,6 +32,40 @@ int main() {
                                       &codepoint_offset));
     assert(!utf16_to_codepoint_offset(std::u16string_view(unpaired_low), 1,
                                       &codepoint_offset));
+
+    nk_text_input_state state{};
+    state.struct_size = sizeof(state);
+    state.text_start = 10;
+    state.document_length = 20;
+    state.selection_start = 11;
+    state.selection_end = 12;
+    state.composition_start = 11;
+    state.composition_end = 12;
+    state.input_type = NK_TEXT_INPUT_TEXT;
+    state.action = NK_TEXT_INPUT_ACTION_DEFAULT;
+    state.cursor_width = 1.0f;
+    state.cursor_height = 18.0f;
+    TextInputStateValidation validation;
+    assert(nk::core::validate_text_input_state(state, "x\U0001f600y", &validation));
+    assert(validation.text_codepoints == 3 && validation.text_end == 13);
+    state.selection_start = 9;
+    assert(!nk::core::validate_text_input_state(state, "x\U0001f600y"));
+    state.selection_start = 11;
+    state.composition_end = 14;
+    assert(!nk::core::validate_text_input_state(state, "x\U0001f600y"));
+    state.composition_end = 12;
+    state.composition_start = NK_TEXT_POSITION_NONE;
+    assert(!nk::core::validate_text_input_state(state, "x\U0001f600y"));
+    state.composition_end = NK_TEXT_POSITION_NONE;
+    assert(nk::core::validate_text_input_state(state, "x\U0001f600y"));
+    assert(!nk::core::validate_text_input_state(state, std::string_view("\xc0\x80", 2)));
+    assert(!nk::core::validate_text_input_state(state, std::string_view("\xf0\x9f\x98", 3)));
+    state.cursor_width = -1.0f;
+    assert(!nk::core::validate_text_input_state(state, "x\U0001f600y"));
+    state.cursor_width = 1.0f;
+    state.flags = 0x80000000u;
+    assert(!nk::core::validate_text_input_state(state, "x\U0001f600y"));
+    state.flags = 0;
 
     const TextEditTransaction compose{NK_TEXT_EDIT_COMPOSE, 2, 2, "かな", 4, 4, 2, 4};
     assert(compose.valid());
@@ -84,5 +121,28 @@ int main() {
     assert(!nk::core::decode_text_input_geometry(
         1, 3, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE, packed.data(), packed.size(),
         nullptr, 0, &geometry));
+
+    state.selection_start = 11;
+    state.selection_end = 12;
+    state.composition_start = NK_TEXT_POSITION_NONE;
+    state.composition_end = NK_TEXT_POSITION_NONE;
+    nk_text_input_rect composition_rect{sizeof(nk_text_input_rect), 7.0f, 26.0f, 18.0f, 18.0f};
+    std::vector<uint8_t> composition_packed(sizeof(composition_rect));
+    std::memcpy(composition_packed.data(), &composition_rect, sizeof(composition_rect));
+    selection_rect.struct_size = sizeof(selection_rect);
+    std::memcpy(packed.data(), &selection_rect, sizeof(selection_rect));
+    assert(nk::core::decode_text_input_geometry(
+        state.selection_start, state.selection_end, NK_TEXT_POSITION_NONE,
+        NK_TEXT_POSITION_NONE, packed.data(), packed.size(), nullptr, 0, &geometry));
+    assert(nk::core::text_input_geometry_matches_state(geometry, state));
+    assert(!nk::core::text_input_geometry_matches_state(
+        geometry, nk_text_input_state{sizeof(nk_text_input_state), 0, nullptr, 10, 20, 10, 11,
+                                       11, 12, NK_TEXT_INPUT_TEXT, NK_TEXT_INPUT_ACTION_DEFAULT,
+                                       0, 0, 1, 18, {0, 0}}));
+    assert(nk::core::decode_text_input_geometry(
+        state.selection_start, state.selection_end, 11, 12, packed.data(), packed.size(),
+        composition_packed.data(), composition_packed.size(), &geometry));
+    assert(geometry.composition_rects.size() == 1);
+    assert(geometry.composition_rects.front().y == 26.0f);
     return 0;
 }

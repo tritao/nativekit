@@ -20,6 +20,7 @@
 #include "core/runtime.hpp"
 #include "core/system_internal.hpp"
 #include "core/text_edit_transaction.hpp"
+#include "core/text_input_contract.hpp"
 #include "core/text_input_geometry.hpp"
 #include "android/nativekit_android_internal.hpp"
 
@@ -1906,28 +1907,9 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
         return NK_ERROR_INVALID_ARGUMENT;
     }
     const char *text = state->text ? state->text : "";
-    uint32_t codepoints = 0;
-    for (const auto *cursor = reinterpret_cast<const unsigned char *>(text); *cursor; ++cursor)
-        codepoints += (*cursor & 0xc0u) != 0x80u;
-    const uint64_t text_end = static_cast<uint64_t>(state->text_start) + codepoints;
-    const bool no_composition = state->composition_start == NK_TEXT_POSITION_NONE &&
-                                state->composition_end == NK_TEXT_POSITION_NONE;
-    const bool valid_composition = state->composition_start != NK_TEXT_POSITION_NONE &&
-                                   state->composition_end != NK_TEXT_POSITION_NONE &&
-                                   state->composition_start <= state->composition_end &&
-                                   state->composition_start >= state->text_start &&
-                                   state->composition_end <= text_end;
-    const bool valid_cursor = std::isfinite(state->cursor_x) && std::isfinite(state->cursor_y) &&
-                              std::isfinite(state->cursor_width) &&
-                              std::isfinite(state->cursor_height) && state->cursor_width >= 0.f &&
-                              state->cursor_height >= 0.f;
-    if (state->text_start > INT_MAX || state->document_length > INT_MAX ||
-        text_end > state->document_length || state->selection_start > state->selection_end ||
-        state->selection_start < state->text_start || state->selection_end > text_end ||
-        (!no_composition && !valid_composition) || state->input_type > NK_TEXT_INPUT_PASSWORD ||
-        (state->flags & ~(NK_TEXT_INPUT_MULTILINE | NK_TEXT_INPUT_AUTOCORRECT |
-                          NK_TEXT_INPUT_CAPITALIZE_SENTENCES)) != 0 ||
-        state->action > NK_TEXT_INPUT_ACTION_NONE || !valid_cursor) {
+    nk::core::TextInputStateValidation validation;
+    if (!nk::core::validate_text_input_state(*state, text, &validation) ||
+        state->text_start > INT_MAX || state->document_length > INT_MAX) {
         nk::core::set_error("text input ranges are inconsistent with the supplied text");
         return NK_ERROR_INVALID_ARGUMENT;
     }

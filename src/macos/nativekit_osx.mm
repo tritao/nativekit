@@ -28,6 +28,7 @@
 #include "core/runtime.hpp"
 #include "core/system_internal.hpp"
 #include "core/resource_events.hpp"
+#include "core/text_input_contract.hpp"
 #include "core/text_input_geometry.hpp"
 #include "macos/joystick.hpp"
 
@@ -4367,41 +4368,22 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
         "unexpected error while setting text input state", [&]() -> nk_result {
             if (const auto result = enter_ui(); result != NK_OK)
                 return result;
-            if (!state || state->struct_size < sizeof(*state) || !state->text)
+            if (!state || state->struct_size < sizeof(*state))
                 return fail(NK_ERROR_INVALID_ARGUMENT, "invalid text input state");
-            NSString *native_text = string(state->text);
+            const char *text = state->text ? state->text : "";
+            NSString *native_text = string(text);
             std::vector<uint32_t> points;
-            if (!native_text || !decode_utf8(state->text, points))
+            if (!native_text || !decode_utf8(text, points))
                 return fail(NK_ERROR_INVALID_ARGUMENT, "text input state text is not valid UTF-8");
-            const uint64_t text_end = static_cast<uint64_t>(state->text_start) + points.size();
-            const bool no_composition = state->composition_start == NK_TEXT_POSITION_NONE &&
-                                        state->composition_end == NK_TEXT_POSITION_NONE;
-            const bool valid_composition = state->composition_start != NK_TEXT_POSITION_NONE &&
-                                           state->composition_end != NK_TEXT_POSITION_NONE &&
-                                           state->composition_start <= state->composition_end &&
-                                           state->composition_start >= state->text_start &&
-                                           state->composition_end <= text_end;
-            const bool valid_cursor =
-                std::isfinite(state->cursor_x) && std::isfinite(state->cursor_y) &&
-                std::isfinite(state->cursor_width) && std::isfinite(state->cursor_height) &&
-                state->cursor_width >= 0.f && state->cursor_height >= 0.f;
-            if ((state->flags & ~(NK_TEXT_INPUT_MULTILINE | NK_TEXT_INPUT_AUTOCORRECT |
-                                  NK_TEXT_INPUT_CAPITALIZE_SENTENCES)) ||
-                state->text_start > state->document_length || text_end > state->document_length ||
-                state->selection_start > state->selection_end ||
-                state->selection_start < state->text_start || state->selection_end > text_end ||
-                (!no_composition && !valid_composition) ||
-                state->input_type > NK_TEXT_INPUT_PASSWORD ||
-                state->action > NK_TEXT_INPUT_ACTION_NONE || !valid_cursor)
-                return fail(NK_ERROR_INVALID_ARGUMENT,
-                            "text input state ranges or hints are invalid");
+            if (!nk::core::validate_text_input_state(*state, std::string_view(text)))
+                return fail(NK_ERROR_INVALID_ARGUMENT, "text input state ranges or hints are invalid");
             auto resource = window(handle);
             if (!resource)
                 return fail(NK_ERROR_INVALID_HANDLE,
                             "text input state requires a desktop window on this backend");
             if (!resource->owns_window)
                 return unsupported("wrapped Cocoa windows do not own NativeKit text input views");
-            resource->text_input_text = state->text;
+            resource->text_input_text = text;
             resource->text_input_state = *state;
             resource->text_input_state.text = resource->text_input_text.c_str();
             resource->text_input_selection_rects.clear();

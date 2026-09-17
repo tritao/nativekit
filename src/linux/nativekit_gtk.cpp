@@ -18,6 +18,7 @@
 #include "core/runtime.hpp"
 #include "core/system_internal.hpp"
 #include "core/resource_events.hpp"
+#include "core/text_input_contract.hpp"
 #include "core/text_input_geometry.hpp"
 
 #include <gtk/gtk.h>
@@ -3991,29 +3992,7 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
             if (!state || state->struct_size < sizeof(*state))
                 return fail(NK_ERROR_INVALID_ARGUMENT, "invalid text input state");
             const char *text = state->text ? state->text : "";
-            if (!g_utf8_validate(text, -1, nullptr))
-                return fail(NK_ERROR_INVALID_ARGUMENT, "text input state text is not valid UTF-8");
-            const auto text_length = static_cast<uint64_t>(g_utf8_strlen(text, -1));
-            const auto text_end = static_cast<uint64_t>(state->text_start) + text_length;
-            const bool no_composition = state->composition_start == NK_TEXT_POSITION_NONE &&
-                                        state->composition_end == NK_TEXT_POSITION_NONE;
-            const bool valid_composition = state->composition_start != NK_TEXT_POSITION_NONE &&
-                                           state->composition_end != NK_TEXT_POSITION_NONE &&
-                                           state->composition_start <= state->composition_end &&
-                                           state->composition_start >= state->text_start &&
-                                           state->composition_end <= text_end;
-            const bool valid_cursor =
-                std::isfinite(state->cursor_x) && std::isfinite(state->cursor_y) &&
-                std::isfinite(state->cursor_width) && std::isfinite(state->cursor_height) &&
-                state->cursor_width >= 0.0f && state->cursor_height >= 0.0f;
-            if (text_end > state->document_length ||
-                state->selection_start > state->selection_end ||
-                state->selection_start < state->text_start || state->selection_end > text_end ||
-                (!no_composition && !valid_composition) ||
-                (state->flags & ~(NK_TEXT_INPUT_MULTILINE | NK_TEXT_INPUT_AUTOCORRECT |
-                                  NK_TEXT_INPUT_CAPITALIZE_SENTENCES)) ||
-                state->input_type > NK_TEXT_INPUT_PASSWORD ||
-                state->action > NK_TEXT_INPUT_ACTION_NONE || !valid_cursor)
+            if (!nk::core::validate_text_input_state(*state, text))
                 return fail(NK_ERROR_INVALID_ARGUMENT,
                             "text input state ranges or hints are invalid");
             auto resource = text_input_window(handle);

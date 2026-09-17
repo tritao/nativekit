@@ -19,6 +19,7 @@
 #include "core/resource_events.hpp"
 #include "web/gamepad.hpp"
 #include "web/host.h"
+#include "core/text_input_contract.hpp"
 #include "core/text_input_geometry.hpp"
 
 #include <algorithm>
@@ -377,9 +378,7 @@ bool valid_web_uri(const char *uri) {
 
 uint32_t utf8_codepoints(const std::string &text) {
     uint32_t result = 0;
-    for (const auto character : text)
-        result += (static_cast<unsigned char>(character) & 0xc0u) != 0x80u;
-    return result;
+    return nk::core::decode_utf8_codepoint_count(text, &result) ? result : 0;
 }
 
 std::size_t utf8_byte_offset(const std::string &text, uint32_t codepoint) {
@@ -3158,27 +3157,7 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
     if (!state || state->struct_size < sizeof(nk_text_input_state))
         return invalid_argument("text input state is missing or too small");
     const std::string text = state->text ? state->text : "";
-    uint32_t codepoints = utf8_codepoints(text);
-    const uint64_t text_end = static_cast<uint64_t>(state->text_start) + codepoints;
-    const bool no_composition = state->composition_start == NK_TEXT_POSITION_NONE &&
-                                state->composition_end == NK_TEXT_POSITION_NONE;
-    const bool valid_composition = state->composition_start != NK_TEXT_POSITION_NONE &&
-                                   state->composition_end != NK_TEXT_POSITION_NONE &&
-                                   state->composition_start <= state->composition_end &&
-                                   state->composition_start >= state->text_start &&
-                                   state->composition_end <= text_end;
-    const bool valid_cursor = std::isfinite(state->cursor_x) && std::isfinite(state->cursor_y) &&
-                              std::isfinite(state->cursor_width) &&
-                              std::isfinite(state->cursor_height) && state->cursor_width >= 0.0f &&
-                              state->cursor_height >= 0.0f;
-    if (text_end > std::numeric_limits<nk_text_position>::max() ||
-        state->text_start > state->document_length || text_end > state->document_length ||
-        state->selection_start > state->selection_end ||
-        state->selection_start < state->text_start || state->selection_end > text_end ||
-        (!no_composition && !valid_composition) || state->input_type > NK_TEXT_INPUT_PASSWORD ||
-        (state->flags & ~(NK_TEXT_INPUT_MULTILINE | NK_TEXT_INPUT_AUTOCORRECT |
-                          NK_TEXT_INPUT_CAPITALIZE_SENTENCES)) != 0 ||
-        state->action > NK_TEXT_INPUT_ACTION_NONE || !valid_cursor)
+    if (!nk::core::validate_text_input_state(*state, text))
         return invalid_argument("text input ranges are inconsistent with the supplied text");
     auto surface = get_surface(handle);
     if (!surface)
