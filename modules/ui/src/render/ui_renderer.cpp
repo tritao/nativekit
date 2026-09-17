@@ -1228,8 +1228,8 @@ bool UiRendererImpl::drawImage(const PreparedTexture &image, float x, float y, f
                              px * transform[1] + py * transform[3] + transform[5], u, v};
     };
     const std::vector<TextureVertex> vertices = {
-        point(x, y, 0.0f, 1.0f), point(x + width, y, 1.0f, 1.0f),
-        point(x + width, y + height, 1.0f, 0.0f), point(x, y + height, 0.0f, 0.0f)};
+        point(x, y, 0.0f, 0.0f), point(x + width, y, 1.0f, 0.0f),
+        point(x + width, y + height, 1.0f, 1.0f), point(x, y + height, 0.0f, 1.0f)};
     const std::vector<uint32_t> indices = {0, 1, 2, 0, 2, 3};
     const std::array<float, 4> tint = {opacity, opacity, opacity, opacity};
     return draw_mesh(*state_, state_->composite_pipeline, vertices, indices, tint.data(),

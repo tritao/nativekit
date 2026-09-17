@@ -128,6 +128,9 @@ if(NK_BUILD_TESTS)
         src/display_list/display_list.cpp)
     target_include_directories(nativekit_ui_display_list_test PRIVATE src)
     add_test(NAME nativekit_ui_display_list COMMAND nativekit_ui_display_list_test)
+    add_executable(nativekit_ui_image_pixels_test tests/image_pixels.cpp)
+    target_include_directories(nativekit_ui_image_pixels_test PRIVATE src)
+    add_test(NAME nativekit_ui_image_pixels COMMAND nativekit_ui_image_pixels_test)
     add_executable(nativekit_ui_nanovg_recorder_test
         tests/nanovg_recorder.cpp
         src/prepare/nanovg_recorder.cpp)
@@ -264,6 +267,7 @@ if(NK_BUILD_TESTS)
     foreach(target IN ITEMS
         nativekit_ui_backend_smoke_test
         nativekit_ui_display_list_test
+        nativekit_ui_image_pixels_test
         nativekit_ui_nanovg_recorder_test
         nativekit_ui_nanovg_path_test
         nativekit_ui_skribidi_adapter_test

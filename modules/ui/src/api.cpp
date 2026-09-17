@@ -6,6 +6,7 @@
 
 #include "display_list/display_list.h"
 #include "compositor/compositor.h"
+#include "prepare/image_pixels.h"
 #include "layout/layout_engine.h"
 #include "layout/layout_render_compiler.h"
 #include "prepare/nanovg_path.h"
@@ -2191,19 +2192,12 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
                 prepared->height = static_cast<int>(image->image_height);
                 prepared->generation = 1;
                 prepared->dirty = true;
+                prepared->flags |= nkui::PreparedImageFlags::Premultiplied;
                 if (image->image_filter == NKUI_IMAGE_FILTER_NEAREST)
                     prepared->flags |= nkui::PreparedImageFlags::Nearest;
-                if (image->image_format == NKUI_IMAGE_R8) {
-                    prepared->pixels.resize(image->pixels.size() * 4);
-                    for (size_t index = 0; index < image->pixels.size(); ++index) {
-                        prepared->pixels[index * 4 + 0] = 255;
-                        prepared->pixels[index * 4 + 1] = 255;
-                        prepared->pixels[index * 4 + 2] = 255;
-                        prepared->pixels[index * 4 + 3] = image->pixels[index];
-                    }
-                } else {
-                    prepared->pixels = image->pixels;
-                }
+                prepared->pixels = image->image_format == NKUI_IMAGE_R8
+                                       ? nkui::prepare_alpha8_pixels(image->pixels)
+                                       : nkui::prepare_rgba8_pixels(image->pixels);
                 auto *prepared_image = prepared.get();
                 prepared_images.push_back(std::move(prepared));
                 const nkui::ResourceId prepared_id =
@@ -2485,19 +2479,12 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                 prepared->height = static_cast<int>(image->image_height);
                 prepared->generation = 1;
                 prepared->dirty = true;
+                prepared->flags |= nkui::PreparedImageFlags::Premultiplied;
                 if (image->image_filter == NKUI_IMAGE_FILTER_NEAREST)
                     prepared->flags |= nkui::PreparedImageFlags::Nearest;
-                if (image->image_format == NKUI_IMAGE_R8) {
-                    prepared->pixels.resize(image->pixels.size() * 4);
-                    for (size_t index = 0; index < image->pixels.size(); ++index) {
-                        prepared->pixels[index * 4 + 0] = 255;
-                        prepared->pixels[index * 4 + 1] = 255;
-                        prepared->pixels[index * 4 + 2] = 255;
-                        prepared->pixels[index * 4 + 3] = image->pixels[index];
-                    }
-                } else {
-                    prepared->pixels = image->pixels;
-                }
+                prepared->pixels = image->image_format == NKUI_IMAGE_R8
+                                       ? nkui::prepare_alpha8_pixels(image->pixels)
+                                       : nkui::prepare_rgba8_pixels(image->pixels);
                 auto *prepared_image = prepared.get();
                 custom_images.push_back(std::move(prepared));
                 const auto prepared_id = nkui::make_resource_id(
