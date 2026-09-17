@@ -495,7 +495,7 @@ Java_io_nativekit_consumer_MainActivity_nativeInputProbe(JNIEnv *, jclass, jlong
         } else if (event.source == surface && event.kind == NK_EVENT_POINTER_SCROLL &&
                    event.data_size >= sizeof(nk_pointer_scroll_event)) {
             const auto *value = static_cast<const nk_pointer_scroll_event *>(event.data);
-            pointer_scroll = value->x == 1.5 && value->y == -2.0;
+            pointer_scroll = value->x == 60.0 && value->y == -80.0;
         } else if (event.source == surface && event.kind == NK_EVENT_KEY &&
                    event.data_size >= sizeof(nk_key_event)) {
             const auto *value = static_cast<const nk_key_event *>(event.data);
