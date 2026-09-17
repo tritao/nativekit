@@ -148,7 +148,6 @@ constexpr backend_contract platform_contract() {
                 cap(NK_CAP_WINDOW_GEOMETRY) | cap(NK_CAP_WINDOW_STYLING) | cap(NK_CAP_MONITOR) |
                 cap(NK_CAP_MONITOR_FULLSCREEN) | cap(NK_CAP_CURSOR) | cap(NK_CAP_POINTER_CAPTURE) |
                 cap(NK_CAP_OPENGL_SURFACE) | cap(NK_CAP_OPENGL_ES_SURFACE) |
-                cap(NK_CAP_VULKAN_SURFACE) | cap(NK_CAP_D3D11_SURFACE) |
                 cap(NK_CAP_SYSTEM_FONTS) | cap(NK_CAP_VULKAN_SURFACE) |
                 cap(NK_CAP_D3D11_SURFACE) | cap(NK_CAP_WINDOW_CUSTOM_DECORATIONS),
             0};
