@@ -185,7 +185,7 @@ nk_result NK_CALL nk_dialog_select_resource_directory(nk_handle, const nk_file_d
     return unsupported();
 }
 #endif
-#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_IOS)
+#if !defined(NK_STUB_ANDROID) && !defined(NK_BACKEND_IOS) && !defined(NK_BACKEND_WEB)
 nk_result NK_CALL nk_system_directory(nk_system_directory_kind, char *, uint32_t *) {
     return unsupported();
 }

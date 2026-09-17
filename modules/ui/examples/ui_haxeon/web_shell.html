@@ -467,6 +467,8 @@
         "nk_surface_set_text_input_active", "nk_surface_set_text_input_state",
         "nk_time_seconds", "nk_window_create", "nk_window_destroy", "nk_window_get_cursor_mode",
         "nk_window_get_scale", "nk_window_set_cursor", "nk_window_set_cursor_mode",
+        "nk_window_set_decoration_regions", "nk_webview_create", "nk_webview_destroy",
+        "nk_webview_set_bounds", "nk_webview_set_html", "nk_webview_show",
         "nk_resource_load_async"
       ]);
     }
@@ -477,7 +479,8 @@
         "nkui_display_list_get_info", "nkui_display_list_reset",
         "nkui_display_list_submit", "nkui_font_collection_add", "nkui_font_collection_add_data",
         "nkui_font_collection_add_system_fallbacks",
-        "nkui_font_collection_create", "nkui_image_create",
+        "nkui_font_collection_create", "nkui_image_create", "nkui_image_create_filtered",
+        "nkui_image_load_file",
         "nkui_layout_session_clear_custom_paints",
         "nkui_paint_create_linear_gradient", "nkui_paint_create_solid",
         "nkui_path_create", "nkui_renderer_create",
@@ -558,6 +561,7 @@
 
     function haxeonRuntimeImports() {
       return {
+        __math_ceil: Math.ceil,
         __math_is_finite: Number.isFinite,
         __math_is_nan: Number.isNaN,
         __math_cos: Math.cos,

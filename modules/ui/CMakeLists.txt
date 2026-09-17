@@ -558,6 +558,12 @@ if(NK_BUILD_EXAMPLES)
                 _nk_window_get_cursor_mode
                 _nk_window_set_cursor
                 _nk_window_set_cursor_mode
+                _nk_window_set_decoration_regions
+                _nk_webview_create
+                _nk_webview_destroy
+                _nk_webview_set_bounds
+                _nk_webview_set_html
+                _nk_webview_show
                 _nkui_display_list_create
                 _nkui_display_list_destroy
                 _nkui_display_list_get_info
