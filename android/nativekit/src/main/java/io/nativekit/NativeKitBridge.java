@@ -50,6 +50,7 @@ import android.view.inputmethod.ExtractedText;
 import android.view.inputmethod.ExtractedTextRequest;
 import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputMethodManager;
+import android.view.inputmethod.SurroundingText;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.Selection;
@@ -804,6 +805,26 @@ final class NativeKitBridge {
                 }
 
                 @Override
+                public SurroundingText getSurroundingText(int beforeLength, int afterLength,
+                                                           int flags) {
+                    if (Build.VERSION.SDK_INT < 31 || textStart != 0)
+                        return null;
+                    int selectionStart = Selection.getSelectionStart(editable);
+                    int selectionEnd = Selection.getSelectionEnd(editable);
+                    int[] range = NativeKitTextInputOffsets.surroundingRange(editable,
+                        selectionStart, selectionEnd, beforeLength, afterLength);
+                    if (range == null)
+                        return null;
+                    CharSequence value = editable.subSequence(range[0], range[1]);
+                    if ((flags & GET_TEXT_WITH_STYLES) != 0)
+                        value = new SpannableStringBuilder(value);
+                    else
+                        value = value.toString();
+                    return new SurroundingText(value, selectionStart - range[0],
+                        selectionEnd - range[0], range[0]);
+                }
+
+                @Override
                 public CharSequence getSelectedText(int flags) {
                     int start = Selection.getSelectionStart(editable);
                     int end = Selection.getSelectionEnd(editable);
@@ -1166,7 +1187,7 @@ final class NativeKitBridge {
                 return;
             float density = getResources().getDisplayMetrics().density;
             CursorAnchorInfo.Builder builder = new CursorAnchorInfo.Builder()
-                .setMatrix(new Matrix())
+                .setMatrix(screenMatrix())
                 .setSelectionRange(localCodeUnitIndex(selectionStart()),
                                    localCodeUnitIndex(selectionEnd()))
                 .setInsertionMarkerLocation(cursorX * density, cursorY * density,
@@ -1184,6 +1205,14 @@ final class NativeKitBridge {
             }
             CursorAnchorInfo info = builder.build();
             manager.updateCursorAnchorInfo(this, info);
+        }
+
+        private Matrix screenMatrix() {
+            Matrix matrix = new Matrix(getMatrix());
+            int[] location = new int[2];
+            getLocationOnScreen(location);
+            matrix.postTranslate(location[0], location[1]);
+            return matrix;
         }
 
         private static void addVisibleLineBounds(CursorAnchorInfo.Builder builder, float[] rects,

@@ -130,4 +130,22 @@ final class NativeKitTextInputOffsets {
             return null;
         return new int[] {firstUtf16, lastUtf16};
     }
+
+    /** Returns a scalar-safe UTF-16 window around a selection. */
+    static int[] surroundingRange(CharSequence text, int selectionStart, int selectionEnd,
+                                  int beforeLength, int afterLength) {
+        if (text == null || beforeLength < 0 || afterLength < 0 ||
+            codePointOffset(text, text.length()) == INVALID ||
+            !isExactBoundary(text, selectionStart) || !isExactBoundary(text, selectionEnd))
+            return null;
+        int first = Math.min(selectionStart, selectionEnd);
+        int last = Math.max(selectionStart, selectionEnd);
+        int start = beforeLength > first ? 0 : first - beforeLength;
+        int end = afterLength > text.length() - last ? text.length() : last + afterLength;
+        start = previousBoundary(text, start);
+        end = nextBoundary(text, end);
+        if (start == INVALID || end == INVALID || start > end)
+            return null;
+        return new int[] {start, end};
+    }
 }

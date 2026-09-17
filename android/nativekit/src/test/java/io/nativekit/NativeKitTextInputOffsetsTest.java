@@ -48,4 +48,15 @@ public final class NativeKitTextInputOffsetsTest {
             text, 3, 3, 1, 0));
         assertNull(NativeKitTextInputOffsets.deletionRange(text, 2, 2, 1, 0));
     }
+
+    @Test
+    public void surroundingRangeKeepsSelectionAndSurrogatesIntact() {
+        String text = "a😀b";
+
+        assertArrayEquals(new int[] {1, 4}, NativeKitTextInputOffsets.surroundingRange(
+            text, 3, 3, 2, 1));
+        assertArrayEquals(new int[] {0, 4}, NativeKitTextInputOffsets.surroundingRange(
+            text, 1, 3, 1, 1));
+        assertNull(NativeKitTextInputOffsets.surroundingRange(text, 2, 2, 1, 0));
+    }
 }
