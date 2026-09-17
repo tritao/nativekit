@@ -13,10 +13,10 @@ import haxe.io.Bytes;
  * them with its authoritative boundaries using setGraphemeBoundaries().
  */
 class TextOffsetMap {
-	public final text:String;
-	public final codepointCount:Int;
-	public final utf8ByteLength:Int;
-	public final utf16Length:Int;
+	public var text(default, null):String;
+	public var codepointCount(default, null):Int;
+	public var utf8ByteLength(default, null):Int;
+	public var utf16Length(default, null):Int;
 	var codepointToUtf8:Array<Int>;
 	var codepointToUtf16:Array<Int>;
 	var codepoints:Array<Int>;
@@ -204,22 +204,150 @@ class TextOffsetMap {
 		return output.toString();
 	}
 
+	/**
+	 * Applies a code-point replacement while retaining unaffected conversion
+	 * tables. Only the edited paragraph/grapheme neighborhood is rescanned;
+	 * suffix offsets are shifted in place.
+	 */
+	public function replaceCodepointsIncremental(start:CodepointOffset, end:CodepointOffset,
+			replacement:Null<String>, ?nextValue:String):String {
+		var first:Int = start;
+		var last:Int = end;
+		checkRange(first, last);
+		var inserted = new TextOffsetMap(replacement == null ? "" : replacement);
+		var next = nextValue == null ? replaceCodepoints(first, last, replacement) : nextValue;
+		var oldCount = codepointCount;
+		var removedCount = last - first;
+		var codepointDelta = inserted.codepointCount - removedCount;
+		var byteDelta = inserted.utf8ByteLength -
+			(codepointToUtf8[last] - codepointToUtf8[first]);
+		var utf16Delta = inserted.utf16Length -
+			(codepointToUtf16[last] - codepointToUtf16[first]);
+
+		var oldGraphemeStart = previousBoundary(first);
+		if (oldGraphemeStart > 0)
+			oldGraphemeStart = previousBoundary(oldGraphemeStart - 1);
+		var oldGraphemeEnd = nextBoundary(last);
+		if (oldGraphemeEnd < oldCount)
+			oldGraphemeEnd = nextBoundary(oldGraphemeEnd);
+		while (oldGraphemeStart > 0 && isRegionalIndicator(codepoints[oldGraphemeStart - 1]))
+			oldGraphemeStart--;
+		while (oldGraphemeEnd < oldCount && isRegionalIndicator(codepoints[oldGraphemeEnd]))
+			oldGraphemeEnd++;
+
+		var startParagraph = paragraphIndexAt(first);
+		if (startParagraph > 0)
+			startParagraph--;
+		var endParagraph = paragraphIndexAt(last);
+		if (endParagraph + 1 < paragraphStarts.length)
+			endParagraph++;
+		var hasParagraphSuffix = endParagraph + 1 < paragraphStarts.length;
+		var oldParagraphStart = paragraphStarts[startParagraph];
+		var oldParagraphEnd = paragraphEnds[endParagraph];
+		if (oldParagraphEnd < oldCount && codepoints[oldParagraphEnd] == 0x0a)
+			oldParagraphEnd++;
+
+		var mutationStart = oldGraphemeStart < oldParagraphStart ? oldGraphemeStart : oldParagraphStart;
+		var mutationEnd = oldGraphemeEnd > oldParagraphEnd ? oldGraphemeEnd : oldParagraphEnd;
+		var nextCodepoints:Array<Int> = [];
+		for (offset in mutationStart...first)
+			nextCodepoints.push(codepoints[offset]);
+		for (codepoint in inserted.codepoints)
+			nextCodepoints.push(codepoint);
+		for (offset in last...mutationEnd)
+			nextCodepoints.push(codepoints[offset]);
+
+		var baseUtf8 = codepointToUtf8[mutationStart];
+		var baseUtf16 = codepointToUtf16[mutationStart];
+		var nextUtf8:Array<Int> = [baseUtf8];
+		var nextUtf16:Array<Int> = [baseUtf16];
+		var utf8Offset = baseUtf8;
+		var utf16Offset = baseUtf16;
+		for (codepoint in nextCodepoints) {
+			utf8Offset += codepointByteLength(codepoint);
+			utf16Offset += codepoint > 0xffff ? 2 : 1;
+			nextUtf8.push(utf8Offset);
+			nextUtf16.push(utf16Offset);
+		}
+
+		replaceArrayRange(codepoints, mutationStart, mutationEnd - mutationStart, nextCodepoints);
+		replaceArrayRange(codepointToUtf8, mutationStart, mutationEnd - mutationStart + 1, nextUtf8);
+		replaceArrayRange(codepointToUtf16, mutationStart, mutationEnd - mutationStart + 1, nextUtf16);
+		for (offset in mutationStart + nextCodepoints.length + 1...codepointToUtf8.length)
+			codepointToUtf8[offset] += byteDelta;
+		for (offset in mutationStart + nextCodepoints.length + 1...codepointToUtf16.length)
+			codepointToUtf16[offset] += utf16Delta;
+
+		var newParagraphEnd = oldParagraphEnd + codepointDelta;
+		var paragraphStartsReplacement:Array<Int> = [];
+		var paragraphEndsReplacement:Array<Int> = [];
+		for (offset in oldParagraphStart...newParagraphEnd) {
+			var localOffset = offset - mutationStart;
+			if (codepoints[localOffset + mutationStart] == 0x0a) {
+				paragraphEndsReplacement.push(offset);
+				paragraphStartsReplacement.push(offset + 1);
+			}
+		}
+		paragraphEndsReplacement.push(newParagraphEnd);
+		if (hasParagraphSuffix && newParagraphEnd > oldParagraphStart &&
+			codepoints[newParagraphEnd - 1] == 0x0a) {
+			paragraphStartsReplacement.pop();
+			paragraphEndsReplacement.pop();
+		}
+		if (paragraphStartsReplacement.length == 0 ||
+			paragraphStartsReplacement[0] != oldParagraphStart)
+			paragraphStartsReplacement.unshift(oldParagraphStart);
+		replaceArrayRange(paragraphStarts, startParagraph, endParagraph - startParagraph + 1,
+			paragraphStartsReplacement);
+		replaceArrayRange(paragraphEnds, startParagraph, endParagraph - startParagraph + 1,
+			paragraphEndsReplacement);
+		var paragraphSuffix = startParagraph + paragraphStartsReplacement.length;
+		for (index in paragraphSuffix...paragraphStarts.length) {
+			paragraphStarts[index] += codepointDelta;
+			paragraphEnds[index] += codepointDelta;
+		}
+
+		var newGraphemeEnd = oldGraphemeEnd + codepointDelta;
+		var newGraphemeBoundaries:Array<Int> = [oldGraphemeStart];
+		var previous = oldGraphemeStart > 0 ? codepoints[oldGraphemeStart - 1] : -1;
+		var regionalRun = 0;
+		var regionalOffset = oldGraphemeStart - 1;
+		while (regionalOffset >= 0 && isRegionalIndicator(codepoints[regionalOffset])) {
+			regionalRun++;
+			regionalOffset--;
+		}
+		for (offset in oldGraphemeStart...newGraphemeEnd) {
+			var current = codepoints[offset];
+			if (offset > oldGraphemeStart && graphemeBreak(previous, current, regionalRun))
+				newGraphemeBoundaries.push(offset);
+			if (isRegionalIndicator(current))
+				regionalRun++;
+			else
+				regionalRun = 0;
+			previous = current;
+		}
+		if (newGraphemeBoundaries[newGraphemeBoundaries.length - 1] != newGraphemeEnd)
+			newGraphemeBoundaries.push(newGraphemeEnd);
+		var oldGraphemeBoundaryStart = boundaryIndex(oldGraphemeStart);
+		var oldGraphemeBoundaryEnd = boundaryIndex(oldGraphemeEnd);
+		replaceArrayRange(graphemeBoundaries, oldGraphemeBoundaryStart,
+			oldGraphemeBoundaryEnd - oldGraphemeBoundaryStart + 1, newGraphemeBoundaries);
+		var graphemeSuffix = oldGraphemeBoundaryStart + newGraphemeBoundaries.length;
+		for (index in graphemeSuffix...graphemeBoundaries.length)
+			graphemeBoundaries[index] += codepointDelta;
+
+		text = next;
+		codepointCount = oldCount + codepointDelta;
+		utf8ByteLength += byteDelta;
+		utf16Length += utf16Delta;
+		return next;
+	}
+
 	/** Returns the paragraph containing a code-point position. */
 	public function paragraphRangeAt(position:CodepointOffset):TextRange {
 		var value:Int = position;
 		checkCodepointOffset(value);
-		var low = 0;
-		var high = paragraphStarts.length - 1;
-		var paragraphNumber = 0;
-		while (low <= high) {
-			var middle = (low + high) >> 1;
-			if (paragraphStarts[middle] <= value) {
-				paragraphNumber = middle;
-				low = middle + 1;
-			} else {
-				high = middle - 1;
-			}
-		}
+		var paragraphNumber = paragraphIndexAt(value);
 		var start = paragraphStarts[paragraphNumber];
 		var end = paragraphEnds[paragraphNumber];
 		return new TextRange(start, end);
@@ -277,6 +405,65 @@ class TextOffsetMap {
 		if (start < 0 || end < start || end > codepointCount)
 			throw "Code-point range is outside the string";
 	}
+
+	function paragraphIndexAt(value:Int):Int {
+		var low = 0;
+		var high = paragraphStarts.length - 1;
+		var paragraphNumber = 0;
+		while (low <= high) {
+			var middle = (low + high) >> 1;
+			if (paragraphStarts[middle] <= value) {
+				paragraphNumber = middle;
+				low = middle + 1;
+			} else {
+				high = middle - 1;
+			}
+		}
+		return paragraphNumber;
+	}
+
+	function boundaryIndex(value:Int):Int {
+		var low = 0;
+		var high = graphemeBoundaries.length - 1;
+		while (low <= high) {
+			var middle = (low + high) >> 1;
+			var candidate = graphemeBoundaries[middle];
+			if (candidate == value)
+				return middle;
+			if (candidate < value)
+				low = middle + 1;
+			else
+				high = middle - 1;
+		}
+		throw "Grapheme boundary is missing";
+	}
+
+	static function replaceArrayRange<T>(array:Array<T>, start:Int, count:Int,
+			replacement:Array<T>):Void {
+		var oldLength = array.length;
+		var delta = replacement.length - count;
+		var suffixStart = start + count;
+		if (delta > 0) {
+			array.resize(oldLength + delta);
+			var index = oldLength - 1;
+			while (index >= suffixStart) {
+				array[index + delta] = array[index];
+				index--;
+			}
+		} else if (delta < 0) {
+			var index = suffixStart;
+			while (index < oldLength) {
+				array[index + delta] = array[index];
+				index++;
+			}
+			array.resize(oldLength + delta);
+		}
+		for (index in 0...replacement.length)
+			array[start + index] = replacement[index];
+	}
+
+	static function codepointByteLength(value:Int):Int
+		return value <= 0x7f ? 1 : value <= 0x7ff ? 2 : value <= 0xffff ? 3 : 4;
 
 	function isBoundary(value:Int):Bool {
 		var low = 0;

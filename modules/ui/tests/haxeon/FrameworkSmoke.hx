@@ -3017,8 +3017,58 @@ class FrameworkSmoke {
 		var codepointOne:CodepointOffset = 1;
 		var codepointZero:CodepointOffset = 0;
 		var nextBoundary:Int = customBoundaries.nextGraphemeBoundary(codepointZero);
-		return customBoundaries.graphemeCount() == 1 &&
-			!customBoundaries.isGraphemeBoundary(codepointOne) && nextBoundary == 2;
+		if (customBoundaries.graphemeCount() != 1 ||
+			customBoundaries.isGraphemeBoundary(codepointOne) || nextBoundary != 2)
+			return false;
+
+		var incremental = new TextOffsetMap("A é 👨‍👩‍👧‍👦 🇺🇸\nمرحبا\nक्‍ष");
+		if (!incrementalMapEditMatchesFresh(incremental, 2, 4, "é"))
+			return false;
+		if (!incrementalMapEditMatchesFresh(incremental, 4, 4, "👍🏽"))
+			return false;
+		if (!incrementalMapEditMatchesFresh(incremental, 15, 17, "🇺🇸🇯🇵"))
+			return false;
+		var firstParagraph = incremental.paragraphRangeAtIndex(0);
+		if (!incrementalMapEditMatchesFresh(incremental, firstParagraph.end,
+			firstParagraph.end, "\n追加"))
+			return false;
+		var insertedParagraph = incremental.paragraphRangeAtIndex(1);
+		if (!incrementalMapEditMatchesFresh(incremental, insertedParagraph.start - 1,
+			insertedParagraph.start, ""))
+			return false;
+		var finalParagraph = incremental.paragraphRangeAtIndex(incremental.paragraphCount() - 1);
+		return incrementalMapEditMatchesFresh(incremental, finalParagraph.start,
+			finalParagraph.end, "क्‍ष🇯🇵");
+	}
+
+	static function incrementalMapEditMatchesFresh(map:TextOffsetMap, start:Int, end:Int,
+		replacement:String):Bool {
+		var next = map.replaceCodepointsIncremental(start, end, replacement);
+		var expected = new TextOffsetMap(next);
+		if (map.text != expected.text || map.codepointCount != expected.codepointCount ||
+			map.utf8ByteLength != expected.utf8ByteLength || map.utf16Length != expected.utf16Length ||
+			map.paragraphCount() != expected.paragraphCount() ||
+			map.graphemeBoundaryCount() != expected.graphemeBoundaryCount()) {
+			return false;
+		}
+		for (offset in 0...map.codepointCount + 1) {
+			if (map.utf8OffsetForCodepoint(offset) != expected.utf8OffsetForCodepoint(offset) ||
+				map.utf16OffsetForCodepoint(offset) != expected.utf16OffsetForCodepoint(offset)) {
+				return false;
+			}
+		}
+		for (index in 0...map.paragraphCount()) {
+			var actualRange = map.paragraphRangeAtIndex(index);
+			var expectedRange = expected.paragraphRangeAtIndex(index);
+			if (actualRange.start != expectedRange.start || actualRange.end != expectedRange.end) {
+				return false;
+			}
+		}
+		for (index in 0...map.graphemeBoundaryCount())
+			if (map.graphemeBoundaryAt(index) != expected.graphemeBoundaryAt(index)) {
+				return false;
+			}
+		return true;
 	}
 
 	static function checkGraphemeBoundaries(map:TextOffsetMap, expected:Array<Int>):Bool {

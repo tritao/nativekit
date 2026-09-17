@@ -491,7 +491,7 @@ class TextEditorState {
 
 		if (textChanged) {
 			text = next;
-			documentOffsetMap = new TextOffsetMap(next);
+			documentOffsetMap.replaceCodepointsIncremental(first, last, replacement, next);
 			activeParagraphOffsetMap = null;
 			activeParagraphStart = -1;
 			activeParagraphEnd = -1;
