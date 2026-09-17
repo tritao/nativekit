@@ -8,6 +8,7 @@ import pages.OverlaysPage;
 import pages.OverviewPage;
 import pages.TextPage;
 import pages.WebViewPage;
+import pages.WindowChromePage;
 
 /** Canonical inventory for the Haxeon UI Explorer's pages and navigation. */
 class ExplorerCatalog {
@@ -56,7 +57,10 @@ class ExplorerCatalog {
 			function(explorer, items) { GraphicsPage.buildImages(explorer, items); }),
 		new ExplorerPage("graphics-rendering", "Rendering", "graphics", "Retained rendering and frame performance diagnostics",
 			["display list", "retained", "renderer", "offscreen", "surface", "cube", "performance"],
-			function(explorer, items) { GraphicsPage.buildRendering(explorer, items); })
+			function(explorer, items) { GraphicsPage.buildRendering(explorer, items); }),
+		new ExplorerPage("window-chrome", "Window Chrome", "developer", "Custom native window decorations",
+			["window", "chrome", "borderless", "drag", "resize", "decorations", "multi-window"],
+			function(explorer, items) { WindowChromePage.build(explorer, items); })
 	];
 
 	public static function all():Array<ExplorerPage>
@@ -84,6 +88,7 @@ class ExplorerCatalog {
 			case "start": "START HERE";
 			case "components": "COMPONENTS";
 			case "graphics": "GRAPHICS";
+			case "developer": "DEVELOPER TOOLS";
 			default: group;
 		};
 	}

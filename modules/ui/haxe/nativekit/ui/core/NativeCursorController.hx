@@ -98,6 +98,7 @@ class NativeCursorController {
 			case UiCursorShape.HorizontalResize: NativeKit.CursorShape.HorizontalResize;
 			case UiCursorShape.VerticalResize: NativeKit.CursorShape.VerticalResize;
 			case UiCursorShape.DiagonalResize: NativeKit.CursorShape.NwseResize;
+			case UiCursorShape.DiagonalResizeNesw: NativeKit.CursorShape.NeswResize;
 			case UiCursorShape.Move: NativeKit.CursorShape.Move;
 			case UiCursorShape.NotAllowed: NativeKit.CursorShape.NotAllowed;
 			case _: NativeKit.CursorShape.Arrow;

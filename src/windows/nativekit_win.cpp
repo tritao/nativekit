@@ -86,6 +86,16 @@ decoration_region_at(const std::vector<nk_window_decoration_region> &regions, fl
     return NK_WINDOW_DECORATION_CLIENT;
 }
 
+uint32_t decoration_cursor_shape_at(
+    const std::vector<nk_window_decoration_region> &regions, float x, float y) {
+    for (auto iter = regions.rbegin(); iter != regions.rend(); ++iter) {
+        if (x >= iter->x && y >= iter->y && x < iter->x + iter->width &&
+            y < iter->y + iter->height)
+            return iter->cursor_shape;
+    }
+    return 0;
+}
+
 int decoration_hit_test(nk_window_decoration_region_kind kind) {
     switch (kind) {
     case NK_WINDOW_DECORATION_DRAG:
@@ -737,6 +747,69 @@ void apply_cursor(WinWindowResource &resource) {
         SetCursor(resource.cursor ? resource.cursor->cursor : LoadCursorW(nullptr, IDC_ARROW));
 }
 
+uint32_t default_decoration_cursor_shape(LPARAM lparam) {
+    switch (LOWORD(lparam)) {
+    case HTCAPTION:
+        return NK_CURSOR_MOVE;
+    case HTTOP:
+    case HTBOTTOM:
+        return NK_CURSOR_VERTICAL_RESIZE;
+    case HTLEFT:
+    case HTRIGHT:
+        return NK_CURSOR_HORIZONTAL_RESIZE;
+    case HTTOPLEFT:
+    case HTBOTTOMRIGHT:
+        return NK_CURSOR_NWSE_RESIZE;
+    case HTTOPRIGHT:
+    case HTBOTTOMLEFT:
+        return NK_CURSOR_NESW_RESIZE;
+    default:
+        return 0;
+    }
+}
+
+HCURSOR cursor_for_shape(uint32_t shape) {
+    switch (shape) {
+    case NK_CURSOR_ARROW:
+        return LoadCursorW(nullptr, IDC_ARROW);
+    case NK_CURSOR_IBEAM:
+        return LoadCursorW(nullptr, IDC_IBEAM);
+    case NK_CURSOR_CROSSHAIR:
+        return LoadCursorW(nullptr, IDC_CROSS);
+    case NK_CURSOR_HAND:
+        return LoadCursorW(nullptr, IDC_HAND);
+    case NK_CURSOR_HORIZONTAL_RESIZE:
+        return LoadCursorW(nullptr, IDC_SIZEWE);
+    case NK_CURSOR_VERTICAL_RESIZE:
+        return LoadCursorW(nullptr, IDC_SIZENS);
+    case NK_CURSOR_NWSE_RESIZE:
+        return LoadCursorW(nullptr, IDC_SIZENWSE);
+    case NK_CURSOR_NESW_RESIZE:
+        return LoadCursorW(nullptr, IDC_SIZENESW);
+    case NK_CURSOR_MOVE:
+        return LoadCursorW(nullptr, IDC_SIZEALL);
+    case NK_CURSOR_NOT_ALLOWED:
+        return LoadCursorW(nullptr, IDC_NO);
+    default:
+        return nullptr;
+    }
+}
+
+HCURSOR decoration_cursor_for_hit_test(WinWindowResource &resource, LPARAM lparam) {
+    POINT point{};
+    float x = static_cast<float>(resource.pointer_x);
+    float y = static_cast<float>(resource.pointer_y);
+    if (GetCursorPos(&point) && ScreenToClient(resource.window, &point)) {
+        const auto scale = dpi_scale(resource.window);
+        x = static_cast<float>(point.x / scale);
+        y = static_cast<float>(point.y / scale);
+    }
+    auto shape = decoration_cursor_shape_at(resource.decoration_regions, x, y);
+    if (shape == 0)
+        shape = default_decoration_cursor_shape(lparam);
+    return cursor_for_shape(shape);
+}
+
 void emit_window_state(WinWindowResource &resource) {
     nk_window_state state{sizeof(state), 0, {0, 0}};
     if (IsWindowVisible(resource.window))
@@ -1376,9 +1449,19 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             });
             return 0;
         }
-        if (message == WM_SETCURSOR && LOWORD(lparam) == HTCLIENT) {
-            apply_cursor(*resource);
-            return TRUE;
+        if (message == WM_SETCURSOR && !resource->decorated) {
+            if (auto cursor = decoration_cursor_for_hit_test(*resource, lparam)) {
+                if (resource->cursor_mode == NK_CURSOR_MODE_HIDDEN ||
+                    resource->cursor_mode == NK_CURSOR_MODE_DISABLED)
+                    SetCursor(nullptr);
+                else
+                    SetCursor(cursor);
+                return TRUE;
+            }
+            if (LOWORD(lparam) == HTCLIENT) {
+                apply_cursor(*resource);
+                return TRUE;
+            }
         }
         if (message == WM_NCCALCSIZE && !resource->decorated)
             return 0;
@@ -3976,7 +4059,8 @@ nk_result NK_CALL nk_window_set_decoration_regions(nk_handle h,
             if (!std::isfinite(region.x) || !std::isfinite(region.y) ||
                 !std::isfinite(region.width) || !std::isfinite(region.height) || region.x < 0.0f ||
                 region.y < 0.0f || region.width <= 0.0f || region.height <= 0.0f ||
-                region.kind > NK_WINDOW_DECORATION_RESIZE_SOUTHEAST)
+                region.kind > NK_WINDOW_DECORATION_RESIZE_SOUTHEAST ||
+                region.cursor_shape > NK_CURSOR_NOT_ALLOWED)
                 return fail(NK_ERROR_INVALID_ARGUMENT, "invalid decoration region");
         }
         if (region_count == 0)

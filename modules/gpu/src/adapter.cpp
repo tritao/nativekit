@@ -395,36 +395,65 @@ static nkgpu_result prepare_resource_destroy(Handle handle, bool &backend_availa
 #define sg_query_view_state(...) (runtime_gfx()->query_view_state(__VA_ARGS__))
 #define sg_reset_state_cache(...) (runtime_gfx()->reset_state_cache(__VA_ARGS__))
 
-static const nk_sokol_api *api_for_graphics_api(nk_graphics_api api) {
+static const nk_sokol_api *api_for_graphics_api(
+    nk_graphics_api api, nk_surface surface = NK_INVALID_HANDLE) {
+#if defined(NK_SOKOL_MULTI_CONTEXT)
+    static nk_surface primary_runtime_surface = NK_INVALID_HANDLE;
+#endif
+    const nk_sokol_api *runtime = nullptr;
 #if defined(NK_SOKOL_RUNTIME_MATRIX)
     switch (api) {
     case NK_GRAPHICS_OPENGL:
-        return nk_sokol_glcore_get_api();
+        runtime = nk_sokol_glcore_get_api();
+        break;
     case NK_GRAPHICS_OPENGL_ES:
-        return nk_sokol_gles3_get_api();
+        runtime = nk_sokol_gles3_get_api();
+        break;
     default:
         return nullptr;
     }
 #else
-    const nk_sokol_api *runtime = nk_sokol_get_api();
-    if (!runtime || !runtime->gfx)
-        return nullptr;
+    runtime = nk_sokol_get_api();
 #if defined(NK_SOKOL_BACKEND_GLES3)
 #if defined(__EMSCRIPTEN__)
-    return (api == NK_GRAPHICS_OPENGL || api == NK_GRAPHICS_OPENGL_ES) ? runtime : nullptr;
+    if (api != NK_GRAPHICS_OPENGL && api != NK_GRAPHICS_OPENGL_ES)
+        return nullptr;
 #else
-    return api == NK_GRAPHICS_OPENGL_ES ? runtime : nullptr;
+    if (api != NK_GRAPHICS_OPENGL_ES)
+        return nullptr;
 #endif
 #else
 #if defined(NK_SOKOL_BACKEND_D3D11)
-    return api == NK_GRAPHICS_D3D11 ? runtime : nullptr;
+    if (api != NK_GRAPHICS_D3D11)
+        return nullptr;
 #elif defined(NK_SOKOL_BACKEND_METAL)
-    return api == NK_GRAPHICS_METAL ? runtime : nullptr;
+    if (api != NK_GRAPHICS_METAL)
+        return nullptr;
 #else
-    return api == NK_GRAPHICS_OPENGL ? runtime : nullptr;
+    if (api != NK_GRAPHICS_OPENGL)
+        return nullptr;
 #endif
 #endif
 #endif
+    if (!runtime || !runtime->gfx)
+        return nullptr;
+#if defined(NK_SOKOL_MULTI_CONTEXT)
+    if (surface != NK_INVALID_HANDLE) {
+        if (primary_runtime_surface == NK_INVALID_HANDLE)
+            primary_runtime_surface = surface;
+        else if (surface != primary_runtime_surface) {
+#if defined(NK_SOKOL_RUNTIME_MATRIX)
+            runtime = api == NK_GRAPHICS_OPENGL ? nk_sokol_glcore_secondary_get_api()
+                                                 : api == NK_GRAPHICS_OPENGL_ES
+                                                       ? nk_sokol_gles3_secondary_get_api()
+                                                       : nullptr;
+#else
+            runtime = nk_sokol_secondary_get_api();
+#endif
+        }
+    }
+#endif
+    return runtime;
 }
 
 static nkgpu_backend convert_backend(const nk_sokol_api *api) {
@@ -772,7 +801,7 @@ nkgpu_result nkgpu_renderer_create(nk_surface surface, nkgpu_renderer *out) {
     if ((target.api == NK_GRAPHICS_D3D11 && (!target.native_device || !target.native_context)) ||
         (target.api == NK_GRAPHICS_METAL && (!target.native_device || !target.native_context)))
         return fail(NKGPU_ERROR_UNKNOWN, "explicit surface target is missing native tokens");
-    const nk_sokol_api *api = api_for_graphics_api(target.api);
+    const nk_sokol_api *api = api_for_graphics_api(target.api, surface);
     if (!api || !api->runtime_acquire || !api->runtime_release || !api->gfx)
         return fail(NKGPU_ERROR_UNKNOWN, "surface graphics backend is unavailable");
     sg_desc desc{};

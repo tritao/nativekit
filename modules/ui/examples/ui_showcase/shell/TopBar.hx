@@ -33,8 +33,7 @@ class TopBar {
 		], clusterStyle(12.0));
 		var themeButton = explorer.button(explorer.state.lightTheme ? "Dark mode" : "Light mode",
 			"theme-toggle", function() {
-				explorer.state.lightTheme = !explorer.state.lightTheme;
-				explorer.context.setTheme(UiExplorer.makeTheme(explorer.state.lightTheme));
+			explorer.toggleTheme();
 			});
 		themeButton.leadingIcon = explorer.state.lightTheme ? IconName.Moon : IconName.Sun;
 		var actions:Array<KeyedView> = [explorer.keyed("theme", new WindowChrome("theme-client",

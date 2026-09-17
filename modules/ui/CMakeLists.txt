@@ -374,6 +374,15 @@ if(NK_BUILD_EXAMPLES)
                     TIMEOUT 120
                     ENVIRONMENT
                         "LIBGL_ALWAYS_SOFTWARE=1;NATIVEKIT_BUILD_DIR=${CMAKE_BINARY_DIR};HAXEON_DIR=${NKUI_HAXEON_DIR}")
+                add_test(NAME nativekit_ui_window_chrome
+                    COMMAND ${NKUI_SHOWCASE_XVFB_RUN} -a
+                        "${CMAKE_CURRENT_SOURCE_DIR}/tools/showcase.sh"
+                        --ui-window-chrome-test)
+                set_tests_properties(nativekit_ui_window_chrome PROPERTIES
+                    LABELS "graphics;ui;showcase;window-chrome"
+                    TIMEOUT 120
+                    ENVIRONMENT
+                        "LIBGL_ALWAYS_SOFTWARE=1;NATIVEKIT_BUILD_DIR=${CMAKE_BINARY_DIR};HAXEON_DIR=${NKUI_HAXEON_DIR}")
                 add_test(NAME nativekit_ui_showcase_static
                     COMMAND ${NKUI_SHOWCASE_XVFB_RUN} -a
                         "${CMAKE_CURRENT_SOURCE_DIR}/tools/showcase.sh"

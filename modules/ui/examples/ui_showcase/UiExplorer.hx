@@ -101,6 +101,8 @@ class UiExplorer {
 	final frameInfo:FrameInfo;
 	final platformLabel:String;
 	final onOpenGraphics:Void->Void;
+	final onOpenWindowDemo:Null<Void->Bool>;
+	final onThemeChanged:Null<Bool->Void>;
 	final virtualList:VirtualList;
 	final tweenController:AnimationController;
 	final springController:SpringController;
@@ -129,15 +131,19 @@ class UiExplorer {
 	var previousTime:Float = -1.0;
 	var frames:Int = 0;
 	var diagnosticStage:Int = 0;
+	var windowChromeStatusMessage:String = "Open a second window to interact with custom chrome.";
 
 	public function new(fonts:FontCollection, platformLabel:String,
-			onOpenGraphics:Void->Void, ?staticSubmitReuse:Bool, ?demoImagePath:String) {
+			onOpenGraphics:Void->Void, ?staticSubmitReuse:Bool, ?demoImagePath:String,
+			?onOpenWindowDemo:Void->Bool, ?onThemeChanged:Bool->Void) {
 		if (fonts == null || fonts.isDisposed())
 			throw "UI Explorer requires a live font collection";
 		this.fonts = fonts;
 		state = new ExplorerState();
 		this.platformLabel = platformLabel == null ? "NativeKit runtime" : platformLabel;
 		this.onOpenGraphics = onOpenGraphics == null ? function() {} : onOpenGraphics;
+		this.onOpenWindowDemo = onOpenWindowDemo;
+		this.onThemeChanged = onThemeChanged;
 		this.staticSubmitReuse = staticSubmitReuse == true;
 		context = new UiContext(null, fonts, makeTheme(state.lightTheme));
 		EffectsPage.installStyles(this);
@@ -174,6 +180,43 @@ class UiExplorer {
 	/** Installs the desktop window that receives the shell's custom chrome regions. */
 	public function attachWindow(window:WindowHandle):Void
 		context.attachPlatformWindow(window);
+
+	/** Opens the separate desktop window used by the custom-chrome showcase page. */
+	public function openWindowChromeDemo():Void {
+		if (onOpenWindowDemo == null) {
+			windowChromeStatusMessage = "The second-window demo is available on desktop only.";
+			return;
+		}
+		try {
+			windowChromeStatusMessage = onOpenWindowDemo()
+				? "Demo window opened — drag the header and resize its edges."
+				: "The demo window is already open.";
+		} catch (error:Dynamic) {
+			windowChromeStatusMessage = "Could not open the demo window: " + Std.string(error);
+		}
+	}
+
+	public function windowChromeStatus():String
+		return windowChromeStatusMessage;
+
+	/** Changes the explorer palette and keeps any secondary showcase windows in sync. */
+	public function setLightTheme(light:Bool):Void {
+		if (state.lightTheme == light)
+			return;
+		state.lightTheme = light;
+		context.setTheme(makeTheme(light));
+		if (onThemeChanged != null)
+			onThemeChanged(light);
+	}
+
+	public function toggleTheme():Void
+		setLightTheme(!state.lightTheme);
+
+	public function isLightTheme():Bool
+		return state.lightTheme;
+
+	public function currentTheme():Theme
+		return makeTheme(state.lightTheme);
 
 	/** Routes platform input through the framework's standard NativeKit adapter. */
 	public function attachInput(events:NativeKitEvents, window:Handle):NativeInputAdapter {
@@ -712,7 +755,7 @@ class UiExplorer {
 	function paletteMuted():Color
 		return ShowcaseKit.paletteMuted(this);
 
-	static function makeTheme(light:Bool):Theme
+	public static function makeTheme(light:Bool):Theme
 		return ShowcaseKit.makeTheme(light);
 
 	static inline function color(red:Float, green:Float, blue:Float, alpha:Float = 1.0):Color

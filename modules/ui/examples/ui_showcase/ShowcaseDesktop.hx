@@ -20,6 +20,7 @@ import NativeKitEvents.NativeKitEventSubscription;
 import NativeKitSurface;
 import NativeKitError;
 import nativekit.ui.core.NativeInputAdapter;
+import WindowChromeDemo;
 
 private class ShowcaseFrameState {
     public var running:Bool = true;
@@ -67,6 +68,7 @@ class ShowcaseDesktop {
         var smoke = has(args, "--smoke-test");
         var uiSmoke = has(args, "--ui-smoke-test");
         var uiStaticFrame = has(args, "--ui-static-frame");
+        var uiWindowChromeTest = has(args, "--ui-window-chrome-test");
         var staticFrame = has(args, "--static-frame");
         var printStats = has(args, "--stats");
         var graphicsMode = smoke || staticFrame;
@@ -74,6 +76,7 @@ class ShowcaseDesktop {
         var initialHeight = graphicsMode ? 650 : UiExplorer.INITIAL_HEIGHT;
         for (arg in args)
             if (arg != "--smoke-test" && arg != "--ui-smoke-test" && arg != "--ui-static-frame" &&
+                    arg != "--ui-window-chrome-test" &&
                     arg != "--static-frame" && arg != "--stats")
                 return 2;
 
@@ -84,9 +87,11 @@ class ShowcaseDesktop {
         var surface = SurfaceHandle.invalid();
         var graphics:Null<Showcase> = null;
         var explorer:Null<UiExplorer> = null;
+        var chromeDemo:Null<WindowChromeDemo> = null;
         var explorerInput:Null<NativeInputAdapter> = null;
         var nativeSurface:Null<NativeKitSurface> = null;
         var frameSubscription:Null<NativeKitSurfaceFrameSubscription> = null;
+        var chromeTestResult:Int = -1;
         var result = 0;
         try {
             var init = new InitOptions();
@@ -171,7 +176,26 @@ class ShowcaseDesktop {
                         }
                         graphics.setViewport(frameState.logicalWidth, frameState.logicalHeight);
                         frameState.graphics = graphics;
-                    }, uiStaticFrame, Sys.getEnv("NKUI_SHOWCASE_IMAGE_PATH"));
+                    }, uiStaticFrame, Sys.getEnv("NKUI_SHOWCASE_IMAGE_PATH"), function() {
+                        if (chromeDemo != null && !chromeDemo.isCloseRequested())
+                            return false;
+                        if (chromeDemo != null) {
+                            chromeDemo.dispose();
+                            chromeDemo = null;
+                        }
+                        try {
+                            var theme = explorer == null ? UiExplorer.makeTheme(true) : explorer.currentTheme();
+                            chromeDemo = WindowChromeDemo.open(activePump, graphicsApi, window, theme);
+                            return true;
+                        } catch (error:Dynamic) {
+                            Sys.println("nativekit_ui_showcase window_chrome: " + Std.string(error));
+                            chromeDemo = null;
+                            return false;
+                        }
+					}, function(light) {
+						if (chromeDemo != null)
+							chromeDemo.setTheme(UiExplorer.makeTheme(light));
+                    });
                 } catch (error:Dynamic) {
                     fonts.dispose();
                     throw error;
@@ -214,6 +238,8 @@ class ShowcaseDesktop {
             };
 
             eventSubscription = activePump.listen(function(value) {
+                if (chromeDemo != null)
+                    chromeDemo.handleEvent(value);
                 switch (value) {
                     case WindowClose(source) if (source.rawValue() == window.rawValue()):
                         running = false;
@@ -253,6 +279,19 @@ class ShowcaseDesktop {
                                     frameState.running = false;
                                 }
                             });
+                        if (uiWindowChromeTest && chromeDemo == null && explorer != null) {
+                            try {
+                                chromeDemo = WindowChromeDemo.open(activePump, graphicsApi, window,
+                                    explorer.currentTheme());
+                                chromeDemo.enableDiagnosticRun(3);
+                            } catch (error:Dynamic) {
+                                Sys.println("nativekit_ui_showcase window_chrome_test: open failed: "
+                                    + Std.string(error));
+                                chromeTestResult = 21;
+                                running = false;
+                                frameState.running = false;
+                            }
+                        }
                     case SurfaceResize(source, width, height, newFramebufferWidth, newFramebufferHeight)
                         if (source.rawValue() == surface.rawValue()):
                         frameState.logicalWidth = width;
@@ -294,6 +333,27 @@ class ShowcaseDesktop {
 
 			while (running) {
 				var hadEvent = activePump.poll();
+                if (chromeDemo != null && chromeDemo.isCloseRequested()) {
+                    var closingDemo = chromeDemo;
+                    chromeDemo = null;
+                    var failureMessage = closingDemo.failureMessage();
+                    if (uiWindowChromeTest) {
+                        if (failureMessage != null) {
+                            Sys.println("nativekit_ui_showcase window_chrome_test: " + failureMessage);
+                            chromeTestResult = 22;
+                        } else if (closingDemo.renderedFrameCount() <= 0) {
+                            Sys.println("nativekit_ui_showcase window_chrome_test: no demo frame rendered");
+                            chromeTestResult = 23;
+                        } else {
+                            Sys.println('nativekit_ui_showcase window_chrome_test: PASS frames=${closingDemo.renderedFrameCount()}');
+                            chromeTestResult = 0;
+                        }
+                        running = false;
+                        frameState.running = false;
+                    } else if (failureMessage != null)
+                        Sys.println("nativekit_ui_showcase window_chrome: " + failureMessage);
+                    closingDemo.dispose();
+                }
 				if (frameState.callbackFailed) {
 					var callbackError = frameState.callbackError;
 					throw callbackError == null ? "surface frame callback failed" : callbackError;
@@ -309,7 +369,7 @@ class ShowcaseDesktop {
 				explorer.printStats();
 			if (uiSmoke || uiStaticFrame)
 				Sys.println('nativekit_ui_showcase explorer_frames=${frameState.rendered}');
-			result = frameState.rendered > 0 ? 0 : 17;
+            result = chromeTestResult < 0 ? (frameState.rendered > 0 ? 0 : 17) : chromeTestResult;
         } catch (error:Dynamic) {
             if (Std.isOfType(error, NativeKitError)) {
                 var nativeError:NativeKitError = cast error;
@@ -325,6 +385,10 @@ class ShowcaseDesktop {
         }
         if (graphics != null)
             graphics.dispose();
+        if (chromeDemo != null) {
+            chromeDemo.dispose();
+            chromeDemo = null;
+        }
         if (explorerInput != null)
             explorerInput.detach();
         if (frameSubscription != null)

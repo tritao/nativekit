@@ -133,6 +133,8 @@ struct GtkWindowResource final : nk::core::Resource {
     double pointer_y = 0.0;
     nk_cursor_mode cursor_mode = NK_CURSOR_MODE_NORMAL;
     std::shared_ptr<GtkCursorResource> cursor;
+    GdkCursor *decoration_cursor = nullptr;
+    uint32_t decoration_cursor_shape = 0;
     bool pointer_grabbed = false;
     bool hovered = false;
     uint32_t state_flags = 0;
@@ -160,6 +162,8 @@ struct GtkWindowResource final : nk::core::Resource {
         }
         if (foreign_window)
             g_object_unref(foreign_window);
+        if (decoration_cursor)
+            g_object_unref(decoration_cursor);
         if (window && !wrapped)
             gtk_widget_destroy(window);
         if (im_context)
@@ -168,6 +172,7 @@ struct GtkWindowResource final : nk::core::Resource {
 };
 
 bool begin_decoration_drag(GtkWindowResource &resource, GdkEventButton &event);
+nk_result apply_pointer_cursor(GtkWindowResource &resource);
 
 struct GtkAccessibilityTextRange {
     nk_accessibility_text_position start = 0;
@@ -1760,6 +1765,7 @@ gboolean on_pointer_move(GtkWidget *, GdkEventMotion *motion, gpointer data) {
         auto *resource = static_cast<GtkWindowResource *>(data);
         resource->pointer_x = motion->x;
         resource->pointer_y = motion->y;
+        apply_pointer_cursor(*resource);
         const nk_pointer_move_event payload{motion->x, motion->y};
         nk::core::QueuedEvent event;
         event.kind = NK_EVENT_POINTER_MOVE;
@@ -1832,6 +1838,8 @@ gboolean on_pointer_scroll(GtkWidget *, GdkEventScroll *scroll, gpointer data) {
 gboolean on_pointer_crossing(GtkWidget *, GdkEventCrossing *crossing, gpointer data) {
     auto *resource = static_cast<GtkWindowResource *>(data);
     resource->hovered = crossing->type == GDK_ENTER_NOTIFY;
+    if (resource->hovered)
+        apply_pointer_cursor(*resource);
     nk::core::QueuedEvent event;
     event.kind = NK_EVENT_POINTER_ENTER;
     event.source = resource->handle;
@@ -2268,6 +2276,16 @@ decoration_region_at(const std::vector<nk_window_decoration_region> &regions, fl
     return NK_WINDOW_DECORATION_CLIENT;
 }
 
+uint32_t decoration_cursor_shape_at(
+    const std::vector<nk_window_decoration_region> &regions, float x, float y) {
+    for (auto iter = regions.rbegin(); iter != regions.rend(); ++iter) {
+        if (x >= iter->x && y >= iter->y && x < iter->x + iter->width &&
+            y < iter->y + iter->height)
+            return iter->cursor_shape;
+    }
+    return 0;
+}
+
 bool begin_decoration_drag(GtkWindowResource &resource, GdkEventButton &event) {
     if (resource.decorated || resource.wrapped || event.type != GDK_BUTTON_PRESS ||
         event.button != 1)
@@ -2504,6 +2522,94 @@ nk_result apply_cursor(GtkWindowResource &resource) {
         return fail(NK_ERROR_UNKNOWN, "GTK window is not realized");
     GdkDisplay *display = gdk_window_get_display(native);
     gdk_window_set_cursor(native, effective_cursor(resource, display));
+    return NK_OK;
+}
+
+uint32_t default_decoration_cursor_shape(nk_window_decoration_region_kind kind) {
+    switch (kind) {
+    case NK_WINDOW_DECORATION_DRAG:
+        return NK_CURSOR_MOVE;
+    case NK_WINDOW_DECORATION_RESIZE_NORTH:
+    case NK_WINDOW_DECORATION_RESIZE_SOUTH:
+        return NK_CURSOR_VERTICAL_RESIZE;
+    case NK_WINDOW_DECORATION_RESIZE_WEST:
+    case NK_WINDOW_DECORATION_RESIZE_EAST:
+        return NK_CURSOR_HORIZONTAL_RESIZE;
+    case NK_WINDOW_DECORATION_RESIZE_NORTHWEST:
+    case NK_WINDOW_DECORATION_RESIZE_SOUTHEAST:
+        return NK_CURSOR_NWSE_RESIZE;
+    case NK_WINDOW_DECORATION_RESIZE_NORTHEAST:
+    case NK_WINDOW_DECORATION_RESIZE_SOUTHWEST:
+        return NK_CURSOR_NESW_RESIZE;
+    case NK_WINDOW_DECORATION_CLIENT:
+    default:
+        return 0;
+    }
+}
+
+const char *cursor_name(uint32_t shape) {
+    switch (shape) {
+    case NK_CURSOR_ARROW:
+        return "default";
+    case NK_CURSOR_IBEAM:
+        return "text";
+    case NK_CURSOR_CROSSHAIR:
+        return "crosshair";
+    case NK_CURSOR_HAND:
+        return "pointer";
+    case NK_CURSOR_HORIZONTAL_RESIZE:
+        return "ew-resize";
+    case NK_CURSOR_VERTICAL_RESIZE:
+        return "ns-resize";
+    case NK_CURSOR_NWSE_RESIZE:
+        return "nwse-resize";
+    case NK_CURSOR_NESW_RESIZE:
+        return "nesw-resize";
+    case NK_CURSOR_MOVE:
+        return "move";
+    case NK_CURSOR_NOT_ALLOWED:
+        return "not-allowed";
+    default:
+        return nullptr;
+    }
+}
+
+GdkCursor *decoration_cursor(GtkWindowResource &resource, GdkDisplay *display,
+                             uint32_t shape) {
+    if (resource.decoration_cursor_shape == shape)
+        return resource.decoration_cursor;
+    if (resource.decoration_cursor)
+        g_object_unref(resource.decoration_cursor);
+    resource.decoration_cursor = nullptr;
+    resource.decoration_cursor_shape = shape;
+    if (const auto *name = cursor_name(shape))
+        resource.decoration_cursor = gdk_cursor_new_from_name(display, name);
+    return resource.decoration_cursor;
+}
+
+nk_result apply_pointer_cursor(GtkWindowResource &resource) {
+    if (resource.cursor_mode != NK_CURSOR_MODE_NORMAL || resource.decorated || resource.wrapped)
+        return apply_cursor(resource);
+    GdkWindow *native = native_window(resource);
+    if (!native)
+        return fail(NK_ERROR_UNKNOWN, "GTK window is not realized");
+    GdkDisplay *display = gdk_window_get_display(native);
+    const auto kind = decoration_region_at(resource.decoration_regions,
+                                           static_cast<float>(resource.pointer_x),
+                                           static_cast<float>(resource.pointer_y));
+    auto shape = decoration_cursor_shape_at(resource.decoration_regions,
+                                            static_cast<float>(resource.pointer_x),
+                                            static_cast<float>(resource.pointer_y));
+    if (shape == 0)
+        shape = default_decoration_cursor_shape(kind);
+    if (shape == 0) {
+        decoration_cursor(resource, display, 0);
+        return apply_cursor(resource);
+    }
+    GdkCursor *cursor = effective_cursor(resource, display);
+    if (auto *decoration = decoration_cursor(resource, display, shape))
+        cursor = decoration;
+    gdk_window_set_cursor(native, cursor);
     return NK_OK;
 }
 
@@ -3807,7 +3913,7 @@ nk_result NK_CALL nk_window_set_cursor(nk_handle window_handle, nk_handle cursor
     resource->cursor = std::move(selected);
     return resource->cursor_mode == NK_CURSOR_MODE_CAPTURED
                ? apply_cursor_mode(*resource, resource->cursor_mode)
-               : apply_cursor(*resource);
+               : apply_pointer_cursor(*resource);
 }
 
 nk_result NK_CALL nk_window_set_cursor_mode(nk_handle handle, nk_cursor_mode mode) {
@@ -4082,13 +4188,16 @@ nk_result NK_CALL nk_window_set_decoration_regions(nk_handle h,
             if (!std::isfinite(region.x) || !std::isfinite(region.y) ||
                 !std::isfinite(region.width) || !std::isfinite(region.height) || region.x < 0.0f ||
                 region.y < 0.0f || region.width <= 0.0f || region.height <= 0.0f ||
-                region.kind > NK_WINDOW_DECORATION_RESIZE_SOUTHEAST)
+                region.kind > NK_WINDOW_DECORATION_RESIZE_SOUTHEAST ||
+                region.cursor_shape > NK_CURSOR_NOT_ALLOWED)
                 return fail(NK_ERROR_INVALID_ARGUMENT, "invalid decoration region");
         }
         if (region_count == 0)
             resource->decoration_regions.clear();
         else
             resource->decoration_regions.assign(regions, regions + region_count);
+        if (resource->hovered)
+            apply_pointer_cursor(*resource);
         return NK_OK;
     } catch (const std::bad_alloc &) {
         return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while setting decoration regions");

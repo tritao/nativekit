@@ -583,6 +583,16 @@ decoration_region_at(const std::vector<nk_window_decoration_region> &regions, fl
     return NK_WINDOW_DECORATION_CLIENT;
 }
 
+uint32_t decoration_cursor_shape_at(
+    const std::vector<nk_window_decoration_region> &regions, float x, float y) {
+    for (auto iter = regions.rbegin(); iter != regions.rend(); ++iter) {
+        if (x >= iter->x && y >= iter->y && x < iter->x + iter->width &&
+            y < iter->y + iter->height)
+            return iter->cursor_shape;
+    }
+    return 0;
+}
+
 bool is_decoration_resize_kind(nk_window_decoration_region_kind kind) {
     return kind >= NK_WINDOW_DECORATION_RESIZE_NORTH &&
            kind <= NK_WINDOW_DECORATION_RESIZE_SOUTHEAST;
@@ -1925,6 +1935,79 @@ NSCursor *diagonal_resize_cursor(bool northwest_southeast) {
     return [[NSCursor alloc] initWithImage:image hotSpot:NSMakePoint(16, 16)];
 }
 
+uint32_t default_decoration_cursor_shape(nk_window_decoration_region_kind kind) {
+    switch (kind) {
+    case NK_WINDOW_DECORATION_DRAG:
+        return NK_CURSOR_MOVE;
+    case NK_WINDOW_DECORATION_RESIZE_NORTH:
+    case NK_WINDOW_DECORATION_RESIZE_SOUTH:
+        return NK_CURSOR_VERTICAL_RESIZE;
+    case NK_WINDOW_DECORATION_RESIZE_WEST:
+    case NK_WINDOW_DECORATION_RESIZE_EAST:
+        return NK_CURSOR_HORIZONTAL_RESIZE;
+    case NK_WINDOW_DECORATION_RESIZE_NORTHWEST:
+    case NK_WINDOW_DECORATION_RESIZE_SOUTHEAST:
+        return NK_CURSOR_NWSE_RESIZE;
+    case NK_WINDOW_DECORATION_RESIZE_NORTHEAST:
+    case NK_WINDOW_DECORATION_RESIZE_SOUTHWEST:
+        return NK_CURSOR_NESW_RESIZE;
+    case NK_WINDOW_DECORATION_CLIENT:
+    default:
+        return 0;
+    }
+}
+
+NSCursor *cursor_for_shape(uint32_t shape) {
+    static __strong NSCursor *northwest_southeast = nil;
+    static __strong NSCursor *northeast_southwest = nil;
+    switch (shape) {
+    case NK_CURSOR_ARROW:
+        return [NSCursor arrowCursor];
+    case NK_CURSOR_IBEAM:
+        return [NSCursor IBeamCursor];
+    case NK_CURSOR_CROSSHAIR:
+        return [NSCursor crosshairCursor];
+    case NK_CURSOR_HAND:
+        return [NSCursor pointingHandCursor];
+    case NK_CURSOR_HORIZONTAL_RESIZE:
+        return [NSCursor resizeLeftRightCursor];
+    case NK_CURSOR_VERTICAL_RESIZE:
+        return [NSCursor resizeUpDownCursor];
+    case NK_CURSOR_NWSE_RESIZE:
+        if (!northwest_southeast)
+            northwest_southeast = diagonal_resize_cursor(true);
+        return northwest_southeast;
+    case NK_CURSOR_NESW_RESIZE:
+        if (!northeast_southwest)
+            northeast_southwest = diagonal_resize_cursor(false);
+        return northeast_southwest;
+    case NK_CURSOR_MOVE:
+        return [NSCursor closedHandCursor];
+    case NK_CURSOR_NOT_ALLOWED:
+        return [NSCursor operationNotAllowedCursor];
+    default:
+        return nil;
+    }
+}
+
+void apply_pointer_cursor(MacWindowResource &resource, NSPoint point) {
+    if (resource.cursor_mode != NK_CURSOR_MODE_NORMAL ||
+        (resource.window.styleMask & NSWindowStyleMaskTitled)) {
+        apply_cursor(resource);
+        return;
+    }
+    const auto kind = decoration_region_at(resource.decoration_regions, point.x, point.y);
+    auto shape = decoration_cursor_shape_at(resource.decoration_regions, point.x, point.y);
+    if (shape == 0)
+        shape = default_decoration_cursor_shape(kind);
+    if (NSCursor *cursor = cursor_for_shape(shape)) {
+        set_cursor_hidden(resource, false);
+        [cursor set];
+    } else {
+        apply_cursor(resource);
+    }
+}
+
 void release_cursor_capture(MacWindowResource &resource) {
     if (resource.pointer_captured) {
         CGAssociateMouseAndMouseCursorPosition(true);
@@ -2616,7 +2699,10 @@ void emit_window_state(MacWindowResource &resource) noexcept {
     if (resource) {
         nk::core::callback_boundary([&] {
             resource->hovered = true;
-            apply_cursor(*resource);
+            const NSPoint point = local_pointer_position(self, event);
+            resource->pointer_x = point.x;
+            resource->pointer_y = point.y;
+            apply_pointer_cursor(*resource, point);
             emit_pointer_enter(*resource, true);
         });
     }
@@ -2642,6 +2728,7 @@ void emit_window_state(MacWindowResource &resource) noexcept {
             const NSPoint point = local_pointer_position(self, event);
             resource->pointer_x = point.x;
             resource->pointer_y = point.y;
+            apply_pointer_cursor(*resource, point);
         }
         const nk_pointer_move_event payload{resource->pointer_x, resource->pointer_y};
         queue_input_event(NK_EVENT_POINTER_MOVE, resource->handle, bytes_of(payload));
@@ -4222,7 +4309,7 @@ nk_result NK_CALL nk_window_set_cursor(nk_handle window_handle, nk_handle cursor
     if (cursor_handle != NK_INVALID_HANDLE && !selected)
         return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale cursor handle");
     resource->cursor = std::move(selected);
-    apply_cursor(*resource);
+    apply_pointer_cursor(*resource, NSMakePoint(resource->pointer_x, resource->pointer_y));
     return NK_OK;
 }
 
@@ -4682,13 +4769,16 @@ nk_result NK_CALL nk_window_set_decoration_regions(nk_handle h,
             if (!std::isfinite(region.x) || !std::isfinite(region.y) ||
                 !std::isfinite(region.width) || !std::isfinite(region.height) || region.x < 0.0f ||
                 region.y < 0.0f || region.width <= 0.0f || region.height <= 0.0f ||
-                region.kind > NK_WINDOW_DECORATION_RESIZE_SOUTHEAST)
+                region.kind > NK_WINDOW_DECORATION_RESIZE_SOUTHEAST ||
+                region.cursor_shape > NK_CURSOR_NOT_ALLOWED)
                 return fail(NK_ERROR_INVALID_ARGUMENT, "invalid decoration region");
         }
         if (region_count == 0)
             w->decoration_regions.clear();
         else
             w->decoration_regions.assign(regions, regions + region_count);
+        if (w->hovered)
+            apply_pointer_cursor(*w, NSMakePoint(w->pointer_x, w->pointer_y));
         return NK_OK;
     } catch (const std::bad_alloc &) {
         return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while setting decoration regions");
