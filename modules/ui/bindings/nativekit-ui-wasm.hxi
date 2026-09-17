@@ -3,7 +3,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	/**
 	 * Current UI ABI version.
 	 */
-	const NKUI_API_VERSION = 6;
+	const NKUI_API_VERSION = 7;
 	const NKUI_COMMAND_VERSION = 1;
 	const NKUI_GRADIENT_MAX_STOPS = 8;
 	const NKUI_LAYOUT_API_VERSION = 17;
@@ -199,6 +199,13 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		 * Font intended to provide emoji glyphs.
 		 */
 		NKUI_FONT_FAMILY_EMOJI = 1;
+	}
+	/**
+	 * Sampling filter used when an image is scaled.
+	 */
+	enum nkui_image_filter : u32 {
+		NKUI_IMAGE_FILTER_LINEAR = 1;
+		NKUI_IMAGE_FILTER_NEAREST = 2;
 	}
 	/**
 	 * Pixel format accepted by nkui_image_create().
@@ -524,6 +531,14 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	 * positive, and on NKUI_OK the image resource is written to `out_image`.
 	 */
 	extern fn nkui_image_create(width: u32, height: u32, format: nkui_image_format, pixels: ptr<const<u8>> @in_array("pixel_bytes"), pixel_bytes: u32, out_image: ptr<nkui_resource> @out) -> nkui_result;
+	/**
+	 * Creates an image with an explicit scaling filter.
+	 */
+	extern fn nkui_image_create_filtered(width: u32, height: u32, format: nkui_image_format, pixels: ptr<const<u8>> @in_array("pixel_bytes"), pixel_bytes: u32, filter: nkui_image_filter, out_image: ptr<nkui_resource> @out) -> nkui_result;
+	/**
+	 * Decodes a PNG, JPEG, BMP, TGA, GIF, PSD, HDR, PIC, or PNM file as RGBA8.
+	 */
+	extern fn nkui_image_load_file(path: utf8, filter: nkui_image_filter, out_width: ptr<u32> @out, out_height: ptr<u32> @out, out_image: ptr<nkui_resource> @out) -> nkui_result;
 	/**
 	 * Clears all custom-paint display lists attached to the session.
 	 */
