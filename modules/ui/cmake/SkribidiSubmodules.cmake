@@ -58,10 +58,10 @@ if(NKUI_ENABLE_HARFBUZZ_SIZE_OPTIMIZATION AND
    CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
     target_compile_options(harfbuzz PRIVATE $<$<CONFIG:Release>:-Os>)
 endif()
-if(APPLE AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang")
+if(APPLE)
     # The pinned CoreText backend uses an int format for unsigned diagnostic
     # values; keep this third-party warning out of NativeKit builds.
-    target_compile_options(harfbuzz PRIVATE -Wno-format)
+    target_compile_options(harfbuzz PRIVATE -Wno-format -Wno-error=format)
 endif()
 set_property(TARGET harfbuzz PROPERTY INTERFACE_INCLUDE_DIRECTORIES
     "$<BUILD_INTERFACE:${NK_VENDOR_DIR}/harfbuzz/src>"
