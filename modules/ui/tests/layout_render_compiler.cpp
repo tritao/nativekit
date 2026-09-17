@@ -326,8 +326,8 @@ int main() {
     RenderCommand custom_command{RenderCommandKind::Path, custom_path};
     custom_command.transform = {2.0f, 0.0f, 0.0f, 2.0f, 10.0f, 20.0f};
     custom_command.has_scissor = true;
-    custom_command.scissor_x = 1.0f;
-    custom_command.scissor_y = 2.0f;
+    custom_command.scissor_x = 16.0f;
+    custom_command.scissor_y = 12.0f;
     custom_command.scissor_width = 3.0f;
     custom_command.scissor_height = 4.0f;
     custom_plan.passes.front().commands.push_back(custom_command);
@@ -345,8 +345,8 @@ int main() {
         (custom_position - 1)->kind != RenderCommandKind::Path ||
         custom_position->resource.value != custom_path.value ||
         (custom_position + 1)->kind != RenderCommandKind::GlyphBatch ||
-        custom_position->transform != std::array<float, 6>{3.0f, 0.0f, 0.0f, 3.0f, 15.0f, 30.0f} ||
-        custom_position->scissor_x != 1.5f || custom_position->scissor_y != 3.0f ||
+        custom_position->transform != std::array<float, 6>{3.0f, 0.0f, 0.0f, 3.0f, 30.0f, 39.0f} ||
+        custom_position->scissor_x != 39.0f || custom_position->scissor_y != 27.0f ||
         custom_position->scissor_width != 4.5f || custom_position->scissor_height != 6.0f)
         return 22;
 
@@ -389,9 +389,9 @@ int main() {
         bounded_pass.target_descriptor.origin_x != 12.0f ||
         bounded_pass.target_descriptor.origin_y != 9.0f ||
         bounded_pass.commands.front().transform != std::array<float, 6>{1.5f, 0.0f, 0.0f, 1.5f,
-                                                                          15.0f, 36.0f} ||
-        bounded_pass.commands.front().scissor_x != -9.0f ||
-        bounded_pass.commands.front().scissor_y != -1.5f ||
+                                                                          30.0f, 45.0f} ||
+        bounded_pass.commands.front().scissor_x != 6.0f ||
+        bounded_pass.commands.front().scissor_y != 7.5f ||
         bounded_pass.commands.front().scissor_width != 9.0f ||
         bounded_pass.commands.front().scissor_height != 10.5f ||
         bounded_composite == bounded_frame.plan().passes.front().commands.end() ||

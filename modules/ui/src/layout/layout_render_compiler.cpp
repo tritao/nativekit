@@ -184,55 +184,6 @@ std::array<float, 6> device_transform(const LayoutTransform &transform, float pi
             transform.d * pixel_scale, transform.tx * pixel_scale, transform.ty * pixel_scale};
 }
 
-std::array<float, 6> device_transform(const std::array<float, 6> &transform, float pixel_scale) {
-    auto result = transform;
-    for (float &value : result)
-        value *= pixel_scale;
-    return result;
-}
-
-bool scale_effect_for_device(EffectDescriptor &effect, float pixel_scale) {
-    if (effect.kind != EffectKind::Blur && effect.kind != EffectKind::DropShadow)
-        return true;
-    const double sigma = static_cast<double>(effect.color_matrix[0]) * pixel_scale;
-    if (!std::isfinite(sigma) || sigma > std::numeric_limits<float>::max())
-        return false;
-    effect.color_matrix[0] = static_cast<float>(sigma);
-    if (effect.kind == EffectKind::DropShadow) {
-        const double offset_x = static_cast<double>(effect.color_matrix[2]) * pixel_scale;
-        const double offset_y = static_cast<double>(effect.color_matrix[3]) * pixel_scale;
-        if (!std::isfinite(offset_x) || !std::isfinite(offset_y) ||
-            std::abs(offset_x) > std::numeric_limits<float>::max() ||
-            std::abs(offset_y) > std::numeric_limits<float>::max())
-            return false;
-        effect.color_matrix[2] = static_cast<float>(offset_x);
-        effect.color_matrix[3] = static_cast<float>(offset_y);
-    }
-    return true;
-}
-
-bool scale_mask_for_device(MaskDescriptor &mask, float pixel_scale) {
-    if (mask.kind != MaskKind::RoundedRect && mask.kind != MaskKind::Circle)
-        return true;
-    const double radius = static_cast<double>(mask.values[0]) * pixel_scale;
-    if (!std::isfinite(radius) || radius > std::numeric_limits<float>::max())
-        return false;
-    mask.values[0] = static_cast<float>(radius);
-    return true;
-}
-
-bool scale_input_rect_for_device(RenderPass &pass, float pixel_scale) {
-    if (!pass.has_input_rect)
-        return true;
-    for (float &value : pass.input_rect) {
-        const double scaled = static_cast<double>(value) * pixel_scale;
-        if (!std::isfinite(scaled) || scaled > std::numeric_limits<float>::max())
-            return false;
-        value = static_cast<float>(scaled);
-    }
-    return true;
-}
-
 LayoutRect transform_bounds(LayoutRect rect, const LayoutTransform &transform) {
     const auto x = [&](float px, float py) {
         return transform.a * px + transform.c * py + transform.tx;
@@ -251,16 +202,6 @@ LayoutRect transform_bounds(LayoutRect rect, const LayoutTransform &transform) {
     const float left = std::min({x0, x1, x2, x3});
     const float top = std::min({y0, y1, y2, y3});
     return {left, top, std::max({x0, x1, x2, x3}) - left, std::max({y0, y1, y2, y3}) - top};
-}
-
-std::array<float, 6> compose_transform(const LayoutTransform &outer,
-                                       const std::array<float, 6> &inner) {
-    return {outer.a * inner[0] + outer.c * inner[1],
-            outer.b * inner[0] + outer.d * inner[1],
-            outer.a * inner[2] + outer.c * inner[3],
-            outer.b * inner[2] + outer.d * inner[3],
-            outer.a * inner[4] + outer.c * inner[5] + outer.tx,
-            outer.b * inner[4] + outer.d * inner[5] + outer.ty};
 }
 
 } // namespace
@@ -342,8 +283,6 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
         auto &commands = out.plan_.passes.front().commands;
         const auto append_custom_plan = [&](const RenderPlan &custom_plan,
                                             std::size_t primitive_index) -> bool {
-            out.plan_.isolated_layers += custom_plan.isolated_layers;
-            out.plan_.bounded_layers += custom_plan.bounded_layers;
             const auto &primitive = snapshot.primitives[primitive_index];
             std::unordered_map<uint32_t, ResourceId> remapped_targets;
             for (const auto &pass : custom_plan.passes) {
@@ -357,110 +296,28 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                     make_resource_id(ResourceKind::RenderTarget, 1,
                                      static_cast<uint16_t>(transient_target_slot++)));
             }
-            const auto remap = [&remapped_targets](ResourceId id) {
-                const auto found = remapped_targets.find(id.value);
-                return found == remapped_targets.end() ? id : found->second;
-            };
-            for (const auto &source_pass : custom_plan.passes) {
-                if (!is_resource_id(source_pass.target, ResourceKind::RenderTarget))
-                    return fail(error, primitive_index, "custom render target is invalid");
-                if (source_pass.target.value == main_target.value) {
-                    for (auto command : source_pass.commands) {
-                        command.resource = remap(command.resource);
-                        if (command.kind == RenderCommandKind::CompositeTarget)
-                            command.transform = compose_transform(primitive.transform,
-                                                                  command.transform);
-                        command.transform = device_transform(command.transform, pixel_scale);
-                        command.scissor_x *= pixel_scale;
-                        command.scissor_y *= pixel_scale;
-                        command.scissor_width *= pixel_scale;
-                        command.scissor_height *= pixel_scale;
-                        if (command.kind == RenderCommandKind::CompositeTarget &&
-                            (command.width <= 0.0f || command.height <= 0.0f)) {
-                            command.x *= pixel_scale;
-                            command.y *= pixel_scale;
-                            command.width *= pixel_scale;
-                            command.height *= pixel_scale;
-                            // Zero-sized composites use the target's physical
-                            // extent, so their default transform remains identity.
-                            command.transform = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
-                        }
-                        command.custom_payload = true;
-                        commands.push_back(std::move(command));
-                    }
-                    continue;
-                }
-                RenderPass pass = source_pass;
-                pass.target = remap(pass.target);
-                pass.input_target = remap(pass.input_target);
-                float target_origin_delta_x = 0.0f;
-                float target_origin_delta_y = 0.0f;
-                if (pass.target_descriptor.logical_width > 0.0f ||
-                    pass.target_descriptor.logical_height > 0.0f) {
-                    if (!std::isfinite(pass.target_descriptor.logical_width) ||
-                        !std::isfinite(pass.target_descriptor.logical_height) ||
-                        pass.target_descriptor.logical_width <= 0.0f ||
-                        pass.target_descriptor.logical_height <= 0.0f)
-                        return fail(error, primitive_index,
-                                    "custom render-target bounds are invalid");
-                    const LayoutRect logical_bounds{pass.target_descriptor.origin_x,
-                                                    pass.target_descriptor.origin_y,
-                                                    pass.target_descriptor.logical_width,
-                                                    pass.target_descriptor.logical_height};
-                    const LayoutRect transformed_bounds =
-                        transform_bounds(logical_bounds, primitive.transform);
-                    if (!finite_rect(transformed_bounds))
-                        return fail(error, primitive_index,
-                                    "custom render-target transform is invalid");
-                    target_origin_delta_x = transformed_bounds.x - pass.target_descriptor.origin_x;
-                    target_origin_delta_y = transformed_bounds.y - pass.target_descriptor.origin_y;
-                    pass.target_descriptor.origin_x = transformed_bounds.x;
-                    pass.target_descriptor.origin_y = transformed_bounds.y;
-                    pass.target_descriptor.logical_width = transformed_bounds.width;
-                    pass.target_descriptor.logical_height = transformed_bounds.height;
-                    const double width = static_cast<double>(transformed_bounds.width) * pixel_scale;
-                    const double height =
-                        static_cast<double>(transformed_bounds.height) * pixel_scale;
-                    if (!std::isfinite(width) || !std::isfinite(height) ||
-                        width > std::numeric_limits<int>::max() ||
-                        height > std::numeric_limits<int>::max())
-                        return fail(error, primitive_index,
-                                    "custom render-target bounds are too large");
-                    pass.target_descriptor.width =
-                        std::max(1, static_cast<int>(std::ceil(width)));
-                    pass.target_descriptor.height =
-                        std::max(1, static_cast<int>(std::ceil(height)));
-                }
-                if (pass.kind == RenderPassKind::Effect &&
-                    !scale_effect_for_device(pass.effect, pixel_scale))
-                    return fail(error, primitive_index, "custom effect parameters are too large");
-                if (pass.kind == RenderPassKind::Effect &&
-                    !scale_input_rect_for_device(pass, pixel_scale))
-                    return fail(error, primitive_index,
-                                "custom backdrop source rectangle is too large");
-                if (pass.kind == RenderPassKind::Mask &&
-                    !scale_mask_for_device(pass.mask, pixel_scale))
-                    return fail(error, primitive_index, "custom mask parameters are too large");
-                for (auto &command : pass.commands) {
-                    command.resource = remap(command.resource);
-                    command.transform[4] -= target_origin_delta_x;
-                    command.transform[5] -= target_origin_delta_y;
-                    if (command.has_scissor) {
-                        command.scissor_x -= target_origin_delta_x;
-                        command.scissor_y -= target_origin_delta_y;
-                    }
-                    command.transform = device_transform(command.transform, pixel_scale);
-                    command.scissor_x *= pixel_scale;
-                    command.scissor_y *= pixel_scale;
-                    command.scissor_width *= pixel_scale;
-                    command.scissor_height *= pixel_scale;
-                    command.custom_payload = true;
-                }
-                out.plan_.passes.push_back(std::move(pass));
+            std::array<float, 6> placement{primitive.transform.a, primitive.transform.b,
+                                           primitive.transform.c, primitive.transform.d,
+                                           primitive.transform.tx, primitive.transform.ty};
+            std::array<float, 4> clip{};
+            const bool has_clip = !clips.empty();
+            if (has_clip) {
+                clip = {clips.back().x, clips.back().y, clips.back().width,
+                        clips.back().height};
             }
-            for (const auto &dependency : custom_plan.dependencies)
-                out.plan_.dependencies.push_back(
-                    {remap(dependency.producer), remap(dependency.consumer)});
+            RenderPlanEmbedOptions options;
+            options.source_main_target = main_target;
+            options.destination_main_target = main_target;
+            options.placement = placement;
+            options.pixel_scale = pixel_scale;
+            options.target_remap = &remapped_targets;
+            options.has_clip = has_clip;
+            options.clip = clip;
+            RenderPlanEmbedError embed_error;
+            if (!append_embedded_render_plan(custom_plan, options, out.plan_, &embed_error))
+                return fail(error, primitive_index,
+                            embed_error.message ? embed_error.message
+                                                 : "custom render-plan embedding failed");
             return true;
         };
         for (std::size_t index = 0; index < snapshot.primitives.size(); ++index) {

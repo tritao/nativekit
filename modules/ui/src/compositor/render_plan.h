@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cstdint>
+#include <unordered_map>
 #include <vector>
 
 namespace nkui {
@@ -109,6 +110,38 @@ struct RenderPlanScheduleError {
     uint32_t pass_index = 0;
     const char *message = nullptr;
 };
+
+/** Placement and resource mapping used when a plan is embedded in another plan. */
+struct RenderPlanEmbedOptions {
+    ResourceId source_main_target{};
+    ResourceId destination_main_target{};
+    std::array<float, 6> placement{1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+    float pixel_scale = 1.0f;
+    const std::unordered_map<uint32_t, ResourceId> *target_remap = nullptr;
+    bool has_clip = false;
+    std::array<float, 4> clip{};
+};
+
+struct RenderPlanEmbedError {
+    const char *message = nullptr;
+};
+
+/**
+ * Appends a local custom-paint plan to a destination plan.
+ *
+ * Custom draw commands in the source main pass are placed with `placement`.
+ * Bounded intermediate targets retain their local drawing coordinates while
+ * their logical origin is moved into the destination coordinate space. This
+ * keeps rasterization local and makes the final composite responsible for the
+ * parent transform.
+ */
+bool append_embedded_render_plan(const RenderPlan &source,
+                                 const RenderPlanEmbedOptions &options,
+                                 RenderPlan &destination,
+                                 RenderPlanEmbedError *error = nullptr);
+
+/** Scales effect, mask, and backdrop-region parameters for a device pixel ratio. */
+bool scale_render_plan_parameters(RenderPass &pass, float pixel_scale);
 
 /**
  * Computes a stable execution order for a render plan without changing its

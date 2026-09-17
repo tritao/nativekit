@@ -1,7 +1,9 @@
 #include "compositor/compositor.h"
 
+#include <array>
 #include <limits>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 using namespace nkui;
@@ -83,6 +85,49 @@ int main() {
         bounded_composite.opacity != 1.0f ||
         bounded_composite.composite != CompositeMode::SourceOver)
         return 19;
+
+    const auto embedded_target = make_resource_id(ResourceKind::RenderTarget, 1, 31);
+    const auto embedded_remapped_target = make_resource_id(ResourceKind::RenderTarget, 1, 32);
+    RenderPlan embedded_source;
+    embedded_source.passes.push_back({main_target, {}, false, {}});
+    RenderTargetDescriptor embedded_descriptor;
+    embedded_descriptor.logical_width = 80.0f;
+    embedded_descriptor.logical_height = 40.0f;
+    embedded_descriptor.origin_x = 10.0f;
+    embedded_descriptor.origin_y = 20.0f;
+    embedded_source.passes.push_back({embedded_target, embedded_descriptor, false, {}});
+    embedded_source.passes.back().commands.push_back(
+        {RenderCommandKind::Path, path});
+    embedded_source.passes.front().commands.push_back(
+        {RenderCommandKind::CompositeTarget, embedded_target, 10.0f, 20.0f, 80.0f, 40.0f});
+    embedded_source.dependencies.push_back({embedded_target, main_target});
+    RenderPlan embedded_destination;
+    embedded_destination.passes.push_back({main_target, {}, false, {}});
+    const std::unordered_map<uint32_t, ResourceId> embedded_remap{{embedded_target.value,
+                                                                     embedded_remapped_target}};
+    RenderPlanEmbedOptions embed_options;
+    embed_options.source_main_target = main_target;
+    embed_options.destination_main_target = main_target;
+    embed_options.placement = {0.0f, 1.0f, -1.0f, 0.0f, 100.0f, 50.0f};
+    embed_options.target_remap = &embedded_remap;
+    RenderPlanEmbedError embed_error;
+    if (!append_embedded_render_plan(embedded_source, embed_options, embedded_destination,
+                                     &embed_error) ||
+        embedded_destination.passes.size() != 2 ||
+        embedded_destination.passes[1].target.value != embedded_remapped_target.value ||
+        embedded_destination.passes[1].target_descriptor.origin_x != 40.0f ||
+        embedded_destination.passes[1].target_descriptor.origin_y != 60.0f ||
+        embedded_destination.passes[1].target_descriptor.logical_width != 80.0f ||
+        embedded_destination.passes[1].target_descriptor.logical_height != 40.0f ||
+        embedded_destination.passes[1].target_descriptor.width != 80 ||
+        embedded_destination.passes[1].target_descriptor.height != 40 ||
+        embedded_destination.passes[1].commands.front().transform !=
+            std::array<float, 6>{1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f} ||
+        embedded_destination.passes.front().commands.front().transform !=
+            std::array<float, 6>{0.0f, 1.0f, -1.0f, 0.0f, 100.0f, 50.0f} ||
+        embedded_destination.passes.front().commands.front().resource.value !=
+            embedded_remapped_target.value)
+        return 40;
 
     DisplayList color_effect;
     EffectDescriptor effect{};

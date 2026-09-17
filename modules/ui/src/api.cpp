@@ -813,48 +813,6 @@ std::array<float, 6> device_transform(const std::array<float, 6> &transform, flo
     return result;
 }
 
-bool scale_effect_for_device(nkui::EffectDescriptor &effect, float pixel_scale) {
-    if (effect.kind != nkui::EffectKind::Blur && effect.kind != nkui::EffectKind::DropShadow)
-        return true;
-    const double sigma = static_cast<double>(effect.color_matrix[0]) * pixel_scale;
-    if (!std::isfinite(sigma) || sigma > std::numeric_limits<float>::max())
-        return false;
-    effect.color_matrix[0] = static_cast<float>(sigma);
-    if (effect.kind == nkui::EffectKind::DropShadow) {
-        const double offset_x = static_cast<double>(effect.color_matrix[2]) * pixel_scale;
-        const double offset_y = static_cast<double>(effect.color_matrix[3]) * pixel_scale;
-        if (!std::isfinite(offset_x) || !std::isfinite(offset_y) ||
-            std::abs(offset_x) > std::numeric_limits<float>::max() ||
-            std::abs(offset_y) > std::numeric_limits<float>::max())
-            return false;
-        effect.color_matrix[2] = static_cast<float>(offset_x);
-        effect.color_matrix[3] = static_cast<float>(offset_y);
-    }
-    return true;
-}
-
-bool scale_mask_for_device(nkui::MaskDescriptor &mask, float pixel_scale) {
-    if (mask.kind != nkui::MaskKind::RoundedRect && mask.kind != nkui::MaskKind::Circle)
-        return true;
-    const double radius = static_cast<double>(mask.values[0]) * pixel_scale;
-    if (!std::isfinite(radius) || radius > std::numeric_limits<float>::max())
-        return false;
-    mask.values[0] = static_cast<float>(radius);
-    return true;
-}
-
-bool scale_input_rect_for_device(nkui::RenderPass &pass, float pixel_scale) {
-    if (!pass.has_input_rect)
-        return true;
-    for (float &value : pass.input_rect) {
-        const double scaled = static_cast<double>(value) * pixel_scale;
-        if (!std::isfinite(scaled) || scaled > std::numeric_limits<float>::max())
-            return false;
-        value = static_cast<float>(scaled);
-    }
-    return true;
-}
-
 // Reserve the first transient slot for the offscreen frame root. Compositor and
 // layout compilation start their per-frame allocations after it when this root
 // is active, so backdrop frames do not grow the target pool by one permanent ID.
@@ -2329,14 +2287,7 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
             pass.target_descriptor.width = std::max(1, static_cast<int>(std::ceil(width)));
             pass.target_descriptor.height = std::max(1, static_cast<int>(std::ceil(height)));
         }
-        if (pass.kind == nkui::RenderPassKind::Effect &&
-            !scale_effect_for_device(pass.effect, frame_info->pixel_scale))
-            return NKUI_ERROR_INVALID_ARGUMENT;
-        if (pass.kind == nkui::RenderPassKind::Effect &&
-            !scale_input_rect_for_device(pass, frame_info->pixel_scale))
-            return NKUI_ERROR_INVALID_ARGUMENT;
-        if (pass.kind == nkui::RenderPassKind::Mask &&
-            !scale_mask_for_device(pass.mask, frame_info->pixel_scale))
+        if (!nkui::scale_render_plan_parameters(pass, frame_info->pixel_scale))
             return NKUI_ERROR_INVALID_ARGUMENT;
     }
     add_effect_cache_pixel_scale(plan, frame_info->pixel_scale);
