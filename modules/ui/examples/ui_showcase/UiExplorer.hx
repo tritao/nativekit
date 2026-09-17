@@ -11,8 +11,10 @@ import LayoutStyle;
 import NativeKit.Handle;
 import NativeKit.Capabilities;
 import NativeKit.SurfaceHandle;
+import NativeKit.WebviewOptions;
 import NativeKitEvents;
 import NativeKitSurface;
+import NativeKitWebView;
 import Renderer;
 import Surface;
 import nativekit.ui.core.NativeInputAdapter;
@@ -54,6 +56,7 @@ import testing.ExplorerFocusSequence;
 import testing.ExplorerVisualCases;
 import components.PageHeader;
 import components.ShowcaseKit;
+import components.WebViewSlot;
 import pages.ListsPage;
 
 /** Interactive showcase for the Haxeon UI framework. */
@@ -65,6 +68,7 @@ import pages.ListsPage;
 @:allow(pages.OverlaysPage)
 @:allow(pages.OverviewPage)
 @:allow(pages.TextPage)
+@:allow(pages.WebViewPage)
 @:allow(shell.CatalogSidebar)
 @:allow(shell.ExplorerShell)
 @:allow(shell.TopBar)
@@ -101,6 +105,15 @@ class UiExplorer {
 	final demoPixelLinear:Image;
 	final demoPixelNearest:Image;
 	var nativeSurface:Null<NativeKitSurface>;
+	var nativeWindow:Null<Handle>;
+	var webView:Null<NativeKitWebView>;
+	var webViewAttempted:Bool = false;
+	var webViewSupported:Bool = false;
+	var webViewVisible:Bool = false;
+	var webViewX:Int = -1;
+	var webViewY:Int = -1;
+	var webViewWidth:Int = -1;
+	var webViewHeight:Int = -1;
 	var width:Float;
 	var height:Float;
 	var framebufferWidth:Int;
@@ -152,6 +165,8 @@ class UiExplorer {
 
 	/** Routes platform input through the framework's standard NativeKit adapter. */
 	public function attachInput(events:NativeKitEvents, window:Handle):NativeInputAdapter {
+		nativeWindow = window;
+		webViewSupported = supportsCapability(Capabilities.webview());
 		var accessibilitySource = nativeSurface == null || !supportsNativeAccessibility() ? window :
 			new Handle(nativeSurface.nativeHandle().rawValue());
 		var input = new NativeInputAdapter(context, window, accessibilitySource);
@@ -160,8 +175,10 @@ class UiExplorer {
 	}
 
 	function supportsNativeAccessibility():Bool
-		return haxe.Int64.compare(
-			haxe.Int64.and(NativeKit.nk_get_capabilities(), Capabilities.accessibility()),
+		return supportsCapability(Capabilities.accessibility());
+
+	function supportsCapability(capability:haxe.Int64):Bool
+		return haxe.Int64.compare(haxe.Int64.and(NativeKit.nk_get_capabilities(), capability),
 			haxe.Int64.ofInt(0)) != 0;
 
 	public function setViewport(width:Float, height:Float, framebufferWidth:Int,
@@ -209,6 +226,7 @@ class UiExplorer {
 		}
 		ExplorerFocusSequence.applyAfterSubmit(this);
 		applySmokeSelectState();
+		syncWebView();
 		diagnosticStage = 5;
 		try {
 			context.render(renderer, Surface.fromNativeHandle(surface), frameInfo);
@@ -221,6 +239,10 @@ class UiExplorer {
 	}
 
 	public function dispose():Void {
+		if (webView != null) {
+			webView.dispose();
+			webView = null;
+		}
 		context.dispose();
 		renderer.dispose();
 		demoNineSliceImage.dispose();
@@ -235,6 +257,97 @@ class UiExplorer {
 		}
 		fonts.dispose();
 	}
+
+	function webViewAvailable():Bool
+		return webViewSupported;
+
+	function reloadWebView():Void {
+		ensureWebView();
+		if (webView != null)
+			webView.setHtml(webViewDemoHtml());
+	}
+
+	function ensureWebView():Void {
+		if (webView != null || webViewAttempted || !webViewSupported || nativeWindow == null)
+			return;
+		webViewAttempted = true;
+		try {
+			var options = new WebviewOptions();
+			options.set_x(-10000);
+			options.set_y(-10000);
+			options.set_width(1);
+			options.set_height(1);
+			webView = NativeKitWebView.create(nativeWindow, options);
+			webView.show(false);
+			webView.setHtml(webViewDemoHtml());
+		} catch (_:Dynamic) {
+			webView = null;
+		}
+	}
+
+	function syncWebView():Void {
+		var shouldShow = state.selectedPage == "webview" && !state.inspector.open &&
+			!state.overlays.dialogOpen && !state.overlays.popupOpen && !state.overlays.menuOpen;
+		if (!shouldShow) {
+			setWebViewVisible(false);
+			return;
+		}
+		ensureWebView();
+		if (webView == null)
+			return;
+		for (record in context.inspect()) {
+			if (record.label != WebViewSlot.SemanticLabel || !record.visible)
+				continue;
+			var left = Math.max(record.bounds.x, record.clipBounds.x);
+			var top = Math.max(record.bounds.y, record.clipBounds.y);
+			var right = Math.min(record.bounds.x + record.bounds.width,
+				record.clipBounds.x + record.clipBounds.width);
+			var bottom = Math.min(record.bounds.y + record.bounds.height,
+				record.clipBounds.y + record.clipBounds.height);
+			var viewWidth = Std.int(Math.max(0.0, right - left));
+			var viewHeight = Std.int(Math.max(0.0, bottom - top));
+			var fullyVisible = Math.abs(left - record.bounds.x) < 0.5 &&
+				Math.abs(top - record.bounds.y) < 0.5 &&
+				Math.abs(right - record.bounds.x - record.bounds.width) < 0.5 &&
+				Math.abs(bottom - record.bounds.y - record.bounds.height) < 0.5;
+			if (!fullyVisible || viewWidth < 2 || viewHeight < 2) {
+				setWebViewVisible(false);
+				return;
+			}
+			var viewX = Std.int(left);
+			var viewY = Std.int(top);
+			if (viewX != webViewX || viewY != webViewY || viewWidth != webViewWidth ||
+					viewHeight != webViewHeight) {
+				webView.setBounds(viewX, viewY, viewWidth, viewHeight);
+				webViewX = viewX;
+				webViewY = viewY;
+				webViewWidth = viewWidth;
+				webViewHeight = viewHeight;
+			}
+			setWebViewVisible(true);
+			return;
+		}
+		setWebViewVisible(false);
+	}
+
+	function setWebViewVisible(visible:Bool):Void {
+		if (webView == null || webViewVisible == visible)
+			return;
+		webView.show(visible);
+		webViewVisible = visible;
+	}
+
+	static function webViewDemoHtml():String
+		return '<!doctype html><html><head><meta charset="utf-8"><style>
+			body{margin:0;background:#101827;color:#e9f1ff;font:16px system-ui;display:grid;place-items:center;height:100vh}
+			main{max-width:620px;padding:36px} small{color:#67c7ff;text-transform:uppercase;letter-spacing:.12em}
+			h1{font-size:38px;margin:10px 0} p{color:#aebdd2;line-height:1.6}
+			button{border:0;border-radius:7px;background:#2f6dcc;color:white;padding:11px 16px;font:inherit}
+			#count{display:inline-block;min-width:2ch;font-weight:700}
+		</style></head><body><main><small>Native child view</small><h1>Web content inside Haxeon</h1>
+		<p>This HTML is rendered by the platform WebView while Haxeon controls the surrounding layout and lifecycle.</p>
+		<button onclick="document.getElementById(\'count\').textContent=+document.getElementById(\'count\').textContent+1">
+		Interactive count: <span id="count">0</span></button></main></body></html>';
 
 	static function createDemoImage(width:Int, height:Int):Image {
 		var pixels = Bytes.alloc(width * height * 4);

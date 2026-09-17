@@ -6,6 +6,7 @@ import pages.ListsPage;
 import pages.OverlaysPage;
 import pages.OverviewPage;
 import pages.TextPage;
+import pages.WebViewPage;
 
 /** Canonical inventory for the Haxeon UI Explorer's pages and navigation. */
 class ExplorerCatalog {
@@ -31,6 +32,9 @@ class ExplorerCatalog {
 		new ExplorerPage("gestures", "Gestures & Motion", "components", "Gesture arbitration and animation",
 			["tap", "double tap", "long press", "drag", "tween", "spring", "animation"],
 			function(explorer, items) { GesturesPage.build(explorer, items); }),
+		new ExplorerPage("webview", "WebView", "components", "Embedded platform web content",
+			["web", "browser", "html", "javascript", "native view"],
+			function(explorer, items) { WebViewPage.build(explorer, items); }),
 		new ExplorerPage("graphics-paths", "Paths & Paint", "graphics", "Vector geometry, strokes and compositing",
 			["bezier", "path", "stroke", "join", "paint", "alpha", "blend"],
 			function(explorer, items) { GraphicsPage.buildPaths(explorer, items); }),
