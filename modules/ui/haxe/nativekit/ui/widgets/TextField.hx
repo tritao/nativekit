@@ -157,24 +157,31 @@ class TextField implements View {
 					paintSelection(canvas, editor, context.textInput.isOwner(id), context.theme);
 			});
 			editorContent.add(selectionNode);
-			var textNode = new RenderNode(context.id("text"), LayoutVisualKind.Text, textNodeStyle);
 			var showsPlaceholder = editor.layoutText().length == 0 && placeholder != null &&
 				placeholder.length > 0;
-			textNode.layout.text = showsPlaceholder ? placeholder : editor.layoutText();
-		var textNodeTextStyle = new TextStyle(editor.textStyle.fontSize,
-			editor.textStyle.font, editor.textStyle.letterSpacing);
-		var fontSource = computed.source(StyleProperty.FontSize);
-		var letterSource = computed.source(StyleProperty.LetterSpacing);
-		if (textStyle == null && fontSource != null && fontSource.layer != "framework")
-			textNodeTextStyle.fontSize = computed.get(StyleProperty.FontSize);
-		if (textStyle == null && letterSource != null && letterSource.layer != "framework")
-			textNodeTextStyle.letterSpacing = computed.get(StyleProperty.LetterSpacing);
-		var colorSource = computed.source(StyleProperty.TextColor);
-		var textNodeColor = showsPlaceholder ? context.theme.mutedText :
-			(colorSource != null && colorSource.layer != "framework"
-				? computed.get(StyleProperty.TextColor) : resolved.textColor);
-		textNode.applyTextStyle(new ResolvedTextStyle(textNodeTextStyle,
-			editor.paragraphStyle, textNodeColor));
+			var textNode = new RenderNode(context.id("text"),
+				showsPlaceholder ? LayoutVisualKind.Text : LayoutVisualKind.Custom, textNodeStyle);
+			if (showsPlaceholder)
+				textNode.layout.text = placeholder;
+			var textNodeTextStyle = new TextStyle(editor.textStyle.fontSize,
+				editor.textStyle.font, editor.textStyle.letterSpacing);
+			var fontSource = computed.source(StyleProperty.FontSize);
+			var letterSource = computed.source(StyleProperty.LetterSpacing);
+			if (textStyle == null && fontSource != null && fontSource.layer != "framework")
+				textNodeTextStyle.fontSize = computed.get(StyleProperty.FontSize);
+			if (textStyle == null && letterSource != null && letterSource.layer != "framework")
+				textNodeTextStyle.letterSpacing = computed.get(StyleProperty.LetterSpacing);
+			var colorSource = computed.source(StyleProperty.TextColor);
+			var textNodeColor = showsPlaceholder ? context.theme.mutedText :
+				(colorSource != null && colorSource.layer != "framework"
+					? computed.get(StyleProperty.TextColor) : resolved.textColor);
+			textNode.applyTextStyle(new ResolvedTextStyle(textNodeTextStyle,
+				editor.paragraphStyle, textNodeColor));
+			if (!showsPlaceholder) {
+				editor.updateStyle(textNodeTextStyle, editor.paragraphStyle);
+				editor.setRenderColor(textNodeColor);
+				textNode.layout.intrinsicContent = editor.renderContent;
+			}
 			editorContent.add(textNode);
 			var paintStyle = new LayoutStyle();
 			paintStyle.width = LayoutAxis.grow();

@@ -626,6 +626,7 @@ if(NK_BUILD_EXAMPLES)
                 _nkui_text_layout_position_offset
                 _nkui_text_layout_previous_grapheme
                 _nkui_text_layout_set_text
+                _nkui_text_layout_set_color
                 _nkui_text_layout_update
                 _nkui_text_layout_word_range_at
                 _nkui_text_layout_word_range

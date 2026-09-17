@@ -891,6 +891,9 @@ NKUI_API nkui_result nkui_text_layout_update(nkui_resource layout,
 NKUI_API nkui_result nkui_text_layout_set_text(nkui_resource layout,
                                                const char *text NKUI_NULLABLE_UTF8);
 
+/** Sets the vertex color used when the layout is drawn through Canvas.drawText(). */
+NKUI_API nkui_result nkui_text_layout_set_color(nkui_resource layout, nkui_color color);
+
 /** Returns the layout bounds in `out_metrics`. */
 NKUI_API nkui_result nkui_text_layout_measure(nkui_resource layout,
                                               nkui_text_metrics *out_metrics NKUI_OUT);

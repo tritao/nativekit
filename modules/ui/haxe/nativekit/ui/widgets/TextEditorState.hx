@@ -1,11 +1,15 @@
 package nativekit.ui.widgets;
 
 import FontCollection;
+import Color;
+import LayoutMeasureConstraints;
+import LayoutMeasureResult;
+import LayoutMeasuredContent;
+import LayoutRenderableContent;
 import NativeKit.TextEditAction;
 import NativeKitEventValue.NativeKitTextEdit;
 import ParagraphStyle;
 import Rect;
-import TextLayout;
 import TextStyle;
 
 /** Persistent editable text, selection and IME composition state for one widget ID. */
@@ -29,9 +33,14 @@ class TextEditorState {
 	public var scrollOffsetY(default, null):Float;
 	public var focused:Bool;
 	public var draggingSelection:Bool;
-	public final layout:TextLayout;
+	/** Incremental paragraph-backed geometry and shaping for this document. */
+	public final layout:TextEditorLayout;
+	/** Retained custom content used to paint the editor's paragraph layouts. */
+	public final renderContent:LayoutRenderableContent;
 	public final textStyle:TextStyle;
 	public final paragraphStyle:ParagraphStyle;
+	var renderMeasurement:LayoutMeasuredContent;
+	var renderColor:Color;
 	var lastLayoutWidth:Float;
 	var lastLayoutText:String;
 	var lastPointerClickTime:Float;
@@ -88,7 +97,15 @@ class TextEditorState {
 		compositionAttributes = [];
 		focused = false;
 		draggingSelection = false;
-		layout = TextLayout.create(fonts, layoutText(), 1.0, this.textStyle, this.paragraphStyle);
+		layout = new TextEditorLayout(fonts, layoutText(), 1.0, this.textStyle,
+			this.paragraphStyle, documentOffsetMap);
+		renderColor = Color.rgba(1.0, 1.0, 1.0, 1.0);
+		renderMeasurement = new LayoutMeasuredContent(function(constraints:LayoutMeasureConstraints) {
+			return measureRenderContent(constraints);
+		});
+		renderContent = new LayoutRenderableContent(renderMeasurement, function(canvas, _) {
+			layout.paint(canvas, renderColor);
+		});
 		lastLayoutWidth = 1.0;
 		lastLayoutText = layoutText();
 		lastPointerClickTime = -1.0;
@@ -170,7 +187,8 @@ class TextEditorState {
 		var nextWidth = Math.max(1.0, width);
 		var value = layoutText();
 		if (nextWidth != lastLayoutWidth || value != lastLayoutText) {
-			layout.update(value, nextWidth, textStyle, paragraphStyle);
+			layout.update(value, nextWidth, textStyle, paragraphStyle, documentOffsetMap);
+			renderMeasurement.invalidate();
 			lastLayoutWidth = nextWidth;
 			lastLayoutText = value;
 		}
@@ -198,10 +216,24 @@ class TextEditorState {
 		paragraphStyle.alignment = nextParagraphStyle.alignment;
 		paragraphStyle.lineHeight = nextParagraphStyle.lineHeight;
 		paragraphStyle.direction = nextParagraphStyle.direction;
-		layout.update(layoutText(), Math.max(1.0, lastLayoutWidth), textStyle, paragraphStyle);
+		layout.update(layoutText(), Math.max(1.0, lastLayoutWidth), textStyle, paragraphStyle,
+			documentOffsetMap);
+		renderMeasurement.invalidate();
 		lastLayoutText = layoutText();
 		clampScrollOffset();
 		return true;
+	}
+
+	/** Updates the color used by retained paragraph painting. */
+	public function setRenderColor(color:Color):Void {
+		ensureLive();
+		if (color == null)
+			throw "Editor render color cannot be null";
+		if (renderColor.red == color.red && renderColor.green == color.green &&
+			renderColor.blue == color.blue && renderColor.alpha == color.alpha)
+			return;
+		renderColor = color;
+		renderMeasurement.invalidate();
 	}
 
 	/** Inserts committed text over the current selection. */
@@ -462,7 +494,8 @@ class TextEditorState {
 			activeParagraphOffsetMap = null;
 			activeParagraphStart = -1;
 			activeParagraphEnd = -1;
-			layout.setText(layoutText());
+			layout.setText(layoutText(), documentOffsetMap);
+			renderMeasurement.invalidate();
 			lastLayoutText = layoutText();
 		}
 		selectionStart = nextSelectionStart;
@@ -834,7 +867,8 @@ class TextEditorState {
 			activeParagraphOffsetMap = null;
 			activeParagraphStart = -1;
 			activeParagraphEnd = -1;
-			layout.setText(layoutText());
+			layout.setText(layoutText(), documentOffsetMap);
+			renderMeasurement.invalidate();
 			lastLayoutText = layoutText();
 		}
 		selectionStart = nextSelectionStart;
@@ -1013,6 +1047,7 @@ class TextEditorState {
 	public function dispose():Void {
 		if (disposed)
 			return;
+		renderContent.dispose();
 		layout.dispose();
 		undoStack = [];
 		redoStack = [];
@@ -1097,6 +1132,16 @@ class TextEditorState {
 			return;
 		var maximum = Math.max(0.0, layout.measure().height - viewportHeight);
 		scrollOffsetY = clampFloat(scrollOffsetY, 0.0, maximum);
+	}
+
+	function measureRenderContent(constraints:LayoutMeasureConstraints):LayoutMeasureResult {
+		if (constraints == null || constraints.maxWidth < constraints.minWidth ||
+			constraints.maxHeight < constraints.minHeight)
+			throw "Editor content constraints are invalid";
+		if (Math.isFinite(constraints.maxWidth) && constraints.maxWidth > 0.0 &&
+			constraints.maxWidth != lastLayoutWidth)
+			updateLayout(constraints.maxWidth);
+		return layout.measureForConstraints(constraints);
 	}
 
 	function ensureLive():Void {

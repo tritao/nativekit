@@ -206,6 +206,17 @@ class TextOffsetMap {
 		return new TextRange(start, end);
 	}
 
+	/** Returns the number of paragraph records, including empty paragraphs. */
+	public function paragraphCount():Int
+		return paragraphStarts.length;
+
+	/** Returns a paragraph range by its stable document-order number. */
+	public function paragraphRangeAtIndex(index:Int):TextRange {
+		if (index < 0 || index >= paragraphStarts.length)
+			throw "Paragraph index is outside the string";
+		return new TextRange(paragraphStarts[index], paragraphEnds[index]);
+	}
+
 	/**
 	 * Replaces generated grapheme boundaries with shaping-engine boundaries.
 	 * Values are code-point offsets and must be sorted, unique, and inclusive of

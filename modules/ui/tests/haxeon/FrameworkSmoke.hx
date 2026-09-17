@@ -188,6 +188,14 @@ class FrameworkSmoke {
 		if (!offsetMapSmoke())
 			return 240;
 		var mappedEditor = new TextEditorState(fonts, "one\ntwo");
+		if (mappedEditor.layout.paragraphCount != 2 ||
+			mappedEditor.layout.nextGrapheme(3) != 4 ||
+			mappedEditor.layout.previousGrapheme(4) != 3)
+			return 258;
+		var firstLineCaret = mappedEditor.layout.caret(new TextPosition(0, 0));
+		var secondLineCaret = mappedEditor.layout.caret(new TextPosition(4, 0));
+		if (secondLineCaret.y <= firstLineCaret.y)
+			return 259;
 		mappedEditor.setSelection(0, 0);
 		var firstParagraphMap = mappedEditor.activeParagraphOffsets();
 		if (firstParagraphMap != mappedEditor.activeParagraphOffsets())
@@ -204,6 +212,8 @@ class FrameworkSmoke {
 			return 243;
 		if (!mappedEditor.replaceRange(4, 7, "🙂"))
 			return 244;
+		if (mappedEditor.layout.paragraphCount != 2)
+			return 260;
 		var editedParagraphMap = mappedEditor.activeParagraphOffsets();
 		if (editedParagraphMap == secondParagraphMap || editedParagraphMap.text != "🙂" ||
 			mappedEditor.documentLength() != 5)
@@ -424,7 +434,7 @@ class FrameworkSmoke {
 			fieldRoot.children[0].children.length != 3 ||
 			fieldRoot.children[0].children[0].layout.visualKind != LayoutVisualKind.Custom ||
 			fieldRoot.children[0].children[0].layout.style.zIndex != 0 ||
-			fieldRoot.children[0].children[1].layout.visualKind != LayoutVisualKind.Text ||
+			fieldRoot.children[0].children[1].layout.visualKind != LayoutVisualKind.Custom ||
 			fieldRoot.children[0].children[1].layout.style.zIndex != 1 ||
 			fieldRoot.children[0].children[2].layout.visualKind != LayoutVisualKind.Custom ||
 			fieldRoot.children[0].children[2].layout.style.zIndex != 2)

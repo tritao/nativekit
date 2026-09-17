@@ -162,7 +162,6 @@ int main(int argc, char **argv) {
         nkui_display_list_create(&box_shadow_list) != NKUI_OK ||
         nkui_renderer_create(&renderer) != NKUI_OK)
         return 4;
-
     bool custom_effect_registered = false;
     if (surface_options.api == NK_GRAPHICS_OPENGL) {
         static constexpr char custom_glsl410[] =
@@ -226,7 +225,8 @@ int main(int argc, char **argv) {
                                      custom_commands.size()) != NKUI_OK)
             return 5;
     }
-    if (nkui_text_layout_set_text(text, "NativeKit updated text") != NKUI_OK)
+    if (nkui_text_layout_set_text(text, "NativeKit updated text") != NKUI_OK ||
+        nkui_text_layout_set_color(text, {0.2f, 0.4f, 0.8f, 1.0f}) != NKUI_OK)
         return 4;
 
     std::vector<uint8_t> commands;

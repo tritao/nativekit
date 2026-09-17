@@ -123,6 +123,10 @@ int main(void) {
     if (nkui_text_layout_create_styled(fonts, "NativeKit مرحبا", 300.0f, &text_style,
                                        &paragraph_style, &layout) != NKUI_OK)
         return 7;
+    if (nkui_text_layout_set_color(layout, (nkui_color){0.2f, 0.4f, 0.8f, 1.0f}) != NKUI_OK ||
+        nkui_text_layout_set_color(layout, (nkui_color){0.2f, 0.4f, 0.8f, 2.0f}) !=
+            NKUI_ERROR_INVALID_ARGUMENT)
+        return 22;
     nkui_resource later_layout = {0};
     if (nkui_font_collection_add(fonts, NKUI_TEST_FONT_PATH, NKUI_FONT_FAMILY_DEFAULT) !=
             NKUI_OK ||

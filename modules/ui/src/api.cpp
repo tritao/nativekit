@@ -92,6 +92,7 @@ struct ResourceSlot {
     nk_graphics_image graphics_image{};
     nkui::PreparedGlyphs text_glyphs;
     std::unordered_map<int32_t, nkui::PreparedGlyphs> scaled_text_glyphs;
+    nkui_color text_color{1.0f, 1.0f, 1.0f, 1.0f};
     float text_width = 0.0f;
     nkui::TextLayoutOptions text_options{};
     std::unique_ptr<nkui::NanoVGPath> path;
@@ -194,6 +195,31 @@ struct LayoutSessionState {
     bool fonts_configured = false;
     bool submitted = false;
 };
+
+bool valid_text_color(const nkui_color &color) {
+    return std::isfinite(color.red) && std::isfinite(color.green) &&
+           std::isfinite(color.blue) && std::isfinite(color.alpha) && color.red >= 0.0f &&
+           color.red <= 1.0f && color.green >= 0.0f && color.green <= 1.0f &&
+           color.blue >= 0.0f && color.blue <= 1.0f && color.alpha >= 0.0f &&
+           color.alpha <= 1.0f;
+}
+
+uint8_t text_color_byte(float value) {
+    return static_cast<uint8_t>(std::lround(value * 255.0f));
+}
+
+void tint_text_glyphs(nkui::PreparedGlyphs &glyphs, const nkui_color &color) {
+    const uint8_t red = text_color_byte(color.red);
+    const uint8_t green = text_color_byte(color.green);
+    const uint8_t blue = text_color_byte(color.blue);
+    const uint8_t alpha = text_color_byte(color.alpha);
+    for (auto &vertex : glyphs.vertices) {
+        vertex.red = red;
+        vertex.green = green;
+        vertex.blue = blue;
+        vertex.alpha = alpha;
+    }
+}
 
 void configure_layout_measure_callback(LayoutSessionState &state) {
     const auto callback = state.measure_callback;
@@ -723,6 +749,7 @@ nkui_result create_text_layout_locked(nkui_resource fonts, const char *text, flo
         out_layout->id = 0;
         return NKUI_ERROR_INVALID_ARGUMENT;
     }
+    tint_text_glyphs(layout_slot->text_glyphs, layout_slot->text_color);
     layout_slot->text_width = width;
     layout_slot->text_options = options;
     return NKUI_OK;
@@ -1003,6 +1030,7 @@ void release_resource_slot(ResourceSlot &slot) {
     slot.text.reset();
     slot.text_glyphs = {};
     slot.scaled_text_glyphs.clear();
+    slot.text_color = {1.0f, 1.0f, 1.0f, 1.0f};
     slot.text_width = 0.0f;
     slot.text_options = {};
     slot.fonts.clear();
@@ -1614,6 +1642,7 @@ extern "C" nkui_result nkui_text_layout_update(nkui_resource layout, const char 
     nkui::PreparedGlyphs updated;
     if (!slot->text->prepare_glyphs(0.0f, 0.0f, 1.0f, nkui::GlyphMode::Alpha, updated))
         return NKUI_ERROR_RENDERING;
+    tint_text_glyphs(updated, slot->text_color);
     slot->text_width = width;
     slot->text_options = options;
     slot->text_glyphs = std::move(updated);
@@ -1633,9 +1662,24 @@ extern "C" nkui_result nkui_text_layout_set_text(nkui_resource layout, const cha
     nkui::PreparedGlyphs updated;
     if (!slot->text->prepare_glyphs(0.0f, 0.0f, 1.0f, nkui::GlyphMode::Alpha, updated))
         return NKUI_ERROR_RENDERING;
+    tint_text_glyphs(updated, slot->text_color);
     slot->text_glyphs = std::move(updated);
     slot->scaled_text_glyphs.clear();
     slot->text->prune_layout_cache({shaped.id}, 1);
+    return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_text_layout_set_color(nkui_resource layout, nkui_color color) {
+    if (!valid_text_color(color))
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(resources_mutex);
+    auto *slot = resolve(layout, nkui::ResourceKind::TextLayout);
+    if (!slot || !slot->text)
+        return NKUI_ERROR_INVALID_HANDLE;
+    slot->text_color = color;
+    tint_text_glyphs(slot->text_glyphs, color);
+    for (auto &[_, glyphs] : slot->scaled_text_glyphs)
+        tint_text_glyphs(glyphs, color);
     return NKUI_OK;
 }
 
@@ -2460,15 +2504,20 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
                 nkui::PreparedGlyphs *glyphs = nullptr;
                 if (raster_scale_key == raster_scale_precision) {
                     glyphs = &layout->text_glyphs;
-                    if (!layout->text->prepared_glyphs_current(*glyphs))
+                    if (!layout->text->prepared_glyphs_current(*glyphs)) {
                         valid = layout->text->prepare_glyphs(0.0f, 0.0f, raster_scale,
                                                              nkui::GlyphMode::Alpha, *glyphs);
+                        if (valid)
+                            tint_text_glyphs(*glyphs, layout->text_color);
+                    }
                 } else {
                     auto found = layout->scaled_text_glyphs.find(raster_scale_key);
                     if (found == layout->scaled_text_glyphs.end()) {
                         nkui::PreparedGlyphs prepared;
                         valid = layout->text->prepare_glyphs(0.0f, 0.0f, raster_scale,
                                                              nkui::GlyphMode::Alpha, prepared);
+                        if (valid)
+                            tint_text_glyphs(prepared, layout->text_color);
                         if (!valid)
                             break;
                         found = layout->scaled_text_glyphs
@@ -2476,9 +2525,12 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
                                     .first;
                     }
                     glyphs = &found->second;
-                    if (valid && !layout->text->prepared_glyphs_current(*glyphs))
+                    if (valid && !layout->text->prepared_glyphs_current(*glyphs)) {
                         valid = layout->text->prepare_glyphs(0.0f, 0.0f, raster_scale,
                                                              nkui::GlyphMode::Alpha, *glyphs);
+                        if (valid)
+                            tint_text_glyphs(*glyphs, layout->text_color);
+                    }
                 }
                 if (!valid)
                     break;
@@ -2805,15 +2857,20 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                 nkui::PreparedGlyphs *glyphs = nullptr;
                 if (raster_scale_key == raster_scale_precision) {
                     glyphs = &layout->text_glyphs;
-                    if (!layout->text->prepared_glyphs_current(*glyphs))
+                    if (!layout->text->prepared_glyphs_current(*glyphs)) {
                         valid = layout->text->prepare_glyphs(0.0f, 0.0f, raster_scale,
                                                              nkui::GlyphMode::Alpha, *glyphs);
+                        if (valid)
+                            tint_text_glyphs(*glyphs, layout->text_color);
+                    }
                 } else {
                     auto found = layout->scaled_text_glyphs.find(raster_scale_key);
                     if (found == layout->scaled_text_glyphs.end()) {
                         nkui::PreparedGlyphs prepared;
                         valid = layout->text->prepare_glyphs(0.0f, 0.0f, raster_scale,
                                                              nkui::GlyphMode::Alpha, prepared);
+                        if (valid)
+                            tint_text_glyphs(prepared, layout->text_color);
                         if (!valid)
                             break;
                         found = layout->scaled_text_glyphs
@@ -2821,9 +2878,12 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                                     .first;
                     }
                     glyphs = &found->second;
-                    if (valid && !layout->text->prepared_glyphs_current(*glyphs))
+                    if (valid && !layout->text->prepared_glyphs_current(*glyphs)) {
                         valid = layout->text->prepare_glyphs(0.0f, 0.0f, raster_scale,
                                                              nkui::GlyphMode::Alpha, *glyphs);
+                        if (valid)
+                            tint_text_glyphs(*glyphs, layout->text_color);
+                    }
                 }
                 if (!valid)
                     break;

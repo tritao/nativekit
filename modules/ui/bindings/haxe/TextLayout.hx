@@ -41,6 +41,14 @@ class TextLayout extends NativeKitUIResource {
 		text = actualText;
 	}
 
+	/** Sets the color used by Canvas.drawText for this retained layout. */
+	public function setColor(value:Color):Void {
+		if (value == null)
+			throw "Text layout color cannot be null";
+		UiResult.check(NativeKitUI.nkui_text_layout_set_color(nativeHandle(), value.nativeValue()),
+			"textLayout.setColor");
+	}
+
 	/** Re-shapes this retained layout with new content, width, or semantic styles. */
 	public function update(value:String, newWidth:Float, style:TextStyle,
 			paragraph:ParagraphStyle):Void {
