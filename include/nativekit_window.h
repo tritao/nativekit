@@ -22,7 +22,11 @@ extern "C" {
 /** Bitmask describing the optional facilities exposed by the active backend. */
 typedef uint64_t nk_capabilities;
 
+#if defined(_MSC_VER) && defined(__cplusplus)
+enum NK_FLAGS(nk_capabilities) : uint64_t {
+#else
 enum NK_FLAGS(nk_capabilities) {
+#endif
     /** The backend can create and manage NativeKit-owned top-level windows. */
     NK_CAP_WINDOW = UINT64_C(1) << 0,
     /** The backend can create embedded WebViews. */
@@ -85,7 +89,7 @@ enum NK_FLAGS(nk_capabilities) {
     NK_CAP_SYSTEM_FONTS = UINT64_C(1) << 30,
     /** The backend can keep the application display awake with leases. */
     NK_CAP_KEEP_AWAKE = UINT64_C(1) << 31,
-#if !defined(_MSC_VER)
+#if !defined(_MSC_VER) || defined(__cplusplus)
     /** The backend can report physical device orientation. */
     NK_CAP_DEVICE_ORIENTATION = UINT64_C(1) << 32,
     /** The backend can report application display orientation. */
@@ -101,8 +105,8 @@ enum NK_FLAGS(nk_capabilities) {
 #endif
 };
 
-#if defined(_MSC_VER)
-/* MSVC C and C++ keep enum values in a 32-bit underlying type by default. */
+#if defined(_MSC_VER) && !defined(__cplusplus)
+/* MSVC C keeps enum values in a 32-bit underlying type by default. */
 #define NK_CAP_DEVICE_ORIENTATION (UINT64_C(1) << 32)
 #define NK_CAP_DISPLAY_ORIENTATION (UINT64_C(1) << 33)
 #define NK_CAP_HTTP_CLIENT (UINT64_C(1) << 34)
