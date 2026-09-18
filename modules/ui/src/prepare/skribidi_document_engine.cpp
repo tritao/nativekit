@@ -289,4 +289,41 @@ std::vector<TextRect> SkribidiDocumentEngine::selection_rects(TextPosition start
     return result;
 }
 
+std::vector<TextRangeRect> SkribidiDocumentEngine::range_rects(TextPosition start,
+                                                               TextPosition end) const {
+    std::vector<TextRangeRect> result;
+    if (!valid() || start.offset < 0 || end.offset < 0 || start.offset > document_length() ||
+        end.offset > document_length())
+        return result;
+    const auto collect = [](skb_rect2_t rect, skb_range_t range, void *context) {
+        static_cast<std::vector<TextRangeRect> *>(context)->push_back(
+            {{range.start, range.end}, {rect.x, rect.y, rect.width, rect.height}});
+    };
+    skb_editor_iterate_text_range_bounds_with_ranges(
+        editor_,
+        {{start.offset, static_cast<skb_caret_affinity_t>(start.affinity)},
+         {end.offset, static_cast<skb_caret_affinity_t>(end.affinity)}},
+        collect, &result);
+    return result;
+}
+
+bool SkribidiDocumentEngine::surrounding_text_utf8(int32_t max_before, int32_t max_after,
+                                                   std::string *text, TextRange *text_range) const {
+    if (!valid() || !text || !text_range)
+        return false;
+    skb_text_range_t range{};
+    if (skb_editor_get_surrounding_text_range(editor_, max_before, max_after, &range) !=
+        SKB_RESULT_SUCCESS)
+        return false;
+    const int32_t byte_count = skb_editor_get_text_utf8_count_in_range(editor_, range);
+    if (byte_count < 0)
+        return false;
+    text->assign(static_cast<std::size_t>(byte_count), '\0');
+    if (byte_count > 0 &&
+        skb_editor_get_text_utf8_in_range(editor_, range, text->data(), byte_count) != byte_count)
+        return false;
+    *text_range = {range.start.offset, range.end.offset};
+    return true;
+}
+
 } // namespace nkui

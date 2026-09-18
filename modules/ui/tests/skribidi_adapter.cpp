@@ -112,6 +112,22 @@ bool check_document_offset_mappings(const std::shared_ptr<SkribidiFontCollection
     }
 
     int32_t ignored = 0;
+    const auto geometry = document.range_rects({0, 0}, {document.document_length(), 0});
+    for (const auto &item : geometry) {
+        if (item.range.start < 0 || item.range.end <= item.range.start ||
+            item.range.end > document.document_length() || item.rect.width < 0.0f ||
+            item.rect.height < 0.0f)
+            return false;
+    }
+    if (geometry.empty())
+        return false;
+
+    std::string surrounding;
+    TextRange surrounding_range;
+    if (!document.surrounding_text_utf8(2, 2, &surrounding, &surrounding_range) ||
+        surrounding != "日本" || surrounding_range.start != 6 || surrounding_range.end != 8)
+        return false;
+
     return document.codepoint_to_utf8_byte_offset(document.document_length(), &ignored) &&
            ignored == utf8_bytes &&
            document.codepoint_to_utf16_unit_offset(document.document_length(), &ignored) &&

@@ -63,6 +63,9 @@ class SkribidiDocumentEngine {
     TextPosition hit_test(float x, float y) const;
     TextCaret caret(TextPosition position) const;
     std::vector<TextRect> selection_rects(TextPosition start, TextPosition end) const;
+    std::vector<TextRangeRect> range_rects(TextPosition start, TextPosition end) const;
+    bool surrounding_text_utf8(int32_t max_before, int32_t max_after, std::string *text,
+                               TextRange *text_range) const;
 
   private:
     bool valid_range(int32_t start, int32_t end) const;

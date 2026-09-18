@@ -98,6 +98,11 @@ struct TextRect {
     float height = 0.0f;
 };
 
+struct TextRangeRect {
+    TextRange range;
+    TextRect rect;
+};
+
 struct TextIntrinsicMetrics {
     float min_content_width = 0.0f;
     float max_content_width = 0.0f;
