@@ -219,6 +219,8 @@ struct Batch {
     Handle owner = 0;
     std::vector<BatchPass> passes;
     std::vector<RetainedResource> retained;
+    /* External graphics images are retained through the core handle. */
+    std::vector<uint32_t> retained_images;
     bool sealed = false;
 };
 
@@ -1007,6 +1009,14 @@ static void unpin_resource(uint32_t kind, uint32_t slot_index, bool backend_avai
         break;
     }
 }
+/* Releases every retained graphics image recorded from `from` onward. */
+static void release_batch_images(Batch &batch, size_t from) {
+    while (batch.retained_images.size() > from) {
+        const uint32_t image = batch.retained_images.back();
+        batch.retained_images.pop_back();
+        nk_graphics_image_release(nk_graphics_image{image});
+    }
+}
 static void destroy_owned(Handle owner, bool backend_available) {
     /*
      * Retired-but-pinned slots keep their backend objects for batch replay, so
@@ -1017,6 +1027,7 @@ static void destroy_owned(Handle owner, bool backend_available) {
         if (s.active && s.value.owner == owner) {
             for (const auto &retained : s.value.retained)
                 unpin_resource(retained.kind, retained.slot, backend_available);
+            release_batch_images(s.value, 0);
             batch_pool.remove(s);
         }
     for (auto &s : render_target_pool.slots)
@@ -2439,14 +2450,16 @@ nkgpu_result nkgpu_apply_image(nkgpu_renderer r, uint32_t slot, nkgpu_image h) {
     rs->value.bindings.views[slot] = image->value.view;
     return NKGPU_OK;
 }
-nkgpu_result nkgpu_apply_graphics_image(nkgpu_renderer r, uint32_t slot, nk_graphics_image image) {
-    auto *renderer = renderer_pool.get(r);
-    const nkgpu_result pass = require_active_pass(r);
-    if (pass != NKGPU_OK)
-        return pass;
-    if (!renderer || !image.id || slot >= SG_MAX_VIEW_BINDSLOTS)
+/*
+ * Resolves an external graphics image to a backend view, rejecting images that
+ * belong to another runtime or device. Shared by the immediate and batch paths
+ * so both apply the same validation.
+ */
+static nkgpu_result resolve_graphics_image(Renderer &renderer, uint32_t slot,
+                                           nk_graphics_image image, sg_view &out_view) {
+    if (!image.id || slot >= SG_MAX_VIEW_BINDSLOTS)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid graphics-image binding");
-    if (!renderer->value.api->external_image_resolve)
+    if (!renderer.api->external_image_resolve)
         return fail(NKGPU_ERROR_UNKNOWN, "external graphics images are unavailable");
     nk_graphics_image_info info{};
     info.struct_size = sizeof(info);
@@ -2456,13 +2469,27 @@ nkgpu_result nkgpu_apply_graphics_image(nkgpu_renderer r, uint32_t slot, nk_grap
     int32_t width = 0;
     int32_t height = 0;
     if (nk_core_graphics_image_get_backend(image, &info, &runtime, &backend_image) != NK_OK ||
-        runtime != renderer->value.api || info.api != renderer->value.graphics_api ||
-        info.device.id != renderer->value.device.id || !backend_image ||
-        !renderer->value.api->external_image_resolve(static_cast<uint32_t>(backend_image), &view,
-                                                     &width, &height) ||
+        runtime != renderer.api || info.api != renderer.graphics_api ||
+        info.device.id != renderer.device.id || !backend_image ||
+        !renderer.api->external_image_resolve(static_cast<uint32_t>(backend_image), &view, &width,
+                                              &height) ||
         !view.id || width <= 0 || height <= 0)
         return fail(NKGPU_ERROR_INVALID_HANDLE,
                     "graphics image belongs to another runtime or device");
+    out_view = view;
+    return NKGPU_OK;
+}
+nkgpu_result nkgpu_apply_graphics_image(nkgpu_renderer r, uint32_t slot, nk_graphics_image image) {
+    auto *renderer = renderer_pool.get(r);
+    const nkgpu_result pass = require_active_pass(r);
+    if (pass != NKGPU_OK)
+        return pass;
+    if (!renderer)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    sg_view view{};
+    const nkgpu_result resolved = resolve_graphics_image(renderer->value, slot, image, view);
+    if (resolved != NKGPU_OK)
+        return resolved;
     renderer->value.bindings.views[slot] = view;
     return NKGPU_OK;
 }
@@ -2538,6 +2565,10 @@ static nkgpu_result submit_command(nkgpu_renderer r, uint32_t opcode, const uint
                                                 static_cast<int32_t>(read_u32(payload + 12)),
                                                 static_cast<int32_t>(read_u32(payload + 16)))
                           : NKGPU_ERROR_INVALID_ARGUMENT;
+    case NKGPU_COMMAND_APPLY_GRAPHICS_IMAGE:
+        return size == 8 ? nkgpu_apply_graphics_image(r, read_u32(payload),
+                                                      nk_graphics_image{read_u32(payload + 4)})
+                         : NKGPU_ERROR_INVALID_ARGUMENT;
     default:
         return NKGPU_ERROR_INVALID_ARGUMENT;
     }
@@ -2639,6 +2670,34 @@ static bool retain_batch_resource(Batch &batch, uint32_t kind, Handle handle) {
 }
 
 /*
+ * Retains an external graphics image for a batch. The core handle keeps the
+ * image alive, and the same runtime/device validation the immediate path
+ * applies runs here so a foreign image is rejected when it is recorded.
+ */
+static bool retain_batch_graphics_image(Batch &batch, uint32_t slot, uint32_t image_id) {
+    auto *renderer = renderer_pool.get(batch.owner);
+    if (!renderer)
+        return false;
+    const nk_graphics_image image{image_id};
+    sg_view view{};
+    if (resolve_graphics_image(renderer->value, slot, image, view) != NKGPU_OK)
+        return false;
+    for (const uint32_t retained : batch.retained_images)
+        if (retained == image_id)
+            return true;
+    if (nk_graphics_image_retain(image) != NK_OK)
+        return false;
+    batch.retained_images.push_back(image_id);
+    return true;
+}
+
+/* Reports the record that made a batch append fail and returns false. */
+static bool invalid_batch_record(uint32_t opcode, uint32_t offset, const char *reason) {
+    fail(NKGPU_ERROR_INVALID_ARGUMENT, "batch record %u at %u: %s", opcode, offset, reason);
+    return false;
+}
+
+/*
  * Validates a packed command stream and retains everything it references. The
  * stream uses the same record format as nkgpu_submit_commands(), so a batch
  * rejects malformed or stale records at append time instead of at submit.
@@ -2647,51 +2706,64 @@ static bool retain_batch_records(Batch &batch, const uint8_t *commands, uint32_t
     uint32_t offset = 0;
     while (offset < size) {
         if (size - offset < 8)
-            return false;
+            return invalid_batch_record(0, offset, "truncated header");
         const uint32_t opcode = read_u32(commands + offset);
         const uint32_t record_size = read_u32(commands + offset + 4);
         if (record_size < 8 || record_size > size - offset)
-            return false;
+            return invalid_batch_record(opcode, offset, "invalid record size");
         const uint8_t *payload = commands + offset + 8;
         const uint32_t payload_size = record_size - 8;
         switch (opcode) {
         case NKGPU_COMMAND_APPLY_PIPELINE:
-            if (payload_size != 4 || !retain_batch_resource(batch, PipelineKind, read_u32(payload)))
-                return false;
+            if (payload_size != 4)
+                return invalid_batch_record(opcode, offset, "bad pipeline payload");
+            if (!retain_batch_resource(batch, PipelineKind, read_u32(payload)))
+                return invalid_batch_record(opcode, offset, "unusable pipeline handle");
             break;
         case NKGPU_COMMAND_APPLY_VERTEX_BUFFER:
-            if (payload_size != 12 || read_u32(payload) >= SG_MAX_VERTEXBUFFER_BINDSLOTS ||
-                !retain_batch_resource(batch, BufferKind, read_u32(payload + 4)))
-                return false;
+            if (payload_size != 12 || read_u32(payload) >= SG_MAX_VERTEXBUFFER_BINDSLOTS)
+                return invalid_batch_record(opcode, offset, "bad vertex-buffer payload");
+            if (!retain_batch_resource(batch, BufferKind, read_u32(payload + 4)))
+                return invalid_batch_record(opcode, offset, "unusable vertex buffer");
             break;
         case NKGPU_COMMAND_APPLY_INDEX_BUFFER:
-            if (payload_size != 8 || !retain_batch_resource(batch, BufferKind, read_u32(payload)))
-                return false;
+            if (payload_size != 8)
+                return invalid_batch_record(opcode, offset, "bad index-buffer payload");
+            if (!retain_batch_resource(batch, BufferKind, read_u32(payload)))
+                return invalid_batch_record(opcode, offset, "unusable index buffer");
             break;
         case NKGPU_COMMAND_APPLY_IMAGE:
-            if (payload_size != 8 || read_u32(payload) >= SG_MAX_VIEW_BINDSLOTS ||
-                !retain_batch_resource(batch, ImageKind, read_u32(payload + 4)))
-                return false;
+            if (payload_size != 8 || read_u32(payload) >= SG_MAX_VIEW_BINDSLOTS)
+                return invalid_batch_record(opcode, offset, "bad image payload");
+            if (!retain_batch_resource(batch, ImageKind, read_u32(payload + 4)))
+                return invalid_batch_record(opcode, offset, "unusable image");
             break;
         case NKGPU_COMMAND_APPLY_SAMPLER:
-            if (payload_size != 8 || read_u32(payload) >= SG_MAX_SAMPLER_BINDSLOTS ||
-                !retain_batch_resource(batch, SamplerKind, read_u32(payload + 4)))
-                return false;
+            if (payload_size != 8 || read_u32(payload) >= SG_MAX_SAMPLER_BINDSLOTS)
+                return invalid_batch_record(opcode, offset, "bad sampler payload");
+            if (!retain_batch_resource(batch, SamplerKind, read_u32(payload + 4)))
+                return invalid_batch_record(opcode, offset, "unusable sampler");
             break;
         case NKGPU_COMMAND_APPLY_UNIFORMS:
             if (payload_size < 8 || payload_size - 8 != read_u32(payload + 4))
-                return false;
+                return invalid_batch_record(opcode, offset, "bad uniform payload");
             break;
         case NKGPU_COMMAND_APPLY_SCISSOR:
             if (payload_size != 20)
-                return false;
+                return invalid_batch_record(opcode, offset, "bad scissor payload");
+            break;
+        case NKGPU_COMMAND_APPLY_GRAPHICS_IMAGE:
+            if (payload_size != 8)
+                return invalid_batch_record(opcode, offset, "bad graphics-image payload");
+            if (!retain_batch_graphics_image(batch, read_u32(payload), read_u32(payload + 4)))
+                return invalid_batch_record(opcode, offset, "unusable graphics image");
             break;
         case NKGPU_COMMAND_DRAW:
             if (payload_size != 12)
-                return false;
+                return invalid_batch_record(opcode, offset, "bad draw payload");
             break;
         default:
-            return false;
+            return invalid_batch_record(opcode, offset, "unknown opcode");
         }
         offset += record_size;
     }
@@ -2835,10 +2907,15 @@ nkgpu_result nkgpu_batch_append_command(nkgpu_batch batch, const uint8_t *comman
     if (slot->value.passes.empty())
         return fail(NKGPU_ERROR_WRONG_STATE, "append a pass before its commands");
     const size_t before = slot->value.retained.size();
+    const size_t images_before = slot->value.retained_images.size();
     if (!retain_batch_records(slot->value, commands, size)) {
         /* Roll back any pins taken before the invalid record. */
         release_batch_retention(slot->value, before);
-        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid batch command stream");
+        release_batch_images(slot->value, images_before);
+        /* Keep the specific reason from the failing record. */
+        const std::string detail = nkgpu_last_error();
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid batch command stream: %s",
+                    detail.c_str());
     }
     auto &pass = slot->value.passes.back();
     pass.commands.insert(pass.commands.end(), commands, commands + size);
@@ -2915,6 +2992,7 @@ nkgpu_result nkgpu_batch_destroy(nkgpu_batch batch) {
     if (!slot)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale batch");
     release_batch_retention(slot->value, 0);
+    release_batch_images(slot->value, 0);
     batch_pool.remove(*slot);
     return NKGPU_OK;
 }

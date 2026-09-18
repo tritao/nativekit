@@ -109,6 +109,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		 * Apply a framebuffer scissor; payload: enabled flag, x, y, width, and height.
 		 */
 		NKGPU_COMMAND_APPLY_SCISSOR = 8;
+		/**
+		 * Apply an external graphics image; payload: view slot and image handle.
+		 */
+		NKGPU_COMMAND_APPLY_GRAPHICS_IMAGE = 9;
 	}
 	/**
 	 * Comparison function used by depth and stencil state.

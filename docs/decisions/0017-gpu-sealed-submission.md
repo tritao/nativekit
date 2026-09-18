@@ -40,9 +40,11 @@ nkgpu_batch_destroy(batch)
 Retention is implicit rather than a separate `nkgpu_batch_retain` call: every
 handle a recorded pass or command record references is resolved and pinned when
 it is appended, so a caller cannot describe work it does not own and cannot
-forget to retain it. `NKGPU_COMMAND_APPLY_SCISSOR` was added to the packed
-stream so a batch can express everything the immediate apply API can apart from
-pass boundaries.
+forget to retain it. Two records were added to the packed stream so a batch can
+express everything the immediate apply API can apart from pass boundaries:
+`NKGPU_COMMAND_APPLY_SCISSOR`, and `NKGPU_COMMAND_APPLY_GRAPHICS_IMAGE`, whose
+handle is retained through the core image registry rather than the adapter's
+resource pools.
 
 Invariants:
 
@@ -93,6 +95,11 @@ landed API rather than left to a comment.
    stale handles before anything is recorded. Submission re-validates ownership,
    seal state, and target availability before touching GPU state, so a rejected
    batch cannot change it.
+
+External graphics images are the one retained handle that is not in the
+adapter's pools: they belong to the core image registry, so a batch retains them
+with `nk_graphics_image_retain()` and the same runtime/device check the
+immediate path applies runs while the record is appended.
 
 ## Consequences of step 1
 

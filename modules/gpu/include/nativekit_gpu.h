@@ -436,6 +436,8 @@ enum NK_ENUM(nkgpu_command) {
     NKGPU_COMMAND_DRAW = 7,
     /** Apply a framebuffer scissor; payload: enabled flag, x, y, width, and height. */
     NKGPU_COMMAND_APPLY_SCISSOR = 8,
+    /** Apply an external graphics image; payload: view slot and image handle. */
+    NKGPU_COMMAND_APPLY_GRAPHICS_IMAGE = 9,
 };
 
 /* ------------------------------------------------------------------------- */

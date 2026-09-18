@@ -86,6 +86,21 @@ void append_apply_scissor(std::vector<uint8_t> &bytes, uint32_t enabled, int32_t
     append_record(bytes, NKGPU_COMMAND_APPLY_SCISSOR, payload);
 }
 
+void append_apply_sampler(std::vector<uint8_t> &bytes, uint32_t slot, nkgpu_sampler sampler) {
+    std::vector<uint8_t> payload;
+    append_u32(payload, slot);
+    append_u32(payload, sampler.id);
+    append_record(bytes, NKGPU_COMMAND_APPLY_SAMPLER, payload);
+}
+
+void append_apply_graphics_image(std::vector<uint8_t> &bytes, uint32_t slot,
+                                 nk_graphics_image image) {
+    std::vector<uint8_t> payload;
+    append_u32(payload, slot);
+    append_u32(payload, image.id);
+    append_record(bytes, NKGPU_COMMAND_APPLY_GRAPHICS_IMAGE, payload);
+}
+
 } // namespace
 
 int main() {
@@ -111,6 +126,10 @@ int main() {
     nkgpu_buffer buffer{};
     nkgpu_render_target target{};
     nkgpu_batch batch{};
+    nkgpu_shader textured_shader{};
+    nkgpu_pipeline textured_pipeline{};
+    nkgpu_buffer textured_buffer{};
+    nkgpu_sampler sampler{};
     nk_graphics_image retained_image{};
 
     if (nk_window_create(&window_options, &window) != NK_OK) {
@@ -301,6 +320,20 @@ int main() {
     batch = {};
     EXPECT_RESULT(nkgpu_batch_destroy(batch), NKGPU_ERROR_INVALID_HANDLE);
     {
+        nkgpu_pipeline retained_pipeline{};
+        nkgpu_buffer retained_buffer{};
+        nkgpu_pipeline_builder retained_builder{};
+        EXPECT_RESULT(nkgpu_pipeline_begin(renderer, shader, 2 * sizeof(float), &retained_builder),
+                      NKGPU_OK);
+        EXPECT_RESULT(
+            nkgpu_pipeline_attribute(retained_builder, 0, 0, 0, NKGPU_VERTEXFORMAT_FLOAT2),
+            NKGPU_OK);
+        EXPECT_RESULT(nkgpu_pipeline_end(retained_builder, &retained_pipeline), NKGPU_OK);
+        const float vertices[] = {-1.0f, -1.0f, 3.0f, -1.0f, -1.0f, 3.0f};
+        EXPECT_RESULT(nkgpu_buffer_create(renderer, reinterpret_cast<const uint8_t *>(vertices),
+                                          sizeof(vertices), &retained_buffer),
+                      NKGPU_OK);
+
         nkgpu_renderer_stats before{};
         EXPECT_RESULT(nkgpu_renderer_get_stats(renderer, &before), NKGPU_OK);
         EXPECT_RESULT(nkgpu_batch_begin(renderer, &batch), NKGPU_OK);
@@ -312,18 +345,18 @@ int main() {
         pass.height = window_options.height;
         EXPECT_RESULT(nkgpu_batch_append_pass(batch, &pass), NKGPU_OK);
         std::vector<uint8_t> commands;
-        append_apply_pipeline(commands, pipeline);
-        append_apply_vertex_buffer(commands, 0, buffer, 0);
+        append_apply_pipeline(commands, retained_pipeline);
+        append_apply_vertex_buffer(commands, 0, retained_buffer, 0);
         append_draw(commands, 0, 3, 1);
         EXPECT_RESULT(nkgpu_batch_append_command(batch, commands.data(),
                                                  static_cast<uint32_t>(commands.size())),
                       NKGPU_OK);
         EXPECT_RESULT(nkgpu_batch_seal(batch), NKGPU_OK);
         /* Destroy the caller's references; the batch retains both. */
-        EXPECT_RESULT(nkgpu_pipeline_destroy(renderer, pipeline), NKGPU_OK);
-        pipeline = {};
-        EXPECT_RESULT(nkgpu_buffer_destroy(renderer, buffer), NKGPU_OK);
-        buffer = {};
+        EXPECT_RESULT(nkgpu_pipeline_destroy(renderer, retained_pipeline), NKGPU_OK);
+        retained_pipeline = {};
+        EXPECT_RESULT(nkgpu_buffer_destroy(renderer, retained_buffer), NKGPU_OK);
+        retained_buffer = {};
         EXPECT_RESULT(nkgpu_batch_submit(renderer, batch), NKGPU_OK);
         EXPECT_RESULT(nkgpu_batch_destroy(batch), NKGPU_OK);
         batch = {};
@@ -335,16 +368,15 @@ int main() {
             goto cleanup;
         }
         /* Slots released by the batch are reusable. */
-        const float vertices[] = {-1.0f, -1.0f, 3.0f, -1.0f, -1.0f, 3.0f};
         EXPECT_RESULT(nkgpu_buffer_create(renderer, reinterpret_cast<const uint8_t *>(vertices),
-                                          sizeof(vertices), &buffer),
+                                          sizeof(vertices), &retained_buffer),
                       NKGPU_OK);
-        EXPECT_RESULT(nkgpu_buffer_destroy(renderer, buffer), NKGPU_OK);
-        buffer = {};
+        EXPECT_RESULT(nkgpu_buffer_destroy(renderer, retained_buffer), NKGPU_OK);
+        retained_buffer = {};
     }
 
     /* An offscreen pass records and replays like a window pass. */
-    EXPECT_RESULT(nkgpu_render_target_create(renderer, 16, 16, 0, &target), NKGPU_OK);
+    EXPECT_RESULT(nkgpu_render_target_create(renderer, 16, 16, 1, &target), NKGPU_OK);
     EXPECT_RESULT(nkgpu_render_target_get_image(renderer, target, &retained_image), NKGPU_OK);
     EXPECT_RESULT(nk_graphics_image_retain(retained_image), NK_OK);
     EXPECT_RESULT(nkgpu_batch_begin(renderer, &batch), NKGPU_OK);
@@ -364,6 +396,146 @@ int main() {
     }
     EXPECT_RESULT(nkgpu_batch_seal(batch), NKGPU_OK);
     EXPECT_RESULT(nkgpu_batch_submit(renderer, batch), NKGPU_OK);
+
+    /*
+     * Records may reference an external graphics image. The batch retains it
+     * through the core handle, so the texture outlives both the target it came
+     * from and the caller's own reference.
+     */
+    {
+        const bool gles = nkgpu_query_graphics_api(renderer) == NK_GRAPHICS_OPENGL_ES;
+        const char *vertex_source =
+            gles ? "#version 300 es\n"
+                   "layout(location=0) in vec2 position;\n"
+                   "layout(location=1) in vec2 uv;\n"
+                   "out vec2 v_uv;\n"
+                   "void main(){v_uv=uv;gl_Position=vec4(position,0.0,1.0);}\n"
+                 : "#version 330\n"
+                   "layout(location=0) in vec2 position;\n"
+                   "layout(location=1) in vec2 uv;\n"
+                   "out vec2 v_uv;\n"
+                   "void main(){v_uv=uv;gl_Position=vec4(position,0.0,1.0);}\n";
+        const char *fragment_source = gles ? "#version 300 es\n"
+                                             "precision mediump float;\n"
+                                             "uniform sampler2D tex;\n"
+                                             "in vec2 v_uv;\n"
+                                             "out vec4 frag_color;\n"
+                                             "void main(){frag_color=texture(tex,v_uv);}\n"
+                                           : "#version 330\n"
+                                             "uniform sampler2D tex;\n"
+                                             "in vec2 v_uv;\n"
+                                             "out vec4 frag_color;\n"
+                                             "void main(){frag_color=texture(tex,v_uv);}\n";
+        nkgpu_shader_builder shader_builder{};
+        EXPECT_RESULT(nkgpu_shader_begin(renderer, NKGPU_SHADERLANGUAGE_GLSL, vertex_source,
+                                         fragment_source, &shader_builder),
+                      NKGPU_OK);
+        EXPECT_RESULT(nkgpu_shader_texture(shader_builder, 0, 0, NKGPU_SHADERSTAGE_FRAGMENT, "tex"),
+                      NKGPU_OK);
+        EXPECT_RESULT(nkgpu_shader_end(shader_builder, &textured_shader), NKGPU_OK);
+        nkgpu_pipeline_builder pipeline_builder{};
+        EXPECT_RESULT(
+            nkgpu_pipeline_begin(renderer, textured_shader, 4 * sizeof(float), &pipeline_builder),
+            NKGPU_OK);
+        EXPECT_RESULT(
+            nkgpu_pipeline_attribute(pipeline_builder, 0, 0, 0, NKGPU_VERTEXFORMAT_FLOAT2),
+            NKGPU_OK);
+        EXPECT_RESULT(nkgpu_pipeline_attribute(pipeline_builder, 1, 0, 2 * sizeof(float),
+                                               NKGPU_VERTEXFORMAT_FLOAT2),
+                      NKGPU_OK);
+        EXPECT_RESULT(nkgpu_pipeline_end(pipeline_builder, &textured_pipeline), NKGPU_OK);
+        const float quad[] = {-1.0f, -1.0f, 0.0f,  0.0f, 3.0f, -1.0f,
+                              2.0f,  0.0f,  -1.0f, 3.0f, 0.0f, 2.0f};
+        EXPECT_RESULT(nkgpu_buffer_create(renderer, reinterpret_cast<const uint8_t *>(quad),
+                                          sizeof(quad), &textured_buffer),
+                      NKGPU_OK);
+        EXPECT_RESULT(nkgpu_sampler_create(renderer, NKGPU_FILTER_NEAREST, NKGPU_FILTER_NEAREST,
+                                           NKGPU_WRAP_CLAMP_TO_EDGE, NKGPU_WRAP_CLAMP_TO_EDGE,
+                                           &sampler),
+                      NKGPU_OK);
+
+        nk_graphics_image composite_image{};
+        nkgpu_batch image_batch{};
+        nkgpu_render_target composite_target{};
+        EXPECT_RESULT(nkgpu_render_target_create(renderer, 16, 16, 1, &composite_target), NKGPU_OK);
+        /* Fill the target with the solid color pipeline. */
+        EXPECT_RESULT(nkgpu_batch_begin(renderer, &image_batch), NKGPU_OK);
+        {
+            nkgpu_batch_pass pass{};
+            pass.struct_size = sizeof(pass);
+            pass.kind = NKGPU_BATCH_PASS_TARGET;
+            pass.target = composite_target;
+            pass.clear = 1;
+            EXPECT_RESULT(nkgpu_batch_append_pass(image_batch, &pass), NKGPU_OK);
+            std::vector<uint8_t> commands;
+            append_apply_pipeline(commands, pipeline);
+            append_apply_vertex_buffer(commands, 0, buffer, 0);
+            append_draw(commands, 0, 3, 1);
+            EXPECT_RESULT(nkgpu_batch_append_command(image_batch, commands.data(),
+                                                     static_cast<uint32_t>(commands.size())),
+                          NKGPU_OK);
+        }
+        EXPECT_RESULT(nkgpu_batch_seal(image_batch), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_batch_submit(renderer, image_batch), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_batch_destroy(image_batch), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_render_target_get_image(renderer, composite_target, &composite_image),
+                      NKGPU_OK);
+        EXPECT_RESULT(nk_graphics_image_retain(composite_image), NK_OK);
+        /* The target goes away; the retained image keeps the texture alive. */
+        EXPECT_RESULT(nkgpu_render_target_destroy(renderer, composite_target), NKGPU_OK);
+        composite_target = {};
+
+        EXPECT_RESULT(nkgpu_batch_begin(renderer, &image_batch), NKGPU_OK);
+        {
+            nkgpu_batch_pass pass{};
+            pass.struct_size = sizeof(pass);
+            pass.kind = NKGPU_BATCH_PASS_WINDOW;
+            pass.clear = 1;
+            pass.width = window_options.width;
+            pass.height = window_options.height;
+            EXPECT_RESULT(nkgpu_batch_append_pass(image_batch, &pass), NKGPU_OK);
+            std::vector<uint8_t> commands;
+            append_apply_pipeline(commands, textured_pipeline);
+            append_apply_vertex_buffer(commands, 0, textured_buffer, 0);
+            append_apply_graphics_image(commands, 0, composite_image);
+            append_apply_sampler(commands, 0, sampler);
+            append_draw(commands, 0, 3, 1);
+            EXPECT_RESULT(nkgpu_batch_append_command(image_batch, commands.data(),
+                                                     static_cast<uint32_t>(commands.size())),
+                          NKGPU_OK);
+        }
+        EXPECT_RESULT(nkgpu_batch_seal(image_batch), NKGPU_OK);
+        /* Drop the caller's reference: only the batch keeps the image alive. */
+        EXPECT_RESULT(nk_graphics_image_release(composite_image), NK_OK);
+        EXPECT_RESULT(nkgpu_batch_submit(renderer, image_batch), NKGPU_OK);
+        {
+            uint8_t pixel[4]{};
+            glReadPixels(window_options.width / 2, window_options.height / 2, 1, 1, GL_RGBA,
+                         GL_UNSIGNED_BYTE, pixel);
+            if (pixel[0] < 200 || pixel[1] > 40 || pixel[2] > 40 || pixel[3] != 255) {
+                std::fprintf(stderr, "composited pixel was (%u,%u,%u,%u)\n", pixel[0], pixel[1],
+                             pixel[2], pixel[3]);
+                result = __LINE__;
+                goto cleanup;
+            }
+        }
+        EXPECT_RESULT(nkgpu_batch_destroy(image_batch), NKGPU_OK);
+        /* The batch held the last reference, so the image handle is now dead. */
+        {
+            nk_graphics_image_info info{};
+            info.struct_size = sizeof(info);
+            EXPECT_RESULT(nk_graphics_image_get_info(composite_image, &info),
+                          NK_ERROR_INVALID_HANDLE);
+        }
+        EXPECT_RESULT(nkgpu_buffer_destroy(renderer, textured_buffer), NKGPU_OK);
+        textured_buffer = {};
+        EXPECT_RESULT(nkgpu_sampler_destroy(renderer, sampler), NKGPU_OK);
+        sampler = {};
+        EXPECT_RESULT(nkgpu_pipeline_destroy(renderer, textured_pipeline), NKGPU_OK);
+        textured_pipeline = {};
+        EXPECT_RESULT(nkgpu_shader_destroy(renderer, textured_shader), NKGPU_OK);
+        textured_shader = {};
+    }
 
     /* A batch belongs to the renderer that recorded it. */
     {
@@ -458,6 +630,14 @@ cleanup:
         nkgpu_buffer_destroy(renderer, buffer);
     if (shader.id && renderer.id)
         nkgpu_shader_destroy(renderer, shader);
+    if (textured_pipeline.id && renderer.id)
+        nkgpu_pipeline_destroy(renderer, textured_pipeline);
+    if (textured_buffer.id && renderer.id)
+        nkgpu_buffer_destroy(renderer, textured_buffer);
+    if (textured_shader.id && renderer.id)
+        nkgpu_shader_destroy(renderer, textured_shader);
+    if (sampler.id && renderer.id)
+        nkgpu_sampler_destroy(renderer, sampler);
     if (target.id && renderer.id)
         nkgpu_render_target_destroy(renderer, target);
     if (renderer.id)
