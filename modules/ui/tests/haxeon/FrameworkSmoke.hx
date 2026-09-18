@@ -513,7 +513,7 @@ class FrameworkSmoke {
 			fieldRoot.children[0].children.length != 3 ||
 			fieldRoot.children[0].children[0].layout.visualKind != LayoutVisualKind.Custom ||
 			fieldRoot.children[0].children[0].layout.style.zIndex != 0 ||
-			fieldRoot.children[0].children[1].layout.visualKind != LayoutVisualKind.Custom ||
+			fieldRoot.children[0].children[1].layout.visualKind != LayoutVisualKind.Box ||
 			fieldRoot.children[0].children[1].layout.style.zIndex != 1 ||
 			fieldRoot.children[0].children[2].layout.visualKind != LayoutVisualKind.Custom ||
 			fieldRoot.children[0].children[2].layout.style.zIndex != 2)
