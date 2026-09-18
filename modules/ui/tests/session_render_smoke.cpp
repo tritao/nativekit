@@ -23,6 +23,7 @@
 #include <GL/gl.h>
 #endif
 
+#include <array>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -53,6 +54,12 @@ void write_color(std::vector<uint8_t> &bytes, std::size_t offset, float red, flo
     write_float(bytes, offset + 4, green);
     write_float(bytes, offset + 8, blue);
     write_float(bytes, offset + 12, alpha);
+}
+
+template <class T> void append_bytes(std::vector<uint8_t> &bytes, const T &value) {
+    const std::size_t offset = bytes.size();
+    bytes.resize(offset + sizeof(value));
+    std::memcpy(bytes.data() + offset, &value, sizeof(value));
 }
 
 std::vector<uint8_t> transaction(float width, float height) {
@@ -297,6 +304,88 @@ int main() {
         nkui_layout_session_render_frame(renderer, session, surface, &frame_info, 1) != NKUI_OK)
         result = 16;
 
+    /*
+     * Custom-visual nodes render through the compiler's embedded-plan path
+     * instead of plain primitives, so drive one custom paint and confirm its
+     * content reaches the node's bounds.
+     */
+    if (!result) {
+        constexpr std::size_t second_record =
+            NKUI_LAYOUT_TRANSACTION_HEADER_BYTES + NKUI_LAYOUT_NODE_RECORD_BYTES;
+        auto custom_tree =
+            transaction(framebuffer_width / pixel_scale, framebuffer_height / pixel_scale);
+        write_u32(custom_tree, second_record + NKUI_LAYOUT_NODE_VISUAL_KIND_OFFSET,
+                  NKUI_LAYOUT_VISUAL_CUSTOM);
+
+        const nkui_path_element rectangle[] = {
+            {NKUI_PATH_MOVE_TO, {0.0f, 0.0f}},
+            {NKUI_PATH_LINE_TO, {160.0f, 0.0f}},
+            {NKUI_PATH_LINE_TO, {160.0f, 64.0f}},
+            {NKUI_PATH_LINE_TO, {0.0f, 64.0f}},
+            {NKUI_PATH_CLOSE, {}},
+        };
+        nkui_resource custom_paint{};
+        nkui_resource custom_path{};
+        nkui_display_list custom_list{};
+        std::vector<uint8_t> custom_commands;
+        if (nkui_paint_create_solid({1.0f, 0.0f, 0.0f, 1.0f}, &custom_paint) != NKUI_OK ||
+            nkui_path_create(rectangle, 5, &custom_path) != NKUI_OK ||
+            nkui_display_list_create(&custom_list) != NKUI_OK)
+            result = 18;
+        if (!result) {
+            append_bytes(custom_commands,
+                         nkui_resource_command{{NKUI_COMMAND_SET_PAINT, NKUI_COMMAND_VERSION,
+                                                sizeof(nkui_resource_command)},
+                                               custom_paint});
+            /*
+             * Custom paint commands carry their own placement: the layout
+             * session does not re-apply the node transform, so the list is
+             * responsible for putting content where the node sits.
+             */
+            append_bytes(custom_commands,
+                         nkui_transform_command{{NKUI_COMMAND_SET_TRANSFORM, NKUI_COMMAND_VERSION,
+                                                 sizeof(nkui_transform_command)},
+                                                {1.0f, 0.0f, 0.0f, 1.0f, 12.0f, 20.0f}});
+            append_bytes(custom_commands,
+                         nkui_resource_command{{NKUI_COMMAND_DRAW_PATH, NKUI_COMMAND_VERSION,
+                                                sizeof(nkui_resource_command)},
+                                               custom_path});
+            if (nkui_display_list_submit(custom_list, custom_commands.data(),
+                                         static_cast<uint32_t>(custom_commands.size())) !=
+                    NKUI_OK ||
+                nkui_layout_session_submit(session, custom_tree.data(),
+                                           static_cast<uint32_t>(custom_tree.size()),
+                                           &frame) != NKUI_OK ||
+                nkui_layout_session_set_custom_paint(session, 2, custom_list) != NKUI_OK ||
+                nkui_layout_session_render_frame(renderer, session, surface, &frame_info, 0) !=
+                    NKUI_OK)
+                result = 18;
+        }
+        if (!result) {
+            /*
+             * Node 2 sits at (12, 20) with a 160x64 box, so its custom paint
+             * covers framebuffer x 12..172, y (bottom-up) 108..172.
+             */
+            std::array<uint8_t, 20 * 20 * 4> block{};
+            glReadPixels(40, 120, 20, 20, GL_RGBA, GL_UNSIGNED_BYTE, block.data());
+            int red = 0;
+            for (std::size_t pixel = 0; pixel < 20 * 20; ++pixel) {
+                const uint8_t *rgba = block.data() + pixel * 4;
+                if (rgba[0] > 200 && rgba[1] < 60 && rgba[2] < 60 && rgba[3] == 255)
+                    ++red;
+            }
+            if (red < 20 * 20) {
+                std::fprintf(stderr, "custom paint covered %d of %d sampled pixels\n", red,
+                             20 * 20);
+                result = 19;
+            }
+        }
+        nkui_layout_session_clear_custom_paints(session);
+        nkui_display_list_destroy(custom_list);
+        nkui_resource_destroy(custom_path);
+        nkui_resource_destroy(custom_paint);
+    }
+
     if (nkui_layout_session_destroy(session) != NKUI_OK ||
         nkui_layout_session_destroy(session) != NKUI_ERROR_INVALID_HANDLE)
         result = 17;
@@ -307,6 +396,7 @@ int main() {
     nk_window_destroy(window);
     nk_shutdown();
     if (!result)
-        std::printf("PASS: layout-session render path renders across scales\n");
+        std::printf("PASS: layout-session render path renders primitives, scales, and custom "
+                    "paints\n");
     return result;
 }
