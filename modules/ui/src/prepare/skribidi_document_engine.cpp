@@ -25,7 +25,7 @@ skb_attribute_set_t make_text_attributes(const TextLayoutOptions &options,
         options.line_height > 0.0f ? SKB_LINE_HEIGHT_ABSOLUTE : SKB_LINE_HEIGHT_NORMAL,
         options.line_height);
     attributes[4] = skb_attribute_make_paint_color(SKB_PAINT_TEXT, SKB_PAINT_STATE_DEFAULT,
-                                                    skb_rgba(255, 255, 255, 255));
+                                                   skb_rgba(255, 255, 255, 255));
     return {.attributes = attributes, .attributes_count = 5};
 }
 
@@ -33,13 +33,13 @@ skb_attribute_set_t make_layout_attributes(const TextLayoutOptions &options,
                                            skb_attribute_t *attributes) {
     const auto wrap = options.wrap == TextWrapMode::None   ? SKB_WRAP_NONE
                       : options.wrap == TextWrapMode::Word ? SKB_WRAP_WORD
-                                                            : SKB_WRAP_WORD_CHAR;
+                                                           : SKB_WRAP_WORD_CHAR;
     const auto alignment = options.alignment == TextAlignment::Center ? SKB_ALIGN_CENTER
-                          : options.alignment == TextAlignment::End  ? SKB_ALIGN_END
+                           : options.alignment == TextAlignment::End  ? SKB_ALIGN_END
                                                                       : SKB_ALIGN_START;
     const auto direction = options.direction == TextDirection::Ltr   ? SKB_DIRECTION_LTR
                            : options.direction == TextDirection::Rtl ? SKB_DIRECTION_RTL
-                                                                       : SKB_DIRECTION_AUTO;
+                                                                     : SKB_DIRECTION_AUTO;
     attributes[0] = skb_attribute_make_text_wrap(wrap);
     attributes[1] = skb_attribute_make_horizontal_align(alignment);
     attributes[2] = skb_attribute_make_text_base_direction(direction);
@@ -83,8 +83,8 @@ SkribidiDocumentEngine::SkribidiDocumentEngine(std::shared_ptr<SkribidiFontColle
 
     skb_editor_set_text_utf8(editor_, temporary_, initial_text ? initial_text : "", -1);
     const int32_t initial_length = skb_editor_get_text_utf32_count(editor_);
-    skb_editor_set_selection(editor_, {{initial_length, SKB_AFFINITY_NONE},
-                                       {initial_length, SKB_AFFINITY_NONE}});
+    skb_editor_set_selection(
+        editor_, {{initial_length, SKB_AFFINITY_NONE}, {initial_length, SKB_AFFINITY_NONE}});
 }
 
 SkribidiDocumentEngine::~SkribidiDocumentEngine() {
@@ -117,13 +117,15 @@ bool SkribidiDocumentEngine::apply_edit(const SkribidiEditTransaction &transacti
     const int32_t resulting_length = document_length() -
                                      (transaction.replacement_end - transaction.replacement_start) +
                                      replacement_codepoints;
-    if (transaction.selection_start < 0 || transaction.selection_end < transaction.selection_start ||
+    if (transaction.selection_start < 0 ||
+        transaction.selection_end < transaction.selection_start ||
         transaction.selection_end > resulting_length)
         return false;
     if (transaction.history_kind > SKB_EDIT_HISTORY_COMPOSITION)
         return false;
     if (transaction.has_composition &&
-        (transaction.composition_start < 0 || transaction.composition_end < transaction.composition_start ||
+        (transaction.composition_start < 0 ||
+         transaction.composition_end < transaction.composition_start ||
          transaction.composition_end > resulting_length))
         return false;
 
@@ -141,16 +143,18 @@ bool SkribidiDocumentEngine::apply_edit(const SkribidiEditTransaction &transacti
     const skb_edit_transaction_t edit = {
         .replacement = replacement_range,
         .replacement_text = replacement_text,
-        .resulting_selection = {
-            {transaction.selection_start, SKB_AFFINITY_NONE},
-            {transaction.selection_end,
-             static_cast<skb_caret_affinity_t>(transaction.selection_affinity)},
-        },
+        .resulting_selection =
+            {
+                {transaction.selection_start, SKB_AFFINITY_NONE},
+                {transaction.selection_end,
+                 static_cast<skb_caret_affinity_t>(transaction.selection_affinity)},
+            },
         .has_composition = transaction.has_composition,
-        .composition_range = {
-            {transaction.composition_start, SKB_AFFINITY_NONE},
-            {transaction.composition_end, SKB_AFFINITY_NONE},
-        },
+        .composition_range =
+            {
+                {transaction.composition_start, SKB_AFFINITY_NONE},
+                {transaction.composition_end, SKB_AFFINITY_NONE},
+            },
         .history_kind = static_cast<skb_edit_history_kind_t>(transaction.history_kind),
     };
     const skb_result_t result = skb_editor_apply_transaction(editor_, temporary_, &edit);
@@ -243,8 +247,9 @@ std::vector<TextRect> SkribidiDocumentEngine::selection_rects(TextPosition start
             {rect.x, rect.y, rect.width, rect.height});
     };
     skb_editor_iterate_text_range_bounds(
-        editor_, {{start.offset, static_cast<skb_caret_affinity_t>(start.affinity)},
-                  {end.offset, static_cast<skb_caret_affinity_t>(end.affinity)}},
+        editor_,
+        {{start.offset, static_cast<skb_caret_affinity_t>(start.affinity)},
+         {end.offset, static_cast<skb_caret_affinity_t>(end.affinity)}},
         collect, &result);
     return result;
 }

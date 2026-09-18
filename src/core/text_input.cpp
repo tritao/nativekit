@@ -51,9 +51,10 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle, const nk_text_input
     return unsupported_text_input();
 }
 
-nk_result NK_CALL nk_surface_set_text_input_geometry(
-    nk_handle, nk_text_position, nk_text_position, nk_text_position, nk_text_position,
-    const uint8_t *, uint32_t, const uint8_t *, uint32_t) {
+nk_result NK_CALL nk_surface_set_text_input_geometry(nk_handle, nk_text_position, nk_text_position,
+                                                     nk_text_position, nk_text_position,
+                                                     const uint8_t *, uint32_t, const uint8_t *,
+                                                     uint32_t) {
     return unsupported_text_input();
 }
 

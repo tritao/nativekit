@@ -2973,13 +2973,12 @@ void emit_window_state(MacWindowResource &resource) noexcept {
                 ? text_units
                 : std::min<NSUInteger>(selectionRange.location, text_units);
         if (selectionRange.location != NSNotFound &&
-            selectionRange.length > std::numeric_limits<NSUInteger>::max() -
-                                       selectionRange.location)
+            selectionRange.length >
+                std::numeric_limits<NSUInteger>::max() - selectionRange.location)
             return;
-        const NSUInteger selection_finish_value = selectionRange.location == NSNotFound
-                                                     ? selection_begin_offset
-                                                     : selectionRange.location +
-                                                           selectionRange.length;
+        const NSUInteger selection_finish_value =
+            selectionRange.location == NSNotFound ? selection_begin_offset
+                                                  : selectionRange.location + selectionRange.length;
         const auto selection_finish_offset =
             selectionRange.location == NSNotFound
                 ? selection_begin_offset
@@ -3096,8 +3095,8 @@ void emit_window_state(MacWindowResource &resource) noexcept {
         resource->text_input_state, resource->text_input_selection_rects,
         resource->text_input_composition_rects, localPoint.x, localPoint.y);
     const auto range_hit = nk::core::text_input_hit_test_range_rects(
-        resource->text_input_selection_range_rects,
-        resource->text_input_composition_range_rects, localPoint.x, localPoint.y);
+        resource->text_input_selection_range_rects, resource->text_input_composition_range_rects,
+        localPoint.x, localPoint.y);
     const auto resolved_hit = range_hit.matched ? range_hit : hit;
     if (resolved_hit.matched) {
         const NSRange range =
@@ -3133,8 +3132,8 @@ void emit_window_state(MacWindowResource &resource) noexcept {
     NSRect rect;
     if (rectangles && !rectangles->empty()) {
         const auto &value = rectangles->front();
-        rect = NSMakeRect(value.x, value.y, std::max(1.f, value.width),
-                          std::max(1.f, value.height));
+        rect =
+            NSMakeRect(value.x, value.y, std::max(1.f, value.width), std::max(1.f, value.height));
     } else {
         rect = NSMakeRect(resource->text_input_state.cursor_x, resource->text_input_state.cursor_y,
                           std::max(1.f, resource->text_input_state.cursor_width),
@@ -4417,7 +4416,8 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
             if (!native_text || !decode_utf8(text, points))
                 return fail(NK_ERROR_INVALID_ARGUMENT, "text input state text is not valid UTF-8");
             if (!nk::core::validate_text_input_state(*state, std::string_view(text)))
-                return fail(NK_ERROR_INVALID_ARGUMENT, "text input state ranges or hints are invalid");
+                return fail(NK_ERROR_INVALID_ARGUMENT,
+                            "text input state ranges or hints are invalid");
             auto resource = window(handle);
             if (!resource)
                 return fail(NK_ERROR_INVALID_HANDLE,
@@ -4467,8 +4467,8 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
 nk_result NK_CALL nk_surface_set_text_input_geometry(
     nk_handle handle, nk_text_position selection_start, nk_text_position selection_end,
     nk_text_position composition_start, nk_text_position composition_end,
-    const uint8_t *selection_rects, uint32_t selection_rect_bytes,
-    const uint8_t *composition_rects, uint32_t composition_rect_bytes) {
+    const uint8_t *selection_rects, uint32_t selection_rect_bytes, const uint8_t *composition_rects,
+    uint32_t composition_rect_bytes) {
     return nk::core::result_boundary(
         "unexpected error while setting macOS text input geometry", [&]() -> nk_result {
             if (const auto result = enter_ui(); result != NK_OK)
@@ -4483,13 +4483,11 @@ nk_result NK_CALL nk_surface_set_text_input_geometry(
                     selection_start, selection_end, composition_start, composition_end,
                     selection_rects, selection_rect_bytes, composition_rects,
                     composition_rect_bytes, &geometry) ||
-                !nk::core::text_input_geometry_matches_state(geometry,
-                                                               resource->text_input_state))
+                !nk::core::text_input_geometry_matches_state(geometry, resource->text_input_state))
                 return NK_ERROR_INVALID_ARGUMENT;
             resource->text_input_selection_rects = std::move(geometry.selection_rects);
             resource->text_input_composition_rects = std::move(geometry.composition_rects);
-            resource->text_input_selection_range_rects =
-                std::move(geometry.selection_range_rects);
+            resource->text_input_selection_range_rects = std::move(geometry.selection_range_rects);
             resource->text_input_composition_range_rects =
                 std::move(geometry.composition_range_rects);
             return NK_OK;

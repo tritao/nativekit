@@ -1943,26 +1943,23 @@ EM_JS(int, nk_web_write_resource, (const char *uri, const void *data, uint32_t s
 
 // clang-format on
 
-extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_text_input_event(
-    uint32_t route, int type, const char *text, int replacement_start, int replacement_end,
-    int selection_start, int selection_end) {
+extern "C" EMSCRIPTEN_KEEPALIVE void
+nk_web_host_text_input_event(uint32_t route, int type, const char *text, int replacement_start,
+                             int replacement_end, int selection_start, int selection_end) {
     auto *state = state_for_route(route);
     if (!state || !state->callbacks.text_input)
         return;
     nk::web::TextInputEvent event{};
     event.type = static_cast<nk::web::TextInputEventType>(type);
     event.text = text;
-    event.replacement_start = replacement_start < 0
-                                  ? NK_TEXT_POSITION_NONE
-                                  : static_cast<uint32_t>(replacement_start);
-    event.replacement_end = replacement_end < 0
-                                ? NK_TEXT_POSITION_NONE
-                                : static_cast<uint32_t>(replacement_end);
-    event.selection_start = selection_start < 0
-                                ? NK_TEXT_POSITION_NONE
-                                : static_cast<uint32_t>(selection_start);
-    event.selection_end = selection_end < 0 ? NK_TEXT_POSITION_NONE
-                                            : static_cast<uint32_t>(selection_end);
+    event.replacement_start =
+        replacement_start < 0 ? NK_TEXT_POSITION_NONE : static_cast<uint32_t>(replacement_start);
+    event.replacement_end =
+        replacement_end < 0 ? NK_TEXT_POSITION_NONE : static_cast<uint32_t>(replacement_end);
+    event.selection_start =
+        selection_start < 0 ? NK_TEXT_POSITION_NONE : static_cast<uint32_t>(selection_start);
+    event.selection_end =
+        selection_end < 0 ? NK_TEXT_POSITION_NONE : static_cast<uint32_t>(selection_end);
     state->callbacks.text_input(event, state->user_data);
 }
 

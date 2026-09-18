@@ -203,11 +203,10 @@ struct LayoutSessionState {
 };
 
 bool valid_text_color(const nkui_color &color) {
-    return std::isfinite(color.red) && std::isfinite(color.green) &&
-           std::isfinite(color.blue) && std::isfinite(color.alpha) && color.red >= 0.0f &&
-           color.red <= 1.0f && color.green >= 0.0f && color.green <= 1.0f &&
-           color.blue >= 0.0f && color.blue <= 1.0f && color.alpha >= 0.0f &&
-           color.alpha <= 1.0f;
+    return std::isfinite(color.red) && std::isfinite(color.green) && std::isfinite(color.blue) &&
+           std::isfinite(color.alpha) && color.red >= 0.0f && color.red <= 1.0f &&
+           color.green >= 0.0f && color.green <= 1.0f && color.blue >= 0.0f && color.blue <= 1.0f &&
+           color.alpha >= 0.0f && color.alpha <= 1.0f;
 }
 
 uint8_t text_color_byte(float value) {
@@ -748,7 +747,8 @@ nkui_result create_text_layout_locked(nkui_resource fonts, const char *text, flo
     }
     bool valid = layout_slot->text->valid() &&
                  layout_slot->text->set_atlas_namespace(static_cast<uint16_t>(out_layout->id));
-    valid = valid && layout_slot->text->layout_utf8(layout_slot->text_value.c_str(), width, options);
+    valid =
+        valid && layout_slot->text->layout_utf8(layout_slot->text_value.c_str(), width, options);
     valid = valid && layout_slot->text->prepare_glyphs(0.0f, 0.0f, 1.0f, nkui::GlyphMode::Alpha,
                                                        layout_slot->text_glyphs);
     if (!valid) {
@@ -763,8 +763,8 @@ nkui_result create_text_layout_locked(nkui_resource fonts, const char *text, flo
 }
 
 nkui_result create_text_document_locked(nkui_resource fonts, const char *text, float width,
-                                         const nkui::TextLayoutOptions &options,
-                                         nkui_resource *out_document) {
+                                        const nkui::TextLayoutOptions &options,
+                                        nkui_resource *out_document) {
     auto *font_slot = resolve(fonts, nkui::ResourceKind::FontCollection);
     if (!font_slot || (font_slot->fonts.empty() && !font_slot->system_fallbacks))
         return NKUI_ERROR_INVALID_HANDLE;
@@ -1749,8 +1749,8 @@ extern "C" nkui_result nkui_text_layout_measure(nkui_resource layout,
     return NKUI_OK;
 }
 
-extern "C" nkui_result nkui_text_layout_intrinsic_metrics(
-    nkui_resource layout, nkui_text_intrinsic_metrics *out_metrics) {
+extern "C" nkui_result
+nkui_text_layout_intrinsic_metrics(nkui_resource layout, nkui_text_intrinsic_metrics *out_metrics) {
     if (!out_metrics)
         return NKUI_ERROR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(resources_mutex);
@@ -1758,12 +1758,12 @@ extern "C" nkui_result nkui_text_layout_intrinsic_metrics(
     if (!slot || !slot->text)
         return NKUI_ERROR_INVALID_HANDLE;
     nkui::TextIntrinsicMetrics metrics;
-    if (!slot->text->measure_intrinsic_utf8(slot->text_value.c_str(), slot->text_options,
-                                            &metrics))
+    if (!slot->text->measure_intrinsic_utf8(slot->text_value.c_str(), slot->text_options, &metrics))
         return NKUI_ERROR_INVALID_ARGUMENT;
-    *out_metrics = {sizeof(*out_metrics), metrics.min_content_width, metrics.max_content_width,
-                    metrics.natural_height, metrics.first_baseline,
-                    metrics.has_baseline ? NKUI_TEXT_INTRINSIC_HAS_BASELINE : 0u};
+    *out_metrics = {
+        sizeof(*out_metrics),      metrics.min_content_width,
+        metrics.max_content_width, metrics.natural_height,
+        metrics.first_baseline,    metrics.has_baseline ? NKUI_TEXT_INTRINSIC_HAS_BASELINE : 0u};
     return NKUI_OK;
 }
 
@@ -1964,9 +1964,10 @@ extern "C" nkui_result nkui_text_layout_word_range(nkui_resource layout,
     return NKUI_OK;
 }
 
-extern "C" nkui_result nkui_text_document_create(
-    nkui_resource fonts, const char *text, float width, const nkui_text_style *text_style,
-    const nkui_paragraph_style *paragraph_style, nkui_resource *out_document) {
+extern "C" nkui_result nkui_text_document_create(nkui_resource fonts, const char *text, float width,
+                                                 const nkui_text_style *text_style,
+                                                 const nkui_paragraph_style *paragraph_style,
+                                                 nkui_resource *out_document) {
     if (!out_document || !std::isfinite(width) || width <= 0.0f)
         return NKUI_ERROR_INVALID_ARGUMENT;
     nkui::TextLayoutOptions options;
@@ -2032,8 +2033,7 @@ extern "C" nkui_result nkui_text_document_get_text(nkui_resource document, uint8
     return NKUI_OK;
 }
 
-extern "C" nkui_result nkui_text_document_get_length(nkui_resource document,
-                                                      int32_t *out_length) {
+extern "C" nkui_result nkui_text_document_get_length(nkui_resource document, int32_t *out_length) {
     if (!out_length)
         return NKUI_ERROR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(resources_mutex);
@@ -2044,8 +2044,9 @@ extern "C" nkui_result nkui_text_document_get_length(nkui_resource document,
     return NKUI_OK;
 }
 
-extern "C" nkui_result nkui_text_document_get_selection(
-    nkui_resource document, nkui_text_document_selection *out_selection) {
+extern "C" nkui_result
+nkui_text_document_get_selection(nkui_resource document,
+                                 nkui_text_document_selection *out_selection) {
     if (!out_selection)
         return NKUI_ERROR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(resources_mutex);
@@ -2053,14 +2054,19 @@ extern "C" nkui_result nkui_text_document_get_selection(
     if (!slot || !slot->document)
         return NKUI_ERROR_INVALID_HANDLE;
     const auto selection = slot->document->selection();
-    *out_selection = {sizeof(*out_selection), selection.start, selection.end,
-                      selection.start, selection.end, 0u,
+    *out_selection = {sizeof(*out_selection),
+                      selection.start,
+                      selection.end,
+                      selection.start,
+                      selection.end,
+                      0u,
                       slot->document->selection_affinity()};
     return NKUI_OK;
 }
 
-extern "C" nkui_result nkui_text_document_get_composition(
-    nkui_resource document, nkui_text_document_composition *out_composition) {
+extern "C" nkui_result
+nkui_text_document_get_composition(nkui_resource document,
+                                   nkui_text_document_composition *out_composition) {
     if (!out_composition)
         return NKUI_ERROR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(resources_mutex);
@@ -2090,7 +2096,7 @@ extern "C" nkui_result nkui_text_document_redo(nkui_resource document) {
 }
 
 extern "C" nkui_result nkui_text_document_hit_test(nkui_resource document, float x, float y,
-                                                    nkui_text_position *out_position) {
+                                                   nkui_text_position *out_position) {
     if (!out_position || !std::isfinite(x) || !std::isfinite(y))
         return NKUI_ERROR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(resources_mutex);
@@ -2102,26 +2108,25 @@ extern "C" nkui_result nkui_text_document_hit_test(nkui_resource document, float
     return NKUI_OK;
 }
 
-extern "C" nkui_result nkui_text_document_caret(nkui_resource document,
-                                                 nkui_text_position position,
-                                                 nkui_text_caret *out_caret) {
+extern "C" nkui_result nkui_text_document_caret(nkui_resource document, nkui_text_position position,
+                                                nkui_text_caret *out_caret) {
     if (!out_caret || position.offset < 0 || position.affinity > 4u)
         return NKUI_ERROR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(resources_mutex);
     auto *slot = resolve(document, nkui::ResourceKind::TextDocument);
     if (!slot || !slot->document)
         return NKUI_ERROR_INVALID_HANDLE;
-    const auto caret = slot->document->caret({position.offset, static_cast<uint8_t>(position.affinity)});
-    *out_caret = {sizeof(*out_caret), caret.x, caret.y, caret.ascender, caret.descender,
-                  caret.slope, caret.direction};
+    const auto caret =
+        slot->document->caret({position.offset, static_cast<uint8_t>(position.affinity)});
+    *out_caret = {sizeof(*out_caret), caret.x,     caret.y,        caret.ascender,
+                  caret.descender,    caret.slope, caret.direction};
     return NKUI_OK;
 }
 
 extern "C" nkui_result nkui_text_document_get_layout(nkui_resource document,
-                                                      nkui_text_position start,
-                                                      nkui_text_position end,
-                                                      uint8_t *out_buffer,
-                                                      uint32_t *inout_bytes) {
+                                                     nkui_text_position start,
+                                                     nkui_text_position end, uint8_t *out_buffer,
+                                                     uint32_t *inout_bytes) {
     if (!inout_bytes || start.offset < 0 || end.offset < 0 || start.affinity > 4u ||
         end.affinity > 4u)
         return NKUI_ERROR_INVALID_ARGUMENT;
@@ -2131,9 +2136,9 @@ extern "C" nkui_result nkui_text_document_get_layout(nkui_resource document,
         return NKUI_ERROR_INVALID_HANDLE;
     std::vector<nkui::TextRect> rectangles;
     try {
-        rectangles = slot->document->selection_rects(
-            {start.offset, static_cast<uint8_t>(start.affinity)},
-            {end.offset, static_cast<uint8_t>(end.affinity)});
+        rectangles =
+            slot->document->selection_rects({start.offset, static_cast<uint8_t>(start.affinity)},
+                                            {end.offset, static_cast<uint8_t>(end.affinity)});
     } catch (...) {
         return NKUI_ERROR_OUT_OF_MEMORY;
     }

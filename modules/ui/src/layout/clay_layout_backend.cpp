@@ -244,9 +244,9 @@ LayoutEngine::Impl::measure_intrinsic_text(Clay_StringSlice text, Clay_TextEleme
     TextIntrinsicMetrics metrics;
     if (!state.text.measure_intrinsic_utf8(value.c_str(), options, &metrics))
         return result;
-    result.unwrappedDimensions = {
-        metrics.max_content_width,
-        config->lineHeight > 0 ? static_cast<float>(config->lineHeight) : metrics.natural_height};
+    result.unwrappedDimensions = {metrics.max_content_width,
+                                  config->lineHeight > 0 ? static_cast<float>(config->lineHeight)
+                                                         : metrics.natural_height};
     result.baseline = metrics.first_baseline;
     result.hasBaseline = metrics.has_baseline && std::isfinite(metrics.first_baseline);
     result.minWidth = metrics.min_content_width;

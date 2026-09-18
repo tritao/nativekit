@@ -100,8 +100,7 @@ uint64_t hash_bytes(uint64_t hash, const char *data, std::size_t length) {
     return hash;
 }
 
-template <typename Value>
-uint64_t hash_value(uint64_t hash, Value value) {
+template <typename Value> uint64_t hash_value(uint64_t hash, Value value) {
     const auto bits = static_cast<uint64_t>(value);
     for (unsigned shift = 0; shift < sizeof(Value) * 8; shift += 8) {
         const uint8_t byte = static_cast<uint8_t>((bits >> shift) & 0xffu);
@@ -126,8 +125,7 @@ uint64_t layout_cache_hash(const char *text, float width, const TextLayoutOption
 }
 
 bool same_layout_request(const SkribidiAdapter::State::RetainedLayout &cached, const char *text,
-                         float width, const TextLayoutOptions &options,
-                         uint64_t font_generation) {
+                         float width, const TextLayoutOptions &options, uint64_t font_generation) {
     return cached.font_generation == font_generation && cached.text == text &&
            cached.width == width && cached.options.font_size == options.font_size &&
            cached.options.letter_spacing == options.letter_spacing &&
@@ -546,10 +544,10 @@ bool SkribidiAdapter::measure_intrinsic_utf8(const char *text, const TextLayoutO
     skb_layout_destroy(layout);
     if (result) {
         result->min_content_width = min_content_width;
-        result->max_content_width = std::isfinite(bounds.width) ? std::max(0.0f, bounds.width)
-                                                                 : 0.0f;
-        result->natural_height = std::isfinite(bounds.height) ? std::max(0.0f, bounds.height)
-                                                               : 0.0f;
+        result->max_content_width =
+            std::isfinite(bounds.width) ? std::max(0.0f, bounds.width) : 0.0f;
+        result->natural_height =
+            std::isfinite(bounds.height) ? std::max(0.0f, bounds.height) : 0.0f;
         result->first_baseline = baseline;
         result->has_baseline = has_baseline;
     }

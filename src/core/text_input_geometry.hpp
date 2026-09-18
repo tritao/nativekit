@@ -37,9 +37,10 @@ struct TextInputHitTest {
  * published caret rectangle as the fallback for collapsed selections and
  * backends that do not receive range geometry.
  */
-inline nk_text_input_rect text_input_anchor_rect(
-    const nk_text_input_state &state, const std::vector<nk_text_input_rect> &selection_rects,
-    const std::vector<nk_text_input_rect> &composition_rects) noexcept {
+inline nk_text_input_rect
+text_input_anchor_rect(const nk_text_input_state &state,
+                       const std::vector<nk_text_input_rect> &selection_rects,
+                       const std::vector<nk_text_input_rect> &composition_rects) noexcept {
     nk_text_input_rect fallback{sizeof(nk_text_input_rect), state.cursor_x, state.cursor_y,
                                 state.cursor_width, state.cursor_height};
     if (state.composition_start != NK_TEXT_POSITION_NONE &&
@@ -78,8 +79,7 @@ inline TextInputHitTest text_input_hit_test_range(
 
     if (state.composition_start != NK_TEXT_POSITION_NONE &&
         state.composition_end != NK_TEXT_POSITION_NONE) {
-        const auto result = hit(state.composition_start, state.composition_end,
-                                composition_rects);
+        const auto result = hit(state.composition_start, state.composition_end, composition_rects);
         if (result.matched)
             return result;
     }
@@ -91,9 +91,10 @@ inline TextInputHitTest text_input_hit_test_range(
     return {};
 }
 
-inline const nk_text_input_range_rect *text_input_range_rect_at_point(
-    const std::vector<nk_text_input_range_rect> &selection_rects,
-    const std::vector<nk_text_input_range_rect> &composition_rects, float x, float y) noexcept {
+inline const nk_text_input_range_rect *
+text_input_range_rect_at_point(const std::vector<nk_text_input_range_rect> &selection_rects,
+                               const std::vector<nk_text_input_range_rect> &composition_rects,
+                               float x, float y) noexcept {
     if (!std::isfinite(x) || !std::isfinite(y))
         return nullptr;
 
@@ -117,9 +118,10 @@ inline const nk_text_input_range_rect *text_input_range_rect_at_point(
     return hit(selection_rects);
 }
 
-inline TextInputHitTest text_input_hit_test_range_rects(
-    const std::vector<nk_text_input_range_rect> &selection_rects,
-    const std::vector<nk_text_input_range_rect> &composition_rects, float x, float y) noexcept {
+inline TextInputHitTest
+text_input_hit_test_range_rects(const std::vector<nk_text_input_range_rect> &selection_rects,
+                                const std::vector<nk_text_input_range_rect> &composition_rects,
+                                float x, float y) noexcept {
     const auto *rect = text_input_range_rect_at_point(selection_rects, composition_rects, x, y);
     if (!rect)
         return {};
@@ -127,14 +129,14 @@ inline TextInputHitTest text_input_hit_test_range_rects(
     return TextInputHitTest{true, x <= midpoint ? rect->range_start : rect->range_end};
 }
 
-inline const nk_text_input_range_rect *text_input_first_range_rect(
-    const std::vector<nk_text_input_range_rect> &rects, nk_text_position start,
-    nk_text_position end) noexcept {
+inline const nk_text_input_range_rect *
+text_input_first_range_rect(const std::vector<nk_text_input_range_rect> &rects,
+                            nk_text_position start, nk_text_position end) noexcept {
     if (start == NK_TEXT_POSITION_NONE || end == NK_TEXT_POSITION_NONE || start >= end)
         return nullptr;
     for (const auto &rect : rects) {
-        if (rect.range_start == NK_TEXT_POSITION_NONE ||
-            rect.range_end == NK_TEXT_POSITION_NONE || rect.range_start > rect.range_end)
+        if (rect.range_start == NK_TEXT_POSITION_NONE || rect.range_end == NK_TEXT_POSITION_NONE ||
+            rect.range_start > rect.range_end)
             continue;
         if (rect.range_end > start && rect.range_start < end)
             return &rect;
@@ -142,9 +144,10 @@ inline const nk_text_input_range_rect *text_input_first_range_rect(
     return nullptr;
 }
 
-inline bool decode_text_input_rects(const uint8_t *bytes, uint32_t byte_count,
-                                    std::vector<nk_text_input_rect> *out,
-                                    std::vector<nk_text_input_range_rect> *range_out = nullptr) noexcept {
+inline bool
+decode_text_input_rects(const uint8_t *bytes, uint32_t byte_count,
+                        std::vector<nk_text_input_rect> *out,
+                        std::vector<nk_text_input_range_rect> *range_out = nullptr) noexcept {
     if (!out || (byte_count != 0 && !bytes))
         return false;
     try {
@@ -164,9 +167,9 @@ inline bool decode_text_input_rects(const uint8_t *bytes, uint32_t byte_count,
             return false;
         nk_text_input_rect rect{};
         std::memcpy(&rect, bytes + offset, sizeof(rect));
-        if (rect.struct_size < sizeof(rect) || !std::isfinite(rect.x) ||
-            !std::isfinite(rect.y) || !std::isfinite(rect.width) ||
-            !std::isfinite(rect.height) || rect.width < 0.0f || rect.height < 0.0f)
+        if (rect.struct_size < sizeof(rect) || !std::isfinite(rect.x) || !std::isfinite(rect.y) ||
+            !std::isfinite(rect.width) || !std::isfinite(rect.height) || rect.width < 0.0f ||
+            rect.height < 0.0f)
             return false;
         try {
             out->push_back(rect);
@@ -190,29 +193,30 @@ inline bool decode_text_input_rects(const uint8_t *bytes, uint32_t byte_count,
     return true;
 }
 
-inline bool decode_text_input_geometry(
-    nk_text_position selection_start, nk_text_position selection_end,
-    nk_text_position composition_start, nk_text_position composition_end,
-    const uint8_t *selection_rects, uint32_t selection_rect_bytes,
-    const uint8_t *composition_rects, uint32_t composition_rect_bytes,
-    TextInputGeometry *out) noexcept {
-    if (!out || selection_start > selection_end) return false;
-    const bool no_composition = composition_start == NK_TEXT_POSITION_NONE &&
-                                composition_end == NK_TEXT_POSITION_NONE;
+inline bool
+decode_text_input_geometry(nk_text_position selection_start, nk_text_position selection_end,
+                           nk_text_position composition_start, nk_text_position composition_end,
+                           const uint8_t *selection_rects, uint32_t selection_rect_bytes,
+                           const uint8_t *composition_rects, uint32_t composition_rect_bytes,
+                           TextInputGeometry *out) noexcept {
+    if (!out || selection_start > selection_end)
+        return false;
+    const bool no_composition =
+        composition_start == NK_TEXT_POSITION_NONE && composition_end == NK_TEXT_POSITION_NONE;
     const bool valid_composition = composition_start != NK_TEXT_POSITION_NONE &&
                                    composition_end != NK_TEXT_POSITION_NONE &&
                                    composition_start <= composition_end;
-    if (!no_composition && !valid_composition) return false;
+    if (!no_composition && !valid_composition)
+        return false;
     TextInputGeometry decoded;
     decoded.selection_start = selection_start;
     decoded.selection_end = selection_end;
     decoded.composition_start = composition_start;
     decoded.composition_end = composition_end;
-    if (!decode_text_input_rects(selection_rects, selection_rect_bytes,
-                                 &decoded.selection_rects, &decoded.selection_range_rects) ||
+    if (!decode_text_input_rects(selection_rects, selection_rect_bytes, &decoded.selection_rects,
+                                 &decoded.selection_range_rects) ||
         !decode_text_input_rects(composition_rects, composition_rect_bytes,
-                                 &decoded.composition_rects,
-                                 &decoded.composition_range_rects))
+                                 &decoded.composition_rects, &decoded.composition_range_rects))
         return false;
     for (const auto &rect : decoded.selection_range_rects)
         if (rect.range_start < selection_start || rect.range_end > selection_end)

@@ -56,8 +56,7 @@ struct TextOffsetMap {
                     return invalid();
                 codepoint = (codepoint << 6) | (next & 0x3fu);
             }
-            if ((length == 2 && codepoint < 0x80u) ||
-                (length == 3 && codepoint < 0x800u) ||
+            if ((length == 2 && codepoint < 0x80u) || (length == 3 && codepoint < 0x800u) ||
                 (length == 4 && codepoint < 0x10000u) || codepoint > 0x10ffffu ||
                 (codepoint >= 0xd800u && codepoint <= 0xdfffu))
                 return invalid();
@@ -86,9 +85,7 @@ struct TextOffsetMap {
         return !utf8_offsets.empty() && utf8_offsets.size() == utf16_offsets.size();
     }
 
-    std::size_t codepointCount() const noexcept {
-        return valid() ? utf8_offsets.size() - 1 : 0;
-    }
+    std::size_t codepointCount() const noexcept { return valid() ? utf8_offsets.size() - 1 : 0; }
 
     bool utf8ByteOffset(uint32_t codepoint, std::size_t *out) const noexcept {
         if (!out || !valid() || codepoint >= utf8_offsets.size())
@@ -115,7 +112,7 @@ struct TextOffsetMap {
         return true;
     }
 
-private:
+  private:
     bool invalid() noexcept {
         clear();
         return false;

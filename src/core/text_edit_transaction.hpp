@@ -25,15 +25,15 @@ struct TextEditTransaction {
             selection_start > selection_end)
             return false;
 
-        const bool has_replacement = replacement_start != NK_TEXT_POSITION_NONE &&
-                                     replacement_end != NK_TEXT_POSITION_NONE;
+        const bool has_replacement =
+            replacement_start != NK_TEXT_POSITION_NONE && replacement_end != NK_TEXT_POSITION_NONE;
         if ((replacement_start == NK_TEXT_POSITION_NONE) !=
                 (replacement_end == NK_TEXT_POSITION_NONE) ||
             (has_replacement && replacement_start > replacement_end))
             return false;
 
-        const bool has_composition = composition_start != NK_TEXT_POSITION_NONE &&
-                                     composition_end != NK_TEXT_POSITION_NONE;
+        const bool has_composition =
+            composition_start != NK_TEXT_POSITION_NONE && composition_end != NK_TEXT_POSITION_NONE;
         if ((composition_start == NK_TEXT_POSITION_NONE) !=
                 (composition_end == NK_TEXT_POSITION_NONE) ||
             (has_composition && composition_start > composition_end))

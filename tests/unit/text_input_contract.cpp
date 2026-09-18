@@ -28,10 +28,8 @@ int main() {
 
     const std::u16string unpaired_high(1, static_cast<char16_t>(0xd800));
     const std::u16string unpaired_low(1, static_cast<char16_t>(0xdc00));
-    assert(!utf16_to_codepoint_offset(std::u16string_view(unpaired_high), 1,
-                                      &codepoint_offset));
-    assert(!utf16_to_codepoint_offset(std::u16string_view(unpaired_low), 1,
-                                      &codepoint_offset));
+    assert(!utf16_to_codepoint_offset(std::u16string_view(unpaired_high), 1, &codepoint_offset));
+    assert(!utf16_to_codepoint_offset(std::u16string_view(unpaired_low), 1, &codepoint_offset));
 
     nk::core::TextOffsetMap offset_map;
     assert(offset_map.assign("a\U0001f600e\xcc\x81"));
@@ -83,8 +81,8 @@ int main() {
     assert(anchor.x == 4.0f && anchor.y == 8.0f);
     anchor_state.selection_start = 3;
     anchor_state.selection_end = 5;
-    auto hit = nk::core::text_input_hit_test_range(anchor_state, anchor_selection, {}, 21.0f,
-                                                   35.0f);
+    auto hit =
+        nk::core::text_input_hit_test_range(anchor_state, anchor_selection, {}, 21.0f, 35.0f);
     assert(hit.matched && hit.position == 3);
     hit = nk::core::text_input_hit_test_range(anchor_state, anchor_selection, {}, 59.0f, 35.0f);
     assert(hit.matched && hit.position == 5);
@@ -92,8 +90,8 @@ int main() {
     assert(!hit.matched);
     anchor_state.composition_start = 4;
     anchor_state.composition_end = 5;
-    hit = nk::core::text_input_hit_test_range(anchor_state, anchor_selection,
-                                              anchor_composition, 61.0f, 75.0f);
+    hit = nk::core::text_input_hit_test_range(anchor_state, anchor_selection, anchor_composition,
+                                              61.0f, 75.0f);
     assert(hit.matched && hit.position == 4);
 
     std::vector<nk_text_input_range_rect> range_selection{
@@ -101,17 +99,17 @@ int main() {
         {sizeof(nk_text_input_range_rect), 34.0f, 30.0f, 16.0f, 18.0f, 4, 6}};
     std::vector<nk_text_input_range_rect> range_composition{
         {sizeof(nk_text_input_range_rect), 60.0f, 70.0f, 20.0f, 18.0f, 8, 10}};
-    const auto *range_hit = nk::core::text_input_range_rect_at_point(
-        range_selection, range_composition, 22.0f, 35.0f);
+    const auto *range_hit =
+        nk::core::text_input_range_rect_at_point(range_selection, range_composition, 22.0f, 35.0f);
     assert(range_hit && range_hit->range_start == 3 && range_hit->range_end == 4);
-    range_hit = nk::core::text_input_range_rect_at_point(
-        range_selection, range_composition, 0.0f, 0.0f);
+    range_hit =
+        nk::core::text_input_range_rect_at_point(range_selection, range_composition, 0.0f, 0.0f);
     assert(!range_hit);
-    hit = nk::core::text_input_hit_test_range_rects(range_selection, range_composition, 45.0f,
-                                                    35.0f);
+    hit =
+        nk::core::text_input_hit_test_range_rects(range_selection, range_composition, 45.0f, 35.0f);
     assert(hit.matched && hit.position == 6);
-    hit = nk::core::text_input_hit_test_range_rects(range_selection, range_composition, 65.0f,
-                                                    75.0f);
+    hit =
+        nk::core::text_input_hit_test_range_rects(range_selection, range_composition, 65.0f, 75.0f);
     assert(hit.matched && hit.position == 8);
     const auto *first_range = nk::core::text_input_first_range_rect(range_selection, 3, 6);
     assert(first_range && first_range->range_start == 3);
@@ -153,96 +151,70 @@ int main() {
 
     const TextEditTransaction compose{NK_TEXT_EDIT_COMPOSE, 2, 2, "かな", 4, 4, 2, 4};
     assert(compose.valid());
-    const TextEditTransaction commit{NK_TEXT_EDIT_COMMIT, 2, 4, "漢字", 4, 4,
-                                     NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE};
+    const TextEditTransaction commit{
+        NK_TEXT_EDIT_COMMIT, 2, 4, "漢字", 4, 4, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE};
     assert(commit.valid());
-    const TextEditTransaction selection{NK_TEXT_EDIT_SET_SELECTION,
-                                        NK_TEXT_POSITION_NONE,
-                                        NK_TEXT_POSITION_NONE,
-                                        {},
-                                        1,
-                                        3,
-                                        2,
-                                        4};
+    const TextEditTransaction selection{
+        NK_TEXT_EDIT_SET_SELECTION, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE, {}, 1, 3, 2, 4};
     assert(selection.valid());
-    const TextEditTransaction finish{NK_TEXT_EDIT_FINISH_COMPOSITION,
-                                     NK_TEXT_POSITION_NONE,
-                                     NK_TEXT_POSITION_NONE,
-                                     {},
-                                     4,
-                                     4,
-                                     NK_TEXT_POSITION_NONE,
-                                     NK_TEXT_POSITION_NONE};
+    const TextEditTransaction finish{
+        NK_TEXT_EDIT_FINISH_COMPOSITION, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE, {}, 4, 4,
+        NK_TEXT_POSITION_NONE,           NK_TEXT_POSITION_NONE};
     assert(finish.valid());
     const TextEditTransaction finish_with_replacement{NK_TEXT_EDIT_FINISH_COMPOSITION,
-                                                       4,
-                                                       4,
-                                                       {},
-                                                       4,
-                                                       4,
-                                                       NK_TEXT_POSITION_NONE,
-                                                       NK_TEXT_POSITION_NONE};
+                                                      4,
+                                                      4,
+                                                      {},
+                                                      4,
+                                                      4,
+                                                      NK_TEXT_POSITION_NONE,
+                                                      NK_TEXT_POSITION_NONE};
     assert(!finish_with_replacement.valid());
-    const TextEditTransaction malformed{NK_TEXT_EDIT_COMMIT, 4, 2, "x", 4, 4,
-                                        NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE};
+    const TextEditTransaction malformed{
+        NK_TEXT_EDIT_COMMIT, 4, 2, "x", 4, 4, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE};
     assert(!malformed.valid());
-    const TextEditTransaction missing_composition{NK_TEXT_EDIT_COMPOSE, 2, 2, "x", 3, 3,
-                                                  NK_TEXT_POSITION_NONE,
-                                                  NK_TEXT_POSITION_NONE};
+    const TextEditTransaction missing_composition{
+        NK_TEXT_EDIT_COMPOSE, 2, 2, "x", 3, 3, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE};
     assert(!missing_composition.valid());
-    const TextEditTransaction delete_with_text{NK_TEXT_EDIT_DELETE, 2, 3, "x", 2, 2,
-                                               NK_TEXT_POSITION_NONE,
-                                               NK_TEXT_POSITION_NONE};
+    const TextEditTransaction delete_with_text{
+        NK_TEXT_EDIT_DELETE, 2, 3, "x", 2, 2, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE};
     assert(!delete_with_text.valid());
-    const TextEditTransaction selection_with_replacement{NK_TEXT_EDIT_SET_SELECTION,
-                                                          2,
-                                                          2,
-                                                          "x",
-                                                          2,
-                                                          2,
-                                                          NK_TEXT_POSITION_NONE,
-                                                          NK_TEXT_POSITION_NONE};
+    const TextEditTransaction selection_with_replacement{
+        NK_TEXT_EDIT_SET_SELECTION, 2, 2, "x", 2, 2, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE};
     assert(!selection_with_replacement.valid());
-    const TextEditTransaction invalid_affinity{NK_TEXT_EDIT_COMMIT,
-                                               1,
-                                               1,
-                                               "x",
-                                               2,
-                                               2,
-                                               NK_TEXT_POSITION_NONE,
-                                               NK_TEXT_POSITION_NONE,
-                                               5};
+    const TextEditTransaction invalid_affinity{
+        NK_TEXT_EDIT_COMMIT, 1, 1, "x", 2, 2, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE, 5};
     assert(!invalid_affinity.valid());
 
     nk_text_input_rect selection_rect{sizeof(nk_text_input_rect), 4.0f, 8.0f, 32.0f, 18.0f};
     std::vector<uint8_t> packed(sizeof(selection_rect));
     std::memcpy(packed.data(), &selection_rect, sizeof(selection_rect));
     nk::core::TextInputGeometry geometry;
-    assert(nk::core::decode_text_input_geometry(
-        1, 3, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE, packed.data(), packed.size(),
-        nullptr, 0, &geometry));
+    assert(nk::core::decode_text_input_geometry(1, 3, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
+                                                packed.data(), packed.size(), nullptr, 0,
+                                                &geometry));
     assert(geometry.selection_rects.size() == 1);
     assert(geometry.selection_rects.front().x == 4.0f);
-    nk_text_input_range_rect range_rect{sizeof(nk_text_input_range_rect), 4.0f, 8.0f, 12.0f,
-                                        18.0f, 1, 3};
+    nk_text_input_range_rect range_rect{
+        sizeof(nk_text_input_range_rect), 4.0f, 8.0f, 12.0f, 18.0f, 1, 3};
     std::vector<uint8_t> range_packed(sizeof(range_rect));
     std::memcpy(range_packed.data(), &range_rect, sizeof(range_rect));
-    assert(nk::core::decode_text_input_geometry(
-        1, 3, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE, range_packed.data(),
-        range_packed.size(), nullptr, 0, &geometry));
+    assert(nk::core::decode_text_input_geometry(1, 3, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
+                                                range_packed.data(), range_packed.size(), nullptr,
+                                                0, &geometry));
     assert(geometry.selection_range_rects.size() == 1);
     assert(geometry.selection_range_rects.front().range_start == 1);
     assert(geometry.selection_range_rects.front().range_end == 3);
-    assert(!nk::core::decode_text_input_geometry(
-        3, 1, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE, packed.data(), packed.size(),
-        nullptr, 0, &geometry));
-    assert(!nk::core::decode_text_input_geometry(
-        1, 3, 2, NK_TEXT_POSITION_NONE, packed.data(), packed.size(), nullptr, 0, &geometry));
+    assert(!nk::core::decode_text_input_geometry(3, 1, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
+                                                 packed.data(), packed.size(), nullptr, 0,
+                                                 &geometry));
+    assert(!nk::core::decode_text_input_geometry(1, 3, 2, NK_TEXT_POSITION_NONE, packed.data(),
+                                                 packed.size(), nullptr, 0, &geometry));
     selection_rect.struct_size = sizeof(selection_rect) - 1;
     std::memcpy(packed.data(), &selection_rect, sizeof(selection_rect));
-    assert(!nk::core::decode_text_input_geometry(
-        1, 3, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE, packed.data(), packed.size(),
-        nullptr, 0, &geometry));
+    assert(!nk::core::decode_text_input_geometry(1, 3, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
+                                                 packed.data(), packed.size(), nullptr, 0,
+                                                 &geometry));
 
     state.selection_start = 11;
     state.selection_end = 12;
@@ -254,13 +226,26 @@ int main() {
     selection_rect.struct_size = sizeof(selection_rect);
     std::memcpy(packed.data(), &selection_rect, sizeof(selection_rect));
     assert(nk::core::decode_text_input_geometry(
-        state.selection_start, state.selection_end, NK_TEXT_POSITION_NONE,
-        NK_TEXT_POSITION_NONE, packed.data(), packed.size(), nullptr, 0, &geometry));
+        state.selection_start, state.selection_end, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
+        packed.data(), packed.size(), nullptr, 0, &geometry));
     assert(nk::core::text_input_geometry_matches_state(geometry, state));
     assert(!nk::core::text_input_geometry_matches_state(
-        geometry, nk_text_input_state{sizeof(nk_text_input_state), 0, nullptr, 10, 20, 10, 11,
-                                       11, 12, NK_TEXT_INPUT_TEXT, NK_TEXT_INPUT_ACTION_DEFAULT,
-                                       0, 0, 1, 18, {0, 0}}));
+        geometry, nk_text_input_state{sizeof(nk_text_input_state),
+                                      0,
+                                      nullptr,
+                                      10,
+                                      20,
+                                      10,
+                                      11,
+                                      11,
+                                      12,
+                                      NK_TEXT_INPUT_TEXT,
+                                      NK_TEXT_INPUT_ACTION_DEFAULT,
+                                      0,
+                                      0,
+                                      1,
+                                      18,
+                                      {0, 0}}));
     assert(nk::core::decode_text_input_geometry(
         state.selection_start, state.selection_end, 11, 12, packed.data(), packed.size(),
         composition_packed.data(), composition_packed.size(), &geometry));
@@ -280,8 +265,8 @@ int main() {
     state.composition_start = 11;
     state.composition_end = 12;
     assert(nk::core::decode_text_input_geometry(
-        state.selection_start, state.selection_end, state.composition_start,
-        state.composition_end, state_selection_packed.data(), state_selection_packed.size(),
+        state.selection_start, state.selection_end, state.composition_start, state.composition_end,
+        state_selection_packed.data(), state_selection_packed.size(),
         state_composition_packed.data(), state_composition_packed.size(), &geometry));
     assert(geometry.selection_range_rects.size() == 1);
     assert(geometry.composition_range_rects.size() == 1);
@@ -291,8 +276,8 @@ int main() {
     std::memcpy(state_selection_packed.data(), &state_selection_range,
                 sizeof(state_selection_range));
     assert(!nk::core::decode_text_input_geometry(
-        state.selection_start, state.selection_end, state.composition_start,
-        state.composition_end, state_selection_packed.data(), state_selection_packed.size(),
+        state.selection_start, state.selection_end, state.composition_start, state.composition_end,
+        state_selection_packed.data(), state_selection_packed.size(),
         state_composition_packed.data(), state_composition_packed.size(), &geometry));
     return 0;
 }

@@ -2392,9 +2392,9 @@ std::shared_ptr<GtkWindowResource> text_input_window(nk_handle target) {
 void update_text_input_anchor(GtkWindowResource &resource) {
     if (!resource.im_context)
         return;
-    const auto anchor = nk::core::text_input_anchor_rect(
-        resource.text_input_state, resource.text_input_selection_rects,
-        resource.text_input_composition_rects);
+    const auto anchor = nk::core::text_input_anchor_rect(resource.text_input_state,
+                                                         resource.text_input_selection_rects,
+                                                         resource.text_input_composition_rects);
     GdkRectangle cursor{static_cast<gint>(std::lround(anchor.x)),
                         static_cast<gint>(std::lround(anchor.y)),
                         std::max(static_cast<gint>(std::lround(anchor.width)), 1),
@@ -4024,8 +4024,8 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
 nk_result NK_CALL nk_surface_set_text_input_geometry(
     nk_handle handle, nk_text_position selection_start, nk_text_position selection_end,
     nk_text_position composition_start, nk_text_position composition_end,
-    const uint8_t *selection_rects, uint32_t selection_rect_bytes,
-    const uint8_t *composition_rects, uint32_t composition_rect_bytes) {
+    const uint8_t *selection_rects, uint32_t selection_rect_bytes, const uint8_t *composition_rects,
+    uint32_t composition_rect_bytes) {
     return nk::core::result_boundary(
         "unexpected error while setting GTK text input geometry", [&]() -> nk_result {
             if (const auto result = enter_ui(); result != NK_OK)
@@ -4040,8 +4040,7 @@ nk_result NK_CALL nk_surface_set_text_input_geometry(
                     selection_start, selection_end, composition_start, composition_end,
                     selection_rects, selection_rect_bytes, composition_rects,
                     composition_rect_bytes, &geometry) ||
-                !nk::core::text_input_geometry_matches_state(geometry,
-                                                               resource->text_input_state))
+                !nk::core::text_input_geometry_matches_state(geometry, resource->text_input_state))
                 return fail(NK_ERROR_INVALID_ARGUMENT,
                             "text input geometry ranges do not match the current state");
             resource->text_input_selection_rects = std::move(geometry.selection_rects);

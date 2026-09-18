@@ -242,8 +242,8 @@ bool to_utf8_checked(JNIEnv *env, jstring string_value, std::string *out) {
                 return false;
             }
             const std::uint32_t low = characters[++index];
-            const std::uint32_t codepoint = UINT32_C(0x10000) +
-                ((code_unit - 0xd800) << 10) + (low - 0xdc00);
+            const std::uint32_t codepoint =
+                UINT32_C(0x10000) + ((code_unit - 0xd800) << 10) + (low - 0xdc00);
             out->push_back(static_cast<char>(0xf0 | (codepoint >> 18)));
             out->push_back(static_cast<char>(0x80 | ((codepoint >> 12) & 0x3f)));
             out->push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3f)));
@@ -1958,8 +1958,8 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
 nk_result NK_CALL nk_surface_set_text_input_geometry(
     nk_handle handle, nk_text_position selection_start, nk_text_position selection_end,
     nk_text_position composition_start, nk_text_position composition_end,
-    const uint8_t *selection_rects, uint32_t selection_rect_bytes,
-    const uint8_t *composition_rects, uint32_t composition_rect_bytes) {
+    const uint8_t *selection_rects, uint32_t selection_rect_bytes, const uint8_t *composition_rects,
+    uint32_t composition_rect_bytes) {
     if (const auto thread = require_thread(); thread != NK_OK)
         return thread;
     auto resource = surface(handle);
@@ -1969,9 +1969,8 @@ nk_result NK_CALL nk_surface_set_text_input_geometry(
         return NK_ERROR_INVALID_ARGUMENT;
     nk::core::TextInputGeometry geometry;
     if (!nk::core::decode_text_input_geometry(
-            selection_start, selection_end, composition_start, composition_end,
-            selection_rects, selection_rect_bytes, composition_rects, composition_rect_bytes,
-            &geometry) ||
+            selection_start, selection_end, composition_start, composition_end, selection_rects,
+            selection_rect_bytes, composition_rects, composition_rect_bytes, &geometry) ||
         !nk::core::text_input_geometry_matches_state(geometry, resource->text_input_state)) {
         nk::core::set_error("text input geometry ranges do not match the current state");
         return NK_ERROR_INVALID_ARGUMENT;
@@ -2016,25 +2015,21 @@ nk_result NK_CALL nk_surface_set_text_input_geometry(
     arguments[0].l = resource->view;
     arguments[1].i = static_cast<jint>(selection_start);
     arguments[2].i = static_cast<jint>(selection_end);
-    arguments[3].i = composition_start == NK_TEXT_POSITION_NONE
-                         ? -1
-                         : static_cast<jint>(composition_start);
-    arguments[4].i = composition_end == NK_TEXT_POSITION_NONE
-                         ? -1
-                         : static_cast<jint>(composition_end);
+    arguments[3].i =
+        composition_start == NK_TEXT_POSITION_NONE ? -1 : static_cast<jint>(composition_start);
+    arguments[4].i =
+        composition_end == NK_TEXT_POSITION_NONE ? -1 : static_cast<jint>(composition_end);
     arguments[5].l = selection;
     arguments[6].l = composition;
-    const auto result = java_void_surface(
-        resource, "setSurfaceTextInputGeometry",
-        "(Landroid/view/SurfaceView;IIII[F[F)V", arguments);
+    const auto result = java_void_surface(resource, "setSurfaceTextInputGeometry",
+                                          "(Landroid/view/SurfaceView;IIII[F[F)V", arguments);
     env->DeleteLocalRef(selection);
     env->DeleteLocalRef(composition);
     if (result == NK_OK) {
         resource->text_input_selection_rects = std::move(geometry.selection_rects);
         resource->text_input_composition_rects = std::move(geometry.composition_rects);
         resource->text_input_selection_range_rects = std::move(geometry.selection_range_rects);
-        resource->text_input_composition_range_rects =
-            std::move(geometry.composition_range_rects);
+        resource->text_input_composition_range_rects = std::move(geometry.composition_range_rects);
     }
     return result;
 }
@@ -3359,15 +3354,14 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnTextEdit(
         normalized_composition_start == NK_TEXT_POSITION_NONE &&
         normalized_composition_end == NK_TEXT_POSITION_NONE)
         normalized_action = NK_TEXT_EDIT_COMMIT;
-    const nk::core::TextEditTransaction transaction{
-        normalized_action,
-        position(replace_start),
-        position(replace_end),
-        value,
-        position(selection_start),
-        position(selection_end),
-        normalized_composition_start,
-        normalized_composition_end};
+    const nk::core::TextEditTransaction transaction{normalized_action,
+                                                    position(replace_start),
+                                                    position(replace_end),
+                                                    value,
+                                                    position(selection_start),
+                                                    position(selection_end),
+                                                    normalized_composition_start,
+                                                    normalized_composition_end};
     if (!transaction.valid())
         return;
     nk_text_edit_event payload{};
@@ -3393,11 +3387,11 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnTextEdit(
     nk::core::push_event(std::move(event));
 }
 
-JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnTextAction(
-    JNIEnv *, jclass, jlong handle_value, jint action) {
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnTextAction(JNIEnv *, jclass,
+                                                                            jlong handle_value,
+                                                                            jint action) {
     auto resource = surface(static_cast<nk_handle>(handle_value));
-    if (!resource || action < NK_TEXT_INPUT_ACTION_DEFAULT ||
-        action > NK_TEXT_INPUT_ACTION_NONE)
+    if (!resource || action < NK_TEXT_INPUT_ACTION_DEFAULT || action > NK_TEXT_INPUT_ACTION_NONE)
         return;
     const nk_text_input_action_event payload{static_cast<nk_text_input_action>(action), 0};
     nk::core::QueuedEvent event;

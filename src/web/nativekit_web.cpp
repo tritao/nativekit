@@ -945,14 +945,14 @@ bool update_text_input_state(WebSurfaceResource &surface, nk_text_position repla
     if (!surface.text_input_state_set)
         return false;
     auto &state = surface.text_input_state;
-    const bool has_replacement = replace_start != NK_TEXT_POSITION_NONE &&
-                                 replace_end != NK_TEXT_POSITION_NONE;
+    const bool has_replacement =
+        replace_start != NK_TEXT_POSITION_NONE && replace_end != NK_TEXT_POSITION_NONE;
     if ((replace_start == NK_TEXT_POSITION_NONE) != (replace_end == NK_TEXT_POSITION_NONE))
         return false;
 
     if (has_replacement) {
-        const auto text_end = static_cast<uint64_t>(state.text_start) +
-                              surface.text_input_offsets.codepointCount();
+        const auto text_end =
+            static_cast<uint64_t>(state.text_start) + surface.text_input_offsets.codepointCount();
         if (replace_start < state.text_start || replace_end < replace_start ||
             replace_end > text_end)
             return false;
@@ -978,9 +978,8 @@ bool update_text_input_state(WebSurfaceResource &surface, nk_text_position repla
         const auto document_delta = static_cast<int64_t>(inserted) - removed;
         if (document_delta < 0 && state.document_length < static_cast<uint32_t>(-document_delta))
             return false;
-        if (document_delta > 0 &&
-            state.document_length > std::numeric_limits<uint32_t>::max() -
-                                        static_cast<uint32_t>(document_delta))
+        if (document_delta > 0 && state.document_length > std::numeric_limits<uint32_t>::max() -
+                                                              static_cast<uint32_t>(document_delta))
             return false;
         surface.text_input_text = std::move(updated);
         surface.text_input_offsets = std::move(updated_offsets);
@@ -1510,8 +1509,7 @@ void on_text_input(const nk::web::TextInputEvent &event, void *user_data) {
 
         const auto &state = surface->text_input_state;
         const auto text_end = static_cast<nk_text_position>(
-            static_cast<uint64_t>(state.text_start) +
-            surface->text_input_offsets.codepointCount());
+            static_cast<uint64_t>(state.text_start) + surface->text_input_offsets.codepointCount());
         const bool has_composition = state.composition_start != NK_TEXT_POSITION_NONE &&
                                      state.composition_end != NK_TEXT_POSITION_NONE &&
                                      state.composition_start <= state.composition_end &&
@@ -1532,9 +1530,8 @@ void on_text_input(const nk::web::TextInputEvent &event, void *user_data) {
             return;
         const auto inserted = static_cast<nk_text_position>(inserted_offsets.codepointCount());
 
-        const bool has_event_replacement =
-            event.replacement_start != NK_TEXT_POSITION_NONE &&
-            event.replacement_end != NK_TEXT_POSITION_NONE;
+        const bool has_event_replacement = event.replacement_start != NK_TEXT_POSITION_NONE &&
+                                           event.replacement_end != NK_TEXT_POSITION_NONE;
         if ((event.replacement_start == NK_TEXT_POSITION_NONE) !=
             (event.replacement_end == NK_TEXT_POSITION_NONE))
             return;
@@ -3258,8 +3255,8 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
 nk_result NK_CALL nk_surface_set_text_input_geometry(
     nk_handle handle, nk_text_position selection_start, nk_text_position selection_end,
     nk_text_position composition_start, nk_text_position composition_end,
-    const uint8_t *selection_rects, uint32_t selection_rect_bytes,
-    const uint8_t *composition_rects, uint32_t composition_rect_bytes) {
+    const uint8_t *selection_rects, uint32_t selection_rect_bytes, const uint8_t *composition_rects,
+    uint32_t composition_rect_bytes) {
     if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
         return result;
     auto surface = get_surface(handle);
@@ -3269,16 +3266,14 @@ nk_result NK_CALL nk_surface_set_text_input_geometry(
         return invalid_argument("text input state must be set first");
     nk::core::TextInputGeometry geometry;
     if (!nk::core::decode_text_input_geometry(
-            selection_start, selection_end, composition_start, composition_end,
-            selection_rects, selection_rect_bytes, composition_rects, composition_rect_bytes,
-            &geometry) ||
+            selection_start, selection_end, composition_start, composition_end, selection_rects,
+            selection_rect_bytes, composition_rects, composition_rect_bytes, &geometry) ||
         !nk::core::text_input_geometry_matches_state(geometry, surface->text_input_state))
         return invalid_argument("text input geometry ranges do not match the current state");
     surface->text_input_selection_rects = std::move(geometry.selection_rects);
     surface->text_input_composition_rects = std::move(geometry.composition_rects);
     surface->text_input_selection_range_rects = std::move(geometry.selection_range_rects);
-    surface->text_input_composition_range_rects =
-        std::move(geometry.composition_range_rects);
+    surface->text_input_composition_range_rects = std::move(geometry.composition_range_rects);
     if (surface->text_input_active)
         configure_text_input(*surface);
     return NK_OK;

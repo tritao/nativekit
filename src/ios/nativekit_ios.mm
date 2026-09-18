@@ -2117,16 +2117,14 @@ void cancel_dialogs_for_parent(nk_handle parent);
                 ? text_units
                 : std::min<NSUInteger>(selectedRange.location, text_units);
         if (selectedRange.location != NSNotFound &&
-            selectedRange.length > std::numeric_limits<NSUInteger>::max() -
-                                       selectedRange.location)
+            selectedRange.length > std::numeric_limits<NSUInteger>::max() - selectedRange.location)
             return;
         const NSUInteger selected_end_value = selectedRange.location == NSNotFound
                                                   ? selected_start
                                                   : selectedRange.location + selectedRange.length;
-        const NSUInteger selected_end =
-            selectedRange.location == NSNotFound
-                ? selected_start
-                : std::min<NSUInteger>(selected_end_value, text_units);
+        const NSUInteger selected_end = selectedRange.location == NSNotFound
+                                            ? selected_start
+                                            : std::min<NSUInteger>(selected_end_value, text_units);
         uint32_t selected_start_codepoint = 0;
         uint32_t selected_end_codepoint = 0;
         if (!text_offsets.codepointOffsetForUtf16(selected_start, &selected_start_codepoint) ||
@@ -2250,14 +2248,13 @@ void cancel_dialogs_for_parent(nk_handle parent);
     if (!resource)
         return nil;
     const auto range_hit = nk::core::text_input_range_rect_at_point(
-        resource->text_input_selection_range_rects,
-        resource->text_input_composition_range_rects, point.x, point.y);
+        resource->text_input_selection_range_rects, resource->text_input_composition_range_rects,
+        point.x, point.y);
     const auto hit = nk::core::text_input_hit_test_range(
         resource->text_input_state, resource->text_input_selection_rects,
         resource->text_input_composition_rects, point.x, point.y);
     const auto position = range_hit
-                              ? (point.x <= range_hit->x +
-                                         std::max(1.0f, range_hit->width) * 0.5f
+                              ? (point.x <= range_hit->x + std::max(1.0f, range_hit->width) * 0.5f
                                      ? range_hit->range_start
                                      : range_hit->range_end)
                               : (hit.matched ? hit.position : NK_TEXT_POSITION_NONE);
@@ -2265,15 +2262,15 @@ void cancel_dialogs_for_parent(nk_handle parent);
         const NSRange native = native_range_for_positions(*resource, position, position);
         if (native.location != NSNotFound)
             return [self positionFromPosition:self.beginningOfDocument
-                                         offset:static_cast<NSInteger>(native.location)];
+                                       offset:static_cast<NSInteger>(native.location)];
     }
-    const CGRect caret = CGRectMake(resource->text_input_state.cursor_x,
-                                    resource->text_input_state.cursor_y,
-                                    std::max(1.0f, resource->text_input_state.cursor_width),
-                                    std::max(1.0f, resource->text_input_state.cursor_height));
+    const CGRect caret =
+        CGRectMake(resource->text_input_state.cursor_x, resource->text_input_state.cursor_y,
+                   std::max(1.0f, resource->text_input_state.cursor_width),
+                   std::max(1.0f, resource->text_input_state.cursor_height));
     if (CGRectContainsPoint(caret, point))
         return [self positionFromPosition:self.beginningOfDocument
-                                     offset:static_cast<NSInteger>(self.selectedRange.location)];
+                                   offset:static_cast<NSInteger>(self.selectedRange.location)];
     return nil;
 }
 
@@ -2282,12 +2279,12 @@ void cancel_dialogs_for_parent(nk_handle parent);
     if (!resource)
         return nil;
     const auto *rect = nk::core::text_input_range_rect_at_point(
-        resource->text_input_selection_range_rects,
-        resource->text_input_composition_range_rects, point.x, point.y);
+        resource->text_input_selection_range_rects, resource->text_input_composition_range_rects,
+        point.x, point.y);
     if (!rect)
         return nil;
-    const NSRange native = native_range_for_positions(*resource, rect->range_start,
-                                                       rect->range_end);
+    const NSRange native =
+        native_range_for_positions(*resource, rect->range_start, rect->range_end);
     return native.location == NSNotFound ? nil : native_text_range(self, native);
 }
 
@@ -2297,11 +2294,10 @@ void cancel_dialogs_for_parent(nk_handle parent);
         return CGRectZero;
     nk_text_position start = 0;
     nk_text_position end = 0;
-    if (range && codepoint_range_for_native_range(*resource,
-            native_range_for_text_range(self, range), start, end)) {
-        const nk_text_input_range_rect *range_rect =
-            nk::core::text_input_first_range_rect(resource->text_input_composition_range_rects,
-                                                   start, end);
+    if (range && codepoint_range_for_native_range(
+                     *resource, native_range_for_text_range(self, range), start, end)) {
+        const nk_text_input_range_rect *range_rect = nk::core::text_input_first_range_rect(
+            resource->text_input_composition_range_rects, start, end);
         if (!range_rect)
             range_rect = nk::core::text_input_first_range_rect(
                 resource->text_input_selection_range_rects, start, end);
@@ -2331,12 +2327,14 @@ void cancel_dialogs_for_parent(nk_handle parent);
     if (!resource)
         return CGRectZero;
     if (position) {
-        UITextRange *range = [self textRangeFromPosition:self.beginningOfDocument toPosition:position];
+        UITextRange *range = [self textRangeFromPosition:self.beginningOfDocument
+                                              toPosition:position];
         nk_text_position start = 0;
         nk_text_position end = 0;
-        if (range && codepoint_range_for_native_range(*resource,
-                native_range_for_text_range(self, range), start, end) && start == end &&
-            start == resource->text_input_state.selection_start &&
+        if (range &&
+            codepoint_range_for_native_range(*resource, native_range_for_text_range(self, range),
+                                             start, end) &&
+            start == end && start == resource->text_input_state.selection_start &&
             start == resource->text_input_state.selection_end)
             return CGRectMake(resource->text_input_state.cursor_x,
                               resource->text_input_state.cursor_y,
@@ -4143,8 +4141,8 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
 nk_result NK_CALL nk_surface_set_text_input_geometry(
     nk_handle handle, nk_text_position selection_start, nk_text_position selection_end,
     nk_text_position composition_start, nk_text_position composition_end,
-    const uint8_t *selection_rects, uint32_t selection_rect_bytes,
-    const uint8_t *composition_rects, uint32_t composition_rect_bytes) {
+    const uint8_t *selection_rects, uint32_t selection_rect_bytes, const uint8_t *composition_rects,
+    uint32_t composition_rect_bytes) {
     return nk::core::result_boundary(
         "unexpected error while setting iOS text input geometry", [&]() -> nk_result {
             if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
@@ -4159,13 +4157,11 @@ nk_result NK_CALL nk_surface_set_text_input_geometry(
                     selection_start, selection_end, composition_start, composition_end,
                     selection_rects, selection_rect_bytes, composition_rects,
                     composition_rect_bytes, &geometry) ||
-                !nk::core::text_input_geometry_matches_state(geometry,
-                                                               resource->text_input_state))
+                !nk::core::text_input_geometry_matches_state(geometry, resource->text_input_state))
                 return NK_ERROR_INVALID_ARGUMENT;
             resource->text_input_selection_rects = std::move(geometry.selection_rects);
             resource->text_input_composition_rects = std::move(geometry.composition_rects);
-            resource->text_input_selection_range_rects =
-                std::move(geometry.selection_range_rects);
+            resource->text_input_selection_range_rects = std::move(geometry.selection_range_rects);
             resource->text_input_composition_range_rects =
                 std::move(geometry.composition_range_rects);
             return NK_OK;

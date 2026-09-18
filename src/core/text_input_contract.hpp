@@ -48,8 +48,7 @@ inline bool decode_utf8_codepoint_count(std::string_view text, uint32_t *out_cou
                 return false;
             codepoint = (codepoint << 6) | (next & 0x3fu);
         }
-        if ((length == 2 && codepoint < 0x80u) ||
-            (length == 3 && codepoint < 0x800u) ||
+        if ((length == 2 && codepoint < 0x80u) || (length == 3 && codepoint < 0x800u) ||
             (length == 4 && codepoint < 0x10000u) || codepoint > 0x10ffffu ||
             (codepoint >= 0xd800u && codepoint <= 0xdfffu))
             return false;
@@ -62,8 +61,7 @@ inline bool decode_utf8_codepoint_count(std::string_view text, uint32_t *out_cou
 }
 
 /** Validates a platform text-input window and its absolute ranges. */
-inline bool validate_text_input_state(const nk_text_input_state &state,
-                                      std::string_view text,
+inline bool validate_text_input_state(const nk_text_input_state &state, std::string_view text,
                                       TextInputStateValidation *out = nullptr) noexcept {
     if (state.struct_size < sizeof(state))
         return false;
@@ -85,9 +83,8 @@ inline bool validate_text_input_state(const nk_text_input_state &state,
                               std::isfinite(state.cursor_height) && state.cursor_width >= 0.0f &&
                               state.cursor_height >= 0.0f;
     if (state.text_start > state.document_length || text_end > state.document_length ||
-        state.selection_start > state.selection_end ||
-        state.selection_start < state.text_start || state.selection_end > text_end ||
-        (!no_composition && !valid_composition) ||
+        state.selection_start > state.selection_end || state.selection_start < state.text_start ||
+        state.selection_end > text_end || (!no_composition && !valid_composition) ||
         (state.flags & ~(NK_TEXT_INPUT_MULTILINE | NK_TEXT_INPUT_AUTOCORRECT |
                          NK_TEXT_INPUT_CAPITALIZE_SENTENCES)) != 0 ||
         state.input_type > NK_TEXT_INPUT_PASSWORD || state.action > NK_TEXT_INPUT_ACTION_NONE ||

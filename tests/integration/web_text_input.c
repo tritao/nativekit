@@ -14,9 +14,8 @@
 
 static void set_text_state(nk_surface surface, const char *text, nk_text_position document_length,
                            nk_text_position selection_start, nk_text_position selection_end,
-                           nk_text_position composition_start,
-                           nk_text_position composition_end, nk_text_input_flags flags,
-                           nk_text_input_action action) {
+                           nk_text_position composition_start, nk_text_position composition_end,
+                           nk_text_input_flags flags, nk_text_input_action action) {
     nk_text_input_state state = {0};
     state.struct_size = sizeof(state);
     state.flags = flags;
@@ -92,8 +91,7 @@ static void expect_action(nk_surface surface, nk_text_input_action action) {
             continue;
         }
         assert(event.data_size == sizeof(nk_text_input_action_event));
-        const nk_text_input_action_event *payload =
-            (const nk_text_input_action_event *)event.data;
+        const nk_text_input_action_event *payload = (const nk_text_input_action_event *)event.data;
         assert(payload->action == action);
         assert(payload->reserved == 0);
         nk_event_release(&event);
@@ -109,44 +107,50 @@ static int dispatch_input_sequence(void) {
             return 0;
         input.setSelectionRange(1, 3);
         input.dispatchEvent(new InputEvent("beforeinput", {
-            bubbles: true, cancelable: true, data: "かな", inputType: "insertReplacementText"
+            bubbles : true,
+            cancelable : true,
+            data : "かな",
+            inputType : "insertReplacementText"
         }));
         return 1;
     });
 }
 
 static int geometry_anchor_is_published(float expected_x, float expected_y) {
-    return EM_ASM_INT({
-        const input = document.querySelector("[id^='__nativekit_text_input_']");
-        const canvas = document.querySelector("canvas");
-        if (!input || !canvas)
-            return 0;
-        const canvasRect = canvas.getBoundingClientRect();
-        const left = Number.parseFloat(input.style.left);
-        const top = Number.parseFloat(input.style.top);
-        return Math.abs(left - (canvasRect.left + $0)) < 1 &&
-               Math.abs(top - (canvasRect.top + $1)) < 1 ? 1 : 0;
-    }, expected_x, expected_y);
+    return EM_ASM_INT(
+        {
+            const input = document.querySelector("[id^='__nativekit_text_input_']");
+            const canvas = document.querySelector("canvas");
+            if (!input || !canvas)
+                return 0;
+            const canvasRect = canvas.getBoundingClientRect();
+            const left = Number.parseFloat(input.style.left);
+            const top = Number.parseFloat(input.style.top);
+            return Math.abs(left - (canvasRect.left + $0)) < 1 &&
+                           Math.abs(top - (canvasRect.top + $1)) < 1
+                       ? 1
+                       : 0;
+        },
+        expected_x, expected_y);
 }
 
 static int query_text_input_ranges(void) {
     return EM_ASM_INT({
         const input = document.querySelector("[id^='__nativekit_text_input_']");
-        if (!input || typeof input._nkGetSurroundingText !== "function" ||
-            typeof input._nkCodePointRangeForEvent !== "function")
+        if (!input || typeof input._nkGetSurroundingText !=
+            = "function" || typeof input._nkCodePointRangeForEvent != = "function")
             return 0;
         input.value = "A\ud83d\ude00B";
         input.setSelectionRange(3, 3);
         const surrounding = input._nkGetSurroundingText(1, 1);
-        if (!surrounding || surrounding.text !== "\ud83d\ude00B" ||
-            surrounding.textStart !== 1 || surrounding.selectionStart !== 1 ||
-            surrounding.selectionEnd !== 1)
+        if (!surrounding || surrounding.text != = "\ud83d\ude00B" || surrounding.textStart !=
+            = 1 || surrounding.selectionStart != = 1 || surrounding.selectionEnd != = 1)
             return 0;
         const target = input._nkCodePointRangeForEvent({
-            getTargetRanges: () => [{startContainer: input, startOffset: 1,
-                                     endContainer: input, endOffset: 3}]
+            getTargetRanges : () =
+                > [ {startContainer : input, startOffset : 1, endContainer : input, endOffset : 3} ]
         });
-        if (!target || target[0] !== 1 || target[1] !== 2)
+        if (!target || target[0] != = 1 || target[1] != = 2)
             return 0;
         const textNodeTarget = input._nkCodePointRangeForEvent({
             getTargetRanges: () => {
@@ -154,9 +158,9 @@ static int query_text_input_ranges(void) {
                 return [{startContainer: textNode, startOffset: 1,
                          endContainer: textNode, endOffset: 3}];
             }
-        });
-        return textNodeTarget && textNodeTarget[0] === 1 && textNodeTarget[1] === 2 ? 1 : 0;
-    });
+});
+return textNodeTarget && textNodeTarget[0] == = 1 && textNodeTarget[1] == = 2 ? 1 : 0;
+});
 }
 
 static int dispatch_selection(void) {
@@ -165,7 +169,7 @@ static int dispatch_selection(void) {
         if (!input)
             return 0;
         input.setSelectionRange(0, 3);
-        input.dispatchEvent(new Event("select", {bubbles: true}));
+        input.dispatchEvent(new Event("select", {bubbles : true}));
         return 1;
     });
 }
@@ -176,9 +180,9 @@ static int dispatch_delete_backward(void) {
         if (!input)
             return 0;
         input.setSelectionRange(3, 3);
-        input.dispatchEvent(new InputEvent("beforeinput", {
-            bubbles: true, cancelable: true, data: null, inputType: "deleteContentBackward"
-        }));
+        input.dispatchEvent(new InputEvent(
+            "beforeinput",
+            {bubbles : true, cancelable : true, data : null, inputType : "deleteContentBackward"}));
         return 1;
     });
 }
@@ -189,10 +193,9 @@ static int dispatch_composition(void) {
         if (!input)
             return 0;
         input.setSelectionRange(2, 2);
-        input.dispatchEvent(new CompositionEvent("compositionstart", {bubbles: true}));
-        input.dispatchEvent(new CompositionEvent("compositionupdate", {
-            bubbles: true, data: "日"
-        }));
+        input.dispatchEvent(new CompositionEvent("compositionstart", {bubbles : true}));
+        input.dispatchEvent(
+            new CompositionEvent("compositionupdate", {bubbles : true, data : "日"}));
         return 1;
     });
 }
@@ -202,9 +205,7 @@ static int dispatch_composition_commit(void) {
         const input = document.querySelector("[id^='__nativekit_text_input_']");
         if (!input)
             return 0;
-        input.dispatchEvent(new CompositionEvent("compositionend", {
-            bubbles: true, data: "日"
-        }));
+        input.dispatchEvent(new CompositionEvent("compositionend", {bubbles : true, data : "日"}));
         return 1;
     });
 }
@@ -215,10 +216,9 @@ static int dispatch_composition_cancel(void) {
         if (!input)
             return 0;
         input.setSelectionRange(3, 3);
-        input.dispatchEvent(new CompositionEvent("compositionstart", {bubbles: true}));
-        input.dispatchEvent(new CompositionEvent("compositionupdate", {
-            bubbles: true, data: "x"
-        }));
+        input.dispatchEvent(new CompositionEvent("compositionstart", {bubbles : true}));
+        input.dispatchEvent(
+            new CompositionEvent("compositionupdate", {bubbles : true, data : "x"}));
         return 1;
     });
 }
@@ -228,9 +228,7 @@ static int dispatch_composition_finish(void) {
         const input = document.querySelector("[id^='__nativekit_text_input_']");
         if (!input)
             return 0;
-        input.dispatchEvent(new CompositionEvent("compositionend", {
-            bubbles: true, data: ""
-        }));
+        input.dispatchEvent(new CompositionEvent("compositionend", {bubbles : true, data : ""}));
         return 1;
     });
 }
@@ -240,9 +238,9 @@ static int dispatch_editor_action(void) {
         const input = document.querySelector("[id^='__nativekit_text_input_']");
         if (!input)
             return 0;
-        input.dispatchEvent(new InputEvent("beforeinput", {
-            bubbles: true, cancelable: true, data: null, inputType: "insertParagraph"
-        }));
+        input.dispatchEvent(new InputEvent(
+            "beforeinput",
+            {bubbles : true, cancelable : true, data : null, inputType : "insertParagraph"}));
         return 1;
     });
 }
@@ -252,9 +250,8 @@ static int dispatch_editor_action_keydown(void) {
         const input = document.querySelector("[id^='__nativekit_text_input_']");
         if (!input)
             return 0;
-        input.dispatchEvent(new KeyboardEvent("keydown", {
-            bubbles: true, cancelable: true, key: "Enter"
-        }));
+        input.dispatchEvent(
+            new KeyboardEvent("keydown", {bubbles : true, cancelable : true, key : "Enter"}));
         return 1;
     });
 }
@@ -281,18 +278,20 @@ int main(void) {
     nk_surface surface = NK_INVALID_HANDLE;
     assert(nk_surface_create(window, &surface_options, &surface) == NK_OK);
 
-    set_text_state(surface, "A\xf0\x9f\x98\x80" "B", 13, 11, 12,
-                   NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
+    set_text_state(surface,
+                   "A\xf0\x9f\x98\x80"
+                   "B",
+                   13, 11, 12, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
                    NK_TEXT_INPUT_MULTILINE, NK_TEXT_INPUT_ACTION_DEFAULT);
     assert(nk_surface_set_text_input_active(surface, 1) == NK_OK);
 
 #ifdef __EMSCRIPTEN__
-    nk_text_input_range_rect selection_rect = {sizeof(nk_text_input_range_rect), 22.0f, 33.0f,
-                                               12.0f, 18.0f, 11, 12};
+    nk_text_input_range_rect selection_rect = {
+        sizeof(nk_text_input_range_rect), 22.0f, 33.0f, 12.0f, 18.0f, 11, 12};
     assert(nk_surface_set_text_input_geometry(
                surface, 10, 12, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
-               (const uint8_t *)&selection_rect, sizeof(selection_rect), NULL, 0) ==
-           NK_ERROR_INVALID_ARGUMENT);
+               (const uint8_t *)&selection_rect, sizeof(selection_rect), NULL,
+               0) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_surface_set_text_input_geometry(
                surface, 11, 12, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
                (const uint8_t *)&selection_rect, sizeof(selection_rect), NULL, 0) == NK_OK);
@@ -302,46 +301,56 @@ int main(void) {
     expect_edit(surface, NK_TEXT_EDIT_COMMIT, 11, 12, "\xe3\x81\x8b\xe3\x81\xaa", 13, 13,
                 NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
 
-    set_text_state(surface, "A\xe3\x81\x8b\xe3\x81\xaa" "B", 14, 10, 10,
-                   NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
+    set_text_state(surface,
+                   "A\xe3\x81\x8b\xe3\x81\xaa"
+                   "B",
+                   14, 10, 10, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
                    NK_TEXT_INPUT_MULTILINE, NK_TEXT_INPUT_ACTION_DEFAULT);
     assert(dispatch_selection());
-    expect_edit(surface, NK_TEXT_EDIT_SET_SELECTION, NK_TEXT_POSITION_NONE,
-                NK_TEXT_POSITION_NONE, "", 10, 13, NK_TEXT_POSITION_NONE,
-                NK_TEXT_POSITION_NONE);
+    expect_edit(surface, NK_TEXT_EDIT_SET_SELECTION, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
+                "", 10, 13, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
 
-    set_text_state(surface, "A\xe3\x81\x8b\xe3\x81\xaa" "B", 14, 13, 13,
-                   NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
+    set_text_state(surface,
+                   "A\xe3\x81\x8b\xe3\x81\xaa"
+                   "B",
+                   14, 13, 13, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
                    NK_TEXT_INPUT_MULTILINE, NK_TEXT_INPUT_ACTION_DEFAULT);
     assert(dispatch_delete_backward());
-    expect_edit(surface, NK_TEXT_EDIT_DELETE, 12, 13, "", 12, 12,
-                NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
+    expect_edit(surface, NK_TEXT_EDIT_DELETE, 12, 13, "", 12, 12, NK_TEXT_POSITION_NONE,
+                NK_TEXT_POSITION_NONE);
 
-    set_text_state(surface, "A\xe3\x81\x8b" "B", 13, 12, 12,
-                   NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
+    set_text_state(surface,
+                   "A\xe3\x81\x8b"
+                   "B",
+                   13, 12, 12, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
                    NK_TEXT_INPUT_MULTILINE, NK_TEXT_INPUT_ACTION_DEFAULT);
     assert(dispatch_composition());
     expect_edit(surface, NK_TEXT_EDIT_COMPOSE, 12, 12, "\xe6\x97\xa5", 13, 13, 12, 13);
     assert(dispatch_composition_commit());
-    expect_edit(surface, NK_TEXT_EDIT_COMMIT, 12, 13, "\xe6\x97\xa5", 13, 13,
-                NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
+    expect_edit(surface, NK_TEXT_EDIT_COMMIT, 12, 13, "\xe6\x97\xa5", 13, 13, NK_TEXT_POSITION_NONE,
+                NK_TEXT_POSITION_NONE);
 
-    set_text_state(surface, "A\xe3\x81\x8b\xe6\x97\xa5" "B", 14, 13, 13,
-                   NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
+    set_text_state(surface,
+                   "A\xe3\x81\x8b\xe6\x97\xa5"
+                   "B",
+                   14, 13, 13, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
                    NK_TEXT_INPUT_MULTILINE, NK_TEXT_INPUT_ACTION_DEFAULT);
     assert(dispatch_composition_cancel());
     expect_edit(surface, NK_TEXT_EDIT_COMPOSE, 13, 13, "x", 14, 14, 13, 14);
     assert(dispatch_composition_finish());
     expect_edit(surface, NK_TEXT_EDIT_FINISH_COMPOSITION, NK_TEXT_POSITION_NONE,
-                NK_TEXT_POSITION_NONE, "", 14, 14, NK_TEXT_POSITION_NONE,
-                NK_TEXT_POSITION_NONE);
-    set_text_state(surface, "A\xe3\x81\x8b\xe6\x97\xa5" "B", 14, 14, 14,
-                   NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE, 0,
+                NK_TEXT_POSITION_NONE, "", 14, 14, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
+    set_text_state(surface,
+                   "A\xe3\x81\x8b\xe6\x97\xa5"
+                   "B",
+                   14, 14, 14, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE, 0,
                    NK_TEXT_INPUT_ACTION_DONE);
     assert(dispatch_editor_action());
     expect_action(surface, NK_TEXT_INPUT_ACTION_DONE);
-    set_text_state(surface, "A\xe3\x81\x8b\xe6\x97\xa5" "B", 14, 14, 14,
-                   NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE, 0,
+    set_text_state(surface,
+                   "A\xe3\x81\x8b\xe6\x97\xa5"
+                   "B",
+                   14, 14, 14, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE, 0,
                    NK_TEXT_INPUT_ACTION_NEXT);
     assert(dispatch_editor_action_keydown());
     expect_action(surface, NK_TEXT_INPUT_ACTION_NEXT);

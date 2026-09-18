@@ -701,8 +701,7 @@ NK_API nk_result NK_CALL nk_surface_set_text_input_state(nk_handle target,
 NK_API nk_result NK_CALL nk_surface_set_text_input_geometry(
     nk_handle target, nk_text_position selection_start, nk_text_position selection_end,
     nk_text_position composition_start, nk_text_position composition_end,
-    const uint8_t *selection_rects NK_IN_ARRAY(selection_rect_bytes),
-    uint32_t selection_rect_bytes,
+    const uint8_t *selection_rects NK_IN_ARRAY(selection_rect_bytes), uint32_t selection_rect_bytes,
     const uint8_t *composition_rects NK_IN_ARRAY(composition_rect_bytes),
     uint32_t composition_rect_bytes);
 /** Activates or deactivates custom text input for the target surface or desktop window. */
