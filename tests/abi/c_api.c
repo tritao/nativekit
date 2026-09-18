@@ -23,12 +23,14 @@
 
 _Static_assert(NK_GRAPHICS_D3D11 == 4, "D3D11 graphics API value is stable");
 _Static_assert(NK_GRAPHICS_METAL == 5, "Metal graphics API value is stable");
-_Static_assert(sizeof(nk_surface_frame_target) == 72,
+_Static_assert(sizeof(nk_surface_frame_target) == 80,
                "surface frame target keeps its versioned 40-byte prefix and token tail");
 _Static_assert(offsetof(nk_surface_frame_target, native_device) == 40,
                "native frame-target tokens are appended after the original ABI prefix");
 _Static_assert(offsetof(nk_surface_frame_target, native_present_target) == 64,
                "present target token has a stable ABI offset");
+_Static_assert(offsetof(nk_surface_frame_target, frame) == 72,
+               "the frame token is appended after the native presentation token");
 _Static_assert(offsetof(nk_init_options, application_id) == 16,
                "application identity is appended after the original init prefix");
 _Static_assert(sizeof(nk_init_options) == 16 + 2 * sizeof(const char *),

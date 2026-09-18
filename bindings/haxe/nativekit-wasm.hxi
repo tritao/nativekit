@@ -2922,6 +2922,41 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 */
 	extern fn nk_surface_accessibility_update_with_removed_ids(surface: nk_surface, update: ptr<const<nk_accessibility_update>>, removed_node_ids: ptr<const<u8>>, removed_node_id_byte_count: u32) -> nk_result;
 	/**
+	 * Opens one frame and returns its immutable render target.
+	 *
+	 * The transaction separates frame acquisition and presentation from rendering:
+	 * the platform executor opens the frame, any executor renders against the
+	 * target, and the platform executor presents or cancels it. `out_target` is
+	 * valid for the lifetime of the returned token and is not affected by later
+	 * bounds changes, so a renderer can work against a stable snapshot.
+	 *
+	 * Only one frame may be open on a surface at a time; a second acquire returns
+	 * NK_ERROR_INVALID_REQUEST. Destroying the surface cancels its open frame.
+	 *
+	 * @param surface Surface to open a frame on.
+	 * @param out_frame Receives the frame token on NK_OK.
+	 * @param out_target Zero-initialized target whose struct_size must cover the
+	 * full nk_surface_frame_target.
+	 * @return NK_OK, NK_ERROR_INVALID_ARGUMENT for malformed arguments,
+	 * NK_ERROR_INVALID_HANDLE for a stale surface, NK_ERROR_INVALID_REQUEST
+	 * when a frame is already open or no drawable frame exists, or
+	 * NK_ERROR_WRONG_THREAD off the platform executor.
+	 */
+	extern fn nk_surface_acquire_frame(surface: nk_surface, out_frame: ptr<nk_surface_frame> @out, out_target: ptr<nk_surface_frame_target> @inout) -> nk_result;
+	/**
+	 * Closes the frame without presenting it.
+	 *
+	 * Use this when rendering failed or produced nothing usable: the token is
+	 * consumed, the surface accepts a new frame afterwards, and nothing is
+	 * submitted for display. Backends that hold a prepared native frame release it
+	 * on the next acquire or when the surface is destroyed. Call on the platform
+	 * executor.
+	 *
+	 * @return NK_OK, NK_ERROR_INVALID_ARGUMENT for an invalid token, or
+	 * NK_ERROR_INVALID_HANDLE for a token that is not open.
+	 */
+	extern fn nk_surface_cancel_frame(frame: nk_surface_frame) -> nk_result;
+	/**
 	 * Creates a graphics surface inside a NativeKit window or mobile host.
 	 *
 	 * Backend configuration is fixed at creation. A share_surface must remain
@@ -2972,6 +3007,18 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 * GtkGLArea framebuffer instead of swapping a caller-owned native surface.
 	 */
 	extern fn nk_surface_present(surface: nk_surface) -> nk_result;
+	/**
+	 * Presents the frame opened by nk_surface_acquire_frame() and closes it.
+	 *
+	 * The token is always consumed, including when presentation fails, so the
+	 * surface accepts a new frame afterwards. Call on the platform executor.
+	 *
+	 * @return NK_OK, NK_ERROR_INVALID_ARGUMENT for an invalid token,
+	 * NK_ERROR_INVALID_HANDLE for a token that never existed, already
+	 * ended, or belonged to a destroyed surface, or the backend result of
+	 * the presentation itself.
+	 */
+	extern fn nk_surface_present_frame(frame: nk_surface_frame) -> nk_result;
 	/**
 	 * Records that the surface needs a frame.
 	 *
@@ -4547,7 +4594,7 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 * token lasts until a resize, and color/presentation tokens last through the
 	 * prepared frame. NativeKit callers must not release or retain these tokens.
 	 */
-	struct nk_surface_frame_target @layout(72, 8) {
+	struct nk_surface_frame_target @layout(80, 8) {
 		/**
 		 * Set to sizeof(nk_surface_frame_target) or a larger compatible size.
 		 */
@@ -4592,6 +4639,10 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 * Borrowed presentation token (for example IDXGISwapChain* or CAMetalDrawable*).
 		 */
 		native_present_target: u64 @offset(64);
+		/**
+		 * Frame that owns this target, or NK_INVALID_HANDLE outside an acquired frame.
+		 */
+		frame: nk_surface_frame @offset(72);
 	}
 	/**
 	 * Options used to create a NativeKit graphics surface.
@@ -5256,6 +5307,15 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	type nk_request_id = u64;
 	handle nk_resource_stream : u32 @destroy("nk_resource_close");
 	handle nk_surface : u32 @destroy("nk_surface_destroy");
+	/**
+	 * Token identifying one acquired surface frame.
+	 *
+	 * A token is returned by nk_surface_acquire_frame() and stays valid until it is
+	 * passed to nk_surface_present_frame() or nk_surface_cancel_frame(). Tokens are
+	 * generation-checked: a token whose surface has been destroyed, or whose frame
+	 * already ended, is rejected with NK_ERROR_INVALID_HANDLE. Zero is never valid.
+	 */
+	handle nk_surface_frame : u32;
 	/**
 	 * Callback invoked while a surface framebuffer is current and ready to draw.
 	 *

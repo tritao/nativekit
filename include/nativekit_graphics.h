@@ -145,6 +145,16 @@ enum NK_ENUM(nk_surface_frame_mode) {
     NK_SURFACE_FRAME_ON_DEMAND = 1
 };
 
+/**
+ * Token identifying one acquired surface frame.
+ *
+ * A token is returned by nk_surface_acquire_frame() and stays valid until it is
+ * passed to nk_surface_present_frame() or nk_surface_cancel_frame(). Tokens are
+ * generation-checked: a token whose surface has been destroyed, or whose frame
+ * already ended, is rejected with NK_ERROR_INVALID_HANDLE. Zero is never valid.
+ */
+typedef uint32_t nk_surface_frame NK_HANDLE;
+
 /** Payload of NK_EVENT_SURFACE_RESIZE. */
 typedef struct nk_surface_resize_event {
     /** New logical surface width. */
@@ -193,6 +203,8 @@ typedef struct nk_surface_frame_target {
     uint64_t native_depth_stencil_target;
     /** Borrowed presentation token (for example IDXGISwapChain* or CAMetalDrawable*). */
     uint64_t native_present_target;
+    /** Frame that owns this target, or NK_INVALID_HANDLE outside an acquired frame. */
+    nk_surface_frame frame;
 } nk_surface_frame_target;
 
 /* ------------------------------------------------------------------------- */
@@ -295,6 +307,62 @@ NK_API nk_result NK_CALL nk_surface_set_frame_mode(nk_surface surface, nk_surfac
  *         NK_ERROR_WRONG_THREAD off the platform executor.
  */
 NK_API nk_result NK_CALL nk_surface_request_frame(nk_surface surface);
+
+/* ------------------------------------------------------------------------- */
+/* Frame transactions                                                        */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * Opens one frame and returns its immutable render target.
+ *
+ * The transaction separates frame acquisition and presentation from rendering:
+ * the platform executor opens the frame, any executor renders against the
+ * target, and the platform executor presents or cancels it. `out_target` is
+ * valid for the lifetime of the returned token and is not affected by later
+ * bounds changes, so a renderer can work against a stable snapshot.
+ *
+ * Only one frame may be open on a surface at a time; a second acquire returns
+ * NK_ERROR_INVALID_REQUEST. Destroying the surface cancels its open frame.
+ *
+ * @param surface Surface to open a frame on.
+ * @param out_frame Receives the frame token on NK_OK.
+ * @param out_target Zero-initialized target whose struct_size must cover the
+ *                   full nk_surface_frame_target.
+ * @return NK_OK, NK_ERROR_INVALID_ARGUMENT for malformed arguments,
+ *         NK_ERROR_INVALID_HANDLE for a stale surface, NK_ERROR_INVALID_REQUEST
+ *         when a frame is already open or no drawable frame exists, or
+ *         NK_ERROR_WRONG_THREAD off the platform executor.
+ */
+NK_API nk_result NK_CALL nk_surface_acquire_frame(nk_surface surface,
+                                                  nk_surface_frame *out_frame NK_OUT,
+                                                  nk_surface_frame_target *out_target NK_INOUT);
+
+/**
+ * Presents the frame opened by nk_surface_acquire_frame() and closes it.
+ *
+ * The token is always consumed, including when presentation fails, so the
+ * surface accepts a new frame afterwards. Call on the platform executor.
+ *
+ * @return NK_OK, NK_ERROR_INVALID_ARGUMENT for an invalid token,
+ *         NK_ERROR_INVALID_HANDLE for a token that never existed, already
+ *         ended, or belonged to a destroyed surface, or the backend result of
+ *         the presentation itself.
+ */
+NK_API nk_result NK_CALL nk_surface_present_frame(nk_surface_frame frame);
+
+/**
+ * Closes the frame without presenting it.
+ *
+ * Use this when rendering failed or produced nothing usable: the token is
+ * consumed, the surface accepts a new frame afterwards, and nothing is
+ * submitted for display. Backends that hold a prepared native frame release it
+ * on the next acquire or when the surface is destroyed. Call on the platform
+ * executor.
+ *
+ * @return NK_OK, NK_ERROR_INVALID_ARGUMENT for an invalid token, or
+ *         NK_ERROR_INVALID_HANDLE for a token that is not open.
+ */
+NK_API nk_result NK_CALL nk_surface_cancel_frame(nk_surface_frame frame);
 
 /* ------------------------------------------------------------------------- */
 /* Surface queries                                                           */

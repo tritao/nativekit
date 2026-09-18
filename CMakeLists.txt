@@ -119,6 +119,7 @@ add_library(nativekit ${NK_LIBRARY_TYPE}
     src/core/monitor.cpp
     src/core/plugin.cpp
     src/core/resource.cpp
+    src/core/surface_frame.cpp
     src/core/system.cpp
     src/core/text_input.cpp
     src/core/time.cpp
