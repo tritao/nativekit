@@ -1,9 +1,12 @@
 #import <GameController/GameController.h>
+#import <CoreHaptics/CoreHaptics.h>
 
+#include "nativekit_haptics.h"
 #include "nativekit_joystick.h"
 
 #include "core/error.hpp"
 #include "core/gamepad_events.hpp"
+#include "core/haptics_internal.hpp"
 #include "core/handle_registry.hpp"
 #include "core/runtime.hpp"
 #include "ios/joystick.hpp"
@@ -43,6 +46,28 @@ struct IOSJoystick final : nk::core::Resource {
 };
 
 std::unordered_map<void *, std::shared_ptr<IOSJoystick>> devices;
+NSMutableDictionary *haptic_engines = nil;
+NSMutableDictionary *haptic_players = nil;
+
+void ensure_haptic_stores() {
+    if (!haptic_engines)
+        haptic_engines = [NSMutableDictionary dictionary];
+    if (!haptic_players)
+        haptic_players = [NSMutableDictionary dictionary];
+}
+
+void stop_haptic(nk_handle handle) {
+    ensure_haptic_stores();
+    NSNumber *key = @(static_cast<unsigned int>(handle));
+    id player_object = [haptic_players objectForKey:key];
+    if (player_object)
+        [(id<CHHapticPatternPlayer>)player_object stopAtTime:CHHapticTimeImmediate error:nil];
+    CHHapticEngine *engine = [haptic_engines objectForKey:key];
+    if (engine)
+        [engine stopWithCompletionHandler:nil];
+    [haptic_players removeObjectForKey:key];
+    [haptic_engines removeObjectForKey:key];
+}
 
 template <typename T> std::vector<std::byte> bytes_of(const T &value) {
     const auto *first = reinterpret_cast<const std::byte *>(&value);
@@ -183,6 +208,7 @@ void remove_device(void *key) {
     if (found == devices.end())
         return;
     const auto handle = found->second->handle;
+    stop_haptic(handle);
     emit(NK_EVENT_JOYSTICK_DISCONNECTED, handle);
     nk::core::gamepad_events::disconnect(handle);
     nk::core::handles().erase(handle, nk::core::ResourceType::joystick);
@@ -324,6 +350,64 @@ nk_result standard_gamepad_state(nk_handle handle, nk_gamepad_state *out_state) 
     return NK_OK;
 }
 } // namespace nk::ios_joystick
+
+namespace nk::core::haptics_backend {
+
+nk_result gamepad_rumble(nk_joystick handle,
+                         const nk_gamepad_rumble_options &options) noexcept {
+    const auto device = lookup(handle);
+    if (!device)
+        return NK_ERROR_INVALID_HANDLE;
+    if (@available(iOS 13.0, *)) {
+        GCDeviceHaptics *haptics = device->controller().haptics;
+        if (!haptics)
+            return NK_ERROR_UNSUPPORTED;
+        stop_haptic(handle);
+        CHHapticEngine *engine = [haptics createEngineWithLocality:GCHapticsLocalityDefault];
+        if (!engine)
+            return NK_ERROR_UNSUPPORTED;
+        NSError *error = nil;
+        if (![engine startAndReturnError:&error])
+            return NK_ERROR_UNSUPPORTED;
+        CHHapticEventParameter *intensity =
+            [[CHHapticEventParameter alloc]
+                initWithParameterID:CHHapticEventParameterIDHapticIntensity
+                               value:std::max(options.low_frequency, options.high_frequency)];
+        CHHapticEvent *event =
+            [[CHHapticEvent alloc] initWithEventType:CHHapticEventTypeHapticContinuous
+                                          parameters:@[ intensity ]
+                                        relativeTime:0.0
+                                            duration:static_cast<double>(options.duration_ms) / 1000.0];
+        CHHapticPattern *pattern =
+            [[CHHapticPattern alloc] initWithEvents:@[ event ] parameters:@[] error:&error];
+        if (!pattern)
+            return NK_ERROR_UNSUPPORTED;
+        id<CHHapticPatternPlayer> player = [engine createPlayerWithPattern:pattern error:&error];
+        if (!player || ![player startAtTime:CHHapticTimeImmediate error:&error])
+            return NK_ERROR_UNSUPPORTED;
+        ensure_haptic_stores();
+        NSNumber *key = @(static_cast<unsigned int>(handle));
+        [haptic_engines setObject:engine forKey:key];
+        [haptic_players setObject:player forKey:key];
+        return NK_OK;
+    }
+    return NK_ERROR_UNSUPPORTED;
+}
+
+nk_result stop_gamepad_rumble(nk_joystick handle) noexcept {
+    const auto device = lookup(handle);
+    if (!device)
+        return NK_ERROR_INVALID_HANDLE;
+    if (@available(iOS 13.0, *)) {
+        if (!device->controller().haptics)
+            return NK_ERROR_UNSUPPORTED;
+        stop_haptic(handle);
+        return NK_OK;
+    }
+    return NK_ERROR_UNSUPPORTED;
+}
+
+} // namespace nk::core::haptics_backend
 
 extern "C" {
 nk_result NK_CALL nk_joystick_list(nk_handle *output, uint32_t *inout_count) {

@@ -21,6 +21,8 @@
     <string>1</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
+    <key>NSMotionUsageDescription</key>
+    <string>NativeKit uses motion sensors for raw sensor input.</string>
     <key>UILaunchScreen</key>
     <dict/>
 </dict>

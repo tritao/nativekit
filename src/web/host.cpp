@@ -1350,6 +1350,205 @@ EM_JS(int, nk_web_gamepad_supported, (), {
     return typeof navigator !== "undefined" && typeof navigator.getGamepads === "function" ? 1 : 0;
 });
 
+EM_JS(int, nk_web_sensor_supported, (), {
+    return typeof window !== "undefined" && typeof window.addEventListener === "function" &&
+                   typeof DeviceMotionEvent !== "undefined"
+               ? 1
+               : 0;
+});
+
+EM_JS(int, nk_web_start_sensor,
+      (double handle, int type, double interval_ns, double latency_ns), {
+          if (typeof window === "undefined" || typeof window.addEventListener !== "function" ||
+              typeof DeviceMotionEvent === "undefined" || !Module.ccall)
+              return 0;
+          const state = globalThis.__nativekitMotion ||
+                        (globalThis.__nativekitMotion = {
+                            handles: {}, listener: null, permission: "unknown"
+                        });
+          if (state.permission === "denied")
+              return 0;
+          state.handles[type] = handle;
+          if (!state.listener) {
+              const finite = value => Number.isFinite(value) ? Number(value) : 0;
+              const send = (sensorType, values, accuracy) => {
+                  const sensor = state.handles[sensorType];
+                  if (sensor === undefined || !values || !values.every(Number.isFinite))
+                      return;
+                  Module.ccall("nk_web_host_sensor_update", null,
+                               ["number", "number", "number", "number", "number", "number",
+                                "number"],
+                               [sensor, sensorType, finite(values[0]), finite(values[1]),
+                                finite(values[2]), finite(values[3]), accuracy]);
+              };
+              state.listener = event => {
+                  if (!event)
+                      return;
+                  const included = event.accelerationIncludingGravity;
+                  const linear = event.acceleration;
+                  const rotation = event.rotationRate;
+                  if (included)
+                      send(1, [included.x, included.y, included.z, 0], 4);
+                  if (linear)
+                      send(5, [linear.x, linear.y, linear.z, 0], 4);
+                  if (rotation) {
+                      const scale = Math.PI / 180;
+                      // DeviceMotion names angular rates alpha(z), beta(x),
+                      // and gamma(y); reorder them into NativeKit's x/y/z.
+                      send(2, [rotation.beta * scale, rotation.gamma * scale,
+                               rotation.alpha * scale, 0], 4);
+                  }
+              };
+              window.addEventListener("devicemotion", state.listener, true);
+          }
+          state.permission = state.permission === "unknown" ? "granted" : state.permission;
+          return 1;
+      });
+
+EM_JS(int, nk_web_stop_sensor, (double handle), {
+    const state = globalThis.__nativekitMotion;
+    if (!state)
+        return 0;
+    for (const type of Object.keys(state.handles))
+        if (state.handles[type] === handle)
+            delete state.handles[type];
+    if (Object.keys(state.handles).length === 0 && state.listener) {
+        window.removeEventListener("devicemotion", state.listener, true);
+        state.listener = null;
+    }
+    return 1;
+});
+
+EM_JS(void, nk_web_stop_all_sensors, (), {
+    const state = globalThis.__nativekitMotion;
+    if (state && state.listener)
+        window.removeEventListener("devicemotion", state.listener, true);
+    if (state)
+        state.handles = {};
+    delete globalThis.__nativekitMotion;
+});
+
+EM_JS(int, nk_web_request_sensor_permission, (double request, int ok, int denied, int unknown), {
+    if (typeof window === "undefined" || typeof window.addEventListener !== "function" ||
+        typeof DeviceMotionEvent === "undefined" || !Module.ccall)
+        return 0;
+    const state = globalThis.__nativekitMotion ||
+                  (globalThis.__nativekitMotion = {
+                      handles: {}, listener: null, permission: "unknown", pending: []
+                  });
+    state.pending = state.pending || [];
+    const complete = (requestId, result) => {
+        Module.ccall("nk_web_host_sensor_permission", null, ["number", "number"],
+                     [requestId, result]);
+    };
+    const finish = result => {
+        state.permission = result === ok ? "granted" : "denied";
+        const pending = state.pending;
+        state.pending = [];
+        for (const item of pending)
+            complete(item, result);
+    };
+    if (state.permission === "granted") {
+        complete(request, ok);
+        return 1;
+    }
+    if (state.permission === "denied") {
+        complete(request, denied);
+        return 1;
+    }
+    state.pending.push(request);
+    if (!window.isSecureContext) {
+        finish(denied);
+        return 1;
+    }
+    if (typeof DeviceMotionEvent.requestPermission !== "function") {
+        finish(ok);
+        return 1;
+    }
+    try {
+        Promise.resolve(DeviceMotionEvent.requestPermission()).then(value => {
+            finish(value === "granted" ? ok : denied);
+        }).catch(() => finish(unknown));
+    } catch (error) {
+        finish(unknown);
+    }
+    return 1;
+});
+
+EM_JS(int, nk_web_haptics_supported, (), {
+    return typeof navigator !== "undefined" && typeof navigator.vibrate === "function" ? 1 : 0;
+});
+
+EM_JS(int, nk_web_vibrate, (int period, int duration, float intensity), {
+    if (typeof navigator === "undefined" || typeof navigator.vibrate !== "function")
+        return 0;
+    try {
+        if (period > 0 && period < duration) {
+            const on = Math.max(1, Math.floor(period / 2));
+            const off = Math.max(1, period - on);
+            const pattern = [];
+            let remaining = duration;
+            while (remaining > 0) {
+                const active = Math.min(on, remaining);
+                pattern.push(active);
+                remaining -= active;
+                if (remaining <= 0)
+                    break;
+                const idle = Math.min(off, remaining);
+                pattern.push(idle);
+                remaining -= idle;
+            }
+            return navigator.vibrate(pattern) ? 1 : 0;
+        }
+        return navigator.vibrate(duration) ? 1 : 0;
+    } catch (error) {
+        return 0;
+    }
+});
+
+EM_JS(int, nk_web_stop_vibration, (), {
+    return typeof navigator !== "undefined" && typeof navigator.vibrate === "function" &&
+                   navigator.vibrate(0)
+               ? 1
+               : 0;
+});
+
+EM_JS(int, nk_web_gamepad_rumble, (int index, float low, float high, int duration), {
+    if (!navigator.getGamepads)
+        return 0;
+    const gamepad = (navigator.getGamepads() || [])[index];
+    const actuator = gamepad && gamepad.vibrationActuator;
+    if (!actuator || typeof actuator.playEffect !== "function")
+        return 0;
+    try {
+        actuator.playEffect("dual-rumble", {
+            duration: duration, strongMagnitude: high, weakMagnitude: low
+        });
+        return 1;
+    } catch (error) {
+        return 0;
+    }
+});
+
+EM_JS(int, nk_web_stop_gamepad_rumble, (int index), {
+    if (!navigator.getGamepads)
+        return 0;
+    const gamepad = (navigator.getGamepads() || [])[index];
+    const actuator = gamepad && gamepad.vibrationActuator;
+    if (!actuator)
+        return 0;
+    try {
+        if (typeof actuator.resetActuator === "function")
+            actuator.resetActuator();
+        else if (typeof actuator.playEffect === "function")
+            actuator.playEffect("dual-rumble", {duration: 0, strongMagnitude: 0,
+                                                  weakMagnitude: 0});
+        return 1;
+    } catch (error) {
+        return 0;
+    }
+});
+
 EM_JS(void, nk_web_fetch_resource, (const char *uri, double request), {
     const complete = (result, pointer, size) => {
         if (Module.ccall)
@@ -2251,6 +2450,47 @@ bool notification_supported() noexcept {
 
 bool gamepad_supported() noexcept {
     return nk_web_gamepad_supported() != 0;
+}
+
+bool sensors_supported() noexcept {
+    return nk_web_sensor_supported() != 0;
+}
+
+bool start_sensor(nk_sensor sensor, nk_sensor_type type, std::uint64_t interval_ns,
+                  std::uint64_t latency_ns) noexcept {
+    return nk_web_start_sensor(static_cast<double>(sensor), static_cast<int>(type),
+                               static_cast<double>(interval_ns), static_cast<double>(latency_ns)) != 0;
+}
+
+bool stop_sensor(nk_sensor sensor) noexcept {
+    return nk_web_stop_sensor(static_cast<double>(sensor)) != 0;
+}
+
+void stop_all_sensors() noexcept { nk_web_stop_all_sensors(); }
+
+bool request_sensor_permission(nk_request_id request) noexcept {
+    return nk_web_request_sensor_permission(static_cast<double>(request), NK_OK,
+                                            NK_ERROR_UNSUPPORTED, NK_ERROR_UNKNOWN) != 0;
+}
+
+bool haptics_supported() noexcept {
+    return nk_web_haptics_supported() != 0;
+}
+
+bool vibrate(std::uint32_t period_ms, std::uint32_t duration_ms, float intensity) noexcept {
+    return nk_web_vibrate(static_cast<int>(period_ms), static_cast<int>(duration_ms), intensity) != 0;
+}
+
+bool stop_vibration() noexcept { return nk_web_stop_vibration() != 0; }
+
+bool gamepad_rumble(std::int32_t index, float low, float high,
+                    std::uint32_t duration_ms) noexcept {
+    return nk_web_gamepad_rumble(static_cast<int>(index), low, high,
+                                 static_cast<int>(duration_ms)) != 0;
+}
+
+bool stop_gamepad_rumble(std::int32_t index) noexcept {
+    return nk_web_stop_gamepad_rumble(static_cast<int>(index)) != 0;
 }
 
 bool keep_awake_supported() noexcept {

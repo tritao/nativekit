@@ -59,6 +59,9 @@ the equivalent is the native DOM.
 | Accessibility | Required | Required | Required | Required | Required | Required |
 | Monitors | Required | Required | Required | Not applicable | Not applicable | Not applicable |
 | Joystick/gamepad | Required | Required | Required | Required | Required | Required where feasible |
+| Raw sensors | Optional | Optional | Optional | Required | Required | Optional |
+| System haptics | Not applicable | Not applicable | Not applicable | Required | Required | Optional |
+| Gamepad rumble | Required | Required | Optional | Required | Required | Optional |
 | Native window export | Required | Required | Required | Not applicable | Not applicable | Not applicable |
 | Native window wrapping | Required | Required | Required | Not applicable | Not applicable | Not applicable |
 
@@ -107,6 +110,9 @@ needed; graphics API bits are alternatives within the GPU family.
 | Accessibility | `NK_CAP_ACCESSIBILITY` |
 | Monitors | `NK_CAP_MONITOR`, `NK_CAP_MONITOR_FULLSCREEN` |
 | Joystick/gamepad | `NK_CAP_JOYSTICK` |
+| Raw sensors | `NK_CAP_SENSORS` |
+| System haptics | `NK_CAP_HAPTICS` |
+| Gamepad rumble | `NK_CAP_GAMEPAD_RUMBLE` |
 | Platform/device identity | `NK_CAP_SYSTEM_INFO` |
 | Application paths | `NK_CAP_APPLICATION_PATH`, `NK_CAP_APPLICATION_STORAGE` |
 | System fonts | `NK_CAP_SYSTEM_FONTS` |
@@ -134,12 +140,12 @@ each milestone lands, the following gaps remain explicitly `Deferred`:
 
 | Backend | Required or equivalent today | Deferred today |
 |---|---|---|
-| Linux/GTK | Windows, WebView, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, custom window decorations, GPU, resource sharing via URI clipboard, resource I/O, monitors, joystick, native export, X11 and Wayland native wrapping, accessibility, surface frame callbacks | — |
-| Windows | Windows, WebView when WebView2 is available, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, custom window decorations, D3D11, resource sharing via URI clipboard, resource I/O, accessibility, monitors, joystick, native export, Win32 native wrapping, surface frame callbacks | — |
+| Linux/GTK | Windows, WebView, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, custom window decorations, GPU, resource sharing via URI clipboard, resource I/O, monitors, joystick and evdev rumble, native export, X11 and Wayland native wrapping, accessibility, surface frame callbacks | — |
+| Windows | Windows, WebView when WebView2 is available, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, custom window decorations, D3D11, resource sharing via URI clipboard, resource I/O, accessibility, monitors, joystick and XInput rumble, native export, Win32 native wrapping, surface frame callbacks | — |
 | macOS | Windows, WebView, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, custom window decorations, Metal, resource sharing via `NSSharingServicePicker`, resource I/O, accessibility, monitors, joystick, native export, Cocoa native wrapping, surface frame callbacks | — |
-| Android | Mobile host, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, GLES/Vulkan, resource sharing, resource I/O, joystick, accessibility, surface frame callbacks, APK installation path, system fonts | — |
-| iOS | Mobile host, WebView, dialogs, Metal, input, clipboard, URI clipboard, host drag/drop, shell, appearance, notifications, resource sharing, resource I/O, joystick, accessibility, surface frame callbacks | — |
-| Web | Window, geometry and CSS-backed styling, clipboard and URI clipboard, drag/drop and resource drops, input, cursor/capture, GLES, shell URL opening, appearance, notifications, Gamepad API, resource picker equivalents, resource sharing via Web Share API, resource I/O, accessibility, surface frame callbacks, optional Device Orientation API | — |
+| Android | Mobile host, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, GLES/Vulkan, resource sharing, resource I/O, joystick, sensors, system haptics, controller rumble, accessibility, surface frame callbacks, APK installation path, system fonts | — |
+| iOS | Mobile host, WebView, dialogs, Metal, input, clipboard, URI clipboard, host drag/drop, shell, appearance, notifications, resource sharing, resource I/O, joystick, sensors, system haptics, controller haptics where exposed, accessibility, surface frame callbacks | — |
+| Web | Window, geometry and CSS-backed styling, clipboard and URI clipboard, drag/drop and resource drops, input, cursor/capture, GLES, shell URL opening, appearance, notifications, Gamepad API, resource picker equivalents, resource sharing via Web Share API, resource I/O, accessibility, surface frame callbacks, optional Device Motion and haptics APIs | — |
 
 The path-shaped iOS system-font and Web application/storage/system-font
 capabilities are intentional `Not applicable` exceptions for APIs that return
@@ -195,6 +201,14 @@ canvas CSS styles; decorations, stacking, and activation remain page-owned.
 These APIs can require a user activation, a permission grant, or a secure
 context. NativeKit has no path-returning dialog API, so browser path leakage is
 not part of the contract.
+
+Raw sensors are advertised on Android, iOS, and Web only when the backend has
+its native/browser motion path; sensor enumeration remains authoritative for
+physical availability. Desktop backends keep the ABI available but do not
+advertise `NK_CAP_SENSORS` without a real adapter. Android and iOS system
+haptics use native feedback facilities, and Web uses `navigator.vibrate()`;
+controller rumble is separately guarded by `NK_CAP_GAMEPAD_RUMBLE` and may be
+unsupported for an individual browser or device actuator.
 
 The baseline is guarded by `platform_parity` in CTest and the shared
 `capability_conformance` suite on desktop. The snapshot-backed parity test

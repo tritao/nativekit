@@ -17,7 +17,9 @@ bool is_terminal_request_event(const QueuedEvent &event) {
            event.kind == NK_EVENT_CLIPBOARD_TEXT_COMPLETE ||
            event.kind == NK_EVENT_CLIPBOARD_FILES_COMPLETE ||
            event.kind == NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE ||
-           event.kind == NK_EVENT_RESOURCE_DATA_COMPLETE || event.kind == NK_EVENT_HTTP_COMPLETE ||
+           event.kind == NK_EVENT_RESOURCE_DATA_COMPLETE ||
+           event.kind == NK_EVENT_SENSOR_PERMISSION_COMPLETE ||
+           event.kind == NK_EVENT_HTTP_COMPLETE ||
            event.kind == NK_EVENT_NOTIFICATION_DELIVERED ||
            event.kind == NK_EVENT_NOTIFICATION_FAILED;
 }
@@ -27,7 +29,7 @@ bool is_coalescible(nk_event_kind kind) {
            kind == NK_EVENT_WINDOW_MOVE || kind == NK_EVENT_POINTER_MOVE ||
            kind == NK_EVENT_SURFACE_RESIZE || kind == NK_EVENT_JOYSTICK_AXIS ||
            kind == NK_EVENT_GAMEPAD_AXIS || kind == NK_EVENT_DEVICE_ORIENTATION_CHANGED ||
-           kind == NK_EVENT_DISPLAY_ORIENTATION_CHANGED;
+           kind == NK_EVENT_DISPLAY_ORIENTATION_CHANGED || kind == NK_EVENT_SENSOR_UPDATE;
 }
 
 bool same_coalescing_target(const QueuedEvent &first, const QueuedEvent &second) {
@@ -50,9 +52,18 @@ EventQueue::EventQueue(std::size_t capacity) : capacity_(capacity) {}
 nk_result EventQueue::push(QueuedEvent event) {
     std::lock_guard lock(mutex_);
     if (is_coalescible(event.kind) && !queue_.empty()) {
-        auto &tail = queue_.back();
-        if (same_coalescing_target(tail, event)) {
-            tail = std::move(event);
+        if (event.kind == NK_EVENT_SENSOR_UPDATE) {
+            /* Sensor producers interleave several sources; each sensor gets
+             * one pending coalesced record without changing existing input
+             * event ordering rules for the other coalesced event kinds. */
+            for (auto item = queue_.rbegin(); item != queue_.rend(); ++item) {
+                if (same_coalescing_target(*item, event)) {
+                    *item = std::move(event);
+                    return NK_OK;
+                }
+            }
+        } else if (same_coalescing_target(queue_.back(), event)) {
+            queue_.back() = std::move(event);
             return NK_OK;
         }
     }

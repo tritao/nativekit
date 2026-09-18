@@ -1,7 +1,9 @@
 #include "nativekit_joystick.h"
+#include "nativekit_haptics.h"
 
 #include "core/error.hpp"
 #include "core/gamepad_events.hpp"
+#include "core/haptics_internal.hpp"
 #include "core/runtime.hpp"
 #include "linux/joystick.hpp"
 
@@ -45,10 +47,20 @@ struct Axis {
 
 struct Joystick final : nk::core::Resource {
     ~Joystick() override {
+        if (rumble_fd >= 0 && rumble_effect >= 0) {
+            input_event stop{};
+            stop.type = EV_FF;
+            stop.code = static_cast<__u16>(rumble_effect);
+            (void)write(rumble_fd, &stop, sizeof(stop));
+        }
         if (fd >= 0)
             close(fd);
+        if (rumble_fd >= 0)
+            close(rumble_fd);
     }
     int fd = -1;
+    int rumble_fd = -1;
+    int rumble_effect = -1;
     nk_handle handle = NK_INVALID_HANDLE;
     std::string path;
     std::string name;
@@ -233,6 +245,11 @@ void add_device(const std::string &path) {
     input_id id{};
     ioctl(fd, EVIOCGID, &id);
     device->guid = make_guid(id, device->name);
+    std::array<unsigned long, bit_words(FF_MAX + 1)> ff_bits{};
+    if (ioctl(fd, EVIOCGBIT(EV_FF, sizeof(ff_bits)), ff_bits.data()) >= 0 &&
+        bit_set(ff_bits, FF_RUMBLE)) {
+        device->rumble_fd = open(path.c_str(), O_RDWR | O_NONBLOCK | O_CLOEXEC);
+    }
 
     for (int code = 0; code < ABS_CNT; ++code) {
         if (!bit_set(abs_bits, code))
@@ -546,6 +563,59 @@ void shutdown() noexcept {
     }
 }
 } // namespace nk::linux_joystick
+
+namespace nk::core::haptics_backend {
+
+nk_result vibrate(const nk_haptic_vibration &) noexcept { return NK_ERROR_UNSUPPORTED; }
+nk_result stop_vibration() noexcept { return NK_ERROR_UNSUPPORTED; }
+
+nk_result gamepad_rumble(nk_joystick handle,
+                         const nk_gamepad_rumble_options &options) noexcept {
+    const auto device = lookup(handle);
+    if (!device)
+        return NK_ERROR_INVALID_HANDLE;
+    if (device->rumble_fd < 0)
+        return NK_ERROR_UNSUPPORTED;
+    if (device->rumble_effect >= 0) {
+        input_event stop{};
+        stop.type = EV_FF;
+        stop.code = static_cast<__u16>(device->rumble_effect);
+        (void)write(device->rumble_fd, &stop, sizeof(stop));
+    }
+    ff_effect effect{};
+    effect.type = FF_RUMBLE;
+    effect.id = static_cast<short>(device->rumble_effect);
+    effect.replay.length = static_cast<__u16>(std::min<std::uint32_t>(options.duration_ms, 65535));
+    effect.u.rumble.strong_magnitude =
+        static_cast<__u16>(options.high_frequency * 65535.0f + 0.5f);
+    effect.u.rumble.weak_magnitude =
+        static_cast<__u16>(options.low_frequency * 65535.0f + 0.5f);
+    if (ioctl(device->rumble_fd, EVIOCSFF, &effect) < 0)
+        return NK_ERROR_UNSUPPORTED;
+    device->rumble_effect = effect.id;
+    input_event play{};
+    play.type = EV_FF;
+    play.code = static_cast<__u16>(effect.id);
+    play.value = 1;
+    return write(device->rumble_fd, &play, sizeof(play)) == sizeof(play) ? NK_OK
+                                                                         : NK_ERROR_UNSUPPORTED;
+}
+
+nk_result stop_gamepad_rumble(nk_joystick handle) noexcept {
+    const auto device = lookup(handle);
+    if (!device)
+        return NK_ERROR_INVALID_HANDLE;
+    if (device->rumble_fd < 0 || device->rumble_effect < 0)
+        return NK_ERROR_UNSUPPORTED;
+    input_event stop{};
+    stop.type = EV_FF;
+    stop.code = static_cast<__u16>(device->rumble_effect);
+    stop.value = 0;
+    return write(device->rumble_fd, &stop, sizeof(stop)) == sizeof(stop) ? NK_OK
+                                                                         : NK_ERROR_UNSUPPORTED;
+}
+
+} // namespace nk::core::haptics_backend
 
 extern "C" {
 nk_result NK_CALL nk_joystick_list(nk_handle *joysticks, uint32_t *inout_count) {

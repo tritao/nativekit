@@ -4,6 +4,7 @@
 #include "nativekit_dialog.h"
 #include "nativekit_graphics.h"
 #include "nativekit_gamepad.h"
+#include "nativekit_haptics.h"
 #include "nativekit_input.h"
 #include "nativekit_joystick.h"
 #include "nativekit_notification.h"
@@ -17,7 +18,9 @@
 #include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
 #include "core/gamepad_events.hpp"
+#include "core/haptics_internal.hpp"
 #include "core/runtime.hpp"
+#include "core/sensor_internal.hpp"
 #include "core/system_internal.hpp"
 #include "android/nativekit_android_internal.hpp"
 
@@ -403,6 +406,43 @@ nk_result java_void_surface(const std::shared_ptr<AndroidSurface> &resource, con
         return NK_ERROR_UNKNOWN;
     (void)resource;
     return NK_OK;
+}
+
+bool java_boolean(const char *name, const char *signature, jvalue *arguments, bool *out_value) {
+    auto *env = environment();
+    if (!env || !out_value)
+        return false;
+    auto *bridge = bridge_class(env);
+    if (!bridge)
+        return false;
+    const auto method = env->GetStaticMethodID(bridge, name, signature);
+    if (!method) {
+        env->DeleteLocalRef(bridge);
+        clear_java_exception(env, "Android NativeKitBridge method is unavailable");
+        return false;
+    }
+    *out_value = env->CallStaticBooleanMethodA(bridge, method, arguments) == JNI_TRUE;
+    env->DeleteLocalRef(bridge);
+    return !clear_java_exception(env, "Android NativeKitBridge operation failed");
+}
+
+int android_sensor_type(nk_sensor_type type) {
+    switch (type) {
+    case NK_SENSOR_ACCELEROMETER:
+        return 1; // Sensor.TYPE_ACCELEROMETER
+    case NK_SENSOR_GYROSCOPE:
+        return 4; // Sensor.TYPE_GYROSCOPE
+    case NK_SENSOR_MAGNETOMETER:
+        return 2; // Sensor.TYPE_MAGNETIC_FIELD
+    case NK_SENSOR_GRAVITY:
+        return 9; // Sensor.TYPE_GRAVITY
+    case NK_SENSOR_LINEAR_ACCELERATION:
+        return 10; // Sensor.TYPE_LINEAR_ACCELERATION
+    case NK_SENSOR_ROTATION_VECTOR:
+        return 11; // Sensor.TYPE_ROTATION_VECTOR
+    default:
+        return 0;
+    }
 }
 
 void emit_text(nk_event_kind kind, nk_handle source, const char *text, nk_result result = NK_OK,
@@ -868,6 +908,8 @@ nk_result android_gamepad_state(nk_handle handle, nk_gamepad_state *out_state) {
 void pump_events() noexcept {}
 
 void shutdown() noexcept {
+    nk::core::sensor_backend::shutdown();
+    (void)nk::core::haptics_backend::stop_vibration();
     while (!surfaces.empty()) {
         const auto leaf = std::find_if(surfaces.begin(), surfaces.end(), [](const auto &item) {
             return item.second->share_dependents == 0;
@@ -879,6 +921,8 @@ void shutdown() noexcept {
     while (!webviews.empty())
         destroy_webview(webviews.begin()->first);
     for (const auto &[device, resource] : joysticks) {
+        (void)device;
+        (void)nk::core::haptics_backend::stop_gamepad_rumble(resource->handle);
         nk::core::gamepad_events::disconnect(resource->handle);
         nk::core::handles().erase(resource->handle, nk::core::ResourceType::joystick);
     }
@@ -1001,6 +1045,8 @@ nk_result mobile_host_set_lifecycle(nk_handle handle, nk_mobile_lifecycle_state 
         return NK_ERROR_INVALID_ARGUMENT;
     }
     resource->lifecycle = state;
+    if (state == NK_MOBILE_LIFECYCLE_BACKGROUND)
+        (void)nk::core::haptics_backend::stop_vibration();
     auto *env = environment();
     auto *bridge = env ? bridge_class(env) : nullptr;
     if (!env || !bridge)
@@ -1066,6 +1112,132 @@ nk_result mobile_host_set_drop_enabled(nk_handle handle, bool enabled) {
 
 } // namespace nk::backend
 
+namespace nk::core::sensor_backend {
+
+nk_result list(std::vector<SensorBackendDescriptor> &out) noexcept {
+    try {
+        out.clear();
+        constexpr nk_sensor_type types[] = {
+            NK_SENSOR_ACCELEROMETER,       NK_SENSOR_GYROSCOPE,
+            NK_SENSOR_MAGNETOMETER,        NK_SENSOR_GRAVITY,
+            NK_SENSOR_LINEAR_ACCELERATION, NK_SENSOR_ROTATION_VECTOR};
+        for (const auto type : types) {
+            const auto native_type = android_sensor_type(type);
+            if (!native_type)
+                continue;
+            jvalue argument{};
+            argument.i = native_type;
+            bool available = false;
+            if (!java_boolean("sensorAvailable", "(I)Z", &argument, &available))
+                return NK_ERROR_UNKNOWN;
+            if (!available)
+                continue;
+            const auto count = (type == NK_SENSOR_ROTATION_VECTOR) ? 4u : 3u;
+            out.push_back({type, count, 1000000ULL, 100000000ULL,
+                           type == NK_SENSOR_MAGNETOMETER ? 2000.0f : 100.0f});
+        }
+        return NK_OK;
+    } catch (...) {
+        return NK_ERROR_UNKNOWN;
+    }
+}
+
+nk_result start(nk_sensor sensor, nk_sensor_type type,
+                const nk_sensor_options &options) noexcept {
+    const auto native_type = android_sensor_type(type);
+    if (!native_type)
+        return NK_ERROR_UNSUPPORTED;
+    jvalue arguments[4]{};
+    arguments[0].j = static_cast<jlong>(sensor);
+    arguments[1].i = native_type;
+    arguments[2].j = static_cast<jlong>(options.sample_interval_ns);
+    arguments[3].j = static_cast<jlong>(options.maximum_batch_latency_ns);
+    bool started = false;
+    if (!java_boolean("startSensor", "(JIJJ)Z", arguments, &started))
+        return NK_ERROR_UNKNOWN;
+    return started ? NK_OK : NK_ERROR_UNSUPPORTED;
+}
+
+nk_result stop(nk_sensor sensor) noexcept {
+    jvalue argument{};
+    argument.j = static_cast<jlong>(sensor);
+    bool stopped = false;
+    if (!java_boolean("stopSensor", "(J)Z", &argument, &stopped))
+        return NK_ERROR_UNKNOWN;
+    return stopped ? NK_OK : NK_ERROR_UNSUPPORTED;
+}
+
+nk_result request_permission(nk_request_id request) noexcept {
+    sensor_permission_complete(request, NK_OK, NK_SENSOR_PERMISSION_NOT_REQUIRED);
+    return NK_OK;
+}
+
+void shutdown() noexcept {
+    auto *env = environment();
+    if (!env)
+        return;
+    auto *bridge = bridge_class(env);
+    if (!bridge)
+        return;
+    const auto method = env->GetStaticMethodID(bridge, "stopAllSensors", "()V");
+    if (method)
+        env->CallStaticVoidMethod(bridge, method);
+    env->DeleteLocalRef(bridge);
+    clear_java_exception(env, "Android sensor shutdown failed");
+}
+
+} // namespace nk::core::sensor_backend
+
+namespace nk::core::haptics_backend {
+
+nk_result vibrate(const nk_haptic_vibration &options) noexcept {
+    jvalue arguments[3]{};
+    arguments[0].i = static_cast<jint>(options.period_ms);
+    arguments[1].i = static_cast<jint>(options.duration_ms);
+    arguments[2].f = options.intensity;
+    bool accepted = false;
+    if (!java_boolean("vibrate", "(IIF)Z", arguments, &accepted))
+        return NK_ERROR_UNKNOWN;
+    return accepted ? NK_OK : NK_ERROR_UNSUPPORTED;
+}
+
+nk_result stop_vibration() noexcept {
+    bool accepted = false;
+    if (!java_boolean("stopVibration", "()Z", nullptr, &accepted))
+        return NK_ERROR_UNKNOWN;
+    return accepted ? NK_OK : NK_ERROR_UNSUPPORTED;
+}
+
+nk_result gamepad_rumble(nk_joystick handle,
+                         const nk_gamepad_rumble_options &options) noexcept {
+    const auto resource = joystick(handle);
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    jvalue arguments[4]{};
+    arguments[0].i = resource->device_id;
+    arguments[1].f = options.low_frequency;
+    arguments[2].f = options.high_frequency;
+    arguments[3].i = static_cast<jint>(options.duration_ms);
+    bool accepted = false;
+    if (!java_boolean("rumbleGamepad", "(IFFI)Z", arguments, &accepted))
+        return NK_ERROR_UNKNOWN;
+    return accepted ? NK_OK : NK_ERROR_UNSUPPORTED;
+}
+
+nk_result stop_gamepad_rumble(nk_joystick handle) noexcept {
+    const auto resource = joystick(handle);
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    jvalue argument{};
+    argument.i = resource->device_id;
+    bool accepted = false;
+    if (!java_boolean("stopGamepadRumble", "(I)Z", &argument, &accepted))
+        return NK_ERROR_UNKNOWN;
+    return accepted ? NK_OK : NK_ERROR_UNSUPPORTED;
+}
+
+} // namespace nk::core::haptics_backend
+
 extern "C" {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
@@ -1075,6 +1247,7 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
            NK_CAP_JOYSTICK | NK_CAP_ACCESSIBILITY | NK_CAP_SYSTEM_INFO | NK_CAP_APPLICATION_PATH |
            NK_CAP_APPLICATION_STORAGE | NK_CAP_SYSTEM_FONTS | NK_CAP_KEEP_AWAKE |
            NK_CAP_DEVICE_ORIENTATION | NK_CAP_DISPLAY_ORIENTATION | NK_CAP_SURFACE_FRAME_CALLBACK |
+           NK_CAP_SENSORS | NK_CAP_HAPTICS | NK_CAP_GAMEPAD_RUMBLE |
            nk::core::optional_capabilities();
 }
 
@@ -3334,6 +3507,7 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnGamepadDisconne
     if (found == joysticks.end())
         return;
     const auto handle = found->second->handle;
+    (void)nk::core::haptics_backend::stop_gamepad_rumble(handle);
     nk::core::QueuedEvent event;
     event.kind = NK_EVENT_JOYSTICK_DISCONNECTED;
     event.source = handle;
@@ -3341,6 +3515,43 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnGamepadDisconne
     nk::core::gamepad_events::disconnect(handle);
     nk::core::handles().erase(handle, nk::core::ResourceType::joystick);
     joysticks.erase(found);
+}
+
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnSensor(
+    JNIEnv *, jclass, jlong handle_value, jint type, jfloat x, jfloat y, jfloat z, jfloat w,
+    jint accuracy) {
+    nk_sensor_type native_type = 0;
+    switch (type) {
+    case 1:
+        native_type = NK_SENSOR_ACCELEROMETER;
+        break;
+    case 4:
+        native_type = NK_SENSOR_GYROSCOPE;
+        break;
+    case 2:
+        native_type = NK_SENSOR_MAGNETOMETER;
+        break;
+    case 9:
+        native_type = NK_SENSOR_GRAVITY;
+        break;
+    case 10:
+        native_type = NK_SENSOR_LINEAR_ACCELERATION;
+        break;
+    case 11:
+        native_type = NK_SENSOR_ROTATION_VECTOR;
+        break;
+    default:
+        return;
+    }
+    const nk_sensor_accuracy native_accuracy =
+        accuracy < 0 ? NK_SENSOR_ACCURACY_UNAVAILABLE
+        : accuracy == 0 ? NK_SENSOR_ACCURACY_UNRELIABLE
+        : accuracy == 1 ? NK_SENSOR_ACCURACY_LOW
+        : accuracy == 2 ? NK_SENSOR_ACCURACY_MEDIUM
+                        : NK_SENSOR_ACCURACY_HIGH;
+    const float values[4] = {x, y, z, w};
+    nk::core::sensor_publish(static_cast<nk_sensor>(handle_value), native_type, values,
+                             native_accuracy);
 }
 
 JNIEXPORT void JNICALL Java_io_nativekit_NativeKitHost_nativeInitialize(JNIEnv *env, jclass) {

@@ -454,6 +454,39 @@ Input delivery is independent of GTK window focus.
 zones, and optional `[0, 1]` trigger output. The same normalization applies to
 state queries and generated gamepad events.
 
+## Sensors
+
+Include `nativekit_sensor.h` for raw physical sensors. `nk_sensor_list()` returns
+generation-checked sensor handles; query each handle with `nk_sensor_get_info()`
+and start it with `nk_sensor_start()`. Samples use the documented device-local
+right-handed space (+X right, +Y toward the top edge, +Z toward the user),
+NativeKit monotonic nanoseconds, and SI units: m/s², radians/sec, microtesla,
+or normalized x/y/z/w quaternions. `NK_EVENT_SENSOR_UPDATE` carries a fixed
+`nk_sensor_sample`, and updates coalesce by sensor handle. The latest sample is
+still available through `nk_sensor_get_latest()` after coalescing.
+
+Raw sensors are intentionally independent from `nk_system_get_orientation()`.
+Motion permission is requested with `nk_sensor_request_permission()` and
+completes through `NK_EVENT_SENSOR_PERMISSION_COMPLETE`; browser requests must
+be made from a user activation and secure context. An iOS host must declare
+`NSMotionUsageDescription` in its application Info.plist.
+
+## Haptics and gamepad rumble
+
+Include `nativekit_haptics.h` for the single system vibration output. A new
+`nk_haptic_vibrate()` replaces the previous effect; `duration_ms` is the total
+duration, `period_ms` is a best-effort pulse period, and `intensity` is in
+`[0, 1]`. Backends may approximate unsupported waveform details and return
+`NK_ERROR_UNSUPPORTED` when no system facility exists. Shutdown and mobile
+backgrounding stop active system haptics.
+
+`nk_gamepad_rumble()` and `nk_gamepad_stop_rumble()` live in
+`nativekit_gamepad.h` and use the existing mapped `nk_joystick` handle. Motor
+intensities are normalized to `[0, 1]`; each new effect replaces the prior one
+and disconnect or shutdown stops it. `NK_CAP_GAMEPAD_RUMBLE` describes a
+backend path, while a specific controller or browser actuator may still report
+`NK_ERROR_UNSUPPORTED`.
+
 Windows windows accept touch and pen contacts when the OS reports them through
 WM_POINTER. macOS reports direct-touch contacts and tablet stylus events where
 available. Android graphics surfaces accept multi-touch, stylus, mouse, hardware-keyboard,

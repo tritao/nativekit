@@ -2,8 +2,10 @@
 
 #include "core/error.hpp"
 #include "core/gamepad_events.hpp"
+#include "core/haptics_internal.hpp"
 #include "core/handle_registry.hpp"
 #include "core/runtime.hpp"
+#include "nativekit_time.h"
 #include "windows/joystick.hpp"
 
 #define WIN32_LEAN_AND_MEAN
@@ -39,6 +41,7 @@ struct WinJoystick final : nk::core::Resource {
 };
 
 std::array<std::shared_ptr<WinJoystick>, XUSER_MAX_COUNT> devices;
+std::unordered_map<nk_handle, std::uint64_t> rumble_deadlines;
 
 template <typename T> std::vector<std::byte> bytes_of(const T &value) {
     const auto *first = reinterpret_cast<const std::byte *>(&value);
@@ -153,6 +156,9 @@ void remove_device(std::size_t index) {
     auto &device = devices[index];
     if (!device)
         return;
+    XINPUT_VIBRATION stop{};
+    XInputSetState(device->index, &stop);
+    rumble_deadlines.erase(device->handle);
     emit(NK_EVENT_JOYSTICK_DISCONNECTED, device->handle);
     nk::core::gamepad_events::disconnect(device->handle);
     nk::core::handles().erase(device->handle, nk::core::ResourceType::joystick);
@@ -237,6 +243,14 @@ void pump() noexcept {
                 remove_device(index);
                 continue;
             }
+            if (devices[index]) {
+                const auto deadline = rumble_deadlines.find(devices[index]->handle);
+                if (deadline != rumble_deadlines.end() && nk_time_now_ns() >= deadline->second) {
+                    XINPUT_VIBRATION stop{};
+                    XInputSetState(static_cast<DWORD>(index), &stop);
+                    rumble_deadlines.erase(deadline);
+                }
+            }
             if (!devices[index])
                 add_device(index, state);
             else
@@ -252,6 +266,7 @@ void shutdown() noexcept {
     try {
         for (std::size_t index = 0; index < devices.size(); ++index)
             remove_device(index);
+        rumble_deadlines.clear();
     } catch (...) {
     }
 }
@@ -274,6 +289,39 @@ nk_result standard_gamepad_state(nk_handle handle, nk_gamepad_state *out_state) 
     return NK_OK;
 }
 } // namespace nk::windows_joystick
+
+namespace nk::core::haptics_backend {
+
+nk_result vibrate(const nk_haptic_vibration &) noexcept { return NK_ERROR_UNSUPPORTED; }
+nk_result stop_vibration() noexcept { return NK_ERROR_UNSUPPORTED; }
+
+nk_result gamepad_rumble(nk_joystick handle,
+                         const nk_gamepad_rumble_options &options) noexcept {
+    const auto device = lookup(handle);
+    if (!device)
+        return NK_ERROR_INVALID_HANDLE;
+    XINPUT_VIBRATION vibration{};
+    vibration.wLeftMotorSpeed = static_cast<WORD>(options.low_frequency * 65535.0f + 0.5f);
+    vibration.wRightMotorSpeed = static_cast<WORD>(options.high_frequency * 65535.0f + 0.5f);
+    if (XInputSetState(device->index, &vibration) != ERROR_SUCCESS)
+        return NK_ERROR_UNSUPPORTED;
+    rumble_deadlines[handle] = nk_time_now_ns() +
+                               static_cast<std::uint64_t>(options.duration_ms) * 1000000ULL;
+    return NK_OK;
+}
+
+nk_result stop_gamepad_rumble(nk_joystick handle) noexcept {
+    const auto device = lookup(handle);
+    if (!device)
+        return NK_ERROR_INVALID_HANDLE;
+    XINPUT_VIBRATION vibration{};
+    if (XInputSetState(device->index, &vibration) != ERROR_SUCCESS)
+        return NK_ERROR_UNSUPPORTED;
+    rumble_deadlines.erase(handle);
+    return NK_OK;
+}
+
+} // namespace nk::core::haptics_backend
 
 extern "C" {
 nk_result NK_CALL nk_joystick_list(nk_handle *output, uint32_t *inout_count) {

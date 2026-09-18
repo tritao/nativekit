@@ -18,6 +18,7 @@ enum class ResourceType : std::uint8_t {
     cursor,
     monitor,
     joystick,
+    sensor,
     resource_stream,
     http_client,
     http_stream

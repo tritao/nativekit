@@ -5,6 +5,8 @@
 #include "nativekit_input.h"
 #include "nativekit_system.h"
 #include "nativekit_notification.h"
+#include "nativekit_sensor.h"
+#include "nativekit_haptics.h"
 
 #include <array>
 #include <cstdint>
@@ -216,6 +218,17 @@ bool appearance_supported() noexcept;
 bool get_appearance(nk_system_appearance *out_appearance) noexcept;
 bool notification_supported() noexcept;
 bool gamepad_supported() noexcept;
+bool sensors_supported() noexcept;
+bool start_sensor(nk_sensor sensor, nk_sensor_type type, std::uint64_t interval_ns,
+                  std::uint64_t latency_ns) noexcept;
+bool stop_sensor(nk_sensor sensor) noexcept;
+void stop_all_sensors() noexcept;
+bool request_sensor_permission(nk_request_id request) noexcept;
+bool haptics_supported() noexcept;
+bool vibrate(std::uint32_t period_ms, std::uint32_t duration_ms, float intensity) noexcept;
+bool stop_vibration() noexcept;
+bool gamepad_rumble(std::int32_t index, float low, float high, std::uint32_t duration_ms) noexcept;
+bool stop_gamepad_rumble(std::int32_t index) noexcept;
 bool keep_awake_supported() noexcept;
 bool keep_awake_apply(bool enabled) noexcept;
 

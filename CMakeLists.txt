@@ -110,6 +110,7 @@ add_library(nativekit ${NK_LIBRARY_TYPE}
     src/core/graphics.cpp
     src/core/gamepad.cpp
     src/core/gamepad_mapping.cpp
+    src/core/haptics.cpp
     src/core/graphics_image.cpp
     src/core/handle_registry.cpp
     src/core/input.cpp
@@ -117,6 +118,7 @@ add_library(nativekit ${NK_LIBRARY_TYPE}
     src/core/mobile.cpp
     src/core/monitor.cpp
     src/core/resource.cpp
+    src/core/sensor.cpp
     src/core/system.cpp
     src/core/text_input.cpp
     src/core/time.cpp
@@ -234,6 +236,7 @@ elseif(WIN32)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     target_sources(nativekit PRIVATE
         src/ios/nativekit_ios.mm
+        src/ios/nativekit_ios_sensor.mm
         src/ios/nativekit_ios_joystick.mm
         src/core/stub.cpp)
     target_compile_definitions(nativekit PRIVATE NK_BACKEND_IOS=1)
@@ -245,7 +248,8 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
         $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>
         $<$<COMPILE_LANGUAGE:OBJCXX>:-fblocks>)
     target_link_libraries(nativekit PRIVATE
-        "-framework Foundation" "-framework UIKit" "-framework CoreGraphics"
+        "-framework Foundation" "-framework UIKit" "-framework CoreGraphics" "-framework CoreMotion"
+        "-framework CoreHaptics"
         "-framework Metal" "-framework QuartzCore" "-framework UniformTypeIdentifiers"
         "-framework UserNotifications" "-framework WebKit" "-framework GameController")
 elseif(APPLE)
@@ -262,7 +266,8 @@ elseif(APPLE)
     target_link_libraries(nativekit PRIVATE "-framework Cocoa" "-framework Carbon"
         "-framework CoreGraphics" "-framework WebKit"
         "-framework UserNotifications" "-framework UniformTypeIdentifiers"
-        "-framework Metal" "-framework QuartzCore" "-framework GameController")
+        "-framework Metal" "-framework QuartzCore" "-framework GameController"
+        "-framework CoreHaptics")
 elseif(TARGET PkgConfig::GTK3 AND TARGET PkgConfig::WEBKITGTK)
     set(NK_BACKEND_GTK_AVAILABLE TRUE)
     target_sources(nativekit PRIVATE

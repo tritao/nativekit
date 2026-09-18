@@ -7,6 +7,8 @@
 #include "nativekit_input.h"
 #include "nativekit_joystick.h"
 #include "nativekit_gamepad.h"
+#include "nativekit_haptics.h"
+#include "nativekit_sensor.h"
 #include "nativekit_graphics.h"
 #include "nativekit_accessibility.h"
 #include "nativekit_system.h"

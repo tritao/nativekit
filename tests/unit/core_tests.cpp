@@ -7,6 +7,7 @@
 #include "core/vulkan_internal.hpp"
 #include "nativekit_accessibility.h"
 #include "nativekit_joystick.h"
+#include "nativekit_sensor.h"
 #include "nativekit_system.h"
 #include "nativekit_window.h"
 
@@ -263,6 +264,32 @@ int main() {
     event.struct_size = sizeof(event);
     assert(axis_queue.poll(event) == NK_OK);
     assert(static_cast<const nk_joystick_axis_event *>(event.data)->axis == 1);
+    nk_event_release(&event);
+    nk::core::EventQueue sensor_queue(2);
+    auto queue_sensor = [&](nk_sensor sensor, std::uint64_t sequence) {
+        nk_sensor_sample sample{sizeof(sample), NK_SENSOR_ACCELEROMETER,
+                                NK_SENSOR_ACCURACY_HIGH, NK_SENSOR_COORDINATE_DEVICE,
+                                100 + sequence, sequence, {static_cast<float>(sequence), 0, 0, 0},
+                                {0, 0}};
+        nk::core::QueuedEvent item;
+        item.kind = NK_EVENT_SENSOR_UPDATE;
+        item.source = sensor;
+        const auto *payload_begin = reinterpret_cast<const std::byte *>(&sample);
+        item.data.assign(payload_begin, payload_begin + sizeof(sample));
+        assert(sensor_queue.push(std::move(item)) == NK_OK);
+    };
+    queue_sensor(11, 1);
+    queue_sensor(12, 1);
+    queue_sensor(11, 2);
+    event = {};
+    event.struct_size = sizeof(event);
+    assert(sensor_queue.poll(event) == NK_OK);
+    assert(event.source == 11);
+    assert(static_cast<const nk_sensor_sample *>(event.data)->sequence == 2);
+    nk_event_release(&event);
+    event.struct_size = sizeof(event);
+    assert(sensor_queue.poll(event) == NK_OK);
+    assert(event.source == 12);
     nk_event_release(&event);
     return 0;
 }

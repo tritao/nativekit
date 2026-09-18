@@ -16,7 +16,9 @@
 #include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
 #include "core/handle_registry.hpp"
+#include "core/haptics_internal.hpp"
 #include "core/runtime.hpp"
+#include "core/sensor_internal.hpp"
 #include "core/system_internal.hpp"
 #include "ios/joystick.hpp"
 #include "core/resource_events.hpp"
@@ -2837,6 +2839,8 @@ void pump_events() noexcept {
 }
 
 void shutdown() noexcept {
+    nk::core::sensor_backend::shutdown();
+    (void)nk::core::haptics_backend::stop_vibration();
     nk::ios_joystick::shutdown();
     NSMutableArray<NSString *> *notification_identifiers = [NSMutableArray array];
     {
@@ -2996,6 +3000,8 @@ nk_result mobile_host_set_lifecycle(nk_handle handle, nk_mobile_lifecycle_state 
     const bool becoming_unavailable =
         resource->lifecycle == NK_MOBILE_LIFECYCLE_ACTIVE && state != NK_MOBILE_LIFECYCLE_ACTIVE;
     resource->lifecycle = state;
+    if (state == NK_MOBILE_LIFECYCLE_BACKGROUND)
+        (void)nk::core::haptics_backend::stop_vibration();
     set_orientation_observing(resource, state != NK_MOBILE_LIFECYCLE_BACKGROUND);
     if (nk::core::system_keep_awake_held())
         (void)nk::core::system_backend::keep_awake_apply(has_active_host());
@@ -4691,7 +4697,9 @@ nk_result NK_CALL nk_notification_close(nk_request_id request) {
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     return NK_CAP_MOBILE_HOST | NK_CAP_RESOURCE_IO | NK_CAP_SYSTEM_INFO | NK_CAP_METAL_SURFACE |
            NK_CAP_APPLICATION_PATH | NK_CAP_APPLICATION_STORAGE | NK_CAP_KEEP_AWAKE |
-           NK_CAP_DEVICE_ORIENTATION | NK_CAP_DISPLAY_ORIENTATION | NK_CAP_INPUT | NK_CAP_WEBVIEW |
+           NK_CAP_DEVICE_ORIENTATION | NK_CAP_DISPLAY_ORIENTATION | NK_CAP_SENSORS | NK_CAP_HAPTICS |
+           NK_CAP_GAMEPAD_RUMBLE |
+           NK_CAP_INPUT | NK_CAP_WEBVIEW |
            NK_CAP_CLIPBOARD | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION |
            NK_CAP_ACCESSIBILITY | NK_CAP_DRAG_DROP | NK_CAP_RESOURCE_SHARING | NK_CAP_JOYSTICK |
            NK_CAP_SURFACE_FRAME_CALLBACK | nk::core::optional_capabilities();

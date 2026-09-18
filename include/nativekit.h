@@ -222,6 +222,10 @@ enum NK_ENUM(nk_event_kind) {
     NK_EVENT_DISPLAY_ORIENTATION_CHANGED = 23,
     /** A Web physical-device-orientation permission request completed. */
     NK_EVENT_DEVICE_ORIENTATION_PERMISSION_COMPLETE = 24,
+    /** A raw sensor sample was produced; one pending sample is coalesced per sensor. */
+    NK_EVENT_SENSOR_UPDATE = 25,
+    /** An asynchronous raw-sensor permission request completed. */
+    NK_EVENT_SENSOR_PERMISSION_COMPLETE = 26,
     /** A raw joystick became available. */
     NK_EVENT_JOYSTICK_CONNECTED = 30,
     /** A raw joystick was disconnected and its handle invalidated. */

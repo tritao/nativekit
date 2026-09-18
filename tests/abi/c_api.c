@@ -4,12 +4,14 @@
 #include "nativekit_dialog.h"
 #include "nativekit_graphics.h"
 #include "nativekit_gamepad.h"
+#include "nativekit_haptics.h"
 #include "nativekit_input.h"
 #include "nativekit_joystick.h"
 #include "nativekit_mobile.h"
 #include "nativekit_monitor.h"
 #include "nativekit_notification.h"
 #include "nativekit_resource.h"
+#include "nativekit_sensor.h"
 #include "nativekit_system.h"
 #include "nativekit_time.h"
 #include "nativekit_vulkan.h"
@@ -35,6 +37,11 @@ _Static_assert(sizeof(nk_init_options) == 16 + 2 * sizeof(const char *),
 _Static_assert(sizeof(nk_system_info) == 40, "system info ABI layout is stable");
 _Static_assert(sizeof(nk_system_orientation) == 32, "system orientation ABI layout is stable");
 _Static_assert(sizeof(nk_orientation_event) == 32, "orientation event ABI layout is stable");
+_Static_assert(sizeof(nk_sensor_sample) == 56, "sensor sample ABI layout is stable");
+_Static_assert(sizeof(nk_sensor_permission_event) == 20,
+               "sensor permission event ABI layout is stable");
+_Static_assert(sizeof(nk_gamepad_rumble_options) == 20,
+               "gamepad rumble ABI layout is stable");
 _Static_assert(sizeof(nk_window_decoration_region) == 24,
                "window decoration region ABI layout is stable");
 _Static_assert(offsetof(nk_window_decoration_region, kind) == 16,
@@ -177,6 +184,13 @@ int main(void) {
     nk_result joystick_result = nk_joystick_list(NULL, &joystick_count);
     assert(joystick_result == NK_ERROR_BUFFER_TOO_SMALL ||
            joystick_result == NK_ERROR_UNSUPPORTED || joystick_result == NK_OK);
+    uint32_t sensor_count = 0;
+    nk_result sensor_result = nk_sensor_list(NULL, &sensor_count);
+    assert(sensor_result == NK_ERROR_BUFFER_TOO_SMALL || sensor_result == NK_ERROR_UNSUPPORTED ||
+           sensor_result == NK_OK);
+    assert(nk_sensor_request_permission(NULL) == NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_haptic_vibrate(NULL) == NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_gamepad_rumble(NK_INVALID_HANDLE, NULL) == NK_ERROR_INVALID_ARGUMENT);
     uint32_t joystick_diagnostic_size = 0;
     nk_result joystick_diagnostic_result =
         nk_joystick_get_diagnostics(NULL, &joystick_diagnostic_size);

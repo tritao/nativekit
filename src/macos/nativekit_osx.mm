@@ -3812,7 +3812,8 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
            NK_CAP_APPLICATION_PATH | NK_CAP_APPLICATION_STORAGE | NK_CAP_SYSTEM_FONTS |
            NK_CAP_KEEP_AWAKE | NK_CAP_DISPLAY_ORIENTATION | NK_CAP_ACCESSIBILITY |
            NK_CAP_RESOURCE_SHARING | NK_CAP_WRAP_NATIVE_WINDOW | NK_CAP_SURFACE_FRAME_CALLBACK |
-           NK_CAP_WINDOW_CUSTOM_DECORATIONS | nk::core::optional_capabilities();
+           NK_CAP_WINDOW_CUSTOM_DECORATIONS | NK_CAP_GAMEPAD_RUMBLE |
+           nk::core::optional_capabilities();
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {

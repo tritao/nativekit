@@ -591,6 +591,18 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 * The backend supports app-provided non-client hit-test regions.
 		 */
 		NK_CAP_WINDOW_CUSTOM_DECORATIONS = 137438953472;
+		/**
+		 * The backend has a raw physical-sensor path.
+		 */
+		NK_CAP_SENSORS = 274877906944;
+		/**
+		 * The backend has a system haptic output path.
+		 */
+		NK_CAP_HAPTICS = 549755813888;
+		/**
+		 * The backend has a gamepad rumble path for at least one controller family.
+		 */
+		NK_CAP_GAMEPAD_RUMBLE = 1099511627776;
 	}
 	/**
 	 * System color-scheme values returned in nk_system_appearance.
@@ -797,6 +809,14 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 * A Web physical-device-orientation permission request completed.
 		 */
 		NK_EVENT_DEVICE_ORIENTATION_PERMISSION_COMPLETE = 24;
+		/**
+		 * A raw sensor sample was produced; one pending sample is coalesced per sensor.
+		 */
+		NK_EVENT_SENSOR_UPDATE = 25;
+		/**
+		 * An asynchronous raw-sensor permission request completed.
+		 */
+		NK_EVENT_SENSOR_PERMISSION_COMPLETE = 26;
 		/**
 		 * A raw joystick became available.
 		 */
@@ -2007,6 +2027,38 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 */
 		NK_SEEK_END = 2;
 	}
+	enum nk_sensor_accuracy : u32 {
+		NK_SENSOR_ACCURACY_UNAVAILABLE = 0;
+		NK_SENSOR_ACCURACY_UNRELIABLE = 1;
+		NK_SENSOR_ACCURACY_LOW = 2;
+		NK_SENSOR_ACCURACY_MEDIUM = 3;
+		NK_SENSOR_ACCURACY_HIGH = 4;
+	}
+	/**
+	 * The coordinate space used by all NativeKit sensor values.
+	 */
+	enum nk_sensor_coordinate_space : u32 {
+		/**
+		 * Device-local right-handed axes: +X right, +Y toward the top edge,
+		 * and +Z out of the display toward the user.
+		 */
+		NK_SENSOR_COORDINATE_DEVICE = 1;
+	}
+	enum nk_sensor_permission_status : u32 {
+		NK_SENSOR_PERMISSION_GRANTED = 1;
+		NK_SENSOR_PERMISSION_DENIED = 2;
+		NK_SENSOR_PERMISSION_UNAVAILABLE = 3;
+		NK_SENSOR_PERMISSION_NOT_REQUIRED = 4;
+	}
+	enum nk_sensor_type : u32 {
+		NK_SENSOR_ACCELEROMETER = 1;
+		NK_SENSOR_GYROSCOPE = 2;
+		NK_SENSOR_MAGNETOMETER = 3;
+		NK_SENSOR_GRAVITY = 4;
+		NK_SENSOR_LINEAR_ACCELERATION = 5;
+		NK_SENSOR_ROTATION_VECTOR = 6;
+		NK_SENSOR_DEVICE_MOTION = 7;
+	}
 	/**
 	 * Optional surface creation and presentation flags.
 	 */
@@ -2507,9 +2559,17 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 */
 	extern fn nk_gamepad_is_mapped(joystick: nk_joystick, out_mapped: ptr<nk_bool>) -> nk_result;
 	/**
+	 * Starts a replacement rumble effect on a mapped joystick.
+	 */
+	extern fn nk_gamepad_rumble(joystick: nk_joystick, options: ptr<const<nk_gamepad_rumble_options>>) -> nk_result;
+	/**
 	 * Sets process-wide normalization used by state queries and gamepad events.
 	 */
 	extern fn nk_gamepad_set_options(options: ptr<const<nk_gamepad_options>>) -> nk_result;
+	/**
+	 * Stops the active rumble effect on a mapped joystick.
+	 */
+	extern fn nk_gamepad_stop_rumble(joystick: nk_joystick) -> nk_result;
 	/**
 	 * Returns process-wide capabilities of the compiled platform backend.
 	 */
@@ -2534,6 +2594,14 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * Retains a sampled image reference. Each successful retain requires one release.
 	 */
 	extern fn nk_graphics_image_retain(image: nk_graphics_image) -> nk_result;
+	/**
+	 * Stops the active system vibration effect.
+	 */
+	extern fn nk_haptic_stop() -> nk_result;
+	/**
+	 * Starts a replacement system vibration effect.
+	 */
+	extern fn nk_haptic_vibrate(options: ptr<const<nk_haptic_vibration>>) -> nk_result;
 	/**
 	 * Initializes NativeKit on the calling thread. That thread becomes the UI
 	 * thread until nk_shutdown(). Exactly one initialization may be active.
@@ -2731,6 +2799,30 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * Writes up to `size` bytes; a successful write may transfer fewer bytes.
 	 */
 	extern fn nk_resource_write(stream: nk_resource_stream, buffer: ptr<const<void>>, size: u64, out_written: ptr<u64>) -> nk_result;
+	/**
+	 * Returns static information for an enumerated sensor.
+	 */
+	extern fn nk_sensor_get_info(sensor: nk_sensor, out_info: ptr<nk_sensor_info> @out) -> nk_result;
+	/**
+	 * Returns the latest sample after a sensor has been started.
+	 */
+	extern fn nk_sensor_get_latest(sensor: nk_sensor, out_sample: ptr<nk_sensor_sample> @out) -> nk_result;
+	/**
+	 * Writes the currently available generation-checked sensor handles.
+	 */
+	extern fn nk_sensor_list(sensors: ptr<nk_sensor>, inout_count: ptr<u32>) -> nk_result;
+	/**
+	 * Asynchronously requests motion permission where the platform requires it.
+	 */
+	extern fn nk_sensor_request_permission(out_request: ptr<nk_request_id> @out) -> nk_result;
+	/**
+	 * Starts a sensor with the requested sampling configuration.
+	 */
+	extern fn nk_sensor_start(sensor: nk_sensor, options: ptr<const<nk_sensor_options>>) -> nk_result;
+	/**
+	 * Stops a sensor; its last sample remains queryable until the next start.
+	 */
+	extern fn nk_sensor_stop(sensor: nk_sensor) -> nk_result;
 	/**
 	 * Launches the platform share UI or platform-equivalent URI handoff.
 	 */
@@ -3686,6 +3778,31 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		reserved2: array<u64, 2> @offset(24);
 	}
 	/**
+	 * One replacement rumble effect for a mapped joystick.
+	 */
+	struct nk_gamepad_rumble_options @layout(20, 4) {
+		/**
+		 * Set to sizeof(nk_gamepad_rumble_options) before passing this structure.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Low-frequency motor intensity in [0, 1].
+		 */
+		low_frequency: f32 @offset(4);
+		/**
+		 * High-frequency motor intensity in [0, 1].
+		 */
+		high_frequency: f32 @offset(8);
+		/**
+		 * Total effect duration in milliseconds.
+		 */
+		duration_ms: u32 @offset(12);
+		/**
+		 * Reserved; set to zero.
+		 */
+		reserved: u32 @offset(16);
+	}
+	/**
 	 * Normalized canonical gamepad state for one mapped joystick.
 	 */
 	struct nk_gamepad_state @layout(80, 8) {
@@ -3734,6 +3851,16 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 * Reserved for future image metadata; set to zero.
 		 */
 		reserved: array<u32, 2> @offset(20);
+	}
+	/**
+	 * One replacement system vibration effect.
+	 */
+	struct nk_haptic_vibration @layout(20, 4) {
+		struct_size: u32 @offset(0) @struct_size;
+		period_ms: u32 @offset(4);
+		duration_ms: u32 @offset(8);
+		intensity: f32 @offset(12);
+		reserved: u32 @offset(16);
 	}
 	/**
 	 * Options used to start one NativeKit runtime generation.
@@ -4359,6 +4486,53 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 * Reserved for future decoded metadata; set all elements to zero.
 		 */
 		reserved: array<u64, 2> @offset(56);
+	}
+	/**
+	 * Static information for one sensor returned by nk_sensor_get_info().
+	 */
+	struct nk_sensor_info @layout(64, 8) {
+		struct_size: u32 @offset(0) @struct_size;
+		type: nk_sensor_type @offset(4);
+		value_count: u32 @offset(8);
+		minimum_interval_ns: u64 @offset(16);
+		maximum_batch_latency_ns: u64 @offset(24);
+		maximum_range: f32 @offset(32);
+		coordinate_space: nk_sensor_coordinate_space @offset(36);
+		reserved: u32 @offset(40);
+		reserved2: array<u64, 2> @offset(48);
+	}
+	/**
+	 * Requested sampling configuration. Zero timing fields select backend defaults.
+	 */
+	struct nk_sensor_options @layout(48, 8) {
+		struct_size: u32 @offset(0) @struct_size;
+		sample_interval_ns: u64 @offset(8);
+		maximum_batch_latency_ns: u64 @offset(16);
+		coordinate_space: nk_sensor_coordinate_space @offset(24);
+		reserved: u32 @offset(28);
+		reserved2: array<u64, 2> @offset(32);
+	}
+	/**
+	 * Fixed, pointer-free payload of NK_EVENT_SENSOR_PERMISSION_COMPLETE.
+	 */
+	struct nk_sensor_permission_event @layout(20, 4) {
+		struct_size: u32 @offset(0) @struct_size;
+		status: nk_sensor_permission_status @offset(4);
+		reserved: array<u32, 3> @offset(8);
+	}
+	/**
+	 * Fixed, pointer-free payload of NK_EVENT_SENSOR_UPDATE. Values are SI units:
+	 * m/s², radians/sec, microtesla, or a normalized quaternion (x,y,z,w).
+	 */
+	struct nk_sensor_sample @layout(56, 8) {
+		struct_size: u32 @offset(0) @struct_size;
+		type: nk_sensor_type @offset(4);
+		accuracy: nk_sensor_accuracy @offset(8);
+		coordinate_space: nk_sensor_coordinate_space @offset(12);
+		timestamp_ns: u64 @offset(16);
+		sequence: u64 @offset(24);
+		values: array<f32, 4> @offset(32);
+		reserved: array<u32, 2> @offset(48);
 	}
 	/**
 	 * Text and URI resources supplied to the platform share UI.
@@ -5118,6 +5292,10 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 */
 	type nk_request_id = u64;
 	handle nk_resource_stream : u32 @destroy("nk_resource_close");
+	/**
+	 * A generation-checked handle for one enumerated physical sensor.
+	 */
+	handle nk_sensor : u32;
 	handle nk_surface : u32 @destroy("nk_surface_destroy");
 	/**
 	 * Callback invoked while a surface framebuffer is current and ready to draw.

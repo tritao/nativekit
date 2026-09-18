@@ -12,6 +12,10 @@ import android.content.Intent;
 import android.content.UriPermission;
 import android.content.ContextWrapper;
 import android.hardware.input.InputManager;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.content.res.Configuration;
 import android.database.Cursor;
 import android.graphics.Color;
@@ -24,6 +28,10 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.ParcelFileDescriptor;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 import android.provider.OpenableColumns;
 import android.provider.Settings;
 import android.view.Choreographer;
@@ -121,8 +129,158 @@ final class NativeKitBridge {
     private static final Set<Long> cancelledDialogs = new HashSet<>();
     private static InputManager inputManager;
     private static InputManager.InputDeviceListener inputDeviceListener;
+    private static SensorManager sensorManager;
+    private static Context sensorContext;
+    private static final Map<Integer, Long> sensorHandles = new HashMap<>();
+    private static final Map<Integer, Sensor> activeSensors = new HashMap<>();
+    private static final Handler sensorHandler = new Handler(Looper.getMainLooper());
+    private static final Handler vibrationHandler = new Handler(Looper.getMainLooper());
+    private static Runnable vibrationStop;
+    private static final SensorEventListener sensorListener = new SensorEventListener() {
+        @Override
+        public void onSensorChanged(SensorEvent event) {
+            Long handle = sensorHandles.get(event.sensor.getType());
+            if (handle == null || event.values == null)
+                return;
+            float x = event.values.length > 0 ? event.values[0] : 0;
+            float y = event.values.length > 1 ? event.values[1] : 0;
+            float z = event.values.length > 2 ? event.values[2] : 0;
+            float w = event.values.length > 3 ? event.values[3] : 0;
+            nativeOnSensor(handle, event.sensor.getType(), x, y, z, w, event.accuracy);
+        }
+
+        @Override
+        public void onAccuracyChanged(Sensor sensor, int accuracy) {}
+    };
 
     private NativeKitBridge() {}
+
+    private static void ensureSensors(Context context) {
+        if (sensorManager == null && context != null) {
+            sensorContext = context.getApplicationContext();
+            sensorManager = (SensorManager)sensorContext.getSystemService(Context.SENSOR_SERVICE);
+        }
+    }
+
+    static boolean sensorAvailable(int type) {
+        ensureSensors(sensorContext);
+        return sensorManager != null && sensorManager.getDefaultSensor(type) != null;
+    }
+
+    static boolean startSensor(long handle, int type, long intervalNanos, long latencyNanos) {
+        ensureSensors(sensorContext);
+        if (sensorManager == null)
+            return false;
+        Sensor sensor = sensorManager.getDefaultSensor(type);
+        if (sensor == null)
+            return false;
+        int periodUs = intervalNanos <= 0 ? 20000
+                                          : (int)Math.max(1, Math.min(Integer.MAX_VALUE,
+                                              intervalNanos / 1000L));
+        int latencyUs = latencyNanos <= 0 ? 0
+                                          : (int)Math.min(Integer.MAX_VALUE, latencyNanos / 1000L);
+        sensorHandles.put(type, handle);
+        activeSensors.put(type, sensor);
+        final boolean registered = sensorManager.registerListener(sensorListener, sensor, periodUs,
+                                                                   latencyUs, sensorHandler);
+        if (!registered) {
+            sensorHandles.remove(type);
+            activeSensors.remove(type);
+        }
+        return registered;
+    }
+
+    static boolean stopSensor(long handle) {
+        if (sensorManager == null)
+            return false;
+        Integer foundType = null;
+        for (Map.Entry<Integer, Long> entry : sensorHandles.entrySet()) {
+            if (entry.getValue() == handle) {
+                foundType = entry.getKey();
+                break;
+            }
+        }
+        if (foundType == null)
+            return false;
+        Sensor sensor = activeSensors.remove(foundType);
+        sensorHandles.remove(foundType);
+        if (sensor != null)
+            sensorManager.unregisterListener(sensorListener, sensor);
+        return true;
+    }
+
+    static void stopAllSensors() {
+        if (sensorManager != null)
+            sensorManager.unregisterListener(sensorListener);
+        activeSensors.clear();
+        sensorHandles.clear();
+    }
+
+    static boolean vibrate(int periodMs, int durationMs, float intensity) {
+        if (sensorContext == null)
+            return false;
+        Vibrator vibrator = (Vibrator)sensorContext.getSystemService(Context.VIBRATOR_SERVICE);
+        if (vibrator == null || !vibrator.hasVibrator())
+            return false;
+        int amplitude = Math.max(1, Math.min(255, Math.round(intensity * 255f)));
+        if (Build.VERSION.SDK_INT >= 26) {
+            VibrationEffect effect;
+            if (periodMs > 0 && periodMs < durationMs) {
+                long on = Math.max(1, periodMs / 2L);
+                long off = Math.max(1, periodMs - on);
+                effect = VibrationEffect.createWaveform(new long[] {0, on, off},
+                    new int[] {0, amplitude, 0}, 1);
+            } else {
+                effect = VibrationEffect.createOneShot(durationMs, amplitude);
+            }
+            vibrator.vibrate(effect);
+        } else {
+            vibrator.vibrate(durationMs);
+        }
+        if (vibrationStop != null)
+            vibrationHandler.removeCallbacks(vibrationStop);
+        vibrationStop = vibrator::cancel;
+        vibrationHandler.postDelayed(vibrationStop, durationMs);
+        return true;
+    }
+
+    static boolean stopVibration() {
+        if (sensorContext == null)
+            return false;
+        Vibrator vibrator = (Vibrator)sensorContext.getSystemService(Context.VIBRATOR_SERVICE);
+        if (vibrator == null)
+            return false;
+        if (vibrationStop != null)
+            vibrationHandler.removeCallbacks(vibrationStop);
+        vibrator.cancel();
+        return true;
+    }
+
+    static boolean rumbleGamepad(int deviceId, float low, float high, int durationMs) {
+        InputDevice device = InputDevice.getDevice(deviceId);
+        if (device == null)
+            return false;
+        Vibrator vibrator = device.getVibrator();
+        if (vibrator == null || !vibrator.hasVibrator())
+            return false;
+        int amplitude = Math.max(1, Math.min(255, Math.round(Math.max(low, high) * 255f)));
+        if (Build.VERSION.SDK_INT >= 26)
+            vibrator.vibrate(VibrationEffect.createOneShot(durationMs, amplitude));
+        else
+            vibrator.vibrate(durationMs);
+        return true;
+    }
+
+    static boolean stopGamepadRumble(int deviceId) {
+        InputDevice device = InputDevice.getDevice(deviceId);
+        if (device == null)
+            return false;
+        Vibrator vibrator = device.getVibrator();
+        if (vibrator == null)
+            return false;
+        vibrator.cancel();
+        return true;
+    }
 
     private static final class NativeSurfaceView extends SurfaceView {
         private final long nativeHandle;
@@ -1878,6 +2036,7 @@ final class NativeKitBridge {
 
     static void observeHost(ViewGroup parent, long handle) {
         observedHosts.put(handle, parent);
+        ensureSensors(parent.getContext());
         observeInputDevices(parent.getContext());
         View.OnLayoutChangeListener listener = (view, left, top, right, bottom, oldLeft, oldTop,
                                                 oldRight, oldBottom) -> {
@@ -2179,6 +2338,8 @@ final class NativeKitBridge {
     private static native void nativeOnGamepadConnected(int device, String name,
                                                         String descriptor);
     private static native void nativeOnGamepadDisconnected(int device);
+    private static native void nativeOnSensor(long sensor, int type, float x, float y, float z,
+                                               float w, int accuracy);
     private static native void nativeOnGeometry(long handle, int width, int height, float scale,
                                                 int insetLeft, int insetTop, int insetRight,
                                                 int insetBottom, int keyboardBottom);

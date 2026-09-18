@@ -3,11 +3,13 @@
 #include "nativekit_clipboard.h"
 #include "nativekit_dialog.h"
 #include "nativekit_gamepad.h"
+#include "nativekit_haptics.h"
 #include "nativekit_input.h"
 #include "nativekit_joystick.h"
 #include "nativekit_notification.h"
 #include "nativekit_resource.h"
 #include "nativekit_system.h"
+#include "nativekit_sensor.h"
 #include "nativekit_window.h"
 
 #include "core/boundary.hpp"
@@ -15,7 +17,9 @@
 #include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
 #include "core/gamepad_events.hpp"
+#include "core/haptics_internal.hpp"
 #include "core/runtime.hpp"
+#include "core/sensor_internal.hpp"
 #include "core/resource_events.hpp"
 #include "web/gamepad.hpp"
 #include "web/host.h"
@@ -180,6 +184,8 @@ struct WebGamepadResource final : nk::core::Resource {
     bool seen = false;
 };
 
+std::shared_ptr<WebGamepadResource> web_gamepad_handle(nk_handle handle);
+
 struct WebResourceStream final : nk::core::Resource {
     std::mutex mutex;
     std::string uri;
@@ -203,6 +209,7 @@ struct PendingWebResourceDialog {
 std::unordered_map<nk_request_id, PendingWebResourceDialog> pending_resource_dialogs;
 std::unordered_set<nk_request_id> pending_notifications;
 std::unordered_set<nk_request_id> pending_device_orientation_requests;
+std::unordered_set<nk_request_id> pending_sensor_permission_requests;
 std::mutex pending_resource_writes_mutex;
 std::vector<PendingWebResourceWrite> pending_resource_writes;
 nk_orientation last_device_orientation = NK_ORIENTATION_UNKNOWN;
@@ -1766,6 +1773,7 @@ void remove_web_gamepad(int32_t index) {
     if (found == web_gamepads.end())
         return;
     const auto handle = found->second->handle;
+    (void)nk::web::stop_gamepad_rumble(index);
     emit_web_joystick(NK_EVENT_JOYSTICK_DISCONNECTED, handle);
     nk::core::gamepad_events::disconnect(handle);
     nk::core::handles().erase(handle, nk::core::ResourceType::joystick);
@@ -1851,6 +1859,7 @@ void shutdown_web() noexcept {
     pending_resource_dialogs.clear();
     pending_notifications.clear();
     pending_device_orientation_requests.clear();
+    pending_sensor_permission_requests.clear();
     last_device_orientation = NK_ORIENTATION_UNKNOWN;
     web_windows.clear();
 }
@@ -1929,6 +1938,77 @@ nk_result standard_gamepad_state(nk_handle handle, nk_gamepad_state *out_state) 
 
 } // namespace nk::web_gamepad
 
+namespace nk::core::sensor_backend {
+
+nk_result list(std::vector<SensorBackendDescriptor> &out) noexcept {
+    if (!nk::web::sensors_supported())
+        return NK_ERROR_UNSUPPORTED;
+    out = {{NK_SENSOR_ACCELEROMETER, 3, 1000000ULL, 0, 100.0f},
+           {NK_SENSOR_GYROSCOPE, 3, 1000000ULL, 0, 100.0f},
+           {NK_SENSOR_LINEAR_ACCELERATION, 3, 1000000ULL, 0, 100.0f}};
+    return NK_OK;
+}
+
+nk_result start(nk_sensor sensor, nk_sensor_type type,
+                const nk_sensor_options &options) noexcept {
+    return nk::web::start_sensor(sensor, type, options.sample_interval_ns,
+                                 options.maximum_batch_latency_ns)
+               ? NK_OK
+               : NK_ERROR_UNSUPPORTED;
+}
+
+nk_result stop(nk_sensor sensor) noexcept {
+    return nk::web::stop_sensor(sensor) ? NK_OK : NK_ERROR_UNSUPPORTED;
+}
+
+nk_result request_permission(nk_request_id request) noexcept {
+    try {
+        pending_sensor_permission_requests.insert(request);
+    } catch (...) {
+        return NK_ERROR_OUT_OF_MEMORY;
+    }
+    if (nk::web::request_sensor_permission(request))
+        return NK_OK;
+    pending_sensor_permission_requests.erase(request);
+    return NK_ERROR_UNSUPPORTED;
+}
+
+void shutdown() noexcept {
+    pending_sensor_permission_requests.clear();
+    nk::web::stop_all_sensors();
+}
+
+} // namespace nk::core::sensor_backend
+
+namespace nk::core::haptics_backend {
+
+nk_result vibrate(const nk_haptic_vibration &options) noexcept {
+    return nk::web::vibrate(options.period_ms, options.duration_ms, options.intensity)
+               ? NK_OK
+               : NK_ERROR_UNSUPPORTED;
+}
+nk_result stop_vibration() noexcept {
+    return nk::web::stop_vibration() ? NK_OK : NK_ERROR_UNSUPPORTED;
+}
+nk_result gamepad_rumble(nk_joystick handle,
+                         const nk_gamepad_rumble_options &options) noexcept {
+    const auto device = web_gamepad_handle(handle);
+    if (!device)
+        return NK_ERROR_INVALID_HANDLE;
+    return nk::web::gamepad_rumble(device->index, options.low_frequency, options.high_frequency,
+                                   options.duration_ms)
+               ? NK_OK
+               : NK_ERROR_UNSUPPORTED;
+}
+nk_result stop_gamepad_rumble(nk_joystick handle) noexcept {
+    const auto device = web_gamepad_handle(handle);
+    if (!device)
+        return NK_ERROR_INVALID_HANDLE;
+    return nk::web::stop_gamepad_rumble(device->index) ? NK_OK : NK_ERROR_UNSUPPORTED;
+}
+
+} // namespace nk::core::haptics_backend
+
 namespace nk::backend {
 
 void pump_events() noexcept {
@@ -1944,6 +2024,8 @@ void pump_events() noexcept {
 }
 
 void shutdown() noexcept {
+    nk::core::sensor_backend::shutdown();
+    (void)nk::core::haptics_backend::stop_vibration();
     shutdown_web();
 }
 
@@ -2029,10 +2111,16 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
         capabilities |= NK_CAP_DISPLAY_ORIENTATION;
     if (nk::web::device_orientation_supported())
         capabilities |= NK_CAP_DEVICE_ORIENTATION;
+    if (nk::web::sensors_supported())
+        capabilities |= NK_CAP_SENSORS;
+    if (nk::web::haptics_supported())
+        capabilities |= NK_CAP_HAPTICS;
     if (nk::web::notification_supported())
         capabilities |= NK_CAP_NOTIFICATION;
-    if (nk::web::gamepad_supported())
+    if (nk::web::gamepad_supported()) {
         capabilities |= NK_CAP_JOYSTICK;
+        capabilities |= NK_CAP_GAMEPAD_RUMBLE;
+    }
     return capabilities;
 }
 
@@ -2050,6 +2138,36 @@ EMSCRIPTEN_KEEPALIVE void nk_web_host_device_orientation_permission(uint32_t req
     event.request_id = static_cast<nk_request_id>(request);
     event.result = result;
     nk::core::push_event(std::move(event));
+}
+
+EMSCRIPTEN_KEEPALIVE void nk_web_host_sensor_permission(uint32_t request, nk_result result) {
+    if (pending_sensor_permission_requests.erase(static_cast<nk_request_id>(request)) == 0)
+        return;
+    const auto status = result == NK_OK
+                            ? NK_SENSOR_PERMISSION_GRANTED
+                            : result == NK_ERROR_UNSUPPORTED
+                                  ? NK_SENSOR_PERMISSION_DENIED
+                                  : NK_SENSOR_PERMISSION_UNAVAILABLE;
+    nk::core::sensor_permission_complete(static_cast<nk_request_id>(request), result, status);
+}
+
+EMSCRIPTEN_KEEPALIVE void nk_web_host_sensor_update(uint32_t sensor, uint32_t type, float x,
+                                                    float y, float z, float w, int accuracy) {
+    switch (type) {
+    case NK_SENSOR_ACCELEROMETER:
+    case NK_SENSOR_GYROSCOPE:
+    case NK_SENSOR_LINEAR_ACCELERATION:
+        break;
+    default:
+        return;
+    }
+    const float values[4] = {x, y, z, w};
+    const auto status = accuracy <= 0 ? NK_SENSOR_ACCURACY_UNAVAILABLE
+                      : accuracy == 1 ? NK_SENSOR_ACCURACY_LOW
+                      : accuracy == 2 ? NK_SENSOR_ACCURACY_MEDIUM
+                                      : NK_SENSOR_ACCURACY_HIGH;
+    nk::core::sensor_publish(static_cast<nk_sensor>(sensor), static_cast<nk_sensor_type>(type),
+                             values, status);
 }
 
 nk_result NK_CALL nk_system_locale(char *buffer, uint32_t *inout_size) {

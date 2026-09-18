@@ -126,6 +126,22 @@ typedef struct nk_gamepad_options {
     uint64_t reserved2[2];
 } nk_gamepad_options;
 
+/** One replacement rumble effect for a mapped joystick. */
+/* The C typedef uses an _options suffix because the requested function name
+ * occupies the same ordinary identifier namespace in C. */
+typedef struct nk_gamepad_rumble_options {
+    /** Set to sizeof(nk_gamepad_rumble_options) before passing this structure. */
+    uint32_t struct_size NK_STRUCT_SIZE;
+    /** Low-frequency motor intensity in [0, 1]. */
+    float low_frequency;
+    /** High-frequency motor intensity in [0, 1]. */
+    float high_frequency;
+    /** Total effect duration in milliseconds. */
+    uint32_t duration_ms;
+    /** Reserved; set to zero. */
+    uint32_t reserved;
+} nk_gamepad_rumble_options;
+
 /* ------------------------------------------------------------------------- */
 /* Gamepad mapping and query APIs                                            */
 /* ------------------------------------------------------------------------- */
@@ -163,6 +179,12 @@ NK_API nk_result NK_CALL nk_gamepad_get_state(nk_joystick joystick, nk_gamepad_s
 NK_API nk_result NK_CALL nk_gamepad_set_options(const nk_gamepad_options *options);
 /** Returns the process-wide gamepad normalization options. */
 NK_API nk_result NK_CALL nk_gamepad_get_options(nk_gamepad_options *out_options);
+
+/** Starts a replacement rumble effect on a mapped joystick. */
+NK_API nk_result NK_CALL nk_gamepad_rumble(nk_joystick joystick,
+                                           const nk_gamepad_rumble_options *options);
+/** Stops the active rumble effect on a mapped joystick. */
+NK_API nk_result NK_CALL nk_gamepad_stop_rumble(nk_joystick joystick);
 
 #ifdef __cplusplus
 }

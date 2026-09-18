@@ -102,7 +102,13 @@ enum NK_FLAGS(nk_capabilities) {
     /** The backend can schedule callbacks while a graphics surface is ready to draw. */
     NK_CAP_SURFACE_FRAME_CALLBACK = UINT64_C(1) << 36,
     /** The backend supports app-provided non-client hit-test regions. */
-    NK_CAP_WINDOW_CUSTOM_DECORATIONS = UINT64_C(1) << 37
+    NK_CAP_WINDOW_CUSTOM_DECORATIONS = UINT64_C(1) << 37,
+    /** The backend has a raw physical-sensor path. */
+    NK_CAP_SENSORS = UINT64_C(1) << 38,
+    /** The backend has a system haptic output path. */
+    NK_CAP_HAPTICS = UINT64_C(1) << 39,
+    /** The backend has a gamepad rumble path for at least one controller family. */
+    NK_CAP_GAMEPAD_RUMBLE = UINT64_C(1) << 40
 #endif
 };
 
@@ -114,6 +120,9 @@ enum NK_FLAGS(nk_capabilities) {
 #define NK_CAP_HTTP_STREAMING (UINT64_C(1) << 35)
 #define NK_CAP_SURFACE_FRAME_CALLBACK (UINT64_C(1) << 36)
 #define NK_CAP_WINDOW_CUSTOM_DECORATIONS (UINT64_C(1) << 37)
+#define NK_CAP_SENSORS (UINT64_C(1) << 38)
+#define NK_CAP_HAPTICS (UINT64_C(1) << 39)
+#define NK_CAP_GAMEPAD_RUMBLE (UINT64_C(1) << 40)
 #endif
 
 /** Discriminator identifying the platform representation in nk_native_window. */
