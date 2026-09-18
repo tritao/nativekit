@@ -49,6 +49,8 @@ _Static_assert(NK_EVENT_PLUGIN_COMPLETE == 1000 && NK_EVENT_PLUGIN_EVENT == 1001
 _Static_assert(NK_ERROR_NOT_FOUND == -12 && NK_ERROR_PAYLOAD_TOO_LARGE == -13,
                "plugin result codes are stable");
 _Static_assert(NK_PLUGIN_ABI_VERSION == 1, "plugin ABI version is stable");
+_Static_assert(NK_SURFACE_FRAME_CONTINUOUS == 0 && NK_SURFACE_FRAME_ON_DEMAND == 1,
+               "surface frame scheduling modes are stable");
 _Static_assert(NK_PLUGIN_PAYLOAD_MAX == 1048576, "plugin control-plane payload limit is stable");
 _Static_assert(offsetof(nk_plugin_host, register_service) == 8,
                "plugin host function table starts after its versioned prefix");

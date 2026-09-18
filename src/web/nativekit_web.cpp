@@ -12,6 +12,7 @@
 
 #include "core/boundary.hpp"
 #include "core/error.hpp"
+#include "core/frame_request.hpp"
 #include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
 #include "core/gamepad_events.hpp"
@@ -156,6 +157,7 @@ struct WebSurfaceResource final : nk::core::Resource {
     std::shared_ptr<WebGLContextResource> graphics;
     nk_surface_frame_callback frame_callback = nullptr;
     void *frame_user_data = nullptr;
+    nk::core::FrameRequestState frame_requests;
     bool text_input_active = false;
     bool text_input_state_set = false;
     nk_text_input_state text_input_state{};
@@ -1813,16 +1815,37 @@ EM_BOOL frame_loop(double, void *user_data) {
         return EM_FALSE;
     if (surface->context_lost)
         return EM_TRUE;
+    if (!surface->frame_requests.should_draw())
+        return EM_FALSE;
     auto window = get_window(surface->parent);
     if (!window || !nk::web::make_context_current(surface->context()))
         return EM_FALSE;
     sync_canvas_size(*window);
+    surface->frame_requests.begin_frame();
     nk::core::callback_boundary([&] {
         if (surface->frame_callback)
             surface->frame_callback(surface->handle, surface->framebuffer_width,
                                     surface->framebuffer_height, surface->frame_user_data);
     });
     return surface->frame_callback ? EM_TRUE : EM_FALSE;
+}
+
+nk_result arm_surface_frames(const std::shared_ptr<WebSurfaceResource> &surface) {
+    if (!surface || !surface->frame_callback)
+        return NK_OK;
+    const auto frame_user_data = reinterpret_cast<void *>(static_cast<uintptr_t>(surface->handle));
+    if (!nk::web::start_frame_loop(frame_loop, frame_user_data)) {
+        nk::core::set_error("could not start the browser animation-frame loop");
+        return NK_ERROR_UNKNOWN;
+    }
+    return NK_OK;
+}
+
+void disarm_surface_frames(const std::shared_ptr<WebSurfaceResource> &surface) {
+    if (!surface)
+        return;
+    const auto frame_user_data = reinterpret_cast<void *>(static_cast<uintptr_t>(surface->handle));
+    nk::web::stop_frame_loop(frame_loop, frame_user_data);
 }
 
 void update_canvas_visibility(WebWindowResource &window) {
@@ -3133,19 +3156,47 @@ nk_result NK_CALL nk_surface_set_frame_callback(nk_handle handle,
     if (!surface)
         return invalid_handle("invalid web surface handle");
     surface->frame_callback = callback;
-    surface->frame_user_data = user_data;
-    const auto frame_user_data = reinterpret_cast<void *>(static_cast<uintptr_t>(surface->handle));
+    surface->frame_user_data = callback ? user_data : nullptr;
     if (!callback) {
-        nk::web::stop_frame_loop(frame_loop, frame_user_data);
+        disarm_surface_frames(surface);
         return NK_OK;
     }
-    if (!nk::web::start_frame_loop(frame_loop, frame_user_data)) {
+    if (!surface->frame_requests.continuous() && !surface->frame_requests.pending())
+        return NK_OK;
+    const auto result = arm_surface_frames(surface);
+    if (result != NK_OK) {
         surface->frame_callback = nullptr;
         surface->frame_user_data = nullptr;
-        nk::core::set_error("could not start the browser animation-frame loop");
-        return NK_ERROR_UNKNOWN;
+        return result;
     }
     return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_set_frame_mode(nk_handle handle, nk_surface_frame_mode mode) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    if (mode != NK_SURFACE_FRAME_CONTINUOUS && mode != NK_SURFACE_FRAME_ON_DEMAND)
+        return invalid_argument("unknown graphics surface frame mode");
+    auto surface = get_surface(handle);
+    if (!surface)
+        return invalid_handle("invalid web surface handle");
+    surface->frame_requests.set_continuous(mode == NK_SURFACE_FRAME_CONTINUOUS);
+    if (surface->frame_requests.continuous() || surface->frame_requests.pending())
+        return arm_surface_frames(surface);
+    disarm_surface_frames(surface);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_request_frame(nk_handle handle) {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    auto surface = get_surface(handle);
+    if (!surface)
+        return invalid_handle("invalid web surface handle");
+    surface->frame_requests.request();
+    if (surface->frame_requests.continuous())
+        return NK_OK;
+    return arm_surface_frames(surface);
 }
 
 nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,

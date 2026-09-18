@@ -13,6 +13,7 @@
 #include "core/event_queue.hpp"
 #include "core/boundary.hpp"
 #include "core/error.hpp"
+#include "core/frame_request.hpp"
 #include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
 #include "core/handle_registry.hpp"
@@ -203,6 +204,7 @@ struct IOSSurface final : nk::core::Resource {
     uint32_t share_dependents = 0;
     nk_surface_frame_callback frame_callback = nullptr;
     void *frame_user_data = nullptr;
+    nk::core::FrameRequestState frame_requests;
     bool frame_prepared = false;
     bool ready = false;
     bool lost_reported = false;
@@ -348,6 +350,19 @@ UIInterfaceOrientation current_display_orientation() {
 std::shared_ptr<IOSSurface> surface(nk_handle handle) {
     const auto found = surfaces.find(handle);
     return found == surfaces.end() ? nullptr : found->second;
+}
+
+/* An on-demand surface pauses its display link instead of tearing it down. */
+void arm_surface_frames(const std::shared_ptr<IOSSurface> &resource) {
+    if (!resource || !resource->frame_timer)
+        return;
+    resource->frame_timer.paused = NO;
+}
+
+void disarm_surface_frames(const std::shared_ptr<IOSSurface> &resource) {
+    if (!resource || !resource->frame_timer)
+        return;
+    resource->frame_timer.paused = YES;
 }
 
 std::shared_ptr<IOSWebView> webview(nk_handle handle) {
@@ -1807,6 +1822,11 @@ void frame_tick(nk_handle handle) noexcept {
         auto resource = surface(handle);
         if (!resource || !resource->frame_callback || resource->destroying)
             return;
+        if (!resource->frame_requests.should_draw()) {
+            disarm_surface_frames(resource);
+            return;
+        }
+        resource->frame_requests.begin_frame();
         if (nk_surface_make_current(handle) != NK_OK)
             return;
         auto active = surface(handle);
@@ -3486,6 +3506,43 @@ nk_result NK_CALL nk_surface_set_frame_callback(nk_handle handle,
     [timer addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
     resource->frame_timer_target = target;
     resource->frame_timer = timer;
+    if (!resource->frame_requests.continuous() && !resource->frame_requests.pending())
+        disarm_surface_frames(resource);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_set_frame_mode(nk_handle handle, nk_surface_frame_mode mode) {
+    nk::core::clear_error();
+    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+        return thread;
+    if (mode != NK_SURFACE_FRAME_CONTINUOUS && mode != NK_SURFACE_FRAME_ON_DEMAND) {
+        nk::core::set_error("unknown graphics surface frame mode");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    auto resource = surface(handle);
+    if (!resource) {
+        nk::core::set_error("invalid or stale iOS graphics surface handle");
+        return NK_ERROR_INVALID_HANDLE;
+    }
+    resource->frame_requests.set_continuous(mode == NK_SURFACE_FRAME_CONTINUOUS);
+    if (resource->frame_requests.continuous() || resource->frame_requests.pending())
+        arm_surface_frames(resource);
+    else
+        disarm_surface_frames(resource);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_request_frame(nk_handle handle) {
+    nk::core::clear_error();
+    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+        return thread;
+    auto resource = surface(handle);
+    if (!resource) {
+        nk::core::set_error("invalid or stale iOS graphics surface handle");
+        return NK_ERROR_INVALID_HANDLE;
+    }
+    resource->frame_requests.request();
+    arm_surface_frames(resource);
     return NK_OK;
 }
 

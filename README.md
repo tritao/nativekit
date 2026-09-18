@@ -34,7 +34,7 @@ native services on Windows, macOS, and Android.
 - **Plugin-ready core** — generation-bound plugin lifetimes, numeric service
   dispatch, and bounded binary payloads with handles for bulk data.
 - **Graphics-ready** — OpenGL, OpenGL ES, Metal, and Vulkan presentation surfaces,
-  with explicit capability discovery.
+  with explicit capability discovery and request-driven frame scheduling.
 - **Interop-friendly** — desktop applications can export or wrap native window
   descriptors when they need a platform escape hatch.
 

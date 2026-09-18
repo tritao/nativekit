@@ -130,6 +130,12 @@ if(NK_BACKEND_GTK_AVAILABLE)
         set_target_properties(nativekit_gtk_surface_frame PROPERTIES LINKER_LANGUAGE CXX)
         add_test(NAME gtk_surface_frame
             COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_surface_frame>)
+        add_executable(nativekit_gtk_surface_request_frame
+            integration/gtk_surface_request_frame.c)
+        target_link_libraries(nativekit_gtk_surface_request_frame PRIVATE NativeKit::nativekit)
+        set_target_properties(nativekit_gtk_surface_request_frame PROPERTIES LINKER_LANGUAGE CXX)
+        add_test(NAME gtk_surface_request_frame
+            COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_surface_request_frame>)
         add_executable(nativekit_gtk_accessibility integration/gtk_accessibility.c)
         target_link_libraries(nativekit_gtk_accessibility PRIVATE NativeKit::nativekit)
         set_target_properties(nativekit_gtk_accessibility PROPERTIES LINKER_LANGUAGE CXX)

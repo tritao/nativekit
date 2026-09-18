@@ -953,6 +953,42 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 * An HTTP request reached its terminal state.
 		 */
 		NK_EVENT_HTTP_COMPLETE = 903;
+		/**
+		 * A plugin service call reached its terminal state.
+		 */
+		NK_EVENT_PLUGIN_COMPLETE = 1000;
+		/**
+		 * A plugin emitted an unsolicited notification.
+		 */
+		NK_EVENT_PLUGIN_EVENT = 1001;
+	}
+	/**
+	 * Logical executor that owns an API contract or callback.
+	 *
+	 * Executors name thread-affinity domains rather than threads. One NativeKit
+	 * runtime currently binds NK_EXECUTOR_PLATFORM, NK_EXECUTOR_APP, and
+	 * NK_EXECUTOR_RENDER to the thread that called nk_init(), because rendering and
+	 * event delivery still share that thread. The distinction is part of the
+	 * contract now so that application or render work can move to another thread
+	 * later without redesigning the APIs that declared affinity.
+	 */
+	enum nk_executor : u32 {
+		/**
+		 * Platform objects: windows, surfaces, monitors, and presentation.
+		 */
+		NK_EXECUTOR_PLATFORM = 0;
+		/**
+		 * Application callbacks and event delivery; the nk_init() thread.
+		 */
+		NK_EXECUTOR_APP = 1;
+		/**
+		 * Rendering against an immutable frame target.
+		 */
+		NK_EXECUTOR_RENDER = 2;
+		/**
+		 * CPU work on arbitrary native threads; no thread affinity is implied.
+		 */
+		NK_EXECUTOR_WORKER = 3;
 	}
 	/**
 	 * Canonical axis index in nk_gamepad_state and gamepad events.
@@ -1989,6 +2025,14 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 * A caller-provided output buffer is too small for the requested result.
 		 */
 		NK_ERROR_BUFFER_TOO_SMALL = -11;
+		/**
+		 * A requested service, method, plugin, or named object does not exist.
+		 */
+		NK_ERROR_NOT_FOUND = -12;
+		/**
+		 * A payload exceeds the bounded size accepted by the target contract.
+		 */
+		NK_ERROR_PAYLOAD_TOO_LARGE = -13;
 	}
 	/**
 	 * Reference point used by nk_resource_seek().
@@ -2035,6 +2079,21 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 * Request a forward-compatible OpenGL context.
 		 */
 		NK_SURFACE_FORWARD_COMPATIBLE = 32;
+	}
+	/**
+	 * Scheduling mode of a graphics surface frame callback.
+	 */
+	enum nk_surface_frame_mode : u32 {
+		/**
+		 * The backend invokes the frame callback every vsync while one is
+		 * installed. This is the default and the mode game-loop callers expect.
+		 */
+		NK_SURFACE_FRAME_CONTINUOUS = 0;
+		/**
+		 * The backend invokes the frame callback only while a frame is requested
+		 * with nk_surface_request_frame(), and stops scheduling work while idle.
+		 */
+		NK_SURFACE_FRAME_ON_DEMAND = 1;
 	}
 	/**
 	 * Well-known directories returned by nk_system_directory().
@@ -2465,6 +2524,26 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 */
 	extern fn nk_dialog_select_resource_directory(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id> @out) -> nk_result;
 	/**
+	 * Queues native work onto the application executor.
+	 *
+	 * The call never invokes `fn` directly, so native callbacks that run on
+	 * arbitrary threads have a sanctioned way back onto the thread that polls
+	 * events. Queued tasks run in a detached batch on the next nk_poll_event()
+	 * call, before that call returns an event; work queued from inside a task runs
+	 * on the following poll. The `user_data` pointer is passed through unchanged
+	 * and is not owned by NativeKit.
+	 *
+	 * Tasks still queued when nk_shutdown() completes are discarded without being
+	 * invoked.
+	 *
+	 * @param fn Non-null task function.
+	 * @param user_data Optional opaque value passed to `fn`.
+	 * @return NK_OK, NK_ERROR_INVALID_ARGUMENT for a null function,
+	 * NK_ERROR_NOT_INITIALIZED without an active runtime, or an error when
+	 * the bounded dispatch queue cannot accept the task.
+	 */
+	extern fn nk_dispatch_to_app(fn: nk_task_fn, user_data: nullable<ptr<void>>) -> nk_result;
+	/**
 	 * Returns one borrowed UTF-8 item from a drop event by zero-based index.
 	 */
 	extern fn nk_drop_event_item(event: ptr<const<nk_event>>, index: u32, out_item: ptr<ptr<const<c_char>>>, out_length: ptr<u32>) -> nk_result;
@@ -2473,6 +2552,21 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 * Safe to call with NULL or an empty event; struct_size is preserved for reuse.
 	 */
 	extern fn nk_event_release(event: ptr<nk_event>) -> void;
+	/**
+	 * Returns the canonical executor of the calling thread. While the platform,
+	 * application, and render executors are aliased to one thread, that thread
+	 * reports NK_EXECUTOR_APP. Threads that are not bound to a runtime, including
+	 * threads used before nk_init() or after nk_shutdown(), report
+	 * NK_EXECUTOR_WORKER.
+	 */
+	extern fn nk_executor_current() -> nk_executor;
+	/**
+	 * Reports whether the calling thread satisfies the affinity of `executor`.
+	 * While the platform, application, and render executors are aliased, the
+	 * nk_init() thread satisfies all three. NK_EXECUTOR_WORKER is satisfied by any
+	 * other thread while a runtime is active, because it never implies affinity.
+	 */
+	extern fn nk_executor_is_current(executor: nk_executor) -> nk_bool;
 	/**
 	 * Adds or replaces one SDL/GLFW controller mapping for its 32-character GUID.
 	 */
@@ -2732,6 +2826,13 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 */
 	extern fn nk_resource_write(stream: nk_resource_stream, buffer: ptr<const<void>>, size: u64, out_written: ptr<u64>) -> nk_result;
 	/**
+	 * Returns the generation identifier of the active runtime, or zero when no
+	 * runtime is active. Every succeeded nk_init() produces a new, non-zero
+	 * generation. Long-lived native callbacks and plugin instances capture the
+	 * generation they were created in and treat a different value as invalid.
+	 */
+	extern fn nk_runtime_generation() -> u64;
+	/**
 	 * Launches the platform share UI or platform-equivalent URI handoff.
 	 */
 	extern fn nk_share(options: ptr<const<nk_share_options>>) -> nk_result;
@@ -2872,6 +2973,24 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 */
 	extern fn nk_surface_present(surface: nk_surface) -> nk_result;
 	/**
+	 * Records that the surface needs a frame.
+	 *
+	 * Requests coalesce: any number of calls before the next frame produce one
+	 * frame callback. The backend chooses when that frame happens (vsync,
+	 * display link, or browser animation frame) and stops scheduling work while no
+	 * request is pending. A callback that requests another frame from inside itself
+	 * keeps an animation running without re-arming anything.
+	 *
+	 * The call is a no-op for a continuous surface. Without an installed frame
+	 * callback it only records the request, so the surface draws once a callback is
+	 * installed. Call on the platform executor; native work that runs on other
+	 * threads should use nk_dispatch_to_app() first.
+	 *
+	 * @return NK_OK, NK_ERROR_INVALID_HANDLE for a stale surface, or
+	 * NK_ERROR_WRONG_THREAD off the platform executor.
+	 */
+	extern fn nk_surface_request_frame(surface: nk_surface) -> nk_result;
+	/**
 	 * Changes a surface's logical position and size within its parent.
 	 *
 	 * Width and height must be positive. The backend reports resulting framebuffer
@@ -2885,8 +3004,26 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 * the framebuffer is current. Do not call nk_surface_present() recursively
 	 * from it. Pass NULL to detach it; the `user_data` value is not retained after
 	 * the callback is removed.
+	 *
+	 * Call nk_surface_set_frame_mode() with NK_SURFACE_FRAME_ON_DEMAND to render
+	 * only when the application asks for a frame instead of every vsync.
 	 */
 	extern fn nk_surface_set_frame_callback(surface: nk_surface, callback: nk_nullable_surface_frame_callback @retained, user_data: nullable<ptr<void>>) -> nk_result;
+	/**
+	 * Selects how the backend schedules an installed frame callback.
+	 *
+	 * NK_SURFACE_FRAME_CONTINUOUS is the default and keeps the callback running
+	 * every vsync. NK_SURFACE_FRAME_ON_DEMAND invokes it only while a frame is
+	 * requested, so animation and state changes must call
+	 * nk_surface_request_frame() to keep producing frames. Switching modes never
+	 * loses a request that is already pending, and switching back to continuous
+	 * resumes rendering immediately. Call on the platform executor.
+	 *
+	 * @return NK_OK, NK_ERROR_INVALID_ARGUMENT for an unknown mode,
+	 * NK_ERROR_INVALID_HANDLE for a stale surface, or
+	 * NK_ERROR_WRONG_THREAD off the platform executor.
+	 */
+	extern fn nk_surface_set_frame_mode(surface: nk_surface, mode: nk_surface_frame_mode) -> nk_result;
 	/**
 	 * Activates or deactivates custom text input for the target surface or desktop window.
 	 */
@@ -5127,6 +5264,11 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 * nk_surface_set_frame_callback().
 	 */
 	callback nk_surface_frame_callback = fn(arg0: nk_surface, arg1: i32, arg2: i32, arg3: nullable<ptr<void>>) -> void;
+	/**
+	 * Task queued by nk_dispatch_to_app(). The function runs on the application
+	 * executor and must not propagate exceptions across the C ABI.
+	 */
+	callback nk_task_fn = fn(arg0: nullable<ptr<void>>) -> void;
 	/**
 	 * Absolute Unicode code-point position used by the text-input API.
 	 */

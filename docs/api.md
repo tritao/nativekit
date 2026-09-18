@@ -534,10 +534,21 @@ reported alongside framebuffer dimensions in `NK_EVENT_SURFACE_RESIZE`.
 For manual rendering, applications call `nk_surface_make_current()`, render, and
 then call `nk_surface_present()`. Applications that install
 `nk_surface_set_frame_callback()` receive UI-thread callbacks at the backend's
-continuous-rendering cadence while the framebuffer is current; NativeKit
+frame cadence while the framebuffer is current; NativeKit
 presents the frame after each callback returns, so the callback must not call
 `nk_surface_present()` recursively. The callback's dimensions are the framebuffer
 that is ready for that draw, which keeps rendering synchronized with live resize.
+
+Frame callbacks are continuous by default, which is what game loops expect.
+`nk_surface_set_frame_mode()` with `NK_SURFACE_FRAME_ON_DEMAND` switches a
+surface to request-driven rendering: the backend then invokes the callback only
+while a frame is pending and stops scheduling work while the surface is idle.
+`nk_surface_request_frame()` records that frame from the platform executor, and
+repeated calls before the next frame coalesce into one callback. A callback that
+requests another frame from inside itself keeps an animation running, so
+animations, resize handling, and UI state changes decide when to draw instead of
+forcing permanent rendering. Native callbacks on other threads route through
+`nk_dispatch_to_app()` first.
 On iOS, the callback cadence is driven by `CADisplayLink` on the main run loop
 while the attached host is active and visible.
 On Android, the cadence is driven by `Choreographer` on the UI thread for

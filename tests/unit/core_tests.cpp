@@ -1,5 +1,6 @@
 #include "core/boundary.hpp"
 #include "core/event_queue.hpp"
+#include "core/frame_request.hpp"
 #include "core/gamepad_mapping.hpp"
 #include "core/gamepad_mappings_generated.hpp"
 #include "core/graphics_frame_target.hpp"
@@ -71,6 +72,26 @@ int main() {
     assert(old_frame_target.native_device == 0xfeedbeef);
     old_frame_target.struct_size = nk::core::surface_frame_target_v1_size - 1;
     assert(!nk::core::surface_frame_target_output_valid(&old_frame_target));
+
+    nk::core::FrameRequestState frame_requests;
+    assert(frame_requests.continuous());
+    assert(frame_requests.should_draw());
+    frame_requests.set_continuous(false);
+    assert(!frame_requests.pending());
+    assert(!frame_requests.should_draw());
+    frame_requests.request();
+    frame_requests.request();
+    assert(frame_requests.pending());
+    assert(frame_requests.should_draw());
+    frame_requests.begin_frame();
+    assert(!frame_requests.pending());
+    assert(!frame_requests.should_draw());
+    /* A request recorded while a frame renders schedules the next frame. */
+    frame_requests.begin_frame();
+    frame_requests.request();
+    assert(frame_requests.should_draw());
+    frame_requests.set_continuous(true);
+    assert(frame_requests.should_draw());
 
     assert(std::strcmp(nk::core::vulkan::platform_extension(NK_NATIVE_WINDOW_X11),
                        "VK_KHR_xlib_surface") == 0);
