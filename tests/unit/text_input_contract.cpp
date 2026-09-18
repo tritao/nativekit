@@ -153,31 +153,34 @@ int main() {
     state.cursor_width = 1.0f;
     state.cursor_height = 18.0f;
     TextInputStateValidation validation;
-    assert(nk::core::validate_text_input_state(state, "x\U0001f600y", &validation));
+    const std::string utf8_emoji_text = "\x78\xF0\x9F\x98\x80\x79";
+    assert(nk::core::validate_text_input_state(state, utf8_emoji_text, &validation));
     assert(validation.text_codepoints == 3 && validation.text_end == 13);
     state.selection_start = 9;
-    assert(!nk::core::validate_text_input_state(state, "x\U0001f600y"));
+    assert(!nk::core::validate_text_input_state(state, utf8_emoji_text));
     state.selection_start = 11;
     state.composition_end = 14;
-    assert(!nk::core::validate_text_input_state(state, "x\U0001f600y"));
+    assert(!nk::core::validate_text_input_state(state, utf8_emoji_text));
     state.composition_end = 12;
     state.composition_start = NK_TEXT_POSITION_NONE;
-    assert(!nk::core::validate_text_input_state(state, "x\U0001f600y"));
+    assert(!nk::core::validate_text_input_state(state, utf8_emoji_text));
     state.composition_end = NK_TEXT_POSITION_NONE;
-    assert(nk::core::validate_text_input_state(state, "x\U0001f600y"));
+    assert(nk::core::validate_text_input_state(state, utf8_emoji_text));
     assert(!nk::core::validate_text_input_state(state, std::string_view("\xc0\x80", 2)));
     assert(!nk::core::validate_text_input_state(state, std::string_view("\xf0\x9f\x98", 3)));
     state.cursor_width = -1.0f;
-    assert(!nk::core::validate_text_input_state(state, "x\U0001f600y"));
+    assert(!nk::core::validate_text_input_state(state, utf8_emoji_text));
     state.cursor_width = 1.0f;
     state.flags = 0x80000000u;
-    assert(!nk::core::validate_text_input_state(state, "x\U0001f600y"));
+    assert(!nk::core::validate_text_input_state(state, utf8_emoji_text));
     state.flags = 0;
 
-    const TextEditTransaction compose{NK_TEXT_EDIT_COMPOSE, 2, 2, "かな", 4, 4, 2, 4};
+    const TextEditTransaction compose{
+        NK_TEXT_EDIT_COMPOSE, 2, 2, "\xE3\x81\x8B\xE3\x81\xAA", 4, 4, 2, 4};
     assert(compose.valid());
     const TextEditTransaction commit{
-        NK_TEXT_EDIT_COMMIT, 2, 4, "漢字", 4, 4, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE};
+        NK_TEXT_EDIT_COMMIT,  2, 4, "\xE6\xBC\xA2\xE5\xAD\x97", 4, 4, NK_TEXT_POSITION_NONE,
+        NK_TEXT_POSITION_NONE};
     assert(commit.valid());
     const TextEditTransaction selection{
         NK_TEXT_EDIT_SET_SELECTION, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE, {}, 1, 3, 2, 4};
