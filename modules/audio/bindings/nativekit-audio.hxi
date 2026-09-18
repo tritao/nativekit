@@ -136,7 +136,7 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		NK_AUDIO_VOICE_STEAL_LOWEST_PRIORITY = 3;
 	}
 	/**
-	 * Optional behavior flags for file and resource dialogs.
+	 * Optional behavior flags for URI-resource dialogs.
 	 */
 	flags nk_dialog_flags : u32 {
 		/**
@@ -156,18 +156,6 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 * Operation encoded in a dialog completion event's flags.
 	 */
 	enum nk_dialog_operation : u32 {
-		/**
-		 * Select one or more local files.
-		 */
-		NK_DIALOG_OPEN_FILE = 1;
-		/**
-		 * Select a destination for a local file.
-		 */
-		NK_DIALOG_SAVE_FILE = 2;
-		/**
-		 * Select a local directory.
-		 */
-		NK_DIALOG_SELECT_DIRECTORY = 3;
 		/**
 		 * Show a native message and collect the selected button.
 		 */
@@ -790,31 +778,15 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 */
 	extern fn nk_dialog_cancel(request: nk_request_id) -> nk_result;
 	/**
-	 * Validates and returns a path from a dialog event. The returned UTF-8 view is
-	 * owned by the event and remains valid until nk_event_release().
-	 */
-	extern fn nk_dialog_event_path(event: ptr<const<nk_event>>, index: u32, out_path: ptr<ptr<const<c_char>>>, out_length: ptr<u32>) -> nk_result;
-	/**
-	 * Starts an asynchronous native message dialog.
-	 */
-	extern fn nk_dialog_message(parent: nk_handle, options: ptr<const<nk_message_dialog_options>>, out_request: ptr<nk_request_id> @out) -> nk_result;
-	/**
 	 * Starts a non-blocking native dialog on the UI thread. `parent` may be zero;
 	 * where a parent is supported, desktop backends accept an nk_window and Android
 	 * resource dialogs accept an nk_mobile_host. All strings and filters are copied
-	 * before the function returns. Completion uses NK_EVENT_DIALOG_PATHS_COMPLETE
-	 * or NK_EVENT_DIALOG_MESSAGE_COMPLETE, with the operation in event.flags and the
-	 * returned request ID in event.request_id.
+	 * before the function returns. Resource dialogs complete with
+	 * NK_EVENT_DIALOG_RESOURCES_COMPLETE; message dialogs complete with
+	 * NK_EVENT_DIALOG_MESSAGE_COMPLETE. The operation is in event.flags and the
+	 * returned request ID is in event.request_id.
 	 */
-	extern fn nk_dialog_open_file(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id> @out) -> nk_result;
-	/**
-	 * Starts an asynchronous native save-file dialog.
-	 */
-	extern fn nk_dialog_save_file(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id> @out) -> nk_result;
-	/**
-	 * Starts an asynchronous native directory-selection dialog.
-	 */
-	extern fn nk_dialog_select_directory(parent: nk_handle, options: ptr<const<nk_file_dialog_options>>, out_request: ptr<nk_request_id> @out) -> nk_result;
+	extern fn nk_dialog_message(parent: nk_handle, options: ptr<const<nk_message_dialog_options>>, out_request: ptr<nk_request_id> @out) -> nk_result;
 	/**
 	 * Voice-concurrency policy applied to a bus and all of its child buses.
 	 */
@@ -942,7 +914,7 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		reserved2: array<u64, 2> @offset(8);
 	}
 	/**
-	 * One user-visible name and glob pattern set for a file dialog.
+	 * One user-visible name and glob pattern set for a URI-resource dialog.
 	 */
 	struct nk_dialog_filter @layout(16, 8) {
 		/**
@@ -964,28 +936,7 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		button: nk_message_result @offset(0);
 	}
 	/**
-	 * Header at the start of NK_EVENT_DIALOG_PATHS_COMPLETE data.
-	 */
-	struct nk_dialog_paths @layout(16, 4) {
-		/**
-		 * 1 when the user accepted the dialog, and 0 when it was cancelled.
-		 */
-		accepted: nk_bool @offset(0);
-		/**
-		 * Number of returned paths.
-		 */
-		path_count: u32 @offset(4);
-		/**
-		 * Byte offset from the payload start to the uint32_t path-offset table.
-		 */
-		offsets_offset: u32 @offset(8);
-		/**
-		 * Byte offset from the payload start to the packed NUL-terminated paths.
-		 */
-		strings_offset: u32 @offset(12);
-	}
-	/**
-	 * Options shared by local-file and URI-resource dialogs.
+	 * Options for URI-resource dialogs.
 	 */
 	struct nk_file_dialog_options @layout(48, 8) {
 		/**
@@ -1001,7 +952,7 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		 */
 		title: nullable<utf8> @offset(8);
 		/**
-		 * Optional initial local path or platform resource location.
+		 * Optional initial URI or platform resource location.
 		 */
 		initial_path: nullable<utf8> @offset(16);
 		/**
