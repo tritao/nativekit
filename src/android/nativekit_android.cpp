@@ -3390,6 +3390,10 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnTextEdit(
         std::memcpy(event.data.data() + sizeof(payload), transaction.replacement_text.c_str(),
                     transaction.replacement_text.size() + 1);
     nk::core::push_event(std::move(event));
+    resource->text_input_state.selection_start = transaction.selection_start;
+    resource->text_input_state.selection_end = transaction.selection_end;
+    resource->text_input_state.composition_start = transaction.composition_start;
+    resource->text_input_state.composition_end = transaction.composition_end;
 }
 
 JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnTextAction(JNIEnv *, jclass,
