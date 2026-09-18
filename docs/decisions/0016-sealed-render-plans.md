@@ -22,13 +22,14 @@ Sealing therefore formalizes two things:
 | Concern | Contract |
 | --- | --- |
 | Plan | `SealedRenderPlan` owns the `RenderPlan` by value; no builder, session, or display list has to stay alive. |
-| Resources | Every referenced path, image, text, and graphics image is owned by the sealed plan. Shared-pointer bindings keep prepared data alive, and retained graphics images are released with the resource set. |
-| Callbacks | A plan that references a live `SurfaceProducer` cannot be sealed. A producer is a callback by nature, so it has no immutable form. |
+| Resources | The plan is sealed with an `OwnedFrameResources`, whose bindings share prepared data as immutable objects and retain graphics images until the set is destroyed. |
+| Callbacks | An owned set cannot hold a live `SurfaceProducer`: the borrowed bind and the producer bind are deleted there, so a producer (a callback by nature) has no immutable form. |
 
-`FrameResources` reports those conditions through `has_borrowed_resources()` and
-`has_surface_producers()`, and `SealedRenderPlan::seal()` refuses a plan that
-fails either check instead of producing something that could change or dangle
-later. Sealed plans are reference counted, and
+The type split is the contract rather than a runtime check: `FrameResources` is
+the borrowed execution set that is only valid while its builder lives, and
+`OwnedFrameResources` is the set that can be sealed, enforced by deleted
+overloads instead of a validation pass that a caller could forget or bypass.
+Sealed plans are reference counted, and
 `execute_render_plan(renderer, sealed, window)` is the renderer entry point, so
 frame N can render while frame N+1 is built.
 
@@ -45,6 +46,10 @@ runtime in the sealed plan.
 - Text and image data referenced by a sealed plan are owned copies or shared
   immutable objects, so later preparation passes cannot change what a sealed
   frame draws.
+- Sealing cost follows the bindings, not the bytes, once prepared data itself is
+  published as an immutable shared object. The adapter still mutates its glyph
+  buffers in place, so publishing immutable glyph snapshots is the remaining
+  work before the API paths can seal every frame cheaply.
 - Live surface producers are excluded by construction. A future shared-buffer or
   image-handle path should give producers a way to publish a retained
   `nk_graphics_image` snapshot, which *can* be sealed.

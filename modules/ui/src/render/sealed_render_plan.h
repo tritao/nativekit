@@ -27,25 +27,27 @@ struct RenderPlanSealError {
 class SealedRenderPlan {
   public:
     /**
-     * Seals one compiled plan and its resource set.
+     * Seals one compiled plan and the resources it renders with.
      *
-     * Fails when the resources reference a live surface producer, which is a
-     * callback by nature, or when any path, image, text, or graphics image is
-     * only borrowed from its builder.
+     * The owned resource set is the contract: borrowed bindings and live
+     * surface producers cannot be part of it, so sealing cannot capture
+     * something that changes or dangles later. The remaining failure is
+     * allocation.
      */
-    static std::shared_ptr<const SealedRenderPlan> seal(RenderPlan plan, FrameResources resources,
-                                                        RenderPlanSealError *error = nullptr);
+    static std::shared_ptr<const SealedRenderPlan>
+    seal(RenderPlan plan, OwnedFrameResources resources, RenderPlanSealError *error = nullptr);
 
     const RenderPlan &plan() const { return plan_; }
+    /** Execution view of the owned resources. */
     const FrameResources &resources() const { return resources_; }
     uint32_t pass_count() const { return static_cast<uint32_t>(plan_.passes.size()); }
 
   private:
-    SealedRenderPlan(RenderPlan plan, FrameResources resources)
+    SealedRenderPlan(RenderPlan plan, OwnedFrameResources resources)
         : plan_(std::move(plan)), resources_(std::move(resources)) {}
 
     RenderPlan plan_;
-    FrameResources resources_;
+    OwnedFrameResources resources_;
 };
 
 } // namespace nkui

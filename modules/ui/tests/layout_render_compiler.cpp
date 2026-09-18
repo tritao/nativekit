@@ -731,7 +731,7 @@ int main() {
     sealed_texture->width = 2;
     sealed_texture->height = 2;
     sealed_texture->pixels.assign(16, 0x7f);
-    FrameResources sealed_resources;
+    OwnedFrameResources sealed_resources;
     if (!sealed_resources.bind_image(sealed_image, sealed_texture))
         return 20;
     RenderPlan sealed_source;
@@ -769,28 +769,28 @@ int main() {
         return 24;
     kept.reset();
 
-    /* Borrowed resources cannot be sealed. */
-    PreparedTexture borrowed_texture;
-    borrowed_texture.width = borrowed_texture.height = 1;
-    borrowed_texture.pixels = {1, 2, 3, 4};
-    FrameResources borrowed_resources;
-    RenderPlanSealError borrowed_error;
-    if (!borrowed_resources.bind_image(sealed_image, borrowed_texture))
+    /*
+     * An owned set shares prepared data instead of copying it, so a second
+     * sealed plan over the same texture does not duplicate pixels and both
+     * stay valid after the caller drops its handle.
+     */
+    auto shared_texture = std::make_shared<PreparedTexture>();
+    shared_texture->width = shared_texture->height = 1;
+    shared_texture->pixels = {9, 8, 7, 6};
+    OwnedFrameResources shared_one;
+    OwnedFrameResources shared_two;
+    if (!shared_one.bind_image(sealed_image, shared_texture) ||
+        !shared_two.bind_image(sealed_image, shared_texture))
         return 25;
-    if (SealedRenderPlan::seal(RenderPlan{}, std::move(borrowed_resources), &borrowed_error) ||
-        !borrowed_error.message)
+    shared_texture.reset();
+    RenderPlanSealError shared_error;
+    auto first_sealed = SealedRenderPlan::seal(RenderPlan{}, std::move(shared_one), &shared_error);
+    auto second_sealed = SealedRenderPlan::seal(RenderPlan{}, std::move(shared_two), &shared_error);
+    if (!first_sealed || !second_sealed || shared_error.message)
         return 26;
-
-    /* A live result producer is a callback and cannot be sealed either. */
-    MutableSurfaceProducer sealed_producer;
-    const ResourceId sealed_producer_target = make_resource_id(ResourceKind::RenderTarget, 1, 901);
-    FrameResources producer_resources;
-    RenderPlanSealError producer_error;
-    if (!producer_resources.bind_surface(sealed_producer_target, sealed_producer))
+    const auto *shared_ref = first_sealed->resources().image(sealed_image);
+    if (!shared_ref || !shared_ref->image || shared_ref->image->pixels[2] != 7)
         return 27;
-    if (SealedRenderPlan::seal(RenderPlan{}, std::move(producer_resources), &producer_error) ||
-        !producer_error.message)
-        return 28;
 
     std::cout << "PASS: layout snapshot compiles through NativeKit render plan\n";
     return 0;

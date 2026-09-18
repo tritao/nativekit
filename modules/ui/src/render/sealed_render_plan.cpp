@@ -14,16 +14,7 @@ void fail(RenderPlanSealError *error, const char *message) {
 } // namespace
 
 std::shared_ptr<const SealedRenderPlan>
-SealedRenderPlan::seal(RenderPlan plan, FrameResources resources, RenderPlanSealError *error) {
-    if (resources.has_surface_producers()) {
-        fail(error, "a sealed render plan cannot reference a live surface producer");
-        return {};
-    }
-    if (resources.has_borrowed_resources()) {
-        fail(error, "a sealed render plan must own every path, image, text, and graphics image it "
-                    "references");
-        return {};
-    }
+SealedRenderPlan::seal(RenderPlan plan, OwnedFrameResources resources, RenderPlanSealError *error) {
     try {
         return std::shared_ptr<const SealedRenderPlan>(
             new SealedRenderPlan(std::move(plan), std::move(resources)));
