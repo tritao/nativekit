@@ -47,6 +47,28 @@ The explicit exceptions are monotonic clock reads, system directory and locale
 queries, `nk_wake_events()`, and opened resource-stream I/O. Platform UI objects,
 event polling, and resource creation or destruction remain UI-thread operations.
 
+## Logical executors
+
+NativeKit describes thread affinity with logical executors rather than threads:
+`NK_EXECUTOR_PLATFORM` for windows, surfaces, monitors, and presentation;
+`NK_EXECUTOR_APP` for application callbacks and event delivery;
+`NK_EXECUTOR_RENDER` for rendering against an immutable frame target; and
+`NK_EXECUTOR_WORKER` for CPU work on arbitrary native threads. `nk_init()` binds
+the platform, application, and render executors to the calling thread, so today
+they are aliases of the UI thread; the names are the contract that lets a later
+change move render or application work onto another thread.
+
+`nk_executor_current()` reports the executor of the calling thread and returns
+`NK_EXECUTOR_WORKER` for any thread that is not bound to a runtime.
+`nk_executor_is_current()` answers the same question for one executor.
+
+`nk_dispatch_to_app()` is the sanctioned path from an arbitrary native thread
+back to the application executor. It enqueues a task on a bounded FIFO and wakes
+the event wait; it never invokes the task directly. Queued tasks run in a
+detached batch during the next `nk_poll_event()` on the application thread, and
+work queued from inside a task runs on the following poll. `nk_shutdown()`
+discards tasks that are still queued.
+
 ## Handles
 
 Handles identify resources without exposing native or C++ pointers. They contain
@@ -251,6 +273,36 @@ message, title, navigation, and failure events follow the desktop contract.
 The state also declares keyboard purpose, capitalization, autocorrection,
 multiline behavior, enter-key action, and a logical-pixel caret rectangle. These
 are requests to the platform IME, not guarantees about the keyboard UI.
+
+## Plugins, services, and binary payloads
+
+Include `nativekit_plugin.h` to load plugins into a NativeKit runtime. A plugin
+is described by `nk_plugin_descriptor`, whose `id` is a stable namespaced string
+and whose `create`/`destroy` callbacks own one instance. `nk_plugin_register()`
+runs `create` on the application executor with a versioned `nk_plugin_host`
+function table, and every instance is bound to the runtime generation that
+created it. `nk_plugin_unregister()` destroys one instance; `nk_shutdown()`
+destroys all of them before the runtime, its handles, and its event queue
+disappear.
+
+Plugins publish services with numeric identifiers. `nk_plugin_service_register()`
+puts a `service_id` into one runtime-wide namespace and declares the executor
+that runs its invoke callback. `nk_plugin_call()` addresses a service and method
+by number and is asynchronous: it never runs plugin code on the caller's thread,
+so any native thread may use it. Every successful call produces exactly one
+`NK_EVENT_PLUGIN_COMPLETE` event carrying the request id, service, method,
+result, and an optional borrowed payload or transferred NativeKit handle.
+`nk_plugin_emit()` delivers unsolicited `NK_EVENT_PLUGIN_EVENT` notifications
+from any thread.
+
+Payloads cross the plugin ABI as bounded byte spans. NativeKit does not interpret
+them and has no JSON, object, or variant model, so generated bindings can lay
+typed fixed-layout records over the bytes. `NK_PLUGIN_PAYLOAD_MAX` (1 MiB) caps
+inline control traffic; operations that move camera frames, video, render
+output, or shared buffers return a NativeKit handle such as `nk_graphics_image`
+instead of a payload. Use `nk_plugin_event_query()` to decode either plugin
+event into an `nk_plugin_event_view`; its borrowed payload stays valid only until
+`nk_event_release()`.
 
 ## Custom-surface accessibility
 

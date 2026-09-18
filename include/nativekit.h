@@ -174,7 +174,11 @@ enum NK_ENUM(nk_result) {
     /** A valid request can no longer complete in its current lifecycle state. */
     NK_ERROR_INVALID_REQUEST = -10,
     /** A caller-provided output buffer is too small for the requested result. */
-    NK_ERROR_BUFFER_TOO_SMALL = -11
+    NK_ERROR_BUFFER_TOO_SMALL = -11,
+    /** A requested service, method, plugin, or named object does not exist. */
+    NK_ERROR_NOT_FOUND = -12,
+    /** A payload exceeds the bounded size accepted by the target contract. */
+    NK_ERROR_PAYLOAD_TOO_LARGE = -13
 };
 
 /* ------------------------------------------------------------------------- */
@@ -299,8 +303,45 @@ enum NK_ENUM(nk_event_kind) {
     /** HTTP transfer progress was coalesced and is available to inspect. */
     NK_EVENT_HTTP_PROGRESS = 902,
     /** An HTTP request reached its terminal state. */
-    NK_EVENT_HTTP_COMPLETE = 903
+    NK_EVENT_HTTP_COMPLETE = 903,
+    /** A plugin service call reached its terminal state. */
+    NK_EVENT_PLUGIN_COMPLETE = 1000,
+    /** A plugin emitted an unsolicited notification. */
+    NK_EVENT_PLUGIN_EVENT = 1001
 };
+
+/* ------------------------------------------------------------------------- */
+/* Logical executors                                                         */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * Logical executor that owns an API contract or callback.
+ *
+ * Executors name thread-affinity domains rather than threads. One NativeKit
+ * runtime currently binds NK_EXECUTOR_PLATFORM, NK_EXECUTOR_APP, and
+ * NK_EXECUTOR_RENDER to the thread that called nk_init(), because rendering and
+ * event delivery still share that thread. The distinction is part of the
+ * contract now so that application or render work can move to another thread
+ * later without redesigning the APIs that declared affinity.
+ */
+typedef uint32_t nk_executor;
+
+enum NK_ENUM(nk_executor) {
+    /** Platform objects: windows, surfaces, monitors, and presentation. */
+    NK_EXECUTOR_PLATFORM = 0,
+    /** Application callbacks and event delivery; the nk_init() thread. */
+    NK_EXECUTOR_APP = 1,
+    /** Rendering against an immutable frame target. */
+    NK_EXECUTOR_RENDER = 2,
+    /** CPU work on arbitrary native threads; no thread affinity is implied. */
+    NK_EXECUTOR_WORKER = 3
+};
+
+/**
+ * Task queued by nk_dispatch_to_app(). The function runs on the application
+ * executor and must not propagate exceptions across the C ABI.
+ */
+typedef void(NK_CALL *nk_task_fn)(void *NK_NULLABLE user_data);
 
 /* ------------------------------------------------------------------------- */
 /* Initialization and event data                                             */
@@ -359,6 +400,14 @@ typedef struct nk_event {
 NK_API uint32_t NK_CALL nk_api_version(void);
 
 /**
+ * Returns the generation identifier of the active runtime, or zero when no
+ * runtime is active. Every succeeded nk_init() produces a new, non-zero
+ * generation. Long-lived native callbacks and plugin instances capture the
+ * generation they were created in and treat a different value as invalid.
+ */
+NK_API uint64_t NK_CALL nk_runtime_generation(void);
+
+/**
  * Initializes NativeKit on the calling thread. That thread becomes the UI
  * thread until nk_shutdown(). Exactly one initialization may be active.
  *
@@ -404,6 +453,48 @@ NK_API nk_result NK_CALL nk_poll_event(nk_event *event NK_INOUT);
  * Safe to call with NULL or an empty event; struct_size is preserved for reuse.
  */
 NK_API void NK_CALL nk_event_release(nk_event *event);
+
+/* ------------------------------------------------------------------------- */
+/* Application dispatch                                                      */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * Returns the canonical executor of the calling thread. While the platform,
+ * application, and render executors are aliased to one thread, that thread
+ * reports NK_EXECUTOR_APP. Threads that are not bound to a runtime, including
+ * threads used before nk_init() or after nk_shutdown(), report
+ * NK_EXECUTOR_WORKER.
+ */
+NK_API nk_executor NK_CALL nk_executor_current(void);
+
+/**
+ * Reports whether the calling thread satisfies the affinity of `executor`.
+ * While the platform, application, and render executors are aliased, the
+ * nk_init() thread satisfies all three. NK_EXECUTOR_WORKER is satisfied by any
+ * other thread while a runtime is active, because it never implies affinity.
+ */
+NK_API nk_bool NK_CALL nk_executor_is_current(nk_executor executor);
+
+/**
+ * Queues native work onto the application executor.
+ *
+ * The call never invokes `fn` directly, so native callbacks that run on
+ * arbitrary threads have a sanctioned way back onto the thread that polls
+ * events. Queued tasks run in a detached batch on the next nk_poll_event()
+ * call, before that call returns an event; work queued from inside a task runs
+ * on the following poll. The `user_data` pointer is passed through unchanged
+ * and is not owned by NativeKit.
+ *
+ * Tasks still queued when nk_shutdown() completes are discarded without being
+ * invoked.
+ *
+ * @param fn Non-null task function.
+ * @param user_data Optional opaque value passed to `fn`.
+ * @return NK_OK, NK_ERROR_INVALID_ARGUMENT for a null function,
+ *         NK_ERROR_NOT_INITIALIZED without an active runtime, or an error when
+ *         the bounded dispatch queue cannot accept the task.
+ */
+NK_API nk_result NK_CALL nk_dispatch_to_app(nk_task_fn fn, void *NK_NULLABLE user_data);
 
 #ifdef __cplusplus
 }

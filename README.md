@@ -31,6 +31,8 @@ native services on Windows, macOS, and Android.
 - **One asynchronous model** — dialogs, WebViews, clipboard reads,
   notifications, drops, and lifecycle changes arrive through one event queue.
 - **Safe opaque handles** — generation-checked handles reject stale resources.
+- **Plugin-ready core** — generation-bound plugin lifetimes, numeric service
+  dispatch, and bounded binary payloads with handles for bulk data.
 - **Graphics-ready** — OpenGL, OpenGL ES, Metal, and Vulkan presentation surfaces,
   with explicit capability discovery.
 - **Interop-friendly** — desktop applications can export or wrap native window

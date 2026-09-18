@@ -20,7 +20,8 @@ enum class ResourceType : std::uint8_t {
     joystick,
     resource_stream,
     http_client,
-    http_stream
+    http_stream,
+    plugin
 };
 
 struct Resource {

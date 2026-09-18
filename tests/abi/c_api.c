@@ -9,6 +9,7 @@
 #include "nativekit_mobile.h"
 #include "nativekit_monitor.h"
 #include "nativekit_notification.h"
+#include "nativekit_plugin.h"
 #include "nativekit_resource.h"
 #include "nativekit_system.h"
 #include "nativekit_time.h"
@@ -39,6 +40,31 @@ _Static_assert(sizeof(nk_window_decoration_region) == 24,
                "window decoration region ABI layout is stable");
 _Static_assert(offsetof(nk_window_decoration_region, kind) == 16,
                "window decoration region kind offset is stable");
+
+_Static_assert(NK_EXECUTOR_PLATFORM == 0 && NK_EXECUTOR_APP == 1 && NK_EXECUTOR_RENDER == 2 &&
+                   NK_EXECUTOR_WORKER == 3,
+               "logical executor values are stable");
+_Static_assert(NK_EVENT_PLUGIN_COMPLETE == 1000 && NK_EVENT_PLUGIN_EVENT == 1001,
+               "plugin event kinds are stable");
+_Static_assert(NK_ERROR_NOT_FOUND == -12 && NK_ERROR_PAYLOAD_TOO_LARGE == -13,
+               "plugin result codes are stable");
+_Static_assert(NK_PLUGIN_ABI_VERSION == 1, "plugin ABI version is stable");
+_Static_assert(NK_PLUGIN_PAYLOAD_MAX == 1048576, "plugin control-plane payload limit is stable");
+_Static_assert(offsetof(nk_plugin_host, register_service) == 8,
+               "plugin host function table starts after its versioned prefix");
+_Static_assert(offsetof(nk_plugin_descriptor, id) == 8,
+               "plugin descriptor identity starts after its versioned prefix");
+_Static_assert(sizeof(nk_plugin_descriptor) == 8 + 3 * sizeof(void *),
+               "plugin descriptor ABI layout is stable");
+_Static_assert(offsetof(nk_plugin_service, invoke) ==
+                   offsetof(nk_plugin_service, name) + sizeof(const char *),
+               "plugin service function pointer follows its diagnostics name");
+_Static_assert(offsetof(nk_binary_span, data) == 8,
+               "binary span bytes follow the versioned prefix");
+_Static_assert(offsetof(nk_plugin_event_data, handle) == 16 &&
+                   offsetof(nk_plugin_event_data, payload_size) == 24 &&
+                   sizeof(nk_plugin_event_data) == 32,
+               "plugin event header ABI layout is stable");
 
 static void verify_system_string(nk_system_string_kind kind, int required) {
     uint32_t size = 0;

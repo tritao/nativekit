@@ -2,6 +2,8 @@
 
 #include "core/error.hpp"
 #include "core/event_queue.hpp"
+#include "core/executor.hpp"
+#include "core/plugin.hpp"
 #include "core/runtime.hpp"
 #include "core/system_internal.hpp"
 #include "net/net_backend.hpp"
@@ -18,7 +20,6 @@
 namespace {
 std::mutex state_mutex;
 std::unique_ptr<nk::core::EventQueue> event_queue;
-std::thread::id ui_thread;
 nk::core::HandleRegistry handle_registry;
 std::atomic<nk_request_id> next_request{1};
 std::atomic<std::uint64_t> generation_counter{0};
@@ -40,16 +41,8 @@ nk_capabilities optional_capabilities() noexcept {
 }
 
 nk_result require_ui_thread() noexcept {
-    std::lock_guard lock(state_mutex);
-    if (!event_queue) {
-        set_error("NativeKit is not initialized");
-        return NK_ERROR_NOT_INITIALIZED;
-    }
-    if (std::this_thread::get_id() != ui_thread) {
-        set_error("NativeKit UI API called from the wrong thread");
-        return NK_ERROR_WRONG_THREAD;
-    }
-    return NK_OK;
+    /* Platform, application, and render work still share the nk_init() thread. */
+    return require_executor(NK_EXECUTOR_APP);
 }
 
 HandleRegistry &handles() noexcept {
@@ -116,6 +109,10 @@ uint32_t NK_CALL nk_api_version(void) {
     return NK_API_VERSION;
 }
 
+uint64_t NK_CALL nk_runtime_generation(void) {
+    return nk::core::runtime_generation();
+}
+
 nk_result NK_CALL nk_init(const nk_init_options *options) {
     try {
         nk::core::clear_error();
@@ -137,7 +134,7 @@ nk_result NK_CALL nk_init(const nk_init_options *options) {
                                                                  : options->event_queue_capacity;
         nk::core::system_initialize(options);
         event_queue = std::make_unique<nk::core::EventQueue>(capacity);
-        ui_thread = std::this_thread::get_id();
+        nk::core::bind_main_thread();
         auto generation = generation_counter.fetch_add(1, std::memory_order_relaxed) + 1;
         if (generation == 0)
             generation = generation_counter.fetch_add(1, std::memory_order_relaxed) + 1;
@@ -157,14 +154,17 @@ nk_result NK_CALL nk_init(const nk_init_options *options) {
 void NK_CALL nk_shutdown(void) {
     try {
         nk::net::shutdown();
+        /* Plugins observe a complete teardown before their runtime disappears. */
+        nk::core::plugins_shutdown();
+        nk::core::clear_app_tasks();
         /* Backend resources are still valid while system leases are released. */
         nk::core::system_shutdown();
         nk::backend::shutdown();
         std::lock_guard lock(state_mutex);
         handle_registry.clear();
         event_queue.reset();
-        ui_thread = {};
         active_generation.store(0, std::memory_order_release);
+        nk::core::unbind_main_thread();
         nk::net::backend_shutdown();
         nk::core::clear_error();
     } catch (...) {
@@ -190,6 +190,7 @@ nk_result NK_CALL nk_poll_event(nk_event *event) {
         const auto thread_result = nk::core::require_ui_thread();
         if (thread_result != NK_OK)
             return thread_result;
+        nk::core::drain_app_tasks();
         nk::backend::pump_events();
         std::lock_guard lock(state_mutex);
         return event_queue->poll(*event);
