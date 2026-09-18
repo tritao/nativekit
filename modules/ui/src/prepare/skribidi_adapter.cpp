@@ -60,6 +60,7 @@ struct SkribidiAdapter::State {
     uint64_t layout_cache_misses = 0;
     uint32_t last_scale_key = 0;
     uint32_t scale_generation = 0;
+    std::unordered_map<uint64_t, std::weak_ptr<const PreparedGlyphs>> published_glyphs;
 };
 
 namespace {
@@ -598,6 +599,73 @@ bool SkribidiAdapter::prepare_glyphs_for_line(TextLayoutId id, uint32_t line_ind
     const auto range = layout->line_ranges[line_index];
     return prepare_glyphs_internal(id, origin_x, origin_y, pixel_scale, mode, output, range.start,
                                    range.end, line.bounds.x, line.bounds.y);
+}
+
+std::shared_ptr<const PreparedGlyphs>
+SkribidiAdapter::published_glyphs(TextLayoutId id, float origin_x, float origin_y,
+                                  float pixel_scale, GlyphMode mode) {
+    return publish_glyphs(id, -1, origin_x, origin_y, pixel_scale, mode);
+}
+
+std::shared_ptr<const PreparedGlyphs>
+SkribidiAdapter::published_glyphs_for_line(TextLayoutId id, uint32_t line_index, float origin_x,
+                                           float origin_y, float pixel_scale, GlyphMode mode) {
+    return publish_glyphs(id, static_cast<int32_t>(line_index), origin_x, origin_y, pixel_scale,
+                          mode);
+}
+
+std::shared_ptr<const PreparedGlyphs>
+SkribidiAdapter::publish_glyphs(TextLayoutId id, int32_t line_index, float origin_x, float origin_y,
+                                float pixel_scale, GlyphMode mode) {
+    const auto *layout = find_layout(*state_, id);
+    if (!layout || pixel_scale <= 0.0f)
+        return {};
+    if (line_index >= 0 && static_cast<std::size_t>(line_index) >= layout->result.lines.size())
+        return {};
+
+    const uint32_t scale_key =
+        static_cast<uint32_t>(std::max(1.0, std::round(static_cast<double>(pixel_scale) * 1024.0)));
+    auto key = static_cast<uint64_t>(id);
+    const auto mix = [&key](uint64_t value) {
+        key ^= value + 0x9e3779b97f4a7c15ull + (key << 6) + (key >> 2);
+    };
+    mix(skb_layout_get_generation(layout->layout));
+    mix(font_collection_generation());
+    mix(scale_key);
+    mix(static_cast<uint64_t>(mode));
+    mix(static_cast<uint64_t>(line_index + 1));
+    mix(static_cast<uint64_t>(std::llround(static_cast<double>(origin_x) * 64.0)));
+    mix(static_cast<uint64_t>(std::llround(static_cast<double>(origin_y) * 64.0)));
+
+    if (const auto found = state_->published_glyphs.find(key);
+        found != state_->published_glyphs.end()) {
+        if (auto cached = found->second.lock())
+            return cached;
+    }
+
+    auto snapshot = std::make_shared<PreparedGlyphs>();
+    if (!snapshot)
+        return {};
+    const bool prepared =
+        line_index < 0 ? prepare_glyphs_internal(id, origin_x, origin_y, pixel_scale, mode,
+                                                 *snapshot, -1, -1, 0.0f, 0.0f)
+                       : prepare_glyphs_for_line(id, static_cast<uint32_t>(line_index), origin_x,
+                                                 origin_y, pixel_scale, mode, *snapshot);
+    if (!prepared)
+        return {};
+
+    /* Weak entries keep live snapshots shared and let the rest expire. */
+    if (state_->published_glyphs.size() >= 256) {
+        for (auto entry = state_->published_glyphs.begin();
+             entry != state_->published_glyphs.end();) {
+            if (entry->second.expired())
+                entry = state_->published_glyphs.erase(entry);
+            else
+                ++entry;
+        }
+    }
+    state_->published_glyphs[key] = snapshot;
+    return snapshot;
 }
 
 bool SkribidiAdapter::prepare_glyphs_internal(TextLayoutId id, float origin_x, float origin_y,

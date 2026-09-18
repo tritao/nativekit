@@ -127,6 +127,14 @@ rather than captured. Sealed plans are reference counted and execute through the
 same `execute_render_plan()` entry point, which is what will let one thread render
 frame N while another builds frame N+1.
 
+Sealing takes an `OwnedFrameResources`: the type shares prepared data as immutable
+objects and retains graphics images, and it cannot hold borrowed bindings or a live
+`SurfaceProducer`, so the callback case is a compile error rather than a rule.
+Prepared text publishes those immutable objects itself through
+`SkribidiAdapter::published_glyphs()`, which returns the same snapshot for the same
+layout generation, geometry, scale, and mode, so sealing cost follows the number of
+bindings rather than the size of the glyph buffers.
+
 ## Custom native window chrome
 
 Desktop Haxe UI trees can provide their own borderless-window hit testing. Attach

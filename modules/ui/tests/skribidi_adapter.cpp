@@ -1,5 +1,6 @@
 #include "prepare/skribidi_adapter.h"
 
+#include <cstring>
 #include <vector>
 
 #ifndef NKUI_TEST_FONT_PATH
@@ -287,5 +288,52 @@ int main() {
     adapter.prune_layout_cache(kept_layouts, 1);
     if (adapter.has_layout(retained_first.id) || !adapter.has_layout(retained_second.id))
         return 47;
+
+    /*
+     * Published snapshots are shared, immutable, and usable after later
+     * preparation, which is what lets an owned resource set keep them without
+     * copying glyph buffers.
+     */
+    TextLayoutResult published_layout{};
+    TextLayoutOptions published_options;
+    published_options.font_size = 16.0f;
+    if (!adapter.layout_utf8("published glyphs", 200.0f, published_options, &published_layout) ||
+        !published_layout.id)
+        return 51;
+    const auto snapshot =
+        adapter.published_glyphs(published_layout.id, 0.0f, 0.0f, 1.0f, GlyphMode::Alpha);
+    if (!snapshot || snapshot->vertices.empty() || snapshot->indices.empty() ||
+        snapshot->layout_id != published_layout.id || snapshot->mode != GlyphMode::Alpha ||
+        snapshot->pixel_scale != 1.0f || !adapter.prepared_glyphs_current(*snapshot))
+        return 52;
+    if (adapter.published_glyphs(published_layout.id, 0.0f, 0.0f, 1.0f, GlyphMode::Alpha) !=
+        snapshot)
+        return 53;
+    const auto vertices_before = snapshot->vertices;
+    const auto indices_before = snapshot->indices;
+    PreparedGlyphs mutable_glyphs;
+    if (!adapter.prepare_glyphs(0.0f, 0.0f, 2.0f, GlyphMode::Alpha, mutable_glyphs))
+        return 54;
+    if (snapshot->vertices.size() != vertices_before.size() ||
+        std::memcmp(snapshot->vertices.data(), vertices_before.data(),
+                    vertices_before.size() * sizeof(GlyphVertex)) != 0 ||
+        snapshot->indices != indices_before || snapshot->pixel_scale != 1.0f)
+        return 55;
+    if (adapter.published_glyphs(published_layout.id, 0.0f, 0.0f, 2.0f, GlyphMode::Alpha) ==
+        snapshot)
+        return 56;
+    const auto line_snapshot = adapter.published_glyphs_for_line(published_layout.id, 0, 0.0f, 0.0f,
+                                                                 1.0f, GlyphMode::Alpha);
+    if (!line_snapshot || line_snapshot->layout_id != published_layout.id ||
+        line_snapshot == snapshot ||
+        adapter.published_glyphs_for_line(published_layout.id, 0, 0.0f, 0.0f, 1.0f,
+                                          GlyphMode::Alpha) != line_snapshot)
+        return 57;
+    if (adapter.published_glyphs(0, 0.0f, 0.0f, 1.0f, GlyphMode::Alpha) ||
+        adapter.published_glyphs(published_layout.id, 0.0f, 0.0f, 0.0f, GlyphMode::Alpha) ||
+        adapter.published_glyphs_for_line(published_layout.id, 99, 0.0f, 0.0f, 1.0f,
+                                          GlyphMode::Alpha))
+        return 58;
+
     return glyphs.vertices.size() % 4 == 0 && glyphs.indices.size() % 6 == 0 ? 0 : 41;
 }
