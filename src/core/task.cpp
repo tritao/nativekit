@@ -61,9 +61,7 @@ class Task final : public Resource {
     nk_task_execution_mode mode() const noexcept { return mode_; }
 
     bool is_destroyed() const noexcept { return destroyed_.load(std::memory_order_acquire); }
-    bool is_cancelled() const noexcept {
-        return cancel_requested_.load(std::memory_order_acquire);
-    }
+    bool is_cancelled() const noexcept { return cancel_requested_.load(std::memory_order_acquire); }
     void request_cancel() noexcept { cancel_requested_.store(true, std::memory_order_release); }
 
     nk_task_state state() const noexcept {
@@ -158,9 +156,8 @@ class TaskManager final {
 
     nk_result start_task(const nk_task_options &options, nk_task_step_fn step, void *user_data,
                          nk_task *out_task) noexcept {
-        const auto mode = options.execution_mode == NK_TASK_EXECUTION_AUTO
-                              ? native_default_mode()
-                              : options.execution_mode;
+        const auto mode = options.execution_mode == NK_TASK_EXECUTION_AUTO ? native_default_mode()
+                                                                           : options.execution_mode;
         if (mode != NK_TASK_EXECUTION_BACKGROUND && mode != NK_TASK_EXECUTION_COOPERATIVE) {
             set_error("unknown native task execution mode");
             return NK_ERROR_INVALID_ARGUMENT;
@@ -177,8 +174,8 @@ class TaskManager final {
                 }
                 generation = generation_;
             }
-            task = std::make_shared<Task>(generation, mode, options.step_budget_us, step,
-                                          user_data);
+            task =
+                std::make_shared<Task>(generation, mode, options.step_budget_us, step, user_data);
             handle = handles().insert(ResourceType::task, task);
             if (handle == NK_INVALID_HANDLE) {
                 set_error("could not allocate a native task handle");
@@ -267,7 +264,8 @@ class TaskManager final {
     }
 
     void run_cooperative() noexcept {
-        const auto deadline = Clock::now() + std::chrono::microseconds(cooperative_result_budget_us);
+        const auto deadline =
+            Clock::now() + std::chrono::microseconds(cooperative_result_budget_us);
         while (Clock::now() < deadline) {
             std::shared_ptr<Task> task;
             {
@@ -373,10 +371,9 @@ void Task::emit_terminal(nk_task_state state, nk_result result, std::vector<std:
         state_ = state;
     }
     QueuedEvent event;
-    event.kind = state == NK_TASK_STATE_COMPLETED
-                     ? NK_EVENT_TASK_COMPLETE
-                     : state == NK_TASK_STATE_CANCELLED ? NK_EVENT_TASK_CANCELLED
-                                                        : NK_EVENT_TASK_FAILED;
+    event.kind = state == NK_TASK_STATE_COMPLETED   ? NK_EVENT_TASK_COMPLETE
+                 : state == NK_TASK_STATE_CANCELLED ? NK_EVENT_TASK_CANCELLED
+                                                    : NK_EVENT_TASK_FAILED;
     event.source = static_cast<nk_handle>(handle_);
     event.result = result;
     event.data_count = count;
@@ -504,9 +501,8 @@ nk_result NK_CALL nk_task_start(const nk_task_options *options, nk_task_step_fn 
                 nk::core::set_error("native task step budget is too large");
                 return NK_ERROR_INVALID_ARGUMENT;
             }
-            const auto thread_result = nk::core::runtime_generation() == 0
-                                           ? NK_ERROR_NOT_INITIALIZED
-                                           : NK_OK;
+            const auto thread_result =
+                nk::core::runtime_generation() == 0 ? NK_ERROR_NOT_INITIALIZED : NK_OK;
             if (thread_result != NK_OK) {
                 nk::core::set_error("NativeKit is not initialized");
                 return thread_result;
@@ -522,11 +518,11 @@ nk_result NK_CALL nk_task_start(const nk_task_options *options, nk_task_step_fn 
 }
 
 nk_result NK_CALL nk_task_cancel(nk_task task) {
-    return nk::core::result_boundary(
-        "unexpected exception while cancelling a native task", [&]() -> nk_result {
-            nk::core::clear_error();
-            return nk::core::task_manager.cancel(task);
-        });
+    return nk::core::result_boundary("unexpected exception while cancelling a native task",
+                                     [&]() -> nk_result {
+                                         nk::core::clear_error();
+                                         return nk::core::task_manager.cancel(task);
+                                     });
 }
 
 nk_result NK_CALL nk_task_get_state(nk_task task, nk_task_state *out_state) {
@@ -548,11 +544,11 @@ nk_result NK_CALL nk_task_get_state(nk_task task, nk_task_state *out_state) {
 }
 
 nk_result NK_CALL nk_task_destroy(nk_task task) {
-    return nk::core::result_boundary(
-        "unexpected exception while destroying a native task", [&]() -> nk_result {
-            nk::core::clear_error();
-            return nk::core::task_manager.destroy(task);
-        });
+    return nk::core::result_boundary("unexpected exception while destroying a native task",
+                                     [&]() -> nk_result {
+                                         nk::core::clear_error();
+                                         return nk::core::task_manager.destroy(task);
+                                     });
 }
 
 } // extern "C"

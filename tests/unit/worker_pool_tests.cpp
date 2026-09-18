@@ -18,11 +18,11 @@ int main() {
     std::atomic<bool> started{false};
     std::atomic<int> ran{0};
     assert(pool.submit([&] {
-               started.store(true, std::memory_order_release);
-               std::unique_lock lock(mutex);
-               condition.wait(lock, [&] { return release; });
-               ran.fetch_add(1, std::memory_order_release);
-           }) == NK_OK);
+        started.store(true, std::memory_order_release);
+        std::unique_lock lock(mutex);
+        condition.wait(lock, [&] { return release; });
+        ran.fetch_add(1, std::memory_order_release);
+    }) == NK_OK);
     for (int attempt = 0; attempt < 100 && !started.load(std::memory_order_acquire); ++attempt)
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     assert(started.load(std::memory_order_acquire));

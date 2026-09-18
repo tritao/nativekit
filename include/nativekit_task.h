@@ -95,14 +95,12 @@ typedef struct nk_task_step_output {
  * not call UI-only APIs. It may retain no pointer to the context or output
  * structures after returning. Managed Haxe callbacks are not safe here.
  */
-typedef nk_task_step_result(NK_CALL *nk_task_step_fn)(
-    const nk_task_step_context *context, nk_task_step_output *output NK_INOUT);
+typedef nk_task_step_result(NK_CALL *nk_task_step_fn)(const nk_task_step_context *context,
+                                                      nk_task_step_output *output NK_INOUT);
 
 /** Starts a resumable native task. Completion is delivered as a NativeKit event. */
-NK_API nk_result NK_CALL nk_task_start(const nk_task_options *options,
-                                       nk_task_step_fn step,
-                                       void *NK_NULLABLE user_data,
-                                       nk_task *out_task NK_OUT);
+NK_API nk_result NK_CALL nk_task_start(const nk_task_options *options, nk_task_step_fn step,
+                                       void *NK_NULLABLE user_data, nk_task *out_task NK_OUT);
 
 /** Requests cooperative cancellation; a terminal cancelled event is emitted. */
 NK_API nk_result NK_CALL nk_task_cancel(nk_task task);

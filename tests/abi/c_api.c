@@ -61,8 +61,7 @@ _Static_assert(sizeof(nk_task_options) == 20, "task options ABI layout is stable
 _Static_assert(offsetof(nk_task_options, execution_mode) == 4 &&
                    offsetof(nk_task_options, step_budget_us) == 8,
                "task option fields retain their stable offsets");
-_Static_assert(offsetof(nk_task_step_output, progress_size) ==
-                   (sizeof(void *) == 8 ? 16 : 8),
+_Static_assert(offsetof(nk_task_step_output, progress_size) == (sizeof(void *) == 8 ? 16 : 8),
                "task progress payload fields retain their stable offsets");
 _Static_assert(NK_TASK_EXECUTION_AUTO == 0 && NK_TASK_EXECUTION_BACKGROUND == 1 &&
                    NK_TASK_EXECUTION_COOPERATIVE == 2,
