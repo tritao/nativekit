@@ -1383,9 +1383,15 @@ nkgpu_result nkgpu_buffer_append(nkgpu_renderer r, nkgpu_buffer h, const uint8_t
     auto *buffer = buffer_pool.get(h);
     if (!renderer || !buffer || buffer->value.owner != r)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign stream buffer");
-    const nkgpu_result pass = require_active_pass(r);
-    if (pass != NKGPU_OK)
-        return pass;
+    /*
+     * Appends are valid inside a pass or between frames: a recorded frame
+     * fills its stream buffers before the batch opens any pass. Sokol rewinds
+     * the append cursor when the frame index changes, so the data stays valid
+     * until the next commit either way.
+     */
+    const nkgpu_result access = require_streaming_resource_access(r);
+    if (access != NKGPU_OK)
+        return access;
     if (!buffer->value.stream || !data || !size || !out_offset)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid stream append arguments");
     const sg_range range{data, size};
@@ -2941,6 +2947,12 @@ nkgpu_result nkgpu_batch_submit(nkgpu_renderer renderer, nkgpu_batch batch) {
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer or batch");
     if (rs->value.state == RendererState::Lost)
         return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
+    /*
+     * Submission is render-executor work: acquisition and presentation stay with
+     * the platform executor, so a batch never owns a surface.
+     */
+    if (!nk_executor_is_current(NK_EXECUTOR_RENDER))
+        return fail(NKGPU_ERROR_WRONG_THREAD, "batch submission requires the render executor");
     if (bs->value.owner != renderer)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "batch belongs to another renderer");
     if (!bs->value.sealed)

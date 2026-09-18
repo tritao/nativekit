@@ -31,8 +31,9 @@ class RecordingRenderer final : public UiRenderer {
     bool initialize() override { return true; }
     bool valid() const override { return true; }
     bool lost() const override { return false; }
-    bool beginFrame() override {
+    bool beginFrame(bool record) override {
         ++frame_count;
+        recorded_frame = record;
         return true;
     }
     bool beginWindowPass(int, int, bool) override {
@@ -124,6 +125,7 @@ class RecordingRenderer final : public UiRenderer {
     const char *lastError() const override { return error.c_str(); }
 
     uint32_t frame_count = 0;
+    bool recorded_frame = false;
     uint32_t pass_count = 0;
     uint32_t path_count = 0;
     uint32_t text_count = 0;
@@ -503,6 +505,45 @@ int main() {
         backend.pass_count != 1 || backend.path_count != path_commands ||
         backend.text_count != text_commands || backend.commit_count != 1)
         return 12;
+    /* Plans without a live producer are recorded into a sealed batch. */
+    if (!backend.recorded_frame)
+        return 65;
+
+    /*
+     * Plans that composite a live surface producer render through callbacks,
+     * which a sealed batch cannot carry, so those frames stay inline.
+     */
+    {
+        struct TestProducer final : SurfaceProducer {
+            bool ready() const override { return true; }
+            bool describe(int, int, SurfaceDescriptor &description) const override {
+                description.width = 4;
+                description.height = 4;
+                description.format = SurfacePixelFormat::Rgba8;
+                description.alpha = SurfaceAlphaMode::Premultiplied;
+                description.filter = SurfaceFilter::Nearest;
+                description.color_space = SurfaceColorSpace::Linear;
+                return true;
+            }
+            uint32_t generation() const override { return 1; }
+            SurfaceRenderResult render(UiRenderer &, ResourceId,
+                                       const SurfaceDescriptor &) override {
+                return SurfaceRenderResult::Rendered;
+            }
+        } producer;
+        FrameResources producer_resources;
+        RenderPlan producer_plan;
+        producer_plan.passes.push_back({main_target, {}, false, {}});
+        const ResourceId producer_target = make_resource_id(ResourceKind::RenderTarget, 1, 448);
+        producer_plan.dependencies.push_back({producer_target, main_target});
+        if (!producer_resources.bind_surface(producer_target, producer))
+            return 66;
+        RecordingRenderer producer_backend;
+        if (!execute_render_plan(producer_backend, producer_plan, producer_resources,
+                                 {main_target, frame_target}, &execution_error) ||
+            producer_backend.recorded_frame)
+            return 67;
+    }
 
     const ResourceId effect_input = make_resource_id(ResourceKind::RenderTarget, 1, 446);
     const ResourceId effect_output = make_resource_id(ResourceKind::RenderTarget, 1, 447);

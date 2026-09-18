@@ -70,6 +70,8 @@ struct UiRendererStats {
     uint64_t render_plan_commands = 0;
     uint64_t display_list_count = 0;
     uint64_t display_list_bytes = 0;
+    /** Frames recorded into a sealed submission batch instead of drawn inline. */
+    uint64_t recorded_frames = 0;
     uint64_t atlas_pages = 0;
     uint64_t atlas_bytes = 0;
     uint64_t glyph_uploads = 0;
@@ -116,7 +118,13 @@ class UiRenderer {
     virtual bool initialize() = 0;
     virtual bool valid() const = 0;
     virtual bool lost() const = 0;
-    virtual bool beginFrame() = 0;
+    /**
+     * Starts a frame. When `record` is set the frame is recorded into a sealed
+     * submission batch and replayed by endFrame(); otherwise it is drawn inline.
+     * Frames that composite a live surface producer cannot be recorded, because
+     * the producer renders through callbacks rather than recorded commands.
+     */
+    virtual bool beginFrame(bool record) = 0;
     virtual bool beginWindowPass(int width, int height, bool clear) = 0;
     virtual bool beginTargetPass(ResourceId target, int width, int height, bool load_existing) = 0;
     /** Begin an effect output pass, reusing a persistent cached result when its key matches. */

@@ -69,6 +69,15 @@ detached batch during the next `nk_poll_event()` on the application thread, and
 work queued from inside a task runs on the following poll. `nk_shutdown()`
 discards tasks that are still queued.
 
+Two operations already declare the split that a real render thread will use.
+Frame acquisition and presentation (`nk_surface_acquire_frame()`,
+`nk_surface_present_frame()`, `nk_surface_cancel_frame()`) belong to the
+platform executor, and sealed batch submission (`nkgpu_batch_submit()`) belongs
+to the render executor, so a submission never owns the surface it draws into.
+While the executors are aliased the `nk_init()` thread satisfies both; a call
+from any other thread is rejected with `NK_ERROR_WRONG_THREAD` or
+`NKGPU_ERROR_WRONG_THREAD`.
+
 ## Handles
 
 Handles identify resources without exposing native or C++ pointers. They contain

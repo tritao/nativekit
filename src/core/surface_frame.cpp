@@ -1,6 +1,7 @@
 #include "nativekit_graphics.h"
 
 #include "core/boundary.hpp"
+#include "core/executor.hpp"
 #include "core/error.hpp"
 #include "core/runtime.hpp"
 
@@ -77,6 +78,13 @@ nk_result NK_CALL nk_surface_acquire_frame(nk_surface surface, nk_surface_frame 
             nk::core::clear_error();
             if (out_frame)
                 *out_frame = NK_INVALID_HANDLE;
+            /*
+             * Frame acquisition belongs to the platform executor; rendering the
+             * acquired frame may move to the render executor (ADR 0017).
+             */
+            if (const auto affinity = nk::core::require_executor(NK_EXECUTOR_PLATFORM);
+                affinity != NK_OK)
+                return affinity;
             if (surface == NK_INVALID_HANDLE || !out_frame || !out_target) {
                 nk::core::set_error("nk_surface_acquire_frame needs a surface, a frame "
                                     "output, and a target output");
@@ -128,8 +136,9 @@ nk_result NK_CALL nk_surface_present_frame(nk_surface_frame frame) {
                 nk::core::set_error("nk_surface_frame is not a valid frame token");
                 return NK_ERROR_INVALID_ARGUMENT;
             }
-            if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
-                return result;
+            if (const auto affinity = nk::core::require_executor(NK_EXECUTOR_PLATFORM);
+                affinity != NK_OK)
+                return affinity;
             const auto surface = nk::core::close_frame(frame);
             if (surface == NK_INVALID_HANDLE) {
                 nk::core::set_error("the frame token is not open on this runtime");
@@ -147,8 +156,9 @@ nk_result NK_CALL nk_surface_cancel_frame(nk_surface_frame frame) {
                 nk::core::set_error("nk_surface_frame is not a valid frame token");
                 return NK_ERROR_INVALID_ARGUMENT;
             }
-            if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
-                return result;
+            if (const auto affinity = nk::core::require_executor(NK_EXECUTOR_PLATFORM);
+                affinity != NK_OK)
+                return affinity;
             if (nk::core::close_frame(frame) == NK_INVALID_HANDLE) {
                 nk::core::set_error("the frame token is not open on this runtime");
                 return NK_ERROR_INVALID_HANDLE;

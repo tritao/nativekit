@@ -142,7 +142,18 @@ bool execute_render_plan(UiRenderer &renderer, const RenderPlan &plan,
     RenderPlanScheduleError schedule_error{};
     if (!schedule_render_plan(plan, pass_order, &schedule_error))
         return fail(error, schedule_error.pass_index, 0, schedule_error.message);
-    if (!renderer.beginFrame())
+    /*
+     * A live surface producer renders through callbacks, which a sealed
+     * submission batch cannot carry, so those frames are drawn inline.
+     */
+    bool record = true;
+    for (const auto &dependency : plan.dependencies) {
+        if (resources.surface(dependency.producer)) {
+            record = false;
+            break;
+        }
+    }
+    if (!renderer.beginFrame(record))
         return fail(error, 0, 0, renderer.lastError());
     struct FrameGuard {
         UiRenderer &renderer;
