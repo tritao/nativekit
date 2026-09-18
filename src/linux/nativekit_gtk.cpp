@@ -3418,6 +3418,8 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
             owner->owned_windows.reserve(owner->owned_windows.size() + 1);
         auto resource = std::make_shared<GtkWindowResource>();
         resource->owner = options->owner;
+        resource->resizable = (options->flags & NK_WINDOW_RESIZABLE) != 0;
+        resource->decorated = (options->flags & NK_WINDOW_BORDERLESS) == 0;
         resource->generation = nk::core::runtime_generation();
         resource->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
         resource->im_context = gtk_im_multicontext_new();
@@ -3427,10 +3429,8 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
         gtk_container_add(GTK_CONTAINER(resource->window), resource->container);
         gtk_window_set_default_size(GTK_WINDOW(resource->window), options->width, options->height);
         apply_geometry_hints(*resource);
-        gtk_window_set_resizable(GTK_WINDOW(resource->window),
-                                 (options->flags & NK_WINDOW_RESIZABLE) != 0);
-        gtk_window_set_decorated(GTK_WINDOW(resource->window),
-                                 (options->flags & NK_WINDOW_BORDERLESS) == 0);
+        gtk_window_set_resizable(GTK_WINDOW(resource->window), resource->resizable);
+        gtk_window_set_decorated(GTK_WINDOW(resource->window), resource->decorated);
         gtk_window_set_modal(GTK_WINDOW(resource->window), (options->flags & NK_WINDOW_MODAL) != 0);
         if (options->kind == NK_WINDOW_UTILITY)
             gtk_window_set_type_hint(GTK_WINDOW(resource->window), GDK_WINDOW_TYPE_HINT_UTILITY);
