@@ -184,8 +184,6 @@ struct WebGamepadResource final : nk::core::Resource {
     bool seen = false;
 };
 
-std::shared_ptr<WebGamepadResource> lookup_web_gamepad(nk_handle handle);
-
 struct WebResourceStream final : nk::core::Resource {
     std::mutex mutex;
     std::string uri;
@@ -1865,6 +1863,8 @@ void shutdown_web() noexcept {
 }
 
 } // namespace
+
+std::shared_ptr<WebGamepadResource> lookup_web_gamepad(nk_handle handle);
 
 namespace nk::web_gamepad {
 
