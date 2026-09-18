@@ -1012,6 +1012,10 @@ uint64_t SkribidiAdapter::layout_generation() const {
     return layout ? skb_layout_get_generation(layout->layout) : 0;
 }
 
+TextLayoutId SkribidiAdapter::active_layout_id() const {
+    return active_layout(*state_) ? state_->active_layout_id : 0;
+}
+
 uint32_t SkribidiAdapter::layout_build_count() const {
     return state_->layout_builds;
 }

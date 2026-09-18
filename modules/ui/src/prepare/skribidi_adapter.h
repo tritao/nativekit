@@ -233,6 +233,8 @@ class SkribidiAdapter {
     std::vector<TextRect> selection_rects(TextPosition start, TextPosition end) const;
     uint64_t font_collection_generation() const;
     uint64_t layout_generation() const;
+    /** Identifier of the layout that prepare_glyphs() prepares; zero when none is active. */
+    TextLayoutId active_layout_id() const;
     uint32_t layout_build_count() const;
     uint32_t atlas_texture_count() const;
     uint32_t scale_generation() const;
