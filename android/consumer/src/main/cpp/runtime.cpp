@@ -543,6 +543,10 @@ Java_io_nativekit_consumer_MainActivity_nativeInputProbe(JNIEnv *, jclass, jlong
     bool committed = false;
     bool deleted = false;
     bool emoji_deleted = false;
+    bool emoji_delete_seen = false;
+    bool emoji_delete_range = false;
+    bool emoji_delete_selection = false;
+    bool emoji_delete_history = false;
     bool selected = false;
     bool composition_finished = false;
     bool composition_region = false;
@@ -621,10 +625,14 @@ Java_io_nativekit_consumer_MainActivity_nativeInputProbe(JNIEnv *, jclass, jlong
             deleted |= value->action == NK_TEXT_EDIT_DELETE && value->replace_start == 104 &&
                        value->replace_end == 105 && value->selection_start == 104 &&
                        value->history_kind == NK_TEXT_EDIT_HISTORY_DELETE_BACKWARD;
-            emoji_deleted |= value->action == NK_TEXT_EDIT_DELETE &&
-                             value->replace_start == 6 && value->replace_end == 7 &&
-                             value->selection_start == 6 && value->selection_end == 6 &&
-                             value->history_kind == NK_TEXT_EDIT_HISTORY_DELETE_BACKWARD;
+            if (value->action == NK_TEXT_EDIT_DELETE) {
+                emoji_delete_seen = true;
+                emoji_delete_range |= value->replace_start == 6 && value->replace_end == 7;
+                emoji_delete_selection |= value->selection_start == 6 && value->selection_end == 6;
+                emoji_delete_history |=
+                    value->history_kind == NK_TEXT_EDIT_HISTORY_DELETE_BACKWARD;
+                emoji_deleted |= emoji_delete_range && emoji_delete_selection && emoji_delete_history;
+            }
             composition_finished |= value->action == NK_TEXT_EDIT_FINISH_COMPOSITION &&
                                     value->composition_start == NK_TEXT_POSITION_NONE;
             composition_region |= value->action == NK_TEXT_EDIT_SET_COMPOSITION &&
@@ -655,6 +663,12 @@ Java_io_nativekit_consumer_MainActivity_nativeInputProbe(JNIEnv *, jclass, jlong
         (!composing << 0) | (!composing_update << 1) | (!committed << 2) |
         (!deleted << 3) | (!emoji_deleted << 4) | (!selected << 5) |
         (!composition_region << 6) | (!composition_finished << 7);
+    if (missing_text_edit_flags & (1 << 4)) {
+        const int emoji_delete_diagnostic =
+            (!emoji_delete_seen << 0) | (!emoji_delete_range << 1) |
+            (!emoji_delete_selection << 2) | (!emoji_delete_history << 3);
+        return 200 + emoji_delete_diagnostic;
+    }
     if (missing_text_edit_flags)
         return 10 + missing_text_edit_flags;
     if (!controller || !gamepad_axis || !gamepad_button)
