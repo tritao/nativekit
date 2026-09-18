@@ -1062,8 +1062,10 @@ NKUI_API nkui_result nkui_renderer_get_stats(nkui_renderer renderer,
  * Renders a display list using the surface's current framebuffer size.
  *
  * This convenience form uses a one-to-one logical-to-physical pixel scale.
- * It makes `surface` current and executes the list, but does not present it;
- * call nk_surface_present() after NKUI_OK.
+ * It selects on-demand scheduling for the retained UI surface, makes `surface`
+ * current, and executes the list, but does not present it; call
+ * nk_surface_present() after NKUI_OK. Request subsequent frames with
+ * nk_surface_request_frame() when state, input, or animation changes.
  */
 NKUI_API nkui_result nkui_renderer_render(nkui_renderer renderer, nkui_display_list list,
                                           nk_surface surface);
@@ -1073,14 +1075,20 @@ NKUI_API nkui_result nkui_renderer_render(nkui_renderer renderer, nkui_display_l
  *
  * `frame_info` must have a sufficient `struct_size`, positive finite logical
  * dimensions and pixel scale, and positive framebuffer dimensions. The
- * surface is made current and the list is validated and executed. Rendering
- * does not present the surface; call nk_surface_present() after NKUI_OK.
+ * surface is switched to on-demand scheduling, made current, and the list is
+ * validated and executed. Rendering does not present the surface; call
+ * nk_surface_present() after NKUI_OK, then request later frames with
+ * nk_surface_request_frame() when retained UI state changes.
  */
 NKUI_API nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_display_list list,
                                                 nk_surface surface,
                                                 const nkui_frame_info *frame_info);
 
-/** Renders a display list over the currently presented frame without clearing it. */
+/**
+ * Renders a display list over the currently presented frame without clearing it.
+ * The retained UI surface remains on-demand; request later frames with
+ * nk_surface_request_frame() after state, input, or animation changes.
+ */
 NKUI_API nkui_result nkui_renderer_render_frame_overlay(nkui_renderer renderer,
                                                         nkui_display_list list, nk_surface surface,
                                                         const nkui_frame_info *frame_info);

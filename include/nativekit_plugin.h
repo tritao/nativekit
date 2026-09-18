@@ -7,6 +7,8 @@
 
 #include "nativekit.h"
 
+#include <stddef.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -25,7 +27,9 @@ enum {
      * Operations that move high-bandwidth data return a NativeKit handle such
      * as nk_graphics_image instead of a payload of this or any larger size.
      */
-    NK_PLUGIN_PAYLOAD_MAX = 1048576
+    NK_PLUGIN_PAYLOAD_MAX = 65536,
+    /** Result returned by an invoke callback that will complete later. */
+    NK_PLUGIN_PENDING = NK_PENDING
 };
 
 /** Generation-checked identifier of one plugin instance owned by a runtime. */
@@ -78,6 +82,10 @@ typedef struct nk_binary_span {
     uint64_t size;
 } nk_binary_span;
 
+/** Frozen v1 prefix size; future fields must be appended after this boundary. */
+#define NK_PLUGIN_BINARY_SPAN_V1_SIZE \
+    ((uint32_t)(offsetof(nk_binary_span, size) + sizeof(((nk_binary_span *)0)->size)))
+
 /* ------------------------------------------------------------------------- */
 /* Plugin descriptors                                                        */
 /* ------------------------------------------------------------------------- */
@@ -112,20 +120,28 @@ typedef struct nk_plugin_host {
     nk_executor(NK_CALL *current_executor)(void);
     /** Returns the runtime generation; equivalent to nk_runtime_generation(). */
     uint64_t(NK_CALL *runtime_generation)(void);
+    /** Completes a pending request; safe from an OS callback or worker thread. */
+    nk_result(NK_CALL *complete_request)(nk_plugin_instance instance, nk_request_id request_id,
+                                         nk_result result, nk_handle handle,
+                                         const void *NK_NULLABLE payload, uint64_t payload_size);
 } nk_plugin_host;
+
+/** Frozen v1 prefix size; future fields must be appended after this boundary. */
+#define NK_PLUGIN_HOST_V1_SIZE \
+    ((uint32_t)(offsetof(nk_plugin_host, complete_request) + \
+                sizeof(((nk_plugin_host *)0)->complete_request)))
 
 /**
  * Called by NativeKit to instantiate a plugin.
  *
- * NativeKit writes the new, live instance handle to `out_instance` before the
- * call and the plugin must leave it unchanged. A plugin typically registers its
+ * NativeKit passes the new, live instance handle by value. A plugin typically registers its
  * services and stores its own state with nk_plugin_set_state() here. When
  * create returns anything other than NK_OK the instance is dropped immediately,
  * no service stays registered, and destroy is not called, so create must clean
  * up any partial initialization itself.
  */
 typedef nk_result(NK_CALL *nk_plugin_create_fn)(const nk_plugin_host *host,
-                                                nk_plugin_instance *out_instance NK_OUT NK_OWNED);
+                                                nk_plugin_instance instance);
 
 /**
  * Called by NativeKit exactly once per successful create, on the application
@@ -151,6 +167,11 @@ typedef struct nk_plugin_descriptor {
     /** Destroys one instance; required. */
     nk_plugin_destroy_fn destroy;
 } nk_plugin_descriptor;
+
+/** Frozen v1 prefix size; future fields must be appended after this boundary. */
+#define NK_PLUGIN_DESCRIPTOR_V1_SIZE \
+    ((uint32_t)(offsetof(nk_plugin_descriptor, destroy) + \
+                sizeof(((nk_plugin_descriptor *)0)->destroy)))
 
 /* ------------------------------------------------------------------------- */
 /* Plugin services                                                           */
@@ -180,14 +201,20 @@ typedef struct nk_plugin_reply {
     uint64_t payload_size;
 } nk_plugin_reply;
 
+/** Frozen v1 prefix size; future fields must be appended after this boundary. */
+#define NK_PLUGIN_REPLY_V1_SIZE \
+    ((uint32_t)(offsetof(nk_plugin_reply, payload_size) + \
+                sizeof(((nk_plugin_reply *)0)->payload_size)))
+
 /**
  * Handles one call on a registered service.
  *
  * The invocation runs on the executor declared by the service, never on the
  * caller's thread, and the borrowed request payload stays valid only for the
  * duration of the call. `request_id` is the identifier of the originating
- * nk_plugin_call() and is echoed in the completion event. Returning anything
- * other than NK_OK discards `out_reply` and completes the call with that result.
+ * nk_plugin_call() and is echoed in the completion event. Return
+ * NK_PLUGIN_PENDING to retain the request for a later nk_plugin_complete() call;
+ * every other result completes it immediately.
  */
 typedef nk_result(NK_CALL *nk_plugin_invoke_fn)(nk_plugin_instance instance, nk_method_id method,
                                                 const void *payload, uint64_t payload_size,
@@ -205,7 +232,7 @@ typedef nk_result(NK_CALL *nk_plugin_invoke_fn)(nk_plugin_instance instance, nk_
 struct nk_plugin_service {
     /** Size of this structure in bytes. */
     uint32_t struct_size NK_STRUCT_SIZE;
-    /** Stable, runtime-unique service identifier; never zero. */
+    /** Stable, instance-local service identifier; never zero. */
     nk_service_id service_id;
     /** Version of this service's method contract, chosen by the plugin. */
     uint32_t abi_version;
@@ -218,6 +245,10 @@ struct nk_plugin_service {
     /** Handles calls routed to this service; required. */
     nk_plugin_invoke_fn invoke;
 };
+
+/** Frozen v1 prefix size; future fields must be appended after this boundary. */
+#define NK_PLUGIN_SERVICE_V1_SIZE \
+    ((uint32_t)(offsetof(nk_plugin_service, invoke) + sizeof(((nk_plugin_service *)0)->invoke)))
 
 /* ------------------------------------------------------------------------- */
 /* Plugin lifecycle                                                          */
@@ -245,8 +276,8 @@ NK_API nk_result NK_CALL nk_plugin_register(const nk_plugin_descriptor *descript
 /**
  * Destroys one plugin instance and removes every service it registered. Must be
  * called on the application executor. The handle is invalid afterwards, and
- * calls that were already routed to its services complete with
- * NK_ERROR_INVALID_HANDLE.
+ * outstanding calls complete exactly once with NK_ERROR_INVALID_REQUEST before
+ * the instance is destroyed.
  */
 NK_API nk_result NK_CALL nk_plugin_unregister(nk_plugin_instance instance);
 
@@ -257,9 +288,8 @@ NK_API nk_result NK_CALL nk_plugin_unregister(nk_plugin_instance instance);
 /**
  * Publishes one service on behalf of a plugin instance.
  *
- * Service identifiers share one runtime-wide numeric namespace, so registering
- * an identifier that is already in use fails; unregister the previous service
- * first to replace an implementation.
+ * Service identifiers are scoped to the owning plugin instance, so two plugin
+ * instances may register the same numeric identifier independently.
  *
  * @param instance Live instance returned by nk_plugin_register().
  * @param service Non-null service description with a non-zero service_id.
@@ -272,7 +302,7 @@ NK_API nk_result NK_CALL nk_plugin_service_register(nk_plugin_instance instance,
                                                     const nk_plugin_service *service);
 
 /**
- * Removes one service from the runtime-wide service table. Must be called on
+ * Removes one service from the instance-local service table. Must be called on
  * the application executor by the instance that registered the service.
  */
 NK_API nk_result NK_CALL nk_plugin_service_unregister(nk_plugin_instance instance,
@@ -292,7 +322,8 @@ NK_API nk_result NK_CALL nk_plugin_service_unregister(nk_plugin_instance instanc
  * method identifier, the invocation result, and an optional borrowed payload or
  * transferred handle.
  *
- * @param service Non-zero service identifier.
+ * @param instance Live plugin instance that owns the service.
+ * @param service Non-zero service identifier scoped to `instance`.
  * @param method Non-zero method identifier inside the service.
  * @param payload Borrowed request bytes, or NULL when payload_size is zero.
  * @param payload_size Request size; may not exceed NK_PLUGIN_PAYLOAD_MAX.
@@ -302,9 +333,23 @@ NK_API nk_result NK_CALL nk_plugin_service_unregister(nk_plugin_instance instanc
  *         NK_ERROR_NOT_INITIALIZED without an active runtime, or an error when
  *         the routed task cannot be queued.
  */
-NK_API nk_result NK_CALL nk_plugin_call(nk_service_id service, nk_method_id method,
+NK_API nk_result NK_CALL nk_plugin_call(nk_plugin_instance instance, nk_service_id service,
+                                        nk_method_id method,
                                         const void *NK_NULLABLE payload, uint64_t payload_size,
                                         nk_request_id *out_request_id NK_OUT);
+
+/**
+ * Completes one request previously returned as NK_PLUGIN_PENDING.
+ *
+ * This is safe from any native thread, including an OS callback. NativeKit
+ * resolves the service and method from the request record, queues exactly one
+ * completion event, and rejects duplicate, late, stale-generation, or
+ * instance-mismatched completions with NK_ERROR_INVALID_REQUEST.
+ */
+NK_API nk_result NK_CALL nk_plugin_complete(nk_plugin_instance instance,
+                                            nk_request_id request_id, nk_result result,
+                                            nk_handle handle, const void *NK_NULLABLE payload,
+                                            uint64_t payload_size);
 
 /**
  * Emits an unsolicited notification from a plugin to the application.
@@ -333,7 +378,8 @@ NK_API nk_result NK_CALL nk_plugin_set_state(nk_plugin_instance instance, void *
 
 /**
  * Returns the state pointer attached by nk_plugin_set_state(), or NULL when none
- * is set or the handle is invalid. Call from the application executor.
+ * is set or the handle is invalid. Safe from a service invocation callback on
+ * any declared executor; the pointer remains plugin-owned.
  */
 NK_API void *NK_CALL nk_plugin_get_state(nk_plugin_instance instance);
 
@@ -373,6 +419,11 @@ typedef struct nk_plugin_event_data {
     uint64_t payload_size;
 } nk_plugin_event_data;
 
+/** Frozen v1 prefix size; future fields must be appended after this boundary. */
+#define NK_PLUGIN_EVENT_DATA_V1_SIZE \
+    ((uint32_t)(offsetof(nk_plugin_event_data, payload_size) + \
+                sizeof(((nk_plugin_event_data *)0)->payload_size)))
+
 /**
  * Decoded view of a plugin event. All borrowed fields stay valid only until the
  * nk_event is released with nk_event_release().
@@ -401,6 +452,11 @@ typedef struct nk_plugin_event_view {
     /** Borrowed payload size in bytes. */
     uint64_t payload_size;
 } nk_plugin_event_view;
+
+/** Frozen v1 prefix size; future fields must be appended after this boundary. */
+#define NK_PLUGIN_EVENT_VIEW_V1_SIZE \
+    ((uint32_t)(offsetof(nk_plugin_event_view, payload_size) + \
+                sizeof(((nk_plugin_event_view *)0)->payload_size)))
 
 /**
  * Decodes an NK_EVENT_PLUGIN_COMPLETE or NK_EVENT_PLUGIN_EVENT payload.

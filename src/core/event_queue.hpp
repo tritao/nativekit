@@ -22,7 +22,7 @@ struct QueuedEvent {
 
 class EventQueue {
   public:
-    explicit EventQueue(std::size_t capacity);
+    explicit EventQueue(std::size_t capacity, std::size_t byte_capacity = 16u * 1024u * 1024u);
     nk_result push(QueuedEvent event);
     nk_result poll(nk_event &output);
     bool empty();
@@ -30,6 +30,8 @@ class EventQueue {
 
   private:
     std::size_t capacity_;
+    std::size_t byte_capacity_;
+    std::size_t queued_bytes_ = 0;
     std::mutex mutex_;
     std::deque<QueuedEvent> queue_;
 };

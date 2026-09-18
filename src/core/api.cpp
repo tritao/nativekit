@@ -4,6 +4,7 @@
 #include "core/event_queue.hpp"
 #include "core/executor.hpp"
 #include "core/plugin.hpp"
+#include "core/request.hpp"
 #include "core/runtime.hpp"
 #include "core/system_internal.hpp"
 #include "net/net_backend.hpp"
@@ -160,6 +161,7 @@ void NK_CALL nk_shutdown(void) {
         /* Backend resources are still valid while system leases are released. */
         nk::core::system_shutdown();
         nk::backend::shutdown();
+        nk::core::requests().clear();
         std::lock_guard lock(state_mutex);
         handle_registry.clear();
         event_queue.reset();

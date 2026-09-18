@@ -625,6 +625,8 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	/**
 	 * Executes the submitted layout through the existing NativeKit renderer.
 	 *
+	 * The retained UI surface uses on-demand scheduling; request another frame
+	 * with nk_surface_request_frame() after state, input, or animation changes.
 	 * When load_existing is non-zero, the layout is composited over the current
 	 * surface contents instead of clearing the frame first.
 	 */
@@ -708,8 +710,10 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	 * Renders a display list using the surface's current framebuffer size.
 	 *
 	 * This convenience form uses a one-to-one logical-to-physical pixel scale.
-	 * It makes `surface` current and executes the list, but does not present it;
-	 * call nk_surface_present() after NKUI_OK.
+	 * It selects on-demand scheduling for the retained UI surface, makes `surface`
+	 * current, and executes the list, but does not present it; call
+	 * nk_surface_present() after NKUI_OK. Request subsequent frames with
+	 * nk_surface_request_frame() when state, input, or animation changes.
 	 */
 	extern fn nkui_renderer_render(renderer: nkui_renderer, list: nkui_display_list, surface: nk_surface) -> nkui_result;
 	/**
@@ -717,12 +721,16 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	 *
 	 * `frame_info` must have a sufficient `struct_size`, positive finite logical
 	 * dimensions and pixel scale, and positive framebuffer dimensions. The
-	 * surface is made current and the list is validated and executed. Rendering
-	 * does not present the surface; call nk_surface_present() after NKUI_OK.
+	 * surface is switched to on-demand scheduling, made current, and the list is
+	 * validated and executed. Rendering does not present the surface; call
+	 * nk_surface_present() after NKUI_OK, then request later frames with
+	 * nk_surface_request_frame() when retained UI state changes.
 	 */
 	extern fn nkui_renderer_render_frame(renderer: nkui_renderer, list: nkui_display_list, surface: nk_surface, frame_info: ptr<const<nkui_frame_info>>) -> nkui_result;
 	/**
 	 * Renders a display list over the currently presented frame without clearing it.
+	 * The retained UI surface remains on-demand; request later frames with
+	 * nk_surface_request_frame() after state, input, or animation changes.
 	 */
 	extern fn nkui_renderer_render_frame_overlay(renderer: nkui_renderer, list: nkui_display_list, surface: nk_surface, frame_info: ptr<const<nkui_frame_info>>) -> nkui_result;
 	/**

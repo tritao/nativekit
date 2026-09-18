@@ -1029,17 +1029,38 @@ NKGPU_API nkgpu_result nkgpu_batch_append_command(nkgpu_batch batch, const uint8
 NKGPU_API nkgpu_result nkgpu_batch_seal(nkgpu_batch batch);
 
 /**
- * Replays a sealed batch on its owning renderer.
+ * Binds the render-side context represented by an acquired frame target.
  *
- * Submission opens a frame, records every pass in order, and ends the frame
- * without presenting: surface presentation stays with the surface owner, so a
- * batch never implies ownership of a surface. The batch must belong to
+ * This must be called on the render executor. It is currently a validated
+ * no-op while RENDER aliases PLATFORM. It is the
+ * stable seam for a future physical render thread: GL targets will carry the
+ * backend context token in `native_context`, and the GPU backend will bind that
+ * context here without changing batch or surface ABI signatures.
+ */
+NKGPU_API nkgpu_result nkgpu_bind_frame_target(
+    const nk_surface_frame_target *frame_target);
+
+/**
+ * Replays a sealed batch on its owning renderer against an already-acquired
+ * immutable frame target.
+ *
+ * Submission does not call nk_surface_make_current() or
+ * nk_surface_get_frame_target(). The caller acquires the target on the
+ * platform executor, passes the immutable snapshot here on the render
+ * executor, and presents or cancels the associated frame afterwards. The
+ * batch must belong to
  * `renderer` and that renderer must have no active frame. Retained resources
  * stay valid for the whole submission even if the caller destroyed its own
  * handles, and a batch that fails validation is rejected before any GPU state
  * changes. A sealed batch may be submitted more than once.
  */
-NKGPU_API nkgpu_result nkgpu_batch_submit(nkgpu_renderer renderer, nkgpu_batch batch);
+NKGPU_API nkgpu_result nkgpu_batch_submit(
+    nkgpu_renderer renderer, nkgpu_batch batch,
+    const nk_surface_frame_target *frame_target
+#ifdef __cplusplus
+    = nullptr
+#endif
+);
 
 /**
  * Destroys a batch and releases every resource it retained.

@@ -153,7 +153,7 @@ bool execute_render_plan(UiRenderer &renderer, const RenderPlan &plan,
             break;
         }
     }
-    if (!renderer.beginFrame(record))
+    if (!renderer.beginFrame(record, &window.frame_target))
         return fail(error, 0, 0, renderer.lastError());
     struct FrameGuard {
         UiRenderer &renderer;

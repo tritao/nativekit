@@ -59,7 +59,18 @@ _Static_assert(NK_ERROR_NOT_FOUND == -12 && NK_ERROR_PAYLOAD_TOO_LARGE == -13,
 _Static_assert(NK_PLUGIN_ABI_VERSION == 1, "plugin ABI version is stable");
 _Static_assert(NK_SURFACE_FRAME_CONTINUOUS == 0 && NK_SURFACE_FRAME_ON_DEMAND == 1,
                "surface frame scheduling modes are stable");
-_Static_assert(NK_PLUGIN_PAYLOAD_MAX == 1048576, "plugin control-plane payload limit is stable");
+_Static_assert(NK_PLUGIN_PAYLOAD_MAX == 65536, "plugin control-plane payload limit is stable");
+_Static_assert(NK_PLUGIN_PENDING == NK_PENDING, "plugin pending result is stable");
+_Static_assert(NK_PLUGIN_BINARY_SPAN_V1_SIZE == 24, "plugin binary span v1 prefix is frozen");
+_Static_assert(NK_PLUGIN_HOST_V1_SIZE == 64, "plugin host v1 prefix is frozen");
+_Static_assert(NK_PLUGIN_DESCRIPTOR_V1_SIZE == 32,
+               "plugin descriptor v1 prefix is frozen");
+_Static_assert(NK_PLUGIN_REPLY_V1_SIZE == 32, "plugin reply v1 prefix is frozen");
+_Static_assert(NK_PLUGIN_SERVICE_V1_SIZE == 40, "plugin service v1 prefix is frozen");
+_Static_assert(NK_PLUGIN_EVENT_DATA_V1_SIZE == 32,
+               "plugin event data v1 prefix is frozen");
+_Static_assert(NK_PLUGIN_EVENT_VIEW_V1_SIZE == 64,
+               "plugin event view v1 prefix is frozen");
 _Static_assert(offsetof(nk_plugin_host, register_service) == 8,
                "plugin host function table starts after its versioned prefix");
 _Static_assert(offsetof(nk_plugin_descriptor, id) == 8,

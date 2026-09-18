@@ -31,7 +31,7 @@ class RecordingRenderer final : public UiRenderer {
     bool initialize() override { return true; }
     bool valid() const override { return true; }
     bool lost() const override { return false; }
-    bool beginFrame(bool record) override {
+    bool beginFrame(bool record, const nk_surface_frame_target *) override {
         ++frame_count;
         recorded_frame = record;
         return true;

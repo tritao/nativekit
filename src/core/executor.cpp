@@ -19,6 +19,8 @@ std::thread::id main_thread_id;
 std::mutex task_mutex;
 std::deque<nk::core::AppTask> pending_tasks;
 constexpr std::size_t app_task_capacity = 4096;
+constexpr std::size_t app_task_byte_capacity = 4u * 1024u * 1024u;
+std::size_t pending_task_bytes = 0;
 
 bool bound_to_main_thread(nk_executor executor) noexcept {
     return executor == NK_EXECUTOR_PLATFORM || executor == NK_EXECUTOR_APP ||
@@ -80,10 +82,21 @@ nk_result require_executor(nk_executor executor) noexcept {
     return NK_OK;
 }
 
-nk_result dispatch_to_app(nk_task_fn fn, void *user_data) noexcept {
+nk_result dispatch_to_executor(nk_executor executor, nk_task_fn fn, void *user_data,
+                               void (*cleanup)(void *) noexcept, std::size_t bytes) noexcept {
     if (!fn) {
         set_error("nk_task_fn is null");
         return NK_ERROR_INVALID_ARGUMENT;
+    }
+    if (!known_executor(executor) || executor == NK_EXECUTOR_WORKER) {
+        set_error("tasks require a bound NativeKit executor");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    if (bytes == 0)
+        bytes = sizeof(AppTask);
+    if (bytes > app_task_byte_capacity) {
+        set_error("the executor task exceeds the byte budget");
+        return NK_ERROR_QUEUE_FULL;
     }
     try {
         {
@@ -95,11 +108,13 @@ nk_result dispatch_to_app(nk_task_fn fn, void *user_data) noexcept {
         }
         {
             std::lock_guard lock(task_mutex);
-            if (pending_tasks.size() >= app_task_capacity) {
+            if (pending_tasks.size() >= app_task_capacity ||
+                pending_task_bytes > app_task_byte_capacity - bytes) {
                 set_error("the application dispatch queue is full");
                 return NK_ERROR_QUEUE_FULL;
             }
-            pending_tasks.push_back(AppTask{fn, user_data});
+            pending_tasks.push_back(AppTask{executor, fn, user_data, cleanup, bytes});
+            pending_task_bytes += bytes;
         }
     } catch (...) {
         set_error("out of memory while dispatching to the application executor");
@@ -109,22 +124,35 @@ nk_result dispatch_to_app(nk_task_fn fn, void *user_data) noexcept {
     return NK_OK;
 }
 
+nk_result dispatch_to_app(nk_task_fn fn, void *user_data) noexcept {
+    return dispatch_to_executor(NK_EXECUTOR_APP, fn, user_data, nullptr, sizeof(AppTask));
+}
+
 void drain_app_tasks() noexcept {
     std::deque<AppTask> batch;
     {
         std::lock_guard lock(task_mutex);
         batch.swap(pending_tasks);
+        pending_task_bytes = 0;
     }
     for (auto &task : batch) {
-        if (!task.fn)
-            continue;
-        callback_boundary([&task] { task.fn(task.user_data); });
+        if (task.fn)
+            callback_boundary([&task] { task.fn(task.user_data); });
+        if (task.cleanup)
+            task.cleanup(task.user_data);
     }
 }
 
 void clear_app_tasks() noexcept {
-    std::lock_guard lock(task_mutex);
-    pending_tasks.clear();
+    std::deque<AppTask> discarded;
+    {
+        std::lock_guard lock(task_mutex);
+        discarded.swap(pending_tasks);
+        pending_task_bytes = 0;
+    }
+    for (auto &task : discarded)
+        if (task.cleanup)
+            task.cleanup(task.user_data);
 }
 
 } // namespace nk::core

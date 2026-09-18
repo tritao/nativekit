@@ -1408,7 +1408,7 @@ struct GtkWebViewResource final : nk::core::Resource {
 /*
  * A NativeKit-owned native child view: a container widget the application
  * populates through nk_view_get_native(). Geometry, visibility, and clipping
- * are pending state that nk_view_commit() publishes, so one commit applies a
+ * are pending state that nk_view_commit_parent() publishes, so one commit applies a
  * whole layout change instead of one setter at a time.
  */
 struct GtkViewResource final : nk::core::Resource {
@@ -5449,6 +5449,30 @@ void apply_view_state(GtkViewResource &resource) {
     gtk_widget_show(resource.widget);
 }
 
+nk_result commit_views_for_parent(nk_handle parent_handle) {
+    auto parent = window(parent_handle);
+    if (!parent)
+        return invalid_handle("native view parent");
+    /* GTK applies all mutations on the same main-loop turn. No frame or
+       expose can observe the intermediate sibling geometry. */
+    std::vector<std::shared_ptr<GtkViewResource>> changed;
+    for (const auto child : parent->views) {
+        auto resource = view(child);
+        if (!resource || !resource->has_pending)
+            continue;
+        resource->bounds = resource->pending_bounds;
+        resource->clip = resource->pending_clip;
+        resource->clip_enabled = resource->pending_clip_enabled;
+        resource->visible = resource->pending_visible;
+        changed.push_back(std::move(resource));
+    }
+    for (auto &resource : changed) {
+        apply_view_state(*resource);
+        resource->has_pending = false;
+    }
+    return NK_OK;
+}
+
 nk_result NK_CALL nk_view_create(nk_handle parent_handle, const nk_view_options *options,
                                  nk_view *out_view) {
     return nk::core::result_boundary(
@@ -5569,15 +5593,13 @@ nk_result NK_CALL nk_view_commit(nk_view handle) {
     auto resource = view(handle);
     if (!resource)
         return invalid_handle("native view");
-    if (!resource->has_pending)
-        return NK_OK;
-    resource->bounds = resource->pending_bounds;
-    resource->clip = resource->pending_clip;
-    resource->clip_enabled = resource->pending_clip_enabled;
-    resource->visible = resource->pending_visible;
-    resource->has_pending = false;
-    apply_view_state(*resource);
-    return NK_OK;
+    return commit_views_for_parent(resource->parent);
+}
+
+nk_result NK_CALL nk_view_commit_parent(nk_handle parent) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    return commit_views_for_parent(parent);
 }
 
 nk_result NK_CALL nk_view_get_bounds(nk_view handle, nk_view_bounds *out_bounds) {

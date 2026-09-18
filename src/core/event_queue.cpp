@@ -19,9 +19,8 @@ bool is_terminal_request_event(const QueuedEvent &event) {
            event.kind == NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE ||
            event.kind == NK_EVENT_RESOURCE_DATA_COMPLETE ||
            event.kind == NK_EVENT_SENSOR_PERMISSION_COMPLETE ||
-           event.kind == NK_EVENT_HTTP_COMPLETE || event.kind == NK_EVENT_NOTIFICATION_DELIVERED ||
-            event.kind == NK_EVENT_PLUGIN_COMPLETE ||
-            event.kind == NK_EVENT_NOTIFICATION_DELIVERED ||
+           event.kind == NK_EVENT_HTTP_COMPLETE || event.kind == NK_EVENT_PLUGIN_COMPLETE ||
+           event.kind == NK_EVENT_NOTIFICATION_DELIVERED ||
            event.kind == NK_EVENT_NOTIFICATION_FAILED;
 }
 
@@ -48,10 +47,16 @@ bool same_coalescing_target(const QueuedEvent &first, const QueuedEvent &second)
 }
 } // namespace
 
-EventQueue::EventQueue(std::size_t capacity) : capacity_(capacity) {}
+EventQueue::EventQueue(std::size_t capacity, std::size_t byte_capacity)
+    : capacity_(capacity), byte_capacity_(byte_capacity) {}
 
 nk_result EventQueue::push(QueuedEvent event) {
     std::lock_guard lock(mutex_);
+    const std::size_t event_bytes = event.data.size();
+    if (event_bytes > byte_capacity_ ||
+        queued_bytes_ > byte_capacity_ - event_bytes)
+        if (!is_terminal_request_event(event))
+            return NK_ERROR_QUEUE_FULL;
     if (is_coalescible(event.kind) && !queue_.empty()) {
         if (event.kind == NK_EVENT_SENSOR_UPDATE) {
             /* Sensor producers interleave several sources; each sensor gets
@@ -59,18 +64,23 @@ nk_result EventQueue::push(QueuedEvent event) {
              * event ordering rules for the other coalesced event kinds. */
             for (auto item = queue_.rbegin(); item != queue_.rend(); ++item) {
                 if (same_coalescing_target(*item, event)) {
+                    queued_bytes_ -= item->data.size();
                     *item = std::move(event);
+                    queued_bytes_ += event_bytes;
                     return NK_OK;
                 }
             }
         } else if (same_coalescing_target(queue_.back(), event)) {
+            queued_bytes_ -= queue_.back().data.size();
             queue_.back() = std::move(event);
+            queued_bytes_ += event_bytes;
             return NK_OK;
         }
     }
     if (queue_.size() >= capacity_ && !is_terminal_request_event(event))
         return NK_ERROR_QUEUE_FULL;
     queue_.push_back(std::move(event));
+    queued_bytes_ += event_bytes;
     return NK_OK;
 }
 
@@ -97,6 +107,7 @@ nk_result EventQueue::poll(nk_event &output) {
     output.data_count = event.data_count;
     output.data = payload;
     output.data_size = event.data.size();
+    queued_bytes_ -= event.data.size();
     queue_.pop_front();
     return NK_OK;
 }
@@ -109,6 +120,7 @@ bool EventQueue::empty() {
 void EventQueue::clear() {
     std::lock_guard lock(mutex_);
     queue_.clear();
+    queued_bytes_ = 0;
 }
 
 } // namespace nk::core
