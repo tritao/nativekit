@@ -952,10 +952,13 @@ final class NativeKitBridge {
                         return false;
                     int before = Math.min(selectionStart, selectionEnd) - range[0];
                     int after = range[1] - Math.max(selectionStart, selectionEnd);
+                    int replaceStart = codePointIndex(range[0]);
+                    int replaceEnd = codePointIndex(range[1]);
+                    if (replaceStart < 0 || replaceEnd < 0)
+                        return false;
                     boolean result = super.deleteSurroundingText(before, after);
                     if (result && range[0] != range[1])
-                        emitTextEdit(TEXT_EDIT_DELETE, "", codePointIndex(range[0]),
-                                     codePointIndex(range[1]));
+                        emitTextEdit(TEXT_EDIT_DELETE, "", replaceStart, replaceEnd);
                     return result;
                 }
 
@@ -968,11 +971,14 @@ final class NativeKitBridge {
                         selectionStart, selectionEnd, beforeLength, afterLength);
                     if (range == null)
                         return false;
+                    int replaceStart = codePointIndex(range[0]);
+                    int replaceEnd = codePointIndex(range[1]);
+                    if (replaceStart < 0 || replaceEnd < 0)
+                        return false;
                     boolean result = super.deleteSurroundingTextInCodePoints(beforeLength,
                                                                               afterLength);
                     if (result && range[0] != range[1])
-                        emitTextEdit(TEXT_EDIT_DELETE, "", codePointIndex(range[0]),
-                                     codePointIndex(range[1]));
+                        emitTextEdit(TEXT_EDIT_DELETE, "", replaceStart, replaceEnd);
                     return result;
                 }
 
