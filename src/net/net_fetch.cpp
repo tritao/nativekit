@@ -110,6 +110,7 @@ bool progress_due(nk::net::RequestContext &request) {
     return true;
 }
 
+// clang-format off
 EM_JS(void, start_fetch,
       (double id, const char *url, const char *method, const char *headers, uintptr_t body,
        uint32_t body_size, double max_header_size, double max_response_size,
@@ -119,17 +120,17 @@ EM_JS(void, start_fetch,
           const state = {controller : new AbortController(), failed : 0};
           states.set(id, state);
           const header_text = UTF8ToString(headers);
-          const header_lines = header_text.length == = 0 ? [] : header_text.split('\n');
+          const header_lines = header_text.length === 0 ? [] : header_text.split('\n');
           const request_headers = new Headers();
           for (let index = 0; index + 1 < header_lines.length; index += 2)
               request_headers.append(header_lines[index], header_lines[index + 1]);
           const request_url = UTF8ToString(url);
           let request_method = UTF8ToString(method);
           let request_body =
-              body_size == = 0 ? null : HEAPU8.slice(Number(body), Number(body) + body_size);
-          const call_headers = (status, response, redirected) = > {
+              body_size === 0 ? null : HEAPU8.slice(Number(body), Number(body) + body_size);
+          const call_headers = (status, response, redirected) => {
               let text = '';
-              response.headers.forEach((value, name) = > { text += name + '\n' + value + '\n'; });
+              response.headers.forEach((value, name) => { text += name + '\n' + value + '\n'; });
               if (lengthBytesUTF8(text) > Number(max_header_size))
                   return -106;
               const length = lengthBytesUTF8(text) + 1;
@@ -141,7 +142,7 @@ EM_JS(void, start_fetch,
               _free(pointer);
               return result;
           };
-          const call_data = (bytes, total) = > {
+          const call_data = (bytes, total) => {
               if (bytes.length > Number(max_response_size))
                   return -106;
               const pointer = _malloc(bytes.length);
@@ -152,14 +153,13 @@ EM_JS(void, start_fetch,
               _free(pointer);
               return result;
           };
-          const finish = (result) = > {
+          const finish = (result) => {
               if (!states.has(id))
                   return;
               states.delete(id);
               Module.ccall('nk_net_fetch_complete', null, [ 'number', 'number' ], [ id, result ]);
           };
-          (async() =
-               >
+          (async() =>
                {
                    let current_url = request_url;
                    let redirects = 0;
@@ -172,15 +172,16 @@ EM_JS(void, start_fetch,
                            credentials : 'omit',
                            cache : 'no-store'
                        };
-                       if (request_body != = null)
+                       if (request_body !== null)
                            request_options.body = request_body.slice();
                        const response = await fetch(current_url, request_options);
-                       if (response.type == = 'opaqueredirect') {
+                       if (response.type === 'opaqueredirect') {
                            state.failed = -107;
                            throw new Error('opaque redirect cannot be inspected');
                        }
                        const location = response.headers.get('location');
-                       if (response.status >= 300 &&response.status <= 399 &&location != = null) {
+                       if (response.status >= 300 && response.status <= 399 &&
+                           location !== null) {
                            if (redirects >= redirect_limit) {
                                state.failed = -107;
                                throw new Error('redirect limit exceeded');
@@ -192,16 +193,16 @@ EM_JS(void, start_fetch,
                                state.failed = -107;
                                throw new Error('invalid redirect URL');
                            }
-                           const downgrade = current_url.substring(0, 8).toLowerCase() ==
-                               = 'https://' && next_url.substring(0, 7).toLowerCase() ==
-                               = 'http://';
+                           const downgrade = current_url.substring(0, 8).toLowerCase() ===
+                                                  'https://' &&
+                                              next_url.substring(0, 7).toLowerCase() === 'http://';
                            if (downgrade && !allow_https_to_http) {
                                state.failed = -107;
                                throw new Error('HTTPS to HTTP redirect rejected');
                            }
-                           if (response.status == = 301 || response.status ==
-                               = 302 || response.status == = 303) {
-                               if (request_method != = 'GET' &&request_method != = 'HEAD') {
+                           if (response.status === 301 || response.status === 302 ||
+                               response.status === 303) {
+                               if (request_method !== 'GET' && request_method !== 'HEAD') {
                                    request_method = 'GET';
                                    request_body = null;
                                }
@@ -210,13 +211,13 @@ EM_JS(void, start_fetch,
                            redirects++;
                            continue;
                        }
-                       let result = call_headers(response.status, response, redirects != = 0);
-                       if (result != = 0) {
+                       let result = call_headers(response.status, response, redirects !== 0);
+                       if (result !== 0) {
                            state.failed = result;
                            throw new Error('NativeKit response headers rejected');
                        }
                        const total_header = response.headers.get('content-length');
-                       const total = total_header == = null ? -1 : Number(total_header);
+                       const total = total_header === null ? -1 : Number(total_header);
                        if (!response.body) {
                            finish(0);
                            return;
@@ -227,7 +228,7 @@ EM_JS(void, start_fetch,
                            if (part.done)
                                break;
                            result = call_data(part.value, Number.isFinite(total) ? total : -1);
-                           if (result != = 0) {
+                           if (result !== 0) {
                                state.failed = result;
                                await reader.cancel();
                                throw new Error('NativeKit response body rejected');
@@ -237,12 +238,13 @@ EM_JS(void, start_fetch,
                        return;
                    }
                })()
-              .catch((error) = > {
-                  const result = state.failed !=
-                      = 0 ? state.failed : error &&error.name == = 'AbortError' ? -104 : -101;
+              .catch((error) => {
+                  const result = state.failed !== 0 ? state.failed
+                                                    : error && error.name === 'AbortError' ? -104 : -101;
                   finish(result);
               });
       });
+// clang-format on
 
 EM_JS(void, cancel_fetch, (double id), {
     const states = Module['NativeKitFetches'];
