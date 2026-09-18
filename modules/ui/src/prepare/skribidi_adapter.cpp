@@ -603,20 +603,21 @@ bool SkribidiAdapter::prepare_glyphs_for_line(TextLayoutId id, uint32_t line_ind
 
 std::shared_ptr<const PreparedGlyphs>
 SkribidiAdapter::published_glyphs(TextLayoutId id, float origin_x, float origin_y,
-                                  float pixel_scale, GlyphMode mode) {
-    return publish_glyphs(id, -1, origin_x, origin_y, pixel_scale, mode);
+                                  float pixel_scale, GlyphMode mode, GlyphTint tint) {
+    return publish_glyphs(id, -1, origin_x, origin_y, pixel_scale, mode, tint);
 }
 
 std::shared_ptr<const PreparedGlyphs>
 SkribidiAdapter::published_glyphs_for_line(TextLayoutId id, uint32_t line_index, float origin_x,
-                                           float origin_y, float pixel_scale, GlyphMode mode) {
+                                           float origin_y, float pixel_scale, GlyphMode mode,
+                                           GlyphTint tint) {
     return publish_glyphs(id, static_cast<int32_t>(line_index), origin_x, origin_y, pixel_scale,
-                          mode);
+                          mode, tint);
 }
 
 std::shared_ptr<const PreparedGlyphs>
 SkribidiAdapter::publish_glyphs(TextLayoutId id, int32_t line_index, float origin_x, float origin_y,
-                                float pixel_scale, GlyphMode mode) {
+                                float pixel_scale, GlyphMode mode, GlyphTint tint) {
     const auto *layout = find_layout(*state_, id);
     if (!layout || pixel_scale <= 0.0f)
         return {};
@@ -636,6 +637,8 @@ SkribidiAdapter::publish_glyphs(TextLayoutId id, int32_t line_index, float origi
     mix(static_cast<uint64_t>(line_index + 1));
     mix(static_cast<uint64_t>(std::llround(static_cast<double>(origin_x) * 64.0)));
     mix(static_cast<uint64_t>(std::llround(static_cast<double>(origin_y) * 64.0)));
+    mix(static_cast<uint64_t>(tint.red) << 24 | static_cast<uint64_t>(tint.green) << 16 |
+        static_cast<uint64_t>(tint.blue) << 8 | static_cast<uint64_t>(tint.alpha));
 
     if (const auto found = state_->published_glyphs.find(key);
         found != state_->published_glyphs.end()) {
@@ -653,6 +656,18 @@ SkribidiAdapter::publish_glyphs(TextLayoutId id, int32_t line_index, float origi
                                                  origin_y, pixel_scale, mode, *snapshot);
     if (!prepared)
         return {};
+
+    /* Tint only the snapshot we just built, before it is shared or cached. */
+    const bool tinted =
+        tint.red != 255 || tint.green != 255 || tint.blue != 255 || tint.alpha != 255;
+    if (tinted) {
+        for (auto &vertex : snapshot->vertices) {
+            vertex.red = tint.red;
+            vertex.green = tint.green;
+            vertex.blue = tint.blue;
+            vertex.alpha = tint.alpha;
+        }
+    }
 
     /* Weak entries keep live snapshots shared and let the rest expire. */
     if (state_->published_glyphs.size() >= 256) {

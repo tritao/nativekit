@@ -209,6 +209,8 @@ LayoutRect transform_bounds(LayoutRect rect, const LayoutTransform &transform) {
 
 void LayoutRenderFrame::reset() {
     resources_.reset();
+    owned_resources_.reset();
+    sealable_ = true;
     plan_ = {};
     paths_.clear();
     glyphs_.clear();
@@ -365,7 +367,7 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                     continue;
                 if (transient_slot > kMaxTransientSlot)
                     return fail(error, index, "layout render resource limit exceeded");
-                auto prepared = std::make_unique<PreparedPath>();
+                auto prepared = std::make_shared<PreparedPath>();
                 NanoVGPath path;
                 append_rounded_rect(path, primitive.bounds, primitive);
                 PathPreparationParams params;
@@ -380,6 +382,10 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                 if (!out.resources_.bind_path(id, *prepared, 0,
                                               primitive_content_generation(primitive)))
                     return fail(error, index, "layout path resource binding failed");
+                out.paths_.push_back(std::move(prepared));
+                if (!out.owned_resources_.bind_path(id, out.paths_.back(), 0,
+                                                    primitive_content_generation(primitive)))
+                    out.sealable_ = false;
                 RenderCommand command{RenderCommandKind::Path, id};
                 command.content_generation = primitive_content_generation(primitive);
                 if (!clips.empty())
@@ -440,6 +446,18 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                     primitive_content_generation(primitive, text, glyphs->layout_generation);
                 if (!out.resources_.bind_text(id, *glyphs, content_generation))
                     return fail(error, index, "layout text resource binding failed");
+                const GlyphTint tint{
+                    color_byte(primitive.color.red), color_byte(primitive.color.green),
+                    color_byte(primitive.color.blue), color_byte(primitive.color.alpha)};
+                auto snapshot = text_layout
+                                    ? text->published_glyphs_for_line(
+                                          text_layout->id, primitive.text_line_index, 0.0f, 0.0f,
+                                          pixel_scale, GlyphMode::Alpha, tint)
+                                    : text->published_glyphs(text->active_layout_id(), 0.0f, 0.0f,
+                                                             pixel_scale, GlyphMode::Alpha, tint);
+                if (!snapshot ||
+                    !out.owned_resources_.bind_text(id, std::move(snapshot), content_generation))
+                    out.sealable_ = false;
                 RenderCommand command{RenderCommandKind::GlyphBatch,
                                       id,
                                       primitive.bounds.x,
