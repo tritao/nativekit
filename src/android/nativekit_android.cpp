@@ -15,6 +15,7 @@
 
 #include "core/boundary.hpp"
 #include "core/error.hpp"
+#include "core/frame_request.hpp"
 #include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
 #include "core/gamepad_events.hpp"
@@ -84,6 +85,7 @@ struct AndroidSurface final : nk::core::Resource {
     bool destroying = false;
     nk_surface_frame_callback frame_callback = nullptr;
     void *frame_user_data = nullptr;
+    nk::core::FrameRequestState frame_requests;
     std::array<nk_input_action, NK_KEY_LAST + 1> keys{};
     std::array<nk_input_action, NK_POINTER_BUTTON_LAST + 1> pointer_buttons{};
     double pointer_x = 0;
@@ -2844,6 +2846,30 @@ nk_result NK_CALL nk_surface_set_frame_callback(nk_handle handle,
     return result;
 }
 
+nk_result NK_CALL nk_surface_set_frame_mode(nk_handle handle, nk_surface_frame_mode mode) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    if (mode != NK_SURFACE_FRAME_CONTINUOUS && mode != NK_SURFACE_FRAME_ON_DEMAND) {
+        nk::core::set_error("unknown graphics surface frame mode");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    auto resource = surface(handle);
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    resource->frame_requests.set_continuous(mode == NK_SURFACE_FRAME_CONTINUOUS);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_request_frame(nk_handle handle) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
+    auto resource = surface(handle);
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    resource->frame_requests.request();
+    return NK_OK;
+}
+
 nk_result NK_CALL nk_surface_get_framebuffer_size(nk_handle handle, int32_t *out_width,
                                                   int32_t *out_height) {
     if (const auto thread = require_thread(); thread != NK_OK)
@@ -3238,6 +3264,10 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnSurfaceFrame(JN
             resource->api != NK_GRAPHICS_OPENGL_ES || resource->surface == EGL_NO_SURFACE ||
             resource->framebuffer_width <= 0 || resource->framebuffer_height <= 0)
             return;
+        /* The Java surface keeps posting frames; on-demand surfaces skip them. */
+        if (!resource->frame_requests.should_draw())
+            return;
+        resource->frame_requests.begin_frame();
         if (nk_surface_make_current(handle) != NK_OK)
             return;
         resource = surface(handle);

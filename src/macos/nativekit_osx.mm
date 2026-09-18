@@ -23,6 +23,7 @@
 
 #include "core/boundary.hpp"
 #include "core/error.hpp"
+#include "core/frame_request.hpp"
 #include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
 #include "core/runtime.hpp"
@@ -281,6 +282,7 @@ struct MacSurfaceResource final : nk::core::Resource {
     uint32_t share_dependents = 0;
     nk_surface_frame_callback frame_callback = nullptr;
     void *frame_user_data = nullptr;
+    nk::core::FrameRequestState frame_requests;
     bool frame_prepared = false;
     bool ready = false;
     bool lost_reported = false;
@@ -600,6 +602,19 @@ bool is_decoration_resize_kind(nk_window_decoration_region_kind kind) {
 std::shared_ptr<MacSurfaceResource> surface(nk_handle handle) {
     return std::dynamic_pointer_cast<MacSurfaceResource>(
         nk::core::handles().get(handle, nk::core::ResourceType::surface));
+}
+
+/* An on-demand surface parks its repeating timer instead of tearing it down. */
+void arm_surface_frames(const std::shared_ptr<MacSurfaceResource> &resource) {
+    if (!resource || !resource->frame_timer)
+        return;
+    resource->frame_timer.fireDate = [NSDate date];
+}
+
+void disarm_surface_frames(const std::shared_ptr<MacSurfaceResource> &resource) {
+    if (!resource || !resource->frame_timer)
+        return;
+    resource->frame_timer.fireDate = [NSDate distantFuture];
 }
 
 std::shared_ptr<MacMonitorResource> monitor(nk_handle handle) {
@@ -5274,27 +5289,62 @@ nk_result NK_CALL nk_surface_set_frame_callback(nk_handle handle,
     resource->frame_user_data = callback ? user_data : nullptr;
     if (!callback)
         return NK_OK;
-    resource->frame_timer =
-        [NSTimer scheduledTimerWithTimeInterval:1.0 / 60.0
-                                        repeats:YES
-                                          block:^(NSTimer *timer) {
-                                            (void)timer;
-                                            auto active = surface(handle);
-                                            if (!active || active->frame_callback != callback) {
-                                                [timer invalidate];
-                                                return;
-                                            }
-                                            nk::core::callback_boundary([&] {
-                                                if (nk_surface_make_current(handle) != NK_OK)
-                                                    return;
-                                                callback(handle, active->framebuffer_width,
-                                                         active->framebuffer_height, user_data);
-                                                if (active->frame_prepared)
-                                                    nk_surface_present(handle);
-                                            });
-                                          }];
-    return resource->frame_timer ? NK_OK
-                                 : fail(NK_ERROR_UNKNOWN, "could not start the Metal frame timer");
+    resource->frame_timer = [NSTimer
+        scheduledTimerWithTimeInterval:1.0 / 60.0
+                               repeats:YES
+                                 block:^(NSTimer *timer) {
+                                   (void)timer;
+                                   auto active = surface(handle);
+                                   if (!active || active->frame_callback != callback) {
+                                       [timer invalidate];
+                                       return;
+                                   }
+                                   if (!active->frame_requests.should_draw()) {
+                                       active->frame_timer.fireDate = [NSDate distantFuture];
+                                       return;
+                                   }
+                                   active->frame_requests.begin_frame();
+                                   nk::core::callback_boundary([&] {
+                                       if (nk_surface_make_current(handle) != NK_OK)
+                                           return;
+                                       callback(handle, active->framebuffer_width,
+                                                active->framebuffer_height, user_data);
+                                       if (active->frame_prepared)
+                                           nk_surface_present(handle);
+                                   });
+                                 }];
+    if (!resource->frame_timer)
+        return fail(NK_ERROR_UNKNOWN, "could not start the Metal frame timer");
+    if (!resource->frame_requests.continuous() && !resource->frame_requests.pending())
+        disarm_surface_frames(resource);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_set_frame_mode(nk_handle handle, nk_surface_frame_mode mode) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (mode != NK_SURFACE_FRAME_CONTINUOUS && mode != NK_SURFACE_FRAME_ON_DEMAND)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "unknown graphics surface frame mode");
+    auto resource = surface(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale graphics surface handle");
+    resource->frame_requests.set_continuous(mode == NK_SURFACE_FRAME_CONTINUOUS);
+    if (resource->frame_requests.continuous() || resource->frame_requests.pending())
+        arm_surface_frames(resource);
+    else
+        disarm_surface_frames(resource);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_request_frame(nk_handle handle) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = surface(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale graphics surface handle");
+    resource->frame_requests.request();
+    arm_surface_frames(resource);
+    return NK_OK;
 }
 
 nk_result NK_CALL nk_surface_get_framebuffer_size(nk_handle handle, int32_t *out_width,

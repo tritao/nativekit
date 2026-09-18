@@ -127,6 +127,24 @@ typedef void(NK_CALL *nk_surface_frame_callback)(nk_surface surface, int32_t fra
                                                  void *NK_NULLABLE user_data);
 typedef nk_surface_frame_callback NK_NULLABLE nk_nullable_surface_frame_callback;
 
+/**
+ * Scheduling mode of a graphics surface frame callback.
+ */
+typedef uint32_t nk_surface_frame_mode;
+
+enum NK_ENUM(nk_surface_frame_mode) {
+    /**
+     * The backend invokes the frame callback every vsync while one is
+     * installed. This is the default and the mode game-loop callers expect.
+     */
+    NK_SURFACE_FRAME_CONTINUOUS = 0,
+    /**
+     * The backend invokes the frame callback only while a frame is requested
+     * with nk_surface_request_frame(), and stops scheduling work while idle.
+     */
+    NK_SURFACE_FRAME_ON_DEMAND = 1
+};
+
 /** Payload of NK_EVENT_SURFACE_RESIZE. */
 typedef struct nk_surface_resize_event {
     /** New logical surface width. */
@@ -235,10 +253,48 @@ NK_API nk_result NK_CALL nk_surface_present(nk_surface surface);
  * the framebuffer is current. Do not call nk_surface_present() recursively
  * from it. Pass NULL to detach it; the `user_data` value is not retained after
  * the callback is removed.
+ *
+ * Call nk_surface_set_frame_mode() with NK_SURFACE_FRAME_ON_DEMAND to render
+ * only when the application asks for a frame instead of every vsync.
  */
 NK_API nk_result NK_CALL nk_surface_set_frame_callback(
     nk_surface surface, nk_nullable_surface_frame_callback callback NK_RETAINED,
     void *NK_NULLABLE user_data);
+
+/**
+ * Selects how the backend schedules an installed frame callback.
+ *
+ * NK_SURFACE_FRAME_CONTINUOUS is the default and keeps the callback running
+ * every vsync. NK_SURFACE_FRAME_ON_DEMAND invokes it only while a frame is
+ * requested, so animation and state changes must call
+ * nk_surface_request_frame() to keep producing frames. Switching modes never
+ * loses a request that is already pending, and switching back to continuous
+ * resumes rendering immediately. Call on the platform executor.
+ *
+ * @return NK_OK, NK_ERROR_INVALID_ARGUMENT for an unknown mode,
+ *         NK_ERROR_INVALID_HANDLE for a stale surface, or
+ *         NK_ERROR_WRONG_THREAD off the platform executor.
+ */
+NK_API nk_result NK_CALL nk_surface_set_frame_mode(nk_surface surface, nk_surface_frame_mode mode);
+
+/**
+ * Records that the surface needs a frame.
+ *
+ * Requests coalesce: any number of calls before the next frame produce one
+ * frame callback. The backend chooses when that frame happens (vsync,
+ * display link, or browser animation frame) and stops scheduling work while no
+ * request is pending. A callback that requests another frame from inside itself
+ * keeps an animation running without re-arming anything.
+ *
+ * The call is a no-op for a continuous surface. Without an installed frame
+ * callback it only records the request, so the surface draws once a callback is
+ * installed. Call on the platform executor; native work that runs on other
+ * threads should use nk_dispatch_to_app() first.
+ *
+ * @return NK_OK, NK_ERROR_INVALID_HANDLE for a stale surface, or
+ *         NK_ERROR_WRONG_THREAD off the platform executor.
+ */
+NK_API nk_result NK_CALL nk_surface_request_frame(nk_surface surface);
 
 /* ------------------------------------------------------------------------- */
 /* Surface queries                                                           */

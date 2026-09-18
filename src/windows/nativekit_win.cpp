@@ -11,6 +11,7 @@
 
 #include "core/error.hpp"
 #include "core/boundary.hpp"
+#include "core/frame_request.hpp"
 #include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
 #include "core/runtime.hpp"
@@ -327,6 +328,8 @@ struct WinSurfaceResource final : nk::core::Resource {
     uint32_t share_dependents = 0;
     nk_surface_frame_callback frame_callback = nullptr;
     void *frame_user_data = nullptr;
+    nk::core::FrameRequestState frame_requests;
+    bool frame_timer_armed = false;
     bool frame_prepared = false;
     bool ready = false;
     bool lost_reported = false;
@@ -337,6 +340,20 @@ struct WinSurfaceResource final : nk::core::Resource {
             DestroyWindow(window);
     }
 };
+
+void arm_surface_frames(WinSurfaceResource &resource) {
+    if (!resource.window || resource.frame_timer_armed || !resource.frame_callback)
+        return;
+    if (SetTimer(resource.window, surface_frame_timer, 16, nullptr))
+        resource.frame_timer_armed = true;
+}
+
+void disarm_surface_frames(WinSurfaceResource &resource) {
+    if (!resource.window || !resource.frame_timer_armed)
+        return;
+    KillTimer(resource.window, surface_frame_timer);
+    resource.frame_timer_armed = false;
+}
 
 struct WinCursorResource final : nk::core::Resource {
     HCURSOR cursor = nullptr;
@@ -1798,9 +1815,15 @@ LRESULT CALLBACK surface_window_proc(HWND window, UINT message, WPARAM wparam, L
         return HTTRANSPARENT;
     if (surface && message == WM_TIMER && wparam == surface_frame_timer &&
         surface->frame_callback && !surface->destroying) {
+        if (!surface->frame_requests.should_draw()) {
+            /* An idle on-demand surface stops its timer until the next request. */
+            disarm_surface_frames(*surface);
+            return 0;
+        }
         auto active = get_surface(surface->handle);
         if (!active)
             return 0;
+        active->frame_requests.begin_frame();
         nk::core::callback_boundary([&] {
             if (nk_surface_make_current(active->handle) != NK_OK)
                 return;
@@ -4367,10 +4390,37 @@ nk_result NK_CALL nk_surface_set_frame_callback(nk_handle handle,
         return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale graphics surface handle");
     resource->frame_callback = callback;
     resource->frame_user_data = callback ? user_data : nullptr;
-    if (callback)
-        SetTimer(resource->window, surface_frame_timer, 16, nullptr);
+    if (callback && (resource->frame_requests.continuous() || resource->frame_requests.pending()))
+        arm_surface_frames(*resource);
     else
-        KillTimer(resource->window, surface_frame_timer);
+        disarm_surface_frames(*resource);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_set_frame_mode(nk_handle handle, nk_surface_frame_mode mode) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (mode != NK_SURFACE_FRAME_CONTINUOUS && mode != NK_SURFACE_FRAME_ON_DEMAND)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "unknown graphics surface frame mode");
+    auto resource = get_surface(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale graphics surface handle");
+    resource->frame_requests.set_continuous(mode == NK_SURFACE_FRAME_CONTINUOUS);
+    if (resource->frame_requests.continuous() || resource->frame_requests.pending())
+        arm_surface_frames(*resource);
+    else
+        disarm_surface_frames(*resource);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_request_frame(nk_handle handle) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = get_surface(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale graphics surface handle");
+    resource->frame_requests.request();
+    arm_surface_frames(*resource);
     return NK_OK;
 }
 

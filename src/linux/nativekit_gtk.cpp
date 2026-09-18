@@ -13,6 +13,7 @@
 
 #include "core/boundary.hpp"
 #include "core/error.hpp"
+#include "core/frame_request.hpp"
 #include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
 #include "core/runtime.hpp"
@@ -234,6 +235,8 @@ struct GtkSurfaceResource final : nk::core::Resource {
     nk_surface_frame_callback frame_callback = nullptr;
     void *frame_user_data = nullptr;
     guint frame_tick = 0;
+    nk::core::FrameRequestState frame_requests;
+    bool frame_render_scheduled = false;
     std::shared_ptr<GtkSurfaceResource> shared_surface;
     std::unordered_map<nk_accessibility_node_id, GtkAccessibilityNode> accessibility_nodes;
     nk_accessibility_node_id accessibility_focus = NK_ACCESSIBILITY_ROOT;
@@ -1859,6 +1862,13 @@ gboolean on_surface_tick(GtkWidget *widget, GdkFrameClock *, gpointer data) {
             resource->frame_tick = 0;
         return G_SOURCE_REMOVE;
     }
+    if (!resource->frame_requests.should_draw()) {
+        /* An idle on-demand surface stops ticking until the next request. */
+        resource->frame_tick = 0;
+        return G_SOURCE_REMOVE;
+    }
+    resource->frame_requests.begin_frame();
+    resource->frame_render_scheduled = true;
     gtk_gl_area_queue_render(GTK_GL_AREA(widget));
     return G_SOURCE_CONTINUE;
 }
@@ -1867,6 +1877,9 @@ gboolean on_surface_render(GtkGLArea *area, GdkGLContext *, gpointer data) {
     auto *resource = static_cast<GtkSurfaceResource *>(data);
     if (!resource || !nk::core::is_runtime_generation(resource->generation) ||
         !resource->frame_callback)
+        return TRUE;
+    const bool scheduled = std::exchange(resource->frame_render_scheduled, false);
+    if (!scheduled && !resource->frame_requests.continuous())
         return TRUE;
     const int scale = gtk_widget_get_scale_factor(GTK_WIDGET(area));
     nk::core::callback_boundary([&] {
@@ -1878,6 +1891,21 @@ gboolean on_surface_render(GtkGLArea *area, GdkGLContext *, gpointer data) {
                  gtk_widget_get_allocated_height(GTK_WIDGET(area)) * scale, user_data);
     });
     return TRUE;
+}
+
+void arm_surface_frames(const std::shared_ptr<GtkSurfaceResource> &resource) {
+    if (!resource || resource->frame_tick || !resource->frame_callback || !resource->widget ||
+        !nk::core::is_runtime_generation(resource->generation))
+        return;
+    resource->frame_tick =
+        gtk_widget_add_tick_callback(resource->widget, on_surface_tick, resource.get(), nullptr);
+}
+
+void disarm_surface_frames(const std::shared_ptr<GtkSurfaceResource> &resource) {
+    if (!resource || !resource->frame_tick || !resource->widget)
+        return;
+    gtk_widget_remove_tick_callback(resource->widget, resource->frame_tick);
+    resource->frame_tick = 0;
 }
 
 GdkGLContext *on_surface_create_context(GtkGLArea *area, gpointer data) {
@@ -4983,16 +5011,42 @@ nk_result NK_CALL nk_surface_set_frame_callback(nk_handle handle,
         return invalid_handle("graphics surface");
     resource->frame_callback = callback;
     resource->frame_user_data = callback ? user_data : nullptr;
-    if (resource->frame_tick) {
-        gtk_widget_remove_tick_callback(resource->widget, resource->frame_tick);
-        resource->frame_tick = 0;
-    }
+    resource->frame_render_scheduled = false;
+    disarm_surface_frames(resource);
     gtk_gl_area_set_auto_render(GTK_GL_AREA(resource->widget), FALSE);
-    if (callback) {
-        resource->frame_tick = gtk_widget_add_tick_callback(resource->widget, on_surface_tick,
-                                                            resource.get(), nullptr);
+    if (callback && (resource->frame_requests.continuous() || resource->frame_requests.pending())) {
+        arm_surface_frames(resource);
+    }
+    if (callback && resource->frame_requests.continuous()) {
         gtk_gl_area_queue_render(GTK_GL_AREA(resource->widget));
     }
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_set_frame_mode(nk_handle handle, nk_surface_frame_mode mode) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (mode != NK_SURFACE_FRAME_CONTINUOUS && mode != NK_SURFACE_FRAME_ON_DEMAND)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "unknown graphics surface frame mode");
+    auto resource = surface(handle);
+    if (!resource)
+        return invalid_handle("graphics surface");
+    resource->frame_requests.set_continuous(mode == NK_SURFACE_FRAME_CONTINUOUS);
+    if (resource->frame_requests.continuous() || resource->frame_requests.pending())
+        arm_surface_frames(resource);
+    else
+        disarm_surface_frames(resource);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_request_frame(nk_handle handle) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = surface(handle);
+    if (!resource)
+        return invalid_handle("graphics surface");
+    resource->frame_requests.request();
+    arm_surface_frames(resource);
     return NK_OK;
 }
 

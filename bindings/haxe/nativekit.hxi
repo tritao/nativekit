@@ -2133,6 +2133,21 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		NK_SURFACE_FORWARD_COMPATIBLE = 32;
 	}
 	/**
+	 * Scheduling mode of a graphics surface frame callback.
+	 */
+	enum nk_surface_frame_mode : u32 {
+		/**
+		 * The backend invokes the frame callback every vsync while one is
+		 * installed. This is the default and the mode game-loop callers expect.
+		 */
+		NK_SURFACE_FRAME_CONTINUOUS = 0;
+		/**
+		 * The backend invokes the frame callback only while a frame is requested
+		 * with nk_surface_request_frame(), and stops scheduling work while idle.
+		 */
+		NK_SURFACE_FRAME_ON_DEMAND = 1;
+	}
+	/**
 	 * Well-known directories returned by nk_system_directory().
 	 */
 	enum nk_system_directory_kind : u32 {
@@ -2590,15 +2605,18 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 */
 	extern fn nk_event_release(event: ptr<nk_event>) -> void;
 	/**
-	 * Returns the logical executor bound to the calling thread. Threads that are
-	 * not the public platform/application/render thread report NK_EXECUTOR_WORKER,
-	 * including threads used before nk_init() or after nk_shutdown().
+	 * Returns the canonical executor of the calling thread. While the platform,
+	 * application, and render executors are aliased to one thread, that thread
+	 * reports NK_EXECUTOR_APP. Threads that are not bound to a runtime, including
+	 * threads used before nk_init() or after nk_shutdown(), report
+	 * NK_EXECUTOR_WORKER.
 	 */
 	extern fn nk_executor_current() -> nk_executor;
 	/**
-	 * Reports whether the calling thread is the one that satisfies the affinity of
-	 * `executor`. NK_EXECUTOR_WORKER is satisfied by any thread while a runtime is
-	 * active, because it never implies affinity.
+	 * Reports whether the calling thread satisfies the affinity of `executor`.
+	 * While the platform, application, and render executors are aliased, the
+	 * nk_init() thread satisfies all three. NK_EXECUTOR_WORKER is satisfied by any
+	 * other thread while a runtime is active, because it never implies affinity.
 	 */
 	extern fn nk_executor_is_current(executor: nk_executor) -> nk_bool;
 	/**
@@ -3047,6 +3065,24 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 */
 	extern fn nk_surface_present(surface: nk_surface) -> nk_result;
 	/**
+	 * Records that the surface needs a frame.
+	 *
+	 * Requests coalesce: any number of calls before the next frame produce one
+	 * frame callback. The backend chooses when that frame happens (vsync,
+	 * display link, or browser animation frame) and stops scheduling work while no
+	 * request is pending. A callback that requests another frame from inside itself
+	 * keeps an animation running without re-arming anything.
+	 *
+	 * The call is a no-op for a continuous surface. Without an installed frame
+	 * callback it only records the request, so the surface draws once a callback is
+	 * installed. Call on the platform executor; native work that runs on other
+	 * threads should use nk_dispatch_to_app() first.
+	 *
+	 * @return NK_OK, NK_ERROR_INVALID_HANDLE for a stale surface, or
+	 * NK_ERROR_WRONG_THREAD off the platform executor.
+	 */
+	extern fn nk_surface_request_frame(surface: nk_surface) -> nk_result;
+	/**
 	 * Changes a surface's logical position and size within its parent.
 	 *
 	 * Width and height must be positive. The backend reports resulting framebuffer
@@ -3060,8 +3096,26 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * the framebuffer is current. Do not call nk_surface_present() recursively
 	 * from it. Pass NULL to detach it; the `user_data` value is not retained after
 	 * the callback is removed.
+	 *
+	 * Call nk_surface_set_frame_mode() with NK_SURFACE_FRAME_ON_DEMAND to render
+	 * only when the application asks for a frame instead of every vsync.
 	 */
 	extern fn nk_surface_set_frame_callback(surface: nk_surface, callback: nk_nullable_surface_frame_callback @retained, user_data: nullable<ptr<void>>) -> nk_result;
+	/**
+	 * Selects how the backend schedules an installed frame callback.
+	 *
+	 * NK_SURFACE_FRAME_CONTINUOUS is the default and keeps the callback running
+	 * every vsync. NK_SURFACE_FRAME_ON_DEMAND invokes it only while a frame is
+	 * requested, so animation and state changes must call
+	 * nk_surface_request_frame() to keep producing frames. Switching modes never
+	 * loses a request that is already pending, and switching back to continuous
+	 * resumes rendering immediately. Call on the platform executor.
+	 *
+	 * @return NK_OK, NK_ERROR_INVALID_ARGUMENT for an unknown mode,
+	 * NK_ERROR_INVALID_HANDLE for a stale surface, or
+	 * NK_ERROR_WRONG_THREAD off the platform executor.
+	 */
+	extern fn nk_surface_set_frame_mode(surface: nk_surface, mode: nk_surface_frame_mode) -> nk_result;
 	/**
 	 * Activates or deactivates custom text input for the target surface or desktop window.
 	 */
