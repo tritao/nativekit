@@ -582,6 +582,18 @@ requests another frame from inside itself keeps an animation running, so
 animations, resize handling, and UI state changes decide when to draw instead of
 forcing permanent rendering. Native callbacks on other threads route through
 `nk_dispatch_to_app()` first.
+
+Manual rendering may use explicit frame transactions instead of the
+prepare/render/present trio. `nk_surface_acquire_frame()` opens one frame,
+returns a token, and fills an `nk_surface_frame_target` that stays immutable for
+that token, so a renderer can draw against a stable snapshot even if the surface
+is resized meanwhile. `nk_surface_present_frame()` presents and closes the
+frame; `nk_surface_cancel_frame()` closes it without presenting, which is how a
+failed or empty frame releases the surface. Tokens are single-use and bound to
+their surface: a token that already ended, or whose surface was destroyed, is
+rejected with `NK_ERROR_INVALID_HANDLE`, and only one frame may be open per
+surface. Acquisition and presentation run on the platform executor, while the
+draw step is the part that will move to `NK_EXECUTOR_RENDER`.
 On iOS, the callback cadence is driven by `CADisplayLink` on the main run loop
 while the attached host is active and visible.
 On Android, the cadence is driven by `Choreographer` on the UI thread for
