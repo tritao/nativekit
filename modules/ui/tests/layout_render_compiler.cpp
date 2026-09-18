@@ -792,6 +792,34 @@ int main() {
     if (!shared_ref || !shared_ref->image || shared_ref->image->pixels[2] != 7)
         return 27;
 
+    /*
+     * The layout-session render path seals exactly this: the compiler's owned
+     * bindings. Prove they survive the builder frame and its text adapter.
+     */
+    std::shared_ptr<const SealedRenderPlan> session_sealed;
+    {
+        LayoutRenderFrame builder_frame;
+        LayoutSnapshot seal_snapshot;
+        rectangle.visible = true;
+        seal_snapshot.primitives.push_back(rectangle);
+        if (!compiler.compile(seal_snapshot, main_target, 1.5f, builder_frame, &compile_error))
+            return 61;
+        if (!builder_frame.sealable())
+            return 64;
+        RenderPlanSealError session_seal_error;
+        session_sealed = SealedRenderPlan::seal(
+            RenderPlan(builder_frame.plan()), OwnedFrameResources(builder_frame.owned_resources()),
+            &session_seal_error);
+        if (!session_sealed || session_seal_error.message)
+            return 62;
+    }
+    RecordingRenderer session_backend;
+    RenderExecutionError session_execution_error;
+    if (!execute_render_plan(session_backend, *session_sealed, {main_target, frame_target},
+                             &session_execution_error) ||
+        session_backend.pass_count == 0 || session_backend.path_count == 0)
+        return 63;
+
     std::cout << "PASS: layout snapshot compiles through NativeKit render plan\n";
     return 0;
 #endif
