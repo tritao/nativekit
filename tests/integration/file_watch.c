@@ -33,9 +33,8 @@ static int has_rename(const nk_event *event, const char *path, const char *old_p
         return 0;
     const int new_path_matches =
         memcmp((const char *)event->data + payload.path_offset, path, payload.path_length) == 0;
-    const int old_path_matches =
-        memcmp((const char *)event->data + payload.old_path_offset, old_path,
-               payload.old_path_length) == 0;
+    const int old_path_matches = memcmp((const char *)event->data + payload.old_path_offset,
+                                        old_path, payload.old_path_length) == 0;
     return new_path_matches && old_path_matches;
 }
 

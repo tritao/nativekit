@@ -217,21 +217,19 @@ nk_result complete_request(nk_plugin_instance instance, nk_request_id request, n
         set_error("the plugin request is stale, completed, or owned by another instance");
         return NK_ERROR_INVALID_REQUEST;
     }
-    return push_plugin_event(NK_EVENT_PLUGIN_COMPLETE,
-                             static_cast<nk_plugin_instance>(pending.source),
-                             static_cast<nk_service_id>(pending.operation),
-                             static_cast<nk_method_id>(pending.auxiliary), result, request, handle,
-                             payload, payload_size);
+    return push_plugin_event(
+        NK_EVENT_PLUGIN_COMPLETE, static_cast<nk_plugin_instance>(pending.source),
+        static_cast<nk_service_id>(pending.operation), static_cast<nk_method_id>(pending.auxiliary),
+        result, request, handle, payload, payload_size);
 }
 
 void cancel_plugin_requests(nk_plugin_instance instance, nk_result result) noexcept {
-    const auto canceled = instance == NK_INVALID_HANDLE
-                              ? requests().cancel_all(plugin_request_kind)
-                              : requests().cancel_source(static_cast<nk_handle>(instance),
-                                                         plugin_request_kind);
+    const auto canceled =
+        instance == NK_INVALID_HANDLE
+            ? requests().cancel_all(plugin_request_kind)
+            : requests().cancel_source(static_cast<nk_handle>(instance), plugin_request_kind);
     for (const auto &pending : canceled)
-        push_plugin_event(NK_EVENT_PLUGIN_COMPLETE,
-                          static_cast<nk_plugin_instance>(pending.source),
+        push_plugin_event(NK_EVENT_PLUGIN_COMPLETE, static_cast<nk_plugin_instance>(pending.source),
                           static_cast<nk_service_id>(pending.operation),
                           static_cast<nk_method_id>(pending.auxiliary), result, pending.id,
                           NK_INVALID_HANDLE, nullptr, 0);
@@ -266,8 +264,7 @@ void dispatch_plugin_call(const PluginCallTask &task) noexcept {
     const auto method_id = static_cast<nk_method_id>(pending.auxiliary);
     ServiceEntry service;
     if (!service_for(instance, service_id, service)) {
-        complete_request(instance, task.request, NK_ERROR_NOT_FOUND, NK_INVALID_HANDLE,
-                         nullptr, 0);
+        complete_request(instance, task.request, NK_ERROR_NOT_FOUND, NK_INVALID_HANDLE, nullptr, 0);
         return;
     }
     auto plugin = live_instance(service.instance);
@@ -307,8 +304,8 @@ void dispatch_plugin_call(const PluginCallTask &task) noexcept {
     const void *reply_payload = nullptr;
     std::uint64_t reply_size = 0;
     if (result == NK_OK) {
-        const bool valid_reply = reply.struct_size >= plugin_reply_v1_size && reply.flags == 0 &&
-                                 reply.reserved == 0;
+        const bool valid_reply =
+            reply.struct_size >= plugin_reply_v1_size && reply.flags == 0 && reply.reserved == 0;
         if (!valid_reply) {
             result = NK_ERROR_INVALID_ARGUMENT;
         } else {
@@ -331,8 +328,7 @@ void dispatch_plugin_call(const PluginCallTask &task) noexcept {
     if (result == NK_PLUGIN_PENDING)
         return;
     /* A callback is allowed to complete synchronously; do not publish twice. */
-    complete_request(instance, task.request, result, reply_handle, reply_payload,
-                     reply_size);
+    complete_request(instance, task.request, result, reply_handle, reply_payload, reply_size);
 }
 
 void NK_CALL plugin_call_trampoline(void *user_data) {
@@ -536,9 +532,7 @@ nk_result NK_CALL nk_plugin_service_register(nk_plugin_instance instance,
                     nk::core::set_error("this instance already registered that service id");
                     return NK_ERROR_INVALID_ARGUMENT;
                 }
-                auto inserted =
-                    nk::core::service_table.emplace(key, std::move(entry))
-                        .first;
+                auto inserted = nk::core::service_table.emplace(key, std::move(entry)).first;
                 inserted->second.descriptor.name =
                     inserted->second.name.empty() ? nullptr : inserted->second.name.c_str();
             }
@@ -608,11 +602,9 @@ nk_result NK_CALL nk_plugin_call(nk_plugin_instance instance, nk_service_id serv
                 return NK_ERROR_INVALID_HANDLE;
             }
             nk::core::ServiceEntry service_entry;
-            const bool service_found =
-                nk::core::service_for(instance, service, service_entry);
-            const nk_executor target = service_found
-                                           ? service_entry.descriptor.executor
-                                           : static_cast<nk_executor>(NK_EXECUTOR_APP);
+            const bool service_found = nk::core::service_for(instance, service, service_entry);
+            const nk_executor target = service_found ? service_entry.descriptor.executor
+                                                     : static_cast<nk_executor>(NK_EXECUTOR_APP);
 
             auto task = std::unique_ptr<nk::core::PluginCallTask>(new (std::nothrow)
                                                                       nk::core::PluginCallTask());
@@ -629,17 +621,15 @@ nk_result NK_CALL nk_plugin_call(nk_plugin_instance instance, nk_service_id serv
                 task->payload = std::make_shared<const std::vector<std::byte>>();
             }
             const nk_request_id request = task->request;
-            if (!nk::core::requests().begin(
-                    nk::core::PendingRequest{request, task->generation,
-                                             static_cast<nk_handle>(instance),
-                                             nk::core::plugin_request_kind, service, method}))
+            if (!nk::core::requests().begin(nk::core::PendingRequest{
+                    request, task->generation, static_cast<nk_handle>(instance),
+                    nk::core::plugin_request_kind, service, method}))
                 return (nk::core::set_error("NativeKit could not track the plugin request"),
                         NK_ERROR_OUT_OF_MEMORY);
-            const nk_result queued =
-                nk::core::dispatch_to_executor(
-                    target, &nk::core::plugin_call_trampoline, task.get(),
-                    &nk::core::plugin_task_cleanup,
-                    nk::core::plugin_call_queue_overhead + static_cast<std::size_t>(payload_size));
+            const nk_result queued = nk::core::dispatch_to_executor(
+                target, &nk::core::plugin_call_trampoline, task.get(),
+                &nk::core::plugin_task_cleanup,
+                nk::core::plugin_call_queue_overhead + static_cast<std::size_t>(payload_size));
             if (queued != NK_OK) {
                 nk::core::PendingRequest ignored;
                 nk::core::requests().take_any(request, ignored);
@@ -701,8 +691,8 @@ nk_result NK_CALL nk_plugin_emit(nk_plugin_instance instance, nk_service_id serv
             }
             {
                 std::lock_guard lock(nk::core::plugin_mutex);
-                const auto entry = nk::core::service_table.find(
-                    nk::core::ServiceKey{instance, service_id});
+                const auto entry =
+                    nk::core::service_table.find(nk::core::ServiceKey{instance, service_id});
                 if (entry == nk::core::service_table.end()) {
                     nk::core::set_error("this instance does not own that service");
                     return NK_ERROR_NOT_FOUND;
@@ -766,7 +756,8 @@ nk_result NK_CALL nk_plugin_event_query(const nk_event *event, nk_plugin_event_v
     return nk::core::result_boundary(
         "unexpected exception while decoding a plugin event", [&]() -> nk_result {
             nk::core::clear_error();
-            if (!event || !out_view || out_view->struct_size < nk::core::plugin_event_view_v1_size) {
+            if (!event || !out_view ||
+                out_view->struct_size < nk::core::plugin_event_view_v1_size) {
                 nk::core::set_error("nk_plugin_event_query needs an event and a sized "
                                     "view");
                 return NK_ERROR_INVALID_ARGUMENT;
@@ -801,9 +792,9 @@ nk_result NK_CALL nk_plugin_event_query(const nk_event *event, nk_plugin_event_v
             view.payload = header->payload_size != 0
                                ? static_cast<const std::byte *>(event->data) + header->struct_size
                                : nullptr;
-            std::memcpy(out_view, &view,
-                        std::min<std::size_t>(out_view->struct_size,
-                                              nk::core::plugin_event_view_v1_size));
+            std::memcpy(
+                out_view, &view,
+                std::min<std::size_t>(out_view->struct_size, nk::core::plugin_event_view_v1_size));
             return NK_OK;
         });
 }

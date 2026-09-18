@@ -49,10 +49,8 @@ _Static_assert(sizeof(nk_window_decoration_region) == 24,
                "window decoration region ABI layout is stable");
 _Static_assert(offsetof(nk_window_decoration_region, kind) == 16,
                "window decoration region kind offset is stable");
-_Static_assert(sizeof(nk_file_watch_options) == 24,
-               "file-watch options ABI layout is stable");
-_Static_assert(sizeof(nk_file_changed_event) == 28,
-               "file-change event ABI layout is stable");
+_Static_assert(sizeof(nk_file_watch_options) == 24, "file-watch options ABI layout is stable");
+_Static_assert(sizeof(nk_file_changed_event) == 28, "file-change event ABI layout is stable");
 _Static_assert(sizeof(nk_clipboard_watch_options) == 24,
                "clipboard-watch options ABI layout is stable");
 _Static_assert(sizeof(nk_clipboard_changed_event) == 16,
@@ -71,15 +69,16 @@ _Static_assert(NK_SURFACE_FRAME_CONTINUOUS == 0 && NK_SURFACE_FRAME_ON_DEMAND ==
 _Static_assert(NK_PLUGIN_PAYLOAD_MAX == 65536, "plugin control-plane payload limit is stable");
 _Static_assert(NK_PLUGIN_PENDING == NK_PENDING, "plugin pending result is stable");
 _Static_assert(NK_PLUGIN_BINARY_SPAN_V1_SIZE == 24, "plugin binary span v1 prefix is frozen");
-_Static_assert(NK_PLUGIN_HOST_V1_SIZE == 64, "plugin host v1 prefix is frozen");
-_Static_assert(NK_PLUGIN_DESCRIPTOR_V1_SIZE == 32,
+_Static_assert(NK_PLUGIN_HOST_V1_SIZE == (sizeof(void *) == 8 ? 64 : 36),
+               "plugin host v1 prefix is frozen for the target pointer width");
+_Static_assert(NK_PLUGIN_DESCRIPTOR_V1_SIZE == (sizeof(void *) == 8 ? 32 : 20),
                "plugin descriptor v1 prefix is frozen");
 _Static_assert(NK_PLUGIN_REPLY_V1_SIZE == 32, "plugin reply v1 prefix is frozen");
-_Static_assert(NK_PLUGIN_SERVICE_V1_SIZE == 40, "plugin service v1 prefix is frozen");
-_Static_assert(NK_PLUGIN_EVENT_DATA_V1_SIZE == 32,
-               "plugin event data v1 prefix is frozen");
-_Static_assert(NK_PLUGIN_EVENT_VIEW_V1_SIZE == 64,
-               "plugin event view v1 prefix is frozen");
+_Static_assert(NK_PLUGIN_SERVICE_V1_SIZE == (sizeof(void *) == 8 ? 40 : 28),
+               "plugin service v1 prefix is frozen for the target pointer width");
+_Static_assert(NK_PLUGIN_EVENT_DATA_V1_SIZE == 32, "plugin event data v1 prefix is frozen");
+_Static_assert(NK_PLUGIN_EVENT_VIEW_V1_SIZE == (sizeof(void *) == 8 ? 64 : 56),
+               "plugin event view v1 prefix is frozen for the target pointer width");
 _Static_assert(offsetof(nk_plugin_host, register_service) == 8,
                "plugin host function table starts after its versioned prefix");
 _Static_assert(offsetof(nk_plugin_descriptor, id) == 8,

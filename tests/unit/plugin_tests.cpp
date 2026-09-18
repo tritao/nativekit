@@ -107,9 +107,8 @@ void NK_CALL plugin_destroy(nk_plugin_instance instance) {
 int idle_plugins = 0;
 int scoped_plugin_destroys = 0;
 
-nk_result NK_CALL scoped_plugin_invoke(nk_plugin_instance, nk_method_id,
-                                       const void *, uint64_t, nk_request_id,
-                                       nk_plugin_reply *) {
+nk_result NK_CALL scoped_plugin_invoke(nk_plugin_instance, nk_method_id, const void *, uint64_t,
+                                       nk_request_id, nk_plugin_reply *) {
     return NK_OK;
 }
 
@@ -186,11 +185,17 @@ nk_plugin_event_view view_of(const nk_event &event) {
     return view;
 }
 
-nk_plugin_event_view complete(nk_request_id expected_request) {
+nk_plugin_event_view complete(nk_request_id expected_request,
+                              std::vector<std::byte> *payload_copy = nullptr) {
     nk_event event{};
     assert(poll_plugin_event(NK_EVENT_PLUGIN_COMPLETE, &event));
-    const nk_plugin_event_view view = view_of(event);
+    nk_plugin_event_view view = view_of(event);
     assert(view.request_id == expected_request);
+    if (payload_copy) {
+        payload_copy->assign(static_cast<const std::byte *>(view.payload),
+                             static_cast<const std::byte *>(view.payload) + view.payload_size);
+        view.payload = payload_copy->empty() ? nullptr : payload_copy->data();
+    }
     nk_event_release(&event);
     return view;
 }
@@ -221,8 +226,7 @@ int main() {
 
     /* The same numeric service id is valid on a different plugin instance. */
     nk_plugin_descriptor scoped_descriptor =
-        make_descriptor("dev.nativekit.test.scoped", scoped_plugin_create,
-                        scoped_plugin_destroy);
+        make_descriptor("dev.nativekit.test.scoped", scoped_plugin_create, scoped_plugin_destroy);
     nk_plugin_instance scoped_instance = NK_INVALID_HANDLE;
     assert(nk_plugin_register(&scoped_descriptor, &scoped_instance) == NK_OK);
     nk_plugin_service scoped_duplicate = make_service(echo_service);
@@ -270,7 +274,8 @@ int main() {
     const auto *bytes = reinterpret_cast<const std::byte *>(request_bytes);
     std::reverse_copy(bytes, bytes + sizeof(request_bytes), reversed.begin());
 
-    const nk_plugin_event_view echo = complete(request);
+    std::vector<std::byte> echo_payload;
+    const nk_plugin_event_view echo = complete(request, &echo_payload);
     assert(echo.instance == instance);
     assert(echo.service_id == echo_service);
     assert(echo.method_id == method_echo);
@@ -313,8 +318,8 @@ int main() {
     const std::uint8_t deferred[] = {4, 5, 6};
     nk_result callback_result = NK_ERROR_UNKNOWN;
     std::thread callback([&] {
-        callback_result = nk_plugin_complete(instance, request, NK_OK, NK_INVALID_HANDLE,
-                                             deferred, sizeof(deferred));
+        callback_result = nk_plugin_complete(instance, request, NK_OK, NK_INVALID_HANDLE, deferred,
+                                             sizeof(deferred));
     });
     callback.join();
     assert(callback_result == NK_OK);
@@ -325,10 +330,13 @@ int main() {
     assert(nk_poll_event(&deferred_event) == NK_OK);
     assert(deferred_event.kind == NK_EVENT_PLUGIN_COMPLETE);
     const nk_plugin_event_view deferred_result = view_of(deferred_event);
+    std::vector<std::byte> deferred_payload(
+        static_cast<const std::byte *>(deferred_result.payload),
+        static_cast<const std::byte *>(deferred_result.payload) + deferred_result.payload_size);
     nk_event_release(&deferred_event);
     assert(deferred_result.method_id == method_pending);
     assert(deferred_result.payload_size == sizeof(deferred));
-    assert(std::memcmp(deferred_result.payload, deferred, sizeof(deferred)) == 0);
+    assert(std::memcmp(deferred_payload.data(), deferred, sizeof(deferred)) == 0);
 
     request = NK_INVALID_REQUEST_ID;
     assert(nk_plugin_call(instance, unknown_service, method_echo, nullptr, 0, &request) == NK_OK);
@@ -340,12 +348,13 @@ int main() {
     /* The control plane is bounded; bulk data must travel as a handle. */
     std::vector<std::byte> oversize(NK_PLUGIN_PAYLOAD_MAX + 1);
     request = NK_INVALID_REQUEST_ID;
-    assert(nk_plugin_call(instance, echo_service, method_echo, oversize.data(), oversize.size(), &request) ==
-           NK_ERROR_PAYLOAD_TOO_LARGE);
+    assert(nk_plugin_call(instance, echo_service, method_echo, oversize.data(), oversize.size(),
+                          &request) == NK_ERROR_PAYLOAD_TOO_LARGE);
     assert(request == NK_INVALID_REQUEST_ID);
     assert(nk_plugin_emit(instance, echo_service, notification_ready, oversize.data(),
                           oversize.size()) == NK_ERROR_PAYLOAD_TOO_LARGE);
-    assert(nk_plugin_call(instance, 0, method_echo, nullptr, 0, &request) == NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_plugin_call(instance, 0, method_echo, nullptr, 0, &request) ==
+           NK_ERROR_INVALID_ARGUMENT);
     assert(nk_plugin_call(instance, echo_service, method_echo, nullptr, 0, nullptr) ==
            NK_ERROR_INVALID_ARGUMENT);
     assert(nk_plugin_emit(instance, secondary_service, 0, nullptr, 0) == NK_ERROR_INVALID_ARGUMENT);
@@ -359,8 +368,8 @@ int main() {
                               sizeof(notification)) == NK_OK);
         assert(nk_dispatch_to_app(&helper_task, &helper_runs) == NK_OK);
         assert(nk_dispatch_to_app(&helper_task, &helper_runs) == NK_OK);
-        assert(nk_plugin_call(instance, secondary_service, method_echo, notification, sizeof(notification),
-                              &request) == NK_OK);
+        assert(nk_plugin_call(instance, secondary_service, method_echo, notification,
+                              sizeof(notification), &request) == NK_OK);
         assert(live_state->invokes.load() == invokes_before_worker);
     });
     worker.join();

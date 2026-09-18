@@ -74,8 +74,7 @@ NK_API nk_result NK_CALL nk_file_watch_create(const nk_file_watch_options *optio
                                               nk_file_watch *out_watch NK_OUT NK_OWNED);
 
 /** Adds an absolute UTF-8 native filesystem directory to a watcher. */
-NK_API nk_result NK_CALL nk_file_watch_add_directory(nk_file_watch watch,
-                                                     const char *path NK_UTF8,
+NK_API nk_result NK_CALL nk_file_watch_add_directory(nk_file_watch watch, const char *path NK_UTF8,
                                                      nk_bool recursive);
 
 /** Removes a previously added absolute UTF-8 native filesystem directory. */

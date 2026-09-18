@@ -45,7 +45,7 @@ bool RequestRegistry::take_any(nk_request_id id, PendingRequest &out) noexcept {
 }
 
 std::vector<PendingRequest> RequestRegistry::cancel_source(nk_handle source,
-                                                            std::uint32_t kind) noexcept {
+                                                           std::uint32_t kind) noexcept {
     std::vector<PendingRequest> canceled;
     std::lock_guard lock(mutex_);
     try {

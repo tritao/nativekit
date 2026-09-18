@@ -1482,8 +1482,7 @@ struct ClipboardWatchResource final : nk::core::Resource {
     }
 
     void changed(GdkEventOwnerChange *native_event) {
-        if (stopped.load(std::memory_order_acquire) ||
-            !nk::core::is_runtime_generation(generation))
+        if (stopped.load(std::memory_order_acquire) || !nk::core::is_runtime_generation(generation))
             return;
         nk_clipboard_changed_event payload{};
         payload.sequence = clipboard_watch_sequence.fetch_add(1, std::memory_order_relaxed) + 1;
@@ -1493,11 +1492,11 @@ struct ClipboardWatchResource final : nk::core::Resource {
             if (gtk_clipboard_wait_is_target_available(
                     clipboard, gdk_atom_intern_static_string("text/uri-list")))
                 payload.formats |= NK_CLIPBOARD_FORMAT_FILES;
-            if (gtk_clipboard_wait_is_target_available(
-                    clipboard, gdk_atom_intern_static_string("text/html")))
+            if (gtk_clipboard_wait_is_target_available(clipboard,
+                                                       gdk_atom_intern_static_string("text/html")))
                 payload.formats |= NK_CLIPBOARD_FORMAT_HTML;
-            if (gtk_clipboard_wait_is_target_available(
-                    clipboard, gdk_atom_intern_static_string("image/png")))
+            if (gtk_clipboard_wait_is_target_available(clipboard,
+                                                       gdk_atom_intern_static_string("image/png")))
                 payload.formats |= NK_CLIPBOARD_FORMAT_IMAGE;
         }
         if (!native_event || !native_event->owner)
@@ -3479,8 +3478,7 @@ nk_result clipboard_watch_start(const nk_clipboard_watch_options *options,
 }
 
 nk_result clipboard_watch_stop(nk_clipboard_watch watch) noexcept {
-    const auto resource =
-        nk::core::handles().get(watch, nk::core::ResourceType::clipboard_watch);
+    const auto resource = nk::core::handles().get(watch, nk::core::ResourceType::clipboard_watch);
     if (!resource) {
         nk::core::set_error("invalid clipboard-watch handle");
         return NK_ERROR_INVALID_HANDLE;

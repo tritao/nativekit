@@ -343,13 +343,13 @@ int main() {
     nk::core::QueuedEvent file_first;
     file_first.kind = NK_EVENT_FILE_CHANGED;
     file_first.source = first;
-    nk_file_changed_event file_header{NK_FILE_CHANGE_MODIFIED, NK_FILE_ITEM_FILE, 0,
-                                      sizeof(nk_file_changed_event), 9, 0, 0};
+    nk_file_changed_event file_header{
+        NK_FILE_CHANGE_MODIFIED, NK_FILE_ITEM_FILE, 0, sizeof(nk_file_changed_event), 9, 0, 0};
     const char file_path[] = "/tmp/item";
     const auto *file_begin = reinterpret_cast<const std::byte *>(&file_header);
     file_first.data.assign(file_begin, file_begin + sizeof(file_header));
     file_first.data.insert(file_first.data.end(), reinterpret_cast<const std::byte *>(file_path),
-                            reinterpret_cast<const std::byte *>(file_path) + sizeof(file_path));
+                           reinterpret_cast<const std::byte *>(file_path) + sizeof(file_path));
     nk::core::QueuedEvent file_latest = file_first;
     assert(file_queue.push(std::move(file_first)) == NK_OK);
     assert(file_queue.push(std::move(file_latest)) == NK_OK);

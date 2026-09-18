@@ -30,11 +30,10 @@ class RequestRegistry final {
   public:
     bool begin(PendingRequest request) noexcept;
     bool get(nk_request_id id, PendingRequest &out) const noexcept;
-    bool take(nk_request_id id, nk_handle source, std::uint32_t kind,
-              std::uint64_t generation, PendingRequest &out) noexcept;
+    bool take(nk_request_id id, nk_handle source, std::uint32_t kind, std::uint64_t generation,
+              PendingRequest &out) noexcept;
     bool take_any(nk_request_id id, PendingRequest &out) noexcept;
-    std::vector<PendingRequest> cancel_source(nk_handle source,
-                                              std::uint32_t kind) noexcept;
+    std::vector<PendingRequest> cancel_source(nk_handle source, std::uint32_t kind) noexcept;
     std::vector<PendingRequest> cancel_all(std::uint32_t kind) noexcept;
     void clear() noexcept;
 

@@ -2391,11 +2391,10 @@ bool UiRendererImpl::endFrame() {
     if (state_->recording) {
         const bool sealed = gpu_result(*state_, nkgpu_batch_seal(state_->batch));
         const bool submitted =
-            sealed && gpu_result(
-                          *state_, nkgpu_batch_submit(state_->renderer, state_->batch,
-                                                      state_->has_frame_target
-                                                          ? &state_->frame_target
-                                                          : nullptr));
+            sealed &&
+            gpu_result(*state_, nkgpu_batch_submit(state_->renderer, state_->batch,
+                                                   state_->has_frame_target ? &state_->frame_target
+                                                                            : nullptr));
         /* The batch is always released, including after a failed submission. */
         nkgpu_batch_destroy(state_->batch);
         state_->batch = {};

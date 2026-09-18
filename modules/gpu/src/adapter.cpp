@@ -350,8 +350,8 @@ static nkgpu_result activate_renderer(Handle handle,
     nk_surface_frame_target target = provided_target ? *provided_target : nk_surface_frame_target{};
     if (!provided_target)
         target.struct_size = sizeof(target);
-    const bool target_available = provided_target ||
-                                  (nk_surface_get_frame_target(slot->value.surface, &target) == NK_OK);
+    const bool target_available =
+        provided_target || (nk_surface_get_frame_target(slot->value.surface, &target) == NK_OK);
     if (target_available && target.device.id &&
         (target.api != slot->value.graphics_api || target.device.id != slot->value.device.id)) {
         ++slot->value.surface_recreations;
@@ -364,8 +364,7 @@ static nkgpu_result activate_renderer(Handle handle,
     return NKGPU_OK;
 }
 
-static nkgpu_result begin_frame_with_target(Handle handle,
-                                            const nk_surface_frame_target &target) {
+static nkgpu_result begin_frame_with_target(Handle handle, const nk_surface_frame_target &target) {
     auto *slot = renderer_pool.get(handle);
     if (!slot)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
@@ -1990,9 +1989,8 @@ nkgpu_result nkgpu_begin_window_pass(nkgpu_renderer h, uint32_t width, uint32_t 
     const nkgpu_result activated = activate_renderer(h);
     if (activated != NKGPU_OK)
         return activated;
-    nk_surface_frame_target target = s->value.has_frame_target
-                                         ? s->value.frame_target
-                                         : nk_surface_frame_target{};
+    nk_surface_frame_target target =
+        s->value.has_frame_target ? s->value.frame_target : nk_surface_frame_target{};
     if (!s->value.has_frame_target) {
         target.struct_size = sizeof(target);
         if (nk_surface_get_frame_target(s->value.surface, &target) != NK_OK)
@@ -2982,7 +2980,7 @@ nkgpu_result nkgpu_batch_seal(nkgpu_batch batch) {
 }
 
 nkgpu_result nkgpu_batch_submit(nkgpu_renderer renderer, nkgpu_batch batch,
-                               const nk_surface_frame_target *frame_target) {
+                                const nk_surface_frame_target *frame_target) {
     auto *rs = renderer_pool.get(renderer);
     auto *bs = batch_pool.get(batch);
     if (!rs || !bs)

@@ -75,10 +75,10 @@ struct FileWatchResource final : nk::core::Resource {
                 return NK_OK;
             }
         }
-        const auto watch_descriptor = inotify_add_watch(
-            descriptor, path.c_str(), IN_CREATE | IN_DELETE | IN_MODIFY | IN_ATTRIB |
-                                      IN_MOVED_FROM | IN_MOVED_TO | IN_DELETE_SELF | IN_MOVE_SELF |
-                                      IN_CLOSE_WRITE);
+        const auto watch_descriptor =
+            inotify_add_watch(descriptor, path.c_str(),
+                              IN_CREATE | IN_DELETE | IN_MODIFY | IN_ATTRIB | IN_MOVED_FROM |
+                                  IN_MOVED_TO | IN_DELETE_SELF | IN_MOVE_SELF | IN_CLOSE_WRITE);
         if (watch_descriptor < 0) {
             if (errno == ENOENT || errno == ENOTDIR || errno == EACCES)
                 return NK_ERROR_INVALID_ARGUMENT;
@@ -99,8 +99,9 @@ struct FileWatchResource final : nk::core::Resource {
         auto result = add_one_locked(path, recursive);
         if (result != NK_OK || !recursive)
             return result;
-        for (std::filesystem::recursive_directory_iterator iterator(
-                 path, std::filesystem::directory_options::skip_permission_denied, error), end;
+        for (std::filesystem::recursive_directory_iterator
+                 iterator(path, std::filesystem::directory_options::skip_permission_denied, error),
+             end;
              iterator != end && !error; iterator.increment(error)) {
             if (iterator->is_directory(error) && !error) {
                 result = add_one_locked(iterator->path().lexically_normal().string(), true);
@@ -120,10 +121,9 @@ struct FileWatchResource final : nk::core::Resource {
         std::lock_guard lock(mutex);
         std::vector<int> removals;
         for (const auto &[watch_descriptor, directory] : directories) {
-            if (directory.path == path ||
-                (directory.path.size() > path.size() &&
-                 directory.path.compare(0, path.size(), path) == 0 &&
-                 directory.path[path.size()] == '/'))
+            if (directory.path == path || (directory.path.size() > path.size() &&
+                                           directory.path.compare(0, path.size(), path) == 0 &&
+                                           directory.path[path.size()] == '/'))
                 removals.push_back(watch_descriptor);
         }
         if (removals.empty()) {
@@ -146,9 +146,8 @@ struct FileWatchResource final : nk::core::Resource {
         header.flags = flags;
         header.path_offset = path.empty() ? 0u : static_cast<uint32_t>(sizeof(header));
         header.path_length = static_cast<uint32_t>(path.size());
-        header.old_path_offset = old_path.empty()
-                                     ? 0u
-                                     : header.path_offset + header.path_length + 1u;
+        header.old_path_offset =
+            old_path.empty() ? 0u : header.path_offset + header.path_length + 1u;
         header.old_path_length = static_cast<uint32_t>(old_path.size());
         std::size_t size = sizeof(header);
         if (!path.empty())
@@ -195,8 +194,9 @@ struct FileWatchResource final : nk::core::Resource {
         if (add_one_locked(path, true) != NK_OK)
             return;
         std::error_code error;
-        for (std::filesystem::recursive_directory_iterator iterator(
-                 path, std::filesystem::directory_options::skip_permission_denied, error), end;
+        for (std::filesystem::recursive_directory_iterator
+                 iterator(path, std::filesystem::directory_options::skip_permission_denied, error),
+             end;
              iterator != end && !error; iterator.increment(error))
             if (iterator->is_directory(error) && !error)
                 add_one_locked(iterator->path().lexically_normal().string(), true);
@@ -374,8 +374,8 @@ nk_result file_watch_add_directory(nk_file_watch watch, const char *path,
             nk::core::set_error("invalid file-watch handle");
             return NK_ERROR_INVALID_HANDLE;
         }
-        return std::static_pointer_cast<FileWatchResource>(resource)->add_directory(
-            path, recursive != 0);
+        return std::static_pointer_cast<FileWatchResource>(resource)->add_directory(path,
+                                                                                    recursive != 0);
     } catch (const std::bad_alloc &) {
         nk::core::set_error("out of memory while adding file-watch directory");
         return NK_ERROR_OUT_OF_MEMORY;

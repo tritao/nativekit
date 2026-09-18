@@ -440,15 +440,6 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_batch_seal(batch: nkgpu_batch) -> nkgpu_result;
 	/**
-	 * Binds the render-side context represented by an acquired frame target.
-	 *
-	 * This is currently a validated no-op while RENDER aliases PLATFORM. The
-	 * stable seam for a future physical render thread: GL targets will carry the
-	 * backend context token in `native_context`, and the GPU backend will bind that
-	 * context here without changing batch or surface ABI signatures.
-	 */
-	extern fn nkgpu_bind_frame_target(frame_target: ptr<const<nk_surface_frame_target>>) -> nkgpu_result;
-	/**
 	 * Replays a sealed batch on its owning renderer against an already-acquired
 	 * immutable frame target.
 	 *
@@ -456,11 +447,11 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * nk_surface_get_frame_target(). The caller acquires the target on the
 	 * platform executor, passes the immutable snapshot here on the render
 	 * executor, and presents or cancels the associated frame afterwards. The
-	 * batch must belong to `renderer` and that renderer must have no active frame.
-	 * Retained resources stay valid for the whole submission even if the caller
-	 * destroyed its own handles, and a batch that fails validation is rejected
-	 * before any GPU state changes. A sealed batch may be submitted more than
-	 * once.
+	 * batch must belong to
+	 * `renderer` and that renderer must have no active frame. Retained resources
+	 * stay valid for the whole submission even if the caller destroyed its own
+	 * handles, and a batch that fails validation is rejected before any GPU state
+	 * changes. A sealed batch may be submitted more than once.
 	 */
 	extern fn nkgpu_batch_submit(renderer: nkgpu_renderer, batch: nkgpu_batch, frame_target: ptr<const<nk_surface_frame_target>>) -> nkgpu_result;
 	/**
@@ -486,6 +477,16 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * Begins a window-surface pass inside a frame.
 	 */
 	extern fn nkgpu_begin_window_pass(renderer: nkgpu_renderer, width: u32, height: u32, clear: u32) -> nkgpu_result;
+	/**
+	 * Binds the render-side context represented by an acquired frame target.
+	 *
+	 * This must be called on the render executor. It is currently a validated
+	 * no-op while RENDER aliases PLATFORM. It is the
+	 * stable seam for a future physical render thread: GL targets will carry the
+	 * backend context token in `native_context`, and the GPU backend will bind that
+	 * context here without changing batch or surface ABI signatures.
+	 */
+	extern fn nkgpu_bind_frame_target(frame_target: ptr<const<nk_surface_frame_target>>) -> nkgpu_result;
 	/**
 	 * Appends bytes to a stream buffer and returns their byte offset.
 	 */

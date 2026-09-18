@@ -13,8 +13,7 @@ nk_result enter_ui() {
     return nk::core::require_ui_thread();
 }
 
-bool valid_options(const nk_clipboard_watch_options *options,
-                  nk_clipboard_watch *out_watch) {
+bool valid_options(const nk_clipboard_watch_options *options, nk_clipboard_watch *out_watch) {
     return options && out_watch &&
            options->struct_size >= offsetof(nk_clipboard_watch_options, reserved) &&
            options->flags == 0;
@@ -56,12 +55,11 @@ nk_result NK_CALL nk_clipboard_watch_start(const nk_clipboard_watch_options *opt
 }
 
 nk_result NK_CALL nk_clipboard_watch_stop(nk_clipboard_watch watch) {
-    return nk::core::result_boundary(
-        "unexpected error while stopping clipboard watcher", [&]() -> nk_result {
-            if (const auto result = enter_ui(); result != NK_OK)
-                return result;
-            return nk::backend::clipboard_watch_stop(watch);
-        });
+    return nk::core::result_boundary("unexpected error while stopping clipboard watcher",
+                                     [&]() -> nk_result {
+                                         if (const auto result = enter_ui(); result != NK_OK)
+                                             return result;
+                                         return nk::backend::clipboard_watch_stop(watch);
+                                     });
 }
-
 }

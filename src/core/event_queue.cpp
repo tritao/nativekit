@@ -80,8 +80,7 @@ EventQueue::EventQueue(std::size_t capacity, std::size_t byte_capacity)
 nk_result EventQueue::push(QueuedEvent event) {
     std::lock_guard lock(mutex_);
     const std::size_t event_bytes = event.data.size();
-    if (event_bytes > byte_capacity_ ||
-        queued_bytes_ > byte_capacity_ - event_bytes)
+    if (event_bytes > byte_capacity_ || queued_bytes_ > byte_capacity_ - event_bytes)
         if (!is_terminal_request_event(event))
             return NK_ERROR_QUEUE_FULL;
     if (is_coalescible(event.kind) && !queue_.empty()) {

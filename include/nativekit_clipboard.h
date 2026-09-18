@@ -84,9 +84,8 @@ typedef struct nk_clipboard_changed_event {
 } nk_clipboard_changed_event;
 
 /** Starts clipboard observation without emitting an initial event. */
-NK_API nk_result NK_CALL nk_clipboard_watch_start(
-    const nk_clipboard_watch_options *options,
-    nk_clipboard_watch *out_watch NK_OUT NK_OWNED);
+NK_API nk_result NK_CALL nk_clipboard_watch_start(const nk_clipboard_watch_options *options,
+                                                  nk_clipboard_watch *out_watch NK_OUT NK_OWNED);
 
 /** Stops clipboard observation and unregisters native listeners. */
 NK_API nk_result NK_CALL nk_clipboard_watch_stop(nk_clipboard_watch watch);

@@ -83,7 +83,7 @@ typedef struct nk_binary_span {
 } nk_binary_span;
 
 /** Frozen v1 prefix size; future fields must be appended after this boundary. */
-#define NK_PLUGIN_BINARY_SPAN_V1_SIZE \
+#define NK_PLUGIN_BINARY_SPAN_V1_SIZE                                                              \
     ((uint32_t)(offsetof(nk_binary_span, size) + sizeof(((nk_binary_span *)0)->size)))
 
 /* ------------------------------------------------------------------------- */
@@ -127,8 +127,8 @@ typedef struct nk_plugin_host {
 } nk_plugin_host;
 
 /** Frozen v1 prefix size; future fields must be appended after this boundary. */
-#define NK_PLUGIN_HOST_V1_SIZE \
-    ((uint32_t)(offsetof(nk_plugin_host, complete_request) + \
+#define NK_PLUGIN_HOST_V1_SIZE                                                                     \
+    ((uint32_t)(offsetof(nk_plugin_host, complete_request) +                                       \
                 sizeof(((nk_plugin_host *)0)->complete_request)))
 
 /**
@@ -169,8 +169,8 @@ typedef struct nk_plugin_descriptor {
 } nk_plugin_descriptor;
 
 /** Frozen v1 prefix size; future fields must be appended after this boundary. */
-#define NK_PLUGIN_DESCRIPTOR_V1_SIZE \
-    ((uint32_t)(offsetof(nk_plugin_descriptor, destroy) + \
+#define NK_PLUGIN_DESCRIPTOR_V1_SIZE                                                               \
+    ((uint32_t)(offsetof(nk_plugin_descriptor, destroy) +                                          \
                 sizeof(((nk_plugin_descriptor *)0)->destroy)))
 
 /* ------------------------------------------------------------------------- */
@@ -202,8 +202,8 @@ typedef struct nk_plugin_reply {
 } nk_plugin_reply;
 
 /** Frozen v1 prefix size; future fields must be appended after this boundary. */
-#define NK_PLUGIN_REPLY_V1_SIZE \
-    ((uint32_t)(offsetof(nk_plugin_reply, payload_size) + \
+#define NK_PLUGIN_REPLY_V1_SIZE                                                                    \
+    ((uint32_t)(offsetof(nk_plugin_reply, payload_size) +                                          \
                 sizeof(((nk_plugin_reply *)0)->payload_size)))
 
 /**
@@ -247,7 +247,7 @@ struct nk_plugin_service {
 };
 
 /** Frozen v1 prefix size; future fields must be appended after this boundary. */
-#define NK_PLUGIN_SERVICE_V1_SIZE \
+#define NK_PLUGIN_SERVICE_V1_SIZE                                                                  \
     ((uint32_t)(offsetof(nk_plugin_service, invoke) + sizeof(((nk_plugin_service *)0)->invoke)))
 
 /* ------------------------------------------------------------------------- */
@@ -334,8 +334,8 @@ NK_API nk_result NK_CALL nk_plugin_service_unregister(nk_plugin_instance instanc
  *         the routed task cannot be queued.
  */
 NK_API nk_result NK_CALL nk_plugin_call(nk_plugin_instance instance, nk_service_id service,
-                                        nk_method_id method,
-                                        const void *NK_NULLABLE payload, uint64_t payload_size,
+                                        nk_method_id method, const void *NK_NULLABLE payload,
+                                        uint64_t payload_size,
                                         nk_request_id *out_request_id NK_OUT);
 
 /**
@@ -346,10 +346,9 @@ NK_API nk_result NK_CALL nk_plugin_call(nk_plugin_instance instance, nk_service_
  * completion event, and rejects duplicate, late, stale-generation, or
  * instance-mismatched completions with NK_ERROR_INVALID_REQUEST.
  */
-NK_API nk_result NK_CALL nk_plugin_complete(nk_plugin_instance instance,
-                                            nk_request_id request_id, nk_result result,
-                                            nk_handle handle, const void *NK_NULLABLE payload,
-                                            uint64_t payload_size);
+NK_API nk_result NK_CALL nk_plugin_complete(nk_plugin_instance instance, nk_request_id request_id,
+                                            nk_result result, nk_handle handle,
+                                            const void *NK_NULLABLE payload, uint64_t payload_size);
 
 /**
  * Emits an unsolicited notification from a plugin to the application.
@@ -420,8 +419,8 @@ typedef struct nk_plugin_event_data {
 } nk_plugin_event_data;
 
 /** Frozen v1 prefix size; future fields must be appended after this boundary. */
-#define NK_PLUGIN_EVENT_DATA_V1_SIZE \
-    ((uint32_t)(offsetof(nk_plugin_event_data, payload_size) + \
+#define NK_PLUGIN_EVENT_DATA_V1_SIZE                                                               \
+    ((uint32_t)(offsetof(nk_plugin_event_data, payload_size) +                                     \
                 sizeof(((nk_plugin_event_data *)0)->payload_size)))
 
 /**
@@ -454,8 +453,8 @@ typedef struct nk_plugin_event_view {
 } nk_plugin_event_view;
 
 /** Frozen v1 prefix size; future fields must be appended after this boundary. */
-#define NK_PLUGIN_EVENT_VIEW_V1_SIZE \
-    ((uint32_t)(offsetof(nk_plugin_event_view, payload_size) + \
+#define NK_PLUGIN_EVENT_VIEW_V1_SIZE                                                               \
+    ((uint32_t)(offsetof(nk_plugin_event_view, payload_size) +                                     \
                 sizeof(((nk_plugin_event_view *)0)->payload_size)))
 
 /**

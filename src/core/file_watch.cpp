@@ -15,8 +15,7 @@ nk_result enter_ui() {
 
 bool valid_options(const nk_file_watch_options *options, nk_file_watch *out_watch) {
     return options && out_watch &&
-           options->struct_size >= offsetof(nk_file_watch_options, reserved) &&
-           options->flags == 0;
+           options->struct_size >= offsetof(nk_file_watch_options, reserved) && options->flags == 0;
 }
 
 } // namespace
@@ -51,17 +50,17 @@ extern "C" {
 
 nk_result NK_CALL nk_file_watch_create(const nk_file_watch_options *options,
                                        nk_file_watch *out_watch) {
-    return nk::core::result_boundary(
-        "unexpected error while creating file watcher", [&]() -> nk_result {
-            if (const auto result = enter_ui(); result != NK_OK)
-                return result;
-            if (!valid_options(options, out_watch)) {
-                nk::core::set_error("invalid file-watch options");
-                return NK_ERROR_INVALID_ARGUMENT;
-            }
-            *out_watch = NK_INVALID_HANDLE;
-            return nk::backend::file_watch_create(options, out_watch);
-        });
+    return nk::core::result_boundary("unexpected error while creating file watcher",
+                                     [&]() -> nk_result {
+                                         if (const auto result = enter_ui(); result != NK_OK)
+                                             return result;
+                                         if (!valid_options(options, out_watch)) {
+                                             nk::core::set_error("invalid file-watch options");
+                                             return NK_ERROR_INVALID_ARGUMENT;
+                                         }
+                                         *out_watch = NK_INVALID_HANDLE;
+                                         return nk::backend::file_watch_create(options, out_watch);
+                                     });
 }
 
 nk_result NK_CALL nk_file_watch_add_directory(nk_file_watch watch, const char *path,
@@ -84,12 +83,11 @@ nk_result NK_CALL nk_file_watch_remove_directory(nk_file_watch watch, const char
 }
 
 nk_result NK_CALL nk_file_watch_destroy(nk_file_watch watch) {
-    return nk::core::result_boundary(
-        "unexpected error while destroying file watcher", [&]() -> nk_result {
-            if (const auto result = enter_ui(); result != NK_OK)
-                return result;
-            return nk::backend::file_watch_destroy(watch);
-        });
+    return nk::core::result_boundary("unexpected error while destroying file watcher",
+                                     [&]() -> nk_result {
+                                         if (const auto result = enter_ui(); result != NK_OK)
+                                             return result;
+                                         return nk::backend::file_watch_destroy(watch);
+                                     });
 }
-
 }

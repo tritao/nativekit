@@ -1037,8 +1037,7 @@ NKGPU_API nkgpu_result nkgpu_batch_seal(nkgpu_batch batch);
  * backend context token in `native_context`, and the GPU backend will bind that
  * context here without changing batch or surface ABI signatures.
  */
-NKGPU_API nkgpu_result nkgpu_bind_frame_target(
-    const nk_surface_frame_target *frame_target);
+NKGPU_API nkgpu_result nkgpu_bind_frame_target(const nk_surface_frame_target *frame_target);
 
 /**
  * Replays a sealed batch on its owning renderer against an already-acquired
@@ -1054,11 +1053,10 @@ NKGPU_API nkgpu_result nkgpu_bind_frame_target(
  * handles, and a batch that fails validation is rejected before any GPU state
  * changes. A sealed batch may be submitted more than once.
  */
-NKGPU_API nkgpu_result nkgpu_batch_submit(
-    nkgpu_renderer renderer, nkgpu_batch batch,
-    const nk_surface_frame_target *frame_target
+NKGPU_API nkgpu_result nkgpu_batch_submit(nkgpu_renderer renderer, nkgpu_batch batch,
+                                          const nk_surface_frame_target *frame_target
 #ifdef __cplusplus
-    = nullptr
+                                          = nullptr
 #endif
 );
 
