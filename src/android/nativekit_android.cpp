@@ -1118,9 +1118,8 @@ nk_result list(std::vector<SensorBackendDescriptor> &out) noexcept {
     try {
         out.clear();
         constexpr nk_sensor_type types[] = {
-            NK_SENSOR_ACCELEROMETER,       NK_SENSOR_GYROSCOPE,
-            NK_SENSOR_MAGNETOMETER,        NK_SENSOR_GRAVITY,
-            NK_SENSOR_LINEAR_ACCELERATION, NK_SENSOR_ROTATION_VECTOR};
+            NK_SENSOR_ACCELEROMETER, NK_SENSOR_GYROSCOPE,           NK_SENSOR_MAGNETOMETER,
+            NK_SENSOR_GRAVITY,       NK_SENSOR_LINEAR_ACCELERATION, NK_SENSOR_ROTATION_VECTOR};
         for (const auto type : types) {
             const auto native_type = android_sensor_type(type);
             if (!native_type)
@@ -1142,8 +1141,7 @@ nk_result list(std::vector<SensorBackendDescriptor> &out) noexcept {
     }
 }
 
-nk_result start(nk_sensor sensor, nk_sensor_type type,
-                const nk_sensor_options &options) noexcept {
+nk_result start(nk_sensor sensor, nk_sensor_type type, const nk_sensor_options &options) noexcept {
     const auto native_type = android_sensor_type(type);
     if (!native_type)
         return NK_ERROR_UNSUPPORTED;
@@ -1208,8 +1206,7 @@ nk_result stop_vibration() noexcept {
     return accepted ? NK_OK : NK_ERROR_UNSUPPORTED;
 }
 
-nk_result gamepad_rumble(nk_joystick handle,
-                         const nk_gamepad_rumble_options &options) noexcept {
+nk_result gamepad_rumble(nk_joystick handle, const nk_gamepad_rumble_options &options) noexcept {
     const auto resource = joystick(handle);
     if (!resource)
         return NK_ERROR_INVALID_HANDLE;
@@ -3517,9 +3514,11 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnGamepadDisconne
     joysticks.erase(found);
 }
 
-JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnSensor(
-    JNIEnv *, jclass, jlong handle_value, jint type, jfloat x, jfloat y, jfloat z, jfloat w,
-    jint accuracy) {
+JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnSensor(JNIEnv *, jclass,
+                                                                        jlong handle_value,
+                                                                        jint type, jfloat x,
+                                                                        jfloat y, jfloat z,
+                                                                        jfloat w, jint accuracy) {
     nk_sensor_type native_type = 0;
     switch (type) {
     case 1:
@@ -3543,12 +3542,11 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnSensor(
     default:
         return;
     }
-    const nk_sensor_accuracy native_accuracy =
-        accuracy < 0 ? NK_SENSOR_ACCURACY_UNAVAILABLE
-        : accuracy == 0 ? NK_SENSOR_ACCURACY_UNRELIABLE
-        : accuracy == 1 ? NK_SENSOR_ACCURACY_LOW
-        : accuracy == 2 ? NK_SENSOR_ACCURACY_MEDIUM
-                        : NK_SENSOR_ACCURACY_HIGH;
+    const nk_sensor_accuracy native_accuracy = accuracy < 0    ? NK_SENSOR_ACCURACY_UNAVAILABLE
+                                               : accuracy == 0 ? NK_SENSOR_ACCURACY_UNRELIABLE
+                                               : accuracy == 1 ? NK_SENSOR_ACCURACY_LOW
+                                               : accuracy == 2 ? NK_SENSOR_ACCURACY_MEDIUM
+                                                               : NK_SENSOR_ACCURACY_HIGH;
     const float values[4] = {x, y, z, w};
     nk::core::sensor_publish(static_cast<nk_sensor>(handle_value), native_type, values,
                              native_accuracy);

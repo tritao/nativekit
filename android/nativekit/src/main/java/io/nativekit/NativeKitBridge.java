@@ -133,8 +133,9 @@ final class NativeKitBridge {
     private static Context sensorContext;
     private static final Map<Integer, Long> sensorHandles = new HashMap<>();
     private static final Map<Integer, Sensor> activeSensors = new HashMap<>();
-    private static final Handler sensorHandler = new Handler(Looper.getMainLooper());
-    private static final Handler vibrationHandler = new Handler(Looper.getMainLooper());
+    // Keep Android-only handler creation lazy.  NativeKitBridge also contains pure JVM helpers
+    // that are exercised without an Android Looper during unit tests.
+    private static Handler mainHandler;
     private static Runnable vibrationStop;
     private static final SensorEventListener sensorListener = new SensorEventListener() {
         @Override
@@ -155,6 +156,16 @@ final class NativeKitBridge {
 
     private NativeKitBridge() {}
 
+    private static synchronized Handler mainHandler() {
+        if (mainHandler == null) {
+            Looper looper = Looper.getMainLooper();
+            if (looper == null)
+                return null;
+            mainHandler = new Handler(looper);
+        }
+        return mainHandler;
+    }
+
     private static void ensureSensors(Context context) {
         if (sensorManager == null && context != null) {
             sensorContext = context.getApplicationContext();
@@ -174,6 +185,9 @@ final class NativeKitBridge {
         Sensor sensor = sensorManager.getDefaultSensor(type);
         if (sensor == null)
             return false;
+        Handler handler = mainHandler();
+        if (handler == null)
+            return false;
         int periodUs = intervalNanos <= 0 ? 20000
                                           : (int)Math.max(1, Math.min(Integer.MAX_VALUE,
                                               intervalNanos / 1000L));
@@ -182,7 +196,7 @@ final class NativeKitBridge {
         sensorHandles.put(type, handle);
         activeSensors.put(type, sensor);
         final boolean registered = sensorManager.registerListener(sensorListener, sensor, periodUs,
-                                                                   latencyUs, sensorHandler);
+                                                                   latencyUs, handler);
         if (!registered) {
             sensorHandles.remove(type);
             activeSensors.remove(type);
@@ -222,6 +236,9 @@ final class NativeKitBridge {
         Vibrator vibrator = (Vibrator)sensorContext.getSystemService(Context.VIBRATOR_SERVICE);
         if (vibrator == null || !vibrator.hasVibrator())
             return false;
+        Handler handler = mainHandler();
+        if (handler == null)
+            return false;
         int amplitude = Math.max(1, Math.min(255, Math.round(intensity * 255f)));
         if (Build.VERSION.SDK_INT >= 26) {
             VibrationEffect effect;
@@ -238,9 +255,9 @@ final class NativeKitBridge {
             vibrator.vibrate(durationMs);
         }
         if (vibrationStop != null)
-            vibrationHandler.removeCallbacks(vibrationStop);
+            handler.removeCallbacks(vibrationStop);
         vibrationStop = vibrator::cancel;
-        vibrationHandler.postDelayed(vibrationStop, durationMs);
+        handler.postDelayed(vibrationStop, durationMs);
         return true;
     }
 
@@ -250,8 +267,11 @@ final class NativeKitBridge {
         Vibrator vibrator = (Vibrator)sensorContext.getSystemService(Context.VIBRATOR_SERVICE);
         if (vibrator == null)
             return false;
+        Handler handler = mainHandler();
+        if (handler == null)
+            return false;
         if (vibrationStop != null)
-            vibrationHandler.removeCallbacks(vibrationStop);
+            handler.removeCallbacks(vibrationStop);
         vibrator.cancel();
         return true;
     }

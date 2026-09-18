@@ -94,8 +94,7 @@ NK_API nk_result NK_CALL nk_sensor_list(nk_sensor *sensors, uint32_t *inout_coun
 /** Returns static information for an enumerated sensor. */
 NK_API nk_result NK_CALL nk_sensor_get_info(nk_sensor sensor, nk_sensor_info *out_info NK_OUT);
 /** Starts a sensor with the requested sampling configuration. */
-NK_API nk_result NK_CALL nk_sensor_start(nk_sensor sensor,
-                                         const nk_sensor_options *options);
+NK_API nk_result NK_CALL nk_sensor_start(nk_sensor sensor, const nk_sensor_options *options);
 /** Stops a sensor; its last sample remains queryable until the next start. */
 NK_API nk_result NK_CALL nk_sensor_stop(nk_sensor sensor);
 /** Returns the latest sample after a sensor has been started. */

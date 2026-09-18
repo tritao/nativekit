@@ -566,11 +566,14 @@ void shutdown() noexcept {
 
 namespace nk::core::haptics_backend {
 
-nk_result vibrate(const nk_haptic_vibration &) noexcept { return NK_ERROR_UNSUPPORTED; }
-nk_result stop_vibration() noexcept { return NK_ERROR_UNSUPPORTED; }
+nk_result vibrate(const nk_haptic_vibration &) noexcept {
+    return NK_ERROR_UNSUPPORTED;
+}
+nk_result stop_vibration() noexcept {
+    return NK_ERROR_UNSUPPORTED;
+}
 
-nk_result gamepad_rumble(nk_joystick handle,
-                         const nk_gamepad_rumble_options &options) noexcept {
+nk_result gamepad_rumble(nk_joystick handle, const nk_gamepad_rumble_options &options) noexcept {
     const auto device = lookup(handle);
     if (!device)
         return NK_ERROR_INVALID_HANDLE;
@@ -586,10 +589,8 @@ nk_result gamepad_rumble(nk_joystick handle,
     effect.type = FF_RUMBLE;
     effect.id = static_cast<short>(device->rumble_effect);
     effect.replay.length = static_cast<__u16>(std::min<std::uint32_t>(options.duration_ms, 65535));
-    effect.u.rumble.strong_magnitude =
-        static_cast<__u16>(options.high_frequency * 65535.0f + 0.5f);
-    effect.u.rumble.weak_magnitude =
-        static_cast<__u16>(options.low_frequency * 65535.0f + 0.5f);
+    effect.u.rumble.strong_magnitude = static_cast<__u16>(options.high_frequency * 65535.0f + 0.5f);
+    effect.u.rumble.weak_magnitude = static_cast<__u16>(options.low_frequency * 65535.0f + 0.5f);
     if (ioctl(device->rumble_fd, EVIOCSFF, &effect) < 0)
         return NK_ERROR_UNSUPPORTED;
     device->rumble_effect = effect.id;

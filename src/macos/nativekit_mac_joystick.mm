@@ -354,11 +354,14 @@ nk_result standard_gamepad_state(nk_handle handle, nk_gamepad_state *out_state) 
 
 namespace nk::core::haptics_backend {
 
-nk_result vibrate(const nk_haptic_vibration &) noexcept { return NK_ERROR_UNSUPPORTED; }
-nk_result stop_vibration() noexcept { return NK_ERROR_UNSUPPORTED; }
+nk_result vibrate(const nk_haptic_vibration &) noexcept {
+    return NK_ERROR_UNSUPPORTED;
+}
+nk_result stop_vibration() noexcept {
+    return NK_ERROR_UNSUPPORTED;
+}
 
-nk_result gamepad_rumble(nk_joystick handle,
-                         const nk_gamepad_rumble_options &options) noexcept {
+nk_result gamepad_rumble(nk_joystick handle, const nk_gamepad_rumble_options &options) noexcept {
     const auto device = lookup(handle);
     if (!device)
         return NK_ERROR_INVALID_HANDLE;
@@ -373,17 +376,17 @@ nk_result gamepad_rumble(nk_joystick handle,
         NSError *error = nil;
         if (![engine startAndReturnError:&error])
             return NK_ERROR_UNSUPPORTED;
-        CHHapticEventParameter *intensity =
-            [[CHHapticEventParameter alloc]
-                initWithParameterID:CHHapticEventParameterIDHapticIntensity
-                               value:std::max(options.low_frequency, options.high_frequency)];
-        CHHapticEvent *event =
-            [[CHHapticEvent alloc] initWithEventType:CHHapticEventTypeHapticContinuous
-                                          parameters:@[ intensity ]
-                                        relativeTime:0.0
-                                            duration:static_cast<double>(options.duration_ms) / 1000.0];
-        CHHapticPattern *pattern =
-            [[CHHapticPattern alloc] initWithEvents:@[ event ] parameters:@[] error:&error];
+        CHHapticEventParameter *intensity = [[CHHapticEventParameter alloc]
+            initWithParameterID:CHHapticEventParameterIDHapticIntensity
+                          value:std::max(options.low_frequency, options.high_frequency)];
+        CHHapticEvent *event = [[CHHapticEvent alloc]
+            initWithEventType:CHHapticEventTypeHapticContinuous
+                   parameters:@[ intensity ]
+                 relativeTime:0.0
+                     duration:static_cast<double>(options.duration_ms) / 1000.0];
+        CHHapticPattern *pattern = [[CHHapticPattern alloc] initWithEvents:@[ event ]
+                                                                parameters:@[]
+                                                                     error:&error];
         if (!pattern)
             return NK_ERROR_UNSUPPORTED;
         id<CHHapticPatternPlayer> player = [engine createPlayerWithPattern:pattern error:&error];

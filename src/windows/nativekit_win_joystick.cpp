@@ -292,11 +292,14 @@ nk_result standard_gamepad_state(nk_handle handle, nk_gamepad_state *out_state) 
 
 namespace nk::core::haptics_backend {
 
-nk_result vibrate(const nk_haptic_vibration &) noexcept { return NK_ERROR_UNSUPPORTED; }
-nk_result stop_vibration() noexcept { return NK_ERROR_UNSUPPORTED; }
+nk_result vibrate(const nk_haptic_vibration &) noexcept {
+    return NK_ERROR_UNSUPPORTED;
+}
+nk_result stop_vibration() noexcept {
+    return NK_ERROR_UNSUPPORTED;
+}
 
-nk_result gamepad_rumble(nk_joystick handle,
-                         const nk_gamepad_rumble_options &options) noexcept {
+nk_result gamepad_rumble(nk_joystick handle, const nk_gamepad_rumble_options &options) noexcept {
     const auto device = lookup(handle);
     if (!device)
         return NK_ERROR_INVALID_HANDLE;
@@ -305,8 +308,8 @@ nk_result gamepad_rumble(nk_joystick handle,
     vibration.wRightMotorSpeed = static_cast<WORD>(options.high_frequency * 65535.0f + 0.5f);
     if (XInputSetState(device->index, &vibration) != ERROR_SUCCESS)
         return NK_ERROR_UNSUPPORTED;
-    rumble_deadlines[handle] = nk_time_now_ns() +
-                               static_cast<std::uint64_t>(options.duration_ms) * 1000000ULL;
+    rumble_deadlines[handle] =
+        nk_time_now_ns() + static_cast<std::uint64_t>(options.duration_ms) * 1000000ULL;
     return NK_OK;
 }
 

@@ -184,7 +184,7 @@ struct WebGamepadResource final : nk::core::Resource {
     bool seen = false;
 };
 
-std::shared_ptr<WebGamepadResource> web_gamepad_handle(nk_handle handle);
+std::shared_ptr<WebGamepadResource> lookup_web_gamepad(nk_handle handle);
 
 struct WebResourceStream final : nk::core::Resource {
     std::mutex mutex;
@@ -1949,8 +1949,7 @@ nk_result list(std::vector<SensorBackendDescriptor> &out) noexcept {
     return NK_OK;
 }
 
-nk_result start(nk_sensor sensor, nk_sensor_type type,
-                const nk_sensor_options &options) noexcept {
+nk_result start(nk_sensor sensor, nk_sensor_type type, const nk_sensor_options &options) noexcept {
     return nk::web::start_sensor(sensor, type, options.sample_interval_ns,
                                  options.maximum_batch_latency_ns)
                ? NK_OK
@@ -1990,9 +1989,8 @@ nk_result vibrate(const nk_haptic_vibration &options) noexcept {
 nk_result stop_vibration() noexcept {
     return nk::web::stop_vibration() ? NK_OK : NK_ERROR_UNSUPPORTED;
 }
-nk_result gamepad_rumble(nk_joystick handle,
-                         const nk_gamepad_rumble_options &options) noexcept {
-    const auto device = web_gamepad_handle(handle);
+nk_result gamepad_rumble(nk_joystick handle, const nk_gamepad_rumble_options &options) noexcept {
+    const auto device = lookup_web_gamepad(handle);
     if (!device)
         return NK_ERROR_INVALID_HANDLE;
     return nk::web::gamepad_rumble(device->index, options.low_frequency, options.high_frequency,
@@ -2001,7 +1999,7 @@ nk_result gamepad_rumble(nk_joystick handle,
                : NK_ERROR_UNSUPPORTED;
 }
 nk_result stop_gamepad_rumble(nk_joystick handle) noexcept {
-    const auto device = web_gamepad_handle(handle);
+    const auto device = lookup_web_gamepad(handle);
     if (!device)
         return NK_ERROR_INVALID_HANDLE;
     return nk::web::stop_gamepad_rumble(device->index) ? NK_OK : NK_ERROR_UNSUPPORTED;
@@ -2089,7 +2087,7 @@ nk_result get_string(nk_system_string_kind kind, std::string &out_value) {
 
 } // namespace nk::core::system_backend
 
-std::shared_ptr<WebGamepadResource> web_gamepad_handle(nk_handle handle) {
+std::shared_ptr<WebGamepadResource> lookup_web_gamepad(nk_handle handle) {
     return std::dynamic_pointer_cast<WebGamepadResource>(
         nk::core::handles().get(handle, nk::core::ResourceType::joystick));
 }
@@ -2143,11 +2141,9 @@ EMSCRIPTEN_KEEPALIVE void nk_web_host_device_orientation_permission(uint32_t req
 EMSCRIPTEN_KEEPALIVE void nk_web_host_sensor_permission(uint32_t request, nk_result result) {
     if (pending_sensor_permission_requests.erase(static_cast<nk_request_id>(request)) == 0)
         return;
-    const auto status = result == NK_OK
-                            ? NK_SENSOR_PERMISSION_GRANTED
-                            : result == NK_ERROR_UNSUPPORTED
-                                  ? NK_SENSOR_PERMISSION_DENIED
-                                  : NK_SENSOR_PERMISSION_UNAVAILABLE;
+    const auto status = result == NK_OK                  ? NK_SENSOR_PERMISSION_GRANTED
+                        : result == NK_ERROR_UNSUPPORTED ? NK_SENSOR_PERMISSION_DENIED
+                                                         : NK_SENSOR_PERMISSION_UNAVAILABLE;
     nk::core::sensor_permission_complete(static_cast<nk_request_id>(request), result, status);
 }
 
@@ -2162,10 +2158,10 @@ EMSCRIPTEN_KEEPALIVE void nk_web_host_sensor_update(uint32_t sensor, uint32_t ty
         return;
     }
     const float values[4] = {x, y, z, w};
-    const auto status = accuracy <= 0 ? NK_SENSOR_ACCURACY_UNAVAILABLE
-                      : accuracy == 1 ? NK_SENSOR_ACCURACY_LOW
-                      : accuracy == 2 ? NK_SENSOR_ACCURACY_MEDIUM
-                                      : NK_SENSOR_ACCURACY_HIGH;
+    const auto status = accuracy <= 0   ? NK_SENSOR_ACCURACY_UNAVAILABLE
+                        : accuracy == 1 ? NK_SENSOR_ACCURACY_LOW
+                        : accuracy == 2 ? NK_SENSOR_ACCURACY_MEDIUM
+                                        : NK_SENSOR_ACCURACY_HIGH;
     nk::core::sensor_publish(static_cast<nk_sensor>(sensor), static_cast<nk_sensor_type>(type),
                              values, status);
 }
@@ -2415,7 +2411,7 @@ nk_result NK_CALL nk_joystick_list(nk_handle *output, uint32_t *inout_count) {
 nk_result NK_CALL nk_joystick_get_name(nk_handle handle, char *buffer, uint32_t *inout_size) {
     if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
         return result;
-    const auto device = web_gamepad_handle(handle);
+    const auto device = lookup_web_gamepad(handle);
     if (!device)
         return invalid_handle("invalid web joystick handle");
     return copy_web_string(device->name, buffer, inout_size);
@@ -2424,7 +2420,7 @@ nk_result NK_CALL nk_joystick_get_name(nk_handle handle, char *buffer, uint32_t 
 nk_result NK_CALL nk_joystick_get_guid(nk_handle handle, char *buffer, uint32_t *inout_size) {
     if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
         return result;
-    const auto device = web_gamepad_handle(handle);
+    const auto device = lookup_web_gamepad(handle);
     if (!device)
         return invalid_handle("invalid web joystick handle");
     return copy_web_string(device->guid, buffer, inout_size);
@@ -2433,7 +2429,7 @@ nk_result NK_CALL nk_joystick_get_guid(nk_handle handle, char *buffer, uint32_t 
 nk_result NK_CALL nk_joystick_get_axes(nk_handle handle, float *axes, uint32_t *inout_count) {
     if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
         return result;
-    const auto device = web_gamepad_handle(handle);
+    const auto device = lookup_web_gamepad(handle);
     if (!device)
         return invalid_handle("invalid web joystick handle");
     return copy_web_array(device->axes.data(), device->axes.size(), axes, inout_count);
@@ -2443,7 +2439,7 @@ nk_result NK_CALL nk_joystick_get_buttons(nk_handle handle, uint8_t *buttons,
                                           uint32_t *inout_count) {
     if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
         return result;
-    const auto device = web_gamepad_handle(handle);
+    const auto device = lookup_web_gamepad(handle);
     if (!device)
         return invalid_handle("invalid web joystick handle");
     return copy_web_array(device->buttons.data(), device->buttons.size(), buttons, inout_count);
@@ -2452,7 +2448,7 @@ nk_result NK_CALL nk_joystick_get_buttons(nk_handle handle, uint8_t *buttons,
 nk_result NK_CALL nk_joystick_get_hats(nk_handle handle, uint8_t *hats, uint32_t *inout_count) {
     if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
         return result;
-    const auto device = web_gamepad_handle(handle);
+    const auto device = lookup_web_gamepad(handle);
     if (!device)
         return invalid_handle("invalid web joystick handle");
     return copy_web_array(device->hats.data(), device->hats.size(), hats, inout_count);

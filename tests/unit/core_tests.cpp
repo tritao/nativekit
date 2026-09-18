@@ -267,9 +267,13 @@ int main() {
     nk_event_release(&event);
     nk::core::EventQueue sensor_queue(2);
     auto queue_sensor = [&](nk_sensor sensor, std::uint64_t sequence) {
-        nk_sensor_sample sample{sizeof(sample), NK_SENSOR_ACCELEROMETER,
-                                NK_SENSOR_ACCURACY_HIGH, NK_SENSOR_COORDINATE_DEVICE,
-                                100 + sequence, sequence, {static_cast<float>(sequence), 0, 0, 0},
+        nk_sensor_sample sample{sizeof(sample),
+                                NK_SENSOR_ACCELEROMETER,
+                                NK_SENSOR_ACCURACY_HIGH,
+                                NK_SENSOR_COORDINATE_DEVICE,
+                                100 + sequence,
+                                sequence,
+                                {static_cast<float>(sequence), 0, 0, 0},
                                 {0, 0}};
         nk::core::QueuedEvent item;
         item.kind = NK_EVENT_SENSOR_UPDATE;

@@ -40,8 +40,7 @@ _Static_assert(sizeof(nk_orientation_event) == 32, "orientation event ABI layout
 _Static_assert(sizeof(nk_sensor_sample) == 56, "sensor sample ABI layout is stable");
 _Static_assert(sizeof(nk_sensor_permission_event) == 20,
                "sensor permission event ABI layout is stable");
-_Static_assert(sizeof(nk_gamepad_rumble_options) == 20,
-               "gamepad rumble ABI layout is stable");
+_Static_assert(sizeof(nk_gamepad_rumble_options) == 20, "gamepad rumble ABI layout is stable");
 _Static_assert(sizeof(nk_window_decoration_region) == 24,
                "window decoration region ABI layout is stable");
 _Static_assert(offsetof(nk_window_decoration_region, kind) == 16,

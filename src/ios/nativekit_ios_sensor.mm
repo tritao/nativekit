@@ -75,8 +75,7 @@ nk_result list(std::vector<SensorBackendDescriptor> &out) noexcept {
     }
 }
 
-nk_result start(nk_sensor sensor, nk_sensor_type type,
-                const nk_sensor_options &options) noexcept {
+nk_result start(nk_sensor sensor, nk_sensor_type type, const nk_sensor_options &options) noexcept {
     @autoreleasepool {
         ensure_manager();
         const auto interval = interval_seconds(options);
@@ -88,47 +87,47 @@ nk_result start(nk_sensor sensor, nk_sensor_type type,
         case NK_SENSOR_ACCELEROMETER:
             if (!motion_manager.accelerometerAvailable)
                 return NK_ERROR_UNSUPPORTED;
-            [motion_manager startAccelerometerUpdatesToQueue:[NSOperationQueue mainQueue]
-                                                 withHandler:^(CMAccelerometerData *data,
-                                                               NSError *) {
-                                                     if (!data)
-                                                         return;
-                                                     const float values[4] = {
-                                                         static_cast<float>(data.acceleration.x * gravity),
-                                                         static_cast<float>(data.acceleration.y * gravity),
-                                                         static_cast<float>(data.acceleration.z * gravity), 0};
-                                                     nk::core::sensor_publish(sensor, type, values,
-                                                                              NK_SENSOR_ACCURACY_HIGH);
-                                                 }];
+            [motion_manager
+                startAccelerometerUpdatesToQueue:[NSOperationQueue mainQueue]
+                                     withHandler:^(CMAccelerometerData *data, NSError *) {
+                                       if (!data)
+                                           return;
+                                       const float values[4] = {
+                                           static_cast<float>(data.acceleration.x * gravity),
+                                           static_cast<float>(data.acceleration.y * gravity),
+                                           static_cast<float>(data.acceleration.z * gravity), 0};
+                                       nk::core::sensor_publish(sensor, type, values,
+                                                                NK_SENSOR_ACCURACY_HIGH);
+                                     }];
             break;
         case NK_SENSOR_GYROSCOPE:
             if (!motion_manager.gyroAvailable)
                 return NK_ERROR_UNSUPPORTED;
-            [motion_manager startGyroUpdatesToQueue:[NSOperationQueue mainQueue]
-                                        withHandler:^(CMGyroData *data, NSError *) {
-                                            if (!data)
-                                                return;
-                                            const float values[4] = {
-                                                static_cast<float>(data.rotationRate.x),
-                                                static_cast<float>(data.rotationRate.y),
-                                                static_cast<float>(data.rotationRate.z), 0};
-                                            nk::core::sensor_publish(sensor, type, values,
-                                                                     NK_SENSOR_ACCURACY_HIGH);
-                                        }];
+            [motion_manager
+                startGyroUpdatesToQueue:[NSOperationQueue mainQueue]
+                            withHandler:^(CMGyroData *data, NSError *) {
+                              if (!data)
+                                  return;
+                              const float values[4] = {static_cast<float>(data.rotationRate.x),
+                                                       static_cast<float>(data.rotationRate.y),
+                                                       static_cast<float>(data.rotationRate.z), 0};
+                              nk::core::sensor_publish(sensor, type, values,
+                                                       NK_SENSOR_ACCURACY_HIGH);
+                            }];
             break;
         case NK_SENSOR_MAGNETOMETER:
             if (!motion_manager.magnetometerAvailable)
                 return NK_ERROR_UNSUPPORTED;
             [motion_manager startMagnetometerUpdatesToQueue:[NSOperationQueue mainQueue]
                                                 withHandler:^(CMMagnetometerData *data, NSError *) {
-                                                    if (!data)
-                                                        return;
-                                                    const float values[4] = {
-                                                        static_cast<float>(data.magneticField.field.x),
-                                                        static_cast<float>(data.magneticField.field.y),
-                                                        static_cast<float>(data.magneticField.field.z), 0};
-                                                    nk::core::sensor_publish(sensor, type, values,
-                                                                             NK_SENSOR_ACCURACY_HIGH);
+                                                  if (!data)
+                                                      return;
+                                                  const float values[4] = {
+                                                      static_cast<float>(data.magneticField.x),
+                                                      static_cast<float>(data.magneticField.y),
+                                                      static_cast<float>(data.magneticField.z), 0};
+                                                  nk::core::sensor_publish(sensor, type, values,
+                                                                           NK_SENSOR_ACCURACY_HIGH);
                                                 }];
             break;
         case NK_SENSOR_GRAVITY:
@@ -137,30 +136,31 @@ nk_result start(nk_sensor sensor, nk_sensor_type type,
         case NK_SENSOR_DEVICE_MOTION:
             if (!motion_manager.deviceMotionAvailable)
                 return NK_ERROR_UNSUPPORTED;
-            [motion_manager startDeviceMotionUpdatesToQueue:[NSOperationQueue mainQueue]
-                                                withHandler:^(CMDeviceMotion *data, NSError *) {
-                                                    if (!data)
-                                                        return;
-                                                    for (const auto &[handle, active] : active_sensors) {
-                                                        float values[4] = {};
-                                                        if (active == NK_SENSOR_GRAVITY) {
-                                                            values[0] = data.gravity.x * gravity;
-                                                            values[1] = data.gravity.y * gravity;
-                                                            values[2] = data.gravity.z * gravity;
-                                                        } else if (active == NK_SENSOR_LINEAR_ACCELERATION) {
-                                                            values[0] = data.userAcceleration.x * gravity;
-                                                            values[1] = data.userAcceleration.y * gravity;
-                                                            values[2] = data.userAcceleration.z * gravity;
-                                                        } else {
-                                                            values[0] = data.attitude.quaternion.x;
-                                                            values[1] = data.attitude.quaternion.y;
-                                                            values[2] = data.attitude.quaternion.z;
-                                                            values[3] = data.attitude.quaternion.w;
-                                                        }
-                                                        nk::core::sensor_publish(handle, active, values,
-                                                                                 NK_SENSOR_ACCURACY_HIGH);
-                                                    }
-                                                }];
+            [motion_manager
+                startDeviceMotionUpdatesToQueue:[NSOperationQueue mainQueue]
+                                    withHandler:^(CMDeviceMotion *data, NSError *) {
+                                      if (!data)
+                                          return;
+                                      for (const auto &[handle, active] : active_sensors) {
+                                          float values[4] = {};
+                                          if (active == NK_SENSOR_GRAVITY) {
+                                              values[0] = data.gravity.x * gravity;
+                                              values[1] = data.gravity.y * gravity;
+                                              values[2] = data.gravity.z * gravity;
+                                          } else if (active == NK_SENSOR_LINEAR_ACCELERATION) {
+                                              values[0] = data.userAcceleration.x * gravity;
+                                              values[1] = data.userAcceleration.y * gravity;
+                                              values[2] = data.userAcceleration.z * gravity;
+                                          } else {
+                                              values[0] = data.attitude.quaternion.x;
+                                              values[1] = data.attitude.quaternion.y;
+                                              values[2] = data.attitude.quaternion.z;
+                                              values[3] = data.attitude.quaternion.w;
+                                          }
+                                          nk::core::sensor_publish(handle, active, values,
+                                                                   NK_SENSOR_ACCURACY_HIGH);
+                                      }
+                                    }];
             break;
         default:
             return NK_ERROR_UNSUPPORTED;
@@ -198,12 +198,12 @@ nk_result request_permission(nk_request_id request) noexcept {
         pending_permissions.insert(request);
         [motion_manager startDeviceMotionUpdatesToQueue:[NSOperationQueue mainQueue]
                                             withHandler:^(CMDeviceMotion *, NSError *) {
-                                                complete_permissions(NK_SENSOR_PERMISSION_GRANTED);
-                                                if (!active_type(NK_SENSOR_GRAVITY) &&
-                                                    !active_type(NK_SENSOR_LINEAR_ACCELERATION) &&
-                                                    !active_type(NK_SENSOR_ROTATION_VECTOR) &&
-                                                    !active_type(NK_SENSOR_DEVICE_MOTION))
-                                                    [motion_manager stopDeviceMotionUpdates];
+                                              complete_permissions(NK_SENSOR_PERMISSION_GRANTED);
+                                              if (!active_type(NK_SENSOR_GRAVITY) &&
+                                                  !active_type(NK_SENSOR_LINEAR_ACCELERATION) &&
+                                                  !active_type(NK_SENSOR_ROTATION_VECTOR) &&
+                                                  !active_type(NK_SENSOR_DEVICE_MOTION))
+                                                  [motion_manager stopDeviceMotionUpdates];
                                             }];
         return NK_OK;
     }
@@ -239,5 +239,7 @@ nk_result vibrate(const nk_haptic_vibration &options) noexcept {
     return NK_ERROR_UNSUPPORTED;
 }
 
-nk_result stop_vibration() noexcept { return NK_OK; }
+nk_result stop_vibration() noexcept {
+    return NK_OK;
+}
 } // namespace nk::core::haptics_backend

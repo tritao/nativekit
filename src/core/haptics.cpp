@@ -6,15 +6,21 @@
 
 #include <cmath>
 
-#if !defined(NK_BACKEND_WINDOWS) && !defined(NK_BACKEND_ANDROID) && !defined(NK_BACKEND_IOS) && \
+#if !defined(NK_BACKEND_WINDOWS) && !defined(NK_BACKEND_ANDROID) && !defined(NK_BACKEND_IOS) &&    \
     !defined(NK_BACKEND_WEB) && !defined(NK_BACKEND_GTK) && !defined(NK_BACKEND_MACOS)
 namespace nk::core::haptics_backend {
-nk_result vibrate(const nk_haptic_vibration &) noexcept { return NK_ERROR_UNSUPPORTED; }
-nk_result stop_vibration() noexcept { return NK_ERROR_UNSUPPORTED; }
+nk_result vibrate(const nk_haptic_vibration &) noexcept {
+    return NK_ERROR_UNSUPPORTED;
+}
+nk_result stop_vibration() noexcept {
+    return NK_ERROR_UNSUPPORTED;
+}
 nk_result gamepad_rumble(nk_joystick, const nk_gamepad_rumble_options &) noexcept {
     return NK_ERROR_UNSUPPORTED;
 }
-nk_result stop_gamepad_rumble(nk_joystick) noexcept { return NK_ERROR_UNSUPPORTED; }
+nk_result stop_gamepad_rumble(nk_joystick) noexcept {
+    return NK_ERROR_UNSUPPORTED;
+}
 } // namespace nk::core::haptics_backend
 #endif
 
@@ -24,7 +30,9 @@ nk_result require_ui() {
     return nk::core::require_ui_thread();
 }
 
-bool normalized(float value) { return std::isfinite(value) && value >= 0.0f && value <= 1.0f; }
+bool normalized(float value) {
+    return std::isfinite(value) && value >= 0.0f && value <= 1.0f;
+}
 } // namespace
 
 extern "C" {
@@ -56,8 +64,9 @@ nk_result NK_CALL nk_gamepad_rumble(nk_joystick joystick,
                                     const nk_gamepad_rumble_options *options) {
     if (const auto result = require_ui(); result != NK_OK)
         return result;
-    if (!options || options->struct_size < sizeof(*options) || !normalized(options->low_frequency) ||
-        !normalized(options->high_frequency) || !options->duration_ms) {
+    if (!options || options->struct_size < sizeof(*options) ||
+        !normalized(options->low_frequency) || !normalized(options->high_frequency) ||
+        !options->duration_ms) {
         nk::core::set_error("invalid gamepad rumble options");
         return NK_ERROR_INVALID_ARGUMENT;
     }

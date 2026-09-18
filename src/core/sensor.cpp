@@ -19,9 +19,15 @@ namespace {
 
 struct SensorResource final : nk::core::Resource {
     explicit SensorResource(const nk::core::SensorBackendDescriptor &descriptor)
-        : info{sizeof(nk_sensor_info), descriptor.type, descriptor.value_count,
-               descriptor.minimum_interval_ns, descriptor.maximum_batch_latency_ns,
-               descriptor.maximum_range, NK_SENSOR_COORDINATE_DEVICE, 0, {0, 0}} {
+        : info{sizeof(nk_sensor_info),
+               descriptor.type,
+               descriptor.value_count,
+               descriptor.minimum_interval_ns,
+               descriptor.maximum_batch_latency_ns,
+               descriptor.maximum_range,
+               NK_SENSOR_COORDINATE_DEVICE,
+               0,
+               {0, 0}} {
         latest.struct_size = sizeof(latest);
         latest.type = descriptor.type;
         latest.accuracy = NK_SENSOR_ACCURACY_UNAVAILABLE;
@@ -79,8 +85,12 @@ nk_result list(std::vector<SensorBackendDescriptor> &) noexcept {
 nk_result start(nk_sensor, nk_sensor_type, const nk_sensor_options &) noexcept {
     return NK_ERROR_UNSUPPORTED;
 }
-nk_result stop(nk_sensor) noexcept { return NK_ERROR_UNSUPPORTED; }
-nk_result request_permission(nk_request_id) noexcept { return NK_ERROR_UNSUPPORTED; }
+nk_result stop(nk_sensor) noexcept {
+    return NK_ERROR_UNSUPPORTED;
+}
+nk_result request_permission(nk_request_id) noexcept {
+    return NK_ERROR_UNSUPPORTED;
+}
 void shutdown() noexcept {}
 } // namespace nk::core::sensor_backend
 #endif

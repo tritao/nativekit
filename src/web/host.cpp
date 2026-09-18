@@ -2459,14 +2459,17 @@ bool sensors_supported() noexcept {
 bool start_sensor(nk_sensor sensor, nk_sensor_type type, std::uint64_t interval_ns,
                   std::uint64_t latency_ns) noexcept {
     return nk_web_start_sensor(static_cast<double>(sensor), static_cast<int>(type),
-                               static_cast<double>(interval_ns), static_cast<double>(latency_ns)) != 0;
+                               static_cast<double>(interval_ns),
+                               static_cast<double>(latency_ns)) != 0;
 }
 
 bool stop_sensor(nk_sensor sensor) noexcept {
     return nk_web_stop_sensor(static_cast<double>(sensor)) != 0;
 }
 
-void stop_all_sensors() noexcept { nk_web_stop_all_sensors(); }
+void stop_all_sensors() noexcept {
+    nk_web_stop_all_sensors();
+}
 
 bool request_sensor_permission(nk_request_id request) noexcept {
     return nk_web_request_sensor_permission(static_cast<double>(request), NK_OK,
@@ -2478,13 +2481,15 @@ bool haptics_supported() noexcept {
 }
 
 bool vibrate(std::uint32_t period_ms, std::uint32_t duration_ms, float intensity) noexcept {
-    return nk_web_vibrate(static_cast<int>(period_ms), static_cast<int>(duration_ms), intensity) != 0;
+    return nk_web_vibrate(static_cast<int>(period_ms), static_cast<int>(duration_ms), intensity) !=
+           0;
 }
 
-bool stop_vibration() noexcept { return nk_web_stop_vibration() != 0; }
+bool stop_vibration() noexcept {
+    return nk_web_stop_vibration() != 0;
+}
 
-bool gamepad_rumble(std::int32_t index, float low, float high,
-                    std::uint32_t duration_ms) noexcept {
+bool gamepad_rumble(std::int32_t index, float low, float high, std::uint32_t duration_ms) noexcept {
     return nk_web_gamepad_rumble(static_cast<int>(index), low, high,
                                  static_cast<int>(duration_ms)) != 0;
 }
