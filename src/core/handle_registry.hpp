@@ -13,6 +13,7 @@ enum class ResourceType : std::uint8_t {
     none,
     window,
     webview,
+    view,
     mobile_host,
     surface,
     cursor,

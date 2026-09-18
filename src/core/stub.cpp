@@ -3,6 +3,7 @@
 #include "nativekit_notification.h"
 #include "nativekit_resource.h"
 #include "nativekit_system.h"
+#include "nativekit_view.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
 
@@ -132,6 +133,34 @@ nk_result NK_CALL nk_webview_navigation_decide(nk_request_id, uint32_t) {
     return unsupported();
 }
 #endif
+/*
+ * Native child views are implemented by the GTK backend. Guard these when
+ * another backend grows its own implementation, as the WebView stubs above do.
+ */
+nk_result NK_CALL nk_view_create(nk_handle, const nk_view_options *, nk_view *) {
+    return unsupported();
+}
+nk_result NK_CALL nk_view_destroy(nk_view) {
+    return unsupported();
+}
+nk_result NK_CALL nk_view_get_native(nk_view, nk_native_view *) {
+    return unsupported();
+}
+nk_result NK_CALL nk_view_set_bounds(nk_view, int32_t, int32_t, int32_t, int32_t) {
+    return unsupported();
+}
+nk_result NK_CALL nk_view_set_visible(nk_view, uint32_t) {
+    return unsupported();
+}
+nk_result NK_CALL nk_view_set_clip(nk_view, uint32_t, int32_t, int32_t, int32_t, int32_t) {
+    return unsupported();
+}
+nk_result NK_CALL nk_view_commit(nk_view) {
+    return unsupported();
+}
+nk_result NK_CALL nk_view_get_bounds(nk_view, nk_view_bounds *) {
+    return unsupported();
+}
 #if !defined(NK_BACKEND_IOS)
 nk_result NK_CALL nk_dialog_message(nk_handle, const nk_message_dialog_options *, nk_request_id *) {
     return unsupported();

@@ -108,7 +108,9 @@ enum NK_FLAGS(nk_capabilities) {
     /** The backend has a system haptic output path. */
     NK_CAP_HAPTICS = UINT64_C(1) << 39,
     /** The backend has a gamepad rumble path for at least one controller family. */
-    NK_CAP_GAMEPAD_RUMBLE = UINT64_C(1) << 40
+    NK_CAP_GAMEPAD_RUMBLE = UINT64_C(1) << 40,
+    /** The backend can create NativeKit-owned native child views. */
+    NK_CAP_NATIVE_VIEW = UINT64_C(1) << 41
 #endif
 };
 
@@ -123,6 +125,7 @@ enum NK_FLAGS(nk_capabilities) {
 #define NK_CAP_SENSORS (UINT64_C(1) << 38)
 #define NK_CAP_HAPTICS (UINT64_C(1) << 39)
 #define NK_CAP_GAMEPAD_RUMBLE (UINT64_C(1) << 40)
+#define NK_CAP_NATIVE_VIEW (UINT64_C(1) << 41)
 #endif
 
 /** Discriminator identifying the platform representation in nk_native_window. */

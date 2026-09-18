@@ -159,6 +159,12 @@ if(NK_BACKEND_GTK_AVAILABLE)
         set_target_properties(nativekit_gtk_webview_resize PROPERTIES LINKER_LANGUAGE CXX)
         add_test(NAME gtk_webview_resize
             COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_webview_resize>)
+        add_executable(nativekit_gtk_native_view integration/gtk_native_view.c)
+        target_link_libraries(nativekit_gtk_native_view PRIVATE NativeKit::nativekit
+            PkgConfig::GTK3)
+        set_target_properties(nativekit_gtk_native_view PROPERTIES LINKER_LANGUAGE CXX)
+        add_test(NAME gtk_native_view
+            COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_native_view>)
         add_executable(nativekit_gtk_resource_workflow integration/gtk_resource_workflow.c)
         target_link_libraries(nativekit_gtk_resource_workflow PRIVATE NativeKit::nativekit)
         set_target_properties(nativekit_gtk_resource_workflow PROPERTIES LINKER_LANGUAGE CXX)

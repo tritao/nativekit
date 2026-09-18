@@ -706,6 +706,28 @@ generations are internal and do not alter the public handle or request-ID ABI.
 Consecutive pending resize events for the same window are coalesced. Events of
 other kinds preserve their position relative to resize events.
 
+## Native child views
+
+`nativekit_view.h` hosts native content inside a NativeKit window on backends
+that advertise `NK_CAP_NATIVE_VIEW`. A view is the general form of the native
+children a window already hosts, such as a WebView: NativeKit owns the view's
+lifecycle and placement, and the application owns the content through the
+borrowed platform handle returned by `nk_view_get_native()`.
+
+Geometry, visibility, and clipping are pending state. `nk_view_set_bounds()`,
+`nk_view_set_visible()`, and `nk_view_set_clip()` only record changes;
+`nk_view_commit()` publishes them and makes them the committed state, so a
+layout change that touches several views applies as one unit instead of one
+setter at a time. `nk_view_get_bounds()` reports the committed rectangle, so a
+caller can tell what the platform has actually been told.
+
+An enabled clip constrains the rectangle a view may occupy to the intersection
+of its bounds and the clip rectangle, both in the parent's logical coordinates.
+A view that straddles its ancestor's clip boundary is therefore constrained
+rather than drawn outside it, and a fully clipped view is hidden. Destroying a
+window destroys its views; destroying a view detaches it without destroying the
+application's native content.
+
 ## Capability queries
 
 `nk_get_capabilities()` describes the compiled backend. Callers must still handle

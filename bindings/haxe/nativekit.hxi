@@ -603,6 +603,9 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 * The backend has a gamepad rumble path for at least one controller family.
 		 */
 		NK_CAP_GAMEPAD_RUMBLE = 1099511627776;
+		 * The backend can create NativeKit-owned native child views.
+		 */
+		NK_CAP_NATIVE_VIEW = 2199023255552;
 	}
 	/**
 	 * System color-scheme values returned in nk_system_appearance.
@@ -1830,6 +1833,39 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		NK_MOD_NUM_LOCK = 32;
 	}
 	/**
+	 * Discriminator identifying the platform representation in nk_native_view.
+	 */
+	enum nk_native_view_kind : u32 {
+		/**
+		 * No platform representation is available.
+		 */
+		NK_NATIVE_VIEW_UNKNOWN = 0;
+		/**
+		 * The view value is a GtkWidget*.
+		 */
+		NK_NATIVE_VIEW_GTK = 1;
+		/**
+		 * The view value is a Win32 HWND.
+		 */
+		NK_NATIVE_VIEW_WIN32 = 2;
+		/**
+		 * The view value is a Cocoa NSView*.
+		 */
+		NK_NATIVE_VIEW_COCOA = 3;
+		/**
+		 * The view value is an Android View reference.
+		 */
+		NK_NATIVE_VIEW_ANDROID = 4;
+		/**
+		 * The view value is an iOS UIView*.
+		 */
+		NK_NATIVE_VIEW_IOS = 5;
+		/**
+		 * The view value identifies a DOM element created by the browser host.
+		 */
+		NK_NATIVE_VIEW_DOM = 6;
+	}
+	/**
 	 * Discriminator identifying the platform representation in nk_native_window.
 	 */
 	enum nk_native_window_kind : u32 {
@@ -2373,6 +2409,15 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 * An eraser end of a stylus.
 		 */
 		NK_TOUCH_TOOL_ERASER = 3;
+	}
+	/**
+	 * Creation flags for nk_view_create().
+	 */
+	flags nk_view_flags : u32 {
+		/**
+		 * Create the view hidden until nk_view_set_visible() shows it.
+		 */
+		NK_VIEW_HIDDEN = 1;
 	}
 	flags nk_webview_flags : u32 {
 		/**
@@ -3231,6 +3276,70 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * Returns monotonic time in seconds since the same unspecified epoch.
 	 */
 	extern fn nk_time_seconds() -> f64;
+	/**
+	 * Publishes every pending change and makes it the committed state.
+	 *
+	 * Call this once per frame after updating one or more views so a layout change
+	 * applies as a unit: the platform updates each view before the next frame is
+	 * presented, and nk_view_get_bounds() reports the committed rectangle
+	 * afterwards. Committing without pending changes is a no-op.
+	 */
+	extern fn nk_view_commit(view: nk_view) -> nk_result;
+	/**
+	 * Creates a native child view inside `parent`.
+	 *
+	 * Desktop backends accept an nk_window parent and mobile backends accept an
+	 * nk_mobile_host; zero is accepted where the backend supports an unparented
+	 * view. Bounds are logical pixels and width and height must be positive. The
+	 * view starts at its initial bounds and is visible unless NK_VIEW_HIDDEN is
+	 * set. On success, `out_view` receives a non-zero generation-checked handle
+	 * owned by NativeKit and destroyed with its parent.
+	 */
+	extern fn nk_view_create(parent: nk_handle, options: ptr<const<nk_view_options>>, out_view: ptr<nk_view> @out @owned) -> nk_result;
+	/**
+	 * Destroys a native child view and detaches it from its parent.
+	 *
+	 * The caller's platform widgets are not destroyed, only the NativeKit-owned
+	 * container that hosts them. The handle becomes invalid after this call and
+	 * must not be reused.
+	 */
+	extern fn nk_view_destroy(view: nk_view) -> nk_result;
+	/**
+	 * Fills in the committed logical-pixel rectangle.
+	 *
+	 * This reports the published state, not pending edits made since the last
+	 * nk_view_commit().
+	 */
+	extern fn nk_view_get_bounds(view: nk_view, out_bounds: ptr<nk_view_bounds> @out) -> nk_result;
+	/**
+	 * Returns the borrowed platform view the application populates.
+	 *
+	 * The descriptor is valid only while the view is alive, and its values must
+	 * never be freed by callers. This is an explicit interoperability escape
+	 * hatch, not a portable resource.
+	 */
+	extern fn nk_view_get_native(view: nk_view, out_native: ptr<nk_native_view> @out) -> nk_result;
+	/**
+	 * Records the view's logical-pixel rectangle as pending state.
+	 *
+	 * Width and height must be positive. The committed rectangle does not change
+	 * until nk_view_commit() publishes every pending change.
+	 */
+	extern fn nk_view_set_bounds(view: nk_view, x: i32, y: i32, width: i32, height: i32) -> nk_result;
+	/**
+	 * Records the clip rectangle as pending state.
+	 *
+	 * When a clip is enabled the view may only occupy the intersection of its
+	 * bounds and the clip rectangle, both in the parent's logical coordinates, so
+	 * a view that straddles its ancestor's clip boundary is constrained rather
+	 * than drawn outside it. Width and height must be positive when enabling.
+	 * Disabling the clip restores the full bounds.
+	 */
+	extern fn nk_view_set_clip(view: nk_view, enabled: nk_bool, x: i32, y: i32, width: i32, height: i32) -> nk_result;
+	/**
+	 * Records whether the view is visible as pending state.
+	 */
+	extern fn nk_view_set_visible(view: nk_view, visible: nk_bool) -> nk_result;
 	/**
 	 * Blocks on the UI thread until an event is queued or nk_wake_events() is
 	 * called. The timeout variant also returns after `timeout_seconds` elapses.
@@ -4339,6 +4448,35 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		reserved: array<u64, 2> @offset(56);
 	}
 	/**
+	 * Borrowed platform handles for a NativeKit native child view.
+	 */
+	struct nk_native_view @layout(48, 8) {
+		/**
+		 * Set to sizeof(nk_native_view) before passing this structure to NativeKit.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Identifies which platform-specific field is populated.
+		 */
+		kind: nk_native_view_kind @offset(4);
+		/**
+		 * Reserved for future platform-neutral interoperation flags; initialize to zero.
+		 */
+		flags: u32 @offset(8);
+		/**
+		 * Reserved for future use; initialize to zero.
+		 */
+		reserved: u32 @offset(12);
+		/**
+		 * Platform view handle; NULL when the backend has none.
+		 */
+		view: usize @offset(16);
+		/**
+		 * Reserved pointer-sized values; initialize to zero.
+		 */
+		reserved2: array<usize, 3> @offset(24);
+	}
+	/**
 	 * Borrowed platform handles for interoperating with a NativeKit window.
 	 */
 	struct nk_native_window @layout(64, 8) {
@@ -5185,6 +5323,68 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		reserved2: array<u64, 2> @offset(40);
 	}
 	/**
+	 * Committed logical-pixel rectangle of a native child view.
+	 */
+	struct nk_view_bounds @layout(40, 8) {
+		/**
+		 * Set to sizeof(nk_view_bounds) before calling nk_view_get_bounds.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Committed left edge in the parent's logical coordinates.
+		 */
+		x: i32 @offset(4);
+		/**
+		 * Committed top edge in the parent's logical coordinates.
+		 */
+		y: i32 @offset(8);
+		/**
+		 * Committed logical width.
+		 */
+		width: i32 @offset(12);
+		/**
+		 * Committed logical height.
+		 */
+		height: i32 @offset(16);
+		/**
+		 * Reserved for future use; initialize to zero.
+		 */
+		reserved: array<u64, 2> @offset(24);
+	}
+	/**
+	 * Options used to create a native child view.
+	 */
+	struct nk_view_options @layout(40, 8) {
+		/**
+		 * Set to sizeof(nk_view_options) before calling nk_view_create.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Bitwise OR of NK_VIEW_* flags.
+		 */
+		flags: nk_view_flags @offset(4);
+		/**
+		 * Initial left edge in the parent's logical coordinates.
+		 */
+		x: i32 @offset(8);
+		/**
+		 * Initial top edge in the parent's logical coordinates.
+		 */
+		y: i32 @offset(12);
+		/**
+		 * Initial logical width; must be positive.
+		 */
+		width: i32 @offset(16);
+		/**
+		 * Initial logical height; must be positive.
+		 */
+		height: i32 @offset(20);
+		/**
+		 * Reserved for future options; initialize to zero.
+		 */
+		reserved: array<u64, 2> @offset(24);
+	}
+	/**
 	 * Options used to create a native child WebView.
 	 */
 	struct nk_webview_options @layout(48, 8) {
@@ -5511,6 +5711,18 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * Absolute Unicode code-point position used by the text-input API.
 	 */
 	type nk_text_position = u32;
+	/**
+	 * A NativeKit-owned native child view.
+	 *
+	 * A view is the general form of the native children a window already hosts,
+	 * such as a WebView: NativeKit owns its lifecycle and placement, and the
+	 * application owns its content through the borrowed platform handle returned
+	 * by nk_view_get_native(). Geometry, visibility, and clipping are pending
+	 * state that only becomes the committed state when nk_view_commit() publishes
+	 * it, so a frame's layout changes apply as one unit instead of one setter at a
+	 * time.
+	 */
+	handle nk_view : u32 @destroy("nk_view_destroy");
 	handle nk_webview : u32 @destroy("nk_webview_destroy");
 	handle nk_window : u32 @destroy("nk_window_destroy");
 }
