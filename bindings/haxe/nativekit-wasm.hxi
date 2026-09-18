@@ -606,6 +606,14 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 * The backend can create NativeKit-owned native child views.
 		 */
 		NK_CAP_NATIVE_VIEW = 2199023255552;
+		/**
+		 * The backend can observe native file-system changes.
+		 */
+		NK_CAP_FILE_WATCH = 4398046511104;
+		/**
+		 * The backend can observe native clipboard changes.
+		 */
+		NK_CAP_CLIPBOARD_WATCH = 8796093022208;
 	}
 	/**
 	 * System color-scheme values returned in nk_system_appearance.
@@ -908,6 +916,18 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 * An asynchronous clipboard resource read completed.
 		 */
 		NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE = 402;
+		/**
+		 * Clipboard contents may have changed; read metadata through the clipboard API.
+		 */
+		NK_EVENT_CLIPBOARD_CHANGED = 403;
+		/**
+		 * A watched file or directory was added, removed, modified, or moved.
+		 */
+		NK_EVENT_FILE_CHANGED = 410;
+		/**
+		 * A file-watch queue overflow requires a complete directory rescan.
+		 */
+		NK_EVENT_FILE_WATCH_OVERFLOW = 411;
 		/**
 		 * A notification was delivered by the platform.
 		 */
@@ -2557,6 +2577,10 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 * Returned UTF-8 views remain owned by the event until nk_event_release().
 	 */
 	extern fn nk_clipboard_event_file(event: ptr<const<nk_event>>, index: u32, out_path: ptr<ptr<const<c_char>>>, out_length: ptr<u32>) -> nk_result;
+	/** Starts clipboard observation without emitting an initial event. */
+	extern fn nk_clipboard_watch_start(options: ptr<const<nk_clipboard_watch_options>>, out_watch: ptr<nk_clipboard_watch> @out @owned) -> nk_result;
+	/** Stops clipboard observation and unregisters native listeners. */
+	extern fn nk_clipboard_watch_stop(watch: nk_clipboard_watch) -> nk_result;
 	/**
 	 * Starts an asynchronous read of local clipboard files.
 	 */
@@ -2583,6 +2607,14 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 * Copies UTF-8 text into the system clipboard. UI thread only.
 	 */
 	extern fn nk_clipboard_set_text(text: utf8) -> nk_result;
+	/** Creates a watcher for absolute UTF-8 native filesystem paths. */
+	extern fn nk_file_watch_create(options: ptr<const<nk_file_watch_options>>, out_watch: ptr<nk_file_watch> @out @owned) -> nk_result;
+	/** Adds an absolute directory to a file watcher. */
+	extern fn nk_file_watch_add_directory(watch: nk_file_watch, path: utf8, recursive: nk_bool) -> nk_result;
+	/** Removes a directory from a file watcher. */
+	extern fn nk_file_watch_remove_directory(watch: nk_file_watch, path: utf8) -> nk_result;
+	/** Stops a file watcher and invalidates its handle. */
+	extern fn nk_file_watch_destroy(watch: nk_file_watch) -> nk_result;
 	/**
 	 * Creates a cursor from copied RGBA8 pixels, with the first row at the top.
 	 */
@@ -3865,6 +3897,27 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 */
 		strings_offset: u32 @offset(4);
 	}
+	/** Options for observing clipboard changes. */
+	struct nk_clipboard_watch_options @layout(24, 8) {
+		struct_size: u32 @offset(0) @struct_size;
+		flags: u32 @offset(4);
+		reserved: array<u64, 2> @offset(8);
+	}
+	flags nk_clipboard_format_flags : u32 {
+		NK_CLIPBOARD_FORMAT_TEXT = 1;
+		NK_CLIPBOARD_FORMAT_FILES = 2;
+		NK_CLIPBOARD_FORMAT_HTML = 4;
+		NK_CLIPBOARD_FORMAT_IMAGE = 8;
+	}
+	flags nk_clipboard_change_flags : u32 {
+		NK_CLIPBOARD_CHANGE_SOURCE_UNKNOWN = 1;
+	}
+	/** Metadata-only payload for NK_EVENT_CLIPBOARD_CHANGED. */
+	struct nk_clipboard_changed_event @layout(16, 8) {
+		sequence: u64 @offset(0);
+		formats: nk_clipboard_format_flags @offset(8);
+		flags: nk_clipboard_change_flags @offset(12);
+	}
 	/**
 	 * RGBA8 pixels used to create a custom cursor.
 	 */
@@ -3992,6 +4045,38 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 * Reserved for compatible extensions; initialize to zero.
 		 */
 		reserved: array<u64, 2> @offset(48);
+	}
+	/**
+	 * Options for URI-resource dialogs.
+	 */
+	enum nk_file_change_type : u32 {
+		NK_FILE_CHANGE_ADDED = 1;
+		NK_FILE_CHANGE_REMOVED = 2;
+		NK_FILE_CHANGE_MODIFIED = 3;
+		NK_FILE_CHANGE_MOVED = 4;
+	}
+	enum nk_file_item_kind : u32 {
+		NK_FILE_ITEM_FILE = 1;
+		NK_FILE_ITEM_DIRECTORY = 2;
+		NK_FILE_ITEM_UNKNOWN = 3;
+	}
+	flags nk_file_event_flags : u32 {
+		NK_FILE_EVENT_FLAG_RESCAN_REQUIRED = 1;
+		NK_FILE_EVENT_FLAG_OVERFLOW = 2;
+	}
+	struct nk_file_watch_options @layout(24, 8) {
+		struct_size: u32 @offset(0) @struct_size;
+		flags: u32 @offset(4);
+		reserved: array<u64, 2> @offset(8);
+	}
+	struct nk_file_changed_event @layout(28, 4) {
+		change_type: nk_file_change_type @offset(0);
+		item_kind: nk_file_item_kind @offset(4);
+		flags: nk_file_event_flags @offset(8);
+		path_offset: u32 @offset(12);
+		path_length: u32 @offset(16);
+		old_path_offset: u32 @offset(20);
+		old_path_length: u32 @offset(24);
 	}
 	/**
 	 * Options for URI-resource dialogs.
@@ -5668,6 +5753,7 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 * true; NativeKit normalizes boolean outputs to zero or one.
 	 */
 	type nk_bool = bool32;
+	handle nk_clipboard_watch : u32 @destroy("nk_clipboard_watch_stop");
 	handle nk_cursor : u32 @destroy("nk_cursor_destroy");
 	/**
 	 * Identity of a graphics device and surfaces that explicitly share it.
@@ -5686,6 +5772,7 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 */
 	handle nk_handle : u32;
 	handle nk_joystick : u32;
+	handle nk_file_watch : u32 @destroy("nk_file_watch_destroy");
 	type nk_keep_awake = u32;
 	handle nk_mobile_host : u32 @destroy("nk_mobile_host_destroy");
 	handle nk_monitor : u32;
