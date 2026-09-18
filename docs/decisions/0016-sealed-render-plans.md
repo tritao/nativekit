@@ -60,3 +60,22 @@ runtime in the sealed plan.
   the public C API that exposes sealing to Haxe, remains the next step. Doing it
   requires deciding how a plan handle binds to an acquired surface frame from
   ADR 0015.
+
+## Open questions
+
+The display-list render path seals today. The layout-session path cannot seal
+until one more thing is settled: only `LayoutRenderCompiler` tints glyphs, by
+multiplying the tint into vertex colors after preparation
+(`tint_glyphs`), and it does so per primitive. A published glyph snapshot is
+shared and immutable, so it must not be tinted in place, and publishing an
+untinted snapshot would render uncolored text.
+
+Two options:
+
+1. Make the tint part of the snapshot identity, so
+   `published_glyphs(..., tint)` builds and shares one tinted snapshot per
+   layout generation, scale, mode, and color. Colors per layout are few, so the
+   cache still dedupes across frames, and the renderer stays unchanged.
+2. Move tint out of vertex data entirely: carry it as a glyph-batch command
+   property that the renderer applies. Cleaner long term, but it changes the
+   batch contract and the renderer path.
