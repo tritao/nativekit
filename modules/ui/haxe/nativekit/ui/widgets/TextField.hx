@@ -165,7 +165,7 @@ class TextField implements View {
 			var showsPlaceholder = documentText.length == 0 && placeholder != null &&
 				placeholder.length > 0;
 			var textNode = new RenderNode(context.id("text"),
-				showsPlaceholder ? LayoutVisualKind.Text : LayoutVisualKind.Custom, textNodeStyle);
+				showsPlaceholder ? LayoutVisualKind.Text : LayoutVisualKind.Box, textNodeStyle);
 			if (showsPlaceholder)
 				textNode.layout.text = placeholder;
 			var textNodeTextStyle = new TextStyle(editor.textStyle.fontSize,
@@ -184,8 +184,6 @@ class TextField implements View {
 				editor.paragraphStyle, textNodeColor));
 			if (!showsPlaceholder) {
 				editor.updateStyle(textNodeTextStyle, editor.paragraphStyle);
-				editor.setRenderColor(textNodeColor);
-				textNode.layout.intrinsicContent = editor.renderContent;
 			}
 			editorContent.add(textNode);
 			var paintStyle = new LayoutStyle();
@@ -197,9 +195,16 @@ class TextField implements View {
 				LayoutVisualKind.Custom, paintStyle);
 			paintNode.hitTestSelf = false;
 			paintNode.onPaint(function(canvas, _) {
-				if (!editor.isDisposed())
+				if (!editor.isDisposed()) {
+					if (documentText.length > 0) {
+						canvas.save();
+						canvas.translate(0.0, -editor.scrollOffsetY);
+						editor.layout.paint(canvas, textNodeColor);
+						canvas.restore();
+					}
 					paintEditorDecorations(canvas, document, editor, context.textInput.isOwner(id),
 						context.theme, context.gestures.timeSeconds());
+				}
 			});
 			editorContent.add(paintNode);
 			node.add(editorContent);
