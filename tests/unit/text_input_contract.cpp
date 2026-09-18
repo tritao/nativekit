@@ -65,12 +65,11 @@ int main() {
     // The mapping cache is code-point based, but must remain exact across the
     // scalar boundaries used by IME APIs even when the text contains combining
     // marks, ZWJ sequences, flags, modifiers, and RTL text.
-    const std::string complex_unicode =
-        "\x65\xCC\x81"
-        "\xF0\x9F\x91\xA8\xE2\x80\x8D\xF0\x9F\x91\xA9\xE2\x80\x8D"
-        "\xF0\x9F\x91\xA7\xE2\x80\x8D\xF0\x9F\x91\xA7"
-        "\xF0\x9F\x87\xB5\xF0\x9F\x87\xB9"
-        "\xF0\x9F\x91\x8D\xF0\x9F\x8F\xBD\xD7\x90\xD7\x91";
+    const std::string complex_unicode = "\x65\xCC\x81"
+                                        "\xF0\x9F\x91\xA8\xE2\x80\x8D\xF0\x9F\x91\xA9\xE2\x80\x8D"
+                                        "\xF0\x9F\x91\xA7\xE2\x80\x8D\xF0\x9F\x91\xA7"
+                                        "\xF0\x9F\x87\xB5\xF0\x9F\x87\xB9"
+                                        "\xF0\x9F\x91\x8D\xF0\x9F\x8F\xBD\xD7\x90\xD7\x91";
     assert(offset_map.assign(complex_unicode));
     for (uint32_t position = 0; position <= offset_map.codepointCount(); ++position) {
         assert(offset_map.utf8ByteOffset(position, &byte_offset));
