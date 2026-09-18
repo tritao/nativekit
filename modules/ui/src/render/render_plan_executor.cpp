@@ -337,4 +337,9 @@ bool execute_render_plan(UiRenderer &renderer, const RenderPlan &plan,
     return true;
 }
 
+bool execute_render_plan(UiRenderer &renderer, const SealedRenderPlan &sealed,
+                         const WindowTarget &window, RenderExecutionError *error) {
+    return execute_render_plan(renderer, sealed.plan(), sealed.resources(), window, error);
+}
+
 } // namespace nkui
