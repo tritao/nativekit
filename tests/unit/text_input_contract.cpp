@@ -49,7 +49,11 @@ int main() {
     assert(!utf16_to_codepoint_offset(std::u16string_view(unpaired_low), 1, &codepoint_offset));
 
     nk::core::TextOffsetMap offset_map;
-    assert(offset_map.assign("a\U0001f600e\xcc\x81"));
+    const std::string utf8_scalars = "a"
+                                     "\xf0\x9f\x98\x80"
+                                     "e"
+                                     "\xcc\x81";
+    assert(offset_map.assign(utf8_scalars));
     std::size_t byte_offset = 0;
     std::size_t unit_offset = 0;
     assert(offset_map.utf8ByteOffset(2, &byte_offset) && byte_offset == 5);

@@ -576,6 +576,7 @@ if(NK_BUILD_EXAMPLES)
                 _nk_surface_present
                 _nk_surface_set_bounds
                 _nk_surface_set_text_input_active
+                _nk_surface_set_text_input_geometry
                 _nk_surface_set_text_input_state
                 _nk_window_create
                 _nk_window_destroy

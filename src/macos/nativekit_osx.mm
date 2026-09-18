@@ -28,6 +28,7 @@
 #include "core/runtime.hpp"
 #include "core/system_internal.hpp"
 #include "core/resource_events.hpp"
+#include "core/text_edit_transaction.hpp"
 #include "core/text_input_contract.hpp"
 #include "core/text_input_geometry.hpp"
 #include "core/text_offsets.hpp"
