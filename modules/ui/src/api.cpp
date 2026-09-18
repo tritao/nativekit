@@ -2721,8 +2721,10 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
     for (const auto &pass : plan.passes)
         renderer_slot->stats.render_plan_commands += pass.commands.size();
     auto &frame_resources = session_state->frame.resources();
-    std::vector<std::unique_ptr<nkui::PreparedPath>> custom_paths;
-    std::vector<std::unique_ptr<nkui::PreparedTexture>> custom_images;
+    auto &owned_resources = session_state->frame.owned_resources();
+    bool sealable = session_state->frame.sealable();
+    std::vector<std::shared_ptr<nkui::PreparedPath>> custom_paths;
+    std::vector<std::shared_ptr<nkui::PreparedTexture>> custom_images;
     std::vector<nkui::SkribidiAdapter *> text_adapters;
     std::vector<std::pair<nkui::SkribidiAdapter *, nkui::PreparedGlyphs *>> prepared_texts;
     uint32_t prepared_slot = 1;
@@ -2735,7 +2737,7 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                 valid = false;
                 break;
             }
-            auto prepared = std::make_unique<nkui::PreparedTexture>();
+            auto prepared = std::make_shared<nkui::PreparedTexture>();
             if (!prepared) {
                 valid = false;
                 break;
@@ -2764,6 +2766,9 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                 valid = false;
                 break;
             }
+            if (!owned_resources.bind_image(pass.mask.image, custom_images.back(),
+                                            static_cast<uint64_t>(pass.mask.image.value)))
+                sealable = false;
         }
         for (auto &command : pass.commands) {
             if (!command.custom_payload)
@@ -2791,7 +2796,7 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                     valid = false;
                     break;
                 }
-                auto prepared = std::make_unique<nkui::PreparedPath>();
+                auto prepared = std::make_shared<nkui::PreparedPath>();
                 const auto kind = command.kind == nkui::RenderCommandKind::StrokePath
                                       ? nkui::PreparedPathKind::Stroke
                                       : nkui::PreparedPathKind::Fill;
@@ -2808,6 +2813,9 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                 command.transform = placement_transform(transform);
                 valid = frame_resources.bind_path(prepared_id, *prepared_path, 0,
                                                   static_cast<uint64_t>(path_handle.id));
+                if (valid && !owned_resources.bind_path(prepared_id, custom_paths.back(), 0,
+                                                        static_cast<uint64_t>(path_handle.id)))
+                    sealable = false;
             } else if (command.kind == nkui::RenderCommandKind::Image) {
                 const uint32_t source_resource = command.resource.value;
                 auto *image = resolve_retained(nkui_resource{command.resource.value},
@@ -2816,7 +2824,7 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                     valid = false;
                     break;
                 }
-                auto prepared = std::make_unique<nkui::PreparedTexture>();
+                auto prepared = std::make_shared<nkui::PreparedTexture>();
                 if (!prepared) {
                     valid = false;
                     break;
@@ -2840,6 +2848,9 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                 command.resource = prepared_id;
                 valid = frame_resources.bind_image(prepared_id, *prepared_image,
                                                    static_cast<uint64_t>(source_resource));
+                if (valid && !owned_resources.bind_image(prepared_id, custom_images.back(),
+                                                         static_cast<uint64_t>(source_resource)))
+                    sealable = false;
             } else if (command.kind == nkui::RenderCommandKind::GlyphBatch) {
                 const uint32_t source_resource = command.resource.value;
                 auto *layout = resolve_retained(nkui_resource{command.resource.value},
@@ -2889,6 +2900,17 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                                                   (static_cast<uint64_t>(source_resource) << 32) ^
                                                       layout->text->layout_generation() ^
                                                       layout->text->font_collection_generation());
+                if (valid) {
+                    auto snapshot =
+                        layout->text->published_glyphs(layout->text->active_layout_id(), 0.0f, 0.0f,
+                                                       raster_scale, nkui::GlyphMode::Alpha);
+                    if (!snapshot ||
+                        !owned_resources.bind_text(prepared_id, std::move(snapshot),
+                                                   (static_cast<uint64_t>(source_resource) << 32) ^
+                                                       layout->text->layout_generation() ^
+                                                       layout->text->font_collection_generation()))
+                        sealable = false;
+                }
                 command.resource = prepared_id;
                 if (std::find(text_adapters.begin(), text_adapters.end(), layout->text.get()) ==
                     text_adapters.end())
@@ -2909,10 +2931,15 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                     if (surface_slot->graphics_image.id) {
                         valid = frame_resources.bind_graphics_image(command.resource,
                                                                     surface_slot->graphics_image);
+                        if (valid && !owned_resources.bind_graphics_image(
+                                         command.resource, surface_slot->graphics_image))
+                            sealable = false;
                     } else {
                         valid =
                             surface_slot->surface &&
                             frame_resources.bind_surface(command.resource, *surface_slot->surface);
+                        /* A live result producer is a callback and cannot be sealed. */
+                        sealable = false;
                     }
                 }
             }
@@ -2940,6 +2967,17 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
     for (auto *adapter : text_adapters)
         if (!renderer_slot->renderer->uploadAtlases(*adapter, new_backend))
             return NKUI_ERROR_RENDERING;
+    if (sealable) {
+        nkui::RenderPlanSealError seal_error;
+        auto sealed = nkui::SealedRenderPlan::seal(std::move(session_state->frame.plan()),
+                                                   std::move(owned_resources), &seal_error);
+        if (!sealed)
+            return NKUI_ERROR_OUT_OF_MEMORY;
+        const bool sealed_executed = nkui::execute_render_plan(*renderer_slot->renderer, *sealed,
+                                                               {main_target, frame_target});
+        return sealed_executed ? NKUI_OK : NKUI_ERROR_RENDERING;
+    }
+    /* Frames that composite a live surface producer keep the borrowed path. */
     const bool executed = nkui::execute_render_plan(*renderer_slot->renderer, plan, frame_resources,
                                                     {main_target, frame_target});
     return executed ? NKUI_OK : NKUI_ERROR_RENDERING;
