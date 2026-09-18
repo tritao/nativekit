@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
 #import <CFNetwork/CFNetwork.h>
+#import <TargetConditionals.h>
 
 #include "net_backend.hpp"
 
@@ -368,6 +369,7 @@ std::shared_ptr<AppleClientState> client_state(const nk::net::RequestPtr &reques
       completionHandler:
           (void (^)(NSURLSessionAuthChallengeDisposition, NSURLCredential *))completionHandler {
     auto *space = [challenge protectionSpace];
+#if TARGET_OS_OSX
     if ([space.authenticationMethod isEqualToString:NSURLAuthenticationMethodHTTPProxy] &&
         !request->client->config.proxy.username.empty()) {
         NSString *username =
@@ -380,6 +382,9 @@ std::shared_ptr<AppleClientState> client_state(const nk::net::RequestPtr &reques
         completionHandler(NSURLSessionAuthChallengeUseCredential, credential);
         return;
     }
+#else
+    (void)space;
+#endif
     completionHandler(NSURLSessionAuthChallengePerformDefaultHandling, nil);
     (void)session;
     (void)task;
@@ -479,12 +484,14 @@ nk_result backend_start(const RequestPtr &request) noexcept {
         auto cookies = client_state(request);
         auto *configuration = [NSURLSessionConfiguration ephemeralSessionConfiguration];
         configuration.HTTPShouldSetCookies = cookies != nullptr;
-        configuration.HTTPShouldHandleCookies = cookies != nullptr;
         configuration.HTTPCookieStorage = cookies ? cookies->cookie_storage : nil;
         configuration.URLCache = nil;
         configuration.requestCachePolicy = NSURLRequestReloadIgnoringLocalCacheData;
         configuration.URLCredentialStorage = nil;
         if (request->client->config.proxy.kind != NK_HTTP_PROXY_NONE) {
+#if !TARGET_OS_OSX
+            return NK_ERROR_UNSUPPORTED;
+#else
             NSURL *proxy_url = [NSURL
                 URLWithString:[NSString
                                   stringWithUTF8String:request->client->config.proxy.url.c_str()]];
@@ -516,13 +523,14 @@ nk_result backend_start(const RequestPtr &request) noexcept {
                 return NK_ERROR_INVALID_ARGUMENT;
             }
             configuration.connectionProxyDictionary = proxy;
+#endif
         }
         auto *delegate_queue = [[NSOperationQueue alloc] init];
         delegate_queue.maxConcurrentOperationCount = 1;
         auto *delegate = [[NKURLSessionDelegate alloc] initWithRequest:request];
-        auto *session = [[NSURLSession alloc] initWithConfiguration:configuration
-                                                           delegate:delegate
-                                                      delegateQueue:delegate_queue];
+        auto *session = [NSURLSession sessionWithConfiguration:configuration
+                                                      delegate:delegate
+                                                 delegateQueue:delegate_queue];
         auto *task = [session dataTaskWithRequest:url_request];
         if (!task) {
             [session invalidateAndCancel];
