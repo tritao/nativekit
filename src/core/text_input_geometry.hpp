@@ -16,8 +16,8 @@ namespace nk::core {
 struct TextInputGeometry {
     nk_text_position selection_start = 0;
     nk_text_position selection_end = 0;
-    nk_text_position composition_start = NK_TEXT_POSITION_NONE;
-    nk_text_position composition_end = NK_TEXT_POSITION_NONE;
+    nk_text_position composition_start = static_cast<nk_text_position>(NK_TEXT_POSITION_NONE);
+    nk_text_position composition_end = static_cast<nk_text_position>(NK_TEXT_POSITION_NONE);
     std::vector<nk_text_input_rect> selection_rects;
     std::vector<nk_text_input_rect> composition_rects;
     std::vector<nk_text_input_range_rect> selection_range_rects;
@@ -26,7 +26,7 @@ struct TextInputGeometry {
 
 struct TextInputHitTest {
     bool matched = false;
-    nk_text_position position = NK_TEXT_POSITION_NONE;
+    nk_text_position position = static_cast<nk_text_position>(NK_TEXT_POSITION_NONE);
 };
 
 /**
