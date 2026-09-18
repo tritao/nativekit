@@ -52,7 +52,8 @@ constexpr mask k_known_capabilities =
     cap(NK_CAP_DEVICE_ORIENTATION) | cap(NK_CAP_DISPLAY_ORIENTATION) | cap(NK_CAP_HTTP_CLIENT) |
     cap(NK_CAP_HTTP_STREAMING) | cap(NK_CAP_SURFACE_FRAME_CALLBACK) |
     cap(NK_CAP_WINDOW_CUSTOM_DECORATIONS) | cap(NK_CAP_SENSORS) | cap(NK_CAP_HAPTICS) |
-    cap(NK_CAP_GAMEPAD_RUMBLE) | cap(NK_CAP_NATIVE_VIEW);
+    cap(NK_CAP_GAMEPAD_RUMBLE) | cap(NK_CAP_NATIVE_VIEW) | cap(NK_CAP_FILE_WATCH) |
+    cap(NK_CAP_CLIPBOARD_WATCH);
 
 constexpr mask k_new_system_capabilities =
     cap(NK_CAP_SYSTEM_INFO) | cap(NK_CAP_APPLICATION_PATH) | cap(NK_CAP_APPLICATION_STORAGE) |
@@ -84,8 +85,8 @@ constexpr backend_contract platform_contract() {
                 cap(NK_CAP_MONITOR) | cap(NK_CAP_MONITOR_FULLSCREEN) | cap(NK_CAP_JOYSTICK) |
                 cap(NK_CAP_GAMEPAD_RUMBLE) | cap(NK_CAP_RESOURCE_SHARING) |
                 cap(NK_CAP_VULKAN_SURFACE) | cap(NK_CAP_ACCESSIBILITY) |
-                cap(NK_CAP_WRAP_NATIVE_WINDOW) | cap(NK_CAP_NATIVE_VIEW) |
-                k_linux_system_capabilities,
+                cap(NK_CAP_WRAP_NATIVE_WINDOW) | cap(NK_CAP_NATIVE_VIEW) | cap(NK_CAP_FILE_WATCH) |
+                cap(NK_CAP_CLIPBOARD_WATCH) | k_linux_system_capabilities,
             cap(NK_CAP_D3D11_SURFACE) | cap(NK_CAP_METAL_SURFACE) | cap(NK_CAP_MOBILE_HOST) |
                 cap(NK_CAP_DEVICE_ORIENTATION),
             0, cap(NK_CAP_KEEP_AWAKE)};
@@ -98,7 +99,7 @@ constexpr backend_contract platform_contract() {
                 cap(NK_CAP_WRAP_NATIVE_WINDOW) | k_new_system_capabilities,
             cap(NK_CAP_OPENGL_SURFACE) | cap(NK_CAP_OPENGL_ES_SURFACE) |
                 cap(NK_CAP_VULKAN_SURFACE) | cap(NK_CAP_METAL_SURFACE) | cap(NK_CAP_MOBILE_HOST) |
-                cap(NK_CAP_NATIVE_VIEW),
+                cap(NK_CAP_NATIVE_VIEW) | cap(NK_CAP_FILE_WATCH) | cap(NK_CAP_CLIPBOARD_WATCH),
             0, cap(NK_CAP_WEBVIEW)};
 #elif defined(NK_PARITY_BACKEND_MACOS)
     return {"macOS",
@@ -110,7 +111,7 @@ constexpr backend_contract platform_contract() {
             cap(NK_CAP_OPENGL_SURFACE) | cap(NK_CAP_OPENGL_ES_SURFACE) |
                 cap(NK_CAP_VULKAN_SURFACE) | cap(NK_CAP_D3D11_SURFACE) | cap(NK_CAP_MOBILE_HOST) |
                 cap(NK_CAP_NATIVE_VIEW),
-            0, 0};
+            cap(NK_CAP_FILE_WATCH) | cap(NK_CAP_CLIPBOARD_WATCH), 0, 0};
 #elif defined(NK_PARITY_BACKEND_ANDROID)
     return {"Android",
             cap(NK_CAP_MOBILE_HOST) | cap(NK_CAP_WEBVIEW) | cap(NK_CAP_CLIPBOARD) |
@@ -118,9 +119,9 @@ constexpr backend_contract platform_contract() {
                 cap(NK_CAP_NOTIFICATION) | cap(NK_CAP_INPUT) | cap(NK_CAP_OPENGL_ES_SURFACE) |
                 cap(NK_CAP_VULKAN_SURFACE) | cap(NK_CAP_RESOURCE_SHARING) |
                 cap(NK_CAP_RESOURCE_IO) | cap(NK_CAP_JOYSTICK) | cap(NK_CAP_SENSORS) |
-                cap(NK_CAP_HAPTICS) | cap(NK_CAP_GAMEPAD_RUMBLE) | cap(NK_CAP_ACCESSIBILITY) |
+            cap(NK_CAP_HAPTICS) | cap(NK_CAP_GAMEPAD_RUMBLE) | cap(NK_CAP_ACCESSIBILITY) |
                 k_android_system_capabilities | cap(NK_CAP_SURFACE_FRAME_CALLBACK),
-            0,
+            cap(NK_CAP_NATIVE_VIEW) | cap(NK_CAP_FILE_WATCH) | cap(NK_CAP_CLIPBOARD_WATCH),
             cap(NK_CAP_WINDOW) | cap(NK_CAP_EXPORT_NATIVE_WINDOW) | cap(NK_CAP_WRAP_NATIVE_WINDOW) |
                 cap(NK_CAP_WINDOW_GEOMETRY) | cap(NK_CAP_WINDOW_STYLING) | cap(NK_CAP_MONITOR) |
                 cap(NK_CAP_MONITOR_FULLSCREEN) | cap(NK_CAP_CURSOR) | cap(NK_CAP_POINTER_CAPTURE) |
@@ -143,7 +144,7 @@ constexpr backend_contract platform_contract() {
                 cap(NK_CAP_OPENGL_SURFACE) | cap(NK_CAP_OPENGL_ES_SURFACE) |
                 cap(NK_CAP_SYSTEM_FONTS) | cap(NK_CAP_VULKAN_SURFACE) | cap(NK_CAP_D3D11_SURFACE) |
                 cap(NK_CAP_WINDOW_CUSTOM_DECORATIONS),
-            0};
+            cap(NK_CAP_FILE_WATCH) | cap(NK_CAP_CLIPBOARD_WATCH)};
 #elif defined(NK_PARITY_BACKEND_WEB)
     return {"Web",
             cap(NK_CAP_WINDOW) | cap(NK_CAP_INPUT) | cap(NK_CAP_OPENGL_ES_SURFACE) |
@@ -158,7 +159,8 @@ constexpr backend_contract platform_contract() {
                 cap(NK_CAP_MONITOR_FULLSCREEN) | cap(NK_CAP_OPENGL_SURFACE) |
                 cap(NK_CAP_VULKAN_SURFACE) | cap(NK_CAP_D3D11_SURFACE) | cap(NK_CAP_METAL_SURFACE) |
                 cap(NK_CAP_APPLICATION_PATH) | cap(NK_CAP_APPLICATION_STORAGE) |
-                cap(NK_CAP_SYSTEM_FONTS) | cap(NK_CAP_WINDOW_CUSTOM_DECORATIONS),
+                cap(NK_CAP_SYSTEM_FONTS) | cap(NK_CAP_WINDOW_CUSTOM_DECORATIONS) |
+                cap(NK_CAP_FILE_WATCH) | cap(NK_CAP_CLIPBOARD_WATCH),
             cap(NK_CAP_SYSTEM_APPEARANCE) | cap(NK_CAP_KEEP_AWAKE) |
                 cap(NK_CAP_DEVICE_ORIENTATION) | cap(NK_CAP_DISPLAY_ORIENTATION) |
                 cap(NK_CAP_SENSORS) | cap(NK_CAP_HAPTICS) | cap(NK_CAP_GAMEPAD_RUMBLE)};
@@ -195,7 +197,7 @@ struct capability_name {
     nk_capabilities value;
 };
 
-constexpr std::array<capability_name, 41> k_capability_names = {{
+constexpr std::array<capability_name, 43> k_capability_names = {{
     {"WINDOW", NK_CAP_WINDOW},
     {"WEBVIEW", NK_CAP_WEBVIEW},
     {"CLIPBOARD", NK_CAP_CLIPBOARD},
@@ -237,6 +239,8 @@ constexpr std::array<capability_name, 41> k_capability_names = {{
     {"SENSORS", NK_CAP_SENSORS},
     {"HAPTICS", NK_CAP_HAPTICS},
     {"GAMEPAD_RUMBLE", NK_CAP_GAMEPAD_RUMBLE},
+    {"FILE_WATCH", NK_CAP_FILE_WATCH},
+    {"CLIPBOARD_WATCH", NK_CAP_CLIPBOARD_WATCH},
 }};
 
 std::string_view trim(std::string_view value) {

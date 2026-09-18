@@ -7,6 +7,8 @@
 #include "core/handle_registry.hpp"
 #include "core/vulkan_internal.hpp"
 #include "nativekit_accessibility.h"
+#include "nativekit_clipboard.h"
+#include "nativekit_file_watch.h"
 #include "nativekit_joystick.h"
 #include "nativekit_sensor.h"
 #include "nativekit_system.h"
@@ -316,5 +318,62 @@ int main() {
     assert(sensor_queue.poll(event) == NK_OK);
     assert(event.source == 12);
     nk_event_release(&event);
+    nk::core::EventQueue clipboard_queue(1);
+    nk::core::QueuedEvent clipboard_first;
+    clipboard_first.kind = NK_EVENT_CLIPBOARD_CHANGED;
+    clipboard_first.source = first;
+    const nk_clipboard_changed_event clipboard_payload{1, NK_CLIPBOARD_FORMAT_TEXT, 0};
+    const auto *clipboard_begin = reinterpret_cast<const std::byte *>(&clipboard_payload);
+    clipboard_first.data.assign(clipboard_begin, clipboard_begin + sizeof(clipboard_payload));
+    nk::core::QueuedEvent clipboard_latest = clipboard_first;
+    const nk_clipboard_changed_event clipboard_latest_payload{2, NK_CLIPBOARD_FORMAT_FILES, 0};
+    const auto *clipboard_latest_begin =
+        reinterpret_cast<const std::byte *>(&clipboard_latest_payload);
+    clipboard_latest.data.assign(clipboard_latest_begin,
+                                 clipboard_latest_begin + sizeof(clipboard_latest_payload));
+    assert(clipboard_queue.push(std::move(clipboard_first)) == NK_OK);
+    assert(clipboard_queue.push(std::move(clipboard_latest)) == NK_OK);
+    event = {};
+    event.struct_size = sizeof(event);
+    assert(clipboard_queue.poll(event) == NK_OK);
+    assert(static_cast<const nk_clipboard_changed_event *>(event.data)->sequence == 2);
+    nk_event_release(&event);
+
+    nk::core::EventQueue file_queue(1);
+    nk::core::QueuedEvent file_first;
+    file_first.kind = NK_EVENT_FILE_CHANGED;
+    file_first.source = first;
+    nk_file_changed_event file_header{NK_FILE_CHANGE_MODIFIED, NK_FILE_ITEM_FILE, 0,
+                                      sizeof(nk_file_changed_event), 9, 0, 0};
+    const char file_path[] = "/tmp/item";
+    const auto *file_begin = reinterpret_cast<const std::byte *>(&file_header);
+    file_first.data.assign(file_begin, file_begin + sizeof(file_header));
+    file_first.data.insert(file_first.data.end(), reinterpret_cast<const std::byte *>(file_path),
+                            reinterpret_cast<const std::byte *>(file_path) + sizeof(file_path));
+    nk::core::QueuedEvent file_latest = file_first;
+    assert(file_queue.push(std::move(file_first)) == NK_OK);
+    assert(file_queue.push(std::move(file_latest)) == NK_OK);
+    event = {};
+    event.struct_size = sizeof(event);
+    assert(file_queue.poll(event) == NK_OK);
+    assert(event.kind == NK_EVENT_FILE_CHANGED);
+    nk_event_release(&event);
+
+    nk::core::EventQueue overflow_queue(1);
+    nk::core::QueuedEvent ordinary;
+    ordinary.kind = NK_EVENT_WEBVIEW_MESSAGE;
+    assert(overflow_queue.push(std::move(ordinary)) == NK_OK);
+    nk::core::QueuedEvent overflow;
+    overflow.kind = NK_EVENT_FILE_WATCH_OVERFLOW;
+    assert(overflow_queue.push(std::move(overflow)) == NK_OK);
+    event = {};
+    event.struct_size = sizeof(event);
+    assert(overflow_queue.poll(event) == NK_OK);
+    assert(event.kind == NK_EVENT_FILE_WATCH_OVERFLOW);
+    nk_event_release(&event);
+    nk::core::EventQueue empty_overflow_queue(0);
+    nk::core::QueuedEvent empty_overflow;
+    empty_overflow.kind = NK_EVENT_FILE_WATCH_OVERFLOW;
+    assert(empty_overflow_queue.push(std::move(empty_overflow)) == NK_OK);
     return 0;
 }

@@ -49,6 +49,8 @@ the equivalent is the native DOM.
 | Native child views | Required | Required | Required | Required | Required | Platform-specific equivalent (DOM element) |
 | Dialogs and resource pickers | Required | Required | Required | Required | Required | Platform-specific equivalent |
 | Clipboard | Required | Required | Required | Required | Required | Required |
+| File watching | Required | Required | Required | Optional (sandbox-only) | Optional (sandbox-only) | Not applicable |
+| Clipboard watching | Required | Required | Optional (advisory) | Required | Optional (advisory) | Not applicable |
 | Drag/drop | Required | Required | Required | Required | Required | Required |
 | Shell/open URI | Required | Required | Required | Required | Required | Required |
 | Appearance | Required | Required | Required | Required | Required | Required |
@@ -103,6 +105,8 @@ needed; graphics API bits are alternatives within the GPU family.
 | Native child views | `NK_CAP_NATIVE_VIEW` |
 | Dialogs and resource pickers | `nk_dialog_open_resource`, `nk_dialog_save_resource`, `nk_dialog_select_resource_directory`, `nk_dialog_message` |
 | Clipboard | `NK_CAP_CLIPBOARD` |
+| File watching | `NK_CAP_FILE_WATCH` |
+| Clipboard watching | `NK_CAP_CLIPBOARD_WATCH` |
 | Drag/drop | `NK_CAP_DRAG_DROP` |
 | Shell/open URI | `NK_CAP_SHELL` |
 | Appearance | `NK_CAP_SYSTEM_APPEARANCE` |
@@ -148,11 +152,11 @@ each milestone lands, the following gaps remain explicitly `Deferred`:
 
 | Backend | Required or equivalent today | Deferred today |
 |---|---|---|
-| Linux/GTK | Windows, WebView, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, custom window decorations, GPU, resource sharing via URI clipboard, resource I/O, monitors, joystick and evdev rumble, native export, X11 and Wayland native wrapping, accessibility, surface frame callbacks | — |
-| Windows | Windows, WebView when WebView2 is available, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, custom window decorations, D3D11, resource sharing via URI clipboard, resource I/O, accessibility, monitors, joystick and XInput rumble, native export, Win32 native wrapping, surface frame callbacks | — |
-| macOS | Windows, WebView, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, custom window decorations, Metal, resource sharing via `NSSharingServicePicker`, resource I/O, accessibility, monitors, joystick, native export, Cocoa native wrapping, surface frame callbacks | — |
-| Android | Mobile host, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, GLES/Vulkan, resource sharing, resource I/O, joystick, sensors, system haptics, controller rumble, accessibility, surface frame callbacks, APK installation path, system fonts | — |
-| iOS | Mobile host, WebView, dialogs, Metal, input, clipboard, URI clipboard, host drag/drop, shell, appearance, notifications, resource sharing, resource I/O, joystick, sensors, system haptics, controller haptics where exposed, accessibility, surface frame callbacks | — |
+| Linux/GTK | Windows, WebView, URI resource and message dialogs, clipboard and clipboard watching, file watching, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, custom window decorations, GPU, resource sharing via URI clipboard, resource I/O, monitors, joystick and evdev rumble, native export, X11 and Wayland native wrapping, accessibility, surface frame callbacks | — |
+| Windows | Windows, WebView when WebView2 is available, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, custom window decorations, D3D11, resource sharing via URI clipboard, resource I/O, accessibility, monitors, joystick and XInput rumble, native export, Win32 native wrapping, surface frame callbacks | file and clipboard watching |
+| macOS | Windows, WebView, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, custom window decorations, Metal, resource sharing via `NSSharingServicePicker`, resource I/O, accessibility, monitors, joystick, native export, Cocoa native wrapping, surface frame callbacks | file and clipboard watching |
+| Android | Mobile host, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, GLES/Vulkan, resource sharing, resource I/O, joystick, sensors, system haptics, controller rumble, accessibility, surface frame callbacks, APK installation path, system fonts | sandbox file watching and clipboard watching |
+| iOS | Mobile host, WebView, dialogs, Metal, input, clipboard, URI clipboard, host drag/drop, shell, appearance, notifications, resource sharing, resource I/O, joystick, sensors, system haptics, controller haptics where exposed, accessibility, surface frame callbacks | sandbox file watching and clipboard watching |
 | Web | Window, geometry and CSS-backed styling, clipboard and URI clipboard, drag/drop and resource drops, input, cursor/capture, GLES, shell URL opening, appearance, notifications, Gamepad API, resource picker equivalents, resource sharing via Web Share API, resource I/O, accessibility, surface frame callbacks, optional Device Motion and haptics APIs | — |
 
 The path-shaped iOS system-font and Web application/storage/system-font

@@ -121,6 +121,10 @@ typedef uint32_t nk_cursor NK_HANDLE NK_HANDLE_DESTROY(nk_cursor_destroy);
 typedef uint32_t nk_joystick NK_HANDLE;
 typedef uint32_t nk_mobile_host NK_HANDLE NK_HANDLE_DESTROY(nk_mobile_host_destroy);
 typedef uint32_t nk_resource_stream NK_HANDLE NK_HANDLE_DESTROY(nk_resource_close);
+/** Generation-checked handle for a file-system watcher. */
+typedef uint32_t nk_file_watch NK_HANDLE NK_HANDLE_DESTROY(nk_file_watch_destroy);
+/** Generation-checked handle for clipboard change observation. */
+typedef uint32_t nk_clipboard_watch NK_HANDLE NK_HANDLE_DESTROY(nk_clipboard_watch_stop);
 
 /** Opaque generation-checked identifier for a live NativeKit resource. */
 typedef uint32_t nk_handle NK_HANDLE;
@@ -276,6 +280,12 @@ enum NK_ENUM(nk_event_kind) {
     NK_EVENT_CLIPBOARD_FILES_COMPLETE = 401,
     /** An asynchronous clipboard resource read completed. */
     NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE = 402,
+    /** Clipboard contents may have changed; read metadata through the clipboard API. */
+    NK_EVENT_CLIPBOARD_CHANGED = 403,
+    /** A watched file or directory was added, removed, modified, or moved. */
+    NK_EVENT_FILE_CHANGED = 410,
+    /** A file-watch queue overflow requires a complete directory rescan. */
+    NK_EVENT_FILE_WATCH_OVERFLOW = 411,
     /** A notification was delivered by the platform. */
     NK_EVENT_NOTIFICATION_DELIVERED = 500,
     /** A user activated a notification. */

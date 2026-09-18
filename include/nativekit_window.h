@@ -110,7 +110,11 @@ enum NK_FLAGS(nk_capabilities) {
     /** The backend has a gamepad rumble path for at least one controller family. */
     NK_CAP_GAMEPAD_RUMBLE = UINT64_C(1) << 40,
     /** The backend can create NativeKit-owned native child views. */
-    NK_CAP_NATIVE_VIEW = UINT64_C(1) << 41
+    NK_CAP_NATIVE_VIEW = UINT64_C(1) << 41,
+    /** The backend can observe native file-system changes. */
+    NK_CAP_FILE_WATCH = UINT64_C(1) << 42,
+    /** The backend can observe native clipboard changes. */
+    NK_CAP_CLIPBOARD_WATCH = UINT64_C(1) << 43
 #endif
 };
 
@@ -126,6 +130,8 @@ enum NK_FLAGS(nk_capabilities) {
 #define NK_CAP_HAPTICS (UINT64_C(1) << 39)
 #define NK_CAP_GAMEPAD_RUMBLE (UINT64_C(1) << 40)
 #define NK_CAP_NATIVE_VIEW (UINT64_C(1) << 41)
+#define NK_CAP_FILE_WATCH (UINT64_C(1) << 42)
+#define NK_CAP_CLIPBOARD_WATCH (UINT64_C(1) << 43)
 #endif
 
 /** Discriminator identifying the platform representation in nk_native_window. */

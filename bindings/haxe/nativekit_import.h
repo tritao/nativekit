@@ -15,6 +15,7 @@
 #include "nativekit_mobile.h"
 #include "nativekit_resource.h"
 #include "nativekit_clipboard.h"
+#include "nativekit_file_watch.h"
 #include "nativekit_webview.h"
 #include "nativekit_view.h"
 #include "nativekit_notification.h"

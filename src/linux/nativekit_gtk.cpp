@@ -35,6 +35,7 @@
 #include <dlfcn.h>
 
 #include <algorithm>
+#include <atomic>
 #include <array>
 #include <climits>
 #include <cmath>
@@ -1458,6 +1459,66 @@ struct ClipboardFileOwner {
     std::vector<char *> pointers;
     std::string text;
 };
+
+std::atomic<uint64_t> clipboard_watch_sequence{0};
+
+struct ClipboardWatchResource final : nk::core::Resource {
+    GtkClipboard *clipboard = nullptr;
+    gulong signal = 0;
+    nk_clipboard_watch handle = NK_INVALID_HANDLE;
+    uint64_t generation = 0;
+    std::atomic<bool> stopped{false};
+
+    ~ClipboardWatchResource() override { stop(); }
+
+    void stop() noexcept {
+        if (stopped.exchange(true, std::memory_order_acq_rel))
+            return;
+        if (clipboard && signal) {
+            g_signal_handler_disconnect(clipboard, signal);
+            signal = 0;
+        }
+        clipboard = nullptr;
+    }
+
+    void changed(GdkEventOwnerChange *native_event) {
+        if (stopped.load(std::memory_order_acquire) ||
+            !nk::core::is_runtime_generation(generation))
+            return;
+        nk_clipboard_changed_event payload{};
+        payload.sequence = clipboard_watch_sequence.fetch_add(1, std::memory_order_relaxed) + 1;
+        if (clipboard) {
+            if (gtk_clipboard_wait_is_text_available(clipboard))
+                payload.formats |= NK_CLIPBOARD_FORMAT_TEXT;
+            if (gtk_clipboard_wait_is_target_available(
+                    clipboard, gdk_atom_intern_static_string("text/uri-list")))
+                payload.formats |= NK_CLIPBOARD_FORMAT_FILES;
+            if (gtk_clipboard_wait_is_target_available(
+                    clipboard, gdk_atom_intern_static_string("text/html")))
+                payload.formats |= NK_CLIPBOARD_FORMAT_HTML;
+            if (gtk_clipboard_wait_is_target_available(
+                    clipboard, gdk_atom_intern_static_string("image/png")))
+                payload.formats |= NK_CLIPBOARD_FORMAT_IMAGE;
+        }
+        if (!native_event || !native_event->owner)
+            payload.flags |= NK_CLIPBOARD_CHANGE_SOURCE_UNKNOWN;
+        nk::core::QueuedEvent queued;
+        queued.kind = NK_EVENT_CLIPBOARD_CHANGED;
+        queued.source = handle;
+        const auto *first = reinterpret_cast<const std::byte *>(&payload);
+        queued.data.assign(first, first + sizeof(payload));
+        nk::core::push_event(std::move(queued));
+    }
+};
+
+void on_clipboard_owner_change(GtkClipboard *, GdkEventOwnerChange *event, gpointer data) {
+    try {
+        if (auto *watch = static_cast<ClipboardWatchResource *>(data))
+            watch->changed(event);
+    } catch (...) {
+        /* Native callbacks must never unwind through GTK. */
+    }
+}
 
 struct NavigationDecision {
     nk_handle source;
@@ -3379,6 +3440,57 @@ nk_result keep_awake_apply(bool enabled) noexcept {
 } // namespace nk::core::system_backend
 
 namespace nk::backend {
+
+nk_result clipboard_watch_start(const nk_clipboard_watch_options *options,
+                                nk_clipboard_watch *out_watch) noexcept {
+    try {
+        (void)options;
+        if (!ensure_gtk())
+            return NK_ERROR_UNSUPPORTED;
+        auto resource = std::make_shared<ClipboardWatchResource>();
+        resource->clipboard = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
+        if (!resource->clipboard) {
+            nk::core::set_error("GTK clipboard is unavailable");
+            return NK_ERROR_UNSUPPORTED;
+        }
+        resource->generation = nk::core::runtime_generation();
+        const auto handle =
+            nk::core::handles().insert(nk::core::ResourceType::clipboard_watch, resource);
+        if (handle == NK_INVALID_HANDLE)
+            return NK_ERROR_OUT_OF_MEMORY;
+        resource->handle = handle;
+        resource->signal = g_signal_connect(resource->clipboard, "owner-change",
+                                            G_CALLBACK(on_clipboard_owner_change), resource.get());
+        if (!resource->signal) {
+            nk::core::handles().erase(handle, nk::core::ResourceType::clipboard_watch);
+            nk::core::set_error("GTK could not register clipboard owner-change listener");
+            return NK_ERROR_UNSUPPORTED;
+        }
+        /* Signal registration establishes the baseline; no initial event is emitted. */
+        *out_watch = handle;
+        return NK_OK;
+    } catch (const std::bad_alloc &) {
+        nk::core::set_error("out of memory while starting clipboard watcher");
+        return NK_ERROR_OUT_OF_MEMORY;
+    } catch (...) {
+        nk::core::set_error("unexpected error while starting clipboard watcher");
+        return NK_ERROR_UNKNOWN;
+    }
+}
+
+nk_result clipboard_watch_stop(nk_clipboard_watch watch) noexcept {
+    const auto resource =
+        nk::core::handles().get(watch, nk::core::ResourceType::clipboard_watch);
+    if (!resource) {
+        nk::core::set_error("invalid clipboard-watch handle");
+        return NK_ERROR_INVALID_HANDLE;
+    }
+    std::static_pointer_cast<ClipboardWatchResource>(resource)->stop();
+    if (!nk::core::handles().erase(watch, nk::core::ResourceType::clipboard_watch))
+        return NK_ERROR_INVALID_HANDLE;
+    return NK_OK;
+}
+
 void pump_events() noexcept {
     nk::linux_joystick::pump();
     while (g_main_context_iteration(nullptr, FALSE)) {
@@ -3450,7 +3562,8 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
         NK_CAP_RESOURCE_SHARING | NK_CAP_RESOURCE_IO | NK_CAP_VULKAN_SURFACE | NK_CAP_SYSTEM_INFO |
         NK_CAP_APPLICATION_PATH | NK_CAP_APPLICATION_STORAGE | NK_CAP_SYSTEM_FONTS |
         NK_CAP_DISPLAY_ORIENTATION | NK_CAP_ACCESSIBILITY | NK_CAP_WRAP_NATIVE_WINDOW |
-        NK_CAP_SURFACE_FRAME_CALLBACK | NK_CAP_WINDOW_CUSTOM_DECORATIONS | NK_CAP_NATIVE_VIEW;
+        NK_CAP_SURFACE_FRAME_CALLBACK | NK_CAP_WINDOW_CUSTOM_DECORATIONS | NK_CAP_NATIVE_VIEW |
+        NK_CAP_FILE_WATCH | NK_CAP_CLIPBOARD_WATCH;
     if (nk::core::system_backend::keep_awake_supported())
         capabilities |= NK_CAP_KEEP_AWAKE;
     return capabilities | nk::core::optional_capabilities();

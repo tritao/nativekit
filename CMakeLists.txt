@@ -114,6 +114,8 @@ add_library(nativekit ${NK_LIBRARY_TYPE}
     src/core/haptics.cpp
     src/core/graphics_image.cpp
     src/core/handle_registry.cpp
+    src/core/file_watch.cpp
+    src/core/clipboard_watch.cpp
     src/core/input.cpp
     src/core/joystick.cpp
     src/core/mobile.cpp
@@ -282,6 +284,10 @@ elseif(TARGET PkgConfig::GTK3 AND TARGET PkgConfig::WEBKITGTK)
     target_compile_definitions(nativekit PRIVATE NK_BACKEND_GTK=1)
 else()
     target_sources(nativekit PRIVATE src/core/stub.cpp)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_sources(nativekit PRIVATE src/linux/nativekit_file_watch.cpp)
 endif()
 set_target_properties(nativekit PROPERTIES
     CXX_VISIBILITY_PRESET hidden

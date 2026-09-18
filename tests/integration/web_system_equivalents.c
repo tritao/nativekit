@@ -1,4 +1,6 @@
 #include "nativekit.h"
+#include "nativekit_clipboard.h"
+#include "nativekit_file_watch.h"
 #include "nativekit_input.h"
 #include "nativekit_joystick.h"
 #include "nativekit_resource.h"
@@ -313,6 +315,17 @@ int main(void) {
     NK_TEST_ASSERT((capabilities & NK_CAP_JOYSTICK) != 0);
     NK_TEST_ASSERT((capabilities & NK_CAP_RESOURCE_IO) != 0);
     NK_TEST_ASSERT((capabilities & NK_CAP_WINDOW_STYLING) != 0);
+    NK_TEST_ASSERT((capabilities & NK_CAP_FILE_WATCH) == 0);
+    NK_TEST_ASSERT((capabilities & NK_CAP_CLIPBOARD_WATCH) == 0);
+    nk_file_watch_options file_watch_options = {0};
+    file_watch_options.struct_size = sizeof(file_watch_options);
+    nk_file_watch file_watch = NK_INVALID_HANDLE;
+    NK_TEST_ASSERT(nk_file_watch_create(&file_watch_options, &file_watch) == NK_ERROR_UNSUPPORTED);
+    nk_clipboard_watch_options clipboard_watch_options = {0};
+    clipboard_watch_options.struct_size = sizeof(clipboard_watch_options);
+    nk_clipboard_watch clipboard_watch = NK_INVALID_HANDLE;
+    NK_TEST_ASSERT(nk_clipboard_watch_start(&clipboard_watch_options, &clipboard_watch) ==
+                   NK_ERROR_UNSUPPORTED);
     NK_TEST_ASSERT((capabilities & NK_CAP_APPLICATION_PATH) == 0);
     NK_TEST_ASSERT((capabilities & NK_CAP_APPLICATION_STORAGE) == 0);
     NK_TEST_ASSERT((capabilities & NK_CAP_SYSTEM_FONTS) == 0);

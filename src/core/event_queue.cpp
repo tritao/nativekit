@@ -1,5 +1,9 @@
 #include "core/event_queue.hpp"
 
+#include "nativekit_clipboard.h"
+#include "nativekit_file_watch.h"
+
+#include <algorithm>
 #include <cstring>
 #include <memory>
 #include <new>
@@ -29,12 +33,35 @@ bool is_coalescible(nk_event_kind kind) {
            kind == NK_EVENT_WINDOW_MOVE || kind == NK_EVENT_POINTER_MOVE ||
            kind == NK_EVENT_SURFACE_RESIZE || kind == NK_EVENT_JOYSTICK_AXIS ||
            kind == NK_EVENT_GAMEPAD_AXIS || kind == NK_EVENT_DEVICE_ORIENTATION_CHANGED ||
-           kind == NK_EVENT_DISPLAY_ORIENTATION_CHANGED || kind == NK_EVENT_SENSOR_UPDATE;
+           kind == NK_EVENT_DISPLAY_ORIENTATION_CHANGED || kind == NK_EVENT_SENSOR_UPDATE ||
+           kind == NK_EVENT_CLIPBOARD_CHANGED || kind == NK_EVENT_FILE_CHANGED;
 }
 
 bool same_coalescing_target(const QueuedEvent &first, const QueuedEvent &second) {
     if (first.kind != second.kind || first.source != second.source)
         return false;
+    if (first.kind == NK_EVENT_CLIPBOARD_CHANGED)
+        return true;
+    if (first.kind == NK_EVENT_FILE_CHANGED) {
+        if (first.data.size() < sizeof(nk_file_changed_event) ||
+            second.data.size() < sizeof(nk_file_changed_event))
+            return false;
+        nk_file_changed_event first_file{};
+        nk_file_changed_event second_file{};
+        std::memcpy(&first_file, first.data.data(), sizeof(first_file));
+        std::memcpy(&second_file, second.data.data(), sizeof(second_file));
+        if (first_file.change_type != NK_FILE_CHANGE_MODIFIED ||
+            second_file.change_type != NK_FILE_CHANGE_MODIFIED ||
+            first_file.path_length != second_file.path_length ||
+            first_file.path_offset > first.data.size() ||
+            second_file.path_offset > second.data.size() ||
+            first_file.path_length > first.data.size() - first_file.path_offset ||
+            second_file.path_length > second.data.size() - second_file.path_offset)
+            return false;
+        return std::memcmp(first.data.data() + first_file.path_offset,
+                           second.data.data() + second_file.path_offset,
+                           first_file.path_length) == 0;
+    }
     if (first.kind != NK_EVENT_JOYSTICK_AXIS && first.kind != NK_EVENT_GAMEPAD_AXIS)
         return true;
     if (first.data.size() < sizeof(std::uint32_t) || second.data.size() < sizeof(std::uint32_t))
@@ -77,8 +104,21 @@ nk_result EventQueue::push(QueuedEvent event) {
             return NK_OK;
         }
     }
-    if (queue_.size() >= capacity_ && !is_terminal_request_event(event))
-        return NK_ERROR_QUEUE_FULL;
+    if (queue_.size() >= capacity_ && !is_terminal_request_event(event)) {
+        if (event.kind == NK_EVENT_FILE_WATCH_OVERFLOW) {
+            /* Overflow is a recovery instruction, not an ordinary best-effort
+             * notification. Make room by discarding an older coalescible item. */
+            auto victim = std::find_if(queue_.begin(), queue_.end(), [](const QueuedEvent &queued) {
+                return is_coalescible(queued.kind);
+            });
+            if (victim != queue_.end())
+                queue_.erase(victim);
+            else if (!queue_.empty())
+                queue_.pop_front();
+        } else {
+            return NK_ERROR_QUEUE_FULL;
+        }
+    }
     queue_.push_back(std::move(event));
     queued_bytes_ += event_bytes;
     return NK_OK;

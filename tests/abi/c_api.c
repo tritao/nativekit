@@ -1,6 +1,7 @@
 #include "nativekit.h"
 #include "nativekit_accessibility.h"
 #include "nativekit_clipboard.h"
+#include "nativekit_file_watch.h"
 #include "nativekit_dialog.h"
 #include "nativekit_graphics.h"
 #include "nativekit_gamepad.h"
@@ -48,6 +49,14 @@ _Static_assert(sizeof(nk_window_decoration_region) == 24,
                "window decoration region ABI layout is stable");
 _Static_assert(offsetof(nk_window_decoration_region, kind) == 16,
                "window decoration region kind offset is stable");
+_Static_assert(sizeof(nk_file_watch_options) == 24,
+               "file-watch options ABI layout is stable");
+_Static_assert(sizeof(nk_file_changed_event) == 28,
+               "file-change event ABI layout is stable");
+_Static_assert(sizeof(nk_clipboard_watch_options) == 24,
+               "clipboard-watch options ABI layout is stable");
+_Static_assert(sizeof(nk_clipboard_changed_event) == 16,
+               "clipboard-change event ABI layout is stable");
 
 _Static_assert(NK_EXECUTOR_PLATFORM == 0 && NK_EXECUTOR_APP == 1 && NK_EXECUTOR_RENDER == 2 &&
                    NK_EXECUTOR_WORKER == 3,
