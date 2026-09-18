@@ -749,7 +749,7 @@ void apply_cursor(WinWindowResource &resource) {
 uint32_t default_decoration_cursor_shape(LPARAM lparam) {
     switch (LOWORD(lparam)) {
     case HTCAPTION:
-        return NK_CURSOR_MOVE;
+        return NK_CURSOR_ARROW;
     case HTTOP:
     case HTBOTTOM:
         return NK_CURSOR_VERTICAL_RESIZE;

@@ -2540,7 +2540,7 @@ nk_result apply_cursor(GtkWindowResource &resource) {
 uint32_t default_decoration_cursor_shape(nk_window_decoration_region_kind kind) {
     switch (kind) {
     case NK_WINDOW_DECORATION_DRAG:
-        return NK_CURSOR_MOVE;
+        return NK_CURSOR_ARROW;
     case NK_WINDOW_DECORATION_RESIZE_NORTH:
     case NK_WINDOW_DECORATION_RESIZE_SOUTH:
         return NK_CURSOR_VERTICAL_RESIZE;

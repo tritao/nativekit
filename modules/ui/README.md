@@ -129,9 +129,11 @@ var titleBar = new WindowChrome("title-bar", WindowDecorationRegionKind.Drag,
 ```
 
 The fourth argument optionally overrides the cursor for that decoration region
-with a standard `CursorShape`. When omitted, the framework selects the cursor
-implied by the decoration kind and the native backend supplies the same default
-for regions that are outside the Haxe hit-test layer:
+with a standard `CursorShape`. When omitted, drag regions retain the normal
+arrow cursor while hovering; resize regions use the corresponding resize
+cursor. The platform owns any operation cursor after a drag or resize begins,
+and supplies the same defaults for regions that are outside the Haxe hit-test
+layer:
 
 ```haxe
 var customZone = new WindowChrome("custom-zone", WindowDecorationRegionKind.Client,

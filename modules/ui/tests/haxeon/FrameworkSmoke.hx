@@ -2647,7 +2647,7 @@ class FrameworkSmoke {
 			result = root.windowDecoration == WindowDecorationRegionKind.Drag &&
 				root.children.length == 1 &&
 				root.children[0].windowDecoration == WindowDecorationRegionKind.Client &&
-				root.cursor == UiCursorShape.Move &&
+				root.cursor == UiCursorShape.Arrow &&
 				root.children[0].cursor == UiCursorShape.Arrow &&
 				root.resolved != null && root.resolved.width > 0.0 && root.resolved.height > 0.0;
 			var diagonal = context.submit(new WindowChrome("chrome-diagonal",

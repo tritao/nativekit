@@ -165,7 +165,9 @@ class RenderNode {
 
 	static function cursorForWindowDecoration(kind:WindowDecorationRegionKind):CursorShape {
 		return switch kind {
-			case WindowDecorationRegionKind.Drag: CursorShape.Move;
+			// A drag region behaves like a native title bar: the platform owns
+			// the move cursor during the active drag, not while hovering.
+			case WindowDecorationRegionKind.Drag: CursorShape.Arrow;
 			case WindowDecorationRegionKind.ResizeNorth | WindowDecorationRegionKind.ResizeSouth:
 				CursorShape.VerticalResize;
 			case WindowDecorationRegionKind.ResizeWest | WindowDecorationRegionKind.ResizeEast:
