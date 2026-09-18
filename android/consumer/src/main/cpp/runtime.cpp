@@ -651,9 +651,12 @@ Java_io_nativekit_consumer_MainActivity_nativeInputProbe(JNIEnv *, jclass, jlong
         return 3;
     if (!key_press || !key_release || !text)
         return 4;
-    if (!composing || !composing_update || !committed || !deleted || !emoji_deleted ||
-        !selected || !composition_region || !composition_finished)
-        return 10;
+    const int missing_text_edit_flags =
+        (!composing << 0) | (!composing_update << 1) | (!committed << 2) |
+        (!deleted << 3) | (!emoji_deleted << 4) | (!selected << 5) |
+        (!composition_region << 6) | (!composition_finished << 7);
+    if (missing_text_edit_flags)
+        return 10 + missing_text_edit_flags;
     if (!controller || !gamepad_axis || !gamepad_button)
         return 5;
     uint32_t mapped = 0;
