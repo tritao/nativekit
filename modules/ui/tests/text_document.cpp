@@ -165,7 +165,106 @@ int main() {
         NKUI_ERROR_INVALID_ARGUMENT)
         return 21;
 
+    {
+        nkui_resource history_document = {0};
+        if (nkui_text_document_create(fonts, "", 240.0f, &text_style, &paragraph_style,
+                                      &history_document) != NKUI_OK)
+            return 23;
+        bool ok = nkui_text_document_apply_edit(history_document, 0, 0, "a", 1, 1, 0, 0, -1, -1,
+                                                NKUI_TEXT_EDIT_HISTORY_TYPING) == NKUI_OK &&
+                  nkui_text_document_apply_edit(history_document, 1, 1, "b", 2, 2, 0, 0, -1, -1,
+                                                NKUI_TEXT_EDIT_HISTORY_TYPING) == NKUI_OK &&
+                  document_text(history_document) == "ab" &&
+                  nkui_text_document_undo(history_document) == NKUI_OK &&
+                  document_text(history_document).empty() &&
+                  nkui_text_document_redo(history_document) == NKUI_OK &&
+                  document_text(history_document) == "ab";
+        ok = nkui_resource_destroy(history_document) == NKUI_OK && ok;
+        if (!ok)
+            return 24;
+    }
+
+    {
+        nkui_resource history_document = {0};
+        if (nkui_text_document_create(fonts, "abc", 240.0f, &text_style, &paragraph_style,
+                                      &history_document) != NKUI_OK)
+            return 25;
+        bool ok =
+            nkui_text_document_apply_edit(history_document, 2, 3, "", 2, 2, 0, 0, -1, -1,
+                                          NKUI_TEXT_EDIT_HISTORY_DELETE_BACKWARD) == NKUI_OK &&
+            nkui_text_document_apply_edit(history_document, 1, 2, "", 1, 1, 0, 0, -1, -1,
+                                          NKUI_TEXT_EDIT_HISTORY_DELETE_BACKWARD) == NKUI_OK &&
+            document_text(history_document) == "a" &&
+            nkui_text_document_undo(history_document) == NKUI_OK &&
+            document_text(history_document) == "abc" &&
+            nkui_text_document_redo(history_document) == NKUI_OK &&
+            document_text(history_document) == "a";
+        ok = nkui_resource_destroy(history_document) == NKUI_OK && ok;
+        if (!ok)
+            return 26;
+    }
+
+    {
+        nkui_resource history_document = {0};
+        if (nkui_text_document_create(fonts, "abc", 240.0f, &text_style, &paragraph_style,
+                                      &history_document) != NKUI_OK)
+            return 27;
+        bool ok = nkui_text_document_apply_edit(history_document, 0, 0, "", 0, 0, 0, 0, -1, -1,
+                                                NKUI_TEXT_EDIT_HISTORY_GENERIC) == NKUI_OK &&
+                  nkui_text_document_apply_edit(history_document, 0, 1, "", 0, 0, 0, 0, -1, -1,
+                                                NKUI_TEXT_EDIT_HISTORY_DELETE_FORWARD) == NKUI_OK &&
+                  nkui_text_document_apply_edit(history_document, 0, 1, "", 0, 0, 0, 0, -1, -1,
+                                                NKUI_TEXT_EDIT_HISTORY_DELETE_FORWARD) == NKUI_OK &&
+                  document_text(history_document) == "c" &&
+                  nkui_text_document_undo(history_document) == NKUI_OK &&
+                  document_text(history_document) == "abc" &&
+                  nkui_text_document_redo(history_document) == NKUI_OK &&
+                  document_text(history_document) == "c";
+        ok = nkui_resource_destroy(history_document) == NKUI_OK && ok;
+        if (!ok)
+            return 28;
+    }
+
+    {
+        nkui_resource history_document = {0};
+        if (nkui_text_document_create(fonts, "teh", 240.0f, &text_style, &paragraph_style,
+                                      &history_document) != NKUI_OK)
+            return 29;
+        bool ok = nkui_text_document_apply_edit(history_document, 0, 3, "the", 3, 3, 0, 0, -1, -1,
+                                                NKUI_TEXT_EDIT_HISTORY_AUTOCORRECT) == NKUI_OK &&
+                  nkui_text_document_apply_edit(history_document, 3, 3, "!", 4, 4, 0, 0, -1, -1,
+                                                NKUI_TEXT_EDIT_HISTORY_TYPING) == NKUI_OK &&
+                  document_text(history_document) == "the!" &&
+                  nkui_text_document_undo(history_document) == NKUI_OK &&
+                  document_text(history_document) == "the" &&
+                  nkui_text_document_undo(history_document) == NKUI_OK &&
+                  document_text(history_document) == "teh";
+        ok = nkui_resource_destroy(history_document) == NKUI_OK && ok;
+        if (!ok)
+            return 30;
+    }
+
+    {
+        nkui_resource history_document = {0};
+        if (nkui_text_document_create(fonts, "", 240.0f, &text_style, &paragraph_style,
+                                      &history_document) != NKUI_OK)
+            return 31;
+        bool ok = nkui_text_document_apply_edit(history_document, 0, 0, "か", 1, 1, 0, 1, 0, 1,
+                                                NKUI_TEXT_EDIT_HISTORY_COMPOSITION) == NKUI_OK &&
+                  nkui_text_document_apply_edit(history_document, 0, 1, "かな", 2, 2, 0, 1, 0, 2,
+                                                NKUI_TEXT_EDIT_HISTORY_COMPOSITION) == NKUI_OK &&
+                  nkui_text_document_commit_composition(history_document) == NKUI_OK &&
+                  document_text(history_document) == "かな" &&
+                  nkui_text_document_undo(history_document) == NKUI_OK &&
+                  document_text(history_document).empty() &&
+                  nkui_text_document_redo(history_document) == NKUI_OK &&
+                  document_text(history_document) == "かな";
+        ok = nkui_resource_destroy(history_document) == NKUI_OK && ok;
+        if (!ok)
+            return 32;
+    }
+
     if (nkui_resource_destroy(document) != NKUI_OK || nkui_resource_destroy(fonts) != NKUI_OK)
-        return 22;
+        return 33;
     return 0;
 }
