@@ -3,6 +3,7 @@
 #include "skribidi/skb_attributes.h"
 #include "skribidi/skb_common.h"
 #include "skribidi/skb_editor.h"
+#include "skribidi/skb_text.h"
 
 #include <algorithm>
 #include <cmath>
@@ -82,10 +83,8 @@ SkribidiDocumentEngine::SkribidiDocumentEngine(std::shared_ptr<SkribidiFontColle
 
     skb_editor_set_text_utf8(editor_, temporary_, initial_text ? initial_text : "", -1);
     const int32_t initial_length = skb_editor_get_text_utf32_count(editor_);
-    skb_editor_select(editor_, {{initial_length, SKB_AFFINITY_NONE},
-                                {initial_length, SKB_AFFINITY_NONE}});
-    selection_ = {initial_length, initial_length};
-    selection_affinity_ = 0;
+    skb_editor_set_selection(editor_, {{initial_length, SKB_AFFINITY_NONE},
+                                       {initial_length, SKB_AFFINITY_NONE}});
     composition_ = {-1, -1};
 }
 
@@ -128,20 +127,31 @@ bool SkribidiDocumentEngine::apply_edit(const SkribidiEditTransaction &transacti
         return false;
 
     skb_temp_alloc_reset(temporary_);
-    const int32_t undo_transaction = skb_editor_undo_transaction_begin(editor_);
+    skb_text_t *replacement_text = skb_text_create();
+    if (!replacement_text)
+        return false;
+    skb_text_append_utf8(replacement_text, transaction.replacement_text,
+                         static_cast<int32_t>(replacement_length), skb_attribute_set_t{});
+
     const skb_text_range_t replacement_range = {
         {transaction.replacement_start, SKB_AFFINITY_NONE},
         {transaction.replacement_end, SKB_AFFINITY_NONE},
     };
-    skb_editor_insert_text_utf8(editor_, temporary_, replacement_range, transaction.replacement_text,
-                                static_cast<int32_t>(replacement_length));
-    skb_editor_select(editor_, {{transaction.selection_start, SKB_AFFINITY_NONE},
-                                {transaction.selection_end,
-                                 static_cast<skb_caret_affinity_t>(transaction.selection_affinity)}});
-    skb_editor_undo_transaction_end(editor_, undo_transaction);
+    const skb_edit_transaction_t edit = {
+        .replacement = replacement_range,
+        .replacement_text = replacement_text,
+        .resulting_selection = {
+            {transaction.selection_start, SKB_AFFINITY_NONE},
+            {transaction.selection_end,
+             static_cast<skb_caret_affinity_t>(transaction.selection_affinity)},
+        },
+        .history_kind = SKB_EDIT_HISTORY_GENERIC,
+    };
+    const skb_result_t result = skb_editor_apply_transaction(editor_, temporary_, &edit);
+    skb_text_destroy(replacement_text);
+    if (result != SKB_RESULT_SUCCESS)
+        return false;
 
-    selection_ = {transaction.selection_start, transaction.selection_end};
-    selection_affinity_ = transaction.selection_affinity;
     if (transaction.has_composition) {
         composition_ = {transaction.composition_start, transaction.composition_end};
         has_composition_ = true;
@@ -171,12 +181,14 @@ int32_t SkribidiDocumentEngine::document_length() const {
 TextRange SkribidiDocumentEngine::selection() const {
     if (!valid())
         return {};
-    const skb_text_range_t value = skb_editor_get_current_selection(editor_);
-    return {value.start.offset, value.end.offset};
+    const skb_selection_t value = skb_editor_get_selection(editor_);
+    return {value.anchor.offset, value.focus.offset};
 }
 
 uint8_t SkribidiDocumentEngine::selection_affinity() const {
-    return selection_affinity_;
+    if (!valid())
+        return 0;
+    return static_cast<uint8_t>(skb_editor_get_selection(editor_).focus.affinity);
 }
 
 TextRange SkribidiDocumentEngine::composition() const {
@@ -192,8 +204,6 @@ bool SkribidiDocumentEngine::undo() {
         return false;
     skb_temp_alloc_reset(temporary_);
     skb_editor_undo(editor_, temporary_);
-    selection_ = selection();
-    selection_affinity_ = 0;
     composition_ = {-1, -1};
     has_composition_ = false;
     return true;
@@ -204,8 +214,6 @@ bool SkribidiDocumentEngine::redo() {
         return false;
     skb_temp_alloc_reset(temporary_);
     skb_editor_redo(editor_, temporary_);
-    selection_ = selection();
-    selection_affinity_ = 0;
     composition_ = {-1, -1};
     has_composition_ = false;
     return true;
