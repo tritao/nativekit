@@ -118,6 +118,7 @@ add_library(nativekit ${NK_LIBRARY_TYPE}
     src/core/mobile.cpp
     src/core/monitor.cpp
     src/core/plugin.cpp
+    src/core/request.cpp
     src/core/resource.cpp
     src/core/surface_frame.cpp
     src/core/system.cpp

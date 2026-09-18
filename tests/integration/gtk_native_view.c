@@ -78,6 +78,25 @@ int main(void) {
     require_ok("nk_view_create", nk_view_create(window, &options, &view));
     assert(view != NK_INVALID_HANDLE);
 
+    nk_view_options sibling_options = options;
+    sibling_options.x = 240;
+    sibling_options.y = 30;
+    sibling_options.width = 120;
+    sibling_options.height = 90;
+    nk_view sibling = NK_INVALID_HANDLE;
+    require_ok("nk_view_create", nk_view_create(window, &sibling_options, &sibling));
+    nk_view_bounds bounds;
+
+    /* A parent transaction publishes all sibling edits as one unit. */
+    require_ok("nk_view_set_bounds", nk_view_set_bounds(view, 20, 25, 210, 155));
+    require_ok("nk_view_set_bounds", nk_view_set_bounds(sibling, 260, 35, 140, 100));
+    require_ok("nk_view_set_visible", nk_view_set_visible(sibling, 0));
+    require_ok("nk_view_commit_parent", nk_view_commit_parent(window));
+    bounds = committed_bounds(view);
+    assert(bounds.x == 20 && bounds.y == 25 && bounds.width == 210 && bounds.height == 155);
+    bounds = committed_bounds(sibling);
+    assert(bounds.x == 260 && bounds.y == 35 && bounds.width == 140 && bounds.height == 100);
+
     /* The native handle is a GTK container the application can populate. */
     nk_native_view native = {0};
     native.struct_size = sizeof(native);
@@ -86,16 +105,16 @@ int main(void) {
     assert(native.view != 0);
     assert(GTK_IS_FIXED(GTK_WIDGET(native.view)));
 
-    /* Creation is already committed. */
-    nk_view_bounds bounds = committed_bounds(view);
-    assert(bounds.x == 10 && bounds.y == 20 && bounds.width == 200 && bounds.height == 150);
-    require_size_request(view, 200, 150);
+    /* The first parent transaction is already committed. */
+    bounds = committed_bounds(view);
+    assert(bounds.x == 20 && bounds.y == 25 && bounds.width == 210 && bounds.height == 155);
+    require_size_request(view, 210, 155);
 
     /* Pending edits are invisible until commit. */
     require_ok("nk_view_set_bounds", nk_view_set_bounds(view, 30, 40, 220, 160));
     bounds = committed_bounds(view);
-    assert(bounds.x == 10 && bounds.width == 200);
-    require_size_request(view, 200, 150);
+    assert(bounds.x == 20 && bounds.width == 210);
+    require_size_request(view, 210, 155);
     require_ok("nk_view_commit", nk_view_commit(view));
     bounds = committed_bounds(view);
     assert(bounds.x == 30 && bounds.y == 40 && bounds.width == 220 && bounds.height == 160);

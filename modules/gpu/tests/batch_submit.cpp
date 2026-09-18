@@ -282,6 +282,20 @@ int main() {
             goto cleanup;
         }
     }
+    /* The platform can hand an acquired immutable target to render submission. */
+    {
+        nk_surface_frame frame = NK_INVALID_HANDLE;
+        nk_surface_frame_target frame_target{};
+        frame_target.struct_size = sizeof(frame_target);
+        EXPECT_RESULT(nk_surface_acquire_frame(surface, &frame, &frame_target), NK_OK);
+        if (frame_target.frame != frame) {
+            std::fprintf(stderr, "acquired frame target did not carry its frame token\n");
+            result = __LINE__;
+            goto cleanup;
+        }
+        EXPECT_RESULT(nkgpu_batch_submit(renderer, batch, &frame_target), NKGPU_OK);
+        EXPECT_RESULT(nk_surface_present_frame(frame), NK_OK);
+    }
     /* A sealed batch can be replayed. */
     EXPECT_RESULT(nkgpu_batch_submit(renderer, batch), NKGPU_OK);
     /* A window frame left by a batch must be closed before other work. */

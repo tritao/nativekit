@@ -336,6 +336,8 @@ NKUI_API nkui_result NK_CALL nkui_layout_session_get_resolved_items(
 
 /** Executes the submitted layout through the existing NativeKit renderer.
  *
+ * The retained UI surface uses on-demand scheduling; request another frame
+ * with nk_surface_request_frame() after state, input, or animation changes.
  * When load_existing is non-zero, the layout is composited over the current
  * surface contents instead of clearing the frame first.
  */

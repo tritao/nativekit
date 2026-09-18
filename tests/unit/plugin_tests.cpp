@@ -18,6 +18,7 @@ constexpr nk_service_id unknown_service = 0x9999;
 constexpr nk_method_id method_echo = 1;
 constexpr nk_method_id method_fail = 2;
 constexpr nk_method_id method_handle = 3;
+constexpr nk_method_id method_pending = 4;
 constexpr nk_method_id notification_ready = 10;
 constexpr nk_handle returned_handle = static_cast<nk_handle>(0x0badf00du);
 
@@ -53,6 +54,8 @@ nk_result NK_CALL plugin_invoke(nk_plugin_instance instance, nk_method_id method
         out_reply->handle = returned_handle;
         return NK_OK;
     }
+    if (method == method_pending)
+        return NK_PLUGIN_PENDING;
     /* Reply from a buffer the plugin owns and reuses: NativeKit must copy it. */
     state->reply = state->payload;
     std::reverse(state->reply.begin(), state->reply.end());
@@ -61,32 +64,32 @@ nk_result NK_CALL plugin_invoke(nk_plugin_instance instance, nk_method_id method
     return NK_OK;
 }
 
-nk_result NK_CALL plugin_create(const nk_plugin_host *host, nk_plugin_instance *out_instance) {
-    assert(host && out_instance);
-    if (host->struct_size < sizeof(nk_plugin_host) || host->abi_version != NK_PLUGIN_ABI_VERSION)
+nk_result NK_CALL plugin_create(const nk_plugin_host *host, nk_plugin_instance instance) {
+    assert(host && instance != NK_INVALID_HANDLE);
+    if (host->struct_size < NK_PLUGIN_HOST_V1_SIZE || host->abi_version != NK_PLUGIN_ABI_VERSION)
         return NK_ERROR_INVALID_ARGUMENT;
     if (host->runtime_generation() == 0 || host->current_executor() != NK_EXECUTOR_APP)
         return NK_ERROR_INVALID_REQUEST;
 
     auto *state = new PluginState();
     live_state = state;
-    if (nk_plugin_set_state(*out_instance, state) != NK_OK) {
+    if (nk_plugin_set_state(instance, state) != NK_OK) {
         live_state = nullptr;
         delete state;
         return NK_ERROR_UNKNOWN;
     }
 
     nk_plugin_service service{};
-    service.struct_size = sizeof(service);
+    service.struct_size = NK_PLUGIN_SERVICE_V1_SIZE;
     service.service_id = echo_service;
     service.abi_version = 1;
     service.executor = NK_EXECUTOR_APP;
     service.name = "nativekit.test.echo";
     service.invoke = plugin_invoke;
-    if (host->register_service(*out_instance, &service) != NK_OK)
+    if (host->register_service(instance, &service) != NK_OK)
         return NK_ERROR_UNKNOWN;
     service.service_id = secondary_service;
-    if (host->register_service(*out_instance, &service) != NK_OK)
+    if (host->register_service(instance, &service) != NK_OK)
         return NK_ERROR_UNKNOWN;
     creates.fetch_add(1);
     return NK_OK;
@@ -102,8 +105,30 @@ void NK_CALL plugin_destroy(nk_plugin_instance instance) {
 }
 
 int idle_plugins = 0;
+int scoped_plugin_destroys = 0;
 
-nk_result NK_CALL idle_create(const nk_plugin_host *, nk_plugin_instance *) {
+nk_result NK_CALL scoped_plugin_invoke(nk_plugin_instance, nk_method_id,
+                                       const void *, uint64_t, nk_request_id,
+                                       nk_plugin_reply *) {
+    return NK_OK;
+}
+
+nk_result NK_CALL scoped_plugin_create(const nk_plugin_host *host, nk_plugin_instance instance) {
+    assert(host && instance != NK_INVALID_HANDLE);
+    nk_plugin_service service{};
+    service.struct_size = NK_PLUGIN_SERVICE_V1_SIZE;
+    service.service_id = echo_service;
+    service.abi_version = 1;
+    service.executor = NK_EXECUTOR_APP;
+    service.invoke = scoped_plugin_invoke;
+    return host->register_service(instance, &service);
+}
+
+void NK_CALL scoped_plugin_destroy(nk_plugin_instance) {
+    ++scoped_plugin_destroys;
+}
+
+nk_result NK_CALL idle_create(const nk_plugin_host *, nk_plugin_instance) {
     idle_plugins++;
     return NK_OK;
 }
@@ -121,7 +146,7 @@ void NK_CALL helper_task(void *user_data) {
 nk_plugin_descriptor make_descriptor(const char *id, nk_plugin_create_fn create,
                                      nk_plugin_destroy_fn destroy) {
     nk_plugin_descriptor descriptor{};
-    descriptor.struct_size = sizeof(descriptor);
+    descriptor.struct_size = NK_PLUGIN_DESCRIPTOR_V1_SIZE;
     descriptor.abi_version = NK_PLUGIN_ABI_VERSION;
     descriptor.id = id;
     descriptor.create = create;
@@ -131,7 +156,7 @@ nk_plugin_descriptor make_descriptor(const char *id, nk_plugin_create_fn create,
 
 nk_plugin_service make_service(nk_service_id service_id) {
     nk_plugin_service service{};
-    service.struct_size = sizeof(service);
+    service.struct_size = NK_PLUGIN_SERVICE_V1_SIZE;
     service.service_id = service_id;
     service.abi_version = 1;
     service.executor = NK_EXECUTOR_APP;
@@ -194,11 +219,30 @@ int main() {
     assert(instance != NK_INVALID_HANDLE);
     assert(creates.load() == 1 && live_state != nullptr);
 
+    /* The same numeric service id is valid on a different plugin instance. */
+    nk_plugin_descriptor scoped_descriptor =
+        make_descriptor("dev.nativekit.test.scoped", scoped_plugin_create,
+                        scoped_plugin_destroy);
+    nk_plugin_instance scoped_instance = NK_INVALID_HANDLE;
+    assert(nk_plugin_register(&scoped_descriptor, &scoped_instance) == NK_OK);
+    nk_plugin_service scoped_duplicate = make_service(echo_service);
+    assert(nk_plugin_service_register(scoped_instance, &scoped_duplicate) ==
+           NK_ERROR_INVALID_ARGUMENT);
+    nk_request_id scoped_request = NK_INVALID_REQUEST_ID;
+    assert(nk_plugin_call(scoped_instance, echo_service, method_echo, nullptr, 0,
+                          &scoped_request) == NK_OK);
+    const nk_plugin_event_view scoped_completion = complete(scoped_request);
+    assert(scoped_completion.instance == scoped_instance);
+    assert(scoped_completion.service_id == echo_service);
+    assert(scoped_plugin_destroys == 0);
+    assert(nk_plugin_unregister(scoped_instance) == NK_OK);
+    assert(scoped_plugin_destroys == 1);
+
     uint64_t instance_generation = 0;
     assert(nk_plugin_instance_generation(instance, &instance_generation) == NK_OK);
     assert(instance_generation == generation);
 
-    /* One plugin id and one runtime-wide service namespace. */
+    /* Plugin ids are runtime-wide; service ids are scoped to each instance. */
     nk_plugin_instance duplicate_instance = NK_INVALID_HANDLE;
     assert(nk_plugin_register(&descriptor, &duplicate_instance) == NK_ERROR_INVALID_ARGUMENT);
     assert(duplicate_instance == NK_INVALID_HANDLE);
@@ -216,7 +260,7 @@ int main() {
     /* Calls are routed asynchronously and never run on the caller's thread. */
     const std::uint32_t request_bytes[] = {0x11223344u, 0x55667788u, 0x99aabbccu};
     nk_request_id request = NK_INVALID_REQUEST_ID;
-    assert(nk_plugin_call(echo_service, method_echo, request_bytes, sizeof(request_bytes),
+    assert(nk_plugin_call(instance, echo_service, method_echo, request_bytes, sizeof(request_bytes),
                           &request) == NK_OK);
     assert(request != NK_INVALID_REQUEST_ID);
     assert(live_state->invokes.load() == 0);
@@ -244,37 +288,65 @@ int main() {
 
     /* Failures and transferred handles travel through the same completion. */
     request = NK_INVALID_REQUEST_ID;
-    assert(nk_plugin_call(echo_service, method_fail, nullptr, 0, &request) == NK_OK);
+    assert(nk_plugin_call(instance, echo_service, method_fail, nullptr, 0, &request) == NK_OK);
     const nk_plugin_event_view failure = complete(request);
     assert(failure.result == NK_ERROR_UNKNOWN);
     assert(failure.payload == nullptr && failure.payload_size == 0);
     assert(failure.flags == 0);
 
     request = NK_INVALID_REQUEST_ID;
-    assert(nk_plugin_call(echo_service, method_handle, nullptr, 0, &request) == NK_OK);
+    assert(nk_plugin_call(instance, echo_service, method_handle, nullptr, 0, &request) == NK_OK);
     const nk_plugin_event_view handle_result = complete(request);
     assert(handle_result.result == NK_OK);
     assert(handle_result.handle == returned_handle);
     assert((handle_result.flags & NK_PLUGIN_EVENT_HAS_HANDLE) != 0);
     assert(handle_result.payload_size == 0);
 
+    /* Pending requests stay live until an OS/worker callback completes them. */
     request = NK_INVALID_REQUEST_ID;
-    assert(nk_plugin_call(unknown_service, method_echo, nullptr, 0, &request) == NK_OK);
+    assert(nk_plugin_call(instance, echo_service, method_pending, nullptr, 0, &request) == NK_OK);
+    nk_event pending_probe{};
+    pending_probe.struct_size = sizeof(pending_probe);
+    assert(nk_poll_event(&pending_probe) == NK_OK);
+    assert(pending_probe.kind == NK_EVENT_NONE);
+    nk_event_release(&pending_probe);
+    const std::uint8_t deferred[] = {4, 5, 6};
+    nk_result callback_result = NK_ERROR_UNKNOWN;
+    std::thread callback([&] {
+        callback_result = nk_plugin_complete(instance, request, NK_OK, NK_INVALID_HANDLE,
+                                             deferred, sizeof(deferred));
+    });
+    callback.join();
+    assert(callback_result == NK_OK);
+    assert(nk_plugin_complete(instance, request, NK_OK, NK_INVALID_HANDLE, nullptr, 0) ==
+           NK_ERROR_INVALID_REQUEST);
+    nk_event deferred_event{};
+    deferred_event.struct_size = sizeof(deferred_event);
+    assert(nk_poll_event(&deferred_event) == NK_OK);
+    assert(deferred_event.kind == NK_EVENT_PLUGIN_COMPLETE);
+    const nk_plugin_event_view deferred_result = view_of(deferred_event);
+    nk_event_release(&deferred_event);
+    assert(deferred_result.method_id == method_pending);
+    assert(deferred_result.payload_size == sizeof(deferred));
+    assert(std::memcmp(deferred_result.payload, deferred, sizeof(deferred)) == 0);
+
+    request = NK_INVALID_REQUEST_ID;
+    assert(nk_plugin_call(instance, unknown_service, method_echo, nullptr, 0, &request) == NK_OK);
     const nk_plugin_event_view missing = complete(request);
     assert(missing.result == NK_ERROR_NOT_FOUND);
-    assert(missing.instance == NK_INVALID_HANDLE);
+    assert(missing.instance == instance);
     assert(missing.service_id == unknown_service);
 
     /* The control plane is bounded; bulk data must travel as a handle. */
     std::vector<std::byte> oversize(NK_PLUGIN_PAYLOAD_MAX + 1);
     request = NK_INVALID_REQUEST_ID;
-    assert(nk_plugin_call(echo_service, method_echo, oversize.data(), oversize.size(), &request) ==
+    assert(nk_plugin_call(instance, echo_service, method_echo, oversize.data(), oversize.size(), &request) ==
            NK_ERROR_PAYLOAD_TOO_LARGE);
     assert(request == NK_INVALID_REQUEST_ID);
     assert(nk_plugin_emit(instance, echo_service, notification_ready, oversize.data(),
                           oversize.size()) == NK_ERROR_PAYLOAD_TOO_LARGE);
-    assert(nk_plugin_call(0, method_echo, nullptr, 0, &request) == NK_ERROR_INVALID_ARGUMENT);
-    assert(nk_plugin_call(echo_service, method_echo, nullptr, 0, nullptr) ==
+    assert(nk_plugin_call(instance, 0, method_echo, nullptr, 0, &request) == NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_plugin_call(instance, echo_service, method_echo, nullptr, 0, nullptr) ==
            NK_ERROR_INVALID_ARGUMENT);
     assert(nk_plugin_emit(instance, secondary_service, 0, nullptr, 0) == NK_ERROR_INVALID_ARGUMENT);
 
@@ -287,7 +359,7 @@ int main() {
                               sizeof(notification)) == NK_OK);
         assert(nk_dispatch_to_app(&helper_task, &helper_runs) == NK_OK);
         assert(nk_dispatch_to_app(&helper_task, &helper_runs) == NK_OK);
-        assert(nk_plugin_call(secondary_service, method_echo, notification, sizeof(notification),
+        assert(nk_plugin_call(instance, secondary_service, method_echo, notification, sizeof(notification),
                               &request) == NK_OK);
         assert(live_state->invokes.load() == invokes_before_worker);
     });
@@ -329,17 +401,21 @@ int main() {
     assert(nk_plugin_register(&idle_descriptor, &idle) == NK_OK);
     assert(idle_plugins == 1);
 
-    /* Unregistering tears the instance and its services down immediately. */
+    /* Unregistering cancels queued and deferred requests exactly once. */
+    nk_request_id canceled_request = NK_INVALID_REQUEST_ID;
+    assert(nk_plugin_call(instance, echo_service, method_pending, nullptr, 0, &canceled_request) ==
+           NK_OK);
     assert(nk_plugin_unregister(instance) == NK_OK);
     assert(destroys.load() == 1);
+    const nk_plugin_event_view canceled = complete(canceled_request);
+    assert(canceled.result == NK_ERROR_INVALID_REQUEST);
     assert(nk_plugin_get_state(instance) == nullptr);
     assert(nk_plugin_instance_generation(instance, &instance_generation) ==
            NK_ERROR_INVALID_HANDLE);
     assert(nk_plugin_unregister(instance) == NK_ERROR_INVALID_HANDLE);
     assert(nk_plugin_service_unregister(instance, echo_service) == NK_ERROR_INVALID_HANDLE);
-    request = NK_INVALID_REQUEST_ID;
-    assert(nk_plugin_call(echo_service, method_echo, nullptr, 0, &request) == NK_OK);
-    assert(complete(request).result == NK_ERROR_NOT_FOUND);
+    assert(nk_plugin_call(instance, echo_service, method_echo, nullptr, 0, &request) ==
+           NK_ERROR_INVALID_HANDLE);
 
     /* Queued work is discarded at shutdown, after every plugin is destroyed. */
     nk_shutdown();

@@ -36,14 +36,17 @@ nk_view_get_native(view, &native)        borrowed platform view for app content
 nk_view_set_bounds(view, x, y, w, h)     pending
 nk_view_set_visible(view, visible)       pending
 nk_view_set_clip(view, on, x, y, w, h)   pending
-nk_view_commit(view)                     publishes every pending change
+nk_view_commit_parent(parent)            publishes the whole child set atomically
+nk_view_commit(view)                     compatibility entry point for that parent set
 nk_view_get_bounds(view, &bounds)        committed rectangle
 ```
 
-Bounds, visibility, and clipping are *pending* state. `nk_view_commit()` makes
-them the committed state in one step, and `nk_view_get_bounds()` reports the
-committed rectangle rather than pending edits, so a caller can see exactly what
-the platform has been told. An enabled clip constrains the rectangle the view
+Bounds, visibility, and clipping are *pending* state. `nk_view_commit_parent()`
+copies and applies all pending child state as one parent transaction, and
+`nk_view_commit()` is an equivalent compatibility entry point when a view is
+available. `nk_view_get_bounds()` reports the committed rectangle rather than
+pending edits, so a caller can see exactly what the platform has been told. An
+enabled clip constrains the rectangle the view
 may occupy to the intersection of its bounds and the clip rectangle, both in
 the parent's logical coordinates; a fully clipped view is hidden rather than
 allocated a zero-size rectangle.

@@ -440,17 +440,29 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_batch_seal(batch: nkgpu_batch) -> nkgpu_result;
 	/**
-	 * Replays a sealed batch on its owning renderer.
+	 * Binds the render-side context represented by an acquired frame target.
 	 *
-	 * Submission opens a frame, records every pass in order, and ends the frame
-	 * without presenting: surface presentation stays with the surface owner, so a
-	 * batch never implies ownership of a surface. The batch must belong to
-	 * `renderer` and that renderer must have no active frame. Retained resources
-	 * stay valid for the whole submission even if the caller destroyed its own
-	 * handles, and a batch that fails validation is rejected before any GPU state
-	 * changes. A sealed batch may be submitted more than once.
+	 * This is currently a validated no-op while RENDER aliases PLATFORM. The
+	 * stable seam for a future physical render thread: GL targets will carry the
+	 * backend context token in `native_context`, and the GPU backend will bind that
+	 * context here without changing batch or surface ABI signatures.
 	 */
-	extern fn nkgpu_batch_submit(renderer: nkgpu_renderer, batch: nkgpu_batch) -> nkgpu_result;
+	extern fn nkgpu_bind_frame_target(frame_target: ptr<const<nk_surface_frame_target>>) -> nkgpu_result;
+	/**
+	 * Replays a sealed batch on its owning renderer against an already-acquired
+	 * immutable frame target.
+	 *
+	 * Submission does not call nk_surface_make_current() or
+	 * nk_surface_get_frame_target(). The caller acquires the target on the
+	 * platform executor, passes the immutable snapshot here on the render
+	 * executor, and presents or cancels the associated frame afterwards. The
+	 * batch must belong to `renderer` and that renderer must have no active frame.
+	 * Retained resources stay valid for the whole submission even if the caller
+	 * destroyed its own handles, and a batch that fails validation is rejected
+	 * before any GPU state changes. A sealed batch may be submitted more than
+	 * once.
+	 */
+	extern fn nkgpu_batch_submit(renderer: nkgpu_renderer, batch: nkgpu_batch, frame_target: ptr<const<nk_surface_frame_target>>) -> nkgpu_result;
 	/**
 	 * Begins a frame for a renderer.
 	 *

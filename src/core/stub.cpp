@@ -158,6 +158,9 @@ nk_result NK_CALL nk_view_set_clip(nk_view, uint32_t, int32_t, int32_t, int32_t,
 nk_result NK_CALL nk_view_commit(nk_view) {
     return unsupported();
 }
+nk_result NK_CALL nk_view_commit_parent(nk_handle) {
+    return unsupported();
+}
 nk_result NK_CALL nk_view_get_bounds(nk_view, nk_view_bounds *) {
     return unsupported();
 }

@@ -24,7 +24,7 @@ class UiRendererImpl final : public UiRenderer {
     bool initialize() override;
     bool valid() const override;
     bool lost() const override;
-    bool beginFrame(bool record) override;
+    bool beginFrame(bool record, const nk_surface_frame_target *frame_target) override;
     bool beginWindowPass(int width, int height, bool clear) override;
     bool beginTargetPass(ResourceId target, int width, int height, bool load_existing) override;
     bool beginEffectPass(ResourceId target, uint64_t cache_key, int width, int height,
@@ -211,6 +211,8 @@ struct UiRendererImpl::State {
     nkgpu_batch batch{};
     bool recording = false;
     std::vector<uint8_t> record_commands;
+    nk_surface_frame_target frame_target{};
+    bool has_frame_target = false;
 };
 
 namespace {
@@ -1574,7 +1576,7 @@ bool UiRendererImpl::lost() const {
            renderer_state == NKGPU_RENDERER_LOST;
 }
 
-bool UiRendererImpl::beginFrame(bool record) {
+bool UiRendererImpl::beginFrame(bool record, const nk_surface_frame_target *frame_target) {
     if (!valid() || state_->in_frame)
         return fail(*state_, "invalid UI frame state");
     recycle_transient_targets(*state_);
@@ -1583,6 +1585,11 @@ bool UiRendererImpl::beginFrame(bool record) {
     if (!state_->frame_serial)
         ++state_->frame_serial;
     state_->recording = record;
+    state_->has_frame_target = frame_target != nullptr;
+    if (frame_target)
+        state_->frame_target = *frame_target;
+    else
+        state_->frame_target = {};
     state_->record_commands.clear();
     if (record) {
         if (!gpu_result(*state_, nkgpu_batch_begin(state_->renderer, &state_->batch))) {
@@ -2384,18 +2391,24 @@ bool UiRendererImpl::endFrame() {
     if (state_->recording) {
         const bool sealed = gpu_result(*state_, nkgpu_batch_seal(state_->batch));
         const bool submitted =
-            sealed && gpu_result(*state_, nkgpu_batch_submit(state_->renderer, state_->batch));
+            sealed && gpu_result(
+                          *state_, nkgpu_batch_submit(state_->renderer, state_->batch,
+                                                      state_->has_frame_target
+                                                          ? &state_->frame_target
+                                                          : nullptr));
         /* The batch is always released, including after a failed submission. */
         nkgpu_batch_destroy(state_->batch);
         state_->batch = {};
         state_->record_commands.clear();
         state_->recording = false;
+        state_->has_frame_target = false;
         state_->in_frame = false;
         return sealed && submitted;
     }
     if (!gpu_result(*state_, nkgpu_end_frame_deferred_present(state_->renderer)))
         return false;
     state_->in_frame = false;
+    state_->has_frame_target = false;
     return true;
 }
 

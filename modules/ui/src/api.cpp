@@ -2250,7 +2250,8 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
         return NKUI_ERROR_INVALID_ARGUMENT;
     const int32_t width = frame_info->framebuffer_width;
     const int32_t height = frame_info->framebuffer_height;
-    if (!surface || nk_surface_make_current(surface) != NK_OK)
+    if (!surface || nk_surface_set_frame_mode(surface, NK_SURFACE_FRAME_ON_DEMAND) != NK_OK ||
+        nk_surface_make_current(surface) != NK_OK)
         return NKUI_ERROR_INVALID_ARGUMENT;
     nk_surface_frame_target frame_target{};
     frame_target.struct_size = sizeof(frame_target);
@@ -2642,7 +2643,8 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
         frame_info->logical_height <= 0.0f || frame_info->framebuffer_width <= 0 ||
         frame_info->framebuffer_height <= 0 || frame_info->pixel_scale <= 0.0f)
         return NKUI_ERROR_INVALID_ARGUMENT;
-    if (!surface || nk_surface_make_current(surface) != NK_OK)
+    if (!surface || nk_surface_set_frame_mode(surface, NK_SURFACE_FRAME_ON_DEMAND) != NK_OK ||
+        nk_surface_make_current(surface) != NK_OK)
         return NKUI_ERROR_INVALID_ARGUMENT;
     nk_surface_frame_target frame_target{};
     frame_target.struct_size = sizeof(frame_target);

@@ -153,6 +153,8 @@ typedef uint32_t nk_bool NK_BOOL32;
 enum NK_ENUM(nk_result) {
     /** Operation completed successfully. */
     NK_OK = 0,
+    /** Operation was accepted and will complete through a later event. */
+    NK_PENDING = 1,
     /** The backend encountered an unspecified failure. */
     NK_ERROR_UNKNOWN = -1,
     /** A caller-provided pointer, value, size, or combination is invalid. */
@@ -486,7 +488,9 @@ NK_API nk_bool NK_CALL nk_executor_is_current(nk_executor executor);
  * and is not owned by NativeKit.
  *
  * Tasks still queued when nk_shutdown() completes are discarded without being
- * invoked.
+ * invoked. Internal runtime-owned tasks also carry a byte cost and a noexcept
+ * cleanup callback, so queued plugin work is reclaimed when it is discarded;
+ * the public user_data pointer remains caller-owned.
  *
  * @param fn Non-null task function.
  * @param user_data Optional opaque value passed to `fn`.

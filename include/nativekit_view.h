@@ -26,7 +26,7 @@ extern "C" {
  * such as a WebView: NativeKit owns its lifecycle and placement, and the
  * application owns its content through the borrowed platform handle returned
  * by nk_view_get_native(). Geometry, visibility, and clipping are pending
- * state that only becomes the committed state when nk_view_commit() publishes
+ * state that only becomes the committed state when nk_view_commit_parent() publishes
  * it, so a frame's layout changes apply as one unit instead of one setter at a
  * time.
  */
@@ -148,7 +148,7 @@ NK_API nk_result NK_CALL nk_view_get_native(nk_view view, nk_native_view *out_na
  * Records the view's logical-pixel rectangle as pending state.
  *
  * Width and height must be positive. The committed rectangle does not change
- * until nk_view_commit() publishes every pending change.
+ * until nk_view_commit_parent() publishes every pending change.
  */
 NK_API nk_result NK_CALL nk_view_set_bounds(nk_view view, int32_t x, int32_t y, int32_t width,
                                             int32_t height);
@@ -169,7 +169,9 @@ NK_API nk_result NK_CALL nk_view_set_clip(nk_view view, nk_bool enabled, int32_t
                                           int32_t width, int32_t height);
 
 /**
- * Publishes every pending change and makes it the committed state.
+ * Publishes every pending change for this view's parent and makes the whole
+ * sibling set the committed state. This preserves the legacy per-view entry
+ * point while making one layout transaction atomic for the parent/window.
  *
  * Call this once per frame after updating one or more views so a layout change
  * applies as a unit: the platform updates each view before the next frame is
@@ -177,6 +179,14 @@ NK_API nk_result NK_CALL nk_view_set_clip(nk_view view, nk_bool enabled, int32_t
  * afterwards. Committing without pending changes is a no-op.
  */
 NK_API nk_result NK_CALL nk_view_commit(nk_view view);
+
+/**
+ * Atomically publishes pending geometry, visibility, and clipping for every
+ * native child view attached to `parent`. The parent is normally an nk_window
+ * (or a mobile host on backends that support native views). Call on the
+ * platform executor after updating all child views for a frame.
+ */
+NK_API nk_result NK_CALL nk_view_commit_parent(nk_handle parent);
 
 /**
  * Fills in the committed logical-pixel rectangle.

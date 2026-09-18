@@ -124,7 +124,7 @@ class UiRenderer {
      * Frames that composite a live surface producer cannot be recorded, because
      * the producer renders through callbacks rather than recorded commands.
      */
-    virtual bool beginFrame(bool record) = 0;
+    virtual bool beginFrame(bool record, const nk_surface_frame_target *frame_target = nullptr) = 0;
     virtual bool beginWindowPass(int width, int height, bool clear) = 0;
     virtual bool beginTargetPass(ResourceId target, int width, int height, bool load_existing) = 0;
     /** Begin an effect output pass, reusing a persistent cached result when its key matches. */

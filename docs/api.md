@@ -294,19 +294,21 @@ created it. `nk_plugin_unregister()` destroys one instance; `nk_shutdown()`
 destroys all of them before the runtime, its handles, and its event queue
 disappear.
 
-Plugins publish services with numeric identifiers. `nk_plugin_service_register()`
-puts a `service_id` into one runtime-wide namespace and declares the executor
-that runs its invoke callback. `nk_plugin_call()` addresses a service and method
-by number and is asynchronous: it never runs plugin code on the caller's thread,
-so any native thread may use it. Every successful call produces exactly one
-`NK_EVENT_PLUGIN_COMPLETE` event carrying the request id, service, method,
-result, and an optional borrowed payload or transferred NativeKit handle.
+Plugins publish services with numeric identifiers scoped to their instance.
+`nk_plugin_service_register()` declares the executor that runs its invoke
+callback, and `nk_plugin_call()` addresses `(instance, service, method)` by
+number. Calls are asynchronous: they never run plugin code on the caller's
+thread, so any native thread may use them. Every successful call produces
+exactly one `NK_EVENT_PLUGIN_COMPLETE` event. A service may return
+`NK_PLUGIN_PENDING` and later call `nk_plugin_complete()` from an OS callback or
+worker thread; duplicate, late, mismatched, and stale completions are rejected,
+and outstanding requests are canceled during instance/runtime shutdown.
 `nk_plugin_emit()` delivers unsolicited `NK_EVENT_PLUGIN_EVENT` notifications
 from any thread.
 
 Payloads cross the plugin ABI as bounded byte spans. NativeKit does not interpret
 them and has no JSON, object, or variant model, so generated bindings can lay
-typed fixed-layout records over the bytes. `NK_PLUGIN_PAYLOAD_MAX` (1 MiB) caps
+typed fixed-layout records over the bytes. `NK_PLUGIN_PAYLOAD_MAX` (64 KiB) caps
 inline control traffic; operations that move camera frames, video, render
 output, or shared buffers return a NativeKit handle such as `nk_graphics_image`
 instead of a payload. Use `nk_plugin_event_query()` to decode either plugin
@@ -692,10 +694,10 @@ borrowed platform handle returned by `nk_view_get_native()`.
 
 Geometry, visibility, and clipping are pending state. `nk_view_set_bounds()`,
 `nk_view_set_visible()`, and `nk_view_set_clip()` only record changes;
-`nk_view_commit()` publishes them and makes them the committed state, so a
-layout change that touches several views applies as one unit instead of one
-setter at a time. `nk_view_get_bounds()` reports the committed rectangle, so a
-caller can tell what the platform has actually been told.
+`nk_view_commit_parent()` publishes all pending changes for the parent's child
+set atomically. `nk_view_commit()` remains a compatibility entry point that
+commits the whole sibling set. `nk_view_get_bounds()` reports the committed
+rectangle, so a caller can tell what the platform has actually been told.
 
 An enabled clip constrains the rectangle a view may occupy to the intersection
 of its bounds and the clip rectangle, both in the parent's logical coordinates.

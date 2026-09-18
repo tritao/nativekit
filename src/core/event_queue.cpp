@@ -46,20 +46,29 @@ bool same_coalescing_target(const QueuedEvent &first, const QueuedEvent &second)
 }
 } // namespace
 
-EventQueue::EventQueue(std::size_t capacity) : capacity_(capacity) {}
+EventQueue::EventQueue(std::size_t capacity, std::size_t byte_capacity)
+    : capacity_(capacity), byte_capacity_(byte_capacity) {}
 
 nk_result EventQueue::push(QueuedEvent event) {
     std::lock_guard lock(mutex_);
+    const std::size_t event_bytes = event.data.size();
+    if (event_bytes > byte_capacity_ ||
+        queued_bytes_ > byte_capacity_ - event_bytes)
+        if (!is_terminal_request_event(event))
+            return NK_ERROR_QUEUE_FULL;
     if (is_coalescible(event.kind) && !queue_.empty()) {
         auto &tail = queue_.back();
         if (same_coalescing_target(tail, event)) {
+            queued_bytes_ -= tail.data.size();
             tail = std::move(event);
+            queued_bytes_ += event_bytes;
             return NK_OK;
         }
     }
     if (queue_.size() >= capacity_ && !is_terminal_request_event(event))
         return NK_ERROR_QUEUE_FULL;
     queue_.push_back(std::move(event));
+    queued_bytes_ += event_bytes;
     return NK_OK;
 }
 
@@ -86,6 +95,7 @@ nk_result EventQueue::poll(nk_event &output) {
     output.data_count = event.data_count;
     output.data = payload;
     output.data_size = event.data.size();
+    queued_bytes_ -= event.data.size();
     queue_.pop_front();
     return NK_OK;
 }
@@ -98,6 +108,7 @@ bool EventQueue::empty() {
 void EventQueue::clear() {
     std::lock_guard lock(mutex_);
     queue_.clear();
+    queued_bytes_ = 0;
 }
 
 } // namespace nk::core

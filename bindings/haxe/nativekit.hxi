@@ -2019,6 +2019,10 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 */
 		NK_OK = 0;
 		/**
+		 * Operation was accepted and will complete through a later event.
+		 */
+		NK_PENDING = 1;
+		/**
 		 * The backend encountered an unspecified failure.
 		 */
 		NK_ERROR_UNKNOWN = -1;
@@ -2580,7 +2584,9 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * and is not owned by NativeKit.
 	 *
 	 * Tasks still queued when nk_shutdown() completes are discarded without being
-	 * invoked.
+	 * invoked. Internal runtime-owned tasks also carry a byte cost and a noexcept
+	 * cleanup callback, so queued plugin work is reclaimed when it is discarded;
+	 * the public user_data pointer remains caller-owned.
 	 *
 	 * @param fn Non-null task function.
 	 * @param user_data Optional opaque value passed to `fn`.
@@ -3186,7 +3192,9 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 */
 	extern fn nk_time_seconds() -> f64;
 	/**
-	 * Publishes every pending change and makes it the committed state.
+	 * Publishes every pending change for this view's parent and makes the whole
+	 * sibling set the committed state. This preserves the legacy per-view entry
+	 * point while making one layout transaction atomic for the parent/window.
 	 *
 	 * Call this once per frame after updating one or more views so a layout change
 	 * applies as a unit: the platform updates each view before the next frame is
@@ -3194,6 +3202,13 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * afterwards. Committing without pending changes is a no-op.
 	 */
 	extern fn nk_view_commit(view: nk_view) -> nk_result;
+	/**
+	 * Atomically publishes pending geometry, visibility, and clipping for every
+	 * native child view attached to `parent`. The parent is normally an nk_window
+	 * (or a mobile host on backends that support native views). Call on the
+	 * platform executor after updating all child views for a frame.
+	 */
+	extern fn nk_view_commit_parent(parent: nk_handle) -> nk_result;
 	/**
 	 * Creates a native child view inside `parent`.
 	 *
@@ -3232,7 +3247,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * Records the view's logical-pixel rectangle as pending state.
 	 *
 	 * Width and height must be positive. The committed rectangle does not change
-	 * until nk_view_commit() publishes every pending change.
+	 * until nk_view_commit_parent() publishes every pending change.
 	 */
 	extern fn nk_view_set_bounds(view: nk_view, x: i32, y: i32, width: i32, height: i32) -> nk_result;
 	/**
@@ -5541,7 +5556,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * such as a WebView: NativeKit owns its lifecycle and placement, and the
 	 * application owns its content through the borrowed platform handle returned
 	 * by nk_view_get_native(). Geometry, visibility, and clipping are pending
-	 * state that only becomes the committed state when nk_view_commit() publishes
+	 * state that only becomes the committed state when nk_view_commit_parent() publishes
 	 * it, so a frame's layout changes apply as one unit instead of one setter at a
 	 * time.
 	 */

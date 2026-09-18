@@ -38,7 +38,7 @@ nkgpu_batch_begin(renderer, &batch)             build side: records work, retain
 nkgpu_batch_append_pass(batch, &pass)           window or offscreen target pass, in order
 nkgpu_batch_append_command(batch, bytes, size)  packed records as nkgpu_submit_commands defines
 nkgpu_batch_seal(batch)                         freezes the batch: no further appends
-nkgpu_batch_submit(renderer, batch)             render side: begins, replays, ends the frame
+nkgpu_batch_submit(renderer, batch, target)      render side: binds, replays, ends the frame
 nkgpu_batch_destroy(batch)
 ```
 
@@ -58,7 +58,7 @@ Invariants:
 | Immutability | A sealed batch never changes. Appending after seal is an error, not a silent no-op. |
 | Ownership | The batch owns its command bytes and retains every GPU resource handle it references, releasing them on destroy. Handles stay valid even if the caller destroys its own references. |
 | No callbacks | A batch contains data and handles only. Sampler/image producers, custom effect callbacks, and anything language-bound must be resolved into handles before sealing. |
-| Target binding | The batch carries the render target it was recorded for. Presentation and surface frame acquisition stay with `nk_surface_frame` on the platform executor, so a batch never implies ownership of a surface. |
+| Target binding | The platform executor acquires an immutable `nk_surface_frame_target`; the render side binds that target and submits the batch. Presentation and surface frame acquisition stay with `nk_surface_frame` on the platform executor, so a batch never implies ownership of a surface. |
 | Failure | Submit is atomic from the caller's view: a batch that fails validation is rejected before any GPU state changes, and a batch referencing a destroyed resource fails at submit rather than drawing garbage. |
 
 ## How the layers compose
@@ -66,7 +66,7 @@ Invariants:
 ```
 UI:   build/layout/record → RenderPlan → seal            (semantic freeze, ADR 0016)
 GPU:  translate plan → commands + retained handles → seal (submission freeze, this ADR)
-      platform executor acquires nk_surface_frame, render executor submits, platform presents
+      platform executor acquires nk_surface_frame and target, render executor binds and submits, platform presents or cancels
 ```
 
 The UI seal answers "can this frame's meaning change while it renders". The GPU

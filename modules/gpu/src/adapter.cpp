@@ -122,6 +122,8 @@ struct Renderer {
     uint64_t surface_recreations = 0;
     uint64_t device_losses = 0;
     uint64_t failed_allocations = 0;
+    nk_surface_frame_target frame_target{};
+    bool has_frame_target = false;
 #if defined(NKGPU_TESTING)
     uint64_t test_frames_before_loss = UINT64_MAX;
 #endif
@@ -331,7 +333,8 @@ static bool make_renderer_surface_current(const Renderer &renderer) {
            target.api == renderer.graphics_api && target.device.id == renderer.device.id;
 }
 
-static nkgpu_result activate_renderer(Handle handle) {
+static nkgpu_result activate_renderer(Handle handle,
+                                      const nk_surface_frame_target *provided_target = nullptr) {
     auto *slot = renderer_pool.get(handle);
     if (!slot)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
@@ -341,12 +344,15 @@ static nkgpu_result activate_renderer(Handle handle) {
         return fail(NKGPU_ERROR_WRONG_STATE, "another renderer has an active frame");
     const bool context_backend = slot->value.graphics_api == NK_GRAPHICS_OPENGL ||
                                  slot->value.graphics_api == NK_GRAPHICS_OPENGL_ES;
-    if (!renderer_is_active(slot->value) && context_backend &&
+    if (!provided_target && !renderer_is_active(slot->value) && context_backend &&
         nk_surface_make_current(slot->value.surface) != NK_OK)
         return fail(NKGPU_ERROR_UNKNOWN, "current: %s", nk_last_error());
-    nk_surface_frame_target target{};
-    target.struct_size = sizeof(target);
-    if (nk_surface_get_frame_target(slot->value.surface, &target) == NK_OK && target.device.id &&
+    nk_surface_frame_target target = provided_target ? *provided_target : nk_surface_frame_target{};
+    if (!provided_target)
+        target.struct_size = sizeof(target);
+    const bool target_available = provided_target ||
+                                  (nk_surface_get_frame_target(slot->value.surface, &target) == NK_OK);
+    if (target_available && target.device.id &&
         (target.api != slot->value.graphics_api || target.device.id != slot->value.device.id)) {
         ++slot->value.surface_recreations;
         mark_renderer_lost(handle, slot->value);
@@ -355,6 +361,32 @@ static nkgpu_result activate_renderer(Handle handle) {
     }
     selected_renderer = handle;
     selected_api = slot->value.api;
+    return NKGPU_OK;
+}
+
+static nkgpu_result begin_frame_with_target(Handle handle,
+                                            const nk_surface_frame_target &target) {
+    auto *slot = renderer_pool.get(handle);
+    if (!slot)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    if (slot->value.state == RendererState::Lost)
+        return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
+    if (slot->value.state != RendererState::Ready || active_renderer)
+        return fail(NKGPU_ERROR_WRONG_STATE, "a renderer frame is already active");
+    if (target.width <= 0 || target.height <= 0 || target.api != slot->value.graphics_api ||
+        target.device.id != slot->value.device.id)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "frame target does not belong to the renderer");
+    const nkgpu_result activated = activate_renderer(handle, &target);
+    if (activated != NKGPU_OK)
+        return activated;
+    sg_reset_state_cache();
+    slot->value.frame_target = target;
+    slot->value.has_frame_target = true;
+    slot->value.state = RendererState::FrameActive;
+    slot->value.in_pass = false;
+    slot->value.active_target = 0;
+    slot->value.bindings = {};
+    active_renderer = handle;
     return NKGPU_OK;
 }
 
@@ -1938,6 +1970,8 @@ nkgpu_result nkgpu_frame_begin(nkgpu_renderer h) {
         return activated;
     sg_reset_state_cache();
     s->value.state = RendererState::FrameActive;
+    s->value.has_frame_target = false;
+    s->value.frame_target = {};
     s->value.in_pass = false;
     s->value.active_target = 0;
     s->value.bindings = {};
@@ -1956,10 +1990,15 @@ nkgpu_result nkgpu_begin_window_pass(nkgpu_renderer h, uint32_t width, uint32_t 
     const nkgpu_result activated = activate_renderer(h);
     if (activated != NKGPU_OK)
         return activated;
-    nk_surface_frame_target target{};
-    target.struct_size = sizeof(target);
-    if (nk_surface_get_frame_target(s->value.surface, &target) != NK_OK || target.width <= 0 ||
-        target.height <= 0)
+    nk_surface_frame_target target = s->value.has_frame_target
+                                         ? s->value.frame_target
+                                         : nk_surface_frame_target{};
+    if (!s->value.has_frame_target) {
+        target.struct_size = sizeof(target);
+        if (nk_surface_get_frame_target(s->value.surface, &target) != NK_OK)
+            return fail(NKGPU_ERROR_UNKNOWN, "surface framebuffer is unavailable");
+    }
+    if (target.width <= 0 || target.height <= 0)
         return fail(NKGPU_ERROR_UNKNOWN, "surface framebuffer is unavailable");
     if (target.api != s->value.graphics_api || target.device.id != s->value.device.id) {
         ++s->value.surface_recreations;
@@ -1967,6 +2006,8 @@ nkgpu_result nkgpu_begin_window_pass(nkgpu_renderer h, uint32_t width, uint32_t 
         return fail(NKGPU_ERROR_DEVICE_LOST,
                     "surface graphics device changed; recreate the GPU renderer");
     }
+    s->value.frame_target = target;
+    s->value.has_frame_target = true;
     sg_pass pass{};
     pass.action.colors[0].load_action = clear ? SG_LOADACTION_CLEAR : SG_LOADACTION_LOAD;
     pass.action.colors[0].clear_value = {.025f, .035f, .07f, 1};
@@ -2940,7 +2981,8 @@ nkgpu_result nkgpu_batch_seal(nkgpu_batch batch) {
     return NKGPU_OK;
 }
 
-nkgpu_result nkgpu_batch_submit(nkgpu_renderer renderer, nkgpu_batch batch) {
+nkgpu_result nkgpu_batch_submit(nkgpu_renderer renderer, nkgpu_batch batch,
+                               const nk_surface_frame_target *frame_target) {
     auto *rs = renderer_pool.get(renderer);
     auto *bs = batch_pool.get(batch);
     if (!rs || !bs)
@@ -2959,6 +3001,11 @@ nkgpu_result nkgpu_batch_submit(nkgpu_renderer renderer, nkgpu_batch batch) {
         return fail(NKGPU_ERROR_WRONG_STATE, "batch is not sealed");
     if (bs->value.passes.empty())
         return fail(NKGPU_ERROR_WRONG_STATE, "batch has no passes");
+    if (frame_target) {
+        const nkgpu_result bound = nkgpu_bind_frame_target(frame_target);
+        if (bound != NKGPU_OK)
+            return bound;
+    }
     /* Reject an impossible submission before any GPU state changes. */
     if (rs->value.state != RendererState::Ready || active_renderer)
         return fail(NKGPU_ERROR_WRONG_STATE, "a renderer frame is already active");
@@ -2969,7 +3016,8 @@ nkgpu_result nkgpu_batch_submit(nkgpu_renderer renderer, nkgpu_batch batch) {
     for (const auto &retained : bs->value.retained)
         set_retained_active(retained.kind, retained.slot, true);
 
-    nkgpu_result result = nkgpu_frame_begin(renderer);
+    nkgpu_result result = frame_target ? begin_frame_with_target(renderer, *frame_target)
+                                       : nkgpu_frame_begin(renderer);
     size_t index = 0;
     while (result == NKGPU_OK && index < bs->value.passes.size()) {
         const BatchPass &pass = bs->value.passes[index];
@@ -2997,6 +3045,18 @@ nkgpu_result nkgpu_batch_submit(nkgpu_renderer renderer, nkgpu_batch batch) {
     for (const auto &retained : bs->value.retained)
         set_retained_active(retained.kind, retained.slot, false);
     return result;
+}
+
+nkgpu_result nkgpu_bind_frame_target(const nk_surface_frame_target *frame_target) {
+    if (!frame_target || frame_target->struct_size < sizeof(nk_surface_frame_target) ||
+        frame_target->api == 0 || !frame_target->device.id || frame_target->width <= 0 ||
+        frame_target->height <= 0)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid acquired frame target");
+    if (!nk_executor_is_current(NK_EXECUTOR_RENDER))
+        return fail(NKGPU_ERROR_WRONG_THREAD, "frame-target binding requires the render executor");
+    /* The current executor aliases PLATFORM/APP/RENDER. A future GL backend
+       binds frame_target->native_context here before touching Sokol state. */
+    return NKGPU_OK;
 }
 
 nkgpu_result nkgpu_batch_destroy(nkgpu_batch batch) {
@@ -3028,6 +3088,8 @@ static nkgpu_result end_frame(nkgpu_renderer r, bool present_surface) {
     rs->value.active_target = 0;
     rs->value.pass_width = 0;
     rs->value.pass_height = 0;
+    rs->value.has_frame_target = false;
+    rs->value.frame_target = {};
     active_renderer = 0;
     nk_result present_result = NK_OK;
     if (present_surface) {
