@@ -137,30 +137,32 @@ static int geometry_anchor_is_published(float expected_x, float expected_y) {
 static int query_text_input_ranges(void) {
     return EM_ASM_INT({
         const input = document.querySelector("[id^='__nativekit_text_input_']");
-        if (!input || typeof input._nkGetSurroundingText !=
-            = "function" || typeof input._nkCodePointRangeForEvent != = "function")
+        if (!input || typeof input._nkGetSurroundingText == "undefined" ||
+            typeof input._nkCodePointRangeForEvent == "undefined")
             return 0;
         input.value = "A\ud83d\ude00B";
         input.setSelectionRange(3, 3);
         const surrounding = input._nkGetSurroundingText(1, 1);
-        if (!surrounding || surrounding.text != = "\ud83d\ude00B" || surrounding.textStart !=
-            = 1 || surrounding.selectionStart != = 1 || surrounding.selectionEnd != = 1)
+        if (!surrounding || !(surrounding.text == "\ud83d\ude00B") ||
+            !(surrounding.textStart == 1) || !(surrounding.selectionStart == 1) ||
+            !(surrounding.selectionEnd == 1))
             return 0;
         const target = input._nkCodePointRangeForEvent({
-            getTargetRanges : () =
-                > [ {startContainer : input, startOffset : 1, endContainer : input, endOffset : 3} ]
+            input : input,
+            getTargetRanges :
+                Function("return " + "[{startContainer:this.input,startOffset:1,endContainer:" +
+                         "this.input,endOffset:3}]")
         });
-        if (!target || target[0] != = 1 || target[1] != = 2)
+        if (!target || !(target[0] == 1) || !(target[1] == 2))
             return 0;
         const textNodeTarget = input._nkCodePointRangeForEvent({
-            getTargetRanges: () => {
-                const textNode = {parentNode: input};
-                return [{startContainer: textNode, startOffset: 1,
-                         endContainer: textNode, endOffset: 3}];
-            }
-});
-return textNodeTarget && textNodeTarget[0] == = 1 && textNodeTarget[1] == = 2 ? 1 : 0;
-});
+            input : input,
+            getTargetRanges :
+                Function("return " + "[{startContainer:{parentNode:this.input},startOffset:1," +
+                         "endContainer:{parentNode:this.input},endOffset:3}]")
+        });
+        return textNodeTarget && textNodeTarget[0] == 1 && textNodeTarget[1] == 2 ? 1 : 0;
+    });
 }
 
 static int dispatch_selection(void) {

@@ -7,35 +7,36 @@
 
 namespace nk::core {
 
+inline constexpr nk_text_position text_position_none =
+    static_cast<nk_text_position>(NK_TEXT_POSITION_NONE);
+
 /** One normalized native-to-editor text mutation and resulting metadata. */
 struct TextEditTransaction {
     nk_text_edit_action action = NK_TEXT_EDIT_SET_SELECTION;
-    nk_text_position replacement_start = NK_TEXT_POSITION_NONE;
-    nk_text_position replacement_end = NK_TEXT_POSITION_NONE;
+    nk_text_position replacement_start = text_position_none;
+    nk_text_position replacement_end = text_position_none;
     std::string replacement_text;
-    nk_text_position selection_start = NK_TEXT_POSITION_NONE;
-    nk_text_position selection_end = NK_TEXT_POSITION_NONE;
-    nk_text_position composition_start = NK_TEXT_POSITION_NONE;
-    nk_text_position composition_end = NK_TEXT_POSITION_NONE;
+    nk_text_position selection_start = text_position_none;
+    nk_text_position selection_end = text_position_none;
+    nk_text_position composition_start = text_position_none;
+    nk_text_position composition_end = text_position_none;
     /** Caret affinity for the resulting selection focus. */
     uint32_t selection_affinity = 0;
 
     bool valid() const noexcept {
-        if (selection_start == NK_TEXT_POSITION_NONE || selection_end == NK_TEXT_POSITION_NONE ||
+        if (selection_start == text_position_none || selection_end == text_position_none ||
             selection_start > selection_end)
             return false;
 
         const bool has_replacement =
-            replacement_start != NK_TEXT_POSITION_NONE && replacement_end != NK_TEXT_POSITION_NONE;
-        if ((replacement_start == NK_TEXT_POSITION_NONE) !=
-                (replacement_end == NK_TEXT_POSITION_NONE) ||
+            replacement_start != text_position_none && replacement_end != text_position_none;
+        if ((replacement_start == text_position_none) != (replacement_end == text_position_none) ||
             (has_replacement && replacement_start > replacement_end))
             return false;
 
         const bool has_composition =
-            composition_start != NK_TEXT_POSITION_NONE && composition_end != NK_TEXT_POSITION_NONE;
-        if ((composition_start == NK_TEXT_POSITION_NONE) !=
-                (composition_end == NK_TEXT_POSITION_NONE) ||
+            composition_start != text_position_none && composition_end != text_position_none;
+        if ((composition_start == text_position_none) != (composition_end == text_position_none) ||
             (has_composition && composition_start > composition_end))
             return false;
         if (selection_affinity > 4u)

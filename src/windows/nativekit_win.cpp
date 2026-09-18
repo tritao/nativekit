@@ -907,8 +907,8 @@ void emit_text_deletion(WinWindowResource &resource, bool backward) {
                                      {},
                                      start,
                                      start,
-                                     NK_TEXT_POSITION_NONE,
-                                     NK_TEXT_POSITION_NONE});
+                                     nk::core::text_position_none,
+                                     nk::core::text_position_none});
 }
 
 nk_text_position text_replacement_start(const WinWindowResource &resource) {
@@ -934,7 +934,7 @@ void emit_committed_utf8(WinWindowResource &resource, const std::string &text) {
     const auto end = text_replacement_end(resource);
     const auto cursor = static_cast<nk_text_position>(start + codepoints.size());
     emit_text_transaction(resource, {NK_TEXT_EDIT_COMMIT, start, end, text, cursor, cursor,
-                                     NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE});
+                                     nk::core::text_position_none, nk::core::text_position_none});
 }
 
 void finish_text_composition(WinWindowResource &resource) {
@@ -945,13 +945,13 @@ void finish_text_composition(WinWindowResource &resource) {
     if (selection_start == NK_TEXT_POSITION_NONE)
         selection_start = selection_end = resource.text_composition_end;
     emit_text_transaction(resource, {NK_TEXT_EDIT_FINISH_COMPOSITION,
-                                     NK_TEXT_POSITION_NONE,
-                                     NK_TEXT_POSITION_NONE,
+                                     nk::core::text_position_none,
+                                     nk::core::text_position_none,
                                      {},
                                      selection_start,
                                      selection_end,
-                                     NK_TEXT_POSITION_NONE,
-                                     NK_TEXT_POSITION_NONE});
+                                     nk::core::text_position_none,
+                                     nk::core::text_position_none});
 }
 
 bool get_ime_string(HIMC context, DWORD index, std::wstring &value) {
