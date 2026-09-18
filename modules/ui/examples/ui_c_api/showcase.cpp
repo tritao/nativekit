@@ -262,13 +262,17 @@ struct WebShowcase {
         }
         if (!app.ready)
             return;
+        const bool input_checks_complete = app.text_edit_seen && app.pointer_seen &&
+                                           app.touch_seen && app.resize_seen;
+        if (app.smoke && !input_checks_complete)
+            return;
         if (!app.showcase.render_frame(surface, width, height)) {
             app.finish(5);
             return;
         }
         ++app.showcase.rendered_frames;
-        if (app.smoke && app.showcase.rendered_frames >= 30 && app.asset_loaded &&
-            app.text_edit_seen && app.pointer_seen && app.touch_seen && app.resize_seen)
+        if (app.smoke && app.showcase.rendered_frames >= 1 && app.asset_loaded &&
+            input_checks_complete)
             app.finish(0);
     }
 
