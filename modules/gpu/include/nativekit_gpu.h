@@ -144,6 +144,8 @@ NKGPU_HANDLE(nkgpu_image_builder);
 NKGPU_HANDLE(nkgpu_sampler);
 /** Offscreen render target owned by a renderer. */
 NKGPU_HANDLE(nkgpu_render_target);
+/** Sealed-submission batch handle returned by nkgpu_batch_begin(). */
+NKGPU_HANDLE(nkgpu_batch);
 #undef NKGPU_HANDLE
 #undef NKGPU_HANDLE_ANNOTATION
 
@@ -432,6 +434,8 @@ enum NK_ENUM(nkgpu_command) {
     NKGPU_COMMAND_APPLY_UNIFORMS = 6,
     /** Draw primitives; payload: base element, element count, and instance count. */
     NKGPU_COMMAND_DRAW = 7,
+    /** Apply a framebuffer scissor; payload: enabled flag, x, y, width, and height. */
+    NKGPU_COMMAND_APPLY_SCISSOR = 8,
 };
 
 /* ------------------------------------------------------------------------- */
@@ -951,6 +955,95 @@ NKGPU_API nkgpu_result nkgpu_draw(nkgpu_renderer renderer, uint32_t base_element
  */
 NKGPU_API nkgpu_result nkgpu_submit_commands(nkgpu_renderer renderer, const uint8_t *commands,
                                              uint32_t size);
+
+/** Render pass kind recorded into a submission batch. */
+typedef uint32_t nkgpu_batch_pass_kind;
+enum NK_ENUM(nkgpu_batch_pass_kind) {
+    /** The pass targets the renderer's window surface framebuffer. */
+    NKGPU_BATCH_PASS_WINDOW = 1,
+    /** The pass targets an offscreen render target. */
+    NKGPU_BATCH_PASS_TARGET = 2,
+};
+
+/** One render pass recorded into a submission batch. */
+typedef struct nkgpu_batch_pass {
+    /** Set to sizeof(nkgpu_batch_pass) or a larger compatible size. */
+    uint32_t struct_size NK_STRUCT_SIZE;
+    /** Selects how the pass target fields below are interpreted. */
+    nkgpu_batch_pass_kind kind;
+    /** Offscreen target for NKGPU_BATCH_PASS_TARGET; ignored for window passes. */
+    nkgpu_render_target target;
+    /** Non-zero to clear the target at the start of the pass, zero to load it. */
+    uint32_t clear;
+    /** Framebuffer width for NKGPU_BATCH_PASS_WINDOW; ignored for target passes. */
+    uint32_t width;
+    /** Framebuffer height for NKGPU_BATCH_PASS_WINDOW; ignored for target passes. */
+    uint32_t height;
+} nkgpu_batch_pass;
+
+/**
+ * Starts recording a sealed submission batch.
+ *
+ * A batch records the passes and packed command records of one frame so the
+ * submission can be validated, retained, and later replayed as a unit. The
+ * renderer owns the batch; destroy it with nkgpu_batch_destroy().
+ *
+ * Recording does not touch GPU state, so a batch may be built while another
+ * frame is active, including one on a different renderer.
+ *
+ * On NKGPU_OK, writes the batch handle to `out_batch`.
+ */
+NKGPU_API nkgpu_result nkgpu_batch_begin(nkgpu_renderer renderer, nkgpu_batch *out_batch NKGPU_OUT);
+
+/**
+ * Appends one render pass to a batch.
+ *
+ * Passes are replayed in append order. A window pass requires positive
+ * `width`/`height`; a target pass requires a render target owned by the batch's
+ * renderer. The target is retained by the batch.
+ */
+NKGPU_API nkgpu_result nkgpu_batch_append_pass(nkgpu_batch batch, const nkgpu_batch_pass *pass);
+
+/**
+ * Appends packed command records to the batch's most recent pass.
+ *
+ * The byte stream uses the same little-endian record format as
+ * nkgpu_submit_commands(), and every handle it references is retained by the
+ * batch. The stream is fully validated, including handle resolution, before it
+ * is appended.
+ */
+NKGPU_API nkgpu_result nkgpu_batch_append_command(nkgpu_batch batch, const uint8_t *commands,
+                                                  uint32_t size);
+
+/**
+ * Freezes a batch.
+ *
+ * A sealed batch never changes: appending commands or passes afterwards is an
+ * error rather than a silent no-op. Sealing requires at least one pass and may
+ * be repeated; a batch is not submitted until it is sealed.
+ */
+NKGPU_API nkgpu_result nkgpu_batch_seal(nkgpu_batch batch);
+
+/**
+ * Replays a sealed batch on its owning renderer.
+ *
+ * Submission opens a frame, records every pass in order, and ends the frame
+ * without presenting: surface presentation stays with the surface owner, so a
+ * batch never implies ownership of a surface. The batch must belong to
+ * `renderer` and that renderer must have no active frame. Retained resources
+ * stay valid for the whole submission even if the caller destroyed its own
+ * handles, and a batch that fails validation is rejected before any GPU state
+ * changes. A sealed batch may be submitted more than once.
+ */
+NKGPU_API nkgpu_result nkgpu_batch_submit(nkgpu_renderer renderer, nkgpu_batch batch);
+
+/**
+ * Destroys a batch and releases every resource it retained.
+ *
+ * The handle becomes invalid after this call and must not be reused. Destroying
+ * a renderer also destroys its batches.
+ */
+NKGPU_API nkgpu_result nkgpu_batch_destroy(nkgpu_batch batch);
 
 /**
  * Ends the active frame, commits its GPU commands, and presents the surface.

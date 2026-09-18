@@ -2,9 +2,10 @@
 
 ## Status
 
-Proposed. Nothing in this document is implemented yet; it is the design note
-that should be agreed before the render thread is enabled, so the artifact that
-crosses threads is defined before code depends on it.
+Partially implemented. Migration step 1 below has landed: `nkgpu_batch_*` exists
+and records, seals, retains, and replays one frame, with the immediate path
+unchanged. Submission still runs on the platform executor, so steps 2 and 3
+remain before the render thread is enabled.
 
 ## Context
 
@@ -28,14 +29,20 @@ binary blob core cannot validate.
 Add an explicit seam batch to `NativeKit::gpu`:
 
 ```
-nkgpu_batch_begin(renderer, target, &batch)     build side: records work, retains handles
+nkgpu_batch_begin(renderer, &batch)             build side: records work, retains handles
+nkgpu_batch_append_pass(batch, &pass)           window or offscreen target pass, in order
 nkgpu_batch_append_command(batch, bytes, size)  packed records as nkgpu_submit_commands defines
-nkgpu_batch_append_draw(batch, ...)             or field-wise equivalents of the immediate API
-nkgpu_batch_retain(batch, resource_kind, handle)
 nkgpu_batch_seal(batch)                         freezes the batch: no further appends
-nkgpu_batch_submit(renderer, batch)             render side: begin/end frame internally
+nkgpu_batch_submit(renderer, batch)             render side: begins, replays, ends the frame
 nkgpu_batch_destroy(batch)
 ```
+
+Retention is implicit rather than a separate `nkgpu_batch_retain` call: every
+handle a recorded pass or command record references is resolved and pinned when
+it is appended, so a caller cannot describe work it does not own and cannot
+forget to retain it. `NKGPU_COMMAND_APPLY_SCISSOR` was added to the packed
+stream so a batch can express everything the immediate apply API can apart from
+pass boundaries.
 
 Invariants:
 
@@ -60,25 +67,46 @@ batch answers "can this submission run on another thread while the next one is
 recorded". A render thread needs the second; the first is what keeps the plan
 valid long enough to translate it.
 
-## Open questions
+## Decisions taken in step 1
 
-1. Granularity: one batch per frame, or one per pass so a batch maps to the
-   existing pass model and can be cached by pass cache key?
-2. Ephemeral data: the immediate API currently applies uniform and binding state
-   per draw. A batch has to snapshot that state into its byte stream, which
-   changes how `nkgpu_apply_*` state is represented but not what it means.
-3. Intermediate targets: whether batches may allocate render targets, or whether
-   all targets must exist before sealing so a batch never allocates.
-4. Thread ownership: confirm that handles and the resource registry can be
-   looked up from the render executor, or whether the batch pre-resolves them
-   into backend tokens at seal time.
-5. Validation of cache keys and content generations at submit, so a batch built
-   from stale prepared data fails loudly instead of drawing a stale frame.
+The open questions are answered as follows, and each answer is observable in the
+landed API rather than left to a comment.
+
+1. **Granularity: one batch per frame.** A batch records an ordered list of
+   passes, because a frame's passes share frame state and the frame — not the
+   pass — is the unit that would move to the render executor. Submission opens
+   one frame, replays every pass, and ends it.
+2. **Ephemeral state is snapshotted.** Uniform bytes live in the command stream,
+   and pipeline, buffer, view, and sampler state are explicit apply records,
+   exactly as the packed stream already describes them. Nothing implicit is
+   carried over from the call site that recorded the work.
+3. **Batches never allocate targets.** A pass target must already exist when the
+   pass is appended, and is retained like any other resource. A batch contains
+   data and handles only.
+4. **Handles stay registry-addressable.** A retained slot keeps its generation
+   and value, so replay resolves handles through the same registry the immediate
+   path uses instead of pre-resolving them into backend tokens. A pinned slot is
+   never reused, and its backend objects are destroyed when the last batch that
+   holds it releases them.
+5. **Validation happens at append time.** `nkgpu_batch_append_pass` and
+   `nkgpu_batch_append_command` reject malformed records, foreign handles, and
+   stale handles before anything is recorded. Submission re-validates ownership,
+   seal state, and target availability before touching GPU state, so a rejected
+   batch cannot change it.
+
+## Consequences of step 1
+
+`nkgpu_batch_submit()` ends its frame with deferred presentation, so a batch is
+the render-side commit rather than a whole frame transaction; presentation stays
+with the surface owner. Retained resources outlive the caller's handles but not
+their renderer: destroying a renderer releases its batches and any deferred
+destruction they were holding.
 
 ## Migration
 
-1. Implement `nkgpu_batch_*` on top of the existing command stream and resource
-   registry, with the immediate path unchanged.
+1. ~~Implement `nkgpu_batch_*` on top of the existing command stream and resource
+   registry, with the immediate path unchanged.~~ Done; covered by
+   `nativekit_gpu_batch_submit`.
 2. Translate UI render-plan execution to record one batch and submit it, still on
    the platform executor. Behavior and visuals must not change.
 3. Add the deferred submit path and run submission on `NK_EXECUTOR_RENDER`,

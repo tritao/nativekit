@@ -22,6 +22,19 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		NKGPU_BACKEND_METAL = 4;
 	}
 	/**
+	 * Render pass kind recorded into a submission batch.
+	 */
+	enum nkgpu_batch_pass_kind : u32 {
+		/**
+		 * The pass targets the renderer's window surface framebuffer.
+		 */
+		NKGPU_BATCH_PASS_WINDOW = 1;
+		/**
+		 * The pass targets an offscreen render target.
+		 */
+		NKGPU_BATCH_PASS_TARGET = 2;
+	}
+	/**
 	 * Blend factors accepted by generic pipeline state.
 	 */
 	enum nkgpu_blend_factor : u32 {
@@ -92,6 +105,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		 * Draw primitives; payload: base element, element count, and instance count.
 		 */
 		NKGPU_COMMAND_DRAW = 7;
+		/**
+		 * Apply a framebuffer scissor; payload: enabled flag, x, y, width, and height.
+		 */
+		NKGPU_COMMAND_APPLY_SCISSOR = 8;
 	}
 	/**
 	 * Comparison function used by depth and stencil state.
@@ -369,6 +386,63 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * index configured with nkgpu_pipeline_attribute().
 	 */
 	extern fn nkgpu_apply_vertex_buffer(renderer: nkgpu_renderer, slot: u32, buffer: nkgpu_buffer, offset: u32) -> nkgpu_result;
+	/**
+	 * Appends packed command records to the batch's most recent pass.
+	 *
+	 * The byte stream uses the same little-endian record format as
+	 * nkgpu_submit_commands(), and every handle it references is retained by the
+	 * batch. The stream is fully validated, including handle resolution, before it
+	 * is appended.
+	 */
+	extern fn nkgpu_batch_append_command(batch: nkgpu_batch, commands: ptr<const<u8>>, size: u32) -> nkgpu_result;
+	/**
+	 * Appends one render pass to a batch.
+	 *
+	 * Passes are replayed in append order. A window pass requires positive
+	 * `width`/`height`; a target pass requires a render target owned by the batch's
+	 * renderer. The target is retained by the batch.
+	 */
+	extern fn nkgpu_batch_append_pass(batch: nkgpu_batch, pass: ptr<const<nkgpu_batch_pass>>) -> nkgpu_result;
+	/**
+	 * Starts recording a sealed submission batch.
+	 *
+	 * A batch records the passes and packed command records of one frame so the
+	 * submission can be validated, retained, and later replayed as a unit. The
+	 * renderer owns the batch; destroy it with nkgpu_batch_destroy().
+	 *
+	 * Recording does not touch GPU state, so a batch may be built while another
+	 * frame is active, including one on a different renderer.
+	 *
+	 * On NKGPU_OK, writes the batch handle to `out_batch`.
+	 */
+	extern fn nkgpu_batch_begin(renderer: nkgpu_renderer, out_batch: ptr<nkgpu_batch> @out) -> nkgpu_result;
+	/**
+	 * Destroys a batch and releases every resource it retained.
+	 *
+	 * The handle becomes invalid after this call and must not be reused. Destroying
+	 * a renderer also destroys its batches.
+	 */
+	extern fn nkgpu_batch_destroy(batch: nkgpu_batch) -> nkgpu_result;
+	/**
+	 * Freezes a batch.
+	 *
+	 * A sealed batch never changes: appending commands or passes afterwards is an
+	 * error rather than a silent no-op. Sealing requires at least one pass and may
+	 * be repeated; a batch is not submitted until it is sealed.
+	 */
+	extern fn nkgpu_batch_seal(batch: nkgpu_batch) -> nkgpu_result;
+	/**
+	 * Replays a sealed batch on its owning renderer.
+	 *
+	 * Submission opens a frame, records every pass in order, and ends the frame
+	 * without presenting: surface presentation stays with the surface owner, so a
+	 * batch never implies ownership of a surface. The batch must belong to
+	 * `renderer` and that renderer must have no active frame. Retained resources
+	 * stay valid for the whole submission even if the caller destroyed its own
+	 * handles, and a batch that fails validation is rejected before any GPU state
+	 * changes. A sealed batch may be submitted more than once.
+	 */
+	extern fn nkgpu_batch_submit(renderer: nkgpu_renderer, batch: nkgpu_batch) -> nkgpu_result;
 	/**
 	 * Begins a frame for a renderer.
 	 *
@@ -754,6 +828,35 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_uniforms_write_f32(builder: nkgpu_uniform_builder, offset: u32, value: f32) -> nkgpu_result;
 	/**
+	 * One render pass recorded into a submission batch.
+	 */
+	struct nkgpu_batch_pass @layout(24, 4) {
+		/**
+		 * Set to sizeof(nkgpu_batch_pass) or a larger compatible size.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Selects how the pass target fields below are interpreted.
+		 */
+		kind: nkgpu_batch_pass_kind @offset(4);
+		/**
+		 * Offscreen target for NKGPU_BATCH_PASS_TARGET; ignored for window passes.
+		 */
+		target: nkgpu_render_target @offset(8);
+		/**
+		 * Non-zero to clear the target at the start of the pass, zero to load it.
+		 */
+		clear: u32 @offset(12);
+		/**
+		 * Framebuffer width for NKGPU_BATCH_PASS_WINDOW; ignored for target passes.
+		 */
+		width: u32 @offset(16);
+		/**
+		 * Framebuffer height for NKGPU_BATCH_PASS_WINDOW; ignored for target passes.
+		 */
+		height: u32 @offset(20);
+	}
+	/**
 	 * Blend configuration for one color attachment.
 	 */
 	struct nkgpu_blend_state @layout(28, 4) {
@@ -810,6 +913,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		front: nkgpu_stencil_face_state @offset(8);
 		back: nkgpu_stencil_face_state @offset(24);
 	}
+	/**
+	 * Sealed-submission batch handle returned by nkgpu_batch_begin().
+	 */
+	handle nkgpu_batch : u32;
 	/**
 	 * Buffer handle returned by nkgpu_buffer_create() or nkgpu_buffer_end().
 	 */

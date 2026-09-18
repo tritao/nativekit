@@ -85,7 +85,10 @@ the configured GPU backend.
 `nativekit_gpu_contract_smoke` covers shader-language validation, renderer
 ownership, renderer cleanup, the lost-state contract, injected allocation and
 present failures, and repeated retained `GraphicsImage` use after render-target
-and renderer destruction. `nativekit_ui_stress` runs a seeded 120-frame UI
+and renderer destruction. `nativekit_gpu_batch_submit` covers multi-pass batch
+replay, the sealed/immutable contract, retained resources outliving caller
+destruction, deferred resource destruction, handle and record validation, and
+batch ownership. `nativekit_ui_stress` runs a seeded 120-frame UI
 render sequence with changing DPR, surface bounds, and short-lived offscreen
 targets; its live-resource limits catch unbounded growth. The public UI renderer
 smoke also checks fractional/integer scale atlas behavior and text bounds.
@@ -123,6 +126,16 @@ and draws are encoded with `nativekit.gpu.CommandBuffer` and sent
 through `nkgpu_submit_commands` in one HXI call. Its storage grows automatically
 and can be reset and reused without reallocating each frame. The immediate calls
 remain available for simple rendering and debugging.
+
+`nkgpu_batch_*` builds the same packed records into a sealed submission: the
+batch records an ordered list of window or offscreen passes, pins every resource
+the passes and records reference, and replays them as one frame. Recording does
+not touch GPU state, so a batch can be built while another frame is active, and a
+sealed batch can be submitted more than once. Retained handles stay valid after
+the caller destroys its own references, and deferred backend destruction runs
+when the last batch holding them is destroyed. Submission ends the frame with
+deferred presentation, leaving presentation to the surface owner, and is the
+seam that later moves onto the render executor (ADR 0017).
 
 Renderer, resource, and builder handles are distinct one-word value types in
 the public C ABI. Their IDs encode a resource kind, generation, and pool slot;
