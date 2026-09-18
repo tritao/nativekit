@@ -86,8 +86,8 @@ bool same_coalescing_target(const QueuedEvent &first, const QueuedEvent &second)
 EventQueue::EventQueue(std::size_t capacity, std::size_t byte_capacity)
     : capacity_(capacity), byte_capacity_(byte_capacity) {}
 
-void promote_deferred_readiness(std::deque<QueuedEvent> &queue,
-                                std::deque<QueuedEvent> &deferred, std::size_t capacity) {
+void promote_deferred_readiness(std::deque<QueuedEvent> &queue, std::deque<QueuedEvent> &deferred,
+                                std::size_t capacity) {
     while (queue.size() < capacity && !deferred.empty()) {
         queue.push_back(std::move(deferred.front()));
         deferred.pop_front();

@@ -21,12 +21,12 @@
 #include <memory>
 #include <stdexcept>
 
-#define NK_CHECK(expression)                                                                    \
-    do {                                                                                       \
-        if (!(expression)) {                                                                    \
-            std::fprintf(stderr, "CHECK failed at %s:%d: %s\n", __FILE__, __LINE__, #expression); \
-            std::abort();                                                                       \
-        }                                                                                        \
+#define NK_CHECK(expression)                                                                       \
+    do {                                                                                           \
+        if (!(expression)) {                                                                       \
+            std::fprintf(stderr, "CHECK failed at %s:%d: %s\n", __FILE__, __LINE__, #expression);  \
+            std::abort();                                                                          \
+        }                                                                                          \
     } while (false)
 
 namespace {
@@ -67,8 +67,8 @@ int main() {
     invalid_update.struct_size = sizeof(invalid_update);
     const uint8_t malformed_removed_ids[] = {1, 2, 3};
     NK_CHECK(nk_surface_accessibility_update_with_removed_ids(
-               NK_INVALID_HANDLE, &invalid_update, malformed_removed_ids,
-               sizeof(malformed_removed_ids)) == NK_ERROR_INVALID_ARGUMENT);
+                 NK_INVALID_HANDLE, &invalid_update, malformed_removed_ids,
+                 sizeof(malformed_removed_ids)) == NK_ERROR_INVALID_ARGUMENT);
 
     nk_surface_frame_target old_frame_target{};
     old_frame_target.struct_size = nk::core::surface_frame_target_v1_size;
@@ -106,16 +106,16 @@ int main() {
     NK_CHECK(frame_requests.should_draw());
 
     NK_CHECK(std::strcmp(nk::core::vulkan::platform_extension(NK_NATIVE_WINDOW_X11),
-                       "VK_KHR_xlib_surface") == 0);
+                         "VK_KHR_xlib_surface") == 0);
     NK_CHECK(std::strcmp(nk::core::vulkan::platform_extension(NK_NATIVE_WINDOW_WAYLAND),
-                       "VK_KHR_wayland_surface") == 0);
+                         "VK_KHR_wayland_surface") == 0);
     NK_CHECK(nk::core::vulkan::platform_extension(NK_NATIVE_WINDOW_COCOA) == nullptr);
     NK_CHECK(nk::core::result_boundary("unexpected boundary exception", []() -> nk_result {
-               throw std::bad_alloc{};
-           }) == NK_ERROR_OUT_OF_MEMORY);
+                 throw std::bad_alloc{};
+             }) == NK_ERROR_OUT_OF_MEMORY);
     NK_CHECK(nk::core::result_boundary("unexpected boundary exception", []() -> nk_result {
-               throw std::runtime_error("test");
-           }) == NK_ERROR_UNKNOWN);
+                 throw std::runtime_error("test");
+             }) == NK_ERROR_UNKNOWN);
     bool callback_returned = false;
     nk::core::callback_boundary([&] {
         callback_returned = true;
@@ -136,7 +136,7 @@ int main() {
     nk_gamepad_state gamepad_state{};
     gamepad_state.struct_size = sizeof(gamepad_state);
     NK_CHECK(nk::core::gamepad::apply_mapping(mapping, {0.25f, 0.75f, 0.5f}, {1, 0}, {1},
-                                            gamepad_state));
+                                              gamepad_state));
     NK_CHECK(gamepad_state.buttons[NK_GAMEPAD_BUTTON_A] == 1);
     NK_CHECK(gamepad_state.buttons[NK_GAMEPAD_BUTTON_B] == 1);
     NK_CHECK(gamepad_state.buttons[NK_GAMEPAD_BUTTON_X] == 0);
@@ -159,7 +159,8 @@ int main() {
     NK_CHECK(gamepad_state.axes[NK_GAMEPAD_AXIS_LEFT_TRIGGER] < 0.45f);
     NK_CHECK(gamepad_state.axes[NK_GAMEPAD_AXIS_RIGHT_TRIGGER] == 0.f);
     NK_CHECK(!nk::core::gamepad::parse_mapping("not-a-guid,Pad,a:b0", mapping));
-    NK_CHECK(!nk::core::gamepad::parse_mapping("03000000112200003344000055660000,Pad,a:q0", mapping));
+    NK_CHECK(
+        !nk::core::gamepad::parse_mapping("03000000112200003344000055660000,Pad,a:q0", mapping));
     bool has_xbox = false;
     bool has_playstation = false;
     bool has_switch = false;
@@ -310,7 +311,7 @@ int main() {
     NK_CHECK(orientation_queue.poll(event) == NK_OK);
     NK_CHECK(event.kind == NK_EVENT_DISPLAY_ORIENTATION_CHANGED);
     NK_CHECK(static_cast<const nk_orientation_event *>(event.data)->orientation ==
-           NK_ORIENTATION_LANDSCAPE_RIGHT);
+             NK_ORIENTATION_LANDSCAPE_RIGHT);
     nk_event_release(&event);
 
     nk::core::EventQueue axis_queue(3);

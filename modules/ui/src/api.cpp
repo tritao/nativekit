@@ -201,8 +201,7 @@ thread_local LayoutSessionState *active_measure_session = nullptr;
 struct MeasureCallbackScope {
     LayoutSessionState *previous = nullptr;
 
-    explicit MeasureCallbackScope(LayoutSessionState *session)
-        : previous(active_measure_session) {
+    explicit MeasureCallbackScope(LayoutSessionState *session) : previous(active_measure_session) {
         active_measure_session = session;
     }
 
@@ -216,22 +215,21 @@ void configure_layout_measure_callback(LayoutSessionState &state) {
         state.engine->set_measure_callback({});
         return;
     }
-    state.engine->set_measure_callback(
-        [callback, user_data, session = &state](uint32_t node_id,
-                                                const nkui::LayoutMeasureConstraints &constraints) {
-            nkui_layout_measure_constraints native_constraints{};
-            native_constraints.struct_size = sizeof(native_constraints);
-            native_constraints.min_width = constraints.min_width;
-            native_constraints.max_width = constraints.max_width;
-            native_constraints.min_height = constraints.min_height;
-            native_constraints.max_height = constraints.max_height;
-            MeasureCallbackScope callback_scope(session);
-            const nkui_layout_measure_result measured =
-                callback(node_id, native_constraints, user_data);
-            return nkui::LayoutMeasureResult{measured.width, measured.height, measured.baseline,
-                                             (measured.flags & NKUI_LAYOUT_MEASURE_HAS_BASELINE) !=
-                                                 0};
-        });
+    state.engine->set_measure_callback([callback, user_data, session = &state](
+                                           uint32_t node_id,
+                                           const nkui::LayoutMeasureConstraints &constraints) {
+        nkui_layout_measure_constraints native_constraints{};
+        native_constraints.struct_size = sizeof(native_constraints);
+        native_constraints.min_width = constraints.min_width;
+        native_constraints.max_width = constraints.max_width;
+        native_constraints.min_height = constraints.min_height;
+        native_constraints.max_height = constraints.max_height;
+        MeasureCallbackScope callback_scope(session);
+        const nkui_layout_measure_result measured =
+            callback(node_id, native_constraints, user_data);
+        return nkui::LayoutMeasureResult{measured.width, measured.height, measured.baseline,
+                                         (measured.flags & NKUI_LAYOUT_MEASURE_HAS_BASELINE) != 0};
+    });
 }
 
 struct LayoutSessionSlot {

@@ -280,10 +280,10 @@ int progress_callback_impl(void *user_data, curl_off_t download_total, curl_off_
         now - request.last_progress < std::chrono::milliseconds(50))
         return 0;
     request.last_progress = now;
-    const auto progress = nk::net::map_curl_progress(download_total, downloaded, upload_total,
-                                                     uploaded);
-    nk::net::emit_progress(request.shared_from_this(), progress.downloaded,
-                           progress.download_total, progress.uploaded, progress.upload_total);
+    const auto progress =
+        nk::net::map_curl_progress(download_total, downloaded, upload_total, uploaded);
+    nk::net::emit_progress(request.shared_from_this(), progress.downloaded, progress.download_total,
+                           progress.uploaded, progress.upload_total);
     return 0;
 }
 

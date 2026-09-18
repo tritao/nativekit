@@ -1761,6 +1761,9 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	handle nkui_display_list : u32;
 	/**
 	 * Synchronous intrinsic measurement callback for custom-visual nodes.
+	 *
+	 * The callback may use unrelated UI registries, but must not re-enter layout
+	 * session operations. Such re-entry returns NKUI_ERROR_INVALID_ARGUMENT.
 	 */
 	callback nkui_layout_measure_callback = fn(arg0: u32, arg1: nkui_layout_measure_constraints, arg2: nullable<ptr<void>>) -> nkui_layout_measure_result;
 	/**

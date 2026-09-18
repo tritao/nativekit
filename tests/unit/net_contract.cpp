@@ -16,12 +16,12 @@
 #include <thread>
 #include <unistd.h>
 
-#define NK_CHECK(expression)                                                                    \
-    do {                                                                                       \
-        if (!(expression)) {                                                                    \
-            std::fprintf(stderr, "CHECK failed at %s:%d: %s\n", __FILE__, __LINE__, #expression); \
-            std::abort();                                                                       \
-        }                                                                                        \
+#define NK_CHECK(expression)                                                                       \
+    do {                                                                                           \
+        if (!(expression)) {                                                                       \
+            std::fprintf(stderr, "CHECK failed at %s:%d: %s\n", __FILE__, __LINE__, #expression);  \
+            std::abort();                                                                          \
+        }                                                                                          \
     } while (false)
 
 namespace {
@@ -41,7 +41,8 @@ struct LocalServer {
         address.sin_family = AF_INET;
         address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
         address.sin_port = 0;
-        NK_CHECK(::bind(socket, reinterpret_cast<const sockaddr *>(&address), sizeof(address)) == 0);
+        NK_CHECK(::bind(socket, reinterpret_cast<const sockaddr *>(&address), sizeof(address)) ==
+                 0);
         NK_CHECK(::listen(socket, 8) == 0);
         socklen_t address_size = sizeof(address);
         NK_CHECK(::getsockname(socket, reinterpret_cast<sockaddr *>(&address), &address_size) == 0);
@@ -187,7 +188,7 @@ int main() {
     init.event_queue_capacity = 1;
     NK_CHECK(nk_init(&init) == NK_OK);
     NK_CHECK((nk_get_capabilities() & (NK_CAP_HTTP_CLIENT | NK_CAP_HTTP_STREAMING)) ==
-           (NK_CAP_HTTP_CLIENT | NK_CAP_HTTP_STREAMING));
+             (NK_CAP_HTTP_CLIENT | NK_CAP_HTTP_STREAMING));
 
     nk_http_client_options client_options{};
     client_options.struct_size = sizeof(client_options);
@@ -210,7 +211,7 @@ int main() {
     uint32_t buffered_header_count = 0;
     bool saw_buffered_headers = false;
     NK_CHECK(poll_until(buffered_request, NK_INVALID_HANDLE, &buffered_body, &buffered_status,
-                      &buffered_header_count, &saw_buffered_headers, NK_OK, 404));
+                        &buffered_header_count, &saw_buffered_headers, NK_OK, 404));
     NK_CHECK(saw_buffered_headers);
     NK_CHECK(buffered_status == 404);
     NK_CHECK(buffered_body == "buffered-body");
@@ -228,8 +229,8 @@ int main() {
     NK_CHECK(stream != NK_INVALID_HANDLE);
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     bool saw_stream_headers = false;
-    NK_CHECK(poll_until(stream_request, stream, nullptr, nullptr, nullptr, &saw_stream_headers, NK_OK,
-                      200));
+    NK_CHECK(poll_until(stream_request, stream, nullptr, nullptr, nullptr, &saw_stream_headers,
+                        NK_OK, 200));
     NK_CHECK(saw_stream_headers);
     nk_http_stream_info stream_info{};
     stream_info.struct_size = sizeof(stream_info);
@@ -251,7 +252,7 @@ int main() {
     std::string limited_body;
     bool saw_limited_headers = false;
     NK_CHECK(poll_until(limited_request, NK_INVALID_HANDLE, &limited_body, nullptr, nullptr,
-                      &saw_limited_headers, NK_HTTP_ERROR_RESPONSE_LIMIT, 200));
+                        &saw_limited_headers, NK_HTTP_ERROR_RESPONSE_LIMIT, 200));
     NK_CHECK(saw_limited_headers);
     NK_CHECK(limited_body.empty());
 
@@ -270,7 +271,7 @@ int main() {
     NK_CHECK(nk_http_cancel(cancel_request) == NK_OK);
     bool saw_canceled_headers = false;
     NK_CHECK(poll_until(cancel_request, NK_INVALID_HANDLE, nullptr, nullptr, nullptr,
-                      &saw_canceled_headers, NK_HTTP_ERROR_CANCELED, 200));
+                        &saw_canceled_headers, NK_HTTP_ERROR_CANCELED, 200));
 
     NK_CHECK(nk_http_client_destroy(client) == NK_OK);
     nk_shutdown();
