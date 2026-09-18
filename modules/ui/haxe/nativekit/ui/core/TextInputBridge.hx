@@ -8,6 +8,7 @@ import NativeKitTextInput;
 import Rect;
 import nativekit.ui.widgets.EditTransaction;
 import nativekit.ui.widgets.TextDocumentEngine;
+import nativekit.ui.widgets.TextEditorHistoryPolicy;
 
 /** Synchronizes a document engine with NativeKit's custom-surface IME API. */
 class TextInputBridge {
@@ -106,16 +107,18 @@ class TextInputBridge {
 		if (edit == null || document == null)
 			return null;
 		var current = document.selection();
+		var historyKind = TextEditorHistoryPolicy.forNativeEdit(edit, current.start, current.end);
 		switch (edit.action) {
 			case TextEditAction.Compose:
 				return new EditTransaction(edit.replaceStart, edit.replaceEnd, edit.text,
 					edit.selectionStart, edit.selectionEnd, true,
-					edit.compositionStart, edit.compositionEnd, edit.selectionAffinity);
+					edit.compositionStart, edit.compositionEnd, edit.selectionAffinity,
+					null, historyKind);
 			case TextEditAction.Commit | TextEditAction.Delete:
 				return new EditTransaction(edit.replaceStart, edit.replaceEnd,
 					edit.action == TextEditAction.Delete ? "" : edit.text,
 					edit.selectionStart, edit.selectionEnd, false, -1, -1,
-					edit.selectionAffinity);
+					edit.selectionAffinity, null, historyKind);
 			case TextEditAction.SetSelection:
 				return new EditTransaction(current.start, current.start, "",
 					edit.selectionStart, edit.selectionEnd,

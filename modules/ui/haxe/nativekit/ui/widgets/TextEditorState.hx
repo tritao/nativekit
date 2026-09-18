@@ -339,16 +339,18 @@ class TextEditorState {
 		ensureLive();
 		if (edit == null)
 			return false;
+		var historyKind = TextEditorHistoryPolicy.forNativeEdit(edit, selectionStart, selectionEnd);
 		switch (edit.action) {
 			case TextEditAction.Compose:
 				return applyTransaction(new EditTransaction(edit.replaceStart, edit.replaceEnd,
 					edit.text, edit.selectionStart, edit.selectionEnd, true,
-					edit.compositionStart, edit.compositionEnd, edit.selectionAffinity));
+					edit.compositionStart, edit.compositionEnd, edit.selectionAffinity,
+					null, historyKind));
 			case TextEditAction.Commit | TextEditAction.Delete:
 				return applyTransaction(new EditTransaction(edit.replaceStart, edit.replaceEnd,
 					edit.action == TextEditAction.Delete ? "" : edit.text,
 					edit.selectionStart, edit.selectionEnd, false, -1, -1,
-					edit.selectionAffinity));
+					edit.selectionAffinity, null, historyKind));
 			case TextEditAction.SetSelection:
 				return applyTransactionInternal(new EditTransaction(selectionStart, selectionStart, "",
 					edit.selectionStart, edit.selectionEnd, hasValidComposition(edit.compositionStart,

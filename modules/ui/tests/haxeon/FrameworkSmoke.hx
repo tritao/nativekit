@@ -392,6 +392,25 @@ class FrameworkSmoke {
 		if (historyEditor.canRedo() || historyEditor.text != "c")
 			return 252;
 		historyEditor.dispose();
+		var nativeTypingHistoryEditor = new TextEditorState(fonts, "");
+		if (!nativeTypingHistoryEditor.applyTextEdit(new NativeKitTextEdit(TextEditAction.Commit,
+			"a", 0, 0, 1, 1, -1, -1)) ||
+			!nativeTypingHistoryEditor.applyTextEdit(new NativeKitTextEdit(TextEditAction.Commit,
+			"b", 1, 1, 2, 2, -1, -1)) || nativeTypingHistoryEditor.text != "ab" ||
+			!nativeTypingHistoryEditor.undo() || nativeTypingHistoryEditor.text != "" ||
+			!nativeTypingHistoryEditor.redo() || nativeTypingHistoryEditor.text != "ab")
+			return 258;
+		nativeTypingHistoryEditor.dispose();
+		var nativeReplacementHistoryEditor = new TextEditorState(fonts, "teh");
+		nativeReplacementHistoryEditor.placeCaret(0, false);
+		if (!nativeReplacementHistoryEditor.applyTextEdit(new NativeKitTextEdit(TextEditAction.Commit,
+			"the", 0, 3, 3, 3, -1, -1)) ||
+			!nativeReplacementHistoryEditor.applyTextEdit(new NativeKitTextEdit(TextEditAction.Commit,
+			"!", 3, 3, 4, 4, -1, -1)) || nativeReplacementHistoryEditor.text != "the!" ||
+			!nativeReplacementHistoryEditor.undo() || nativeReplacementHistoryEditor.text != "the" ||
+			!nativeReplacementHistoryEditor.undo() || nativeReplacementHistoryEditor.text != "teh")
+			return 261;
+		nativeReplacementHistoryEditor.dispose();
 		var deleteHistoryEditor = new TextEditorState(fonts, "abc");
 		deleteHistoryEditor.placeCaret(deleteHistoryEditor.documentLength(), false);
 		if (!deleteHistoryEditor.deleteBackward() || !deleteHistoryEditor.deleteBackward() ||
@@ -400,6 +419,26 @@ class FrameworkSmoke {
 			deleteHistoryEditor.text != "a")
 			return 253;
 		deleteHistoryEditor.dispose();
+		var nativeDeleteHistoryEditor = new TextEditorState(fonts, "abc");
+		nativeDeleteHistoryEditor.placeCaret(3, false);
+		if (!nativeDeleteHistoryEditor.applyTextEdit(new NativeKitTextEdit(TextEditAction.Delete,
+			null, 2, 3, 2, 2, -1, -1)) ||
+			!nativeDeleteHistoryEditor.applyTextEdit(new NativeKitTextEdit(TextEditAction.Delete,
+			null, 1, 2, 1, 1, -1, -1)) || nativeDeleteHistoryEditor.text != "a" ||
+			!nativeDeleteHistoryEditor.undo() || nativeDeleteHistoryEditor.text != "abc" ||
+			!nativeDeleteHistoryEditor.redo() || nativeDeleteHistoryEditor.text != "a")
+			return 259;
+		nativeDeleteHistoryEditor.dispose();
+		var nativeForwardDeleteHistoryEditor = new TextEditorState(fonts, "abc");
+		nativeForwardDeleteHistoryEditor.placeCaret(0, false);
+		if (!nativeForwardDeleteHistoryEditor.applyTextEdit(new NativeKitTextEdit(TextEditAction.Delete,
+			null, 0, 1, 0, 0, -1, -1)) ||
+			!nativeForwardDeleteHistoryEditor.applyTextEdit(new NativeKitTextEdit(TextEditAction.Delete,
+			null, 0, 1, 0, 0, -1, -1)) || nativeForwardDeleteHistoryEditor.text != "c" ||
+			!nativeForwardDeleteHistoryEditor.undo() || nativeForwardDeleteHistoryEditor.text != "abc" ||
+			!nativeForwardDeleteHistoryEditor.redo() || nativeForwardDeleteHistoryEditor.text != "c")
+			return 260;
+		nativeForwardDeleteHistoryEditor.dispose();
 		var pasteHistoryEditor = new TextEditorState(fonts, "");
 		pasteHistoryEditor.insert("paste", TextEditorHistoryKind.Paste);
 		pasteHistoryEditor.insert("x");
