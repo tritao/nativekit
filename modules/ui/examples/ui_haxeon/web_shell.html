@@ -531,7 +531,7 @@
         if (start < text.length) result.push(text.slice(start));
         return result.filter(token => token.length > 0);
       };
-      const argumentText = signature.slice(signature.indexOf(",") + 1, split);
+      const argumentText = signature.slice(0, split);
       const resultText = signature.slice(split + 1);
       return {arguments: tokenize(argumentText), result: resultText};
     }

@@ -154,7 +154,7 @@ if(EMSCRIPTEN)
     # types or headers in the public API.
     target_link_options(nativekit INTERFACE
         "-sUSE_WEBGL2=1"
-        "-sEXPORTED_RUNTIME_METHODS=ccall")
+        "-sEXPORTED_RUNTIME_METHODS=ccall,addFunction,removeFunction")
 
     set(NK_WASM_HOST_HEAP_LIMIT "134217728" CACHE STRING
         "Exclusive byte limit of NativeKit's bounded WebAssembly host heap")

@@ -675,6 +675,7 @@ if(NK_BUILD_EXAMPLES)
             target_link_options(nativekit_ui_haxeon PRIVATE
                 "-sINITIAL_MEMORY=${NKUI_HAXEON_MEMORY_LIMIT}"
                 "-sALLOW_MEMORY_GROWTH=0"
+                "-sALLOW_TABLE_GROWTH=1"
                 "-sEXPORTED_FUNCTIONS=[${NKUI_HAXEON_EXPORTED_FUNCTIONS_CSV}]"
                 "-sNO_EXIT_RUNTIME=1")
             if(NKUI_HAXEON_BUNDLE_FONTS)
