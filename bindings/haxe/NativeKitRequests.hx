@@ -12,6 +12,7 @@ import NativeKitWindow;
 /** Maps asynchronous NativeKit request IDs to one-shot typed completions. */
 class NativeKitRequests {
 	final handlers:Map<String, NativeKitEventValue->Void> = [];
+	final taskHandlers:Map<String, NativeKitEventValue->Void> = [];
 
 	public function new() {}
 
@@ -95,15 +96,55 @@ class NativeKitRequests {
 	public function cancel(request:haxe.Int64):Bool
 		return handlers.remove(Std.string(request));
 
+	/** Tracks a native task without installing a managed worker callback. */
+	public function trackTask<T>(task:NativeTask, decode:haxe.io.Bytes->T):NativeFuture<T> {
+		var promise = new NativePromise<T>();
+		var key = Std.string(task.nativeHandle().rawValue());
+		if (taskHandlers.exists(key)) throw "NativeKit task is already tracked";
+		promise.future.setCancellation(function() {
+			try task.cancel() catch (_:Dynamic) {}
+		});
+		taskHandlers.set(key, function(value) switch value {
+			case TaskProgress(_, _): null;
+			case TaskComplete(_, result, data):
+				if (result == Result.Ok) promise.complete(decode(data));
+				else promise.fail(result, null);
+			case TaskFailed(_, result, _): promise.fail(result, null);
+			case TaskCancelled(_, _, _): promise.cancel();
+			case _: throw "NativeKit task completed with the wrong event";
+		});
+		return promise.future;
+	}
+
 	/** Routes a decoded event to its matching one-shot request handler. */
 	public function handle(value:NativeKitEventValue):Bool {
 		var key = requestKey(value);
 		if (key == null)
 			return false;
 		var handler = handlers.get(key);
+		if (handler != null) {
+			handlers.remove(key);
+			handler(value);
+			return true;
+		}
+		var taskKey:Null<String> = switch value {
+			case TaskProgress(source, _): Std.string(source.rawValue());
+			case TaskComplete(source, _, _): Std.string(source.rawValue());
+			case TaskFailed(source, _, _): Std.string(source.rawValue());
+			case TaskCancelled(source, _, _): Std.string(source.rawValue());
+			case _: null;
+		};
+		if (taskKey == null)
+			return false;
+		handler = taskHandlers.get(taskKey);
 		if (handler == null)
 			return false;
-		handlers.remove(key);
+		var terminal = switch value {
+			case TaskComplete(_, _, _) | TaskFailed(_, _, _) | TaskCancelled(_, _, _): true;
+			case _: false;
+		};
+		if (terminal)
+			taskHandlers.remove(taskKey);
 		handler(value);
 		return true;
 	}
@@ -111,6 +152,7 @@ class NativeKitRequests {
 	public function pending():Int {
 		var count = 0;
 		for (_ in handlers) count++;
+		for (_ in taskHandlers) count++;
 		return count;
 	}
 

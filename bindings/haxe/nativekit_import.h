@@ -2,6 +2,7 @@
 #define NATIVEKIT_HAXEON_IMPORT_H
 
 #include "nativekit.h"
+#include "nativekit_task.h"
 #include "nativekit_monitor.h"
 #include "nativekit_window.h"
 #include "nativekit_input.h"

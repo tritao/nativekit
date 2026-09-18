@@ -1836,6 +1836,11 @@ EM_BOOL frame_loop(double, void *user_data) {
     return surface->frame_callback ? EM_TRUE : EM_FALSE;
 }
 
+EM_BOOL cooperative_task_frame_loop(double, void *) {
+    nk::core::run_cooperative_tasks();
+    return nk::core::cooperative_tasks_pending() ? EM_TRUE : EM_FALSE;
+}
+
 nk_result arm_surface_frames(const std::shared_ptr<WebSurfaceResource> &surface) {
     if (!surface || !surface->frame_callback)
         return NK_OK;
@@ -2031,6 +2036,14 @@ nk_result stop_gamepad_rumble(nk_joystick handle) noexcept {
 } // namespace nk::core::haptics_backend
 
 namespace nk::backend {
+
+void schedule_cooperative_tasks() noexcept {
+    (void)nk::web::start_frame_loop(cooperative_task_frame_loop, nullptr);
+}
+
+void stop_cooperative_tasks() noexcept {
+    nk::web::stop_frame_loop(cooperative_task_frame_loop, nullptr);
+}
 
 void pump_events() noexcept {
     try {

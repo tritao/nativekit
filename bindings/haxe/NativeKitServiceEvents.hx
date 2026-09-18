@@ -20,6 +20,10 @@ class NativeKitServiceEvents {
 		case EventKind.WebviewNavigationRequest: WebViewNavigationRequest(c.source,c.request,c.data.toString());
 		case EventKind.NotificationActivated: NotificationActivated(c.request,c.data.toString());
 		case EventKind.NotificationFailed: NotificationFailed(c.request,c.data.toString());
+		case EventKind.TaskProgress: TaskProgress(c.source,c.data);
+		case EventKind.TaskComplete: TaskComplete(c.source,c.result,c.data);
+		case EventKind.TaskFailed: TaskFailed(c.source,c.result,c.data);
+		case EventKind.TaskCancelled: TaskCancelled(c.source,c.result,c.data);
 		default:null;
 	}
 }

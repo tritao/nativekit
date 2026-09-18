@@ -13,6 +13,9 @@ namespace nk::core {
 
 namespace {
 bool is_terminal_request_event(const QueuedEvent &event) {
+    if (event.kind == NK_EVENT_TASK_COMPLETE || event.kind == NK_EVENT_TASK_FAILED ||
+        event.kind == NK_EVENT_TASK_CANCELLED)
+        return true;
     if (event.request_id == NK_INVALID_REQUEST_ID)
         return false;
     return event.kind == NK_EVENT_DIALOG_RESOURCES_COMPLETE ||
@@ -34,7 +37,8 @@ bool is_coalescible(nk_event_kind kind) {
            kind == NK_EVENT_SURFACE_RESIZE || kind == NK_EVENT_JOYSTICK_AXIS ||
            kind == NK_EVENT_GAMEPAD_AXIS || kind == NK_EVENT_DEVICE_ORIENTATION_CHANGED ||
            kind == NK_EVENT_DISPLAY_ORIENTATION_CHANGED || kind == NK_EVENT_SENSOR_UPDATE ||
-           kind == NK_EVENT_CLIPBOARD_CHANGED || kind == NK_EVENT_FILE_CHANGED;
+           kind == NK_EVENT_CLIPBOARD_CHANGED || kind == NK_EVENT_FILE_CHANGED ||
+           kind == NK_EVENT_TASK_PROGRESS;
 }
 
 bool is_persistent_readiness(nk_event_kind kind) {
@@ -101,7 +105,7 @@ nk_result EventQueue::push(QueuedEvent event) {
         if (!is_terminal_request_event(event))
             return NK_ERROR_QUEUE_FULL;
     if (is_coalescible(event.kind) && !queue_.empty()) {
-        if (event.kind == NK_EVENT_SENSOR_UPDATE) {
+        if (event.kind == NK_EVENT_SENSOR_UPDATE || event.kind == NK_EVENT_TASK_PROGRESS) {
             /* Sensor producers interleave several sources; each sensor gets
              * one pending coalesced record without changing existing input
              * event ordering rules for the other coalesced event kinds. */

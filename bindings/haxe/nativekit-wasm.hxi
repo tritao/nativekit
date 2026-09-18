@@ -16,6 +16,7 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 * Version of the NativeKit C ABI described by these headers.
 	 */
 	const NK_API_VERSION = 2;
+	const NK_TASK_MAX_PAYLOAD = 1048576;
 	/**
 	 * Sentinel meaning that a position, such as an absent composition, is not present.
 	 */
@@ -1035,6 +1036,22 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 * A plugin emitted an unsolicited notification.
 		 */
 		NK_EVENT_PLUGIN_EVENT = 1001;
+		/**
+		 * A native task reported copied progress data.
+		 */
+		NK_EVENT_TASK_PROGRESS = 1100;
+		/**
+		 * A native task completed successfully with copied result data.
+		 */
+		NK_EVENT_TASK_COMPLETE = 1101;
+		/**
+		 * A native task failed with an optional copied diagnostic/result payload.
+		 */
+		NK_EVENT_TASK_FAILED = 1102;
+		/**
+		 * A native task was cancelled with an optional copied result payload.
+		 */
+		NK_EVENT_TASK_CANCELLED = 1103;
 	}
 	/**
 	 * Logical executor that owns an API contract or callback.
@@ -2195,6 +2212,10 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 * A payload exceeds the bounded size accepted by the target contract.
 		 */
 		NK_ERROR_PAYLOAD_TOO_LARGE = -13;
+		/**
+		 * A task or asynchronous operation was cancelled before completion.
+		 */
+		NK_ERROR_CANCELLED = -14;
 	}
 	/**
 	 * Reference point used by nk_resource_seek().
@@ -2369,6 +2390,50 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		NK_SYSTEM_STRING_DEVICE_MODEL = 5;
 		NK_SYSTEM_STRING_APPLICATION_ID = 6;
 		NK_SYSTEM_STRING_APPLICATION_NAME = 7;
+	}
+	/**
+	 * Scheduler selected for a task.
+	 */
+	enum nk_task_execution_mode : u32 {
+		/**
+		 * Background execution on native targets and cooperative execution on Web.
+		 */
+		NK_TASK_EXECUTION_AUTO = 0;
+		/**
+		 * Native worker-pool execution, with cooperative Web fallback.
+		 */
+		NK_TASK_EXECUTION_BACKGROUND = 1;
+		/**
+		 * Bounded execution on the application executor.
+		 */
+		NK_TASK_EXECUTION_COOPERATIVE = 2;
+	}
+	/**
+	 * Observable lifecycle state of a task.
+	 */
+	enum nk_task_state : u32 {
+		NK_TASK_STATE_RUNNING = 0;
+		NK_TASK_STATE_YIELDED = 1;
+		NK_TASK_STATE_COMPLETED = 2;
+		NK_TASK_STATE_FAILED = 3;
+		NK_TASK_STATE_CANCELLED = 4;
+	}
+	/**
+	 * Action returned by one bounded task step.
+	 */
+	enum nk_task_step_result : u32 {
+		/**
+		 * The task has more work and must be scheduled again.
+		 */
+		NK_TASK_STEP_YIELD = 0;
+		/**
+		 * The task has completed successfully.
+		 */
+		NK_TASK_STEP_COMPLETE = 1;
+		/**
+		 * The task failed; output.result describes the failure.
+		 */
+		NK_TASK_STEP_FAILED = 2;
 	}
 	/**
 	 * Operation represented by an NK_EVENT_TEXT_EDIT transaction.
@@ -3396,6 +3461,22 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 * with the result in nk_event.result. Other backends return NK_ERROR_UNSUPPORTED.
 	 */
 	extern fn nk_system_request_device_orientation(out_request: ptr<nk_request_id> @out) -> nk_result;
+	/**
+	 * Requests cooperative cancellation; a terminal cancelled event is emitted.
+	 */
+	extern fn nk_task_cancel(task: nk_task) -> nk_result;
+	/**
+	 * Destroys a task handle and suppresses any later task events for it.
+	 */
+	extern fn nk_task_destroy(task: nk_task) -> nk_result;
+	/**
+	 * Reads the current generation-checked task state.
+	 */
+	extern fn nk_task_get_state(task: nk_task, out_state: ptr<nk_task_state> @out) -> nk_result;
+	/**
+	 * Starts a resumable native task. Completion is delivered as a NativeKit event.
+	 */
+	extern fn nk_task_start(options: ptr<const<nk_task_options>>, step: nk_task_step_fn, user_data: nullable<ptr<void>>, out_task: ptr<nk_task> @out) -> nk_result;
 	/**
 	 * Returns a borrowed UTF-8 view valid until nk_event_release().
 	 */
@@ -5316,6 +5397,77 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		reserved2: array<u64, 2> @offset(16);
 	}
 	/**
+	 * Options used when starting one task.
+	 */
+	struct nk_task_options @layout(20, 4) {
+		/**
+		 * Size of this structure in bytes; old prefixes remain valid.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Requested scheduler. AUTO is the default when this field is zero.
+		 */
+		execution_mode: nk_task_execution_mode @offset(4);
+		/**
+		 * Maximum time requested for one step, in microseconds; zero selects 2 ms.
+		 */
+		step_budget_us: u32 @offset(8);
+		/**
+		 * Reserved for compatible extensions; initialize to zero.
+		 */
+		reserved: array<u32, 2> @offset(12);
+	}
+	/**
+	 * Read-only context supplied to one native task step.
+	 */
+	struct nk_task_step_context @layout(32, 8) {
+		/**
+		 * Size of this structure in bytes.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Opaque native state supplied to nk_task_start().
+		 */
+		state: nullable<ptr<void>> @offset(4);
+		/**
+		 * Non-zero when cancellation has been requested.
+		 */
+		cancelled: nk_bool @offset(8);
+		/**
+		 * Requested maximum duration for this step in nanoseconds.
+		 */
+		budget_ns: u64 @offset(16);
+		/**
+		 * Runtime generation in which this task was started.
+		 */
+		runtime_generation: u64 @offset(24);
+	}
+	/**
+	 * Progress and terminal payloads returned by one task step.
+	 */
+	struct nk_task_step_output @layout(32, 4) {
+		/**
+		 * Size of this structure in bytes.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Byte-oriented progress payload copied before the step returns.
+		 */
+		progress_data: nullable<ptr<const<void>>> @offset(4);
+		progress_size: u32 @offset(8);
+		progress_count: u32 @offset(12);
+		/**
+		 * Byte-oriented terminal/result payload copied before the step returns.
+		 */
+		result_data: nullable<ptr<const<void>>> @offset(16);
+		result_size: u32 @offset(20);
+		result_count: u32 @offset(24);
+		/**
+		 * Failure result for NK_TASK_STEP_FAILED; NK_ERROR_UNKNOWN by default.
+		 */
+		result: nk_result @offset(28);
+	}
+	/**
 	 * Payload of NK_EVENT_TEXT_EDIT; positions are absolute code-point indices.
 	 */
 	struct nk_text_edit_event @layout(48, 4) {
@@ -5917,10 +6069,20 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 */
 	callback nk_surface_frame_callback = fn(arg0: nk_surface, arg1: i32, arg2: i32, arg3: nullable<ptr<void>>) -> void;
 	/**
+	 * Generation-checked handle for a native resumable task.
+	 */
+	handle nk_task : u32 @destroy("nk_task_destroy");
+	/**
 	 * Task queued by nk_dispatch_to_app(). The function runs on the application
 	 * executor and must not propagate exceptions across the C ABI.
 	 */
 	callback nk_task_fn = fn(arg0: nullable<ptr<void>>) -> void;
+	/**
+	 * One bounded native step. The callback must be a native function and must
+	 * not call UI-only APIs. It may retain no pointer to the context or output
+	 * structures after returning. Managed Haxe callbacks are not safe here.
+	 */
+	callback nk_task_step_fn = fn(arg0: ptr<const<nk_task_step_context>>, arg1: ptr<nk_task_step_output>) -> nk_task_step_result;
 	/**
 	 * Absolute Unicode code-point position used by the text-input API.
 	 */

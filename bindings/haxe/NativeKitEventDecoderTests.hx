@@ -101,10 +101,18 @@ class NativeKitEventDecoderTests {
 			case WebViewNavigationFailed(source, category, _): source.rawValue() == 14 && category == NavigationError.NotFound;
 			case _: false;
 		};
+		var taskPayload = haxe.io.Bytes.alloc(4);
+		putU32(taskPayload, 0, 0x1234);
+		var taskContext = new NativeKitEventContext(EventKind.TaskComplete, handle(21), zero, 0,
+			0, 1, taskPayload);
+		var taskOk = switch NativeKitEvent.decodeContext(taskContext) {
+			case TaskComplete(source, result, data): source.rawValue() == 21 && result == 0 && data == taskPayload;
+			case _: false;
+		};
 
 		if (!messageOk) throw "message completion decoding failed";
 		if (!resourcesOk) throw "resource completion decoding failed";
-		return rawOk && nonMatch && editOk && typedKeyOk && typedHatOk && typedNavigationOk && accessibilityOk
+		return rawOk && nonMatch && editOk && typedKeyOk && typedHatOk && typedNavigationOk && accessibilityOk && taskOk
 			&& throws(function() { NativeKitEventBytes.requireSize(haxe.io.Bytes.alloc(3), 4); })
 			&& throws(function() { NativeKitEventBytes.readU32(haxe.io.Bytes.alloc(3), 0); })
 			&& throws(function() { NativeKitEventBytes.decodeClipboardFiles(unterminated, 1); })

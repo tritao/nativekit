@@ -21,6 +21,8 @@ import NativeKit.WindowOptions;
 import NativeKit.WindowFlags;
 import NativeKit.WindowKind;
 import NativeKitRequestOutcome;
+import NativeFuture;
+import NativePromise;
 import NativeKitEvents.NativeKitEventSubscription;
 
 class Smoke {
@@ -46,6 +48,16 @@ class Smoke {
 			resultErrorOk = error.result == Result.ErrorInvalidHandle && error.operation == "nk_window_show" && error.diagnostic != null;
 
 		var events = runtime.events;
+		var promise = new NativePromise<Int>();
+		var futureValue = 0;
+		promise.future.onComplete(function(outcome) switch outcome {
+			case Success(value): futureValue = value;
+			case _: futureValue = -1;
+		});
+		promise.complete(42);
+		var cancelPromise = new NativePromise<Int>();
+		cancelPromise.future.cancel();
+		var futureOk = futureValue == 42 && promise.future.isComplete() && cancelPromise.future.isComplete();
 		var lifetimeSubscription = events.listen(function(_) {});
 		var eventOk = !events.poll();
 		try {
@@ -164,6 +176,8 @@ class Smoke {
 			return 19;
 		if (!monitorOk)
 			return 6;
+		if (!futureOk)
+			return 22;
 		if (!payloadOk)
 			return 7;
 		if (!NativeKitEventDecoderTests.run())

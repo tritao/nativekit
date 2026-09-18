@@ -69,6 +69,9 @@ fi
         "$repo_dir/bindings/haxe/NativeKitServiceEvents.hx" \
         "$repo_dir/bindings/haxe/NativeKitResourceEvents.hx" \
         "$repo_dir/bindings/haxe/NativeKitRequestOutcome.hx" \
+        "$repo_dir/bindings/haxe/NativeFuture.hx" \
+        "$repo_dir/bindings/haxe/NativePromise.hx" \
+        "$repo_dir/bindings/haxe/NativeTask.hx" \
         "$repo_dir/bindings/haxe/NativeKitRequests.hx" \
         "$repo_dir/bindings/haxe/NativeKitEvents.hx"
 )

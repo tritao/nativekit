@@ -29,6 +29,8 @@ void wake_events() noexcept;
 namespace nk::backend {
 void pump_events() noexcept;
 void shutdown() noexcept;
+void schedule_cooperative_tasks() noexcept;
+void stop_cooperative_tasks() noexcept;
 nk_result file_watch_create(const nk_file_watch_options *options,
                             nk_file_watch *out_watch) noexcept;
 nk_result file_watch_add_directory(nk_file_watch watch, const char *path,

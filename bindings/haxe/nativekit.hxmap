@@ -13,7 +13,8 @@
 		"nk_cursor": "CursorHandle",
 		"nk_joystick": "JoystickHandle",
 		"nk_mobile_host": "MobileHostHandle",
-		"nk_resource_stream": "ResourceStreamHandle"
+		"nk_resource_stream": "ResourceStreamHandle",
+		"nk_task": "TaskHandle"
 	},
 	"resultPolicies": {
 		"nk_result": {

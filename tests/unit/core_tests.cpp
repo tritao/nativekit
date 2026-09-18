@@ -12,9 +12,11 @@
 #include "nativekit_joystick.h"
 #include "nativekit_sensor.h"
 #include "nativekit_system.h"
+#include "nativekit_task.h"
 #include "nativekit_window.h"
 
 #include <cstddef>
+#include <cassert>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -368,6 +370,46 @@ int main() {
     NK_CHECK(sensor_queue.poll(event) == NK_OK);
     NK_CHECK(event.source == 12);
     nk_event_release(&event);
+
+    nk::core::EventQueue task_progress_queue(2);
+    nk::core::QueuedEvent task_progress_first;
+    task_progress_first.kind = NK_EVENT_TASK_PROGRESS;
+    task_progress_first.source = 77;
+    task_progress_first.data = {std::byte{1}};
+    nk::core::QueuedEvent task_progress_latest = task_progress_first;
+    task_progress_latest.data = {std::byte{2}};
+    nk::core::QueuedEvent task_progress_other;
+    task_progress_other.kind = NK_EVENT_TASK_PROGRESS;
+    task_progress_other.source = 78;
+    task_progress_other.data = {std::byte{3}};
+    assert(task_progress_queue.push(std::move(task_progress_first)) == NK_OK);
+    assert(task_progress_queue.push(std::move(task_progress_other)) == NK_OK);
+    assert(task_progress_queue.push(std::move(task_progress_latest)) == NK_OK);
+    event = {};
+    event.struct_size = sizeof(event);
+    assert(task_progress_queue.poll(event) == NK_OK);
+    assert(event.kind == NK_EVENT_TASK_PROGRESS && event.source == 77);
+    assert(static_cast<const std::byte *>(event.data)[0] == std::byte{2});
+    nk_event_release(&event);
+
+    nk::core::EventQueue task_terminal_queue(1);
+    nk::core::QueuedEvent task_ordinary;
+    task_ordinary.kind = NK_EVENT_TASK_PROGRESS;
+    task_ordinary.source = 88;
+    assert(task_terminal_queue.push(std::move(task_ordinary)) == NK_OK);
+    nk::core::QueuedEvent task_terminal;
+    task_terminal.kind = NK_EVENT_TASK_COMPLETE;
+    task_terminal.source = 88;
+    assert(task_terminal_queue.push(std::move(task_terminal)) == NK_OK);
+    event = {};
+    event.struct_size = sizeof(event);
+    assert(task_terminal_queue.poll(event) == NK_OK);
+    nk_event_release(&event);
+    event.struct_size = sizeof(event);
+    assert(task_terminal_queue.poll(event) == NK_OK);
+    assert(event.kind == NK_EVENT_TASK_COMPLETE);
+    nk_event_release(&event);
+
     nk::core::EventQueue clipboard_queue(1);
     nk::core::QueuedEvent clipboard_first;
     clipboard_first.kind = NK_EVENT_CLIPBOARD_CHANGED;

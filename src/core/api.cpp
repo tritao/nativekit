@@ -7,6 +7,7 @@
 #include "core/request.hpp"
 #include "core/runtime.hpp"
 #include "core/system_internal.hpp"
+#include "core/task.hpp"
 #include "net/net_backend.hpp"
 
 #include <atomic>
@@ -140,6 +141,15 @@ nk_result NK_CALL nk_init(const nk_init_options *options) {
         if (generation == 0)
             generation = generation_counter.fetch_add(1, std::memory_order_relaxed) + 1;
         active_generation.store(generation, std::memory_order_release);
+        const auto task_result = nk::core::task_runtime_initialize(generation);
+        if (task_result != NK_OK) {
+            active_generation.store(0, std::memory_order_release);
+            nk::core::unbind_main_thread();
+            event_queue.reset();
+            nk::core::system_shutdown();
+            nk::core::set_error("could not initialize the native task executor");
+            return task_result;
+        }
         return NK_OK;
     } catch (const std::bad_alloc &) {
         nk::core::system_shutdown();
@@ -154,6 +164,10 @@ nk_result NK_CALL nk_init(const nk_init_options *options) {
 
 void NK_CALL nk_shutdown(void) {
     try {
+        /* Stop accepting task work before any backend teardown can produce
+         * callbacks. The task runtime joins native workers and drops queued
+         * cooperative work for this generation. */
+        nk::core::task_runtime_shutdown();
         nk::net::shutdown();
         /* Plugins observe a complete teardown before their runtime disappears. */
         nk::core::plugins_shutdown();
@@ -194,6 +208,7 @@ nk_result NK_CALL nk_poll_event(nk_event *event) {
             return thread_result;
         nk::core::drain_app_tasks();
         nk::backend::pump_events();
+        nk::core::run_cooperative_tasks();
         std::lock_guard lock(state_mutex);
         return event_queue->poll(*event);
     } catch (const std::bad_alloc &) {

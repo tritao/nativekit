@@ -23,6 +23,7 @@ enum class ResourceType : std::uint8_t {
     file_watch,
     clipboard_watch,
     resource_stream,
+    task,
     http_client,
     http_stream,
     plugin

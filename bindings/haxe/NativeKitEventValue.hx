@@ -13,6 +13,10 @@ enum NativeKitEventValue {
 	WebViewNavigationRequest(source:NativeKit.Handle, request:haxe.Int64, url:String);
 	NotificationActivated(request:haxe.Int64, action:String);
 	NotificationFailed(request:haxe.Int64, message:String);
+	TaskProgress(source:NativeKit.Handle, data:haxe.io.Bytes);
+	TaskComplete(source:NativeKit.Handle, result:NativeKit.Result, data:haxe.io.Bytes);
+	TaskFailed(source:NativeKit.Handle, result:NativeKit.Result, data:haxe.io.Bytes);
+	TaskCancelled(source:NativeKit.Handle, result:NativeKit.Result, data:haxe.io.Bytes);
 	Raw(kind:NativeKit.EventKind, source:NativeKit.Handle, request:haxe.Int64, result:NativeKit.Result,
 		flags:Int, dataCount:Int, data:haxe.io.Bytes);
 	WindowClose(source:NativeKit.Handle);

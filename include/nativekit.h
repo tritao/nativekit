@@ -184,7 +184,9 @@ enum NK_ENUM(nk_result) {
     /** A requested service, method, plugin, or named object does not exist. */
     NK_ERROR_NOT_FOUND = -12,
     /** A payload exceeds the bounded size accepted by the target contract. */
-    NK_ERROR_PAYLOAD_TOO_LARGE = -13
+    NK_ERROR_PAYLOAD_TOO_LARGE = -13,
+    /** A task or asynchronous operation was cancelled before completion. */
+    NK_ERROR_CANCELLED = -14
 };
 
 /* ------------------------------------------------------------------------- */
@@ -323,7 +325,15 @@ enum NK_ENUM(nk_event_kind) {
     /** A plugin service call reached its terminal state. */
     NK_EVENT_PLUGIN_COMPLETE = 1000,
     /** A plugin emitted an unsolicited notification. */
-    NK_EVENT_PLUGIN_EVENT = 1001
+    NK_EVENT_PLUGIN_EVENT = 1001,
+    /** A native task reported copied progress data. */
+    NK_EVENT_TASK_PROGRESS = 1100,
+    /** A native task completed successfully with copied result data. */
+    NK_EVENT_TASK_COMPLETE = 1101,
+    /** A native task failed with an optional copied diagnostic/result payload. */
+    NK_EVENT_TASK_FAILED = 1102,
+    /** A native task was cancelled with an optional copied result payload. */
+    NK_EVENT_TASK_CANCELLED = 1103
 };
 
 /* ------------------------------------------------------------------------- */

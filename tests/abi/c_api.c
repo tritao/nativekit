@@ -16,6 +16,7 @@
 #include "nativekit_sensor.h"
 #include "nativekit_system.h"
 #include "nativekit_time.h"
+#include "nativekit_task.h"
 #include "nativekit_vulkan.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
@@ -55,13 +56,32 @@ _Static_assert(sizeof(nk_clipboard_watch_options) == 24,
                "clipboard-watch options ABI layout is stable");
 _Static_assert(sizeof(nk_clipboard_changed_event) == 16,
                "clipboard-change event ABI layout is stable");
+_Static_assert(sizeof(nk_task) == sizeof(uint32_t), "task handles remain four-byte tokens");
+_Static_assert(sizeof(nk_task_options) == 20, "task options ABI layout is stable");
+_Static_assert(offsetof(nk_task_options, execution_mode) == 4 &&
+                   offsetof(nk_task_options, step_budget_us) == 8,
+               "task option fields retain their stable offsets");
+_Static_assert(offsetof(nk_task_step_output, progress_size) ==
+                   (sizeof(void *) == 8 ? 16 : 8),
+               "task progress payload fields retain their stable offsets");
+_Static_assert(NK_TASK_EXECUTION_AUTO == 0 && NK_TASK_EXECUTION_BACKGROUND == 1 &&
+                   NK_TASK_EXECUTION_COOPERATIVE == 2,
+               "task execution modes are stable");
+_Static_assert(NK_TASK_STATE_RUNNING == 0 && NK_TASK_STATE_YIELDED == 1 &&
+                   NK_TASK_STATE_COMPLETED == 2 && NK_TASK_STATE_FAILED == 3 &&
+                   NK_TASK_STATE_CANCELLED == 4,
+               "task states are stable");
+_Static_assert(NK_EVENT_TASK_PROGRESS == 1100 && NK_EVENT_TASK_COMPLETE == 1101 &&
+                   NK_EVENT_TASK_FAILED == 1102 && NK_EVENT_TASK_CANCELLED == 1103,
+               "task event kinds are stable");
 
 _Static_assert(NK_EXECUTOR_PLATFORM == 0 && NK_EXECUTOR_APP == 1 && NK_EXECUTOR_RENDER == 2 &&
                    NK_EXECUTOR_WORKER == 3,
                "logical executor values are stable");
 _Static_assert(NK_EVENT_PLUGIN_COMPLETE == 1000 && NK_EVENT_PLUGIN_EVENT == 1001,
                "plugin event kinds are stable");
-_Static_assert(NK_ERROR_NOT_FOUND == -12 && NK_ERROR_PAYLOAD_TOO_LARGE == -13,
+_Static_assert(NK_ERROR_NOT_FOUND == -12 && NK_ERROR_PAYLOAD_TOO_LARGE == -13 &&
+                   NK_ERROR_CANCELLED == -14,
                "plugin result codes are stable");
 _Static_assert(NK_PLUGIN_ABI_VERSION == 1, "plugin ABI version is stable");
 _Static_assert(NK_SURFACE_FRAME_CONTINUOUS == 0 && NK_SURFACE_FRAME_ON_DEMAND == 1,
@@ -124,6 +144,13 @@ int main(void) {
     options.application_name = "NativeKit ABI test";
     assert(nk_api_version() == NK_API_VERSION);
     assert(nk_init(&options) == NK_OK);
+    nk_task_options task_options = {0};
+    task_options.struct_size = sizeof(task_options);
+    nk_task abi_task = NK_INVALID_HANDLE;
+    assert(nk_task_start(&task_options, NULL, NULL, &abi_task) == NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_task_start(NULL, NULL, NULL, &abi_task) == NK_ERROR_INVALID_ARGUMENT);
+    nk_task_state abi_task_state = NK_TASK_STATE_RUNNING;
+    assert(nk_task_get_state(NK_INVALID_HANDLE, &abi_task_state) == NK_ERROR_INVALID_HANDLE);
     nk_system_info system_info = {0};
     system_info.struct_size = sizeof(system_info);
     assert(nk_system_get_info(&system_info) == NK_OK);

@@ -34,6 +34,19 @@ target_compile_features(nativekit_dispatch_tests PRIVATE cxx_std_17)
 target_link_libraries(nativekit_dispatch_tests PRIVATE NativeKit::nativekit)
 add_test(NAME dispatch COMMAND nativekit_dispatch_tests)
 
+add_executable(nativekit_task_tests unit/task_tests.cpp)
+target_compile_features(nativekit_task_tests PRIVATE cxx_std_17)
+target_link_libraries(nativekit_task_tests PRIVATE NativeKit::nativekit)
+add_test(NAME task COMMAND nativekit_task_tests)
+
+add_executable(nativekit_worker_pool_tests
+    unit/worker_pool_tests.cpp
+    ${PROJECT_SOURCE_DIR}/src/core/worker_pool.cpp)
+target_compile_features(nativekit_worker_pool_tests PRIVATE cxx_std_17)
+target_include_directories(nativekit_worker_pool_tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
+target_link_libraries(nativekit_worker_pool_tests PRIVATE NativeKit::nativekit)
+add_test(NAME worker_pool COMMAND nativekit_worker_pool_tests)
+
 if(NK_NET_BACKEND_CURL)
     add_executable(nativekit_net_contract_test unit/net_contract.cpp)
     target_compile_features(nativekit_net_contract_test PRIVATE cxx_std_17)
@@ -98,6 +111,11 @@ target_include_directories(nativekit_wasm_host_allocator_test PRIVATE ${PROJECT_
 add_test(NAME wasm_host_allocator COMMAND nativekit_wasm_host_allocator_test)
 
 if(EMSCRIPTEN)
+    add_executable(nativekit_web_tasks integration/web_tasks.c)
+    target_compile_features(nativekit_web_tasks PRIVATE c_std_11)
+    target_link_libraries(nativekit_web_tasks PRIVATE NativeKit::nativekit)
+    set_target_properties(nativekit_web_tasks PROPERTIES SUFFIX ".html"
+        LINKER_LANGUAGE CXX)
     add_executable(nativekit_web_accessibility integration/web_accessibility.c)
     target_compile_features(nativekit_web_accessibility PRIVATE c_std_11)
     target_link_libraries(nativekit_web_accessibility PRIVATE NativeKit::nativekit)
