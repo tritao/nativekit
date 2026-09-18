@@ -46,10 +46,12 @@ runtime in the sealed plan.
 - Text and image data referenced by a sealed plan are owned copies or shared
   immutable objects, so later preparation passes cannot change what a sealed
   frame draws.
-- Sealing cost follows the bindings, not the bytes, once prepared data itself is
-  published as an immutable shared object. The adapter still mutates its glyph
-  buffers in place, so publishing immutable glyph snapshots is the remaining
-  work before the API paths can seal every frame cheaply.
+- Sealing cost follows the bindings, not the bytes. Prepared text publishes an
+  immutable snapshot through `SkribidiAdapter::published_glyphs()`, which shares
+  one object per layout generation, geometry, scale, and mode and stays valid
+  after later preparation passes. Images and paths follow the same rule as their
+  producers move to shared immutable data; the API paths still bind borrowed
+  resources until they adopt sealing.
 - Live surface producers are excluded by construction. A future shared-buffer or
   image-handle path should give producers a way to publish a retained
   `nk_graphics_image` snapshot, which *can* be sealed.

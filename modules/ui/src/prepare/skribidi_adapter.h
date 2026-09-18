@@ -200,6 +200,22 @@ class SkribidiAdapter {
     bool prepare_glyphs_for_line(TextLayoutId id, uint32_t line_index, float origin_x,
                                  float origin_y, float pixel_scale, GlyphMode mode,
                                  PreparedGlyphs &output);
+    /**
+     * Returns an immutable glyph snapshot for one layout or one of its lines.
+     *
+     * Snapshots are shared: repeated requests with the same layout generation,
+     * geometry, scale, and mode return the same object, and a snapshot stays
+     * valid after later preparation passes. That makes them safe to bind into an
+     * owned resource set that outlives the frame that produced it, without
+     * copying glyph buffers. Returns null for an unknown layout, an out-of-range
+     * line, or a non-positive scale.
+     */
+    std::shared_ptr<const PreparedGlyphs> published_glyphs(TextLayoutId id, float origin_x,
+                                                           float origin_y, float pixel_scale,
+                                                           GlyphMode mode);
+    std::shared_ptr<const PreparedGlyphs>
+    published_glyphs_for_line(TextLayoutId id, uint32_t line_index, float origin_x, float origin_y,
+                              float pixel_scale, GlyphMode mode);
     bool prepared_glyphs_current(const PreparedGlyphs &glyphs) const;
     TextRect bounds() const;
     TextPosition hit_test(float x, float y) const;
@@ -228,6 +244,9 @@ class SkribidiAdapter {
     struct State;
 
   private:
+    std::shared_ptr<const PreparedGlyphs> publish_glyphs(TextLayoutId id, int32_t line_index,
+                                                         float origin_x, float origin_y,
+                                                         float pixel_scale, GlyphMode mode);
     bool prepare_glyphs_internal(TextLayoutId id, float origin_x, float origin_y, float pixel_scale,
                                  GlyphMode mode, PreparedGlyphs &output, int32_t line_start,
                                  int32_t line_end, float line_x, float line_y);
