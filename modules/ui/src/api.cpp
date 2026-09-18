@@ -2079,6 +2079,22 @@ nkui_text_document_get_composition(nkui_resource document,
     return NKUI_OK;
 }
 
+extern "C" nkui_result nkui_text_document_commit_composition(nkui_resource document) {
+    std::lock_guard<std::mutex> lock(resources_mutex);
+    auto *slot = resolve(document, nkui::ResourceKind::TextDocument);
+    if (!slot || !slot->document)
+        return NKUI_ERROR_INVALID_HANDLE;
+    return slot->document->commit_composition() ? NKUI_OK : NKUI_ERROR_INVALID_ARGUMENT;
+}
+
+extern "C" nkui_result nkui_text_document_cancel_composition(nkui_resource document) {
+    std::lock_guard<std::mutex> lock(resources_mutex);
+    auto *slot = resolve(document, nkui::ResourceKind::TextDocument);
+    if (!slot || !slot->document)
+        return NKUI_ERROR_INVALID_HANDLE;
+    return slot->document->cancel_composition() ? NKUI_OK : NKUI_ERROR_INVALID_ARGUMENT;
+}
+
 extern "C" nkui_result nkui_text_document_undo(nkui_resource document) {
     std::lock_guard<std::mutex> lock(resources_mutex);
     auto *slot = resolve(document, nkui::ResourceKind::TextDocument);

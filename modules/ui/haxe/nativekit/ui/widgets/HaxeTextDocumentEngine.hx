@@ -36,6 +36,12 @@ class HaxeTextDocumentEngine implements TextDocumentEngine {
 	public function composition():CompositionState
 		return new CompositionState(state.queryComposition(), state.queryCompositionAttributes());
 
+	public function commitComposition():Bool
+		return state.commitComposition();
+
+	public function cancelComposition():Bool
+		return state.cancelComposition();
+
 	public function undo():Bool
 		return state.undo();
 

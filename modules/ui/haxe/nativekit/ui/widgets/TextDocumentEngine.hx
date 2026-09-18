@@ -18,6 +18,10 @@ interface TextDocumentEngine {
 
 	function composition():CompositionState;
 
+	function commitComposition():Bool;
+
+	function cancelComposition():Bool;
+
 	function undo():Bool;
 
 	function redo():Bool;

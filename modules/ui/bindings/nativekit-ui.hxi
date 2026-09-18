@@ -759,9 +759,17 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	 */
 	extern fn nkui_text_document_apply_edit(document: nkui_resource, replacement_start: i32, replacement_end: i32, replacement_text: nullable<utf8>, selection_start: i32, selection_end: i32, selection_affinity: u32, has_composition: u32, composition_start: i32, composition_end: i32, history_kind: u32) -> nkui_result;
 	/**
+	 * Cancels the active composition and restores its pre-composition state.
+	 */
+	extern fn nkui_text_document_cancel_composition(document: nkui_resource) -> nkui_result;
+	/**
 	 * Returns visual caret geometry for a document position.
 	 */
 	extern fn nkui_text_document_caret(document: nkui_resource, position: nkui_text_position, out_caret: ptr<nkui_text_caret> @out) -> nkui_result;
+	/**
+	 * Commits the active composition while keeping its document text.
+	 */
+	extern fn nkui_text_document_commit_composition(document: nkui_resource) -> nkui_result;
 	/**
 	 * Creates a document engine whose storage, undo model, selection, and geometry are Skribidi-owned.
 	 */

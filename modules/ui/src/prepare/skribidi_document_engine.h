@@ -50,6 +50,8 @@ class SkribidiDocumentEngine {
     uint8_t selection_affinity() const;
     TextRange composition() const;
     bool has_composition() const;
+    bool commit_composition();
+    bool cancel_composition();
 
     bool undo();
     bool redo();

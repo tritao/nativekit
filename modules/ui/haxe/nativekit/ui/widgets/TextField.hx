@@ -555,9 +555,7 @@ class TextField implements View {
 	}
 
 	static function commitDocumentComposition(document:TextDocumentEngine):Bool {
-		var selection = document.selection();
-		return applyDocumentTransaction(document, new EditTransaction(selection.start, selection.start, "",
-			selection.start, selection.end));
+		return document.commitComposition();
 	}
 
 	static function applyDocumentTransaction(document:TextDocumentEngine,

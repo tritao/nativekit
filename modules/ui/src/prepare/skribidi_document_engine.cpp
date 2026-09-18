@@ -205,6 +205,17 @@ bool SkribidiDocumentEngine::has_composition() const {
     return valid() && skb_editor_has_composition(editor_);
 }
 
+bool SkribidiDocumentEngine::commit_composition() {
+    return valid() && skb_editor_commit_composition(editor_);
+}
+
+bool SkribidiDocumentEngine::cancel_composition() {
+    if (!valid())
+        return false;
+    skb_temp_alloc_reset(temporary_);
+    return skb_editor_cancel_composition(editor_, temporary_);
+}
+
 bool SkribidiDocumentEngine::undo() {
     if (!valid() || !skb_editor_can_undo(editor_))
         return false;

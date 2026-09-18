@@ -77,6 +77,24 @@ class SkribidiTextDocumentEngine extends NativeKitUIResource
         return new nativekit.ui.widgets.CompositionState(range, compositionMetadata);
     }
 
+    public function commitComposition():Bool {
+        var status = NativeKitUI.nkui_text_document_commit_composition(nativeHandle());
+        if (status == UiStatus.ErrorInvalidArgument)
+            return false;
+        UiResult.check(status, "textDocument.commitComposition");
+        compositionMetadata = [];
+        return true;
+    }
+
+    public function cancelComposition():Bool {
+        var status = NativeKitUI.nkui_text_document_cancel_composition(nativeHandle());
+        if (status == UiStatus.ErrorInvalidArgument)
+            return false;
+        UiResult.check(status, "textDocument.cancelComposition");
+        compositionMetadata = [];
+        return true;
+    }
+
     public function undo():Bool {
         var status = NativeKitUI.nkui_text_document_undo(nativeHandle());
         if (status == UiStatus.ErrorInvalidArgument)

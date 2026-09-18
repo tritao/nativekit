@@ -1067,6 +1067,12 @@ NKUI_API nkui_result nkui_text_document_get_selection(
 NKUI_API nkui_result nkui_text_document_get_composition(
     nkui_resource document, nkui_text_document_composition *out_composition NKUI_OUT);
 
+/** Commits the active composition while keeping its document text. */
+NKUI_API nkui_result nkui_text_document_commit_composition(nkui_resource document);
+
+/** Cancels the active composition and restores its pre-composition state. */
+NKUI_API nkui_result nkui_text_document_cancel_composition(nkui_resource document);
+
 /** Undoes one document transaction. */
 NKUI_API nkui_result nkui_text_document_undo(nkui_resource document);
 

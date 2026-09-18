@@ -83,10 +83,16 @@ int main() {
         hit.offset > 7 || nkui_text_document_caret(document, hit, &caret) != NKUI_OK)
         return 9;
 
-    if (nkui_text_document_undo(document) != NKUI_OK ||
+    if (nkui_text_document_cancel_composition(document) != NKUI_OK ||
         document_text(document) != "a\xCC\x81\xF0\x9F\x99\x82 日本" ||
         nkui_text_document_get_composition(document, &composition) != NKUI_OK ||
-        composition.active || nkui_text_document_redo(document) != NKUI_OK ||
+        composition.active ||
+        nkui_text_document_apply_edit(document, 6, 6, "語", 7, 7, 0, 1, 6, 7, 6) != NKUI_OK ||
+        nkui_text_document_commit_composition(document) != NKUI_OK ||
+        nkui_text_document_get_composition(document, &composition) != NKUI_OK ||
+        composition.active || nkui_text_document_undo(document) != NKUI_OK ||
+        document_text(document) != "a\xCC\x81\xF0\x9F\x99\x82 日本" ||
+        nkui_text_document_redo(document) != NKUI_OK ||
         document_text(document) != "a\xCC\x81\xF0\x9F\x99\x82 日本語")
         return 10;
 
