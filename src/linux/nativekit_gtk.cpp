@@ -8,6 +8,7 @@
 #include "nativekit_notification.h"
 #include "nativekit_resource.h"
 #include "nativekit_system.h"
+#include "nativekit_view.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
 
@@ -123,6 +124,7 @@ struct GtkWindowResource final : nk::core::Resource {
     nk_handle handle = NK_INVALID_HANDLE;
     nk_handle owner = NK_INVALID_HANDLE;
     std::vector<nk_handle> children;
+    std::vector<nk_handle> views;
     std::vector<nk_handle> surfaces;
     std::vector<nk_handle> owned_windows;
     std::vector<nk_window_decoration_region> decoration_regions;
@@ -1403,6 +1405,33 @@ struct GtkWebViewResource final : nk::core::Resource {
     }
 };
 
+/*
+ * A NativeKit-owned native child view: a container widget the application
+ * populates through nk_view_get_native(). Geometry, visibility, and clipping
+ * are pending state that nk_view_commit() publishes, so one commit applies a
+ * whole layout change instead of one setter at a time.
+ */
+struct GtkViewResource final : nk::core::Resource {
+    GtkWidget *widget = nullptr;
+    nk_handle handle = NK_INVALID_HANDLE;
+    nk_handle parent = NK_INVALID_HANDLE;
+    uint64_t generation = 0;
+    nk_view_bounds bounds{};
+    nk_view_bounds clip{};
+    bool clip_enabled = false;
+    bool visible = true;
+    bool has_pending = false;
+    nk_view_bounds pending_bounds{};
+    nk_view_bounds pending_clip{};
+    bool pending_clip_enabled = false;
+    bool pending_visible = true;
+
+    ~GtkViewResource() override {
+        if (widget)
+            gtk_widget_destroy(widget);
+    }
+};
+
 struct EvalContext {
     nk_handle source;
     nk_request_id request;
@@ -2399,6 +2428,11 @@ void apply_geometry_hints(const GtkWindowResource &resource) {
 std::shared_ptr<GtkWebViewResource> webview(nk_handle handle) {
     return std::dynamic_pointer_cast<GtkWebViewResource>(
         nk::core::handles().get(handle, nk::core::ResourceType::webview));
+}
+
+std::shared_ptr<GtkViewResource> view(nk_handle handle) {
+    return std::dynamic_pointer_cast<GtkViewResource>(
+        nk::core::handles().get(handle, nk::core::ResourceType::view));
 }
 
 std::shared_ptr<GtkSurfaceResource> surface(nk_handle handle) {
@@ -3416,7 +3450,7 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
         NK_CAP_VULKAN_SURFACE | NK_CAP_SYSTEM_INFO | NK_CAP_APPLICATION_PATH |
         NK_CAP_APPLICATION_STORAGE | NK_CAP_SYSTEM_FONTS | NK_CAP_DISPLAY_ORIENTATION |
         NK_CAP_ACCESSIBILITY | NK_CAP_WRAP_NATIVE_WINDOW | NK_CAP_SURFACE_FRAME_CALLBACK |
-        NK_CAP_WINDOW_CUSTOM_DECORATIONS;
+        NK_CAP_WINDOW_CUSTOM_DECORATIONS | NK_CAP_NATIVE_VIEW;
     if (nk::core::system_backend::keep_awake_supported())
         capabilities |= NK_CAP_KEEP_AWAKE;
     return capabilities | nk::core::optional_capabilities();
@@ -3528,6 +3562,9 @@ nk_result NK_CALL nk_window_destroy(nk_handle handle) {
     const auto children = resource->children;
     for (const auto child : children)
         nk_webview_destroy(child);
+    const auto views = resource->views;
+    for (const auto child : views)
+        nk_view_destroy(child);
     const auto surfaces = resource->surfaces;
     for (auto child = surfaces.rbegin(); child != surfaces.rend(); ++child)
         nk_surface_destroy(*child);
@@ -5376,6 +5413,184 @@ nk_result NK_CALL nk_webview_navigation_decide(nk_request_id request, uint32_t a
     navigation_decisions.erase(item);
     allow ? webkit_policy_decision_use(decision) : webkit_policy_decision_ignore(decision);
     g_object_unref(decision);
+    return NK_OK;
+}
+
+/*
+ * Applies a view's committed state: the widget only ever occupies the
+ * intersection of its bounds and an enabled clip rectangle, so a view that
+ * straddles an ancestor's clip boundary is constrained instead of drawn
+ * outside it.
+ */
+void apply_view_state(GtkViewResource &resource) {
+    nk_view_bounds effective = resource.bounds;
+    if (resource.clip_enabled) {
+        const int64_t left = std::max<int64_t>(resource.bounds.x, resource.clip.x);
+        const int64_t top = std::max<int64_t>(resource.bounds.y, resource.clip.y);
+        const int64_t right =
+            std::min<int64_t>(static_cast<int64_t>(resource.bounds.x) + resource.bounds.width,
+                              static_cast<int64_t>(resource.clip.x) + resource.clip.width);
+        const int64_t bottom =
+            std::min<int64_t>(static_cast<int64_t>(resource.bounds.y) + resource.bounds.height,
+                              static_cast<int64_t>(resource.clip.y) + resource.clip.height);
+        effective.x = static_cast<int32_t>(left);
+        effective.y = static_cast<int32_t>(top);
+        effective.width = static_cast<int32_t>(std::max<int64_t>(0, right - left));
+        effective.height = static_cast<int32_t>(std::max<int64_t>(0, bottom - top));
+    }
+    const bool shown = resource.visible && effective.width > 0 && effective.height > 0;
+    if (!shown) {
+        gtk_widget_hide(resource.widget);
+        return;
+    }
+    if (auto parent = window(resource.parent))
+        gtk_fixed_move(GTK_FIXED(parent->container), resource.widget, effective.x, effective.y);
+    gtk_widget_set_size_request(resource.widget, effective.width, effective.height);
+    gtk_widget_show(resource.widget);
+}
+
+nk_result NK_CALL nk_view_create(nk_handle parent_handle, const nk_view_options *options,
+                                 nk_view *out_view) {
+    return nk::core::result_boundary(
+        "unexpected error while creating native view", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            if (!options || options->struct_size < sizeof(*options) || !out_view ||
+                options->width <= 0 || options->height <= 0)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "invalid native view options");
+            *out_view = NK_INVALID_HANDLE;
+            auto parent = window(parent_handle);
+            if (!parent)
+                return invalid_handle("parent window");
+            if (parent->wrapped)
+                return fail(NK_ERROR_UNSUPPORTED, "native views cannot attach to wrapped windows");
+            auto resource = std::make_shared<GtkViewResource>();
+            resource->generation = nk::core::runtime_generation();
+            resource->widget = gtk_fixed_new();
+            g_object_add_weak_pointer(G_OBJECT(resource->widget),
+                                      reinterpret_cast<gpointer *>(&resource->widget));
+            resource->parent = parent_handle;
+            resource->bounds = {sizeof(nk_view_bounds), options->x,      options->y,
+                                options->width,         options->height, {0, 0}};
+            resource->visible = (options->flags & NK_VIEW_HIDDEN) == 0;
+            resource->pending_bounds = resource->bounds;
+            resource->pending_visible = resource->visible;
+            gtk_widget_set_size_request(resource->widget, options->width, options->height);
+            gtk_fixed_put(GTK_FIXED(parent->container), resource->widget, options->x, options->y);
+            resource->handle = nk::core::handles().insert(nk::core::ResourceType::view, resource);
+            if (resource->handle == NK_INVALID_HANDLE) {
+                gtk_widget_destroy(resource->widget);
+                return fail(NK_ERROR_OUT_OF_MEMORY, "native view handle registry is full");
+            }
+            parent->views.push_back(resource->handle);
+            apply_view_state(*resource);
+            *out_view = resource->handle;
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_view_destroy(nk_view handle) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = view(handle);
+    if (!resource)
+        return invalid_handle("native view");
+    if (auto parent = window(resource->parent)) {
+        auto &views = parent->views;
+        views.erase(std::remove(views.begin(), views.end(), handle), views.end());
+    }
+    gtk_widget_destroy(resource->widget);
+    resource->widget = nullptr;
+    nk::core::handles().erase(handle, nk::core::ResourceType::view);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_view_get_native(nk_view handle, nk_native_view *out_native) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_native || out_native->struct_size < sizeof(*out_native))
+        return fail(NK_ERROR_INVALID_ARGUMENT, "invalid native view descriptor");
+    auto resource = view(handle);
+    if (!resource)
+        return invalid_handle("native view");
+    const uint32_t size = out_native->struct_size;
+    *out_native = {};
+    out_native->struct_size = size;
+    out_native->kind = NK_NATIVE_VIEW_GTK;
+    out_native->view = reinterpret_cast<uintptr_t>(resource->widget);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_view_set_bounds(nk_view handle, int32_t x, int32_t y, int32_t width,
+                                     int32_t height) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (width <= 0 || height <= 0)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "native view dimensions must be positive");
+    auto resource = view(handle);
+    if (!resource)
+        return invalid_handle("native view");
+    resource->pending_bounds = {sizeof(nk_view_bounds), x, y, width, height, {0, 0}};
+    resource->has_pending = true;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_view_set_visible(nk_view handle, uint32_t visible) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = view(handle);
+    if (!resource)
+        return invalid_handle("native view");
+    resource->pending_visible = visible != 0;
+    resource->has_pending = true;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_view_set_clip(nk_view handle, uint32_t enabled, int32_t x, int32_t y,
+                                   int32_t width, int32_t height) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (enabled && (width <= 0 || height <= 0))
+        return fail(NK_ERROR_INVALID_ARGUMENT,
+                    "native view clip dimensions must be positive when enabled");
+    auto resource = view(handle);
+    if (!resource)
+        return invalid_handle("native view");
+    resource->pending_clip_enabled = enabled != 0;
+    if (enabled)
+        resource->pending_clip = {sizeof(nk_view_bounds), x, y, width, height, {0, 0}};
+    resource->has_pending = true;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_view_commit(nk_view handle) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = view(handle);
+    if (!resource)
+        return invalid_handle("native view");
+    if (!resource->has_pending)
+        return NK_OK;
+    resource->bounds = resource->pending_bounds;
+    resource->clip = resource->pending_clip;
+    resource->clip_enabled = resource->pending_clip_enabled;
+    resource->visible = resource->pending_visible;
+    resource->has_pending = false;
+    apply_view_state(*resource);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_view_get_bounds(nk_view handle, nk_view_bounds *out_bounds) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (!out_bounds || out_bounds->struct_size < sizeof(*out_bounds))
+        return fail(NK_ERROR_INVALID_ARGUMENT, "invalid native view bounds");
+    auto resource = view(handle);
+    if (!resource)
+        return invalid_handle("native view");
+    const uint32_t size = out_bounds->struct_size;
+    *out_bounds = resource->bounds;
+    out_bounds->struct_size = size;
     return NK_OK;
 }
 

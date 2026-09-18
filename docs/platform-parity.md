@@ -46,6 +46,7 @@ the equivalent is the native DOM.
 | Desktop windows | Required | Required | Required | Not applicable | Not applicable | Platform-specific equivalent |
 | Extended window API | Required | Required | Required | Not applicable | Not applicable | Platform-specific equivalent |
 | WebView | Required | Required | Required | Required | Required | Not applicable (native DOM) |
+| Native child views | Required | Required | Required | Required | Required | Platform-specific equivalent (DOM element) |
 | Dialogs and resource pickers | Required | Required | Required | Required | Required | Platform-specific equivalent |
 | Clipboard | Required | Required | Required | Required | Required | Required |
 | Drag/drop | Required | Required | Required | Required | Required | Required |
@@ -70,11 +71,17 @@ Two public capability families are orthogonal to the table above:
 | Cursor + pointer capture | Required | Required | Required | Platform-specific equivalent | Platform-specific equivalent | Platform-specific equivalent |
 | Custom window decorations | Required | Required | Required | Not applicable | Not applicable | Not applicable |
 | Surface frame callbacks | Required | Required | Required | Required | Required | Required |
+| Native child views | Required | Required | Required | Required | Required | Platform-specific equivalent |
 
 The mobile-host row explains why Android and iOS do not advertise
 `NK_CAP_WINDOW`: they attach a caller-owned native view instead of creating a
 NativeKit-owned top-level window. Pointer capture on touch platforms is a
 semantic input equivalent, not a desktop cursor guarantee.
+
+The native-child-view row is the end-state contract. Only GTK implements
+`nk_view_*` today; the other backends leave `NK_CAP_NATIVE_VIEW` clear, return
+`NK_ERROR_UNSUPPORTED`, and are tracked as deferred in `capability-snapshots.txt`
+until each one lands.
 
 ## Capability-bit mapping
 
@@ -90,6 +97,7 @@ needed; graphics API bits are alternatives within the GPU family.
 | Window styling | `NK_CAP_WINDOW_STYLING` |
 | Custom window decorations | `NK_CAP_WINDOW_CUSTOM_DECORATIONS` |
 | WebView | `NK_CAP_WEBVIEW` |
+| Native child views | `NK_CAP_NATIVE_VIEW` |
 | Dialogs and resource pickers | `nk_dialog_open_resource`, `nk_dialog_save_resource`, `nk_dialog_select_resource_directory`, `nk_dialog_message` |
 | Clipboard | `NK_CAP_CLIPBOARD` |
 | Drag/drop | `NK_CAP_DRAG_DROP` |

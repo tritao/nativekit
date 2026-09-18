@@ -37,6 +37,9 @@ native services on Windows, macOS, and Android.
   with explicit capability discovery and request-driven frame scheduling.
 - **Interop-friendly** — desktop applications can export or wrap native window
   descriptors when they need a platform escape hatch.
+- **Host native content** — NativeKit-owned child views take pending bounds,
+  visibility, and clip state and publish it with one commit, while the
+  application owns the platform widget or view they contain.
 
 ## 🗺️ Platform feature matrix
 

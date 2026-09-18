@@ -102,7 +102,9 @@ enum NK_FLAGS(nk_capabilities) {
     /** The backend can schedule callbacks while a graphics surface is ready to draw. */
     NK_CAP_SURFACE_FRAME_CALLBACK = UINT64_C(1) << 36,
     /** The backend supports app-provided non-client hit-test regions. */
-    NK_CAP_WINDOW_CUSTOM_DECORATIONS = UINT64_C(1) << 37
+    NK_CAP_WINDOW_CUSTOM_DECORATIONS = UINT64_C(1) << 37,
+    /** The backend can create NativeKit-owned native child views. */
+    NK_CAP_NATIVE_VIEW = UINT64_C(1) << 38
 #endif
 };
 
@@ -114,6 +116,7 @@ enum NK_FLAGS(nk_capabilities) {
 #define NK_CAP_HTTP_STREAMING (UINT64_C(1) << 35)
 #define NK_CAP_SURFACE_FRAME_CALLBACK (UINT64_C(1) << 36)
 #define NK_CAP_WINDOW_CUSTOM_DECORATIONS (UINT64_C(1) << 37)
+#define NK_CAP_NATIVE_VIEW (UINT64_C(1) << 38)
 #endif
 
 /** Discriminator identifying the platform representation in nk_native_window. */
