@@ -370,8 +370,7 @@ std::shared_ptr<AppleClientState> client_state(const nk::net::RequestPtr &reques
           (void (^)(NSURLSessionAuthChallengeDisposition, NSURLCredential *))completionHandler {
     auto *space = [challenge protectionSpace];
 #if TARGET_OS_OSX
-    if ([space.authenticationMethod isEqualToString:NSURLAuthenticationMethodHTTPProxy] &&
-        !request->client->config.proxy.username.empty()) {
+    if (space.isProxy && !request->client->config.proxy.username.empty()) {
         NSString *username =
             [NSString stringWithUTF8String:request->client->config.proxy.username.c_str()];
         NSString *password =
