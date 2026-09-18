@@ -188,8 +188,7 @@ bool run_text_input_contract(nk_surface surface, UIView *host_view) {
                                            reinterpret_cast<const uint8_t *>(&composition_range),
                                            sizeof(composition_range)) != NK_OK)
         return false;
-    const CGRect composition_rect = [(id<UITextInput>)input firstRectForRange:input.markedTextRange
-                                                                  actualRange:nullptr];
+    const CGRect composition_rect = [input firstRectForRange:input.markedTextRange];
     if (composition_rect.origin.x != 80.0f || composition_rect.origin.y != 100.0f ||
         composition_rect.size.width != 40.0f || composition_rect.size.height != 18.0f)
         return false;
