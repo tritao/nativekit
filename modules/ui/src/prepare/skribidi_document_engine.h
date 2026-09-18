@@ -23,6 +23,7 @@ struct SkribidiEditTransaction {
     bool has_composition = false;
     int32_t composition_start = -1;
     int32_t composition_end = -1;
+    uint8_t history_kind = 0;
 };
 
 /**

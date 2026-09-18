@@ -47,13 +47,13 @@ int main() {
         return 3;
 
     const auto insert_status =
-        nkui_text_document_apply_edit(document, 3, 3, " 日本", 6, 6, 0, 0, -1, -1);
+        nkui_text_document_apply_edit(document, 3, 3, " 日本", 6, 6, 0, 0, -1, -1, 0);
     if (insert_status != NKUI_OK || document_text(document) != "a\xCC\x81\xF0\x9F\x99\x82 日本") {
         return 4;
     }
 
     const auto composition_status =
-        nkui_text_document_apply_edit(document, 6, 6, "語", 7, 7, 0, 1, 6, 7);
+        nkui_text_document_apply_edit(document, 6, 6, "語", 7, 7, 0, 1, 6, 7, 6);
     if (composition_status != NKUI_OK) {
         return 5;
     }
@@ -90,7 +90,7 @@ int main() {
         document_text(document) != "a\xCC\x81\xF0\x9F\x99\x82 日本語")
         return 10;
 
-    if (nkui_text_document_apply_edit(document, 99, 99, "x", 0, 0, 0, 0, -1, -1) !=
+    if (nkui_text_document_apply_edit(document, 99, 99, "x", 0, 0, 0, 0, -1, -1, 0) !=
         NKUI_ERROR_INVALID_ARGUMENT)
         return 11;
 

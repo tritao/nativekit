@@ -121,6 +121,8 @@ bool SkribidiDocumentEngine::apply_edit(const SkribidiEditTransaction &transacti
     if (transaction.selection_start < 0 || transaction.selection_end < transaction.selection_start ||
         transaction.selection_end > resulting_length)
         return false;
+    if (transaction.history_kind > SKB_EDIT_HISTORY_COMPOSITION)
+        return false;
     if (transaction.has_composition &&
         (transaction.composition_start < 0 || transaction.composition_end < transaction.composition_start ||
          transaction.composition_end > resulting_length))
@@ -145,7 +147,7 @@ bool SkribidiDocumentEngine::apply_edit(const SkribidiEditTransaction &transacti
             {transaction.selection_end,
              static_cast<skb_caret_affinity_t>(transaction.selection_affinity)},
         },
-        .history_kind = SKB_EDIT_HISTORY_GENERIC,
+        .history_kind = static_cast<skb_edit_history_kind_t>(transaction.history_kind),
     };
     const skb_result_t result = skb_editor_apply_transaction(editor_, temporary_, &edit);
     skb_text_destroy(replacement_text);

@@ -1024,6 +1024,17 @@ NKUI_API nkui_result nkui_text_layout_word_range(nkui_resource layout, nkui_text
 /* Skribidi-backed document engine APIs                                      */
 /* ------------------------------------------------------------------------- */
 
+/** History grouping policy attached to one document edit transaction. */
+typedef enum nkui_text_edit_history_kind {
+    NKUI_TEXT_EDIT_HISTORY_GENERIC = 0,
+    NKUI_TEXT_EDIT_HISTORY_TYPING,
+    NKUI_TEXT_EDIT_HISTORY_DELETE_BACKWARD,
+    NKUI_TEXT_EDIT_HISTORY_DELETE_FORWARD,
+    NKUI_TEXT_EDIT_HISTORY_PASTE,
+    NKUI_TEXT_EDIT_HISTORY_AUTOCORRECT,
+    NKUI_TEXT_EDIT_HISTORY_COMPOSITION,
+} nkui_text_edit_history_kind;
+
 /** Creates a document engine whose storage, undo model, selection, and geometry are Skribidi-owned. */
 NKUI_API nkui_result nkui_text_document_create(
     nkui_resource fonts, const char *text NKUI_NULLABLE_UTF8, float width,
@@ -1035,7 +1046,7 @@ NKUI_API nkui_result nkui_text_document_apply_edit(
     nkui_resource document, int32_t replacement_start, int32_t replacement_end,
     const char *replacement_text NKUI_NULLABLE_UTF8, int32_t selection_start,
     int32_t selection_end, uint32_t selection_affinity, uint32_t has_composition,
-    int32_t composition_start, int32_t composition_end);
+    int32_t composition_start, int32_t composition_end, uint32_t history_kind);
 
 /** Returns the document text as UTF-8. Query the required byte count by passing NULL. */
 NKUI_API nkui_result nkui_text_document_get_text(

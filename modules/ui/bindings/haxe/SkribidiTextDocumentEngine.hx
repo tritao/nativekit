@@ -41,7 +41,7 @@ class SkribidiTextDocumentEngine extends NativeKitUIResource
             transaction.replacementText == null ? "" : transaction.replacementText,
             transaction.selectionStart, transaction.selectionEnd, transaction.selectionAffinity,
             transaction.hasComposition ? 1 : 0, transaction.compositionStart,
-            transaction.compositionEnd), "textDocument.applyEdit");
+            transaction.compositionEnd, Type.enumIndex(transaction.historyKind)), "textDocument.applyEdit");
         compositionMetadata = transaction.hasComposition && transaction.compositionAttributes != null ?
             transaction.compositionAttributes.copy() : [];
     }

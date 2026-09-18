@@ -482,6 +482,18 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 		NKUI_TEXT_DIRECTION_RTL = 2;
 	}
 	/**
+	 * History grouping policy attached to one document edit transaction.
+	 */
+	enum nkui_text_edit_history_kind : c_int {
+		NKUI_TEXT_EDIT_HISTORY_GENERIC = 0;
+		NKUI_TEXT_EDIT_HISTORY_TYPING = 1;
+		NKUI_TEXT_EDIT_HISTORY_DELETE_BACKWARD = 2;
+		NKUI_TEXT_EDIT_HISTORY_DELETE_FORWARD = 3;
+		NKUI_TEXT_EDIT_HISTORY_PASTE = 4;
+		NKUI_TEXT_EDIT_HISTORY_AUTOCORRECT = 5;
+		NKUI_TEXT_EDIT_HISTORY_COMPOSITION = 6;
+	}
+	/**
 	 * Flags returned in nkui_text_intrinsic_metrics.flags.
 	 */
 	flags nkui_text_intrinsic_flags : u32 {
@@ -745,7 +757,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	/**
 	 * Applies one atomic code-point transaction to a Skribidi-backed document.
 	 */
-	extern fn nkui_text_document_apply_edit(document: nkui_resource, replacement_start: i32, replacement_end: i32, replacement_text: nullable<utf8>, selection_start: i32, selection_end: i32, selection_affinity: u32, has_composition: u32, composition_start: i32, composition_end: i32) -> nkui_result;
+	extern fn nkui_text_document_apply_edit(document: nkui_resource, replacement_start: i32, replacement_end: i32, replacement_text: nullable<utf8>, selection_start: i32, selection_end: i32, selection_affinity: u32, has_composition: u32, composition_start: i32, composition_end: i32, history_kind: u32) -> nkui_result;
 	/**
 	 * Returns visual caret geometry for a document position.
 	 */

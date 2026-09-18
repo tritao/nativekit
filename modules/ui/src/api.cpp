@@ -1980,9 +1980,10 @@ extern "C" nkui_result nkui_text_document_apply_edit(
     nkui_resource document, int32_t replacement_start, int32_t replacement_end,
     const char *replacement_text, int32_t selection_start, int32_t selection_end,
     uint32_t selection_affinity, uint32_t has_composition, int32_t composition_start,
-    int32_t composition_end) {
+    int32_t composition_end, uint32_t history_kind) {
     if (replacement_start < 0 || replacement_end < replacement_start || selection_start < 0 ||
-        selection_end < selection_start || selection_affinity > 4u || has_composition > 1u)
+        selection_end < selection_start || selection_affinity > 4u || has_composition > 1u ||
+        history_kind > static_cast<uint32_t>(NKUI_TEXT_EDIT_HISTORY_COMPOSITION))
         return NKUI_ERROR_INVALID_ARGUMENT;
     if (has_composition && (composition_start < 0 || composition_end < composition_start))
         return NKUI_ERROR_INVALID_ARGUMENT;
@@ -2000,6 +2001,7 @@ extern "C" nkui_result nkui_text_document_apply_edit(
         has_composition != 0,
         composition_start,
         composition_end,
+        static_cast<uint8_t>(history_kind),
     };
     return slot->document->apply_edit(transaction) ? NKUI_OK : NKUI_ERROR_INVALID_ARGUMENT;
 }
