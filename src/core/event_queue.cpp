@@ -20,6 +20,8 @@ bool is_terminal_request_event(const QueuedEvent &event) {
            event.kind == NK_EVENT_RESOURCE_DATA_COMPLETE ||
            event.kind == NK_EVENT_SENSOR_PERMISSION_COMPLETE ||
            event.kind == NK_EVENT_HTTP_COMPLETE || event.kind == NK_EVENT_NOTIFICATION_DELIVERED ||
+            event.kind == NK_EVENT_PLUGIN_COMPLETE ||
+            event.kind == NK_EVENT_NOTIFICATION_DELIVERED ||
            event.kind == NK_EVENT_NOTIFICATION_FAILED;
 }
 

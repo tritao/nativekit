@@ -24,6 +24,16 @@ target_compile_features(nativekit_time_tests PRIVATE cxx_std_17)
 target_link_libraries(nativekit_time_tests PRIVATE NativeKit::nativekit)
 add_test(NAME time COMMAND nativekit_time_tests)
 
+add_executable(nativekit_plugin_tests unit/plugin_tests.cpp)
+target_compile_features(nativekit_plugin_tests PRIVATE cxx_std_17)
+target_link_libraries(nativekit_plugin_tests PRIVATE NativeKit::nativekit)
+add_test(NAME plugin COMMAND nativekit_plugin_tests)
+
+add_executable(nativekit_dispatch_tests unit/dispatch_tests.cpp)
+target_compile_features(nativekit_dispatch_tests PRIVATE cxx_std_17)
+target_link_libraries(nativekit_dispatch_tests PRIVATE NativeKit::nativekit)
+add_test(NAME dispatch COMMAND nativekit_dispatch_tests)
+
 if(NK_NET_BACKEND_CURL)
     add_executable(nativekit_net_contract_test unit/net_contract.cpp)
     target_compile_features(nativekit_net_contract_test PRIVATE cxx_std_17)

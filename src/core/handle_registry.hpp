@@ -21,7 +21,8 @@ enum class ResourceType : std::uint8_t {
     sensor,
     resource_stream,
     http_client,
-    http_stream
+    http_stream,
+    plugin
 };
 
 struct Resource {
