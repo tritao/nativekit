@@ -1,4 +1,5 @@
 #include "net_backend.hpp"
+#include "net/curl_progress.hpp"
 
 #include "core/error.hpp"
 
@@ -269,8 +270,8 @@ std::size_t read_callback(char *data, std::size_t size, std::size_t count,
     }
 }
 
-int progress_callback_impl(void *user_data, curl_off_t downloaded, curl_off_t download_total,
-                           curl_off_t uploaded, curl_off_t upload_total) {
+int progress_callback_impl(void *user_data, curl_off_t download_total, curl_off_t downloaded,
+                           curl_off_t upload_total, curl_off_t uploaded) {
     auto &request = *static_cast<nk::net::RequestContext *>(user_data);
     if (request.canceled.load(std::memory_order_acquire))
         return 1;
@@ -279,17 +280,18 @@ int progress_callback_impl(void *user_data, curl_off_t downloaded, curl_off_t do
         now - request.last_progress < std::chrono::milliseconds(50))
         return 0;
     request.last_progress = now;
-    nk::net::emit_progress(request.shared_from_this(), static_cast<uint64_t>(downloaded),
-                           static_cast<uint64_t>(download_total), static_cast<uint64_t>(uploaded),
-                           static_cast<uint64_t>(upload_total));
+    const auto progress = nk::net::map_curl_progress(download_total, downloaded, upload_total,
+                                                     uploaded);
+    nk::net::emit_progress(request.shared_from_this(), progress.downloaded,
+                           progress.download_total, progress.uploaded, progress.upload_total);
     return 0;
 }
 
-int progress_callback(void *user_data, curl_off_t downloaded, curl_off_t download_total,
-                      curl_off_t uploaded, curl_off_t upload_total) noexcept {
+int progress_callback(void *user_data, curl_off_t download_total, curl_off_t downloaded,
+                      curl_off_t upload_total, curl_off_t uploaded) noexcept {
     try {
-        return progress_callback_impl(user_data, downloaded, download_total, uploaded,
-                                      upload_total);
+        return progress_callback_impl(user_data, download_total, downloaded, upload_total,
+                                      uploaded);
     } catch (...) {
         return 1;
     }
@@ -394,6 +396,7 @@ nk_result perform_impl(nk::net::RequestPtr request) {
             options_ok = set_option(CURLOPT_NOPROGRESS, 0L) && options_ok;
 
             const auto &tls = request->client->config.tls;
+            bool unsupported_security_policy = false;
             options_ok =
                 set_option(CURLOPT_SSL_VERIFYPEER,
                            (tls.flags & NK_HTTP_TLS_DISABLE_PEER_VERIFICATION) ? 0L : 1L) &&
@@ -404,13 +407,16 @@ nk_result perform_impl(nk::net::RequestPtr request) {
                 options_ok;
             if (!tls.ca_bundle_path.empty())
                 options_ok = set_option(CURLOPT_CAINFO, tls.ca_bundle_path.c_str()) && options_ok;
-#ifdef CURLOPT_SSLVERSION
             if (tls.minimum_version == NK_HTTP_TLS_1_2)
                 options_ok = set_option(CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2) && options_ok;
-#ifdef CURL_SSLVERSION_TLSv1_3
+#if LIBCURL_VERSION_NUM >= 0x073400
             if (tls.minimum_version == NK_HTTP_TLS_1_3)
                 options_ok = set_option(CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_3) && options_ok;
-#endif
+#else
+            if (tls.minimum_version == NK_HTTP_TLS_1_3) {
+                unsupported_security_policy = true;
+                options_ok = false;
+            }
 #endif
 
             const auto &proxy = request->client->config.proxy;
@@ -456,7 +462,9 @@ nk_result perform_impl(nk::net::RequestPtr request) {
             }
 
             if (!options_ok) {
-                result = static_cast<nk_result>(NK_HTTP_ERROR_PROTOCOL);
+                result = unsupported_security_policy
+                             ? NK_ERROR_UNSUPPORTED
+                             : static_cast<nk_result>(NK_HTTP_ERROR_PROTOCOL);
             } else {
                 const auto curl_result = curl_easy_perform(curl);
                 long response_code = 0;

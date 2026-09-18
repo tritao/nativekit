@@ -17,6 +17,7 @@
 #include <cstring>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 enum Kind : uint32_t {
@@ -54,13 +55,17 @@ template <class T, Kind K, size_t N> struct Pool {
         T value{};
     };
     std::array<Slot, N> slots{};
-    Handle add(const T &value) {
+    template <class U> Handle add(U &&value) {
         for (uint32_t i = 0; i < N; ++i)
             /* A retired slot still holds backend objects awaiting release. */
             if (!slots[i].active && !slots[i].pins && !slots[i].retired) {
+                try {
+                    slots[i].value = std::forward<U>(value);
+                } catch (...) {
+                    return 0;
+                }
                 slots[i].active = true;
                 slots[i].retired = false;
-                slots[i].value = value;
                 return (uint32_t(K) << 28) | (uint32_t(slots[i].generation) << 16) | (i + 1);
             }
         return 0;
@@ -2297,61 +2302,81 @@ nkgpu_result nkgpu_image_end(nkgpu_image_builder h, nkgpu_image *out) {
 nkgpu_result nkgpu_image_create(nkgpu_renderer r, uint32_t width, uint32_t height,
                                 nkgpu_image_format format, const uint8_t *pixels, uint32_t size,
                                 uint32_t dynamic_update, nkgpu_image *out) {
-    const uint32_t bytes_per_pixel = format == NKGPU_IMAGEFORMAT_R8      ? 1
-                                     : format == NKGPU_IMAGEFORMAT_RGBA8 ? 4
-                                                                         : 0;
-    if (!width || !height || width > INT32_MAX || height > INT32_MAX || !bytes_per_pixel ||
-        !pixels || !out || dynamic_update > 1 ||
-        static_cast<uint64_t>(width) * height * bytes_per_pixel != size)
-        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid image creation arguments");
-    const nkgpu_result access = require_streaming_resource_access(r);
-    if (access != NKGPU_OK)
-        return access;
-    const nkgpu_result activated = activate_renderer(r);
-    if (activated != NKGPU_OK)
-        return activated;
-    if (consume_image_creation_failure(r))
-        return fail(NKGPU_ERROR_OUT_OF_MEMORY, "injected image allocation failure");
-    sg_image_desc desc{};
-    desc.width = static_cast<int>(width);
-    desc.height = static_cast<int>(height);
-    desc.pixel_format = format == NKGPU_IMAGEFORMAT_R8 ? SG_PIXELFORMAT_R8 : SG_PIXELFORMAT_RGBA8;
-    // Keep the public update contract independent of Sokol's per-frame
-    // dynamic-image update restriction. Mutable images are replaced from
-    // their CPU mirror when updated; every Sokol image starts with valid data.
-    desc.data.mip_levels[0] = {pixels, size};
-    const sg_image object = sg_make_image(&desc);
-    if (sg_query_image_state(object) != SG_RESOURCESTATE_VALID) {
+    try {
+        const uint32_t bytes_per_pixel = format == NKGPU_IMAGEFORMAT_R8      ? 1
+                                         : format == NKGPU_IMAGEFORMAT_RGBA8 ? 4
+                                                                             : 0;
+        if (!width || !height || width > INT32_MAX || height > INT32_MAX || !bytes_per_pixel ||
+            !pixels || !out || dynamic_update > 1 ||
+            static_cast<uint64_t>(width) * height * bytes_per_pixel != size)
+            return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid image creation arguments");
+        *out = 0;
+        const nkgpu_result access = require_streaming_resource_access(r);
+        if (access != NKGPU_OK)
+            return access;
+        const nkgpu_result activated = activate_renderer(r);
+        if (activated != NKGPU_OK)
+            return activated;
+        if (consume_image_creation_failure(r))
+            return fail(NKGPU_ERROR_OUT_OF_MEMORY, "injected image allocation failure");
+        sg_image_desc desc{};
+        desc.width = static_cast<int>(width);
+        desc.height = static_cast<int>(height);
+        desc.pixel_format =
+            format == NKGPU_IMAGEFORMAT_R8 ? SG_PIXELFORMAT_R8 : SG_PIXELFORMAT_RGBA8;
+        // Keep the public update contract independent of Sokol's per-frame
+        // dynamic-image update restriction. Mutable images are replaced from
+        // their CPU mirror when updated; every Sokol image starts with valid data.
+        desc.data.mip_levels[0] = {pixels, size};
+        sg_image object = sg_make_image(&desc);
+        struct ImageGuard {
+            sg_image object{};
+            ~ImageGuard() {
+                if (object.id)
+                    sg_destroy_image(object);
+            }
+        } image_guard{object};
+        if (sg_query_image_state(object) != SG_RESOURCESTATE_VALID) {
+            record_allocation_failure(r);
+            return fail(NKGPU_ERROR_OUT_OF_MEMORY, "image creation failed");
+        }
+        sg_view_desc view_desc{};
+        view_desc.texture.image = object;
+        sg_view view = sg_make_view(&view_desc);
+        struct ViewGuard {
+            sg_view view{};
+            ~ViewGuard() {
+                if (view.id)
+                    sg_destroy_view(view);
+            }
+        } view_guard{view};
+        if (sg_query_view_state(view) != SG_RESOURCESTATE_VALID) {
+            record_allocation_failure(r);
+            return fail(NKGPU_ERROR_OUT_OF_MEMORY, "texture view creation failed");
+        }
+        Image image_value{};
+        image_value.owner = r;
+        image_value.object = object;
+        image_value.view = view;
+        image_value.width = width;
+        image_value.height = height;
+        image_value.format = format;
+        image_value.dynamic_update = dynamic_update != 0;
+        image_value.pixels.assign(pixels, pixels + size);
+        const Handle handle = image_pool.add(std::move(image_value));
+        if (!handle) {
+            record_allocation_failure(r);
+            return fail(NKGPU_ERROR_OUT_OF_MEMORY, "image pool full");
+        }
+        image_guard.object = {};
+        view_guard.view = {};
+        record_resource_created(r, size);
+        *out = handle;
+        return NKGPU_OK;
+    } catch (...) {
         record_allocation_failure(r);
         return fail(NKGPU_ERROR_OUT_OF_MEMORY, "image creation failed");
     }
-    sg_view_desc view_desc{};
-    view_desc.texture.image = object;
-    const sg_view view = sg_make_view(&view_desc);
-    if (sg_query_view_state(view) != SG_RESOURCESTATE_VALID) {
-        sg_destroy_image(object);
-        record_allocation_failure(r);
-        return fail(NKGPU_ERROR_OUT_OF_MEMORY, "texture view creation failed");
-    }
-    Image image_value{};
-    image_value.owner = r;
-    image_value.object = object;
-    image_value.view = view;
-    image_value.width = width;
-    image_value.height = height;
-    image_value.format = format;
-    image_value.dynamic_update = dynamic_update != 0;
-    image_value.pixels.assign(pixels, pixels + size);
-    const Handle handle = image_pool.add(image_value);
-    if (!handle) {
-        sg_destroy_view(view);
-        sg_destroy_image(object);
-        record_allocation_failure(r);
-        return fail(NKGPU_ERROR_OUT_OF_MEMORY, "image pool full");
-    }
-    record_resource_created(r, size);
-    *out = handle;
-    return NKGPU_OK;
 }
 nkgpu_result nkgpu_image_update(nkgpu_renderer r, nkgpu_image h, uint32_t x, uint32_t y,
                                 uint32_t width, uint32_t height, const uint8_t *pixels,

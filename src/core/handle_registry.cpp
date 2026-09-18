@@ -22,7 +22,7 @@ nk_handle HandleRegistry::insert(ResourceType type, std::shared_ptr<Resource> re
     std::lock_guard lock(mutex_);
     for (std::uint32_t index = 0; index < slots_.size(); ++index) {
         auto &slot = slots_[index];
-        if (!slot.resource) {
+        if (!slot.resource && !slot.retired) {
             slot.type = type;
             slot.resource = std::move(resource);
             return encode(index, slot.generation);
@@ -62,7 +62,11 @@ bool HandleRegistry::erase(nk_handle handle, ResourceType type) {
         return false;
     slot.resource.reset();
     slot.type = ResourceType::none;
-    slot.generation = static_cast<std::uint16_t>((slot.generation % max_generation) + 1u);
+    if (slot.generation == max_generation) {
+        slot.retired = true;
+    } else {
+        ++slot.generation;
+    }
     return true;
 }
 
@@ -71,7 +75,13 @@ void HandleRegistry::clear() {
     for (auto &slot : slots_) {
         slot.resource.reset();
         slot.type = ResourceType::none;
-        slot.generation = static_cast<std::uint16_t>((slot.generation % max_generation) + 1u);
+        if (slot.retired)
+            continue;
+        if (slot.generation == max_generation) {
+            slot.retired = true;
+        } else {
+            ++slot.generation;
+        }
     }
 }
 

@@ -14,11 +14,20 @@
 #include "nativekit_system.h"
 #include "nativekit_window.h"
 
-#include <cassert>
 #include <cstddef>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <stdexcept>
+
+#define NK_CHECK(expression)                                                                    \
+    do {                                                                                       \
+        if (!(expression)) {                                                                    \
+            std::fprintf(stderr, "CHECK failed at %s:%d: %s\n", __FILE__, __LINE__, #expression); \
+            std::abort();                                                                       \
+        }                                                                                        \
+    } while (false)
 
 namespace {
 struct Dummy final : nk::core::Resource {};
@@ -50,61 +59,61 @@ int main() {
     accessibility_node.row_index = NK_ACCESSIBILITY_INDEX_NONE;
     accessibility_node.column_index = NK_ACCESSIBILITY_INDEX_NONE;
     accessibility_node.orientation = NK_ACCESSIBILITY_ORIENTATION_VERTICAL;
-    assert(accessibility_node.struct_size == sizeof(accessibility_node));
-    assert(accessibility_node.position_in_set <= accessibility_node.set_size);
-    assert(accessibility_node.row_index == NK_ACCESSIBILITY_INDEX_NONE);
-    assert(accessibility_node.orientation == NK_ACCESSIBILITY_ORIENTATION_VERTICAL);
+    NK_CHECK(accessibility_node.struct_size == sizeof(accessibility_node));
+    NK_CHECK(accessibility_node.position_in_set <= accessibility_node.set_size);
+    NK_CHECK(accessibility_node.row_index == NK_ACCESSIBILITY_INDEX_NONE);
+    NK_CHECK(accessibility_node.orientation == NK_ACCESSIBILITY_ORIENTATION_VERTICAL);
     nk_accessibility_update invalid_update{};
     invalid_update.struct_size = sizeof(invalid_update);
     const uint8_t malformed_removed_ids[] = {1, 2, 3};
-    assert(nk_surface_accessibility_update_with_removed_ids(
+    NK_CHECK(nk_surface_accessibility_update_with_removed_ids(
                NK_INVALID_HANDLE, &invalid_update, malformed_removed_ids,
                sizeof(malformed_removed_ids)) == NK_ERROR_INVALID_ARGUMENT);
 
     nk_surface_frame_target old_frame_target{};
     old_frame_target.struct_size = nk::core::surface_frame_target_v1_size;
     old_frame_target.native_device = 0xfeedbeef;
-    assert(nk::core::surface_frame_target_output_valid(&old_frame_target));
+    NK_CHECK(nk::core::surface_frame_target_output_valid(&old_frame_target));
     nk_surface_frame_target frame_target{};
     frame_target.api = NK_GRAPHICS_OPENGL;
     frame_target.width = 640;
     frame_target.height = 480;
     nk::core::write_surface_frame_target(&old_frame_target, frame_target);
-    assert(old_frame_target.api == NK_GRAPHICS_OPENGL);
-    assert(old_frame_target.width == 640 && old_frame_target.height == 480);
-    assert(old_frame_target.native_device == 0xfeedbeef);
+    NK_CHECK(old_frame_target.api == NK_GRAPHICS_OPENGL);
+    NK_CHECK(old_frame_target.width == 640 && old_frame_target.height == 480);
+    NK_CHECK(old_frame_target.native_device == 0xfeedbeef);
     old_frame_target.struct_size = nk::core::surface_frame_target_v1_size - 1;
-    assert(!nk::core::surface_frame_target_output_valid(&old_frame_target));
+    NK_CHECK(!nk::core::surface_frame_target_output_valid(&old_frame_target));
 
     nk::core::FrameRequestState frame_requests;
-    assert(frame_requests.continuous());
-    assert(frame_requests.should_draw());
+    NK_CHECK(frame_requests.continuous());
+    NK_CHECK(frame_requests.should_draw());
     frame_requests.set_continuous(false);
-    assert(!frame_requests.pending());
-    assert(!frame_requests.should_draw());
+    NK_CHECK(!frame_requests.pending());
+    NK_CHECK(!frame_requests.should_draw());
     frame_requests.request();
     frame_requests.request();
-    assert(frame_requests.pending());
-    assert(frame_requests.should_draw());
+    NK_CHECK(frame_requests.pending());
+    NK_CHECK(frame_requests.should_draw());
     frame_requests.begin_frame();
-    assert(!frame_requests.pending());
-    assert(!frame_requests.should_draw());
+    NK_CHECK(!frame_requests.pending());
+    NK_CHECK(!frame_requests.should_draw());
     /* A request recorded while a frame renders schedules the next frame. */
     frame_requests.begin_frame();
     frame_requests.request();
-    assert(frame_requests.should_draw());
+    NK_CHECK(frame_requests.should_draw());
     frame_requests.set_continuous(true);
-    assert(frame_requests.should_draw());
+    NK_CHECK(frame_requests.should_draw());
 
-    assert(std::strcmp(nk::core::vulkan::platform_extension(NK_NATIVE_WINDOW_X11),
+    NK_CHECK(std::strcmp(nk::core::vulkan::platform_extension(NK_NATIVE_WINDOW_X11),
                        "VK_KHR_xlib_surface") == 0);
-    assert(std::strcmp(nk::core::vulkan::platform_extension(NK_NATIVE_WINDOW_WAYLAND),
+    NK_CHECK(std::strcmp(nk::core::vulkan::platform_extension(NK_NATIVE_WINDOW_WAYLAND),
                        "VK_KHR_wayland_surface") == 0);
-    assert(nk::core::vulkan::platform_extension(NK_NATIVE_WINDOW_COCOA) == nullptr);
-    assert(nk::core::result_boundary("unexpected boundary exception", []() -> nk_result {
+    NK_CHECK(nk::core::vulkan::platform_extension(NK_NATIVE_WINDOW_COCOA) == nullptr);
+    NK_CHECK(nk::core::result_boundary("unexpected boundary exception", []() -> nk_result {
                throw std::bad_alloc{};
            }) == NK_ERROR_OUT_OF_MEMORY);
-    assert(nk::core::result_boundary("unexpected boundary exception", []() -> nk_result {
+    NK_CHECK(nk::core::result_boundary("unexpected boundary exception", []() -> nk_result {
                throw std::runtime_error("test");
            }) == NK_ERROR_UNKNOWN);
     bool callback_returned = false;
@@ -112,30 +121,30 @@ int main() {
         callback_returned = true;
         throw std::runtime_error("test");
     });
-    assert(callback_returned);
-    assert(
+    NK_CHECK(callback_returned);
+    NK_CHECK(
         !nk::core::callback_boundary_or(false, []() -> bool { throw std::runtime_error("test"); }));
-    assert(nk::core::callback_boundary_or(false, [] { return true; }));
+    NK_CHECK(nk::core::callback_boundary_or(false, [] { return true; }));
 
     nk::core::gamepad::Mapping mapping;
-    assert(nk::core::gamepad::parse_mapping(
+    NK_CHECK(nk::core::gamepad::parse_mapping(
         "03000000112200003344000055660000,Test Pad,a:b0,b:+a1,x:-a1~,dpup:h0.1,"
         "leftx:a0,lefty:a0~,lefttrigger:+a2,righttrigger:b1,platform:Linux,",
         mapping));
-    assert(mapping.name == "Test Pad");
-    assert(mapping.platform == "Linux");
+    NK_CHECK(mapping.name == "Test Pad");
+    NK_CHECK(mapping.platform == "Linux");
     nk_gamepad_state gamepad_state{};
     gamepad_state.struct_size = sizeof(gamepad_state);
-    assert(nk::core::gamepad::apply_mapping(mapping, {0.25f, 0.75f, 0.5f}, {1, 0}, {1},
+    NK_CHECK(nk::core::gamepad::apply_mapping(mapping, {0.25f, 0.75f, 0.5f}, {1, 0}, {1},
                                             gamepad_state));
-    assert(gamepad_state.buttons[NK_GAMEPAD_BUTTON_A] == 1);
-    assert(gamepad_state.buttons[NK_GAMEPAD_BUTTON_B] == 1);
-    assert(gamepad_state.buttons[NK_GAMEPAD_BUTTON_X] == 0);
-    assert(gamepad_state.buttons[NK_GAMEPAD_BUTTON_DPAD_UP] == 1);
-    assert(gamepad_state.axes[NK_GAMEPAD_AXIS_LEFT_X] == 0.25f);
-    assert(gamepad_state.axes[NK_GAMEPAD_AXIS_LEFT_Y] == -0.25f);
-    assert(gamepad_state.axes[NK_GAMEPAD_AXIS_LEFT_TRIGGER] == 0.f);
-    assert(gamepad_state.axes[NK_GAMEPAD_AXIS_RIGHT_TRIGGER] == -1.f);
+    NK_CHECK(gamepad_state.buttons[NK_GAMEPAD_BUTTON_A] == 1);
+    NK_CHECK(gamepad_state.buttons[NK_GAMEPAD_BUTTON_B] == 1);
+    NK_CHECK(gamepad_state.buttons[NK_GAMEPAD_BUTTON_X] == 0);
+    NK_CHECK(gamepad_state.buttons[NK_GAMEPAD_BUTTON_DPAD_UP] == 1);
+    NK_CHECK(gamepad_state.axes[NK_GAMEPAD_AXIS_LEFT_X] == 0.25f);
+    NK_CHECK(gamepad_state.axes[NK_GAMEPAD_AXIS_LEFT_Y] == -0.25f);
+    NK_CHECK(gamepad_state.axes[NK_GAMEPAD_AXIS_LEFT_TRIGGER] == 0.f);
+    NK_CHECK(gamepad_state.axes[NK_GAMEPAD_AXIS_RIGHT_TRIGGER] == -1.f);
     gamepad_state.axes[NK_GAMEPAD_AXIS_LEFT_X] = 0.1f;
     gamepad_state.axes[NK_GAMEPAD_AXIS_LEFT_Y] = 0.f;
     gamepad_state.axes[NK_GAMEPAD_AXIS_RIGHT_X] = 0.6f;
@@ -143,14 +152,14 @@ int main() {
     gamepad_state.axes[NK_GAMEPAD_AXIS_LEFT_TRIGGER] = 0.f;
     gamepad_state.axes[NK_GAMEPAD_AXIS_RIGHT_TRIGGER] = -1.f;
     nk::core::gamepad::normalize_state(gamepad_state, 0.2f, 0.1f, NK_GAMEPAD_TRIGGER_ZERO_TO_ONE);
-    assert(gamepad_state.axes[NK_GAMEPAD_AXIS_LEFT_X] == 0.f);
-    assert(gamepad_state.axes[NK_GAMEPAD_AXIS_RIGHT_X] > 0.499f);
-    assert(gamepad_state.axes[NK_GAMEPAD_AXIS_RIGHT_X] < 0.501f);
-    assert(gamepad_state.axes[NK_GAMEPAD_AXIS_LEFT_TRIGGER] > 0.44f);
-    assert(gamepad_state.axes[NK_GAMEPAD_AXIS_LEFT_TRIGGER] < 0.45f);
-    assert(gamepad_state.axes[NK_GAMEPAD_AXIS_RIGHT_TRIGGER] == 0.f);
-    assert(!nk::core::gamepad::parse_mapping("not-a-guid,Pad,a:b0", mapping));
-    assert(!nk::core::gamepad::parse_mapping("03000000112200003344000055660000,Pad,a:q0", mapping));
+    NK_CHECK(gamepad_state.axes[NK_GAMEPAD_AXIS_LEFT_X] == 0.f);
+    NK_CHECK(gamepad_state.axes[NK_GAMEPAD_AXIS_RIGHT_X] > 0.499f);
+    NK_CHECK(gamepad_state.axes[NK_GAMEPAD_AXIS_RIGHT_X] < 0.501f);
+    NK_CHECK(gamepad_state.axes[NK_GAMEPAD_AXIS_LEFT_TRIGGER] > 0.44f);
+    NK_CHECK(gamepad_state.axes[NK_GAMEPAD_AXIS_LEFT_TRIGGER] < 0.45f);
+    NK_CHECK(gamepad_state.axes[NK_GAMEPAD_AXIS_RIGHT_TRIGGER] == 0.f);
+    NK_CHECK(!nk::core::gamepad::parse_mapping("not-a-guid,Pad,a:b0", mapping));
+    NK_CHECK(!nk::core::gamepad::parse_mapping("03000000112200003344000055660000,Pad,a:q0", mapping));
     bool has_xbox = false;
     bool has_playstation = false;
     bool has_switch = false;
@@ -158,26 +167,44 @@ int main() {
     std::size_t builtin_count = 0;
     for (const auto *text : nk_builtin_gamepad_mappings) {
         nk::core::gamepad::Mapping builtin;
-        assert(nk::core::gamepad::parse_mapping(text, builtin));
-        assert(builtin.platform == "Linux");
+        NK_CHECK(nk::core::gamepad::parse_mapping(text, builtin));
+        NK_CHECK(builtin.platform == "Linux");
         has_xbox = has_xbox || builtin.name.find("Xbox") != std::string::npos;
         has_playstation = has_playstation || builtin.name.find("PlayStation") != std::string::npos;
         has_switch = has_switch || builtin.name.find("Switch") != std::string::npos;
         has_steam = has_steam || builtin.name.find("Steam") != std::string::npos;
         ++builtin_count;
     }
-    assert(builtin_count > 700);
-    assert(has_xbox && has_playstation && has_switch && has_steam);
+    NK_CHECK(builtin_count > 700);
+    NK_CHECK(has_xbox && has_playstation && has_switch && has_steam);
 
     nk::core::HandleRegistry handles;
     const auto first = handles.insert(nk::core::ResourceType::window, std::make_shared<Dummy>());
-    assert(first != NK_INVALID_HANDLE);
-    assert(handles.get(first, nk::core::ResourceType::window));
-    assert(!handles.get(first, nk::core::ResourceType::webview));
-    assert(handles.erase(first, nk::core::ResourceType::window));
-    assert(!handles.get(first, nk::core::ResourceType::window));
+    NK_CHECK(first != NK_INVALID_HANDLE);
+    NK_CHECK(handles.get(first, nk::core::ResourceType::window));
+    NK_CHECK(!handles.get(first, nk::core::ResourceType::webview));
+    NK_CHECK(handles.erase(first, nk::core::ResourceType::window));
+    NK_CHECK(!handles.get(first, nk::core::ResourceType::window));
     const auto second = handles.insert(nk::core::ResourceType::window, std::make_shared<Dummy>());
-    assert(second != first);
+    NK_CHECK(second != first);
+
+    nk::core::HandleRegistry generation_handles;
+    const auto stale =
+        generation_handles.insert(nk::core::ResourceType::window, std::make_shared<Dummy>());
+    NK_CHECK(generation_handles.erase(stale, nk::core::ResourceType::window));
+    for (int cycle = 0; cycle != 4094; ++cycle) {
+        const auto current =
+            generation_handles.insert(nk::core::ResourceType::window, std::make_shared<Dummy>());
+        NK_CHECK(current != NK_INVALID_HANDLE);
+        NK_CHECK(current != stale);
+        NK_CHECK(generation_handles.erase(current, nk::core::ResourceType::window));
+    }
+    NK_CHECK(!generation_handles.get(stale, nk::core::ResourceType::window));
+    const auto after_exhaustion =
+        generation_handles.insert(nk::core::ResourceType::window, std::make_shared<Dummy>());
+    NK_CHECK(after_exhaustion != NK_INVALID_HANDLE);
+    NK_CHECK(after_exhaustion != stale);
+    NK_CHECK(!generation_handles.get(stale, nk::core::ResourceType::window));
 
     nk::core::EventQueue queue(1);
     nk::core::QueuedEvent queued;
@@ -185,30 +212,52 @@ int main() {
     const char payload[] = "hello";
     const auto *begin = reinterpret_cast<const std::byte *>(payload);
     queued.data.assign(begin, begin + sizeof(payload) - 1);
-    assert(queue.push(std::move(queued)) == NK_OK);
-    assert(queue.push({}) == NK_ERROR_QUEUE_FULL);
+    NK_CHECK(queue.push(std::move(queued)) == NK_OK);
+    NK_CHECK(queue.push({}) == NK_ERROR_QUEUE_FULL);
     nk::core::QueuedEvent terminal;
     terminal.kind = NK_EVENT_WEBVIEW_EVAL_COMPLETE;
     terminal.request_id = 42;
     terminal.result = NK_ERROR_INVALID_REQUEST;
-    assert(queue.push(std::move(terminal)) == NK_OK);
+    NK_CHECK(queue.push(std::move(terminal)) == NK_OK);
     nk::core::QueuedEvent notification_terminal;
     notification_terminal.kind = NK_EVENT_NOTIFICATION_FAILED;
     notification_terminal.request_id = 43;
-    assert(queue.push(std::move(notification_terminal)) == NK_OK);
+    NK_CHECK(queue.push(std::move(notification_terminal)) == NK_OK);
 
     nk_event event{};
+
+    nk::core::EventQueue readiness_queue(1);
+    nk::core::QueuedEvent occupied;
+    occupied.kind = NK_EVENT_WEBVIEW_MESSAGE;
+    NK_CHECK(readiness_queue.push(std::move(occupied)) == NK_OK);
+    nk::core::QueuedEvent readiness;
+    readiness.kind = NK_EVENT_HTTP_DATA_AVAILABLE;
+    readiness.source = first;
+    readiness.request_id = 99;
+    NK_CHECK(readiness_queue.push(std::move(readiness)) == NK_OK);
+    NK_CHECK(!readiness_queue.empty());
+    event = {};
     event.struct_size = sizeof(event);
-    assert(queue.poll(event) == NK_OK);
-    assert(event.kind == NK_EVENT_WEBVIEW_MESSAGE);
-    assert(event.data_size == 5);
-    assert(std::memcmp(event.data, "hello", 5) == 0);
+    NK_CHECK(readiness_queue.poll(event) == NK_OK);
+    NK_CHECK(event.kind == NK_EVENT_WEBVIEW_MESSAGE);
     nk_event_release(&event);
     event.struct_size = sizeof(event);
-    assert(queue.poll(event) == NK_OK);
-    assert(event.kind == NK_EVENT_WEBVIEW_EVAL_COMPLETE);
-    assert(event.request_id == 42);
-    assert(event.result == NK_ERROR_INVALID_REQUEST);
+    NK_CHECK(readiness_queue.poll(event) == NK_OK);
+    NK_CHECK(event.kind == NK_EVENT_HTTP_DATA_AVAILABLE);
+    NK_CHECK(event.source == first);
+    nk_event_release(&event);
+
+    event.struct_size = sizeof(event);
+    NK_CHECK(queue.poll(event) == NK_OK);
+    NK_CHECK(event.kind == NK_EVENT_WEBVIEW_MESSAGE);
+    NK_CHECK(event.data_size == 5);
+    NK_CHECK(std::memcmp(event.data, "hello", 5) == 0);
+    nk_event_release(&event);
+    event.struct_size = sizeof(event);
+    NK_CHECK(queue.poll(event) == NK_OK);
+    NK_CHECK(event.kind == NK_EVENT_WEBVIEW_EVAL_COMPLETE);
+    NK_CHECK(event.request_id == 42);
+    NK_CHECK(event.result == NK_ERROR_INVALID_REQUEST);
     nk_event_release(&event);
 
     nk::core::EventQueue resize_queue(1);
@@ -219,13 +268,13 @@ int main() {
     const nk_window_resize_event latest_size{800, 600};
     const auto *size_begin = reinterpret_cast<const std::byte *>(&latest_size);
     latest_resize.data.assign(size_begin, size_begin + sizeof(latest_size));
-    assert(resize_queue.push(std::move(first_resize)) == NK_OK);
-    assert(resize_queue.push(std::move(latest_resize)) == NK_OK);
+    NK_CHECK(resize_queue.push(std::move(first_resize)) == NK_OK);
+    NK_CHECK(resize_queue.push(std::move(latest_resize)) == NK_OK);
     event = {};
     event.struct_size = sizeof(event);
-    assert(resize_queue.poll(event) == NK_OK);
-    assert(event.data_size == sizeof(latest_size));
-    assert(std::memcmp(event.data, &latest_size, sizeof(latest_size)) == 0);
+    NK_CHECK(resize_queue.poll(event) == NK_OK);
+    NK_CHECK(event.data_size == sizeof(latest_size));
+    NK_CHECK(std::memcmp(event.data, &latest_size, sizeof(latest_size)) == 0);
     nk_event_release(&event);
 
     nk::core::EventQueue motion_queue(1);
@@ -233,12 +282,12 @@ int main() {
     first_motion.kind = NK_EVENT_POINTER_MOVE;
     first_motion.source = first;
     nk::core::QueuedEvent latest_motion = first_motion;
-    assert(motion_queue.push(std::move(first_motion)) == NK_OK);
-    assert(motion_queue.push(std::move(latest_motion)) == NK_OK);
+    NK_CHECK(motion_queue.push(std::move(first_motion)) == NK_OK);
+    NK_CHECK(motion_queue.push(std::move(latest_motion)) == NK_OK);
     event = {};
     event.struct_size = sizeof(event);
-    assert(motion_queue.poll(event) == NK_OK);
-    assert(event.kind == NK_EVENT_POINTER_MOVE);
+    NK_CHECK(motion_queue.poll(event) == NK_OK);
+    NK_CHECK(event.kind == NK_EVENT_POINTER_MOVE);
     nk_event_release(&event);
 
     nk::core::EventQueue orientation_queue(1);
@@ -252,15 +301,15 @@ int main() {
         item.source = first;
         const auto *payload_begin = reinterpret_cast<const std::byte *>(&payload);
         item.data.assign(payload_begin, payload_begin + sizeof(payload));
-        assert(orientation_queue.push(std::move(item)) == NK_OK);
+        NK_CHECK(orientation_queue.push(std::move(item)) == NK_OK);
     };
     queue_orientation(portrait);
     queue_orientation(landscape);
     event = {};
     event.struct_size = sizeof(event);
-    assert(orientation_queue.poll(event) == NK_OK);
-    assert(event.kind == NK_EVENT_DISPLAY_ORIENTATION_CHANGED);
-    assert(static_cast<const nk_orientation_event *>(event.data)->orientation ==
+    NK_CHECK(orientation_queue.poll(event) == NK_OK);
+    NK_CHECK(event.kind == NK_EVENT_DISPLAY_ORIENTATION_CHANGED);
+    NK_CHECK(static_cast<const nk_orientation_event *>(event.data)->orientation ==
            NK_ORIENTATION_LANDSCAPE_RIGHT);
     nk_event_release(&event);
 
@@ -274,19 +323,19 @@ int main() {
         item.source = first;
         const auto *payload_begin = reinterpret_cast<const std::byte *>(&payload);
         item.data.assign(payload_begin, payload_begin + sizeof(payload));
-        assert(axis_queue.push(std::move(item)) == NK_OK);
+        NK_CHECK(axis_queue.push(std::move(item)) == NK_OK);
     };
     queue_axis(axis_zero);
     queue_axis(axis_zero_latest);
     queue_axis(axis_one);
     event = {};
     event.struct_size = sizeof(event);
-    assert(axis_queue.poll(event) == NK_OK);
-    assert(static_cast<const nk_joystick_axis_event *>(event.data)->value == 0.75f);
+    NK_CHECK(axis_queue.poll(event) == NK_OK);
+    NK_CHECK(static_cast<const nk_joystick_axis_event *>(event.data)->value == 0.75f);
     nk_event_release(&event);
     event.struct_size = sizeof(event);
-    assert(axis_queue.poll(event) == NK_OK);
-    assert(static_cast<const nk_joystick_axis_event *>(event.data)->axis == 1);
+    NK_CHECK(axis_queue.poll(event) == NK_OK);
+    NK_CHECK(static_cast<const nk_joystick_axis_event *>(event.data)->axis == 1);
     nk_event_release(&event);
     nk::core::EventQueue sensor_queue(2);
     auto queue_sensor = [&](nk_sensor sensor, std::uint64_t sequence) {
@@ -303,20 +352,20 @@ int main() {
         item.source = sensor;
         const auto *payload_begin = reinterpret_cast<const std::byte *>(&sample);
         item.data.assign(payload_begin, payload_begin + sizeof(sample));
-        assert(sensor_queue.push(std::move(item)) == NK_OK);
+        NK_CHECK(sensor_queue.push(std::move(item)) == NK_OK);
     };
     queue_sensor(11, 1);
     queue_sensor(12, 1);
     queue_sensor(11, 2);
     event = {};
     event.struct_size = sizeof(event);
-    assert(sensor_queue.poll(event) == NK_OK);
-    assert(event.source == 11);
-    assert(static_cast<const nk_sensor_sample *>(event.data)->sequence == 2);
+    NK_CHECK(sensor_queue.poll(event) == NK_OK);
+    NK_CHECK(event.source == 11);
+    NK_CHECK(static_cast<const nk_sensor_sample *>(event.data)->sequence == 2);
     nk_event_release(&event);
     event.struct_size = sizeof(event);
-    assert(sensor_queue.poll(event) == NK_OK);
-    assert(event.source == 12);
+    NK_CHECK(sensor_queue.poll(event) == NK_OK);
+    NK_CHECK(event.source == 12);
     nk_event_release(&event);
     nk::core::EventQueue clipboard_queue(1);
     nk::core::QueuedEvent clipboard_first;
@@ -331,12 +380,12 @@ int main() {
         reinterpret_cast<const std::byte *>(&clipboard_latest_payload);
     clipboard_latest.data.assign(clipboard_latest_begin,
                                  clipboard_latest_begin + sizeof(clipboard_latest_payload));
-    assert(clipboard_queue.push(std::move(clipboard_first)) == NK_OK);
-    assert(clipboard_queue.push(std::move(clipboard_latest)) == NK_OK);
+    NK_CHECK(clipboard_queue.push(std::move(clipboard_first)) == NK_OK);
+    NK_CHECK(clipboard_queue.push(std::move(clipboard_latest)) == NK_OK);
     event = {};
     event.struct_size = sizeof(event);
-    assert(clipboard_queue.poll(event) == NK_OK);
-    assert(static_cast<const nk_clipboard_changed_event *>(event.data)->sequence == 2);
+    NK_CHECK(clipboard_queue.poll(event) == NK_OK);
+    NK_CHECK(static_cast<const nk_clipboard_changed_event *>(event.data)->sequence == 2);
     nk_event_release(&event);
 
     nk::core::EventQueue file_queue(1);
@@ -351,29 +400,29 @@ int main() {
     file_first.data.insert(file_first.data.end(), reinterpret_cast<const std::byte *>(file_path),
                            reinterpret_cast<const std::byte *>(file_path) + sizeof(file_path));
     nk::core::QueuedEvent file_latest = file_first;
-    assert(file_queue.push(std::move(file_first)) == NK_OK);
-    assert(file_queue.push(std::move(file_latest)) == NK_OK);
+    NK_CHECK(file_queue.push(std::move(file_first)) == NK_OK);
+    NK_CHECK(file_queue.push(std::move(file_latest)) == NK_OK);
     event = {};
     event.struct_size = sizeof(event);
-    assert(file_queue.poll(event) == NK_OK);
-    assert(event.kind == NK_EVENT_FILE_CHANGED);
+    NK_CHECK(file_queue.poll(event) == NK_OK);
+    NK_CHECK(event.kind == NK_EVENT_FILE_CHANGED);
     nk_event_release(&event);
 
     nk::core::EventQueue overflow_queue(1);
     nk::core::QueuedEvent ordinary;
     ordinary.kind = NK_EVENT_WEBVIEW_MESSAGE;
-    assert(overflow_queue.push(std::move(ordinary)) == NK_OK);
+    NK_CHECK(overflow_queue.push(std::move(ordinary)) == NK_OK);
     nk::core::QueuedEvent overflow;
     overflow.kind = NK_EVENT_FILE_WATCH_OVERFLOW;
-    assert(overflow_queue.push(std::move(overflow)) == NK_OK);
+    NK_CHECK(overflow_queue.push(std::move(overflow)) == NK_OK);
     event = {};
     event.struct_size = sizeof(event);
-    assert(overflow_queue.poll(event) == NK_OK);
-    assert(event.kind == NK_EVENT_FILE_WATCH_OVERFLOW);
+    NK_CHECK(overflow_queue.poll(event) == NK_OK);
+    NK_CHECK(event.kind == NK_EVENT_FILE_WATCH_OVERFLOW);
     nk_event_release(&event);
     nk::core::EventQueue empty_overflow_queue(0);
     nk::core::QueuedEvent empty_overflow;
     empty_overflow.kind = NK_EVENT_FILE_WATCH_OVERFLOW;
-    assert(empty_overflow_queue.push(std::move(empty_overflow)) == NK_OK);
+    NK_CHECK(empty_overflow_queue.push(std::move(empty_overflow)) == NK_OK);
     return 0;
 }

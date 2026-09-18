@@ -44,6 +44,7 @@ class HandleRegistry {
         std::uint16_t generation = 1;
         ResourceType type = ResourceType::none;
         std::shared_ptr<Resource> resource;
+        bool retired = false;
     };
 
     static constexpr std::uint32_t index_bits = 20;

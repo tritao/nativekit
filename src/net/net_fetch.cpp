@@ -114,11 +114,17 @@ bool progress_due(nk::net::RequestContext &request) {
 EM_JS(void, start_fetch,
       (double id, const char *url, const char *method, const char *headers, uintptr_t body,
        uint32_t body_size, double max_header_size, double max_response_size,
-       uint32_t redirect_limit, uint32_t allow_https_to_http),
+       uint32_t redirect_limit, uint32_t timeout_ms, uint32_t allow_https_to_http),
       {
           const states = Module['NativeKitFetches'] || (Module['NativeKitFetches'] = new Map());
-          const state = {controller : new AbortController(), failed : 0};
+          const state = {controller : new AbortController(), failed : 0, timed_out : 0, timer : 0};
           states.set(id, state);
+          state.timer = setTimeout(() => {
+              if (!states.has(id))
+                  return;
+              state.timed_out = 1;
+              state.controller.abort();
+          }, Number(timeout_ms));
           const header_text = UTF8ToString(headers);
           const header_lines = header_text.length === 0 ? [] : header_text.split('\n');
           const request_headers = new Headers();
@@ -156,6 +162,7 @@ EM_JS(void, start_fetch,
           const finish = (result) => {
               if (!states.has(id))
                   return;
+              clearTimeout(state.timer);
               states.delete(id);
               Module.ccall('nk_net_fetch_complete', null, [ 'number', 'number' ], [ id, result ]);
           };
@@ -240,7 +247,8 @@ EM_JS(void, start_fetch,
                })()
               .catch((error) => {
                   const result = state.failed !== 0 ? state.failed
-                                                    : error && error.name === 'AbortError' ? -104 : -101;
+                                                    : state.timed_out ? -103
+                                                                      : error && error.name === 'AbortError' ? -104 : -101;
                   finish(result);
               });
       });
@@ -248,8 +256,12 @@ EM_JS(void, start_fetch,
 
 EM_JS(void, cancel_fetch, (double id), {
     const states = Module['NativeKitFetches'];
-    if (states && states.has(id))
-        states.get(id).controller.abort();
+    if (states && states.has(id)) {
+        const state = states.get(id);
+        clearTimeout(state.timer);
+        states.delete(id);
+        state.controller.abort();
+    }
 });
 
 } // namespace
@@ -369,7 +381,7 @@ nk_result backend_start(const RequestPtr &request) noexcept {
                         : reinterpret_cast<uintptr_t>(request->request.body.data()),
                     static_cast<uint32_t>(request->request.body.size()),
                     request->client->config.max_header_size, request->request.max_response_size,
-                    request->request.redirect_limit,
+                    request->request.redirect_limit, request->request.timeout_ms,
                     (request->client->config.flags & NK_HTTP_CLIENT_ALLOW_HTTPS_TO_HTTP) != 0);
         return NK_OK;
     } catch (const std::bad_alloc &) {

@@ -37,6 +37,15 @@ bool is_coalescible(nk_event_kind kind) {
            kind == NK_EVENT_CLIPBOARD_CHANGED || kind == NK_EVENT_FILE_CHANGED;
 }
 
+bool is_persistent_readiness(nk_event_kind kind) {
+    return kind == NK_EVENT_HTTP_HEADERS || kind == NK_EVENT_HTTP_DATA_AVAILABLE;
+}
+
+bool same_readiness_target(const QueuedEvent &first, const QueuedEvent &second) {
+    return first.kind == second.kind && first.source == second.source &&
+           first.request_id == second.request_id;
+}
+
 bool same_coalescing_target(const QueuedEvent &first, const QueuedEvent &second) {
     if (first.kind != second.kind || first.source != second.source)
         return false;
@@ -77,6 +86,14 @@ bool same_coalescing_target(const QueuedEvent &first, const QueuedEvent &second)
 EventQueue::EventQueue(std::size_t capacity, std::size_t byte_capacity)
     : capacity_(capacity), byte_capacity_(byte_capacity) {}
 
+void promote_deferred_readiness(std::deque<QueuedEvent> &queue,
+                                std::deque<QueuedEvent> &deferred, std::size_t capacity) {
+    while (queue.size() < capacity && !deferred.empty()) {
+        queue.push_back(std::move(deferred.front()));
+        deferred.pop_front();
+    }
+}
+
 nk_result EventQueue::push(QueuedEvent event) {
     std::lock_guard lock(mutex_);
     const std::size_t event_bytes = event.data.size();
@@ -110,12 +127,25 @@ nk_result EventQueue::push(QueuedEvent event) {
             auto victim = std::find_if(queue_.begin(), queue_.end(), [](const QueuedEvent &queued) {
                 return is_coalescible(queued.kind);
             });
-            if (victim != queue_.end())
+            if (victim != queue_.end()) {
+                queued_bytes_ -= victim->data.size();
                 queue_.erase(victim);
-            else if (!queue_.empty())
+            } else if (!queue_.empty()) {
+                queued_bytes_ -= queue_.front().data.size();
                 queue_.pop_front();
-        } else {
+            }
+        } else if (!is_persistent_readiness(event.kind)) {
             return NK_ERROR_QUEUE_FULL;
+        } else {
+            for (const auto &queued : queue_)
+                if (same_readiness_target(queued, event))
+                    return NK_OK;
+            for (const auto &queued : deferred_readiness_)
+                if (same_readiness_target(queued, event))
+                    return NK_OK;
+            deferred_readiness_.push_back(std::move(event));
+            queued_bytes_ += event_bytes;
+            return NK_OK;
         }
     }
     queue_.push_back(std::move(event));
@@ -125,6 +155,7 @@ nk_result EventQueue::push(QueuedEvent event) {
 
 nk_result EventQueue::poll(nk_event &output) {
     std::lock_guard lock(mutex_);
+    promote_deferred_readiness(queue_, deferred_readiness_, capacity_);
     if (queue_.empty()) {
         output.kind = NK_EVENT_NONE;
         return NK_OK;
@@ -148,18 +179,20 @@ nk_result EventQueue::poll(nk_event &output) {
     output.data_size = event.data.size();
     queued_bytes_ -= event.data.size();
     queue_.pop_front();
+    promote_deferred_readiness(queue_, deferred_readiness_, capacity_);
     return NK_OK;
 }
 
 bool EventQueue::empty() {
     std::lock_guard lock(mutex_);
-    return queue_.empty();
+    return queue_.empty() && deferred_readiness_.empty();
 }
 
 void EventQueue::clear() {
     std::lock_guard lock(mutex_);
     queue_.clear();
     queued_bytes_ = 0;
+    deferred_readiness_.clear();
 }
 
 } // namespace nk::core

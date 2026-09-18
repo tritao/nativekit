@@ -264,7 +264,11 @@ typedef struct nkui_layout_measure_stats {
     uint64_t cache_capacity;
 } nkui_layout_measure_stats;
 
-/** Synchronous intrinsic measurement callback for custom-visual nodes. */
+/** Synchronous intrinsic measurement callback for custom-visual nodes.
+ *
+ * The callback may use unrelated UI registries, but must not re-enter layout
+ * session operations. Such re-entry returns NKUI_ERROR_INVALID_ARGUMENT.
+ */
 typedef nkui_layout_measure_result(NK_CALL *nkui_layout_measure_callback)(
     uint32_t node_id, nkui_layout_measure_constraints constraints, void *NK_NULLABLE user_data);
 typedef nkui_layout_measure_callback NK_NULLABLE nkui_nullable_layout_measure_callback;

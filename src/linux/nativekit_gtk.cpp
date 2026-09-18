@@ -30,7 +30,9 @@
 #ifdef GDK_WINDOWING_X11
 #include <gdk/gdkx.h>
 #endif
+#if defined(NK_HAS_WEBKITGTK)
 #include <webkit2/webkit2.h>
+#endif
 
 #include <dlfcn.h>
 
@@ -1390,6 +1392,7 @@ void remove_gtk_accessibility_descendants(
         nodes.erase(id);
 }
 
+#if defined(NK_HAS_WEBKITGTK)
 struct GtkWebViewResource final : nk::core::Resource {
     GtkWidget *widget = nullptr;
     WebKitUserContentManager *content_manager = nullptr;
@@ -1438,6 +1441,7 @@ struct EvalContext {
     nk_request_id request;
     uint64_t generation;
 };
+#endif
 
 struct DialogContext {
     GObject *object = nullptr;
@@ -1519,10 +1523,12 @@ void on_clipboard_owner_change(GtkClipboard *, GdkEventOwnerChange *event, gpoin
     }
 }
 
+#if defined(NK_HAS_WEBKITGTK)
 struct NavigationDecision {
     nk_handle source;
     WebKitPolicyDecision *decision;
 };
+#endif
 
 struct NotificationRequest {
     uint32_t server_id = 0;
@@ -1543,8 +1549,10 @@ gulong monitor_removed_signal = 0;
 std::unordered_map<GdkMonitor *, nk_handle> monitor_handles;
 std::unordered_map<GdkMonitor *, nk_orientation> monitor_orientations;
 std::unordered_map<nk_request_id, DialogContext *> dialogs;
+#if defined(NK_HAS_WEBKITGTK)
 std::unordered_map<nk_request_id, NavigationDecision> navigation_decisions;
 std::unordered_map<nk_request_id, nk_handle> evaluations;
+#endif
 std::unordered_map<nk_request_id, NotificationRequest> notifications;
 std::unordered_map<uint32_t, nk_request_id> notification_ids;
 GDBusConnection *notification_bus = nullptr;
@@ -2174,6 +2182,7 @@ gboolean on_window_state(GtkWidget *, GdkEventWindowState *state, gpointer data)
     return FALSE;
 }
 
+#if defined(NK_HAS_WEBKITGTK)
 uint32_t navigation_error_category(const GError *error) {
     if (error->domain == WEBKIT_NETWORK_ERROR) {
         switch (error->code) {
@@ -2381,6 +2390,7 @@ void cancel_evaluations(nk_handle source) noexcept {
         item = evaluations.erase(item);
     }
 }
+#endif
 
 std::shared_ptr<GtkWindowResource> window(nk_handle handle) {
     return std::dynamic_pointer_cast<GtkWindowResource>(
@@ -2485,10 +2495,12 @@ void apply_geometry_hints(const GtkWindowResource &resource) {
         gtk_window_set_geometry_hints(GTK_WINDOW(resource.window), nullptr, &geometry, hints);
 }
 
+#if defined(NK_HAS_WEBKITGTK)
 std::shared_ptr<GtkWebViewResource> webview(nk_handle handle) {
     return std::dynamic_pointer_cast<GtkWebViewResource>(
         nk::core::handles().get(handle, nk::core::ResourceType::webview));
 }
+#endif
 
 std::shared_ptr<GtkViewResource> view(nk_handle handle) {
     return std::dynamic_pointer_cast<GtkViewResource>(
@@ -3500,6 +3512,7 @@ void shutdown() noexcept {
     nk::linux_joystick::shutdown();
     while (!dialogs.empty())
         cancel_dialog(dialogs.begin()->second, false);
+#if defined(NK_HAS_WEBKITGTK)
     while (!navigation_decisions.empty()) {
         auto item = navigation_decisions.begin();
         webkit_policy_decision_ignore(item->second.decision);
@@ -3507,6 +3520,7 @@ void shutdown() noexcept {
         navigation_decisions.erase(item);
     }
     cancel_evaluations(NK_INVALID_HANDLE);
+#endif
     for (const auto &[request, notification] : notifications) {
         (void)request;
         close_server_notification(notification.server_id);
@@ -3552,7 +3566,7 @@ extern "C" {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     auto capabilities =
-        NK_CAP_WINDOW | NK_CAP_WEBVIEW | NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP | NK_CAP_SHELL |
+        NK_CAP_WINDOW | NK_CAP_CLIPBOARD | NK_CAP_DRAG_DROP | NK_CAP_SHELL |
         NK_CAP_SYSTEM_APPEARANCE | NK_CAP_EXPORT_NATIVE_WINDOW | NK_CAP_NOTIFICATION |
         NK_CAP_INPUT | NK_CAP_OPENGL_SURFACE | NK_CAP_OPENGL_ES_SURFACE | NK_CAP_CURSOR |
         NK_CAP_POINTER_CAPTURE | NK_CAP_WINDOW_GEOMETRY | NK_CAP_WINDOW_STYLING | NK_CAP_MONITOR |
@@ -3562,6 +3576,9 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
         NK_CAP_DISPLAY_ORIENTATION | NK_CAP_ACCESSIBILITY | NK_CAP_WRAP_NATIVE_WINDOW |
         NK_CAP_SURFACE_FRAME_CALLBACK | NK_CAP_WINDOW_CUSTOM_DECORATIONS | NK_CAP_NATIVE_VIEW |
         NK_CAP_FILE_WATCH | NK_CAP_CLIPBOARD_WATCH;
+#if defined(NK_HAS_WEBKITGTK)
+    capabilities |= NK_CAP_WEBVIEW;
+#endif
     if (nk::core::system_backend::keep_awake_supported())
         capabilities |= NK_CAP_KEEP_AWAKE;
     return capabilities | nk::core::optional_capabilities();
@@ -3671,8 +3688,10 @@ nk_result NK_CALL nk_window_destroy(nk_handle handle) {
         nk_window_destroy(owned);
     cancel_dialogs_for_parent(handle, true);
     const auto children = resource->children;
+#if defined(NK_HAS_WEBKITGTK)
     for (const auto child : children)
         nk_webview_destroy(child);
+#endif
     const auto views = resource->views;
     for (const auto child : views)
         nk_view_destroy(child);
@@ -5291,6 +5310,7 @@ nk_result NK_CALL nk_surface_get_proc_address(nk_handle handle, const char *name
     return NK_OK;
 }
 
+#if defined(NK_HAS_WEBKITGTK)
 nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_options *options,
                                     nk_handle *out_webview) {
     return nk::core::result_boundary("unexpected error while creating WebView", [&]() -> nk_result {
@@ -5526,6 +5546,71 @@ nk_result NK_CALL nk_webview_navigation_decide(nk_request_id request, uint32_t a
     g_object_unref(decision);
     return NK_OK;
 }
+#else
+nk_result NK_CALL nk_webview_create(nk_handle, const nk_webview_options *, nk_handle *out_webview) {
+    if (out_webview)
+        *out_webview = NK_INVALID_HANDLE;
+    return fail(NK_ERROR_UNSUPPORTED, "GTK WebView support is unavailable");
+}
+
+nk_result NK_CALL nk_webview_destroy(nk_handle) {
+    return fail(NK_ERROR_UNSUPPORTED, "GTK WebView support is unavailable");
+}
+
+nk_result NK_CALL nk_webview_show(nk_handle, uint32_t) {
+    return fail(NK_ERROR_UNSUPPORTED, "GTK WebView support is unavailable");
+}
+
+nk_result NK_CALL nk_webview_set_bounds(nk_handle, int32_t, int32_t, int32_t, int32_t) {
+    return fail(NK_ERROR_UNSUPPORTED, "GTK WebView support is unavailable");
+}
+
+nk_result NK_CALL nk_webview_navigate(nk_handle, const char *) {
+    return fail(NK_ERROR_UNSUPPORTED, "GTK WebView support is unavailable");
+}
+
+nk_result NK_CALL nk_webview_set_html(nk_handle, const char *, const char *) {
+    return fail(NK_ERROR_UNSUPPORTED, "GTK WebView support is unavailable");
+}
+
+nk_result NK_CALL nk_webview_can_go_back(nk_handle, uint32_t *out_can_go_back) {
+    if (out_can_go_back)
+        *out_can_go_back = 0;
+    return fail(NK_ERROR_UNSUPPORTED, "GTK WebView support is unavailable");
+}
+
+nk_result NK_CALL nk_webview_can_go_forward(nk_handle, uint32_t *out_can_go_forward) {
+    if (out_can_go_forward)
+        *out_can_go_forward = 0;
+    return fail(NK_ERROR_UNSUPPORTED, "GTK WebView support is unavailable");
+}
+
+nk_result NK_CALL nk_webview_go_back(nk_handle) {
+    return fail(NK_ERROR_UNSUPPORTED, "GTK WebView support is unavailable");
+}
+
+nk_result NK_CALL nk_webview_go_forward(nk_handle) {
+    return fail(NK_ERROR_UNSUPPORTED, "GTK WebView support is unavailable");
+}
+
+nk_result NK_CALL nk_webview_reload(nk_handle) {
+    return fail(NK_ERROR_UNSUPPORTED, "GTK WebView support is unavailable");
+}
+
+nk_result NK_CALL nk_webview_stop(nk_handle) {
+    return fail(NK_ERROR_UNSUPPORTED, "GTK WebView support is unavailable");
+}
+
+nk_result NK_CALL nk_webview_eval(nk_handle, const char *, nk_request_id *out_request) {
+    if (out_request)
+        *out_request = NK_INVALID_REQUEST_ID;
+    return fail(NK_ERROR_UNSUPPORTED, "GTK WebView support is unavailable");
+}
+
+nk_result NK_CALL nk_webview_navigation_decide(nk_request_id, uint32_t) {
+    return fail(NK_ERROR_UNSUPPORTED, "GTK WebView support is unavailable");
+}
+#endif
 
 /*
  * Applies a view's committed state: the widget only ever occupies the

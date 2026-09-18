@@ -103,6 +103,7 @@ struct RequestContext final : std::enable_shared_from_this<RequestContext> {
     uint64_t upload_position = 0;
     nk_result upload_result = NK_OK;
     std::chrono::steady_clock::time_point last_progress{};
+    bool headers_event_pending = false;
 };
 
 using RequestPtr = std::shared_ptr<RequestContext>;

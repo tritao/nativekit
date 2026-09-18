@@ -133,14 +133,24 @@ std::vector<uint8_t> transaction_with_nodes(uint32_t node_count) {
 
 struct MeasureState {
     uint32_t calls = 0;
+    nkui_layout_session session{};
+    nkui_result reentrant_stats = NKUI_OK;
+    nkui_result unrelated_list = NKUI_ERROR_OUT_OF_MEMORY;
 };
 
 nkui_layout_measure_result measure_custom_node(uint32_t node_id,
                                                nkui_layout_measure_constraints constraints,
                                                void *user_data) {
     auto *state = static_cast<MeasureState *>(user_data);
-    if (state)
+    if (state) {
         ++state->calls;
+        nkui_layout_measure_stats stats{sizeof(stats)};
+        state->reentrant_stats = nkui_layout_session_get_measure_stats(state->session, &stats);
+        nkui_display_list list{};
+        state->unrelated_list = nkui_display_list_create(&list);
+        if (state->unrelated_list == NKUI_OK)
+            state->unrelated_list = nkui_display_list_destroy(list);
+    }
     if (node_id != 2)
         return {sizeof(nkui_layout_measure_result), 0.0f, 0.0f, 0.0f, 0};
     return {sizeof(nkui_layout_measure_result), 48.0f, 20.0f, 15.0f,
@@ -163,6 +173,7 @@ int main() {
         return 3;
 
     MeasureState measure_state;
+    measure_state.session = session;
     if (nkui_layout_session_set_measure_callback(session, measure_custom_node, &measure_state) !=
         NKUI_OK)
         return 43;
@@ -255,6 +266,9 @@ int main() {
     if (nkui_layout_session_submit(session, custom_tree.data(), custom_tree.size(), &frame) !=
         NKUI_OK)
         return 24;
+    if (measure_state.calls == 0 || measure_state.reentrant_stats != NKUI_ERROR_INVALID_ARGUMENT ||
+        measure_state.unrelated_list != NKUI_OK)
+        return 41;
     nkui_display_list custom_list{};
     if (nkui_display_list_create(&custom_list) != NKUI_OK ||
         nkui_layout_session_set_custom_paint(session, 2, custom_list) != NKUI_OK ||

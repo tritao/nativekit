@@ -5,8 +5,9 @@
 
 #include <arpa/inet.h>
 #include <atomic>
-#include <cassert>
 #include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <cstdint>
 #include <cstring>
 #include <netinet/in.h>
@@ -14,6 +15,14 @@
 #include <sys/socket.h>
 #include <thread>
 #include <unistd.h>
+
+#define NK_CHECK(expression)                                                                    \
+    do {                                                                                       \
+        if (!(expression)) {                                                                    \
+            std::fprintf(stderr, "CHECK failed at %s:%d: %s\n", __FILE__, __LINE__, #expression); \
+            std::abort();                                                                       \
+        }                                                                                        \
+    } while (false)
 
 namespace {
 
@@ -25,17 +34,17 @@ struct LocalServer {
 
     LocalServer() {
         socket = ::socket(AF_INET, SOCK_STREAM, 0);
-        assert(socket >= 0);
+        NK_CHECK(socket >= 0);
         int reuse = 1;
-        assert(::setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) == 0);
+        NK_CHECK(::setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) == 0);
         sockaddr_in address{};
         address.sin_family = AF_INET;
         address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
         address.sin_port = 0;
-        assert(::bind(socket, reinterpret_cast<const sockaddr *>(&address), sizeof(address)) == 0);
-        assert(::listen(socket, 8) == 0);
+        NK_CHECK(::bind(socket, reinterpret_cast<const sockaddr *>(&address), sizeof(address)) == 0);
+        NK_CHECK(::listen(socket, 8) == 0);
         socklen_t address_size = sizeof(address);
-        assert(::getsockname(socket, reinterpret_cast<sockaddr *>(&address), &address_size) == 0);
+        NK_CHECK(::getsockname(socket, reinterpret_cast<sockaddr *>(&address), &address_size) == 0);
         port = ntohs(address.sin_port);
         worker = std::thread([this] { serve(); });
     }
@@ -112,7 +121,7 @@ bool poll_until(nk_request_id request, nk_http_stream stream, std::string *compl
         for (;;) {
             nk_event event{};
             event.struct_size = sizeof(event);
-            assert(nk_poll_event(&event) == NK_OK);
+            NK_CHECK(nk_poll_event(&event) == NK_OK);
             if (event.kind == NK_EVENT_NONE) {
                 nk_event_release(&event);
                 break;
@@ -124,25 +133,25 @@ bool poll_until(nk_request_id request, nk_http_stream stream, std::string *compl
             if (event.kind == NK_EVENT_HTTP_HEADERS) {
                 nk_http_response response{};
                 response.struct_size = sizeof(response);
-                assert(nk_http_event_response(&event, &response) == NK_OK);
-                assert(response.status_code == expected_status);
-                assert(response.stream == stream);
+                NK_CHECK(nk_http_event_response(&event, &response) == NK_OK);
+                NK_CHECK(response.status_code == expected_status);
+                NK_CHECK(response.stream == stream);
                 *saw_headers = true;
             } else if (event.kind == NK_EVENT_HTTP_DATA_AVAILABLE) {
-                assert(stream != NK_INVALID_HANDLE);
+                NK_CHECK(stream != NK_INVALID_HANDLE);
                 nk_http_stream_info info{};
                 info.struct_size = sizeof(info);
-                assert(nk_http_stream_info_get(stream, &info) == NK_OK);
+                NK_CHECK(nk_http_stream_info_get(stream, &info) == NK_OK);
                 char body[64];
                 uint64_t read = 0;
                 const auto read_result = nk_http_stream_read(stream, body, sizeof(body), &read);
-                assert(read_result == NK_OK);
-                assert(read != 0);
+                NK_CHECK(read_result == NK_OK);
+                NK_CHECK(read != 0);
             } else if (event.kind == NK_EVENT_HTTP_COMPLETE) {
-                assert(event.result == expected_result);
+                NK_CHECK(event.result == expected_result);
                 nk_http_response response{};
                 response.struct_size = sizeof(response);
-                assert(nk_http_event_response(&event, &response) == NK_OK);
+                NK_CHECK(nk_http_event_response(&event, &response) == NK_OK);
                 if (complete_body && response.body_size != 0)
                     complete_body->assign(static_cast<const char *>(response.body),
                                           response.body_size);
@@ -150,8 +159,8 @@ bool poll_until(nk_request_id request, nk_http_stream stream, std::string *compl
                     complete_body->clear();
                 if (response.header_count != 0) {
                     nk_http_header header{};
-                    assert(nk_http_response_header(&response, 0, &header) == NK_OK);
-                    assert(header.name_size != 0);
+                    NK_CHECK(nk_http_response_header(&response, 0, &header) == NK_OK);
+                    NK_CHECK(header.name_size != 0);
                 }
                 if (complete_status)
                     *complete_status = response.status_code;
@@ -175,8 +184,9 @@ int main() {
     nk_init_options init{};
     init.struct_size = sizeof(init);
     init.api_version = NK_API_VERSION;
-    assert(nk_init(&init) == NK_OK);
-    assert((nk_get_capabilities() & (NK_CAP_HTTP_CLIENT | NK_CAP_HTTP_STREAMING)) ==
+    init.event_queue_capacity = 1;
+    NK_CHECK(nk_init(&init) == NK_OK);
+    NK_CHECK((nk_get_capabilities() & (NK_CAP_HTTP_CLIENT | NK_CAP_HTTP_STREAMING)) ==
            (NK_CAP_HTTP_CLIENT | NK_CAP_HTTP_STREAMING));
 
     nk_http_client_options client_options{};
@@ -184,7 +194,7 @@ int main() {
     client_options.flags = NK_HTTP_CLIENT_ALLOW_HTTP;
     client_options.stream_buffer_size = 4;
     nk_http_client client = NK_INVALID_HANDLE;
-    assert(nk_http_client_create(&client_options, &client) == NK_OK);
+    NK_CHECK(nk_http_client_create(&client_options, &client) == NK_OK);
 
     nk_http_request_options buffered_options{};
     buffered_options.struct_size = sizeof(buffered_options);
@@ -193,18 +203,18 @@ int main() {
     buffered_options.url = buffered_url.c_str();
     nk_request_id buffered_request = NK_INVALID_REQUEST_ID;
     nk_http_stream no_stream = NK_INVALID_HANDLE;
-    assert(nk_http_request(client, &buffered_options, &buffered_request, &no_stream) == NK_OK);
-    assert(no_stream == NK_INVALID_HANDLE);
+    NK_CHECK(nk_http_request(client, &buffered_options, &buffered_request, &no_stream) == NK_OK);
+    NK_CHECK(no_stream == NK_INVALID_HANDLE);
     std::string buffered_body;
     uint32_t buffered_status = 0;
     uint32_t buffered_header_count = 0;
     bool saw_buffered_headers = false;
-    assert(poll_until(buffered_request, NK_INVALID_HANDLE, &buffered_body, &buffered_status,
+    NK_CHECK(poll_until(buffered_request, NK_INVALID_HANDLE, &buffered_body, &buffered_status,
                       &buffered_header_count, &saw_buffered_headers, NK_OK, 404));
-    assert(saw_buffered_headers);
-    assert(buffered_status == 404);
-    assert(buffered_body == "buffered-body");
-    assert(buffered_header_count >= 2);
+    NK_CHECK(saw_buffered_headers);
+    NK_CHECK(buffered_status == 404);
+    NK_CHECK(buffered_body == "buffered-body");
+    NK_CHECK(buffered_header_count >= 2);
 
     nk_http_request_options stream_options{};
     stream_options.struct_size = sizeof(stream_options);
@@ -214,20 +224,21 @@ int main() {
     stream_options.url = stream_url.c_str();
     nk_request_id stream_request = NK_INVALID_REQUEST_ID;
     nk_http_stream stream = NK_INVALID_HANDLE;
-    assert(nk_http_request(client, &stream_options, &stream_request, &stream) == NK_OK);
-    assert(stream != NK_INVALID_HANDLE);
+    NK_CHECK(nk_http_request(client, &stream_options, &stream_request, &stream) == NK_OK);
+    NK_CHECK(stream != NK_INVALID_HANDLE);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
     bool saw_stream_headers = false;
-    assert(poll_until(stream_request, stream, nullptr, nullptr, nullptr, &saw_stream_headers, NK_OK,
+    NK_CHECK(poll_until(stream_request, stream, nullptr, nullptr, nullptr, &saw_stream_headers, NK_OK,
                       200));
-    assert(saw_stream_headers);
+    NK_CHECK(saw_stream_headers);
     nk_http_stream_info stream_info{};
     stream_info.struct_size = sizeof(stream_info);
-    assert(nk_http_stream_info_get(stream, &stream_info) == NK_OK);
-    assert(stream_info.flags & NK_HTTP_STREAM_COMPLETE);
+    NK_CHECK(nk_http_stream_info_get(stream, &stream_info) == NK_OK);
+    NK_CHECK(stream_info.flags & NK_HTTP_STREAM_COMPLETE);
     char remaining[64];
     uint64_t remaining_size = 0;
-    assert(nk_http_stream_read(stream, remaining, sizeof(remaining), &remaining_size) == NK_OK);
-    assert(nk_http_stream_close(stream) == NK_OK);
+    NK_CHECK(nk_http_stream_read(stream, remaining, sizeof(remaining), &remaining_size) == NK_OK);
+    NK_CHECK(nk_http_stream_close(stream) == NK_OK);
 
     nk_http_request_options limited_options{};
     limited_options.struct_size = sizeof(limited_options);
@@ -236,13 +247,13 @@ int main() {
     const auto limited_url = url(server.port, "/limit");
     limited_options.url = limited_url.c_str();
     nk_request_id limited_request = NK_INVALID_REQUEST_ID;
-    assert(nk_http_request(client, &limited_options, &limited_request, nullptr) == NK_OK);
+    NK_CHECK(nk_http_request(client, &limited_options, &limited_request, nullptr) == NK_OK);
     std::string limited_body;
     bool saw_limited_headers = false;
-    assert(poll_until(limited_request, NK_INVALID_HANDLE, &limited_body, nullptr, nullptr,
+    NK_CHECK(poll_until(limited_request, NK_INVALID_HANDLE, &limited_body, nullptr, nullptr,
                       &saw_limited_headers, NK_HTTP_ERROR_RESPONSE_LIMIT, 200));
-    assert(saw_limited_headers);
-    assert(limited_body.empty());
+    NK_CHECK(saw_limited_headers);
+    NK_CHECK(limited_body.empty());
 
     nk_http_request_options cancel_options{};
     cancel_options.struct_size = sizeof(cancel_options);
@@ -250,18 +261,18 @@ int main() {
     const auto cancel_url = url(server.port, "/cancel");
     cancel_options.url = cancel_url.c_str();
     nk_request_id cancel_request = NK_INVALID_REQUEST_ID;
-    assert(nk_http_request(client, &cancel_options, &cancel_request, nullptr) == NK_OK);
+    NK_CHECK(nk_http_request(client, &cancel_options, &cancel_request, nullptr) == NK_OK);
     const auto cancel_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while (!server.cancel_ready.load(std::memory_order_acquire) &&
            std::chrono::steady_clock::now() < cancel_deadline)
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    assert(server.cancel_ready.load(std::memory_order_acquire));
-    assert(nk_http_cancel(cancel_request) == NK_OK);
+    NK_CHECK(server.cancel_ready.load(std::memory_order_acquire));
+    NK_CHECK(nk_http_cancel(cancel_request) == NK_OK);
     bool saw_canceled_headers = false;
-    assert(poll_until(cancel_request, NK_INVALID_HANDLE, nullptr, nullptr, nullptr,
+    NK_CHECK(poll_until(cancel_request, NK_INVALID_HANDLE, nullptr, nullptr, nullptr,
                       &saw_canceled_headers, NK_HTTP_ERROR_CANCELED, 200));
 
-    assert(nk_http_client_destroy(client) == NK_OK);
+    NK_CHECK(nk_http_client_destroy(client) == NK_OK);
     nk_shutdown();
     return 0;
 }

@@ -34,6 +34,7 @@ class EventQueue {
     std::size_t queued_bytes_ = 0;
     std::mutex mutex_;
     std::deque<QueuedEvent> queue_;
+    std::deque<QueuedEvent> deferred_readiness_;
 };
 
 } // namespace nk::core

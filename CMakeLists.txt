@@ -274,14 +274,19 @@ elseif(APPLE)
         "-framework UserNotifications" "-framework UniformTypeIdentifiers"
         "-framework Metal" "-framework QuartzCore" "-framework GameController"
         "-framework CoreHaptics")
-elseif(TARGET PkgConfig::GTK3 AND TARGET PkgConfig::WEBKITGTK)
+elseif(TARGET PkgConfig::GTK3)
     set(NK_BACKEND_GTK_AVAILABLE TRUE)
     target_sources(nativekit PRIVATE
         src/linux/nativekit_gtk.cpp
         src/linux/nativekit_linux_joystick.cpp)
-    target_link_libraries(nativekit PRIVATE PkgConfig::GTK3 PkgConfig::WEBKITGTK
-        ${CMAKE_DL_LIBS})
+    target_link_libraries(nativekit PRIVATE PkgConfig::GTK3 ${CMAKE_DL_LIBS})
     target_compile_definitions(nativekit PRIVATE NK_BACKEND_GTK=1)
+    if(TARGET PkgConfig::WEBKITGTK)
+        target_link_libraries(nativekit PRIVATE PkgConfig::WEBKITGTK)
+        target_compile_definitions(nativekit PRIVATE NK_HAS_WEBKITGTK=1)
+    else()
+        message(STATUS "WebKitGTK is unavailable; GTK windowing remains enabled without WebView")
+    endif()
 else()
     target_sources(nativekit PRIVATE src/core/stub.cpp)
 endif()

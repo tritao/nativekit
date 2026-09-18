@@ -50,6 +50,38 @@ std::unordered_map<nk_request_id, RequestPtr> requests;
 std::size_t active_workers = 0;
 bool shutting_down = false;
 
+struct RequestRegistrationGuard {
+    RequestPtr request;
+    std::shared_ptr<HttpClientResource> client;
+    bool active = true;
+
+    ~RequestRegistrationGuard() { rollback(); }
+
+    void commit() noexcept { active = false; }
+
+    void rollback() noexcept {
+        if (!active || !request)
+            return;
+        {
+            std::lock_guard lock(request_mutex);
+            const auto found = requests.find(request->id);
+            if (found != requests.end() && found->second == request) {
+                requests.erase(found);
+                if (active_workers != 0)
+                    --active_workers;
+                worker_condition.notify_all();
+            }
+        }
+        if (client) {
+            std::lock_guard lock(client->requests_mutex);
+            client->requests.erase(request->id);
+        }
+        if (request->stream)
+            nk::core::handles().erase(request->stream, nk::core::ResourceType::http_stream);
+        active = false;
+    }
+};
+
 struct HttpStreamResource final : nk::core::Resource {
     RequestPtr request;
 };
@@ -413,17 +445,24 @@ void emit_headers(const RequestPtr &request) noexcept {
     try {
         {
             std::lock_guard lock(request->mutex);
-            if (request->headers_emitted || request->status_code == 0)
+            if (request->headers_emitted || request->headers_event_pending ||
+                request->status_code == 0)
                 return;
-            request->headers_emitted = true;
+            request->headers_event_pending = true;
         }
         nk::core::QueuedEvent event;
         event.kind = NK_EVENT_HTTP_HEADERS;
         event.source = request->stream;
         event.request_id = request->id;
         event.data = response_payload(request, false);
-        nk::core::push_event(std::move(event));
+        const auto result = nk::core::push_event(std::move(event));
+        std::lock_guard lock(request->mutex);
+        request->headers_event_pending = false;
+        if (result == NK_OK)
+            request->headers_emitted = true;
     } catch (...) {
+        std::lock_guard lock(request->mutex);
+        request->headers_event_pending = false;
     }
 }
 
@@ -721,15 +760,14 @@ nk_result NK_CALL nk_http_request(nk_http_client client_handle,
                 request->stream = stream_handle;
             }
 
+            RequestRegistrationGuard registration{request, client};
             {
                 std::lock_guard lock(request_mutex);
-                if (shutting_down) {
-                    if (request->stream)
-                        nk::core::handles().erase(request->stream,
-                                                  nk::core::ResourceType::http_stream);
+                if (shutting_down)
                     return fail(NK_ERROR_INVALID_REQUEST, "NativeKit is shutting down");
-                }
-                requests.emplace(request->id, request);
+                const auto [_, inserted] = requests.emplace(request->id, request);
+                if (!inserted)
+                    return fail(NK_ERROR_INVALID_REQUEST, "HTTP request ID is already active");
                 ++active_workers;
             }
             {
@@ -738,17 +776,9 @@ nk_result NK_CALL nk_http_request(nk_http_client client_handle,
             }
             const auto start_result = nk::net::backend_start(request);
             if (start_result != NK_OK) {
-                std::lock_guard lock(request_mutex);
-                requests.erase(request->id);
-                if (active_workers != 0)
-                    --active_workers;
-                worker_condition.notify_all();
-                std::lock_guard client_lock(client->requests_mutex);
-                client->requests.erase(request->id);
-                if (request->stream)
-                    nk::core::handles().erase(request->stream, nk::core::ResourceType::http_stream);
                 return fail(start_result, "could not start HTTP request");
             }
+            registration.commit();
             *out_request = request->id;
             if (out_stream)
                 *out_stream = request->stream;
