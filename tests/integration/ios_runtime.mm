@@ -129,7 +129,10 @@ bool run_text_input_contract(nk_surface surface, UIView *host_view) {
     if (!input)
         return false;
 
-    const char initial_text[] = "A\xF0\x9F\x98\x80\xE6\x97\xA5\xE6\x9C\AC";
+    const char initial_text[] = "A"
+                                "\xF0\x9F\x98\x80"
+                                "\xE6\x97\xA5"
+                                "\xE6\x9C\xAC";
     nk_text_input_state state = {};
     state.struct_size = sizeof(state);
     state.text = initial_text;
@@ -173,21 +176,20 @@ bool run_text_input_contract(nk_surface surface, UIView *host_view) {
     state.selection_end = 3;
     state.composition_start = 1;
     state.composition_end = 3;
-    if (nk_surface_set_text_input_state(surface, &state) != NK_OK ||
-        !input.markedTextRange || !NSEqualRanges(input.selectedRange, NSMakeRange(3, 0)) ||
+    if (nk_surface_set_text_input_state(surface, &state) != NK_OK || !input.markedTextRange ||
+        !NSEqualRanges(input.selectedRange, NSMakeRange(3, 0)) ||
         ![[input textInRange:input.markedTextRange] isEqualToString:@"かな"])
         return false;
     beginning = input.beginningOfDocument;
 
     nk_text_input_range_rect composition_range = {
         sizeof(nk_text_input_range_rect), 80.0f, 100.0f, 40.0f, 18.0f, 1, 3};
-    if (nk_surface_set_text_input_geometry(
-            surface, 3, 3, 1, 3, nullptr, 0,
-            reinterpret_cast<const uint8_t *>(&composition_range), sizeof(composition_range)) !=
-        NK_OK)
+    if (nk_surface_set_text_input_geometry(surface, 3, 3, 1, 3, nullptr, 0,
+                                           reinterpret_cast<const uint8_t *>(&composition_range),
+                                           sizeof(composition_range)) != NK_OK)
         return false;
-    const CGRect composition_rect = [input firstRectForRange:input.markedTextRange
-                                                  actualRange:nullptr];
+    const CGRect composition_rect = [(id<UITextInput>)input firstRectForRange:input.markedTextRange
+                                                                  actualRange:nullptr];
     if (composition_rect.origin.x != 80.0f || composition_rect.origin.y != 100.0f ||
         composition_rect.size.width != 40.0f || composition_rect.size.height != 18.0f)
         return false;
@@ -207,8 +209,7 @@ bool run_text_input_contract(nk_surface surface, UIView *host_view) {
     }
     nk_event_release(&compose_update);
 
-    const char updated_text[] =
-        "A\xE3\x81\x8B\xE3\x81\xAA\xE3\x81\x98\xE6\x97\xA5\xE6\x9C\xAC";
+    const char updated_text[] = "A\xE3\x81\x8B\xE3\x81\xAA\xE3\x81\x98\xE6\x97\xA5\xE6\x9C\xAC";
     state.text = updated_text;
     state.document_length = 6;
     state.selection_start = 4;
@@ -229,8 +230,8 @@ bool run_text_input_contract(nk_surface surface, UIView *host_view) {
     nk_event cancel = {};
     if (!wait_for_text_edit(surface, NK_TEXT_EDIT_FINISH_COMPOSITION, &cancel) ||
         !verify_text_edit(cancel, NK_TEXT_EDIT_FINISH_COMPOSITION, NK_TEXT_POSITION_NONE,
-                          NK_TEXT_POSITION_NONE, 4, 4, NK_TEXT_POSITION_NONE,
-                          NK_TEXT_POSITION_NONE, "", NK_TEXT_EDIT_HISTORY_GENERIC)) {
+                          NK_TEXT_POSITION_NONE, 4, 4, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
+                          "", NK_TEXT_EDIT_HISTORY_GENERIC)) {
         nk_event_release(&cancel);
         return false;
     }
@@ -259,12 +260,12 @@ bool run_text_input_contract(nk_surface surface, UIView *host_view) {
     beginning = input.beginningOfDocument;
     UITextPosition *selection_position = [input positionFromPosition:beginning offset:1];
     [input setSelectedTextRange:[input textRangeFromPosition:selection_position
-                                                     toPosition:selection_position]];
+                                                  toPosition:selection_position]];
     nk_event selection = {};
     if (!wait_for_text_edit(surface, NK_TEXT_EDIT_SET_SELECTION, &selection) ||
         !verify_text_edit(selection, NK_TEXT_EDIT_SET_SELECTION, NK_TEXT_POSITION_NONE,
-                          NK_TEXT_POSITION_NONE, 1, 1, NK_TEXT_POSITION_NONE,
-                          NK_TEXT_POSITION_NONE, "", NK_TEXT_EDIT_HISTORY_GENERIC)) {
+                          NK_TEXT_POSITION_NONE, 1, 1, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
+                          "", NK_TEXT_EDIT_HISTORY_GENERIC)) {
         nk_event_release(&selection);
         return false;
     }
