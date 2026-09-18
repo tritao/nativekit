@@ -32,7 +32,9 @@ class WorkerPool final {
     std::condition_variable condition_;
     std::deque<std::function<void()>> queue_;
     std::vector<std::thread> workers_;
+#if !defined(NK_BACKEND_WEB)
     std::size_t queue_capacity_ = 0;
+#endif
     bool accepting_ = false;
     bool stopping_ = false;
 };

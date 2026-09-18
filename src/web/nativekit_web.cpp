@@ -21,6 +21,7 @@
 #include "core/haptics_internal.hpp"
 #include "core/runtime.hpp"
 #include "core/sensor_internal.hpp"
+#include "core/task.hpp"
 #include "core/resource_events.hpp"
 #include "web/gamepad.hpp"
 #include "web/host.h"

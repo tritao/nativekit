@@ -25,7 +25,9 @@ namespace {
 using Clock = std::chrono::steady_clock;
 constexpr std::uint32_t default_step_budget_us = 2000;
 constexpr std::uint32_t maximum_step_budget_us = 100000;
+#if !defined(NK_BACKEND_WEB)
 constexpr std::size_t worker_queue_capacity = 256;
+#endif
 constexpr std::size_t cooperative_queue_capacity = 256;
 constexpr std::size_t cooperative_result_budget_us = 2000;
 
