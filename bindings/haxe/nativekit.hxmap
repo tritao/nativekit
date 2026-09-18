@@ -8,6 +8,7 @@
 		"nk_window": "WindowHandle",
 		"nk_surface": "SurfaceHandle",
 		"nk_webview": "WebViewHandle",
+		"nk_view": "ViewHandle",
 		"nk_monitor": "MonitorHandle",
 		"nk_cursor": "CursorHandle",
 		"nk_joystick": "JoystickHandle",
