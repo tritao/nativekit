@@ -253,6 +253,23 @@ if(NK_BUILD_TESTS)
                     OpenGL::GL)
             endif()
         endif()
+        add_executable(nativekit_ui_session_render_smoke_test
+            tests/session_render_smoke.cpp)
+        target_compile_definitions(nativekit_ui_session_render_smoke_test PRIVATE
+            NKGPU_TESTING=1)
+        target_include_directories(nativekit_ui_session_render_smoke_test PRIVATE
+            "${CMAKE_SOURCE_DIR}/modules/gpu/src")
+        target_compile_definitions(nativekit_ui_session_render_smoke_test PRIVATE
+            NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
+        target_link_libraries(nativekit_ui_session_render_smoke_test PRIVATE
+            NativeKit::ui)
+        if(NOT EMSCRIPTEN AND NOT ANDROID)
+            find_package(OpenGL QUIET)
+            if(TARGET OpenGL::GL)
+                target_link_libraries(nativekit_ui_session_render_smoke_test PRIVATE
+                    OpenGL::GL)
+            endif()
+        endif()
     endif()
     find_program(NKUI_BACKEND_XVFB_RUN xvfb-run)
     if(NKUI_BACKEND_XVFB_RUN AND TARGET nativekit_ui_public_renderer_smoke_test)
@@ -263,6 +280,15 @@ if(NK_BUILD_TESTS)
             COMMAND ${NKUI_BACKEND_XVFB_RUN} -a
                 $<TARGET_FILE:nativekit_ui_public_renderer_smoke_test> --stress)
         set_tests_properties(nativekit_ui_public_renderer_smoke nativekit_ui_stress PROPERTIES
+            LABELS "graphics;ui"
+            TIMEOUT 45
+            ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
+    endif()
+    if(NKUI_BACKEND_XVFB_RUN AND TARGET nativekit_ui_session_render_smoke_test)
+        add_test(NAME nativekit_ui_session_render_smoke
+            COMMAND ${NKUI_BACKEND_XVFB_RUN} -a
+                $<TARGET_FILE:nativekit_ui_session_render_smoke_test>)
+        set_tests_properties(nativekit_ui_session_render_smoke PROPERTIES
             LABELS "graphics;ui"
             TIMEOUT 45
             ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
@@ -280,7 +306,8 @@ if(NK_BUILD_TESTS)
         nativekit_ui_layout_invariants_test
         nativekit_ui_layout_render_compiler_test
         nativekit_ui_layout_session_test
-        nativekit_ui_public_renderer_smoke_test)
+        nativekit_ui_public_renderer_smoke_test
+        nativekit_ui_session_render_smoke_test)
         if(TARGET ${target})
             target_compile_features(${target} PRIVATE cxx_std_20)
         endif()
