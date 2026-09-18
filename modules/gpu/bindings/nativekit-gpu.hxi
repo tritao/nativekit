@@ -227,6 +227,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		 * A backend or adapter resource allocation failed.
 		 */
 		NKGPU_ERROR_OUT_OF_MEMORY = -6;
+		/**
+		 * The call was made from a thread that does not satisfy the executor it requires.
+		 */
+		NKGPU_ERROR_WRONG_THREAD = -7;
 	}
 	/**
 	 * Source language accepted by the shader creation functions.

@@ -22,6 +22,7 @@
 #endif
 
 #include <chrono>
+#include <atomic>
 #include <cstdio>
 #include <cstring>
 #include <thread>
@@ -606,6 +607,43 @@ int main() {
         EXPECT_RESULT(nkgpu_batch_seal(empty_batch), NKGPU_ERROR_WRONG_STATE);
         EXPECT_RESULT(nkgpu_batch_submit(renderer, empty_batch), NKGPU_ERROR_WRONG_STATE);
         EXPECT_RESULT(nkgpu_batch_destroy(empty_batch), NKGPU_OK);
+    }
+
+    /*
+     * Submission is render-executor work. While the platform, application, and
+     * render executors share the init thread the main thread satisfies all of
+     * them, so the contract bites on any other thread.
+     */
+    {
+        nkgpu_batch worker_batch{};
+        EXPECT_RESULT(nkgpu_batch_begin(renderer, &worker_batch), NKGPU_OK);
+        nkgpu_batch_pass pass{};
+        pass.struct_size = sizeof(pass);
+        pass.kind = NKGPU_BATCH_PASS_WINDOW;
+        pass.clear = 1;
+        pass.width = window_options.width;
+        pass.height = window_options.height;
+        EXPECT_RESULT(nkgpu_batch_append_pass(worker_batch, &pass), NKGPU_OK);
+        std::vector<uint8_t> commands;
+        append_apply_pipeline(commands, pipeline);
+        append_apply_vertex_buffer(commands, 0, buffer, 0);
+        append_draw(commands, 0, 3, 1);
+        EXPECT_RESULT(nkgpu_batch_append_command(worker_batch, commands.data(),
+                                                 static_cast<uint32_t>(commands.size())),
+                      NKGPU_OK);
+        EXPECT_RESULT(nkgpu_batch_seal(worker_batch), NKGPU_OK);
+        std::atomic<nkgpu_result> worker_result{NKGPU_OK};
+        std::thread worker([&] { worker_result = nkgpu_batch_submit(renderer, worker_batch); });
+        worker.join();
+        if (worker_result.load() != NKGPU_ERROR_WRONG_THREAD) {
+            std::fprintf(stderr, "worker-thread batch submit returned %d\n",
+                         static_cast<int>(worker_result.load()));
+            result = __LINE__;
+            goto cleanup;
+        }
+        /* The same batch still submits on the render executor. */
+        EXPECT_RESULT(nkgpu_batch_submit(renderer, worker_batch), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_batch_destroy(worker_batch), NKGPU_OK);
     }
 
     EXPECT_RESULT(nkgpu_batch_destroy(batch), NKGPU_OK);

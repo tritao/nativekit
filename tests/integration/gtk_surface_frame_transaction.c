@@ -4,6 +4,7 @@
 
 #include <assert.h>
 #include <stddef.h>
+#include <pthread.h>
 
 static void pump_events(int iterations) {
     for (int iteration = 0; iteration < iterations; ++iteration) {
@@ -18,6 +19,19 @@ static nk_surface_frame_target empty_target(void) {
     nk_surface_frame_target target = {0};
     target.struct_size = sizeof(target);
     return target;
+}
+
+struct frame_probe {
+    nk_surface surface;
+    nk_result result;
+};
+
+static void *acquire_on_worker(void *user_data) {
+    struct frame_probe *probe = user_data;
+    nk_surface_frame frame = NK_INVALID_HANDLE;
+    nk_surface_frame_target target = empty_target();
+    probe->result = nk_surface_acquire_frame(probe->surface, &frame, &target);
+    return NULL;
 }
 
 int main(void) {
@@ -111,6 +125,22 @@ int main(void) {
     assert(nk_surface_acquire_frame(surface, &reused, &truncated) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_surface_present_frame(NK_INVALID_HANDLE) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_surface_cancel_frame(NK_INVALID_HANDLE) == NK_ERROR_INVALID_ARGUMENT);
+
+    /*
+     * Acquisition belongs to the platform executor. Rendering the acquired
+     * frame may move to the render executor (ADR 0017), so acquiring from a
+     * non-platform thread is rejected instead of racing presentation.
+     */
+    {
+        struct frame_probe probe = {surface, NK_OK};
+        pthread_t worker;
+        assert(pthread_create(&worker, NULL, acquire_on_worker, &probe) == 0);
+        assert(pthread_join(worker, NULL) == 0);
+        assert(probe.result == NK_ERROR_WRONG_THREAD);
+        /* The platform executor still acquires afterwards. */
+        assert(nk_surface_acquire_frame(surface, &reused, &reused_target) == NK_OK);
+        assert(nk_surface_cancel_frame(reused) == NK_OK);
+    }
 
     /* The legacy manual path keeps working next to the transaction path. */
     assert(nk_surface_make_current(surface) == NK_OK);

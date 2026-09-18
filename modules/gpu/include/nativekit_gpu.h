@@ -168,6 +168,8 @@ enum NK_ENUM(nkgpu_result) {
     NKGPU_ERROR_DEVICE_LOST = -5,
     /** A backend or adapter resource allocation failed. */
     NKGPU_ERROR_OUT_OF_MEMORY = -6,
+    /** The call was made from a thread that does not satisfy the executor it requires. */
+    NKGPU_ERROR_WRONG_THREAD = -7,
 };
 
 /** Observable renderer lifecycle state. */

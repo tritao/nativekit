@@ -2,10 +2,15 @@
 
 ## Status
 
-Partially implemented. Migration step 1 below has landed: `nkgpu_batch_*` exists
-and records, seals, retains, and replays one frame, with the immediate path
-unchanged. Submission still runs on the platform executor, so steps 2 and 3
-remain before the render thread is enabled.
+Implemented through migration step 3. `nkgpu_batch_*` records, seals, retains,
+and replays one frame; UI render-plan execution records frames into a batch
+instead of drawing them inline; and submission declares render-executor
+affinity while acquisition and presentation keep platform-executor affinity.
+
+The render thread itself is still not enabled: the platform, application, and
+render executors remain aliases of the `nk_init()` thread, so submission runs on
+that thread today. The affinity contract is enforced now, which makes moving
+submission a change of dispatch rather than a redesign.
 
 ## Context
 
@@ -114,9 +119,18 @@ destruction they were holding.
 1. ~~Implement `nkgpu_batch_*` on top of the existing command stream and resource
    registry, with the immediate path unchanged.~~ Done; covered by
    `nativekit_gpu_batch_submit`.
-2. Translate UI render-plan execution to record one batch and submit it, still on
-   the platform executor. Behavior and visuals must not change.
-3. Add the deferred submit path and run submission on `NK_EXECUTOR_RENDER`,
-   keeping acquisition and presentation on the platform executor.
+2. ~~Translate UI render-plan execution to record one batch and submit it, still
+   on the platform executor. Behavior and visuals must not change.~~ Done. The
+   plan executor records every frame that has no live surface producer; frames
+   that composite one stay inline because a producer renders through callbacks
+   a batch cannot carry. Stream-buffer appends moved out of the pass
+   requirement, because a recorded frame fills its buffers before any pass
+   opens, and Sokol rewinds the append cursor per frame either way.
+3. ~~Add the deferred submit path and run submission on `NK_EXECUTOR_RENDER`,
+   keeping acquisition and presentation on the platform executor.~~ Done.
+   `nkgpu_batch_submit()` requires render-executor affinity and the surface
+   frame transaction requires platform-executor affinity, both enforced and
+   covered by tests; presentation still happens where the surface owner
+   presents.
 4. Only then consider the public UI plan handle, since a plan handle only matters
    once UI build and GPU submission can genuinely be decoupled.

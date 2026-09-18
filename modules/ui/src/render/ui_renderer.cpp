@@ -24,7 +24,7 @@ class UiRendererImpl final : public UiRenderer {
     bool initialize() override;
     bool valid() const override;
     bool lost() const override;
-    bool beginFrame() override;
+    bool beginFrame(bool record) override;
     bool beginWindowPass(int width, int height, bool clear) override;
     bool beginTargetPass(ResourceId target, int width, int height, bool load_existing) override;
     bool beginEffectPass(ResourceId target, uint64_t cache_key, int width, int height,
@@ -207,6 +207,10 @@ struct UiRendererImpl::State {
     bool initialized = false;
     bool in_frame = false;
     bool in_pass = false;
+    /* Sealed-submission recording for the frame in progress. */
+    nkgpu_batch batch{};
+    bool recording = false;
+    std::vector<uint8_t> record_commands;
 };
 
 namespace {
@@ -419,6 +423,107 @@ void retire_atlas_generations(UiRendererImpl::State &state, AtlasTextureId textu
     }
 }
 
+/*
+ * Command emission. A recorded frame collects packed command records in place
+ * of applying them, and nkgpu_batch_append_command() validates and retains
+ * every record when the pass closes. Nothing here touches GPU state, which is
+ * what lets a frame be recorded while resources are still created eagerly.
+ */
+void append_u32(std::vector<uint8_t> &bytes, uint32_t value) {
+    const uint8_t *raw = reinterpret_cast<const uint8_t *>(&value);
+    bytes.insert(bytes.end(), raw, raw + sizeof(value));
+}
+
+void append_record(std::vector<uint8_t> &bytes, uint32_t opcode,
+                   std::initializer_list<uint32_t> payload) {
+    append_u32(bytes, opcode);
+    append_u32(bytes, static_cast<uint32_t>(8 + payload.size() * sizeof(uint32_t)));
+    for (const uint32_t word : payload)
+        append_u32(bytes, word);
+}
+
+bool emit_pipeline(UiRendererImpl::State &state, nkgpu_pipeline pipeline) {
+    if (state.recording) {
+        append_record(state.record_commands, NKGPU_COMMAND_APPLY_PIPELINE, {pipeline.id});
+        return true;
+    }
+    return gpu_result(state, nkgpu_apply_pipeline(state.renderer, pipeline));
+}
+
+bool emit_vertex_buffer(UiRendererImpl::State &state, uint32_t slot, nkgpu_buffer buffer,
+                        uint32_t offset) {
+    if (state.recording) {
+        append_record(state.record_commands, NKGPU_COMMAND_APPLY_VERTEX_BUFFER,
+                      {slot, buffer.id, offset});
+        return true;
+    }
+    return gpu_result(state, nkgpu_apply_vertex_buffer(state.renderer, slot, buffer, offset));
+}
+
+bool emit_index_buffer(UiRendererImpl::State &state, nkgpu_buffer buffer, uint32_t offset) {
+    if (state.recording) {
+        append_record(state.record_commands, NKGPU_COMMAND_APPLY_INDEX_BUFFER, {buffer.id, offset});
+        return true;
+    }
+    return gpu_result(state, nkgpu_apply_index_buffer(state.renderer, buffer, offset));
+}
+
+bool emit_image(UiRendererImpl::State &state, uint32_t slot, nkgpu_image image) {
+    if (state.recording) {
+        append_record(state.record_commands, NKGPU_COMMAND_APPLY_IMAGE, {slot, image.id});
+        return true;
+    }
+    return gpu_result(state, nkgpu_apply_image(state.renderer, slot, image));
+}
+
+bool emit_graphics_image(UiRendererImpl::State &state, uint32_t slot, nk_graphics_image image) {
+    if (state.recording) {
+        append_record(state.record_commands, NKGPU_COMMAND_APPLY_GRAPHICS_IMAGE, {slot, image.id});
+        return true;
+    }
+    return gpu_result(state, nkgpu_apply_graphics_image(state.renderer, slot, image));
+}
+
+bool emit_sampler(UiRendererImpl::State &state, uint32_t slot, nkgpu_sampler sampler) {
+    if (state.recording) {
+        append_record(state.record_commands, NKGPU_COMMAND_APPLY_SAMPLER, {slot, sampler.id});
+        return true;
+    }
+    return gpu_result(state, nkgpu_apply_sampler(state.renderer, slot, sampler));
+}
+
+bool emit_uniforms(UiRendererImpl::State &state, uint32_t slot, const uint8_t *data,
+                   uint32_t size) {
+    if (state.recording) {
+        append_u32(state.record_commands, NKGPU_COMMAND_APPLY_UNIFORMS);
+        append_u32(state.record_commands, 8 + 8 + size);
+        append_u32(state.record_commands, slot);
+        append_u32(state.record_commands, size);
+        state.record_commands.insert(state.record_commands.end(), data, data + size);
+        return true;
+    }
+    return gpu_result(state, nkgpu_apply_uniform_data(state.renderer, slot, data, size));
+}
+
+bool emit_scissor(UiRendererImpl::State &state, uint32_t enabled, int32_t x, int32_t y,
+                  int32_t width, int32_t height) {
+    if (state.recording) {
+        append_record(state.record_commands, NKGPU_COMMAND_APPLY_SCISSOR,
+                      {enabled, static_cast<uint32_t>(x), static_cast<uint32_t>(y),
+                       static_cast<uint32_t>(width), static_cast<uint32_t>(height)});
+        return true;
+    }
+    return gpu_result(state, nkgpu_apply_scissor(state.renderer, enabled, x, y, width, height));
+}
+
+bool emit_draw(UiRendererImpl::State &state, uint32_t base, uint32_t count, uint32_t instances) {
+    if (state.recording) {
+        append_record(state.record_commands, NKGPU_COMMAND_DRAW, {base, count, instances});
+        return true;
+    }
+    return gpu_result(state, nkgpu_draw(state.renderer, base, count, instances));
+}
+
 template <class Vertex>
 bool draw_mesh(UiRendererImpl::State &state, nkgpu_pipeline pipeline,
                const std::vector<Vertex> &vertices, const std::vector<uint32_t> &indices,
@@ -445,41 +550,33 @@ bool draw_mesh(UiRendererImpl::State &state, nkgpu_pipeline pipeline,
                     nkgpu_buffer_append(state.renderer, state.indices,
                                         reinterpret_cast<const uint8_t *>(indices.data()),
                                         static_cast<uint32_t>(index_bytes), &index_offset)) ||
-        !gpu_result(state, nkgpu_apply_pipeline(state.renderer, pipeline)) ||
-        !gpu_result(state, nkgpu_apply_vertex_buffer(state.renderer, 0,
-                                                     vertex_buffer.id ? vertex_buffer
-                                                                      : state.solid_vertices,
-                                                     vertex_offset)) ||
-        !gpu_result(state, nkgpu_apply_index_buffer(state.renderer, state.indices, index_offset)))
+        !emit_pipeline(state, pipeline) ||
+        !emit_vertex_buffer(state, 0, vertex_buffer.id ? vertex_buffer : state.solid_vertices,
+                            vertex_offset) ||
+        !emit_index_buffer(state, state.indices, index_offset))
         return false;
     ++state.stats.pipeline_changes;
-    if ((image.id && !gpu_result(state, nkgpu_apply_image(state.renderer, 0, image))) ||
-        (!image.id && external_image.id &&
-         !gpu_result(state, nkgpu_apply_graphics_image(state.renderer, 0, external_image))) ||
-        (sampler.id && !gpu_result(state, nkgpu_apply_sampler(state.renderer, 0, sampler))) ||
-        (second_image.id &&
-         !gpu_result(state, nkgpu_apply_image(state.renderer, 1, second_image))) ||
+    if ((image.id && !emit_image(state, 0, image)) ||
+        (!image.id && external_image.id && !emit_graphics_image(state, 0, external_image)) ||
+        (sampler.id && !emit_sampler(state, 0, sampler)) ||
+        (second_image.id && !emit_image(state, 1, second_image)) ||
         (!second_image.id && second_external_image.id &&
-         !gpu_result(state,
-                     nkgpu_apply_graphics_image(state.renderer, 1, second_external_image))) ||
-        (second_sampler.id &&
-         !gpu_result(state, nkgpu_apply_sampler(state.renderer, 1, second_sampler))))
+         !emit_graphics_image(state, 1, second_external_image)) ||
+        (second_sampler.id && !emit_sampler(state, 1, second_sampler)))
         return false;
     ++state.stats.binding_changes;
     const std::array<float, 4> viewport = {static_cast<float>(state.width),
                                            static_cast<float>(state.height), 0.0f, 0.0f};
     const void *vertex_data = vertex_uniforms ? vertex_uniforms : viewport.data();
     const size_t vertex_size = vertex_uniforms ? vertex_uniform_size : sizeof(viewport);
-    if (!gpu_result(state, nkgpu_apply_uniform_data(state.renderer, 0,
-                                                    reinterpret_cast<const uint8_t *>(vertex_data),
-                                                    static_cast<uint32_t>(vertex_size))))
+    if (!emit_uniforms(state, 0, reinterpret_cast<const uint8_t *>(vertex_data),
+                       static_cast<uint32_t>(vertex_size)))
         return false;
     if (fragment_uniforms &&
-        !gpu_result(state, nkgpu_apply_uniform_data(state.renderer, 1,
-                                                    static_cast<const uint8_t *>(fragment_uniforms),
-                                                    static_cast<uint32_t>(fragment_uniform_size))))
+        !emit_uniforms(state, 1, static_cast<const uint8_t *>(fragment_uniforms),
+                       static_cast<uint32_t>(fragment_uniform_size)))
         return false;
-    if (!gpu_result(state, nkgpu_draw(state.renderer, 0, static_cast<uint32_t>(indices.size()), 1)))
+    if (!emit_draw(state, 0, static_cast<uint32_t>(indices.size()), 1))
         return false;
     ++state.stats.draws;
     state.stats.transient_bytes += vertex_bytes + index_bytes;
@@ -664,10 +761,20 @@ UiRendererImpl::State::Target *resolve_target(UiRendererImpl::State &state, Reso
 
 bool begin_target_pass(UiRendererImpl::State &state, UiRendererImpl::State::Target &target,
                        bool load_existing) {
-    if (!target.handle.id ||
-        !gpu_result(state,
-                    nkgpu_begin_target_pass(state.renderer, target.handle, load_existing ? 0 : 1)))
+    if (!target.handle.id)
         return false;
+    if (state.recording) {
+        nkgpu_batch_pass pass{};
+        pass.struct_size = sizeof(pass);
+        pass.kind = NKGPU_BATCH_PASS_TARGET;
+        pass.target = target.handle;
+        pass.clear = load_existing ? 0 : 1;
+        if (!gpu_result(state, nkgpu_batch_append_pass(state.batch, &pass)))
+            return false;
+    } else if (!gpu_result(state, nkgpu_begin_target_pass(state.renderer, target.handle,
+                                                          load_existing ? 0 : 1))) {
+        return false;
+    }
     state.width = target.width;
     state.height = target.height;
     state.in_pass = true;
@@ -1467,7 +1574,7 @@ bool UiRendererImpl::lost() const {
            renderer_state == NKGPU_RENDERER_LOST;
 }
 
-bool UiRendererImpl::beginFrame() {
+bool UiRendererImpl::beginFrame(bool record) {
     if (!valid() || state_->in_frame)
         return fail(*state_, "invalid UI frame state");
     recycle_transient_targets(*state_);
@@ -1475,8 +1582,18 @@ bool UiRendererImpl::beginFrame() {
     ++state_->frame_serial;
     if (!state_->frame_serial)
         ++state_->frame_serial;
-    if (!gpu_result(*state_, nkgpu_frame_begin(state_->renderer)))
+    state_->recording = record;
+    state_->record_commands.clear();
+    if (record) {
+        if (!gpu_result(*state_, nkgpu_batch_begin(state_->renderer, &state_->batch))) {
+            state_->recording = false;
+            return false;
+        }
+        ++state_->stats.recorded_frames;
+    } else if (!gpu_result(*state_, nkgpu_frame_begin(state_->renderer))) {
+        state_->recording = false;
         return false;
+    }
     state_->in_frame = true;
     state_->in_pass = false;
     return true;
@@ -1485,9 +1602,20 @@ bool UiRendererImpl::beginFrame() {
 bool UiRendererImpl::beginWindowPass(int width, int height, bool clear) {
     if (!valid() || !state_->in_frame || state_->in_pass || width <= 0 || height <= 0)
         return fail(*state_, "invalid UI window pass");
-    if (!gpu_result(*state_, nkgpu_begin_window_pass(state_->renderer, static_cast<uint32_t>(width),
-                                                     static_cast<uint32_t>(height), clear ? 1 : 0)))
+    if (state_->recording) {
+        nkgpu_batch_pass pass{};
+        pass.struct_size = sizeof(pass);
+        pass.kind = NKGPU_BATCH_PASS_WINDOW;
+        pass.clear = clear ? 1 : 0;
+        pass.width = static_cast<uint32_t>(width);
+        pass.height = static_cast<uint32_t>(height);
+        if (!gpu_result(*state_, nkgpu_batch_append_pass(state_->batch, &pass)))
+            return false;
+    } else if (!gpu_result(*state_,
+                           nkgpu_begin_window_pass(state_->renderer, static_cast<uint32_t>(width),
+                                                   static_cast<uint32_t>(height), clear ? 1 : 0))) {
         return false;
+    }
     state_->width = width;
     state_->height = height;
     state_->in_pass = true;
@@ -1589,6 +1717,12 @@ bool UiRendererImpl::beginEffectPass(ResourceId target_id, uint64_t cache_key, i
 
 bool UiRendererImpl::beginSurfacePass(ResourceId target, const SurfaceDescriptor &description,
                                       bool load_existing) {
+    /*
+     * A live producer renders through callbacks and cannot be recorded, so the
+     * executor keeps frames that use one on the inline path.
+     */
+    if (state_->recording)
+        return fail(*state_, "surface producers cannot be recorded");
     if (description.format != SurfacePixelFormat::Rgba8 || description.width <= 0 ||
         description.height <= 0 ||
         (description.alpha != SurfaceAlphaMode::Opaque &&
@@ -1660,9 +1794,9 @@ bool UiRendererImpl::setScissor(bool enabled, float x, float y, float width, flo
         right = static_cast<int32_t>(std::ceil(right_coordinate));
         bottom = static_cast<int32_t>(std::ceil(bottom_coordinate));
     }
-    return gpu_result(*state_, nkgpu_apply_scissor(state_->renderer, enabled ? 1 : 0, left, top,
-                                                   enabled ? std::max(0, right - left) : 0,
-                                                   enabled ? std::max(0, bottom - top) : 0));
+    return emit_scissor(*state_, enabled ? 1 : 0, left, top,
+                        enabled ? std::max(0, right - left) : 0,
+                        enabled ? std::max(0, bottom - top) : 0);
 }
 
 bool UiRendererImpl::drawPath(const PreparedPathData &path, uint32_t operation_index,
@@ -2224,8 +2358,20 @@ bool UiRendererImpl::compositeImage(nk_graphics_image image, float x, float y, f
 bool UiRendererImpl::endPass() {
     if (!state_->in_pass)
         return fail(*state_, "no UI pass to end");
-    if (!gpu_result(*state_, nkgpu_end_pass(state_->renderer)))
+    if (state_->recording) {
+        /* The recorded pass is validated and retained when it is closed. */
+        if (!state_->record_commands.empty()) {
+            const bool appended = gpu_result(
+                *state_,
+                nkgpu_batch_append_command(state_->batch, state_->record_commands.data(),
+                                           static_cast<uint32_t>(state_->record_commands.size())));
+            state_->record_commands.clear();
+            if (!appended)
+                return false;
+        }
+    } else if (!gpu_result(*state_, nkgpu_end_pass(state_->renderer))) {
         return false;
+    }
     state_->in_pass = false;
     return true;
 }
@@ -2235,6 +2381,18 @@ bool UiRendererImpl::endFrame() {
         return true;
     if (state_->in_pass && !endPass())
         return false;
+    if (state_->recording) {
+        const bool sealed = gpu_result(*state_, nkgpu_batch_seal(state_->batch));
+        const bool submitted =
+            sealed && gpu_result(*state_, nkgpu_batch_submit(state_->renderer, state_->batch));
+        /* The batch is always released, including after a failed submission. */
+        nkgpu_batch_destroy(state_->batch);
+        state_->batch = {};
+        state_->record_commands.clear();
+        state_->recording = false;
+        state_->in_frame = false;
+        return sealed && submitted;
+    }
     if (!gpu_result(*state_, nkgpu_end_frame_deferred_present(state_->renderer)))
         return false;
     state_->in_frame = false;
