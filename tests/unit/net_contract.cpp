@@ -69,14 +69,17 @@ struct LocalServer {
                 cancel_ready.store(true, std::memory_order_release);
                 std::this_thread::sleep_for(std::chrono::milliseconds(500));
             }
-            const std::string body = streaming       ? "stream-body-0123456789"
-                                      : limited       ? "0123456789"
-                                      : canceled      ? "cancel-body"
-                                                      : "buffered-body";
+            const std::string body = streaming  ? "stream-body-0123456789"
+                                     : limited  ? "0123456789"
+                                     : canceled ? "cancel-body"
+                                                : "buffered-body";
             const std::string response =
                 streaming || limited || canceled
                     ? "HTTP/1.1 200 OK\r\nContent-Length: " + std::to_string(body.size()) +
-                          "\r\nX-Mode: " + (streaming ? "stream" : limited ? "limit" : "cancel") +
+                          "\r\nX-Mode: " +
+                          (streaming ? "stream"
+                           : limited ? "limit"
+                                     : "cancel") +
                           "\r\n\r\n" + body
                     : "HTTP/1.1 404 Not Found\r\nContent-Length: " + std::to_string(body.size()) +
                           "\r\nX-Mode: buffered\r\n\r\n" + body;
@@ -141,7 +144,8 @@ bool poll_until(nk_request_id request, nk_http_stream stream, std::string *compl
                 response.struct_size = sizeof(response);
                 assert(nk_http_event_response(&event, &response) == NK_OK);
                 if (complete_body && response.body_size != 0)
-                    complete_body->assign(static_cast<const char *>(response.body), response.body_size);
+                    complete_body->assign(static_cast<const char *>(response.body),
+                                          response.body_size);
                 else if (complete_body)
                     complete_body->clear();
                 if (response.header_count != 0) {
@@ -213,8 +217,8 @@ int main() {
     assert(nk_http_request(client, &stream_options, &stream_request, &stream) == NK_OK);
     assert(stream != NK_INVALID_HANDLE);
     bool saw_stream_headers = false;
-    assert(poll_until(stream_request, stream, nullptr, nullptr, nullptr, &saw_stream_headers,
-                      NK_OK, 200));
+    assert(poll_until(stream_request, stream, nullptr, nullptr, nullptr, &saw_stream_headers, NK_OK,
+                      200));
     assert(saw_stream_headers);
     nk_http_stream_info stream_info{};
     stream_info.struct_size = sizeof(stream_info);

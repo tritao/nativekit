@@ -576,11 +576,11 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 */
 		NK_CAP_DISPLAY_ORIENTATION = 8589934592;
 		/**
-		 * The optional networking module can perform HTTP requests.
+		 * The selected backend can perform HTTP requests.
 		 */
 		NK_CAP_HTTP_CLIENT = 17179869184;
 		/**
-		 * The optional networking module can stream HTTP response bodies.
+		 * The selected backend can stream HTTP response bodies.
 		 */
 		NK_CAP_HTTP_STREAMING = 34359738368;
 		/**

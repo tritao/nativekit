@@ -118,7 +118,8 @@ void emit_data_available(const RequestPtr &request) noexcept;
 void emit_progress(const RequestPtr &request, uint64_t downloaded, uint64_t download_total,
                    uint64_t uploaded, uint64_t upload_total) noexcept;
 nk_result receive_response_headers(const RequestPtr &request, uint32_t status,
-                                   std::vector<OwnedHeader> headers, uint64_t content_length) noexcept;
+                                   std::vector<OwnedHeader> headers,
+                                   uint64_t content_length) noexcept;
 nk_result receive_response_data(const RequestPtr &request, const std::byte *data,
                                 std::size_t size) noexcept;
 void set_response_total(const RequestPtr &request, uint64_t total) noexcept;

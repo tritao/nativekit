@@ -143,16 +143,18 @@ struct AppleClientState {
     __strong NSHTTPCookieStorage *cookie_storage = nil;
 };
 
+} // namespace
+
 @class NKURLSessionDelegate;
+
+namespace {
 
 struct AppleTaskState {
     __strong NSURLSession *session = nil;
     __strong NSURLSessionTask *task = nil;
     __strong NKURLSessionDelegate *delegate = nil;
 
-    ~AppleTaskState() {
-        [session invalidateAndCancel];
-    }
+    ~AppleTaskState() { [session invalidateAndCancel]; }
 };
 
 std::unordered_map<nk_request_id, std::shared_ptr<AppleTaskState>> active_tasks;
@@ -169,8 +171,10 @@ std::shared_ptr<AppleClientState> client_state(const nk::net::RequestPtr &reques
     return state;
 }
 
+} // namespace
+
 @interface NKURLSessionDelegate : NSObject <NSURLSessionDataDelegate, NSURLSessionTaskDelegate> {
-@public
+  @public
     nk::net::RequestPtr request;
     std::vector<nk::net::OwnedHeader> pending_headers;
     uint32_t pending_status;
@@ -184,7 +188,7 @@ std::shared_ptr<AppleClientState> client_state(const nk::net::RequestPtr &reques
 @end
 
 @interface NKUploadInputStream : NSInputStream {
-@private
+  @private
     nk::net::RequestPtr request;
     __strong NSError *stream_error;
     BOOL opened;
@@ -221,8 +225,8 @@ std::shared_ptr<AppleClientState> client_state(const nk::net::RequestPtr &reques
     if (result != NK_OK) {
         request->upload_result = result;
         stream_error = [NSError errorWithDomain:@"NativeKit.HTTP"
-                                             code:static_cast<NSInteger>(result)
-                                         userInfo:nil];
+                                           code:static_cast<NSInteger>(result)
+                                       userInfo:nil];
         return -1;
     }
     request->upload_position += amount;
@@ -266,10 +270,12 @@ std::shared_ptr<AppleClientState> client_state(const nk::net::RequestPtr &reques
     return self;
 }
 
-- (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)task
+- (void)URLSession:(NSURLSession *)session
+              dataTask:(NSURLSessionDataTask *)task
     didReceiveResponse:(NSURLResponse *)response
      completionHandler:(void (^)(NSURLSessionResponseDisposition disposition))completionHandler {
-    auto *http = [response isKindOfClass:[NSHTTPURLResponse class]] ? (NSHTTPURLResponse *)response : nil;
+    auto *http =
+        [response isKindOfClass:[NSHTTPURLResponse class]] ? (NSHTTPURLResponse *)response : nil;
     if (!http) {
         forced_result = NK_HTTP_ERROR_PROTOCOL;
         completionHandler(NSURLSessionResponseCancel);
@@ -294,7 +300,8 @@ std::shared_ptr<AppleClientState> client_state(const nk::net::RequestPtr &reques
         std::lock_guard lock(request->mutex);
         request->response_flags |= NK_HTTP_RESPONSE_REDIRECTED;
     }
-    const auto result = nk::net::receive_response_headers(request, status, std::move(values), length);
+    const auto result =
+        nk::net::receive_response_headers(request, status, std::move(values), length);
     if (result != NK_OK) {
         forced_result = result;
         completionHandler(NSURLSessionResponseCancel);
@@ -307,7 +314,9 @@ std::shared_ptr<AppleClientState> client_state(const nk::net::RequestPtr &reques
     (void)task;
 }
 
-- (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)task didReceiveData:(NSData *)data {
+- (void)URLSession:(NSURLSession *)session
+          dataTask:(NSURLSessionDataTask *)task
+    didReceiveData:(NSData *)data {
     const auto result = nk::net::receive_response_data(
         request, static_cast<const std::byte *>([data bytes]), [data length]);
     if (result != NK_OK) {
@@ -320,18 +329,22 @@ std::shared_ptr<AppleClientState> client_state(const nk::net::RequestPtr &reques
     (void)session;
 }
 
-- (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task
-    didSendBodyData:(int64_t)bytesSent totalBytesSent:(int64_t)totalBytesSent
+- (void)URLSession:(NSURLSession *)session
+                        task:(NSURLSessionTask *)task
+             didSendBodyData:(int64_t)bytesSent
+              totalBytesSent:(int64_t)totalBytesSent
     totalBytesExpectedToSend:(int64_t)totalBytesExpectedToSend {
     nk::net::emit_progress(request, 0, request->total, static_cast<uint64_t>(totalBytesSent),
-                           totalBytesExpectedToSend < 0 ? NK_HTTP_CONTENT_LENGTH_UNKNOWN
-                                                         : static_cast<uint64_t>(totalBytesExpectedToSend));
+                           totalBytesExpectedToSend < 0
+                               ? NK_HTTP_CONTENT_LENGTH_UNKNOWN
+                               : static_cast<uint64_t>(totalBytesExpectedToSend));
     (void)session;
     (void)task;
     (void)bytesSent;
 }
 
-- (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task
+- (void)URLSession:(NSURLSession *)session
+                 task:(NSURLSessionTask *)task
     needNewBodyStream:(void (^)(NSInputStream *))completionHandler {
     if (request->request.upload_stream == NK_INVALID_HANDLE) {
         completionHandler(nil);
@@ -349,17 +362,21 @@ std::shared_ptr<AppleClientState> client_state(const nk::net::RequestPtr &reques
     (void)task;
 }
 
-- (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task
+- (void)URLSession:(NSURLSession *)session
+                   task:(NSURLSessionTask *)task
     didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
-      completionHandler:(void (^)(NSURLSessionAuthChallengeDisposition, NSURLCredential *))completionHandler {
+      completionHandler:
+          (void (^)(NSURLSessionAuthChallengeDisposition, NSURLCredential *))completionHandler {
     auto *space = [challenge protectionSpace];
     if ([space.authenticationMethod isEqualToString:NSURLAuthenticationMethodHTTPProxy] &&
         !request->client->config.proxy.username.empty()) {
-        NSString *username = [NSString stringWithUTF8String:request->client->config.proxy.username.c_str()];
-        NSString *password = [NSString stringWithUTF8String:request->client->config.proxy.password.c_str()];
+        NSString *username =
+            [NSString stringWithUTF8String:request->client->config.proxy.username.c_str()];
+        NSString *password =
+            [NSString stringWithUTF8String:request->client->config.proxy.password.c_str()];
         auto *credential = [NSURLCredential credentialWithUser:username
-                                                       password:password
-                                                    persistence:NSURLCredentialPersistenceNone];
+                                                      password:password
+                                                   persistence:NSURLCredentialPersistenceNone];
         completionHandler(NSURLSessionAuthChallengeUseCredential, credential);
         return;
     }
@@ -368,16 +385,18 @@ std::shared_ptr<AppleClientState> client_state(const nk::net::RequestPtr &reques
     (void)task;
 }
 
-- (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task
+- (void)URLSession:(NSURLSession *)session
+                          task:(NSURLSessionTask *)task
     willPerformHTTPRedirection:(NSHTTPURLResponse *)response
-                   newRequest:(NSURLRequest *)newRequest
-            completionHandler:(void (^)(NSURLRequest *))completionHandler {
+                    newRequest:(NSURLRequest *)newRequest
+             completionHandler:(void (^)(NSURLRequest *))completionHandler {
     auto *next_url = [newRequest URL];
     const bool insecure = https_url([[response URL] absoluteString]) && http_url(next_url) &&
                           !(request->client->config.flags & NK_HTTP_CLIENT_ALLOW_HTTPS_TO_HTTP);
     if (!next_url || insecure || redirects >= request->request.redirect_limit) {
         if (pending_status != 0) {
-            const auto result = nk::net::receive_response_headers(request, pending_status, std::move(pending_headers), pending_length);
+            const auto result = nk::net::receive_response_headers(
+                request, pending_status, std::move(pending_headers), pending_length);
             if (result != NK_OK)
                 forced_result = result;
         }
@@ -394,10 +413,12 @@ std::shared_ptr<AppleClientState> client_state(const nk::net::RequestPtr &reques
     (void)session;
 }
 
-- (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task
+- (void)URLSession:(NSURLSession *)session
+                    task:(NSURLSessionTask *)task
     didCompleteWithError:(NSError *)error {
     if (!response_started && pending_status != 0 && forced_result == NK_OK) {
-        const auto result = nk::net::receive_response_headers(request, pending_status, std::move(pending_headers), pending_length);
+        const auto result = nk::net::receive_response_headers(
+            request, pending_status, std::move(pending_headers), pending_length);
         if (result != NK_OK)
             forced_result = result;
         else
@@ -438,9 +459,10 @@ nk_result backend_start(const RequestPtr &request) noexcept {
         if (!url)
             return NK_ERROR_INVALID_ARGUMENT;
         const auto timeout = static_cast<NSTimeInterval>(request->request.timeout_ms) / 1000.0;
-        auto *url_request = [NSMutableURLRequest requestWithURL:url
-                                                     cachePolicy:NSURLRequestReloadIgnoringLocalCacheData
-                                                 timeoutInterval:timeout];
+        auto *url_request =
+            [NSMutableURLRequest requestWithURL:url
+                                    cachePolicy:NSURLRequestReloadIgnoringLocalCacheData
+                                timeoutInterval:timeout];
         [url_request setHTTPMethod:[NSString stringWithUTF8String:method]];
         for (const auto &header : request->client->config.default_headers)
             [url_request setValue:[NSString stringWithUTF8String:header.value.c_str()]
@@ -450,7 +472,7 @@ nk_result backend_start(const RequestPtr &request) noexcept {
                 forHTTPHeaderField:[NSString stringWithUTF8String:header.name.c_str()]];
         if (!request->request.body.empty())
             [url_request setHTTPBody:[NSData dataWithBytes:request->request.body.data()
-                                                      length:request->request.body.size()]];
+                                                    length:request->request.body.size()]];
         if (request->request.upload_stream != NK_INVALID_HANDLE)
             [url_request setHTTPBodyStream:[[NKUploadInputStream alloc] initWithRequest:request]];
 
@@ -463,8 +485,9 @@ nk_result backend_start(const RequestPtr &request) noexcept {
         configuration.requestCachePolicy = NSURLRequestReloadIgnoringLocalCacheData;
         configuration.URLCredentialStorage = nil;
         if (request->client->config.proxy.kind != NK_HTTP_PROXY_NONE) {
-            NSURL *proxy_url = [NSURL URLWithString:[NSString stringWithUTF8String:
-                                                           request->client->config.proxy.url.c_str()]];
+            NSURL *proxy_url = [NSURL
+                URLWithString:[NSString
+                                  stringWithUTF8String:request->client->config.proxy.url.c_str()]];
             NSString *host = [proxy_url host];
             NSNumber *port = [proxy_url port];
             if (!proxy_url || !host || host.length == 0 || !port || port.integerValue <= 0 ||
@@ -498,8 +521,8 @@ nk_result backend_start(const RequestPtr &request) noexcept {
         delegate_queue.maxConcurrentOperationCount = 1;
         auto *delegate = [[NKURLSessionDelegate alloc] initWithRequest:request];
         auto *session = [[NSURLSession alloc] initWithConfiguration:configuration
-                                                            delegate:delegate
-                                                       delegateQueue:delegate_queue];
+                                                           delegate:delegate
+                                                      delegateQueue:delegate_queue];
         auto *task = [session dataTaskWithRequest:url_request];
         if (!task) {
             [session invalidateAndCancel];

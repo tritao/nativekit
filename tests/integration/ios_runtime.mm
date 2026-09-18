@@ -63,14 +63,14 @@ bool check_result(const char *operation, nk_result result) {
 }
 
 bool check_capabilities(nk_capabilities capabilities) {
-    const nk_capabilities expected = NK_CAP_MOBILE_HOST | NK_CAP_WEBVIEW | NK_CAP_METAL_SURFACE |
-                                     NK_CAP_INPUT | NK_CAP_RESOURCE_IO | NK_CAP_CLIPBOARD |
-                                     NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE | NK_CAP_NOTIFICATION |
-                                     NK_CAP_ACCESSIBILITY | NK_CAP_DRAG_DROP |
-                                     NK_CAP_RESOURCE_SHARING | NK_CAP_JOYSTICK | NK_CAP_SYSTEM_INFO |
-                                     NK_CAP_APPLICATION_PATH | NK_CAP_APPLICATION_STORAGE |
-                                     NK_CAP_KEEP_AWAKE | NK_CAP_DEVICE_ORIENTATION |
-                                     NK_CAP_DISPLAY_ORIENTATION | NK_CAP_SURFACE_FRAME_CALLBACK;
+    const nk_capabilities expected =
+        NK_CAP_MOBILE_HOST | NK_CAP_WEBVIEW | NK_CAP_METAL_SURFACE | NK_CAP_INPUT |
+        NK_CAP_RESOURCE_IO | NK_CAP_CLIPBOARD | NK_CAP_SHELL | NK_CAP_SYSTEM_APPEARANCE |
+        NK_CAP_NOTIFICATION | NK_CAP_ACCESSIBILITY | NK_CAP_DRAG_DROP | NK_CAP_RESOURCE_SHARING |
+        NK_CAP_JOYSTICK | NK_CAP_SYSTEM_INFO | NK_CAP_APPLICATION_PATH |
+        NK_CAP_APPLICATION_STORAGE | NK_CAP_KEEP_AWAKE | NK_CAP_DEVICE_ORIENTATION |
+        NK_CAP_DISPLAY_ORIENTATION | NK_CAP_SURFACE_FRAME_CALLBACK | NK_CAP_HTTP_CLIENT |
+        NK_CAP_HTTP_STREAMING;
     if (capabilities == expected)
         return true;
     std::fprintf(stderr, "iOS runtime capability mask changed: expected 0x%llx, got 0x%llx\n",
@@ -290,8 +290,7 @@ enum class NKRuntimeStage {
     if (_stage == NKRuntimeStage::wait_frame) {
         if (_frameState.count == 0)
             return;
-        if (_frameState.surface != _surface || _frameState.width <= 0 ||
-            _frameState.height <= 0) {
+        if (_frameState.surface != _surface || _frameState.width <= 0 || _frameState.height <= 0) {
             std::fprintf(stderr, "iOS frame callback returned an invalid frame\n");
             [self fail];
             return;

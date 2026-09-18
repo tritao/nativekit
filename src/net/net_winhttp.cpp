@@ -257,8 +257,6 @@ nk_result map_error(DWORD error, const nk::net::RequestContext &request) {
         return NK_HTTP_ERROR_DNS;
     case ERROR_WINHTTP_CANNOT_CONNECT:
     case ERROR_WINHTTP_CONNECTION_ERROR:
-    case ERROR_WINHTTP_CONNECTION_ABORTED:
-    case ERROR_WINHTTP_CONNECTION_RESET:
         return NK_HTTP_ERROR_CONNECTION;
     case ERROR_WINHTTP_SECURE_FAILURE:
     case ERROR_WINHTTP_CLIENT_AUTH_CERT_NEEDED:
@@ -306,8 +304,8 @@ std::shared_ptr<WinClientState> client_state(const nk::net::RequestPtr &request,
     if (!proxy.username.empty()) {
         bool user_valid = false;
         bool password_valid = false;
-        const auto user = wide(proxy.username, user_valid);
-        const auto password = wide(proxy.password, password_valid);
+        auto user = wide(proxy.username, user_valid);
+        auto password = wide(proxy.password, password_valid);
         if (!user_valid || !password_valid ||
             !WinHttpSetOption(session, WINHTTP_OPTION_PROXY_USERNAME, user.data(),
                               static_cast<DWORD>((user.size() + 1) * sizeof(wchar_t))) ||
