@@ -28,5 +28,7 @@ interface TextDocumentEngine {
 
 	function layout(range:TextRange):LayoutResult;
 
+	function surroundingText(maxBefore:Int, maxAfter:Int):TextInputWindow;
+
 	function hitTest(point:TextPoint):TextPosition;
 }

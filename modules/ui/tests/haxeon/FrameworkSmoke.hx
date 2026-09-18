@@ -3322,12 +3322,18 @@ class FrameworkSmoke {
 		var valid = initialText == "á🙂" && initialLength == 3;
 		var initialSelectionValid = initialSelection.start == 3 && initialSelection.end == 3;
 		valid = valid && initialSelectionValid;
+		var initialWindow = engine.surroundingText(1, 1);
+		valid = valid && initialWindow.start == 2 && initialWindow.end == 3 &&
+			initialWindow.text == "🙂";
 		var insert = new EditTransaction(3, 3, " 日本", 6, 6);
 		engine.applyEdit(insert);
 		var insertedText = engine.text();
 		var insertedLength = engine.documentLength();
 		var insertedValid = insertedText == "á🙂 日本" && insertedLength == 6;
 		valid = valid && insertedValid;
+		var insertedWindow = engine.surroundingText(2, 1);
+		valid = valid && insertedWindow.start == 4 && insertedWindow.end == 6 &&
+			insertedWindow.text == "日本";
 		var undone = engine.undo();
 		var afterUndo = engine.text();
 		var redone = engine.redo();

@@ -11,6 +11,8 @@ import nativekit.ui.widgets.TextDocumentEngine;
 
 /** Synchronizes a document engine with NativeKit's custom-surface IME API. */
 class TextInputBridge {
+	static inline var SURROUNDING_TEXT_LIMIT:Int = 2048;
+
 	var surface:Null<NativeKitSurface>;
 	var requestedActive:Bool;
 	var activeOwner:Null<WidgetId>;
@@ -81,12 +83,12 @@ class TextInputBridge {
 		if (surface == null || surface.isDisposed() || !requestedActive || cursor == null ||
 			(platformChecked && !platformSupported))
 			return;
-		var text = document.text();
+		var textWindow = document.surroundingText(SURROUNDING_TEXT_LIMIT, SURROUNDING_TEXT_LIMIT);
 		var selection = document.selection();
 		var composition = document.composition();
 		var compositionStart = composition.range == null ? -1 : composition.range.start;
 		var compositionEnd = composition.range == null ? -1 : composition.range.end;
-		var result = NativeKitTextInput.updateResult(surface, text == null ? "" : text, 0,
+		var result = NativeKitTextInput.updateResult(surface, textWindow.text, textWindow.start,
 			document.documentLength(), selection.start,
 			selection.end, compositionStart, compositionEnd, cast inputType, cast flags,
 			null, cursor.x, cursor.y, cursor.width, cursor.height);

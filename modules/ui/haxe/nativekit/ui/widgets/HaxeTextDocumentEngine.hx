@@ -66,6 +66,20 @@ class HaxeTextDocumentEngine implements TextDocumentEngine {
 			state.layout.selectionRangeRects(new TextPosition(start, 0), new TextPosition(end, 0)));
 	}
 
+	public function surroundingText(maxBefore:Int, maxAfter:Int):TextInputWindow {
+		if (maxBefore < 0 || maxAfter < 0)
+			throw "Surrounding text limits cannot be negative";
+		var selection = this.selection();
+		var offsets = state.documentOffsets();
+		var start = selection.start - maxBefore;
+		if (start < 0)
+			start = 0;
+		var end = selection.end + maxAfter;
+		if (end > offsets.codepointCount)
+			end = offsets.codepointCount;
+		return new TextInputWindow(offsets.sliceCodepoints(start, end), start, end);
+	}
+
 	public function hitTest(point:TextPoint):TextPosition {
 		if (point == null)
 			throw "A text hit-test point cannot be null";

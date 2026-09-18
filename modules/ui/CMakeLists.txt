@@ -643,8 +643,11 @@ if(NK_BUILD_EXAMPLES)
                 _nkui_text_document_create
                 _nkui_text_document_get_composition
                 _nkui_text_document_get_layout
+                _nkui_text_document_get_range_layout
                 _nkui_text_document_get_length
                 _nkui_text_document_get_selection
+                _nkui_text_document_get_surrounding_range
+                _nkui_text_document_get_surrounding_text
                 _nkui_text_document_get_text
                 _nkui_text_document_hit_test
                 _nkui_text_document_redo

@@ -787,9 +787,21 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	 */
 	extern fn nkui_text_document_get_length(document: nkui_resource, out_length: ptr<i32> @out) -> nkui_result;
 	/**
+	 * Returns visual rectangles with the absolute document range for each fragment.
+	 */
+	extern fn nkui_text_document_get_range_layout(document: nkui_resource, start: nkui_text_position, end: nkui_text_position, out_buffer: nullable<ptr<u8>> @out_buffer("inout_bytes"), inout_bytes: ptr<u32> @inout) -> nkui_result;
+	/**
 	 * Returns the current selection snapshot.
 	 */
 	extern fn nkui_text_document_get_selection(document: nkui_resource, out_selection: ptr<nkui_text_document_selection> @out) -> nkui_result;
+	/**
+	 * Returns the absolute range represented by get_surrounding_text().
+	 */
+	extern fn nkui_text_document_get_surrounding_range(document: nkui_resource, max_before: i32, max_after: i32, out_range: ptr<nkui_text_document_range> @out) -> nkui_result;
+	/**
+	 * Returns a bounded UTF-8 window around the current selection.
+	 */
+	extern fn nkui_text_document_get_surrounding_text(document: nkui_resource, max_before: i32, max_after: i32, out_buffer: nullable<ptr<u8>> @out_buffer("inout_bytes"), inout_bytes: ptr<u32> @inout) -> nkui_result;
 	/**
 	 * Returns the document text as UTF-8. Query the required byte count by passing NULL.
 	 */
@@ -1732,6 +1744,17 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		active: u32 @offset(12);
 	}
 	/**
+	 * Absolute code-point range returned by a text document query.
+	 */
+	struct nkui_text_document_range @layout(12, 4) {
+		/**
+		 * Set to sizeof(nkui_text_document_range) when returned by the API.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		start: i32 @offset(4);
+		end: i32 @offset(8);
+	}
+	/**
 	 * Selection snapshot owned by a text document engine.
 	 */
 	struct nkui_text_document_selection @layout(28, 4) {
@@ -1806,6 +1829,21 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		 * Caret affinity returned by hit testing; pass it back unchanged to caret queries.
 		 */
 		affinity: u32 @offset(4);
+	}
+	/**
+	 * One visual rectangle with its absolute document code-point range.
+	 */
+	struct nkui_text_range_rect @layout(28, 4) {
+		/**
+		 * Set to sizeof(nkui_text_range_rect) in the returned buffer.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		x: f32 @offset(4);
+		y: f32 @offset(8);
+		width: f32 @offset(12);
+		height: f32 @offset(16);
+		range_start: i32 @offset(20);
+		range_end: i32 @offset(24);
 	}
 	/**
 	 * One visual rectangle covered by a text selection.

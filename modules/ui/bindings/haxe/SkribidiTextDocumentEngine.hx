@@ -1,5 +1,6 @@
 import NativeKitUI;
 import NativeKitUI.UiStatus;
+import nativekit.ui.widgets.TextEditorHistoryKind;
 
 /** TextDocumentEngine backed by Skribidi's native editor core. */
 class SkribidiTextDocumentEngine extends NativeKitUIResource
@@ -41,7 +42,7 @@ class SkribidiTextDocumentEngine extends NativeKitUIResource
             transaction.replacementText == null ? "" : transaction.replacementText,
             transaction.selectionStart, transaction.selectionEnd, transaction.selectionAffinity,
             transaction.hasComposition ? 1 : 0, transaction.compositionStart,
-            transaction.compositionEnd, Type.enumIndex(transaction.historyKind)), "textDocument.applyEdit");
+            transaction.compositionEnd, historyKindValue(transaction.historyKind)), "textDocument.applyEdit");
         compositionMetadata = transaction.hasComposition && transaction.compositionAttributes != null ?
             transaction.compositionAttributes.copy() : [];
     }
@@ -127,11 +128,11 @@ class SkribidiTextDocumentEngine extends NativeKitUIResource
         var normalized = new nativekit.ui.widgets.TextRange(startOffset, endOffset);
         var start = new TextPosition(startOffset, 0);
         var end = new TextPosition(endOffset, 0);
-        var result = NativeKitUI.nkui_text_document_get_layout(nativeHandle(),
+        var result = NativeKitUI.nkui_text_document_get_range_layout(nativeHandle(),
             nativePosition(start), nativePosition(end));
         UiResult.check(result.status, "textDocument.layout");
         var bytes:haxe.io.Bytes = result.out_buffer;
-        var recordBytes = 20;
+        var recordBytes = 28;
         if (bytes.length % recordBytes != 0)
             throw "Text document geometry contains a truncated rectangle";
         var rectangles:Array<TextRangeRect> = [];
@@ -139,7 +140,8 @@ class SkribidiTextDocumentEngine extends NativeKitUIResource
             var offset = index * recordBytes;
             if (bytes.getInt32(offset) != recordBytes)
                 throw "Text document geometry returned an unsupported record size";
-            rectangles.push(new TextRangeRect(normalized.start, normalized.end,
+            rectangles.push(new TextRangeRect(bytes.getInt32(offset + 20),
+                bytes.getInt32(offset + 24),
                 readFloat(bytes, offset + 4), readFloat(bytes, offset + 8),
                 readFloat(bytes, offset + 12), readFloat(bytes, offset + 16)));
         }
@@ -147,6 +149,21 @@ class SkribidiTextDocumentEngine extends NativeKitUIResource
         if (normalized.start == normalized.end)
             caret = caretAt(start);
         return new nativekit.ui.widgets.LayoutResult(normalized, rectangles, caret);
+    }
+
+    public function surroundingText(maxBefore:Int, maxAfter:Int):nativekit.ui.widgets.TextInputWindow {
+        if (maxBefore < 0 || maxAfter < 0)
+            throw "Surrounding text limits cannot be negative";
+        var rangeResult = NativeKitUI.nkui_text_document_get_surrounding_range(nativeHandle(),
+            maxBefore, maxAfter);
+        UiResult.check(rangeResult.status, "textDocument.surroundingRange");
+        var range = rangeResult.out_range;
+        var result = NativeKitUI.nkui_text_document_get_surrounding_text(nativeHandle(),
+            maxBefore, maxAfter);
+        UiResult.check(result.status, "textDocument.surroundingText");
+        var bytes:haxe.io.Bytes = result.out_buffer;
+        var text = bytes.length == 0 ? "" : bytes.getString(0, bytes.length);
+        return new nativekit.ui.widgets.TextInputWindow(text, range.get_start(), range.get_end());
     }
 
     public function hitTest(point:nativekit.ui.widgets.TextPoint):TextPosition {
@@ -197,6 +214,18 @@ class SkribidiTextDocumentEngine extends NativeKitUIResource
 
     static function clamp(value:Int, low:Int, high:Int):Int
         return value < low ? low : (value > high ? high : value);
+
+    static function historyKindValue(value:TextEditorHistoryKind):Int {
+        return switch (value) {
+            case Generic: 0;
+            case Typing: 1;
+            case DeleteBackward: 2;
+            case DeleteForward: 3;
+            case Paste: 4;
+            case Autocorrect: 5;
+            case Composition: 6;
+        };
+    }
 
     static function readFloat(bytes:haxe.io.Bytes, offset:Int):Float {
         var bits = bytes.getInt32(offset);

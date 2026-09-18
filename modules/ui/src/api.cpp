@@ -37,8 +37,10 @@ static_assert(sizeof(nkui_text_intrinsic_metrics) == 6 * sizeof(uint32_t));
 static_assert(sizeof(nkui_text_position) == 2 * sizeof(uint32_t));
 static_assert(sizeof(nkui_text_caret) == 7 * sizeof(uint32_t));
 static_assert(sizeof(nkui_text_rect) == 5 * sizeof(uint32_t));
+static_assert(sizeof(nkui_text_range_rect) == 7 * sizeof(uint32_t));
 static_assert(sizeof(nkui_text_document_selection) == 7 * sizeof(uint32_t));
 static_assert(sizeof(nkui_text_document_composition) == 4 * sizeof(uint32_t));
+static_assert(sizeof(nkui_text_document_range) == 3 * sizeof(uint32_t));
 static_assert(sizeof(nkui_text_style) == 4 * sizeof(uint32_t));
 static_assert(sizeof(nkui_paragraph_style) == 5 * sizeof(uint32_t));
 static_assert(sizeof(nkui_layout_frame_input) == 4 * sizeof(uint32_t));
@@ -2176,6 +2178,107 @@ extern "C" nkui_result nkui_text_document_get_layout(nkui_resource document,
         std::memcpy(out_buffer + index * sizeof(result), &result, sizeof(result));
     }
     *inout_bytes = required;
+    return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_text_document_get_range_layout(nkui_resource document,
+                                                           nkui_text_position start,
+                                                           nkui_text_position end,
+                                                           uint8_t *out_buffer,
+                                                           uint32_t *inout_bytes) {
+    if (!inout_bytes || start.offset < 0 || end.offset < 0 || start.affinity > 4u ||
+        end.affinity > 4u)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(resources_mutex);
+    auto *slot = resolve(document, nkui::ResourceKind::TextDocument);
+    if (!slot || !slot->document)
+        return NKUI_ERROR_INVALID_HANDLE;
+    std::vector<nkui::TextRangeRect> rectangles;
+    try {
+        rectangles =
+            slot->document->range_rects({start.offset, static_cast<uint8_t>(start.affinity)},
+                                        {end.offset, static_cast<uint8_t>(end.affinity)});
+    } catch (...) {
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    }
+    if (rectangles.size() > std::numeric_limits<uint32_t>::max() / sizeof(nkui_text_range_rect))
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    const uint32_t required =
+        static_cast<uint32_t>(rectangles.size() * sizeof(nkui_text_range_rect));
+    if (!out_buffer) {
+        *inout_bytes = required;
+        return NKUI_OK;
+    }
+    if (*inout_bytes < required) {
+        *inout_bytes = required;
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    }
+    for (std::size_t index = 0; index < rectangles.size(); ++index) {
+        const auto &rect = rectangles[index];
+        if (!std::isfinite(rect.rect.x) || !std::isfinite(rect.rect.y) ||
+            !std::isfinite(rect.rect.width) || !std::isfinite(rect.rect.height) ||
+            rect.rect.width < 0.0f || rect.rect.height < 0.0f || rect.range.start < 0 ||
+            rect.range.end < rect.range.start)
+            return NKUI_ERROR_INVALID_ARGUMENT;
+        const nkui_text_range_rect result{sizeof(nkui_text_range_rect),
+                                          rect.rect.x,
+                                          rect.rect.y,
+                                          rect.rect.width,
+                                          rect.rect.height,
+                                          rect.range.start,
+                                          rect.range.end};
+        std::memcpy(out_buffer + index * sizeof(result), &result, sizeof(result));
+    }
+    *inout_bytes = required;
+    return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_text_document_get_surrounding_text(nkui_resource document,
+                                                               int32_t max_before,
+                                                               int32_t max_after,
+                                                               uint8_t *out_buffer,
+                                                               uint32_t *inout_bytes) {
+    if (max_before < 0 || max_after < 0 || !inout_bytes)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(resources_mutex);
+    auto *slot = resolve(document, nkui::ResourceKind::TextDocument);
+    if (!slot || !slot->document)
+        return NKUI_ERROR_INVALID_HANDLE;
+    std::string text;
+    nkui::TextRange range;
+    if (!slot->document->surrounding_text_utf8(max_before, max_after, &text, &range))
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    if (text.size() > std::numeric_limits<uint32_t>::max())
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    const uint32_t required = static_cast<uint32_t>(text.size());
+    if (!out_buffer) {
+        *inout_bytes = required;
+        return NKUI_OK;
+    }
+    if (*inout_bytes < required) {
+        *inout_bytes = required;
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    }
+    if (required)
+        std::memcpy(out_buffer, text.data(), required);
+    *inout_bytes = required;
+    return NKUI_OK;
+}
+
+extern "C" nkui_result
+nkui_text_document_get_surrounding_range(nkui_resource document, int32_t max_before,
+                                         int32_t max_after, nkui_text_document_range *out_range) {
+    if (max_before < 0 || max_after < 0 || !out_range)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(resources_mutex);
+    auto *slot = resolve(document, nkui::ResourceKind::TextDocument);
+    if (!slot || !slot->document)
+        return NKUI_ERROR_INVALID_HANDLE;
+    nkui::TextRange range;
+    std::string unused_text;
+    if (!slot->document->surrounding_text_utf8(max_before, max_after, &unused_text, &range))
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    *out_range = {sizeof(*out_range), range.start, range.end};
     return NKUI_OK;
 }
 

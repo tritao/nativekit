@@ -734,6 +734,18 @@ typedef struct nkui_text_rect {
     float height;
 } nkui_text_rect;
 
+/** One visual rectangle with its absolute document code-point range. */
+typedef struct nkui_text_range_rect {
+    /** Set to sizeof(nkui_text_range_rect) in the returned buffer. */
+    uint32_t struct_size NK_STRUCT_SIZE;
+    float x;
+    float y;
+    float width;
+    float height;
+    int32_t range_start;
+    int32_t range_end;
+} nkui_text_range_rect;
+
 /** Selection snapshot owned by a text document engine. */
 typedef struct nkui_text_document_selection {
     uint32_t struct_size NK_STRUCT_SIZE;
@@ -752,6 +764,14 @@ typedef struct nkui_text_document_composition {
     int32_t end;
     uint32_t active;
 } nkui_text_document_composition;
+
+/** Absolute code-point range returned by a text document query. */
+typedef struct nkui_text_document_range {
+    /** Set to sizeof(nkui_text_document_range) when returned by the API. */
+    uint32_t struct_size NK_STRUCT_SIZE;
+    int32_t start;
+    int32_t end;
+} nkui_text_document_range;
 
 /* ------------------------------------------------------------------------- */
 /* Path, color, and image types                                              */
@@ -1092,6 +1112,21 @@ NKUI_API nkui_result nkui_text_document_get_layout(nkui_resource document, nkui_
                                                    nkui_text_position end,
                                                    uint8_t *out_buffer NKUI_OUT_BUFFER(inout_bytes),
                                                    uint32_t *inout_bytes NKUI_INOUT);
+
+/** Returns visual rectangles with the absolute document range for each fragment. */
+NKUI_API nkui_result nkui_text_document_get_range_layout(
+    nkui_resource document, nkui_text_position start, nkui_text_position end,
+    uint8_t *out_buffer NKUI_OUT_BUFFER(inout_bytes), uint32_t *inout_bytes NKUI_INOUT);
+
+/** Returns a bounded UTF-8 window around the current selection. */
+NKUI_API nkui_result nkui_text_document_get_surrounding_text(
+    nkui_resource document, int32_t max_before, int32_t max_after,
+    uint8_t *out_buffer NKUI_OUT_BUFFER(inout_bytes), uint32_t *inout_bytes NKUI_INOUT);
+
+/** Returns the absolute range represented by get_surrounding_text(). */
+NKUI_API nkui_result nkui_text_document_get_surrounding_range(
+    nkui_resource document, int32_t max_before, int32_t max_after,
+    nkui_text_document_range *out_range NKUI_OUT);
 
 /* ------------------------------------------------------------------------- */
 /* Path, paint, and image APIs                                                */
