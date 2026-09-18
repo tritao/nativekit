@@ -72,6 +72,14 @@ struct PreparedGlyphs {
     uint64_t layout_generation = 0;
 };
 
+/** Opaque white: publishing without a tint leaves prepared vertex colors unchanged. */
+struct GlyphTint {
+    uint8_t red = 255;
+    uint8_t green = 255;
+    uint8_t blue = 255;
+    uint8_t alpha = 255;
+};
+
 struct TextPosition {
     int32_t offset = 0;
     uint8_t affinity = 0;
@@ -212,10 +220,10 @@ class SkribidiAdapter {
      */
     std::shared_ptr<const PreparedGlyphs> published_glyphs(TextLayoutId id, float origin_x,
                                                            float origin_y, float pixel_scale,
-                                                           GlyphMode mode);
+                                                           GlyphMode mode, GlyphTint tint = {});
     std::shared_ptr<const PreparedGlyphs>
     published_glyphs_for_line(TextLayoutId id, uint32_t line_index, float origin_x, float origin_y,
-                              float pixel_scale, GlyphMode mode);
+                              float pixel_scale, GlyphMode mode, GlyphTint tint = {});
     bool prepared_glyphs_current(const PreparedGlyphs &glyphs) const;
     TextRect bounds() const;
     TextPosition hit_test(float x, float y) const;
@@ -248,7 +256,8 @@ class SkribidiAdapter {
   private:
     std::shared_ptr<const PreparedGlyphs> publish_glyphs(TextLayoutId id, int32_t line_index,
                                                          float origin_x, float origin_y,
-                                                         float pixel_scale, GlyphMode mode);
+                                                         float pixel_scale, GlyphMode mode,
+                                                         GlyphTint tint);
     bool prepare_glyphs_internal(TextLayoutId id, float origin_x, float origin_y, float pixel_scale,
                                  GlyphMode mode, PreparedGlyphs &output, int32_t line_start,
                                  int32_t line_end, float line_x, float line_y);

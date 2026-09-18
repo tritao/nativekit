@@ -41,6 +41,15 @@ class LayoutRenderFrame {
     RenderPlan &plan() { return plan_; }
     const FrameResources &resources() const { return resources_; }
     FrameResources &resources() { return resources_; }
+    /**
+     * Immutable bindings of the same resources, filled alongside the borrowed
+     * set so the frame can be sealed. Stay empty when sealable() is false.
+     */
+    const OwnedFrameResources &owned_resources() const { return owned_resources_; }
+    OwnedFrameResources &owned_resources() { return owned_resources_; }
+    /** False when the frame references something that cannot be sealed. */
+    bool sealable() const { return sealable_; }
+    void set_sealable(bool value) { sealable_ = value; }
     // A shared source is owned by the layout engine and must outlive this
     // frame and any backend atlas uploads derived from it.
     SkribidiAdapter *text_adapter() { return text_source_ ? text_source_ : text_.get(); }
@@ -55,9 +64,11 @@ class LayoutRenderFrame {
 
     RenderPlan plan_;
     FrameResources resources_;
+    OwnedFrameResources owned_resources_;
+    bool sealable_ = true;
     std::unique_ptr<SkribidiAdapter> text_;
     SkribidiAdapter *text_source_ = nullptr;
-    std::vector<std::unique_ptr<PreparedPath>> paths_;
+    std::vector<std::shared_ptr<PreparedPath>> paths_;
     std::vector<std::unique_ptr<PreparedGlyphs>> glyphs_;
 };
 
