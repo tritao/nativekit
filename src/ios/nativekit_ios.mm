@@ -1163,6 +1163,9 @@ void apply_text_edit_state(IOSSurface &resource, nk_text_edit_action action,
                            const std::string &text, nk_text_position selection_start,
                            nk_text_position selection_end, nk_text_position composition_start,
                            nk_text_position composition_end) {
+    const auto history_kind = nk::core::infer_text_edit_history_kind(
+        action, resource.text_input_state.selection_start, resource.text_input_state.selection_end,
+        replace_start, replace_end);
     if (replace_start != NK_TEXT_POSITION_NONE && replace_end != NK_TEXT_POSITION_NONE &&
         !update_text_snapshot(resource, replace_start, replace_end, text))
         return;
@@ -1190,6 +1193,7 @@ void apply_text_edit_state(IOSSurface &resource, nk_text_edit_action action,
     payload.selection_end = selection_end;
     payload.composition_start = composition_start;
     payload.composition_end = composition_end;
+    payload.history_kind = history_kind;
     emit_text_edit(resource, payload, text);
 }
 

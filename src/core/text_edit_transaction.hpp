@@ -22,6 +22,8 @@ struct TextEditTransaction {
     nk_text_position composition_end = text_position_none;
     /** Caret affinity for the resulting selection focus. */
     uint32_t selection_affinity = 0;
+    /** History grouping policy for this transaction. */
+    nk_text_edit_history_kind history_kind = NK_TEXT_EDIT_HISTORY_GENERIC;
 
     bool valid() const noexcept {
         if (selection_start == text_position_none || selection_end == text_position_none ||
@@ -40,6 +42,8 @@ struct TextEditTransaction {
             (has_composition && composition_start > composition_end))
             return false;
         if (selection_affinity > 4u)
+            return false;
+        if (history_kind > NK_TEXT_EDIT_HISTORY_COMPOSITION)
             return false;
 
         switch (action) {
@@ -60,6 +64,44 @@ struct TextEditTransaction {
         }
     }
 };
+
+/**
+ * Infers the default history group from the native edit shape and the
+ * selection immediately before applying it. Explicit paste/autocorrect
+ * transactions use their corresponding history kind instead.
+ */
+inline nk_text_edit_history_kind
+infer_text_edit_history_kind(nk_text_edit_action action, nk_text_position current_selection_start,
+                             nk_text_position current_selection_end,
+                             nk_text_position replacement_start,
+                             nk_text_position replacement_end) noexcept {
+    switch (action) {
+    case NK_TEXT_EDIT_COMPOSE:
+        return NK_TEXT_EDIT_HISTORY_COMPOSITION;
+    case NK_TEXT_EDIT_COMMIT:
+        if (current_selection_start == NK_TEXT_POSITION_NONE ||
+            current_selection_end == NK_TEXT_POSITION_NONE)
+            return NK_TEXT_EDIT_HISTORY_GENERIC;
+        return current_selection_start == current_selection_end &&
+                       replacement_start == current_selection_start &&
+                       replacement_end == current_selection_end
+                   ? NK_TEXT_EDIT_HISTORY_TYPING
+                   : NK_TEXT_EDIT_HISTORY_GENERIC;
+    case NK_TEXT_EDIT_DELETE:
+        if (current_selection_start == NK_TEXT_POSITION_NONE ||
+            current_selection_end == NK_TEXT_POSITION_NONE)
+            return NK_TEXT_EDIT_HISTORY_GENERIC;
+        if (current_selection_start != current_selection_end)
+            return NK_TEXT_EDIT_HISTORY_GENERIC;
+        if (replacement_end == current_selection_start)
+            return NK_TEXT_EDIT_HISTORY_DELETE_BACKWARD;
+        if (replacement_start == current_selection_start)
+            return NK_TEXT_EDIT_HISTORY_DELETE_FORWARD;
+        return NK_TEXT_EDIT_HISTORY_GENERIC;
+    default:
+        return NK_TEXT_EDIT_HISTORY_GENERIC;
+    }
+}
 
 } // namespace nk::core
 

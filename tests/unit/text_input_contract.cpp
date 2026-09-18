@@ -5,6 +5,7 @@
 
 #include <cassert>
 #include <cmath>
+#include <cstddef>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -13,6 +14,22 @@ int main() {
     using nk::core::TextEditTransaction;
     using nk::core::TextInputStateValidation;
     using nk::core::utf16_to_codepoint_offset;
+
+    static_assert(sizeof(nk_text_edit_event) == 48);
+    static_assert(offsetof(nk_text_edit_event, history_kind) == 40);
+    assert(nk::core::infer_text_edit_history_kind(NK_TEXT_EDIT_COMPOSE, 2, 2, 2, 2) ==
+           NK_TEXT_EDIT_HISTORY_COMPOSITION);
+    assert(nk::core::infer_text_edit_history_kind(NK_TEXT_EDIT_COMPOSE, NK_TEXT_POSITION_NONE,
+                                                  NK_TEXT_POSITION_NONE, 2,
+                                                  2) == NK_TEXT_EDIT_HISTORY_COMPOSITION);
+    assert(nk::core::infer_text_edit_history_kind(NK_TEXT_EDIT_COMMIT, 2, 2, 2, 2) ==
+           NK_TEXT_EDIT_HISTORY_TYPING);
+    assert(nk::core::infer_text_edit_history_kind(NK_TEXT_EDIT_COMMIT, 2, 2, 1, 2) ==
+           NK_TEXT_EDIT_HISTORY_GENERIC);
+    assert(nk::core::infer_text_edit_history_kind(NK_TEXT_EDIT_DELETE, 2, 2, 1, 2) ==
+           NK_TEXT_EDIT_HISTORY_DELETE_BACKWARD);
+    assert(nk::core::infer_text_edit_history_kind(NK_TEXT_EDIT_DELETE, 2, 2, 2, 3) ==
+           NK_TEXT_EDIT_HISTORY_DELETE_FORWARD);
 
     const std::u16string unicode = u"A\U0001f600B";
     uint32_t codepoint_offset = 99;
@@ -185,6 +202,9 @@ int main() {
     const TextEditTransaction invalid_affinity{
         NK_TEXT_EDIT_COMMIT, 1, 1, "x", 2, 2, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE, 5};
     assert(!invalid_affinity.valid());
+    TextEditTransaction invalid_history = commit;
+    invalid_history.history_kind = 7;
+    assert(!invalid_history.valid());
 
     nk_text_input_rect selection_rect{sizeof(nk_text_input_rect), 4.0f, 8.0f, 32.0f, 18.0f};
     std::vector<uint8_t> packed(sizeof(selection_rect));

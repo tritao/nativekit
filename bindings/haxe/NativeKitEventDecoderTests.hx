@@ -50,10 +50,11 @@ class NativeKitEventDecoderTests {
 		putU32(editPayload, 12, 1); putU32(editPayload, 16, 2);
 		putU32(editPayload, 20, 2); putU32(editPayload, 24, 2);
 		putU32(editPayload, 28, 1); putU32(editPayload, 32, 2);
+		putU32(editPayload, 40, 6);
 		editPayload.set(48, 0xc3); editPayload.set(49, 0xa9);
 		var editContext = new NativeKitEventContext(EventKind.TextEdit, handle(9), zero, 0, 0, 0, editPayload);
 		var editOk = switch NativeKitEvent.decodeContext(editContext) {
-			case TextEdit(source, edit): source.rawValue() == 9 && edit.action == TextEditAction.Compose && edit.text == "é" && edit.replaceStart == 1 && edit.compositionEnd == 2;
+			case TextEdit(source, edit): source.rawValue() == 9 && edit.action == TextEditAction.Compose && edit.text == "é" && edit.replaceStart == 1 && edit.compositionEnd == 2 && edit.historyKind == 6;
 			case _: false;
 		};
 		var actionPayload = haxe.io.Bytes.alloc(8);

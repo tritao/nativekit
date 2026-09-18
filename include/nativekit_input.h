@@ -354,6 +354,25 @@ enum NK_ENUM(nk_text_edit_action) {
     NK_TEXT_EDIT_SET_COMPOSITION = 6
 };
 
+/** History grouping policy attached to an NK_EVENT_TEXT_EDIT transaction. */
+typedef uint32_t nk_text_edit_history_kind;
+enum NK_ENUM(nk_text_edit_history_kind) {
+    /** Do not coalesce this edit with a neighboring history entry. */
+    NK_TEXT_EDIT_HISTORY_GENERIC = 0,
+    /** Continuous committed text insertion. */
+    NK_TEXT_EDIT_HISTORY_TYPING = 1,
+    /** Backward deletion, such as Backspace. */
+    NK_TEXT_EDIT_HISTORY_DELETE_BACKWARD = 2,
+    /** Forward deletion, such as Delete. */
+    NK_TEXT_EDIT_HISTORY_DELETE_FORWARD = 3,
+    /** Clipboard insertion. */
+    NK_TEXT_EDIT_HISTORY_PASTE = 4,
+    /** Replacement produced by autocorrection. */
+    NK_TEXT_EDIT_HISTORY_AUTOCORRECT = 5,
+    /** An update belonging to one IME composition session. */
+    NK_TEXT_EDIT_HISTORY_COMPOSITION = 6
+};
+
 /** Absolute Unicode code-point position used by the text-input API. */
 typedef uint32_t nk_text_position;
 enum {
@@ -436,8 +455,10 @@ typedef struct nk_text_edit_event {
     nk_text_position composition_end;
     /** Resulting caret affinity for the selection focus. */
     uint32_t selection_affinity;
+    /** History grouping policy for this transaction. */
+    nk_text_edit_history_kind history_kind;
     /** Reserved for future use; initialize to zero. */
-    uint32_t reserved[2];
+    uint32_t reserved;
 } nk_text_edit_event;
 
 /** Payload of NK_EVENT_TEXT_ACTION; the document is not mutated by this event. */

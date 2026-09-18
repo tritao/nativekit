@@ -3354,14 +3354,18 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnTextEdit(
         normalized_composition_start == NK_TEXT_POSITION_NONE &&
         normalized_composition_end == NK_TEXT_POSITION_NONE)
         normalized_action = NK_TEXT_EDIT_COMMIT;
-    const nk::core::TextEditTransaction transaction{normalized_action,
-                                                    position(replace_start),
-                                                    position(replace_end),
-                                                    value,
-                                                    position(selection_start),
-                                                    position(selection_end),
-                                                    normalized_composition_start,
-                                                    normalized_composition_end};
+    nk::core::TextEditTransaction transaction{normalized_action,
+                                              position(replace_start),
+                                              position(replace_end),
+                                              value,
+                                              position(selection_start),
+                                              position(selection_end),
+                                              normalized_composition_start,
+                                              normalized_composition_end};
+    transaction.history_kind = nk::core::infer_text_edit_history_kind(
+        transaction.action, resource->text_input_state.selection_start,
+        resource->text_input_state.selection_end, transaction.replacement_start,
+        transaction.replacement_end);
     if (!transaction.valid())
         return;
     nk_text_edit_event payload{};
@@ -3375,6 +3379,7 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnTextEdit(
     payload.composition_start = transaction.composition_start;
     payload.composition_end = transaction.composition_end;
     payload.selection_affinity = transaction.selection_affinity;
+    payload.history_kind = transaction.history_kind;
     nk::core::QueuedEvent event;
     event.kind = NK_EVENT_TEXT_EDIT;
     event.source = resource->handle;

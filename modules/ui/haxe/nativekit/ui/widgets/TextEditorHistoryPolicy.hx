@@ -16,6 +16,17 @@ class TextEditorHistoryPolicy {
 			currentStart:Int, currentEnd:Int):TextEditorHistoryKind {
 		if (edit == null)
 			return TextEditorHistoryKind.Generic;
+		if (edit.historyKind != 0) {
+			return switch (edit.historyKind) {
+				case 1: TextEditorHistoryKind.Typing;
+				case 2: TextEditorHistoryKind.DeleteBackward;
+				case 3: TextEditorHistoryKind.DeleteForward;
+				case 4: TextEditorHistoryKind.Paste;
+				case 5: TextEditorHistoryKind.Autocorrect;
+				case 6: TextEditorHistoryKind.Composition;
+				case _: TextEditorHistoryKind.Generic;
+			};
+		}
 		switch (edit.action) {
 			case TextEditAction.Compose:
 				return TextEditorHistoryKind.Composition;

@@ -159,6 +159,7 @@ static int verify_native_composition(const nk_event *event, nk_text_position sta
     return edit.action == NK_TEXT_EDIT_COMPOSE && edit.replace_start == start &&
            edit.replace_end == start && edit.composition_start == start &&
            edit.composition_end > start && edit.selection_start == edit.selection_end &&
+           edit.history_kind == NK_TEXT_EDIT_HISTORY_COMPOSITION &&
            nk_text_edit_event_text(event, &event_text, &event_length) == NK_OK && event_length != 0;
 }
 
@@ -172,6 +173,7 @@ static int verify_native_commit(const nk_event *event) {
            edit.selection_start > edit.replace_start &&
            edit.composition_start == NK_TEXT_POSITION_NONE &&
            edit.composition_end == NK_TEXT_POSITION_NONE &&
+           edit.history_kind == NK_TEXT_EDIT_HISTORY_GENERIC &&
            nk_text_edit_event_text(event, &event_text, &event_length) == NK_OK && event_length != 0;
 }
 
@@ -195,6 +197,7 @@ static int verify_direct_character(const nk_event *event) {
     return edit.action == NK_TEXT_EDIT_COMMIT && edit.selection_start == edit.selection_end &&
            edit.composition_start == NK_TEXT_POSITION_NONE &&
            edit.composition_end == NK_TEXT_POSITION_NONE &&
+           edit.history_kind == NK_TEXT_EDIT_HISTORY_TYPING &&
            nk_text_edit_event_text(event, &event_text, &event_length) == NK_OK &&
            event_length == 1 && event_text[0] == 'Z';
 }

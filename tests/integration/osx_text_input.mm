@@ -33,7 +33,7 @@ static void verify_edit(const nk_event *event, nk_text_edit_action action,
                         nk_text_position replace_start, nk_text_position replace_end,
                         nk_text_position selection_start, nk_text_position selection_end,
                         nk_text_position composition_start, nk_text_position composition_end,
-                        const char *text) {
+                        const char *text, nk_text_edit_history_kind history_kind) {
     nk_text_edit_event edit = {0};
     memcpy(&edit, event->data, sizeof(edit));
     assert(edit.action == action);
@@ -43,6 +43,7 @@ static void verify_edit(const nk_event *event, nk_text_edit_action action,
     assert(edit.selection_end == selection_end);
     assert(edit.composition_start == composition_start);
     assert(edit.composition_end == composition_end);
+    assert(edit.history_kind == history_kind);
     const char *event_text = NULL;
     uint32_t event_length = 0;
     assert(nk_text_edit_event_text(event, &event_text, &event_length) == NK_OK);
@@ -112,7 +113,8 @@ int main(void) {
                 selectedRange:NSMakeRange(2, 0)
              replacementRange:NSMakeRange(1, 2)];
     nk_event compose = wait_for_edit(window, NK_TEXT_EDIT_COMPOSE);
-    verify_edit(&compose, NK_TEXT_EDIT_COMPOSE, 1, 2, 3, 3, 1, 3, "かな");
+    verify_edit(&compose, NK_TEXT_EDIT_COMPOSE, 1, 2, 3, 3, 1, 3, "かな",
+                NK_TEXT_EDIT_HISTORY_COMPOSITION);
     nk_event_release(&compose);
 
     const char composed_text[] = "A\xE3\x81\x8B\xE3\x81\xAA\xE6\x97\xA5\xE6\x9C\xAC";
@@ -144,7 +146,8 @@ int main(void) {
                 selectedRange:NSMakeRange(3, 0)
              replacementRange:NSMakeRange(1, 2)];
     nk_event compose_update = wait_for_edit(window, NK_TEXT_EDIT_COMPOSE);
-    verify_edit(&compose_update, NK_TEXT_EDIT_COMPOSE, 1, 3, 4, 4, 1, 4, "かなじ");
+    verify_edit(&compose_update, NK_TEXT_EDIT_COMPOSE, 1, 3, 4, 4, 1, 4, "かなじ",
+                NK_TEXT_EDIT_HISTORY_COMPOSITION);
     nk_event_release(&compose_update);
 
     const char updated_text[] = "A\xE3\x81\x8B\xE3\x81\xAA\xE3\x81\x98\xE6\x97\xA5\xE6\x9C\xAC";
@@ -168,7 +171,8 @@ int main(void) {
     [input_view unmarkText];
     nk_event cancel = wait_for_edit(window, NK_TEXT_EDIT_FINISH_COMPOSITION);
     verify_edit(&cancel, NK_TEXT_EDIT_FINISH_COMPOSITION, NK_TEXT_POSITION_NONE,
-                NK_TEXT_POSITION_NONE, 4, 4, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE, "");
+                NK_TEXT_POSITION_NONE, 4, 4, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE, "",
+                NK_TEXT_EDIT_HISTORY_GENERIC);
     nk_event_release(&cancel);
     assert(![input_view hasMarkedText]);
 
@@ -178,7 +182,7 @@ int main(void) {
     [input_view insertText:@"終" replacementRange:NSMakeRange(6, 0)];
     nk_event commit = wait_for_edit(window, NK_TEXT_EDIT_COMMIT);
     verify_edit(&commit, NK_TEXT_EDIT_COMMIT, 6, 6, 7, 7, NK_TEXT_POSITION_NONE,
-                NK_TEXT_POSITION_NONE, "終");
+                NK_TEXT_POSITION_NONE, "終", NK_TEXT_EDIT_HISTORY_GENERIC);
     nk_event_release(&commit);
 
     assert(nk_surface_set_text_input_active(window, 0) == NK_OK);

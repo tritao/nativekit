@@ -869,6 +869,13 @@ void emit_text_transaction(WinWindowResource &resource,
     if (!transaction.valid())
         return;
 
+    auto history_kind = transaction.history_kind;
+    if (history_kind == NK_TEXT_EDIT_HISTORY_GENERIC)
+        history_kind = nk::core::infer_text_edit_history_kind(
+            transaction.action, resource.text_input_state.selection_start,
+            resource.text_input_state.selection_end, transaction.replacement_start,
+            transaction.replacement_end);
+
     resource.text_input_state.selection_start = transaction.selection_start;
     resource.text_input_state.selection_end = transaction.selection_end;
     resource.text_input_state.composition_start = transaction.composition_start;
@@ -885,6 +892,7 @@ void emit_text_transaction(WinWindowResource &resource,
     payload.composition_start = transaction.composition_start;
     payload.composition_end = transaction.composition_end;
     payload.selection_affinity = transaction.selection_affinity;
+    payload.history_kind = history_kind;
     emit_text_edit(resource, payload, transaction.replacement_text);
 }
 

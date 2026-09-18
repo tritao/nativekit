@@ -95,7 +95,7 @@ bool verify_text_edit(const nk_event &event, nk_text_edit_action action,
                       nk_text_position replace_start, nk_text_position replace_end,
                       nk_text_position selection_start, nk_text_position selection_end,
                       nk_text_position composition_start, nk_text_position composition_end,
-                      const char *expected_text) {
+                      const char *expected_text, nk_text_edit_history_kind history_kind) {
     nk_text_edit_event edit = {};
     if (event.data_size < sizeof(edit))
         return false;
@@ -103,7 +103,7 @@ bool verify_text_edit(const nk_event &event, nk_text_edit_action action,
     if (edit.action != action || edit.replace_start != replace_start ||
         edit.replace_end != replace_end || edit.selection_start != selection_start ||
         edit.selection_end != selection_end || edit.composition_start != composition_start ||
-        edit.composition_end != composition_end)
+        edit.composition_end != composition_end || edit.history_kind != history_kind)
         return false;
     const char *text = nullptr;
     uint32_t text_length = 0;
@@ -160,7 +160,7 @@ bool run_text_input_contract(nk_surface surface, UIView *host_view) {
     nk_event compose = {};
     if (!wait_for_text_edit(surface, NK_TEXT_EDIT_COMPOSE, &compose) ||
         !verify_text_edit(compose, NK_TEXT_EDIT_COMPOSE, 1, 2, 2, 2, 1, 3,
-                          "\xE3\x81\x8B\xE3\x81\xAA")) {
+                          "\xE3\x81\x8B\xE3\x81\xAA", NK_TEXT_EDIT_HISTORY_COMPOSITION)) {
         nk_event_release(&compose);
         return false;
     }
@@ -200,7 +200,8 @@ bool run_text_input_contract(nk_surface surface, UIView *host_view) {
     nk_event compose_update = {};
     if (!wait_for_text_edit(surface, NK_TEXT_EDIT_COMPOSE, &compose_update) ||
         !verify_text_edit(compose_update, NK_TEXT_EDIT_COMPOSE, 1, 3, 4, 4, 1, 4,
-                          "\xE3\x81\x8B\xE3\x81\xAA\xE3\x81\x98")) {
+                          "\xE3\x81\x8B\xE3\x81\xAA\xE3\x81\x98",
+                          NK_TEXT_EDIT_HISTORY_COMPOSITION)) {
         nk_event_release(&compose_update);
         return false;
     }
@@ -229,7 +230,7 @@ bool run_text_input_contract(nk_surface surface, UIView *host_view) {
     if (!wait_for_text_edit(surface, NK_TEXT_EDIT_FINISH_COMPOSITION, &cancel) ||
         !verify_text_edit(cancel, NK_TEXT_EDIT_FINISH_COMPOSITION, NK_TEXT_POSITION_NONE,
                           NK_TEXT_POSITION_NONE, 4, 4, NK_TEXT_POSITION_NONE,
-                          NK_TEXT_POSITION_NONE, "")) {
+                          NK_TEXT_POSITION_NONE, "", NK_TEXT_EDIT_HISTORY_GENERIC)) {
         nk_event_release(&cancel);
         return false;
     }
@@ -249,7 +250,7 @@ bool run_text_input_contract(nk_surface surface, UIView *host_view) {
     nk_event commit = {};
     if (!wait_for_text_edit(surface, NK_TEXT_EDIT_COMMIT, &commit) ||
         !verify_text_edit(commit, NK_TEXT_EDIT_COMMIT, 5, 6, 6, 6, NK_TEXT_POSITION_NONE,
-                          NK_TEXT_POSITION_NONE, "\xE7\xB5\x82")) {
+                          NK_TEXT_POSITION_NONE, "\xE7\xB5\x82", NK_TEXT_EDIT_HISTORY_GENERIC)) {
         nk_event_release(&commit);
         return false;
     }
@@ -263,7 +264,7 @@ bool run_text_input_contract(nk_surface surface, UIView *host_view) {
     if (!wait_for_text_edit(surface, NK_TEXT_EDIT_SET_SELECTION, &selection) ||
         !verify_text_edit(selection, NK_TEXT_EDIT_SET_SELECTION, NK_TEXT_POSITION_NONE,
                           NK_TEXT_POSITION_NONE, 1, 1, NK_TEXT_POSITION_NONE,
-                          NK_TEXT_POSITION_NONE, "")) {
+                          NK_TEXT_POSITION_NONE, "", NK_TEXT_EDIT_HISTORY_GENERIC)) {
         nk_event_release(&selection);
         return false;
     }
@@ -273,7 +274,7 @@ bool run_text_input_contract(nk_surface surface, UIView *host_view) {
     nk_event deletion = {};
     if (!wait_for_text_edit(surface, NK_TEXT_EDIT_DELETE, &deletion) ||
         !verify_text_edit(deletion, NK_TEXT_EDIT_DELETE, 0, 1, 0, 0, NK_TEXT_POSITION_NONE,
-                          NK_TEXT_POSITION_NONE, "")) {
+                          NK_TEXT_POSITION_NONE, "", NK_TEXT_EDIT_HISTORY_DELETE_BACKWARD)) {
         nk_event_release(&deletion);
         return false;
     }

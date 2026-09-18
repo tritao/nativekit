@@ -1466,6 +1466,10 @@ void queue_text_edit(WebSurfaceResource &surface, nk_text_edit_action action,
     transaction.selection_end = selection_end;
     transaction.composition_start = composition_start;
     transaction.composition_end = composition_end;
+    transaction.history_kind = nk::core::infer_text_edit_history_kind(
+        transaction.action, surface.text_input_state.selection_start,
+        surface.text_input_state.selection_end, transaction.replacement_start,
+        transaction.replacement_end);
     if (!transaction.valid() ||
         !update_text_input_state(surface, replace_start, replace_end, text, selection_start,
                                  selection_end, composition_start, composition_end))
@@ -1481,6 +1485,7 @@ void queue_text_edit(WebSurfaceResource &surface, nk_text_edit_action action,
     payload.selection_end = selection_end;
     payload.composition_start = composition_start;
     payload.composition_end = composition_end;
+    payload.history_kind = transaction.history_kind;
 
     nk::core::QueuedEvent queued;
     queued.kind = NK_EVENT_TEXT_EDIT;

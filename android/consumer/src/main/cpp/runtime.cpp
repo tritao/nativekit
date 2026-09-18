@@ -598,26 +598,33 @@ Java_io_nativekit_consumer_MainActivity_nativeInputProbe(JNIEnv *, jclass, jlong
             composing |= value->action == NK_TEXT_EDIT_COMPOSE &&
                          value->replace_start == 107 && value->replace_end == 107 &&
                          value->selection_start == 108 && value->composition_start == 107 &&
-                         value->composition_end == 108 && edit_text_length == 3 &&
+                         value->composition_end == 108 &&
+                         value->history_kind == NK_TEXT_EDIT_HISTORY_COMPOSITION &&
+                         edit_text_length == 3 &&
                          std::memcmp(edit_text, "\xe3\x81\xab", 3) == 0;
             composing_update |= value->action == NK_TEXT_EDIT_COMPOSE &&
                                 value->replace_start == 107 && value->replace_end == 108 &&
                                 value->selection_start == 109 &&
                                 value->composition_start == 107 &&
-                                value->composition_end == 109 && edit_text_length == 6 &&
+                                value->composition_end == 109 &&
+                                value->history_kind == NK_TEXT_EDIT_HISTORY_COMPOSITION &&
+                                edit_text_length == 6 &&
                                 std::memcmp(edit_text, "\xe6\x97\xa5\xe6\x9c\xac", 6) == 0;
             committed |= value->action == NK_TEXT_EDIT_COMMIT &&
                          value->replace_start == 107 && value->replace_end == 109 &&
                          edit_text_length == 9 && std::memcmp(edit_text, "日本語", 9) == 0 &&
                          value->composition_start == NK_TEXT_POSITION_NONE &&
-                         value->selection_start == 110;
+                         value->selection_start == 110 &&
+                         value->history_kind == NK_TEXT_EDIT_HISTORY_GENERIC;
             selected |= value->action == NK_TEXT_EDIT_SET_SELECTION &&
                         value->selection_start == 105 && value->selection_end == 105;
             deleted |= value->action == NK_TEXT_EDIT_DELETE && value->replace_start == 104 &&
-                       value->replace_end == 105 && value->selection_start == 104;
+                       value->replace_end == 105 && value->selection_start == 104 &&
+                       value->history_kind == NK_TEXT_EDIT_HISTORY_DELETE_BACKWARD;
             emoji_deleted |= value->action == NK_TEXT_EDIT_DELETE &&
                              value->replace_start == 6 && value->replace_end == 7 &&
-                             value->selection_start == 6 && value->selection_end == 6;
+                             value->selection_start == 6 && value->selection_end == 6 &&
+                             value->history_kind == NK_TEXT_EDIT_HISTORY_DELETE_BACKWARD;
             composition_finished |= value->action == NK_TEXT_EDIT_FINISH_COMPOSITION &&
                                     value->composition_start == NK_TEXT_POSITION_NONE;
             composition_region |= value->action == NK_TEXT_EDIT_SET_COMPOSITION &&

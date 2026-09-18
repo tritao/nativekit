@@ -43,7 +43,7 @@ static void expect_edit(nk_surface surface, nk_text_edit_action action,
                         nk_text_position replacement_start, nk_text_position replacement_end,
                         const char *replacement, nk_text_position selection_start,
                         nk_text_position selection_end, nk_text_position composition_start,
-                        nk_text_position composition_end) {
+                        nk_text_position composition_end, nk_text_edit_history_kind history_kind) {
     nk_event event = {0};
     event.struct_size = sizeof(event);
     for (;;) {
@@ -66,6 +66,7 @@ static void expect_edit(nk_surface surface, nk_text_edit_action action,
         assert(edit->selection_end == selection_end);
         assert(edit->composition_start == composition_start);
         assert(edit->composition_end == composition_end);
+        assert(edit->history_kind == history_kind);
         const char *text = NULL;
         uint32_t length = 0;
         assert(nk_text_edit_event_text(&event, &text, &length) == NK_OK);
@@ -301,7 +302,7 @@ int main(void) {
     assert(query_text_input_ranges());
     assert(dispatch_input_sequence());
     expect_edit(surface, NK_TEXT_EDIT_COMMIT, 11, 12, "\xe3\x81\x8b\xe3\x81\xaa", 13, 13,
-                NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
+                NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE, NK_TEXT_EDIT_HISTORY_GENERIC);
 
     set_text_state(surface,
                    "A\xe3\x81\x8b\xe3\x81\xaa"
@@ -310,7 +311,8 @@ int main(void) {
                    NK_TEXT_INPUT_MULTILINE, NK_TEXT_INPUT_ACTION_DEFAULT);
     assert(dispatch_selection());
     expect_edit(surface, NK_TEXT_EDIT_SET_SELECTION, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
-                "", 10, 13, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
+                "", 10, 13, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
+                NK_TEXT_EDIT_HISTORY_GENERIC);
 
     set_text_state(surface,
                    "A\xe3\x81\x8b\xe3\x81\xaa"
@@ -319,7 +321,7 @@ int main(void) {
                    NK_TEXT_INPUT_MULTILINE, NK_TEXT_INPUT_ACTION_DEFAULT);
     assert(dispatch_delete_backward());
     expect_edit(surface, NK_TEXT_EDIT_DELETE, 12, 13, "", 12, 12, NK_TEXT_POSITION_NONE,
-                NK_TEXT_POSITION_NONE);
+                NK_TEXT_POSITION_NONE, NK_TEXT_EDIT_HISTORY_DELETE_BACKWARD);
 
     set_text_state(surface,
                    "A\xe3\x81\x8b"
@@ -327,10 +329,11 @@ int main(void) {
                    13, 12, 12, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
                    NK_TEXT_INPUT_MULTILINE, NK_TEXT_INPUT_ACTION_DEFAULT);
     assert(dispatch_composition());
-    expect_edit(surface, NK_TEXT_EDIT_COMPOSE, 12, 12, "\xe6\x97\xa5", 13, 13, 12, 13);
+    expect_edit(surface, NK_TEXT_EDIT_COMPOSE, 12, 12, "\xe6\x97\xa5", 13, 13, 12, 13,
+                NK_TEXT_EDIT_HISTORY_COMPOSITION);
     assert(dispatch_composition_commit());
     expect_edit(surface, NK_TEXT_EDIT_COMMIT, 12, 13, "\xe6\x97\xa5", 13, 13, NK_TEXT_POSITION_NONE,
-                NK_TEXT_POSITION_NONE);
+                NK_TEXT_POSITION_NONE, NK_TEXT_EDIT_HISTORY_GENERIC);
 
     set_text_state(surface,
                    "A\xe3\x81\x8b\xe6\x97\xa5"
@@ -338,10 +341,12 @@ int main(void) {
                    14, 13, 13, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
                    NK_TEXT_INPUT_MULTILINE, NK_TEXT_INPUT_ACTION_DEFAULT);
     assert(dispatch_composition_cancel());
-    expect_edit(surface, NK_TEXT_EDIT_COMPOSE, 13, 13, "x", 14, 14, 13, 14);
+    expect_edit(surface, NK_TEXT_EDIT_COMPOSE, 13, 13, "x", 14, 14, 13, 14,
+                NK_TEXT_EDIT_HISTORY_COMPOSITION);
     assert(dispatch_composition_finish());
     expect_edit(surface, NK_TEXT_EDIT_FINISH_COMPOSITION, NK_TEXT_POSITION_NONE,
-                NK_TEXT_POSITION_NONE, "", 14, 14, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE);
+                NK_TEXT_POSITION_NONE, "", 14, 14, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
+                NK_TEXT_EDIT_HISTORY_GENERIC);
     set_text_state(surface,
                    "A\xe3\x81\x8b\xe6\x97\xa5"
                    "B",
