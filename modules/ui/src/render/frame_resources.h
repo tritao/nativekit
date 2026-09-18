@@ -70,23 +70,18 @@ class SurfaceProducer {
 struct PreparedPathRef {
     const PreparedPathData *path = nullptr;
     uint32_t operation_index = 0;
-    /** Keeps `path` alive when the resource set outlives its builder. */
-    std::shared_ptr<const void> owner;
 };
 
 struct PreparedImageRef {
     const PreparedTexture *image = nullptr;
-    /** Keeps `image` alive when the resource set outlives its builder. */
-    std::shared_ptr<const void> owner;
 };
 
 /**
- * Reference-counted bindings from resource ids to prepared frame data.
+ * Bindings from resource ids to prepared frame data for immediate execution.
  *
- * A resource set built for immediate execution may borrow its data. A set that
- * will be sealed must own every path, image, and text it references, which the
- * shared-pointer bind overloads and the retained graphics-image bind provide;
- * has_borrowed_resources() reports whether that holds.
+ * This set borrows everything it references, so it is only valid while the
+ * frame, session, or producer that built it is alive. Data that has to outlive
+ * its builder belongs in an OwnedFrameResources, which sealing requires.
  */
 class FrameResources {
   public:
@@ -94,50 +89,65 @@ class FrameResources {
                    uint64_t content_generation = 0);
     bool bind_path(ResourceId id, const PreparedPath &path, uint32_t operation_index,
                    uint64_t content_generation = 0);
-    bool bind_path(ResourceId id, std::shared_ptr<const PreparedPath> path,
-                   uint32_t operation_index, uint64_t content_generation = 0);
     bool bind_image(ResourceId id, const PreparedTexture &image, uint64_t content_generation = 0);
-    bool bind_image(ResourceId id, std::shared_ptr<const PreparedTexture> image,
-                    uint64_t content_generation = 0);
     bool bind_text(ResourceId id, const PreparedGlyphs &glyphs, uint64_t content_generation = 0);
-    bool bind_text(ResourceId id, std::shared_ptr<const PreparedGlyphs> glyphs,
-                   uint64_t content_generation = 0);
     bool bind_surface(ResourceId id, SurfaceProducer &producer, uint64_t content_generation = 0);
     bool bind_graphics_image(ResourceId id, nk_graphics_image image,
                              uint64_t content_generation = 0);
-    /** Binds a graphics image and retains it until this resource set is destroyed. */
-    bool bind_retained_graphics_image(ResourceId id, nk_graphics_image image,
-                                      uint64_t content_generation = 0);
     const PreparedPathRef *path(ResourceId id) const;
     const PreparedImageRef *image(ResourceId id) const;
     const PreparedGlyphs *text(ResourceId id) const;
     SurfaceProducer *surface(ResourceId id) const;
     const nk_graphics_image *graphics_image(ResourceId id) const;
     uint64_t content_generation(ResourceId id) const;
-    /** True when any referenced path, image, text, or graphics image is only borrowed. */
-    bool has_borrowed_resources() const noexcept;
-    /** True when the set references a live result producer, which cannot be sealed. */
-    bool has_surface_producers() const noexcept;
     void reset();
 
   private:
-    struct TextRef {
-        const PreparedGlyphs *glyphs = nullptr;
-        std::shared_ptr<const void> owner;
-    };
+    std::unordered_map<uint32_t, PreparedPathRef> paths_;
+    std::unordered_map<uint32_t, PreparedImageRef> images_;
+    std::unordered_map<uint32_t, const PreparedGlyphs *> texts_;
+    std::unordered_map<uint32_t, SurfaceProducer *> surfaces_;
+    std::unordered_map<uint32_t, nk_graphics_image> graphics_images_;
+    std::unordered_map<uint32_t, uint64_t> content_generations_;
+};
 
+/**
+ * Resource bindings that keep everything they reference alive.
+ *
+ * The type is the contract: borrowed bindings and live surface producers do not
+ * exist here, so an owned set stays valid after the frame, session, or display
+ * list that produced it is gone. Prepared data is shared as immutable objects,
+ * and graphics images are retained until the set is destroyed.
+ */
+class OwnedFrameResources final : public FrameResources {
+  public:
+    bool bind_path(ResourceId id, std::shared_ptr<const PreparedPath> path,
+                   uint32_t operation_index, uint64_t content_generation = 0);
+    bool bind_image(ResourceId id, std::shared_ptr<const PreparedTexture> image,
+                    uint64_t content_generation = 0);
+    bool bind_text(ResourceId id, std::shared_ptr<const PreparedGlyphs> glyphs,
+                   uint64_t content_generation = 0);
+    /** Binds a graphics image and retains it until this set is destroyed. */
+    bool bind_graphics_image(ResourceId id, nk_graphics_image image,
+                             uint64_t content_generation = 0);
+
+    /* Borrowed bindings and live producers cannot belong to an owned set. */
+    bool bind_path(ResourceId, const PreparedPathData &, uint32_t, uint64_t) = delete;
+    bool bind_path(ResourceId, const PreparedPath &, uint32_t, uint64_t) = delete;
+    bool bind_image(ResourceId, const PreparedTexture &, uint64_t) = delete;
+    bool bind_text(ResourceId, const PreparedGlyphs &, uint64_t) = delete;
+    bool bind_surface(ResourceId, SurfaceProducer &, uint64_t) = delete;
+
+    void reset();
+
+  private:
     struct GraphicsImageLease {
         nk_graphics_image image{};
         ~GraphicsImageLease();
     };
 
-    std::unordered_map<uint32_t, PreparedPathRef> paths_;
-    std::unordered_map<uint32_t, PreparedImageRef> images_;
-    std::unordered_map<uint32_t, TextRef> texts_;
-    std::unordered_map<uint32_t, SurfaceProducer *> surfaces_;
-    std::unordered_map<uint32_t, nk_graphics_image> graphics_images_;
+    std::vector<std::shared_ptr<const void>> owners_;
     std::unordered_map<uint32_t, std::shared_ptr<const GraphicsImageLease>> graphics_image_leases_;
-    std::unordered_map<uint32_t, uint64_t> content_generations_;
 };
 
 } // namespace nkui
