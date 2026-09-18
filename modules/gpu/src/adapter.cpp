@@ -31,7 +31,8 @@ enum Kind : uint32_t {
     ImageKind,
     ImageBuilderKind,
     SamplerKind,
-    RenderTargetKind
+    RenderTargetKind,
+    BatchKind
 };
 using Handle = uint32_t;
 
@@ -46,13 +47,19 @@ template <class T, Kind K, size_t N> struct Pool {
     struct Slot {
         uint16_t generation = 1;
         bool active = false;
+        /* Retained by at least one batch. A pinned slot keeps its value and its
+           generation so retained handles still resolve, and is never reused. */
+        uint32_t pins = 0;
+        bool retired = false;
         T value{};
     };
     std::array<Slot, N> slots{};
     Handle add(const T &value) {
         for (uint32_t i = 0; i < N; ++i)
-            if (!slots[i].active) {
+            /* A retired slot still holds backend objects awaiting release. */
+            if (!slots[i].active && !slots[i].pins && !slots[i].retired) {
                 slots[i].active = true;
+                slots[i].retired = false;
                 slots[i].value = value;
                 return (uint32_t(K) << 28) | (uint32_t(slots[i].generation) << 16) | (i + 1);
             }
@@ -65,8 +72,29 @@ template <class T, Kind K, size_t N> struct Pool {
         Slot &s = slots[encoded - 1];
         return s.active && s.generation == generation ? &s : nullptr;
     }
+    Slot *get_retained(Handle h) {
+        uint32_t encoded = h & 0xFFFF, generation = (h >> 16) & 0xFFF;
+        if ((h >> 28) != K || !encoded || encoded > N || !generation)
+            return nullptr;
+        Slot &s = slots[encoded - 1];
+        return (s.active || s.pins) && s.generation == generation ? &s : nullptr;
+    }
     void remove(Slot &s) {
         s.active = false;
+        if (s.pins) {
+            /* The caller's handle is dead, but retained handles keep resolving. */
+            s.retired = true;
+            return;
+        }
+        s.retired = false;
+        s.generation = (s.generation % 0xFFF) + 1;
+        s.value = T{};
+    }
+    /* Final release of a retired slot once its last pin is gone. */
+    void release(Slot &s) {
+        s.active = false;
+        s.retired = false;
+        s.pins = 0;
         s.generation = (s.generation % 0xFFF) + 1;
         s.value = T{};
     }
@@ -172,6 +200,27 @@ struct RenderTarget {
     int32_t width = 0;
     int32_t height = 0;
 };
+/* One recorded render pass: a target, its load action, and the packed command
+   records that run inside it. */
+struct BatchPass {
+    uint32_t kind = 0;
+    Handle target = 0;
+    uint32_t clear = 0;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    std::vector<uint8_t> commands;
+};
+/* A resource handle pinned by a batch, addressed by pool kind and slot. */
+struct RetainedResource {
+    uint32_t kind = 0;
+    uint32_t slot = 0;
+};
+struct Batch {
+    Handle owner = 0;
+    std::vector<BatchPass> passes;
+    std::vector<RetainedResource> retained;
+    bool sealed = false;
+};
 
 static Pool<Renderer, RendererKind, 8> renderer_pool;
 static Pool<Buffer, BufferKind, 256> buffer_pool;
@@ -185,6 +234,7 @@ static Pool<Image, ImageKind, 256> image_pool;
 static Pool<ImageBuilder, ImageBuilderKind, 16> image_builder_pool;
 static Pool<Sampler, SamplerKind, 256> sampler_pool;
 static Pool<RenderTarget, RenderTargetKind, 128> render_target_pool;
+static Pool<Batch, BatchKind, 64> batch_pool;
 static Handle active_renderer = 0;
 static Handle selected_renderer = 0;
 static const nk_sokol_api *selected_api = nullptr;
@@ -849,30 +899,142 @@ nkgpu_result nkgpu_renderer_create(nk_surface surface, nkgpu_renderer *out) {
 static void destroy_render_target(Pool<RenderTarget, RenderTargetKind, 128>::Slot &slot,
                                   bool backend_available) {
     auto &target = slot.value;
-    if (backend_available && target.depth_attachment.id)
-        sg_destroy_view(target.depth_attachment);
-    if (backend_available && target.color_attachment.id)
-        sg_destroy_view(target.color_attachment);
-    if (backend_available && target.depth.id)
-        sg_destroy_image(target.depth);
-    if (target.image.id)
-        nk_graphics_image_release(target.image);
+    /*
+     * A batch may still hold this target; keep the backend objects and the
+     * imported image alive until the last pin is released.
+     */
+    if (!slot.pins) {
+        if (backend_available && target.depth_attachment.id)
+            sg_destroy_view(target.depth_attachment);
+        if (backend_available && target.color_attachment.id)
+            sg_destroy_view(target.color_attachment);
+        if (backend_available && target.depth.id)
+            sg_destroy_image(target.depth);
+        if (target.image.id)
+            nk_graphics_image_release(target.image);
+    }
     record_resource_destroyed(target.owner);
     render_target_pool.remove(slot);
 }
+/*
+ * Releases one retained pin. When the slot was retired by its owner and no
+ * other batch holds it, the deferred backend objects are destroyed here.
+ */
+static void unpin_resource(uint32_t kind, uint32_t slot_index, bool backend_available) {
+    if (!slot_index)
+        return;
+    switch (kind) {
+    case RenderTargetKind: {
+        if (slot_index > render_target_pool.slots.size())
+            return;
+        auto &s = render_target_pool.slots[slot_index - 1];
+        if (s.pins)
+            --s.pins;
+        /* Without a reachable backend the slot stays retired and is
+           released when the renderer is torn down. */
+        if (!s.pins && s.retired && backend_available) {
+            auto &target = s.value;
+            if (target.depth_attachment.id)
+                sg_destroy_view(target.depth_attachment);
+            if (target.color_attachment.id)
+                sg_destroy_view(target.color_attachment);
+            if (target.depth.id)
+                sg_destroy_image(target.depth);
+            if (target.image.id)
+                nk_graphics_image_release(target.image);
+            render_target_pool.release(s);
+        }
+        break;
+    }
+    case SamplerKind: {
+        if (slot_index > sampler_pool.slots.size())
+            return;
+        auto &s = sampler_pool.slots[slot_index - 1];
+        if (s.pins)
+            --s.pins;
+        /* Without a reachable backend the slot stays retired and is
+           released when the renderer is torn down. */
+        if (!s.pins && s.retired && backend_available) {
+            sg_destroy_sampler(s.value.object);
+            sampler_pool.release(s);
+        }
+        break;
+    }
+    case ImageKind: {
+        if (slot_index > image_pool.slots.size())
+            return;
+        auto &s = image_pool.slots[slot_index - 1];
+        if (s.pins)
+            --s.pins;
+        /* Without a reachable backend the slot stays retired and is
+           released when the renderer is torn down. */
+        if (!s.pins && s.retired && backend_available) {
+            sg_destroy_view(s.value.view);
+            sg_destroy_image(s.value.object);
+            image_pool.release(s);
+        }
+        break;
+    }
+    case PipelineKind: {
+        if (slot_index > pipeline_pool.slots.size())
+            return;
+        auto &s = pipeline_pool.slots[slot_index - 1];
+        if (s.pins)
+            --s.pins;
+        /* Without a reachable backend the slot stays retired and is
+           released when the renderer is torn down. */
+        if (!s.pins && s.retired && backend_available) {
+            sg_destroy_pipeline(s.value.object);
+            pipeline_pool.release(s);
+        }
+        break;
+    }
+    case BufferKind: {
+        if (slot_index > buffer_pool.slots.size())
+            return;
+        auto &s = buffer_pool.slots[slot_index - 1];
+        if (s.pins)
+            --s.pins;
+        /* Without a reachable backend the slot stays retired and is
+           released when the renderer is torn down. */
+        if (!s.pins && s.retired && backend_available) {
+            sg_destroy_buffer(s.value.object);
+            buffer_pool.release(s);
+        }
+        break;
+    }
+    default:
+        break;
+    }
+}
 static void destroy_owned(Handle owner, bool backend_available) {
-    for (auto &s : render_target_pool.slots)
-        if (s.active && s.value.owner == owner)
-            destroy_render_target(s, backend_available);
-    for (auto &s : sampler_pool.slots)
+    /*
+     * Retired-but-pinned slots keep their backend objects for batch replay, so
+     * they are hidden from the loops below. Releasing the batches first drops
+     * every pin; `retired` keeps the slot visible here so nothing leaks.
+     */
+    for (auto &s : batch_pool.slots)
         if (s.active && s.value.owner == owner) {
+            for (const auto &retained : s.value.retained)
+                unpin_resource(retained.kind, retained.slot, backend_available);
+            batch_pool.remove(s);
+        }
+    for (auto &s : render_target_pool.slots)
+        if ((s.active || s.retired || s.pins) && s.value.owner == owner) {
+            s.pins = 0;
+            destroy_render_target(s, backend_available);
+        }
+    for (auto &s : sampler_pool.slots)
+        if ((s.active || s.retired || s.pins) && s.value.owner == owner) {
+            s.pins = 0;
             if (backend_available)
                 sg_destroy_sampler(s.value.object);
             record_resource_destroyed(owner);
             sampler_pool.remove(s);
         }
     for (auto &s : image_pool.slots)
-        if (s.active && s.value.owner == owner) {
+        if ((s.active || s.retired || s.pins) && s.value.owner == owner) {
+            s.pins = 0;
             if (backend_available) {
                 sg_destroy_view(s.value.view);
                 sg_destroy_image(s.value.object);
@@ -881,7 +1043,8 @@ static void destroy_owned(Handle owner, bool backend_available) {
             image_pool.remove(s);
         }
     for (auto &s : pipeline_pool.slots)
-        if (s.active && s.value.owner == owner) {
+        if ((s.active || s.retired || s.pins) && s.value.owner == owner) {
+            s.pins = 0;
             if (backend_available)
                 sg_destroy_pipeline(s.value.object);
             record_resource_destroyed(owner);
@@ -895,7 +1058,8 @@ static void destroy_owned(Handle owner, bool backend_available) {
             shader_pool.remove(s);
         }
     for (auto &s : buffer_pool.slots)
-        if (s.active && s.value.owner == owner) {
+        if ((s.active || s.retired || s.pins) && s.value.owner == owner) {
+            s.pins = 0;
             if (backend_available)
                 sg_destroy_buffer(s.value.object);
             record_resource_destroyed(owner);
@@ -1322,7 +1486,8 @@ nkgpu_result nkgpu_buffer_destroy(nkgpu_renderer r, nkgpu_buffer h) {
     const nkgpu_result ready = prepare_resource_destroy(r, backend_available);
     if (ready != NKGPU_OK)
         return ready;
-    if (backend_available)
+    /* A batch may still reference this buffer; defer its backend destruction. */
+    if (backend_available && !s->pins)
         sg_destroy_buffer(s->value.object);
     record_resource_destroyed(r);
     buffer_pool.remove(*s);
@@ -1716,7 +1881,8 @@ nkgpu_result nkgpu_pipeline_destroy(nkgpu_renderer r, nkgpu_pipeline h) {
     const nkgpu_result ready = prepare_resource_destroy(r, backend_available);
     if (ready != NKGPU_OK)
         return ready;
-    if (backend_available)
+    /* A batch may still reference this pipeline; defer its backend destruction. */
+    if (backend_available && !s->pins)
         sg_destroy_pipeline(s->value.object);
     record_resource_destroyed(r);
     pipeline_pool.remove(*s);
@@ -2206,7 +2372,8 @@ nkgpu_result nkgpu_image_destroy(nkgpu_renderer r, nkgpu_image h) {
     const nkgpu_result ready = prepare_resource_destroy(r, backend_available);
     if (ready != NKGPU_OK)
         return ready;
-    if (backend_available) {
+    /* A batch may still reference this image; defer its backend destruction. */
+    if (backend_available && !s->pins) {
         sg_destroy_view(s->value.view);
         sg_destroy_image(s->value.object);
     }
@@ -2254,7 +2421,8 @@ nkgpu_result nkgpu_sampler_destroy(nkgpu_renderer r, nkgpu_sampler h) {
     const nkgpu_result ready = prepare_resource_destroy(r, backend_available);
     if (ready != NKGPU_OK)
         return ready;
-    if (backend_available)
+    /* A batch may still reference this sampler; defer its backend destruction. */
+    if (backend_available && !s->pins)
         sg_destroy_sampler(s->value.object);
     record_resource_destroyed(r);
     sampler_pool.remove(*s);
@@ -2363,6 +2531,13 @@ static nkgpu_result submit_command(nkgpu_renderer r, uint32_t opcode, const uint
         return size == 12
                    ? nkgpu_draw(r, read_u32(payload), read_u32(payload + 4), read_u32(payload + 8))
                    : NKGPU_ERROR_INVALID_ARGUMENT;
+    case NKGPU_COMMAND_APPLY_SCISSOR:
+        return size == 20 ? nkgpu_apply_scissor(r, read_u32(payload),
+                                                static_cast<int32_t>(read_u32(payload + 4)),
+                                                static_cast<int32_t>(read_u32(payload + 8)),
+                                                static_cast<int32_t>(read_u32(payload + 12)),
+                                                static_cast<int32_t>(read_u32(payload + 16)))
+                          : NKGPU_ERROR_INVALID_ARGUMENT;
     default:
         return NKGPU_ERROR_INVALID_ARGUMENT;
     }
@@ -2390,6 +2565,360 @@ nkgpu_result nkgpu_submit_commands(nkgpu_renderer r, const uint8_t *commands, ui
     }
     return NKGPU_OK;
 }
+
+/* ------------------------------------------------------------------------- */
+/* Sealed submission batches                                                 */
+/* ------------------------------------------------------------------------- */
+
+/*
+ * Pins one resource handle for a batch. The handle must still resolve, and a
+ * second reference to the same slot shares the existing pin instead of
+ * stacking a new one.
+ */
+static bool retain_batch_resource(Batch &batch, uint32_t kind, Handle handle) {
+    const uint32_t slot_index = handle & 0xFFFFu;
+    if (!slot_index)
+        return false;
+    /* A batch may only describe work on its own renderer's resources. */
+    bool resolvable = false;
+    switch (kind) {
+    case BufferKind: {
+        auto *slot = buffer_pool.get_retained(handle);
+        resolvable = slot && slot->value.owner == batch.owner;
+        break;
+    }
+    case PipelineKind: {
+        auto *slot = pipeline_pool.get_retained(handle);
+        resolvable = slot && slot->value.owner == batch.owner;
+        break;
+    }
+    case ImageKind: {
+        auto *slot = image_pool.get_retained(handle);
+        resolvable = slot && slot->value.owner == batch.owner;
+        break;
+    }
+    case SamplerKind: {
+        auto *slot = sampler_pool.get_retained(handle);
+        resolvable = slot && slot->value.owner == batch.owner;
+        break;
+    }
+    case RenderTargetKind: {
+        auto *slot = render_target_pool.get_retained(handle);
+        resolvable = slot && slot->value.owner == batch.owner;
+        break;
+    }
+    default:
+        return false;
+    }
+    if (!resolvable)
+        return false;
+    for (const auto &retained : batch.retained)
+        if (retained.kind == kind && retained.slot == slot_index)
+            return true;
+    switch (kind) {
+    case BufferKind:
+        ++buffer_pool.slots[slot_index - 1].pins;
+        break;
+    case PipelineKind:
+        ++pipeline_pool.slots[slot_index - 1].pins;
+        break;
+    case ImageKind:
+        ++image_pool.slots[slot_index - 1].pins;
+        break;
+    case SamplerKind:
+        ++sampler_pool.slots[slot_index - 1].pins;
+        break;
+    case RenderTargetKind:
+        ++render_target_pool.slots[slot_index - 1].pins;
+        break;
+    default:
+        return false;
+    }
+    batch.retained.push_back(RetainedResource{kind, slot_index});
+    return true;
+}
+
+/*
+ * Validates a packed command stream and retains everything it references. The
+ * stream uses the same record format as nkgpu_submit_commands(), so a batch
+ * rejects malformed or stale records at append time instead of at submit.
+ */
+static bool retain_batch_records(Batch &batch, const uint8_t *commands, uint32_t size) {
+    uint32_t offset = 0;
+    while (offset < size) {
+        if (size - offset < 8)
+            return false;
+        const uint32_t opcode = read_u32(commands + offset);
+        const uint32_t record_size = read_u32(commands + offset + 4);
+        if (record_size < 8 || record_size > size - offset)
+            return false;
+        const uint8_t *payload = commands + offset + 8;
+        const uint32_t payload_size = record_size - 8;
+        switch (opcode) {
+        case NKGPU_COMMAND_APPLY_PIPELINE:
+            if (payload_size != 4 || !retain_batch_resource(batch, PipelineKind, read_u32(payload)))
+                return false;
+            break;
+        case NKGPU_COMMAND_APPLY_VERTEX_BUFFER:
+            if (payload_size != 12 || read_u32(payload) >= SG_MAX_VERTEXBUFFER_BINDSLOTS ||
+                !retain_batch_resource(batch, BufferKind, read_u32(payload + 4)))
+                return false;
+            break;
+        case NKGPU_COMMAND_APPLY_INDEX_BUFFER:
+            if (payload_size != 8 || !retain_batch_resource(batch, BufferKind, read_u32(payload)))
+                return false;
+            break;
+        case NKGPU_COMMAND_APPLY_IMAGE:
+            if (payload_size != 8 || read_u32(payload) >= SG_MAX_VIEW_BINDSLOTS ||
+                !retain_batch_resource(batch, ImageKind, read_u32(payload + 4)))
+                return false;
+            break;
+        case NKGPU_COMMAND_APPLY_SAMPLER:
+            if (payload_size != 8 || read_u32(payload) >= SG_MAX_SAMPLER_BINDSLOTS ||
+                !retain_batch_resource(batch, SamplerKind, read_u32(payload + 4)))
+                return false;
+            break;
+        case NKGPU_COMMAND_APPLY_UNIFORMS:
+            if (payload_size < 8 || payload_size - 8 != read_u32(payload + 4))
+                return false;
+            break;
+        case NKGPU_COMMAND_APPLY_SCISSOR:
+            if (payload_size != 20)
+                return false;
+            break;
+        case NKGPU_COMMAND_DRAW:
+            if (payload_size != 12)
+                return false;
+            break;
+        default:
+            return false;
+        }
+        offset += record_size;
+    }
+    return offset == size;
+}
+
+/* Resolves the backend availability a deferred destroy would need, once. */
+static bool batch_backend_available(Handle owner) {
+    bool available = false;
+    if (prepare_resource_destroy(owner, available) != NKGPU_OK)
+        return false;
+    return available;
+}
+
+/* Releases every pin recorded from `from` onward. */
+static void release_batch_retention(Batch &batch, size_t from) {
+    bool backend_available = false;
+    bool availability_known = false;
+    while (batch.retained.size() > from) {
+        const RetainedResource retained = batch.retained.back();
+        batch.retained.pop_back();
+        if (!availability_known) {
+            backend_available = batch_backend_available(batch.owner);
+            availability_known = true;
+        }
+        unpin_resource(retained.kind, retained.slot, backend_available);
+    }
+}
+
+/*
+ * Retired slots stay hidden from the registry so their owner's handle is
+ * invalid, but the shared interpreter resolves handles through it during
+ * replay. Re-activating a retired slot for the duration of a submission keeps
+ * one implementation of command replay instead of two.
+ */
+static void set_retained_active(uint32_t kind, uint32_t slot_index, bool active) {
+    if (!slot_index)
+        return;
+    switch (kind) {
+    case RenderTargetKind:
+        if (slot_index <= render_target_pool.slots.size()) {
+            auto &s = render_target_pool.slots[slot_index - 1];
+            if (s.retired)
+                s.active = active;
+        }
+        break;
+    case SamplerKind:
+        if (slot_index <= sampler_pool.slots.size()) {
+            auto &s = sampler_pool.slots[slot_index - 1];
+            if (s.retired)
+                s.active = active;
+        }
+        break;
+    case ImageKind:
+        if (slot_index <= image_pool.slots.size()) {
+            auto &s = image_pool.slots[slot_index - 1];
+            if (s.retired)
+                s.active = active;
+        }
+        break;
+    case PipelineKind:
+        if (slot_index <= pipeline_pool.slots.size()) {
+            auto &s = pipeline_pool.slots[slot_index - 1];
+            if (s.retired)
+                s.active = active;
+        }
+        break;
+    case BufferKind:
+        if (slot_index <= buffer_pool.slots.size()) {
+            auto &s = buffer_pool.slots[slot_index - 1];
+            if (s.retired)
+                s.active = active;
+        }
+        break;
+    default:
+        break;
+    }
+}
+
+nkgpu_result nkgpu_batch_begin(nkgpu_renderer renderer, nkgpu_batch *out_batch) {
+    if (!out_batch)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid batch output");
+    *out_batch = 0;
+    auto *slot = renderer_pool.get(renderer);
+    if (!slot)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    if (slot->value.state == RendererState::Lost)
+        return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
+    Batch batch{};
+    batch.owner = renderer;
+    const Handle handle = batch_pool.add(batch);
+    if (!handle)
+        return fail(NKGPU_ERROR_OUT_OF_MEMORY, "batch pool full");
+    *out_batch = handle;
+    return NKGPU_OK;
+}
+
+nkgpu_result nkgpu_batch_append_pass(nkgpu_batch batch, const nkgpu_batch_pass *pass) {
+    auto *slot = batch_pool.get(batch);
+    if (!slot)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale batch");
+    if (slot->value.sealed)
+        return fail(NKGPU_ERROR_WRONG_STATE, "batch is sealed");
+    if (!pass || pass->struct_size < sizeof(nkgpu_batch_pass))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid batch pass");
+    if (pass->kind != NKGPU_BATCH_PASS_WINDOW && pass->kind != NKGPU_BATCH_PASS_TARGET)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid batch pass kind");
+    if (pass->clear > 1)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid batch pass clear flag");
+    BatchPass recorded{};
+    recorded.kind = pass->kind;
+    recorded.clear = pass->clear;
+    if (pass->kind == NKGPU_BATCH_PASS_WINDOW) {
+        if (!pass->width || !pass->height || pass->width > INT32_MAX || pass->height > INT32_MAX)
+            return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid batch window-pass extent");
+        recorded.width = pass->width;
+        recorded.height = pass->height;
+    } else {
+        auto *target = render_target_pool.get(pass->target);
+        if (!target || target->value.owner != slot->value.owner)
+            return fail(NKGPU_ERROR_INVALID_HANDLE, "invalid or foreign render target");
+        const size_t before = slot->value.retained.size();
+        if (!retain_batch_resource(slot->value, RenderTargetKind, pass->target)) {
+            release_batch_retention(slot->value, before);
+            return fail(NKGPU_ERROR_INVALID_HANDLE, "render target cannot be retained");
+        }
+        recorded.target = pass->target;
+    }
+    slot->value.passes.push_back(std::move(recorded));
+    return NKGPU_OK;
+}
+
+nkgpu_result nkgpu_batch_append_command(nkgpu_batch batch, const uint8_t *commands, uint32_t size) {
+    auto *slot = batch_pool.get(batch);
+    if (!slot)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale batch");
+    if (slot->value.sealed)
+        return fail(NKGPU_ERROR_WRONG_STATE, "batch is sealed");
+    if (!commands || !size)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "empty command stream");
+    if (slot->value.passes.empty())
+        return fail(NKGPU_ERROR_WRONG_STATE, "append a pass before its commands");
+    const size_t before = slot->value.retained.size();
+    if (!retain_batch_records(slot->value, commands, size)) {
+        /* Roll back any pins taken before the invalid record. */
+        release_batch_retention(slot->value, before);
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid batch command stream");
+    }
+    auto &pass = slot->value.passes.back();
+    pass.commands.insert(pass.commands.end(), commands, commands + size);
+    return NKGPU_OK;
+}
+
+nkgpu_result nkgpu_batch_seal(nkgpu_batch batch) {
+    auto *slot = batch_pool.get(batch);
+    if (!slot)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale batch");
+    if (slot->value.sealed)
+        return NKGPU_OK;
+    if (slot->value.passes.empty())
+        return fail(NKGPU_ERROR_WRONG_STATE, "batch has no passes");
+    slot->value.sealed = true;
+    return NKGPU_OK;
+}
+
+nkgpu_result nkgpu_batch_submit(nkgpu_renderer renderer, nkgpu_batch batch) {
+    auto *rs = renderer_pool.get(renderer);
+    auto *bs = batch_pool.get(batch);
+    if (!rs || !bs)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer or batch");
+    if (rs->value.state == RendererState::Lost)
+        return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
+    if (bs->value.owner != renderer)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "batch belongs to another renderer");
+    if (!bs->value.sealed)
+        return fail(NKGPU_ERROR_WRONG_STATE, "batch is not sealed");
+    if (bs->value.passes.empty())
+        return fail(NKGPU_ERROR_WRONG_STATE, "batch has no passes");
+    /* Reject an impossible submission before any GPU state changes. */
+    if (rs->value.state != RendererState::Ready || active_renderer)
+        return fail(NKGPU_ERROR_WRONG_STATE, "a renderer frame is already active");
+    for (const auto &pass : bs->value.passes)
+        if (pass.kind == NKGPU_BATCH_PASS_TARGET && !render_target_pool.get_retained(pass.target))
+            return fail(NKGPU_ERROR_INVALID_HANDLE, "batch render target is unavailable");
+
+    for (const auto &retained : bs->value.retained)
+        set_retained_active(retained.kind, retained.slot, true);
+
+    nkgpu_result result = nkgpu_frame_begin(renderer);
+    size_t index = 0;
+    while (result == NKGPU_OK && index < bs->value.passes.size()) {
+        const BatchPass &pass = bs->value.passes[index];
+        result =
+            pass.kind == NKGPU_BATCH_PASS_WINDOW
+                ? nkgpu_begin_window_pass(renderer, pass.width, pass.height, pass.clear)
+                : nkgpu_begin_target_pass(renderer, nkgpu_render_target{pass.target}, pass.clear);
+        if (result != NKGPU_OK)
+            break;
+        if (!pass.commands.empty())
+            result = nkgpu_submit_commands(renderer, pass.commands.data(),
+                                           static_cast<uint32_t>(pass.commands.size()));
+        const nkgpu_result ended = nkgpu_end_pass(renderer);
+        if (result == NKGPU_OK)
+            result = ended;
+        ++index;
+    }
+    if (active_renderer == renderer) {
+        /* Presentation stays with the surface owner, so the frame is not presented. */
+        const nkgpu_result committed = nkgpu_end_frame_deferred_present(renderer);
+        if (result == NKGPU_OK)
+            result = committed;
+    }
+
+    for (const auto &retained : bs->value.retained)
+        set_retained_active(retained.kind, retained.slot, false);
+    return result;
+}
+
+nkgpu_result nkgpu_batch_destroy(nkgpu_batch batch) {
+    auto *slot = batch_pool.get(batch);
+    if (!slot)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale batch");
+    release_batch_retention(slot->value, 0);
+    batch_pool.remove(*slot);
+    return NKGPU_OK;
+}
+
 static nkgpu_result end_frame(nkgpu_renderer r, bool present_surface) {
     auto *rs = renderer_pool.get(r);
     if (!rs)

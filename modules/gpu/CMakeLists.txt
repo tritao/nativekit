@@ -122,6 +122,24 @@ if(NK_BUILD_TESTS)
                 LABELS "graphics;gpu"
                 TIMEOUT 15
                 ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
+            add_executable(nativekit_gpu_batch_submit_test tests/batch_submit.cpp)
+            target_compile_features(nativekit_gpu_batch_submit_test PRIVATE cxx_std_17)
+            target_compile_definitions(nativekit_gpu_batch_submit_test PRIVATE NKGPU_TESTING=1)
+            target_include_directories(nativekit_gpu_batch_submit_test PRIVATE src)
+            target_link_libraries(nativekit_gpu_batch_submit_test PRIVATE NativeKit::gpu
+                NativeKit::nativekit)
+            if(NOT EMSCRIPTEN AND NOT ANDROID)
+                find_package(OpenGL QUIET)
+                if(TARGET OpenGL::GL)
+                    target_link_libraries(nativekit_gpu_batch_submit_test PRIVATE OpenGL::GL)
+                endif()
+            endif()
+            add_test(NAME nativekit_gpu_batch_submit
+                COMMAND ${NKGPU_XVFB_RUN} -a $<TARGET_FILE:nativekit_gpu_batch_submit_test>)
+            set_tests_properties(nativekit_gpu_batch_submit PROPERTIES
+                LABELS "graphics;gpu"
+                TIMEOUT 15
+                ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
         endif()
     endif()
 endif()
