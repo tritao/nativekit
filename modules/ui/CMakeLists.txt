@@ -153,6 +153,7 @@ if(NK_BUILD_TESTS)
     add_executable(nativekit_ui_skribidi_adapter_test
         tests/skribidi_adapter.cpp
         src/prepare/skribidi_adapter.cpp
+        src/prepare/skribidi_document_engine.cpp
         src/prepare/system_fonts.cpp)
     target_include_directories(nativekit_ui_skribidi_adapter_test PRIVATE src)
     target_compile_definitions(nativekit_ui_skribidi_adapter_test PRIVATE

@@ -30,8 +30,9 @@ struct SkribidiEditTransaction {
  * NativeKit's first document-engine adapter backed by Skribidi's editor core.
  *
  * The public surface deliberately speaks in code-point offsets, matching the
- * TextDocumentEngine contract. Platform-specific byte/UTF-16 conversion stays
- * outside this class.
+ * TextDocumentEngine contract. Exact byte/UTF-16 conversion helpers are
+ * available for platform adapters, but are not part of the generic editor
+ * interface.
  */
 class SkribidiDocumentEngine {
   public:
@@ -46,6 +47,10 @@ class SkribidiDocumentEngine {
 
     std::string text_utf8() const;
     int32_t document_length() const;
+    bool codepoint_to_utf8_byte_offset(int32_t codepoint_offset, int32_t *utf8_byte_offset) const;
+    bool utf8_byte_offset_to_codepoint(int32_t utf8_byte_offset, int32_t *codepoint_offset) const;
+    bool codepoint_to_utf16_unit_offset(int32_t codepoint_offset, int32_t *utf16_unit_offset) const;
+    bool utf16_unit_offset_to_codepoint(int32_t utf16_unit_offset, int32_t *codepoint_offset) const;
     TextRange selection() const;
     uint8_t selection_affinity() const;
     TextRange composition() const;

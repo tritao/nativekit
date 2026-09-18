@@ -1,4 +1,5 @@
 #include "prepare/skribidi_adapter.h"
+#include "prepare/skribidi_document_engine.h"
 
 #include <cmath>
 #include <initializer_list>
@@ -24,15 +25,13 @@ bool check_grapheme_boundaries(SkribidiAdapter &adapter, const char *text,
         return false;
 
     const std::vector<int32_t> boundaries(expected);
-    if (boundaries.size() < 2 || boundaries.front() != 0 ||
-        boundaries.back() < boundaries.front())
+    if (boundaries.size() < 2 || boundaries.front() != 0 || boundaries.back() < boundaries.front())
         return false;
     for (std::size_t index = 0; index + 1 < boundaries.size(); ++index) {
         const int32_t current = boundaries[index];
         const int32_t next = boundaries[index + 1];
         if (next <= current || adapter.align_grapheme(current) != current ||
-            adapter.next_grapheme(current) != next ||
-            adapter.previous_grapheme(next) != current)
+            adapter.next_grapheme(current) != next || adapter.previous_grapheme(next) != current)
             return false;
         for (int32_t offset = current + 1; offset < next; ++offset) {
             const int32_t aligned = adapter.align_grapheme(offset);
@@ -58,9 +57,8 @@ bool check_text_geometry(SkribidiAdapter &adapter, const char *text, float width
         return false;
 
     const auto finite_rect = [](const TextRect &rect) {
-        return std::isfinite(rect.x) && std::isfinite(rect.y) &&
-               std::isfinite(rect.width) && std::isfinite(rect.height) &&
-               rect.width >= 0.0f && rect.height >= 0.0f;
+        return std::isfinite(rect.x) && std::isfinite(rect.y) && std::isfinite(rect.width) &&
+               std::isfinite(rect.height) && rect.width >= 0.0f && rect.height >= 0.0f;
     };
     const auto selection = adapter.selection_rects({0, 0}, {text_length, 0});
     if (selection.size() < minimum_lines)
@@ -71,21 +69,54 @@ bool check_text_geometry(SkribidiAdapter &adapter, const char *text, float width
 
     bool saw_multiple_lines = false;
     for (std::size_t index = 1; index < selection.size(); ++index)
-        saw_multiple_lines = saw_multiple_lines ||
-                             std::abs(selection[index].y - selection[index - 1].y) > 0.01f;
+        saw_multiple_lines =
+            saw_multiple_lines || std::abs(selection[index].y - selection[index - 1].y) > 0.01f;
     if (minimum_lines > 1 && !saw_multiple_lines)
         return false;
 
     for (int32_t offset = 0; offset <= text_length; ++offset) {
         const TextCaret caret = adapter.caret({offset, 0});
-        if (!std::isfinite(caret.x) || !std::isfinite(caret.y) ||
-            !std::isfinite(caret.ascender) || !std::isfinite(caret.descender))
+        if (!std::isfinite(caret.x) || !std::isfinite(caret.y) || !std::isfinite(caret.ascender) ||
+            !std::isfinite(caret.descender))
             return false;
         const TextPosition hit = adapter.hit_test(caret.x, caret.y);
         if (hit.offset < 0 || hit.offset > text_length)
             return false;
     }
     return true;
+}
+
+bool check_document_offset_mappings(const std::shared_ptr<SkribidiFontCollection> &fonts) {
+    TextLayoutOptions options;
+    options.font_size = 18.0f;
+    const char *text = "A\xC3\xA9"
+                       "e\xCC\x81"
+                       "\xF0\x9F\x99\x82"
+                       "\n"
+                       "日本";
+    SkribidiDocumentEngine document(fonts, text, 400.0f, options);
+    if (!document.valid() || document.document_length() != 8)
+        return false;
+
+    constexpr int32_t utf8_bytes = 17;
+    constexpr int32_t utf16_units = 9;
+    for (int32_t codepoint = 0; codepoint <= document.document_length(); ++codepoint) {
+        int32_t utf8 = -1;
+        int32_t utf16 = -1;
+        int32_t roundtrip = -1;
+        if (!document.codepoint_to_utf8_byte_offset(codepoint, &utf8) ||
+            !document.codepoint_to_utf16_unit_offset(codepoint, &utf16) ||
+            !document.utf8_byte_offset_to_codepoint(utf8, &roundtrip) || roundtrip != codepoint ||
+            !document.utf16_unit_offset_to_codepoint(utf16, &roundtrip) || roundtrip != codepoint)
+            return false;
+    }
+
+    int32_t ignored = 0;
+    return document.codepoint_to_utf8_byte_offset(document.document_length(), &ignored) &&
+           ignored == utf8_bytes &&
+           document.codepoint_to_utf16_unit_offset(document.document_length(), &ignored) &&
+           ignored == utf16_units && !document.utf8_byte_offset_to_codepoint(2, &ignored) &&
+           !document.utf16_unit_offset_to_codepoint(5, &ignored);
 }
 
 } // namespace
@@ -102,6 +133,8 @@ int main() {
         shared_fonts->font_load_count() != 1 ||
         shared_first.font_collection_generation() != shared_second.font_collection_generation())
         return 49;
+    if (!check_document_offset_mappings(shared_fonts))
+        return 51;
     PreparedGlyphs shared_glyphs;
     if (!shared_first.prepare_glyphs(0.0f, 0.0f, 1.0f, GlyphMode::Alpha, shared_glyphs) ||
         shared_glyphs.vertices.empty())
@@ -403,8 +436,7 @@ int main() {
         return 62;
     if (!check_grapheme_boundaries(adapter, "각", {0, 3}))
         return 63;
-    if (!check_text_geometry(adapter, "مرحبا NativeKit — שלום — こんにちは", 110.0f,
-                             30, 2))
+    if (!check_text_geometry(adapter, "مرحبا NativeKit — שלום — こんにちは", 110.0f, 30, 2))
         return 64;
     if (!check_text_geometry(adapter, "one\ntwo\nthree", 180.0f, 13, 3))
         return 65;

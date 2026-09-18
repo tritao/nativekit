@@ -181,6 +181,30 @@ int32_t SkribidiDocumentEngine::document_length() const {
     return valid() ? skb_editor_get_text_utf32_count(editor_) : 0;
 }
 
+bool SkribidiDocumentEngine::codepoint_to_utf8_byte_offset(int32_t codepoint_offset,
+                                                           int32_t *utf8_byte_offset) const {
+    return valid() && skb_editor_codepoint_to_utf8_byte_offset(
+                          editor_, codepoint_offset, utf8_byte_offset) == SKB_RESULT_SUCCESS;
+}
+
+bool SkribidiDocumentEngine::utf8_byte_offset_to_codepoint(int32_t utf8_byte_offset,
+                                                           int32_t *codepoint_offset) const {
+    return valid() && skb_editor_utf8_byte_offset_to_codepoint(
+                          editor_, utf8_byte_offset, codepoint_offset) == SKB_RESULT_SUCCESS;
+}
+
+bool SkribidiDocumentEngine::codepoint_to_utf16_unit_offset(int32_t codepoint_offset,
+                                                            int32_t *utf16_unit_offset) const {
+    return valid() && skb_editor_codepoint_to_utf16_unit_offset(
+                          editor_, codepoint_offset, utf16_unit_offset) == SKB_RESULT_SUCCESS;
+}
+
+bool SkribidiDocumentEngine::utf16_unit_offset_to_codepoint(int32_t utf16_unit_offset,
+                                                            int32_t *codepoint_offset) const {
+    return valid() && skb_editor_utf16_unit_offset_to_codepoint(
+                          editor_, utf16_unit_offset, codepoint_offset) == SKB_RESULT_SUCCESS;
+}
+
 TextRange SkribidiDocumentEngine::selection() const {
     if (!valid())
         return {};
