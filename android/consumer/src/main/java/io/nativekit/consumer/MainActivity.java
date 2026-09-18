@@ -11,6 +11,7 @@ import android.view.MotionEvent;
 import android.view.SurfaceView;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
+import android.view.inputmethod.SurroundingText;
 import android.text.InputType;
 import android.graphics.RectF;
 import android.view.accessibility.AccessibilityNodeInfo;
@@ -221,6 +222,14 @@ public final class MainActivity extends Activity {
             editorInfo.initialSelStart != 8 || editorInfo.initialSelEnd != 8 ||
             !"hello \ud83d\ude00".contentEquals(editor.getTextBeforeCursor(32, 0)))
             throw new AssertionError("text input snapshot was not exposed to the IME");
+        if (editor.getTextAfterCursor(32, 0).length() != 0 ||
+            editor.getSelectedText(0) != null)
+            throw new AssertionError("partial Android text window was exposed as a full document");
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            editor.getSurroundingText(4, 4, 0) != null)
+            throw new AssertionError("partial Android text window was exposed as a full document");
+        if (editor.setComposingText(new String(new char[] {'\ud800'}), 1))
+            throw new AssertionError("malformed UTF-16 was accepted by the IME adapter");
         editor.beginBatchEdit();
         editor.setComposingText("に", 1);
         editor.setComposingText("日本", 1);
@@ -230,6 +239,22 @@ public final class MainActivity extends Activity {
         editor.deleteSurroundingText(1, 0);
         editor.setComposingRegion(0, 2);
         editor.finishComposingText();
+
+        if (nativePrepareTextInputWindow(surfaceProbe) != 0)
+            throw new AssertionError("could not prepare the complete text window");
+        EditorInfo windowInfo = new EditorInfo();
+        InputConnection windowEditor = view.onCreateInputConnection(windowInfo);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            SurroundingText surrounding = windowEditor.getSurroundingText(4, 4, 0);
+            if (surrounding == null ||
+                !"o \ud83d\ude00".contentEquals(surrounding.getText()) ||
+                surrounding.getSelectionStart() != 4 || surrounding.getSelectionEnd() != 4 ||
+                surrounding.getOffset() != 4)
+                throw new AssertionError("Android surrounding-text contract was not preserved");
+        }
+        if (!windowEditor.setSelection(8, 8) ||
+            !windowEditor.deleteSurroundingText(1, 0))
+            throw new AssertionError("surrogate-safe Android deletion failed");
 
         MotionEvent.PointerCoords gamepadCoordinates = coordinates(0, 0, 0f);
         gamepadCoordinates.setAxisValue(MotionEvent.AXIS_X, 0.5f);
@@ -373,6 +398,7 @@ public final class MainActivity extends Activity {
     private static native int nativeVulkanSurfaceRecreatedProbe(long surface);
     private static native int nativeResourceClipboardProbe();
     private static native int nativePrepareTextInput(long surface);
+    private static native int nativePrepareTextInputWindow(long surface);
     private static native int nativePrepareAccessibility(long surface);
     private static native int nativeUpdateAccessibility(long surface);
     private static native int nativeAccessibilityProbe(long surface);
