@@ -85,7 +85,6 @@ SkribidiDocumentEngine::SkribidiDocumentEngine(std::shared_ptr<SkribidiFontColle
     const int32_t initial_length = skb_editor_get_text_utf32_count(editor_);
     skb_editor_set_selection(editor_, {{initial_length, SKB_AFFINITY_NONE},
                                        {initial_length, SKB_AFFINITY_NONE}});
-    composition_ = {-1, -1};
 }
 
 SkribidiDocumentEngine::~SkribidiDocumentEngine() {
@@ -147,6 +146,11 @@ bool SkribidiDocumentEngine::apply_edit(const SkribidiEditTransaction &transacti
             {transaction.selection_end,
              static_cast<skb_caret_affinity_t>(transaction.selection_affinity)},
         },
+        .has_composition = transaction.has_composition,
+        .composition_range = {
+            {transaction.composition_start, SKB_AFFINITY_NONE},
+            {transaction.composition_end, SKB_AFFINITY_NONE},
+        },
         .history_kind = static_cast<skb_edit_history_kind_t>(transaction.history_kind),
     };
     const skb_result_t result = skb_editor_apply_transaction(editor_, temporary_, &edit);
@@ -154,13 +158,6 @@ bool SkribidiDocumentEngine::apply_edit(const SkribidiEditTransaction &transacti
     if (result != SKB_RESULT_SUCCESS)
         return false;
 
-    if (transaction.has_composition) {
-        composition_ = {transaction.composition_start, transaction.composition_end};
-        has_composition_ = true;
-    } else {
-        composition_ = {-1, -1};
-        has_composition_ = false;
-    }
     return true;
 }
 
@@ -194,11 +191,14 @@ uint8_t SkribidiDocumentEngine::selection_affinity() const {
 }
 
 TextRange SkribidiDocumentEngine::composition() const {
-    return composition_;
+    if (!valid() || !skb_editor_has_composition(editor_))
+        return {-1, -1};
+    const auto value = skb_editor_get_composition(editor_);
+    return {value.start.offset, value.end.offset};
 }
 
 bool SkribidiDocumentEngine::has_composition() const {
-    return has_composition_;
+    return valid() && skb_editor_has_composition(editor_);
 }
 
 bool SkribidiDocumentEngine::undo() {
@@ -206,8 +206,6 @@ bool SkribidiDocumentEngine::undo() {
         return false;
     skb_temp_alloc_reset(temporary_);
     skb_editor_undo(editor_, temporary_);
-    composition_ = {-1, -1};
-    has_composition_ = false;
     return true;
 }
 
@@ -216,8 +214,6 @@ bool SkribidiDocumentEngine::redo() {
         return false;
     skb_temp_alloc_reset(temporary_);
     skb_editor_redo(editor_, temporary_);
-    composition_ = {-1, -1};
-    has_composition_ = false;
     return true;
 }
 

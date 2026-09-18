@@ -63,8 +63,6 @@ class SkribidiDocumentEngine {
     std::shared_ptr<SkribidiFontCollection> fonts_;
     skb_temp_alloc_t *temporary_ = nullptr;
     skb_editor_t *editor_ = nullptr;
-    TextRange composition_{};
-    bool has_composition_ = false;
 };
 
 } // namespace nkui
