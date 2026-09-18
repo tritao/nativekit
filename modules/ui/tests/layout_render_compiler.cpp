@@ -1,12 +1,14 @@
 #include "layout/layout_engine.h"
 #include "layout/layout_render_compiler.h"
 #include "render/render_plan_executor.h"
+#include "render/sealed_render_plan.h"
 #include "render/ui_renderer.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -147,8 +149,7 @@ class MutableSurfaceProducer final : public SurfaceProducer {
         return true;
     }
     uint32_t generation() const override { return generation_value; }
-    SurfaceRenderResult render(UiRenderer &, ResourceId,
-                               const SurfaceDescriptor &) override {
+    SurfaceRenderResult render(UiRenderer &, ResourceId, const SurfaceDescriptor &) override {
         return SurfaceRenderResult::Rendered;
     }
 
@@ -401,7 +402,8 @@ int main() {
     const auto decorated_position =
         std::find_if(decorated_commands.begin(), decorated_commands.end(),
                      [](const RenderCommand &command) { return command.custom_payload; });
-    if (decorated_position == decorated_commands.end() || decorated_position == decorated_commands.begin() ||
+    if (decorated_position == decorated_commands.end() ||
+        decorated_position == decorated_commands.begin() ||
         (decorated_position - 1)->kind != RenderCommandKind::Path ||
         decorated_position->resource.value != custom_path.value)
         return 24;
@@ -443,8 +445,8 @@ int main() {
         bounded_pass.target_descriptor.width != 30 || bounded_pass.target_descriptor.height != 15 ||
         bounded_pass.target_descriptor.origin_x != 12.0f ||
         bounded_pass.target_descriptor.origin_y != 9.0f ||
-        bounded_pass.commands.front().transform != std::array<float, 6>{1.5f, 0.0f, 0.0f, 1.5f,
-                                                                          15.0f, 36.0f} ||
+        bounded_pass.commands.front().transform !=
+            std::array<float, 6>{1.5f, 0.0f, 0.0f, 1.5f, 15.0f, 36.0f} ||
         bounded_pass.commands.front().scissor_x != -9.0f ||
         bounded_pass.commands.front().scissor_y != -1.5f ||
         bounded_pass.commands.front().scissor_width != 9.0f ||
@@ -719,6 +721,76 @@ int main() {
     if (!compiler.compile(hidden_snapshot, main_target, 1.5f, frame, &compile_error) ||
         !frame.plan().passes.front().commands.empty())
         return 19;
+
+    /*
+     * Sealing owns the plan and every resource it references, so a sealed plan
+     * keeps rendering after its builder is gone.
+     */
+    const ResourceId sealed_image = make_resource_id(ResourceKind::Image, 1, 900);
+    auto sealed_texture = std::make_shared<PreparedTexture>();
+    sealed_texture->width = 2;
+    sealed_texture->height = 2;
+    sealed_texture->pixels.assign(16, 0x7f);
+    FrameResources sealed_resources;
+    if (!sealed_resources.bind_image(sealed_image, sealed_texture))
+        return 20;
+    RenderPlan sealed_source;
+    RenderPass sealed_pass;
+    sealed_pass.target = main_target;
+    RenderCommand sealed_command;
+    sealed_command.kind = RenderCommandKind::Image;
+    sealed_command.resource = sealed_image;
+    sealed_command.width = 2.0f;
+    sealed_command.height = 2.0f;
+    sealed_pass.commands.push_back(sealed_command);
+    sealed_source.passes.push_back(sealed_pass);
+
+    RenderPlanSealError seal_error;
+    std::shared_ptr<const SealedRenderPlan> sealed =
+        SealedRenderPlan::seal(std::move(sealed_source), std::move(sealed_resources), &seal_error);
+    if (!sealed || seal_error.message)
+        return 21;
+    /* Drop both builder-side references: the sealed plan owns them now. */
+    sealed_texture.reset();
+    sealed_source = RenderPlan{};
+    RecordingRenderer sealed_backend;
+    RenderExecutionError sealed_execution_error;
+    if (!execute_render_plan(sealed_backend, *sealed, {main_target, frame_target},
+                             &sealed_execution_error) ||
+        sealed_backend.pass_count != 1 || sealed_backend.commit_count != 1)
+        return 22;
+    const auto *sealed_ref = sealed->resources().image(sealed_image);
+    if (!sealed_ref || !sealed_ref->image || sealed_ref->image->pixels.size() != 16)
+        return 23;
+    /* Reference counting keeps the plan alive past the original handle. */
+    std::shared_ptr<const SealedRenderPlan> kept = sealed;
+    sealed.reset();
+    if (!kept || kept->pass_count() != 1 || kept->resources().image(sealed_image) == nullptr)
+        return 24;
+    kept.reset();
+
+    /* Borrowed resources cannot be sealed. */
+    PreparedTexture borrowed_texture;
+    borrowed_texture.width = borrowed_texture.height = 1;
+    borrowed_texture.pixels = {1, 2, 3, 4};
+    FrameResources borrowed_resources;
+    RenderPlanSealError borrowed_error;
+    if (!borrowed_resources.bind_image(sealed_image, borrowed_texture))
+        return 25;
+    if (SealedRenderPlan::seal(RenderPlan{}, std::move(borrowed_resources), &borrowed_error) ||
+        !borrowed_error.message)
+        return 26;
+
+    /* A live result producer is a callback and cannot be sealed either. */
+    MutableSurfaceProducer sealed_producer;
+    const ResourceId sealed_producer_target = make_resource_id(ResourceKind::RenderTarget, 1, 901);
+    FrameResources producer_resources;
+    RenderPlanSealError producer_error;
+    if (!producer_resources.bind_surface(sealed_producer_target, sealed_producer))
+        return 27;
+    if (SealedRenderPlan::seal(RenderPlan{}, std::move(producer_resources), &producer_error) ||
+        !producer_error.message)
+        return 28;
 
     std::cout << "PASS: layout snapshot compiles through NativeKit render plan\n";
     return 0;

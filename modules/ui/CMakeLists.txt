@@ -24,6 +24,7 @@ add_library(nativekit_ui ${NK_LIBRARY_TYPE}
     src/prepare/system_fonts.cpp
     src/render/frame_resources.cpp
     src/render/render_plan_executor.cpp
+    src/render/sealed_render_plan.cpp
     src/render/ui_renderer.cpp)
 add_library(NativeKit::ui ALIAS nativekit_ui)
 target_compile_features(nativekit_ui PRIVATE cxx_std_20)
@@ -169,7 +170,8 @@ if(NK_BUILD_TESTS)
         src/render/frame_resources.cpp)
     target_include_directories(nativekit_ui_frame_resources_test PRIVATE
         src "${PROJECT_SOURCE_DIR}/include")
-    target_link_libraries(nativekit_ui_frame_resources_test PRIVATE nkui_nanovg_core)
+    target_link_libraries(nativekit_ui_frame_resources_test PRIVATE
+        nkui_nanovg_core NativeKit::nativekit)
     add_test(NAME nativekit_ui_frame_resources COMMAND nativekit_ui_frame_resources_test)
     add_executable(nativekit_ui_layout_engine_test
         tests/layout_engine.cpp
@@ -215,15 +217,16 @@ if(NK_BUILD_TESTS)
         src/prepare/nanovg_path.cpp
         src/prepare/skribidi_adapter.cpp
         src/prepare/system_fonts.cpp
-        src/render/frame_resources.cpp
-        src/render/render_plan_executor.cpp
-        src/compositor/render_plan.cpp)
+    src/render/frame_resources.cpp
+    src/render/render_plan_executor.cpp
+    src/render/sealed_render_plan.cpp
+    src/compositor/render_plan.cpp)
     target_include_directories(nativekit_ui_layout_render_compiler_test PRIVATE
         src "${PROJECT_SOURCE_DIR}/include" "${NK_VENDOR_DIR}/clay")
     target_compile_definitions(nativekit_ui_layout_render_compiler_test PRIVATE
         NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
     target_link_libraries(nativekit_ui_layout_render_compiler_test PRIVATE
-        nkui_nanovg_core nkui_skribidi)
+        nkui_nanovg_core nkui_skribidi NativeKit::nativekit)
     add_test(NAME nativekit_ui_layout_render_compiler
         COMMAND nativekit_ui_layout_render_compiler_test)
     add_executable(nativekit_ui_layout_session_test

@@ -112,6 +112,21 @@ revisions; `frame.deltaSeconds` is still advanced by the animation and gesture
 systems, but ordinary frame-time jitter does not invalidate an otherwise static
 submission. The cache key must identify the caller's build inputs.
 
+## Frame building and sealed plans
+
+One frame has three stages: layout and recording build a display list, the
+compiler turns it into a `RenderPlan` plus the prepared resources it references,
+and the renderer executes that plan. A compiled plan is already a value, but its
+resource set borrows prepared paths, glyph batches, images, and graphics-image
+handles from the frame that produced them.
+
+`SealedRenderPlan::seal()` crosses that boundary. A sealed plan owns the plan and
+every resource it references, so no layout frame, session, or display list has to
+stay alive, and a live `SurfaceProducer` - a callback by nature - is rejected
+rather than captured. Sealed plans are reference counted and execute through the
+same `execute_render_plan()` entry point, which is what will let one thread render
+frame N while another builds frame N+1.
+
 ## Custom native window chrome
 
 Desktop Haxe UI trees can provide their own borderless-window hit testing. Attach
