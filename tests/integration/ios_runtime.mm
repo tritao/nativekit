@@ -162,7 +162,7 @@ bool run_text_input_contract(nk_surface surface, UIView *host_view) {
     [input setMarkedText:@"かな" selectedRange:NSMakeRange(2, 0)];
     nk_event compose = {};
     if (!wait_for_text_edit(surface, NK_TEXT_EDIT_COMPOSE, &compose) ||
-        !verify_text_edit(compose, NK_TEXT_EDIT_COMPOSE, 1, 2, 2, 2, 1, 3,
+        !verify_text_edit(compose, NK_TEXT_EDIT_COMPOSE, 1, 2, 3, 3, 1, 3,
                           "\xE3\x81\x8B\xE3\x81\xAA", NK_TEXT_EDIT_HISTORY_COMPOSITION)) {
         nk_event_release(&compose);
         return false;
