@@ -93,3 +93,20 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
           script: cd android && ./gradlew :sample:connectedDebugAndroidTest :consumer:connectedDebugAndroidTest || { adb logcat -d -t 2000 '*:W'; exit 1; }
+      - name: Verify render-thread lifecycle test executed
+        working-directory: android
+        run: |
+          report=$(find sample/build/outputs/androidTest-results/connected -name 'TEST-*.xml' -print -quit)
+          test -n "$report"
+          grep -q 'graphicsSurfaceFrameRecoversAcrossResizeAndLoss' "$report"
+      - name: Upload Android instrumentation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-instrumentation-${{ matrix.api-level }}
+          if-no-files-found: ignore
+          path: |
+            android/sample/build/reports/androidTests/**
+            android/sample/build/outputs/androidTest-results/**
+            android/consumer/build/reports/androidTests/**
+            android/consumer/build/outputs/androidTest-results/**
