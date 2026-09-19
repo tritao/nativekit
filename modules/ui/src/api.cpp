@@ -2991,20 +2991,37 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
         frame_info->logical_height <= 0.0f || frame_info->framebuffer_width <= 0 ||
         frame_info->framebuffer_height <= 0 || frame_info->pixel_scale <= 0.0f)
         return NKUI_ERROR_INVALID_ARGUMENT;
-    if (!surface || nk_surface_set_frame_mode(surface, NK_SURFACE_FRAME_ON_DEMAND) != NK_OK ||
-        nk_surface_make_current(surface) != NK_OK)
+    const bool threaded = nk::core::render_executor_physical();
+    if (!surface || nk_surface_set_frame_mode(surface, NK_SURFACE_FRAME_ON_DEMAND) != NK_OK)
         return NKUI_ERROR_INVALID_ARGUMENT;
+    nk_surface_frame frame = NK_INVALID_HANDLE;
+    struct AcquiredFrameGuard {
+        nk_surface_frame frame = NK_INVALID_HANDLE;
+        bool handed_off = false;
+        ~AcquiredFrameGuard() {
+            if (frame != NK_INVALID_HANDLE && !handed_off)
+                nk_surface_cancel_frame(frame);
+        }
+    } frame_guard;
     nk_surface_frame_target frame_target{};
     frame_target.struct_size = sizeof(frame_target);
-    if (nk_surface_get_frame_target(surface, &frame_target) != NK_OK)
-        return NKUI_ERROR_RENDERING;
+    if (threaded) {
+        if (nk_surface_acquire_frame(surface, &frame, &frame_target) != NK_OK)
+            return NKUI_ERROR_RENDERING;
+        frame_guard.frame = frame;
+    } else {
+        if (nk_surface_make_current(surface) != NK_OK ||
+            nk_surface_get_frame_target(surface, &frame_target) != NK_OK)
+            return NKUI_ERROR_RENDERING;
+    }
     std::scoped_lock lock(renderers_mutex, lists_mutex, resources_mutex, layout_sessions_mutex);
     auto *renderer_slot = resolve(renderer);
     auto *session_state = resolve(session);
     if (!renderer_slot || !session_state || !session_state->submitted)
         return NKUI_ERROR_INVALID_HANDLE;
-    discard_stale_renderer(*renderer_slot, frame_target, surface);
-    if (!renderer_slot->renderer) {
+    if (!threaded)
+        discard_stale_renderer(*renderer_slot, frame_target, surface);
+    if (!threaded && !renderer_slot->renderer) {
         auto ui_renderer = nkui::create_ui_renderer(surface);
         if (!ui_renderer)
             return NKUI_ERROR_RENDERING;
@@ -3309,23 +3326,38 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
             !engine->prepare_glyphs(glyphs->origin_x, glyphs->origin_y, glyphs->pixel_scale,
                                     glyphs->mode, *glyphs))
             return NKUI_ERROR_RENDERING;
-    const bool new_backend = !renderer_slot->renderer->valid();
-    if (new_backend && !renderer_slot->renderer->initialize())
+    auto *session_text_engine = session_state->frame.text_engine();
+    if (!sealable && threaded)
         return NKUI_ERROR_RENDERING;
-    if (new_backend && !register_custom_effects(*renderer_slot))
-        return NKUI_ERROR_RENDERING;
-    if (auto *engine = session_state->frame.text_engine())
-        if (!renderer_slot->renderer->uploadAtlases(*engine, new_backend))
+    if (!threaded) {
+        const bool new_backend = !renderer_slot->renderer->valid();
+        if (new_backend && !renderer_slot->renderer->initialize())
             return NKUI_ERROR_RENDERING;
-    for (auto *engine : text_engines)
-        if (!renderer_slot->renderer->uploadAtlases(*engine, new_backend))
+        if (new_backend && !register_custom_effects(*renderer_slot))
             return NKUI_ERROR_RENDERING;
+        if (session_text_engine)
+            if (!renderer_slot->renderer->uploadAtlases(*session_text_engine, new_backend))
+                return NKUI_ERROR_RENDERING;
+        for (auto *engine : text_engines)
+            if (!renderer_slot->renderer->uploadAtlases(*engine, new_backend))
+                return NKUI_ERROR_RENDERING;
+    }
     if (sealable) {
         nkui::RenderPlanSealError seal_error;
         auto sealed = nkui::SealedRenderPlan::seal(std::move(session_state->frame.plan()),
                                                    std::move(owned_resources), &seal_error);
         if (!sealed)
             return NKUI_ERROR_OUT_OF_MEMORY;
+        if (threaded) {
+            if (session_text_engine)
+                text_engines.push_back(session_text_engine);
+            auto *submission = new RenderSubmission{renderer, surface, frame, frame_target,
+                                                    std::move(sealed), std::move(text_engines)};
+            if (!enqueue_render_submission(submission))
+                return NKUI_ERROR_RENDERING;
+            frame_guard.handed_off = true;
+            return NKUI_OK;
+        }
         const bool sealed_executed = nkui::execute_render_plan(*renderer_slot->renderer, *sealed,
                                                                {main_target, frame_target});
         return sealed_executed ? NKUI_OK : NKUI_ERROR_RENDERING;
