@@ -194,9 +194,39 @@ int main() {
             result = 16;
             goto cleanup;
         }
-        if (!check(nk_surface_present(surface) == NK_OK, "nk_surface_present")) {
-            result = 17;
-            goto cleanup;
+        if (nk_executor_is_current(NK_EXECUTOR_RENDER)) {
+            if (!check(nk_surface_present(surface) == NK_OK, "nk_surface_present")) {
+                result = 17;
+                goto cleanup;
+            }
+        } else {
+            /* Physical render executors own the acquired frame and present it
+             * after submission.  Wait through the renderer execution lock so
+             * cleanup cannot race the render thread's global GPU adapter. */
+            nkui_renderer_stats stats{};
+            stats.struct_size = sizeof(stats);
+            bool completed = false;
+            for (int attempt = 0; attempt < 500; ++attempt) {
+                if (nkui_renderer_get_stats(renderer, &stats) == NKUI_OK && stats.gpu_frames > 0) {
+                    completed = true;
+                    break;
+                }
+                if (!check(nk_wait_events_timeout(0.01) == NK_OK, "nk_wait_events_timeout")) {
+                    result = 17;
+                    goto cleanup;
+                }
+            }
+            if (!check(completed, "physical render completion")) {
+                result = 17;
+                goto cleanup;
+            }
+            nk_event completion_event{};
+            completion_event.struct_size = sizeof(completion_event);
+            if (!check(nk_poll_event(&completion_event) == NK_OK, "nk_poll_event completion")) {
+                result = 17;
+                goto cleanup;
+            }
+            nk_event_release(&completion_event);
         }
     }
 cleanup:
