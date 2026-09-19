@@ -34,6 +34,40 @@ public final class NativeKitHost implements AutoCloseable {
         return nativeCreateWebView(handle, width, height, initialUrl);
     }
 
+    /** Creates an OpenGL ES SurfaceView-backed graphics surface for lifecycle testing. */
+    public long createGraphicsSurface(int width, int height) {
+        if (handle == 0)
+            throw new IllegalStateException("host is closed");
+        return nativeCreateSurface(handle, width, height);
+    }
+
+    /** Resizes a graphics surface through its platform-owned SurfaceView. */
+    public int setGraphicsSurfaceBounds(long surface, int width, int height) {
+        if (handle == 0)
+            throw new IllegalStateException("host is closed");
+        return nativeSetSurfaceBounds(surface, width, height);
+    }
+
+    /** Shows or hides a graphics surface, exercising SurfaceView loss/recreation. */
+    public int setGraphicsSurfaceVisible(long surface, boolean visible) {
+        if (handle == 0)
+            throw new IllegalStateException("host is closed");
+        return nativeSetSurfaceVisible(surface, visible);
+    }
+
+    /** Holds an acquired frame on RENDER before submitting it. */
+    public int probeGraphicsSurfaceFrame(long surface, int delayMillis) {
+        if (handle == 0)
+            throw new IllegalStateException("host is closed");
+        return nativeProbeSurfaceFrame(surface, delayMillis);
+    }
+
+    public int destroyGraphicsSurface(long surface) {
+        if (handle == 0)
+            throw new IllegalStateException("host is closed");
+        return nativeDestroySurface(surface);
+    }
+
     /** Navigates the selected WebView backward, returning false when it has no back history. */
     public boolean handleBack(long webView) {
         if (handle == 0 || webView == 0)
@@ -161,6 +195,11 @@ public final class NativeKitHost implements AutoCloseable {
     private static native long nativeAttach(ViewGroup container);
     private static native long nativeCreateWebView(long host, int width, int height,
                                                    String initialUrl);
+    private static native long nativeCreateSurface(long host, int width, int height);
+    private static native int nativeSetSurfaceBounds(long surface, int width, int height);
+    private static native int nativeSetSurfaceVisible(long surface, boolean visible);
+    private static native int nativeProbeSurfaceFrame(long surface, int delayMillis);
+    private static native int nativeDestroySurface(long surface);
     private static native boolean nativeHandleBack(long webView);
     private static native void nativeSetLifecycle(long handle, int state);
     private static native int nativeDispatchIntent(long handle, Intent intent);

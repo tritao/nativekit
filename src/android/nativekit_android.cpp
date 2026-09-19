@@ -40,6 +40,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cmath>
@@ -48,7 +49,9 @@
 #include <limits>
 #include <memory>
 #include <mutex>
+#include <new>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -129,6 +132,82 @@ nk_orientation last_device_orientation = NK_ORIENTATION_UNKNOWN;
 nk_handle keep_awake_host = NK_INVALID_HANDLE;
 std::unordered_map<int32_t, std::shared_ptr<AndroidJoystick>> joysticks;
 EGLDisplay egl_display = EGL_NO_DISPLAY;
+
+struct AndroidFrameProbe {
+    nk_surface_frame frame = NK_INVALID_HANDLE;
+    nk_surface_frame_target target{};
+    uint32_t delay_ms = 0;
+    nk_result render_result = NK_ERROR_UNKNOWN;
+};
+
+void discard_android_frame_probe(void *data) noexcept {
+    delete static_cast<AndroidFrameProbe *>(data);
+}
+
+struct AndroidFrameCompletion {
+    nk_surface_frame frame = NK_INVALID_HANDLE;
+    nk_result render_result = NK_ERROR_UNKNOWN;
+};
+
+void destroy_android_frame_completion(void *data) noexcept {
+    auto *completion = static_cast<AndroidFrameCompletion *>(data);
+    if (completion && completion->frame != NK_INVALID_HANDLE) {
+        (void)nk_surface_cancel_frame(completion->frame);
+        completion->frame = NK_INVALID_HANDLE;
+    }
+    delete completion;
+}
+
+void NK_CALL finish_android_frame_completion(void *data) {
+    auto *completion = static_cast<AndroidFrameCompletion *>(data);
+    if (!completion || completion->frame == NK_INVALID_HANDLE)
+        return;
+    if (completion->render_result == NK_OK)
+        (void)nk_surface_present_frame(completion->frame);
+    else
+        (void)nk_surface_cancel_frame(completion->frame);
+    completion->frame = NK_INVALID_HANDLE;
+}
+
+void destroy_unsubmitted_android_completion(AndroidFrameCompletion *completion) noexcept {
+    if (!completion)
+        return;
+    /* This only runs when dispatching the platform completion failed. The
+       runtime shutdown path owns the still-open frame ticket in that case. */
+    completion->frame = NK_INVALID_HANDLE;
+    delete completion;
+}
+
+void NK_CALL run_android_frame_probe(void *data) {
+    auto *probe = static_cast<AndroidFrameProbe *>(data);
+    if (!probe)
+        return;
+    if (probe->delay_ms)
+        std::this_thread::sleep_for(std::chrono::milliseconds(probe->delay_ms));
+    const nk_result bound = nk_graphics_bind_frame_target(&probe->target);
+    if (bound == NK_OK) {
+        probe->render_result = nk_frame_backend_submit(&probe->target);
+        if (probe->render_result == NK_OK)
+            nk::core::mark_frame_render_submitted(probe->frame);
+        (void)nk_graphics_unbind_frame_target(&probe->target);
+    } else {
+        probe->render_result = bound;
+    }
+    auto *completion = new (std::nothrow) AndroidFrameCompletion{probe->frame,
+                                                                  probe->render_result};
+    probe->frame = NK_INVALID_HANDLE;
+    if (!completion) {
+        /* The render task cleanup owns probe after it was queued. */
+        return;
+    }
+    if (nk::core::dispatch_to_executor(NK_EXECUTOR_PLATFORM, &finish_android_frame_completion,
+                                       completion, &destroy_android_frame_completion,
+                                       sizeof(AndroidFrameCompletion)) != NK_OK) {
+        /* Runtime shutdown drains the ticket registry after RENDER joins. */
+        destroy_unsubmitted_android_completion(completion);
+    }
+}
+
 std::unordered_map<nk_request_id, nk_handle> evaluations;
 std::unordered_map<nk_request_id, NavigationDecision> navigation_decisions;
 struct DialogRequest {
@@ -3813,6 +3892,64 @@ JNIEXPORT jlong JNICALL Java_io_nativekit_NativeKitHost_nativeAttach(JNIEnv *env
     if (nk_mobile_host_attach(&options, &result) != NK_OK)
         return 0;
     return static_cast<jlong>(result);
+}
+
+JNIEXPORT jlong JNICALL Java_io_nativekit_NativeKitHost_nativeCreateSurface(JNIEnv *, jclass,
+                                                                            jlong host_handle,
+                                                                            jint width,
+                                                                            jint height) {
+    nk_surface_options options{};
+    options.struct_size = sizeof(options);
+    options.api = NK_GRAPHICS_OPENGL_ES;
+    options.width = width;
+    options.height = height;
+    nk_surface result = NK_INVALID_HANDLE;
+    return nk_surface_create(static_cast<nk_handle>(host_handle), &options, &result) == NK_OK
+               ? static_cast<jlong>(result)
+               : 0;
+}
+
+JNIEXPORT jint JNICALL Java_io_nativekit_NativeKitHost_nativeSetSurfaceBounds(
+    JNIEnv *, jclass, jlong surface_handle, jint width, jint height) {
+    return nk_surface_set_bounds(static_cast<nk_surface>(surface_handle), 0, 0, width, height);
+}
+
+JNIEXPORT jint JNICALL Java_io_nativekit_NativeKitHost_nativeSetSurfaceVisible(
+    JNIEnv *, jclass, jlong surface_handle, jboolean visible) {
+    return nk_surface_show(static_cast<nk_surface>(surface_handle), visible == JNI_TRUE ? 1 : 0);
+}
+
+JNIEXPORT jint JNICALL Java_io_nativekit_NativeKitHost_nativeProbeSurfaceFrame(
+    JNIEnv *, jclass, jlong surface_handle, jint delay_ms) {
+    nk_surface_frame frame = NK_INVALID_HANDLE;
+    nk_surface_frame_target target{};
+    target.struct_size = sizeof(target);
+    const auto acquired = nk_surface_acquire_frame(static_cast<nk_surface>(surface_handle), &frame,
+                                                   &target);
+    if (acquired != NK_OK)
+        return acquired;
+    auto *probe = new (std::nothrow) AndroidFrameProbe{};
+    if (!probe) {
+        (void)nk_surface_cancel_frame(frame);
+        return NK_ERROR_OUT_OF_MEMORY;
+    }
+    probe->frame = frame;
+    probe->target = target;
+    probe->delay_ms = delay_ms > 0 ? static_cast<uint32_t>(delay_ms) : 0;
+    const auto queued = nk::core::dispatch_to_render(&run_android_frame_probe, probe,
+                                                     &discard_android_frame_probe,
+                                                     sizeof(AndroidFrameProbe));
+    if (queued != NK_OK) {
+        (void)nk_surface_cancel_frame(frame);
+        delete probe;
+        return queued;
+    }
+    return NK_OK;
+}
+
+JNIEXPORT jint JNICALL Java_io_nativekit_NativeKitHost_nativeDestroySurface(
+    JNIEnv *, jclass, jlong surface_handle) {
+    return nk_surface_destroy(static_cast<nk_surface>(surface_handle));
 }
 
 JNIEXPORT jlong JNICALL Java_io_nativekit_NativeKitHost_nativeCreateWebView(JNIEnv *env, jclass,
