@@ -812,6 +812,113 @@ int main() {
             result = 30;
         }
 
+        /* Resize a surface while its ticket is owned by RENDER.  The backend
+           must defer swapchain/drawable mutation until the frame finishes, so
+           the next acquire observes the new dimensions. */
+        if (!result) {
+            BlockingRenderTask resize_blocker{};
+            if (!start_blocking_render_task(resize_blocker)) {
+                result = 36;
+                goto cleanup;
+            }
+            nk::core::reset_render_surface_api_violations();
+            nk::core::set_render_surface_api_guard(true);
+            nkgpu_test_forbid_surface_target_queries();
+            const int32_t previous_width = scheduler_width[0];
+            const int32_t previous_height = scheduler_height[0];
+            const int32_t resized_logical_width = scheduler_window_options.width + 64;
+            const int32_t resized_logical_height = scheduler_window_options.height + 48;
+            if (!check(nkui_renderer_render_frame(renderer, scheduler_list, scheduler_surfaces[0],
+                                                  &scheduler_frame) == NKUI_OK,
+                       "submit resize-boundary frame") ||
+                !check(nkgpu_surface_resize(scheduler_surfaces[0], resized_logical_width,
+                                            resized_logical_height) == NKGPU_OK,
+                       "resize render-owned surface")) {
+                nk::core::set_render_surface_api_guard(false);
+                nkgpu_test_allow_surface_target_queries();
+                {
+                    std::lock_guard lock(resize_blocker.mutex);
+                    resize_blocker.release = true;
+                }
+                resize_blocker.condition.notify_one();
+                result = 36;
+                goto cleanup;
+            }
+            {
+                std::lock_guard lock(resize_blocker.mutex);
+                resize_blocker.release = true;
+            }
+            resize_blocker.condition.notify_one();
+            RenderTask resize_barrier{};
+            resize_barrier.function = [](RenderTask &task) noexcept { task.success = true; };
+            if (!dispatch_render_task(resize_barrier)) {
+                nk::core::set_render_surface_api_guard(false);
+                nkgpu_test_allow_surface_target_queries();
+                result = 36;
+                goto cleanup;
+            }
+            nk_event resize_completion{};
+            resize_completion.struct_size = sizeof(resize_completion);
+            if (!check(nk_poll_event(&resize_completion) == NK_OK,
+                       "drain resize-boundary completion")) {
+                nk::core::set_render_surface_api_guard(false);
+                nkgpu_test_allow_surface_target_queries();
+                result = 36;
+                goto cleanup;
+            }
+            nk_event_release(&resize_completion);
+            const uint64_t resize_surface_call_violations =
+                nk::core::render_surface_api_violations();
+            nk::core::set_render_surface_api_guard(false);
+            nkgpu_test_allow_surface_target_queries();
+            int32_t resized_width = 0;
+            int32_t resized_height = 0;
+            nk_surface_frame_target resized_target{};
+            if (!check(resize_surface_call_violations == 0,
+                       "resize-boundary render surface API ownership") ||
+                !check(wait_surface_ready(scheduler_windows[0], scheduler_surfaces[0],
+                                          resized_width, resized_height, resized_target),
+                       "observe resize-boundary dimensions") ||
+                !check(resized_width != previous_width || resized_height != previous_height,
+                       "resize-boundary dimensions changed")) {
+                result = 36;
+                goto cleanup;
+            }
+            nk_surface_frame resized_frame = NK_INVALID_HANDLE;
+            nk_surface_frame_target resized_frame_target{};
+            resized_frame_target.struct_size = sizeof(resized_frame_target);
+            if (!check(nk_surface_acquire_frame(scheduler_surfaces[0], &resized_frame,
+                                                &resized_frame_target) == NK_OK,
+                       "acquire resized render-owned surface") ||
+                !check(resized_frame_target.width == resized_width &&
+                           resized_frame_target.height == resized_height,
+                       "resized render-owned frame target")) {
+                if (resized_frame != NK_INVALID_HANDLE)
+                    (void)nk_surface_cancel_frame(resized_frame);
+                result = 36;
+                goto cleanup;
+            }
+            if (!check(nk_surface_cancel_frame(resized_frame) == NK_OK,
+                       "cancel resized render-owned surface")) {
+                result = 36;
+                goto cleanup;
+            }
+            if (!check(nkgpu_surface_resize(scheduler_surfaces[0], scheduler_window_options.width,
+                                            scheduler_window_options.height) == NKGPU_OK,
+                       "restore resize-boundary surface")) {
+                result = 36;
+                goto cleanup;
+            }
+            int32_t restored_width = 0;
+            int32_t restored_height = 0;
+            nk_surface_frame_target restored_target{};
+            if (!wait_surface_ready(scheduler_windows[0], scheduler_surfaces[0], restored_width,
+                                    restored_height, restored_target)) {
+                result = 36;
+                goto cleanup;
+            }
+        }
+
         /* A failed RENDER-to-PLATFORM completion must retain its frame ticket
            until the next platform turn can cancel it.  Force that dispatch to
            fail, then submit another frame: enqueue_render_submission() drains

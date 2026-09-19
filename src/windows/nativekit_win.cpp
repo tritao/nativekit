@@ -1811,6 +1811,17 @@ bool rebuild_surface_targets(WinSurfaceResource &surface, int32_t width, int32_t
     return true;
 }
 
+bool apply_pending_resize(WinSurfaceResource &surface) {
+    if (!surface.resize_pending)
+        return true;
+    const int32_t width = surface.pending_width;
+    const int32_t height = surface.pending_height;
+    /* The caller has closed the current frame, so the rebuild can now mutate
+       the swapchain and recreate its render/depth targets. */
+    surface.resize_pending = false;
+    return rebuild_surface_targets(surface, width, height);
+}
+
 LRESULT CALLBACK surface_window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
     auto *surface =
         reinterpret_cast<WinSurfaceResource *>(GetWindowLongPtrW(window, GWLP_USERDATA));
@@ -4337,19 +4348,14 @@ nk_result NK_CALL nk_surface_present(nk_handle handle) {
     resource->frame_prepared = false;
     const HRESULT result = resource->swapchain->Present(1, 0);
     if (result == DXGI_STATUS_OCCLUDED)
-        return NK_OK;
+        return apply_pending_resize(*resource) ? NK_OK : NK_ERROR_UNKNOWN;
     if (FAILED(result)) {
         if (d3d11_device_failure(*resource, result))
             emit_surface_lost(*resource);
         return fail(NK_ERROR_UNKNOWN, "could not present the Direct3D surface");
     }
-    if (resource->resize_pending) {
-        const int32_t width = resource->pending_width;
-        const int32_t height = resource->pending_height;
-        resource->resize_pending = false;
-        if (!rebuild_surface_targets(*resource, width, height))
-            return NK_ERROR_UNKNOWN;
-    }
+    if (!apply_pending_resize(*resource))
+        return NK_ERROR_UNKNOWN;
     return NK_OK;
 }
 
@@ -4383,13 +4389,8 @@ nk_result NK_CALL nk_frame_backend_finish(nk_handle handle, const nk_surface_fra
     if (!resource->frame_prepared)
         return fail(NK_ERROR_INVALID_REQUEST, "Direct3D surface has no prepared frame");
     resource->frame_prepared = false;
-    if (resource->resize_pending) {
-        const int32_t width = resource->pending_width;
-        const int32_t height = resource->pending_height;
-        resource->resize_pending = false;
-        if (!rebuild_surface_targets(*resource, width, height))
-            return NK_ERROR_UNKNOWN;
-    }
+    if (!apply_pending_resize(*resource))
+        return NK_ERROR_UNKNOWN;
     return NK_OK;
 }
 
