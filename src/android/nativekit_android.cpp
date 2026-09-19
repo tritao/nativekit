@@ -97,10 +97,11 @@ struct AndroidSurface final : nk::core::Resource {
     int32_t height = 0;
     int32_t framebuffer_width = 0;
     int32_t framebuffer_height = 0;
-    int32_t pending_framebuffer_width = 0;
-    int32_t pending_framebuffer_height = 0;
-    bool frame_prepared = false;
-    bool resize_pending = false;
+    std::atomic<int32_t> pending_framebuffer_width{0};
+    std::atomic<int32_t> pending_framebuffer_height{0};
+    /* PLATFORM/JNI and RENDER both observe this lifecycle bit. */
+    std::atomic<bool> frame_prepared{false};
+    std::atomic<bool> resize_pending{false};
     std::atomic<bool> surface_destroy_pending{false};
     jobject pending_surface = nullptr;
     std::unordered_map<nk_accessibility_node_id, nk_accessibility_node_id> semantic_parents;
@@ -737,7 +738,7 @@ void emit_surface_ready(const AndroidSurface &resource) {
 }
 
 void release_surface_window(AndroidSurface &resource) {
-    if (resource.frame_prepared) {
+    if (resource.frame_prepared.load(std::memory_order_acquire)) {
         resource.surface_destroy_pending.store(true, std::memory_order_release);
         return;
     }
@@ -754,9 +755,9 @@ void release_surface_window(AndroidSurface &resource) {
     }
     resource.framebuffer_width = 0;
     resource.framebuffer_height = 0;
-    resource.pending_framebuffer_width = 0;
-    resource.pending_framebuffer_height = 0;
-    resource.resize_pending = false;
+    resource.pending_framebuffer_width.store(0, std::memory_order_relaxed);
+    resource.pending_framebuffer_height.store(0, std::memory_order_relaxed);
+    resource.resize_pending.store(false, std::memory_order_release);
     resource.surface_destroy_pending.store(false, std::memory_order_release);
     if (was_ready && !resource.destroying) {
         nk::core::QueuedEvent lost;
@@ -798,7 +799,7 @@ nk_result destroy_surface(nk_handle handle) {
         nk::core::set_error("graphics surface is still shared by another surface");
         return NK_ERROR_INVALID_REQUEST;
     }
-    if (resource->frame_prepared) {
+    if (resource->frame_prepared.load(std::memory_order_acquire)) {
         nk::core::set_error("cannot destroy an Android graphics surface with a frame in flight");
         return NK_ERROR_INVALID_REQUEST;
     }
@@ -2867,19 +2868,37 @@ nk_result NK_CALL nk_surface_make_current(nk_handle handle) {
         nk::core::set_error("could not make the Android EGL context current");
         return NK_ERROR_UNKNOWN;
     }
-    resource->frame_prepared = true;
+    resource->frame_prepared.store(true, std::memory_order_release);
     return NK_OK;
 }
 
 nk_result NK_CALL nk_surface_present(nk_handle handle) {
-    if (const auto result = nk_surface_make_current(handle); result != NK_OK)
-        return result;
     auto resource = surface(handle);
-    if (!eglSwapBuffers(resource->display, resource->surface)) {
-        nk::core::set_error("could not present the Android EGL surface");
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    /* A surface-loss callback may mark an acquired frame pending while the
+       legacy callback is still unwinding. Rebind the still-valid EGL target
+       directly so the frame can be closed and release_surface_window() can
+       complete the deferred destruction. */
+    if (!resource->frame_prepared.load(std::memory_order_acquire)) {
+        if (const auto result = nk_surface_make_current(handle); result != NK_OK)
+            return result;
+        resource = surface(handle);
+        if (!resource)
+            return NK_ERROR_INVALID_HANDLE;
+    } else if (!eglMakeCurrent(resource->display, resource->surface, resource->surface,
+                               resource->context)) {
+        nk::core::set_error("could not make the Android EGL context current");
         return NK_ERROR_UNKNOWN;
     }
-    resource->frame_prepared = false;
+    if (!eglSwapBuffers(resource->display, resource->surface)) {
+        nk::core::set_error("could not present the Android EGL surface");
+        resource->frame_prepared.store(false, std::memory_order_release);
+        if (resource->surface_destroy_pending.load(std::memory_order_acquire))
+            release_surface_window(*resource);
+        return NK_ERROR_UNKNOWN;
+    }
+    resource->frame_prepared.store(false, std::memory_order_release);
     if (resource->surface_destroy_pending.load(std::memory_order_acquire))
         release_surface_window(*resource);
     return NK_OK;
@@ -2960,15 +2979,17 @@ nk_result NK_CALL nk_frame_backend_finish(nk_handle handle,
     auto resource = surface(handle);
     if (!resource)
         return NK_ERROR_INVALID_HANDLE;
-    if (!resource->frame_prepared) {
+    if (!resource->frame_prepared.load(std::memory_order_acquire)) {
         nk::core::set_error("Android surface has no prepared frame");
         return NK_ERROR_INVALID_REQUEST;
     }
-    resource->frame_prepared = false;
-    if (resource->resize_pending) {
-        resource->framebuffer_width = resource->pending_framebuffer_width;
-        resource->framebuffer_height = resource->pending_framebuffer_height;
-        resource->resize_pending = false;
+    resource->frame_prepared.store(false, std::memory_order_release);
+    if (resource->resize_pending.load(std::memory_order_acquire)) {
+        resource->framebuffer_width =
+            resource->pending_framebuffer_width.load(std::memory_order_relaxed);
+        resource->framebuffer_height =
+            resource->pending_framebuffer_height.load(std::memory_order_relaxed);
+        resource->resize_pending.store(false, std::memory_order_release);
     }
     if (resource->surface_destroy_pending.load(std::memory_order_acquire))
         release_surface_window(*resource);
@@ -3384,7 +3405,7 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnSurfaceCreated(
     auto resource = surface(static_cast<nk_handle>(handle_value));
     if (!resource || !java_surface)
         return;
-    if (resource->frame_prepared) {
+    if (resource->frame_prepared.load(std::memory_order_acquire)) {
         if (resource->pending_surface)
             env->DeleteGlobalRef(resource->pending_surface);
         resource->pending_surface = env->NewGlobalRef(java_surface);
@@ -3405,10 +3426,10 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnSurfaceChanged(
         return;
     resource->width = width;
     resource->height = height;
-    if (resource->frame_prepared) {
-        resource->pending_framebuffer_width = framebuffer_width;
-        resource->pending_framebuffer_height = framebuffer_height;
-        resource->resize_pending = true;
+    if (resource->frame_prepared.load(std::memory_order_acquire)) {
+        resource->pending_framebuffer_width.store(framebuffer_width, std::memory_order_relaxed);
+        resource->pending_framebuffer_height.store(framebuffer_height, std::memory_order_relaxed);
+        resource->resize_pending.store(true, std::memory_order_release);
     } else {
         resource->framebuffer_width = framebuffer_width;
         resource->framebuffer_height = framebuffer_height;
@@ -3435,7 +3456,7 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnSurfaceFrame(JN
         auto resource = surface(handle);
         if (!resource || resource->destroying || !resource->frame_callback ||
             resource->api != NK_GRAPHICS_OPENGL_ES || resource->surface == EGL_NO_SURFACE ||
-            resource->frame_prepared ||
+            resource->frame_prepared.load(std::memory_order_acquire) ||
             resource->surface_destroy_pending.load(std::memory_order_acquire) ||
             resource->framebuffer_width <= 0 || resource->framebuffer_height <= 0)
             return;
@@ -3446,15 +3467,26 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnSurfaceFrame(JN
         if (nk_surface_make_current(handle) != NK_OK)
             return;
         resource = surface(handle);
-        if (!resource || resource->destroying || !resource->frame_callback ||
-            resource->surface == EGL_NO_SURFACE ||
-            resource->surface_destroy_pending.load(std::memory_order_acquire))
+        if (!resource || resource->surface == EGL_NO_SURFACE ||
+            resource->surface_destroy_pending.load(std::memory_order_acquire)) {
+            /* make_current() prepared a legacy frame; close it even when a
+               lifecycle callback won the race before user code ran. */
+            if (resource && resource->surface != EGL_NO_SURFACE &&
+                resource->frame_prepared.load(std::memory_order_acquire))
+                (void)nk_surface_present(handle);
             return;
+        }
+        if (resource->destroying || !resource->frame_callback) {
+            if (resource->frame_prepared.load(std::memory_order_acquire))
+                (void)nk_surface_present(handle);
+            return;
+        }
         const auto callback = resource->frame_callback;
         void *user_data = resource->frame_user_data;
         callback(handle, resource->framebuffer_width, resource->framebuffer_height, user_data);
         resource = surface(handle);
-        if (resource && !resource->destroying && resource->surface != EGL_NO_SURFACE)
+        if (resource && resource->surface != EGL_NO_SURFACE &&
+            resource->frame_prepared.load(std::memory_order_acquire))
             nk_surface_present(handle);
     });
 }
