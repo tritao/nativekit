@@ -213,6 +213,18 @@ int main() {
         limits.struct_size = sizeof(limits);
         EXPECT_RESULT(nkgpu_query_features(first, &features), NKGPU_OK);
         EXPECT_RESULT(nkgpu_query_limits(first, &limits), NKGPU_OK);
+        nkgpu_native_context native_context{};
+        native_context.struct_size = sizeof(native_context);
+        EXPECT_RESULT(nkgpu_get_native_context(first, &native_context), NKGPU_OK);
+        if (!native_context.backend) {
+            result = __LINE__;
+            goto cleanup;
+        }
+        nkgpu_command_stream_desc unsupported_stream{};
+        unsupported_stream.struct_size = sizeof(unsupported_stream);
+        unsupported_stream.version = 99;
+        EXPECT_RESULT(nkgpu_submit_command_stream(first, &unsupported_stream),
+                      NKGPU_ERROR_INVALID_ARGUMENT);
         if (!features.mrt_count || !features.instancing || !limits.max_texture_size ||
             !limits.max_color_attachments) {
             result = __LINE__;

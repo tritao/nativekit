@@ -179,13 +179,13 @@ image usages and formats, general render passes with four color attachments,
 depth/stencil actions, optional resolve images, richer pipeline state,
 instanced vertex-buffer layouts, viewport commands, capability/limit queries,
 compute shader metadata, compute pipelines and passes, storage-buffer/image
-views, dispatch commands, and compute-capable sealed batches. The older
+views, dispatch commands, compute-capable sealed batches, versioned command
+stream envelopes, and an opaque native device/context escape hatch. The older
 `nkgpu_render_target_*` functions remain as compatibility wrappers for existing
 callers.
 
-The next slices are reserved for transfer and readback objects, versioned
-command records, and an explicitly advanced native device/context escape hatch.
-Those additions will be gated by the reported capabilities so the normal API
-remains backend-agnostic. The pinned Sokol revision currently has no portable
-GPU copy/readback primitive, so those operations are not emulated as if they
-were GPU-visible.
+The next slice is reserved for transfer and readback objects. Those additions
+will be gated by the reported capabilities so the normal API remains
+backend-agnostic. The pinned Sokol revision currently has no portable GPU
+copy/readback primitive, so those operations are not emulated as if they were
+GPU-visible.
