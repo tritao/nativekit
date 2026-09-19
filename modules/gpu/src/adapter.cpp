@@ -135,6 +135,8 @@ struct Renderer {
     const nk_sokol_api *api = nullptr;
     nk_graphics_api graphics_api = 0;
     nk_graphics_device device{};
+    nk_surface_frame_target context_target{};
+    bool has_context_target = false;
     sg_bindings bindings{};
     RendererState state = RendererState::Ready;
     bool in_pass = false;
@@ -383,7 +385,16 @@ static nkgpu_result activate_renderer(Handle handle,
         return fail(NKGPU_ERROR_WRONG_STATE, "another renderer has an active frame");
     const bool context_backend = slot->value.graphics_api == NK_GRAPHICS_OPENGL ||
                                  slot->value.graphics_api == NK_GRAPHICS_OPENGL_ES;
+    const bool render_owned_context = nk::core::render_executor_physical() &&
+                                      nk_executor_is_current(NK_EXECUTOR_RENDER);
+    if (!provided_target && render_owned_context && context_backend &&
+        !renderer_is_active(slot->value) && slot->value.has_context_target) {
+        const nkgpu_result bound = nkgpu_bind_frame_target(&slot->value.context_target);
+        if (bound != NKGPU_OK)
+            return bound;
+    }
     if (!provided_target && !renderer_is_active(slot->value) && context_backend &&
+        !render_owned_context &&
         nk_surface_make_current(slot->value.surface) != NK_OK)
         return fail(NKGPU_ERROR_UNKNOWN, "current: %s", nk_last_error());
     nk_surface_frame_target target = provided_target
@@ -394,7 +405,8 @@ static nkgpu_result activate_renderer(Handle handle,
     if (!provided_target && !slot->value.has_frame_target)
         target.struct_size = sizeof(target);
     const bool target_available = provided_target || slot->value.has_frame_target ||
-                                  get_surface_frame_target(slot->value.surface, &target) == NK_OK;
+                                  (!render_owned_context &&
+                                   get_surface_frame_target(slot->value.surface, &target) == NK_OK);
     if (target_available && target.device.id &&
         (target.api != slot->value.graphics_api || target.device.id != slot->value.device.id)) {
         ++slot->value.surface_recreations;
@@ -431,6 +443,10 @@ static nkgpu_result begin_frame_with_target(Handle handle, const nk_surface_fram
     sg_reset_state_cache();
     slot->value.frame_target = target;
     slot->value.has_frame_target = true;
+    slot->value.context_target = target;
+    slot->value.context_target.native_target = 0;
+    slot->value.context_target.native_depth_stencil_target = 0;
+    slot->value.has_context_target = target.native_context != 0;
     slot->value.state = RendererState::FrameActive;
     slot->value.in_pass = false;
     slot->value.active_target = 0;
@@ -1021,6 +1037,10 @@ static nkgpu_result create_renderer_from_target(nk_surface surface,
     renderer_state.api = api;
     renderer_state.graphics_api = target.api;
     renderer_state.device = target.device;
+    renderer_state.context_target = target;
+    renderer_state.context_target.native_target = 0;
+    renderer_state.context_target.native_depth_stencil_target = 0;
+    renderer_state.has_context_target = target.native_context != 0;
     renderer_state.surface_color_format = color_format;
     renderer_state.surface_depth_format = depth_format;
     Handle h = renderer_pool.add(renderer_state);

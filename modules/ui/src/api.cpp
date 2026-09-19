@@ -2,6 +2,7 @@
 #include "nativekit_ui_layout.h"
 
 #include "nativekit_graphics.h"
+#include "nativekit_gpu.h"
 #include "image_decode.h"
 
 #include "core/executor.hpp"
@@ -414,6 +415,10 @@ void NK_CALL finish_render_submission(void *data) {
 
 void execute_render_submission(RenderSubmission &submission) {
     bool success = false;
+    const bool context_backend = submission.frame_target.api == NK_GRAPHICS_OPENGL ||
+                                 submission.frame_target.api == NK_GRAPHICS_OPENGL_ES;
+    if (context_backend && nkgpu_bind_frame_target(&submission.frame_target) != NKGPU_OK)
+        goto complete;
     {
         std::scoped_lock lock(renderers_mutex, resources_mutex);
         auto *slot = resolve(submission.renderer);
@@ -446,12 +451,12 @@ void execute_render_submission(RenderSubmission &submission) {
     /* GL/EGL retains a thread-local context through submit so sealed-plan
        resource destructors can release external images on RENDER. */
     if (nk::core::render_executor_physical() &&
-        (submission.frame_target.api == NK_GRAPHICS_OPENGL ||
-         submission.frame_target.api == NK_GRAPHICS_OPENGL_ES)) {
+        context_backend) {
         submission.plan.reset();
         nk_graphics_unbind_frame_target(&submission.frame_target);
     }
 
+complete:
     auto *completion = new RenderCompletion{submission.frame, success};
     if (nk::core::dispatch_to_executor(NK_EXECUTOR_PLATFORM, &finish_render_submission,
                                        completion, &destroy_render_completion,
