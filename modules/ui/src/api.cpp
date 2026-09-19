@@ -406,7 +406,15 @@ void NK_CALL run_next_render_submission(void *data);
 bool enqueue_render_submission(RenderSubmission *submission);
 
 void destroy_render_completion(void *data) noexcept {
-    delete static_cast<RenderCompletion *>(data);
+    auto *completion = static_cast<RenderCompletion *>(data);
+    if (completion && completion->frame != NK_INVALID_HANDLE) {
+        /* APP owns completion delivery.  If its bounded queue drops this
+           task, the cleanup callback is the last chance to close the
+           platform-owned frame ticket before shutdown clears the registry. */
+        (void)nk_surface_cancel_frame(completion->frame);
+        completion->frame = NK_INVALID_HANDLE;
+    }
+    delete completion;
 }
 
 void destroy_deferred_renderer(void *data) noexcept {
@@ -425,6 +433,8 @@ void NK_CALL finish_render_submission(void *data) {
             nk_surface_present_frame(completion->frame);
         else
             nk_surface_cancel_frame(completion->frame);
+        /* The token was consumed even when the backend reports an error. */
+        completion->frame = NK_INVALID_HANDLE;
     }
 }
 
