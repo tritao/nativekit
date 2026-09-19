@@ -255,14 +255,84 @@ int main() {
         result = 11;
     }
 
+    if (!result &&
+        nkui_layout_session_set_cache_policy(session, 1, NKUI_LAYOUT_CACHE_RASTER) != NKUI_OK)
+        result = 12;
+
+    nkui_renderer_stats root_cache_first{};
+    nkui_renderer_stats root_cache_repeated{};
+    nkui_renderer_stats root_cache_moved{};
     if (!result) {
         const nkui_result session_result =
             nkui_layout_session_render_frame(renderer, session, surface, &frame_info, 0);
         if (session_result != NKUI_OK) {
             std::fprintf(stderr, "session render returned %d\n", static_cast<int>(session_result));
-            result = 12;
+            result = 13;
+        } else if (nkui_renderer_get_stats(renderer, &root_cache_first) != NKUI_OK ||
+                   root_cache_first.raster_cache_misses == 0 ||
+                   root_cache_first.raster_cache_entries == 0 ||
+                   root_cache_first.raster_cache_bytes == 0) {
+            std::fprintf(stderr, "initial raster cache render did not populate a cache entry\n");
+            result = 14;
         }
     }
+
+    if (!result) {
+        const auto started = std::chrono::steady_clock::now();
+        constexpr int repeated_frames = 32;
+        for (int repeat = 0; repeat < repeated_frames && !result; ++repeat) {
+            if (nkui_layout_session_render_frame(renderer, session, surface, &frame_info, 0) !=
+                NKUI_OK)
+                result = 15;
+        }
+        const auto elapsed = std::chrono::steady_clock::now() - started;
+        if (!result && nkui_renderer_get_stats(renderer, &root_cache_repeated) != NKUI_OK)
+            result = 16;
+        if (!result && root_cache_repeated.raster_cache_hits <
+                           root_cache_first.raster_cache_hits + repeated_frames) {
+            std::fprintf(stderr, "repeated raster frames did not hit the cache: %llu -> %llu\n",
+                         static_cast<unsigned long long>(root_cache_first.raster_cache_hits),
+                         static_cast<unsigned long long>(root_cache_repeated.raster_cache_hits));
+            result = 17;
+        }
+        if (!result) {
+            const auto elapsed_ns =
+                std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed).count();
+            std::printf("raster cache repeat: %d frames, %llu hits, %lld ns/frame\n",
+                         repeated_frames,
+                         static_cast<unsigned long long>(root_cache_repeated.raster_cache_hits -
+                                                         root_cache_first.raster_cache_hits),
+                         static_cast<long long>(elapsed_ns / repeated_frames));
+        }
+    }
+
+    /* A visual translation changes only the composite placement of a cached
+     * subtree. It must not force the subtree to be rasterized again. */
+    if (!result) {
+        auto moved = bytes;
+        const std::size_t root_record = NKUI_LAYOUT_TRANSACTION_HEADER_BYTES;
+        write_float(moved, root_record + NKUI_LAYOUT_NODE_TRANSFORM_TX_OFFSET, 32.0f);
+        write_float(moved, root_record + NKUI_LAYOUT_NODE_TRANSFORM_TY_OFFSET, 16.0f);
+        if (nkui_layout_session_submit(session, moved.data(), static_cast<uint32_t>(moved.size()),
+                                       &frame) != NKUI_OK ||
+            nkui_layout_session_render_frame(renderer, session, surface, &frame_info, 0) !=
+                NKUI_OK ||
+            nkui_renderer_get_stats(renderer, &root_cache_moved) != NKUI_OK ||
+            root_cache_moved.raster_cache_misses != root_cache_repeated.raster_cache_misses ||
+            root_cache_moved.raster_cache_hits <= root_cache_repeated.raster_cache_hits) {
+            std::fprintf(stderr, "translated raster subtree missed its retained cache\n");
+            result = 18;
+        }
+    }
+
+    if (!result &&
+        nkui_layout_session_submit(session, bytes.data(), static_cast<uint32_t>(bytes.size()),
+                                   &frame) != NKUI_OK)
+        result = 19;
+
+    if (!result &&
+        nkui_layout_session_set_cache_policy(session, 1, NKUI_LAYOUT_CACHE_NONE) != NKUI_OK)
+        result = 20;
 
     /*
      * The same session renders across pixel scales. Each frame clears first,
@@ -292,7 +362,7 @@ int main() {
                              "(%u,%u,%u,%u)\n",
                              static_cast<double>(scale), corner[0], corner[1], corner[2],
                              corner[3]);
-                result = 15;
+                result = 21;
                 break;
             }
         }
@@ -302,7 +372,7 @@ int main() {
      * branch and must still succeed. */
     if (!result &&
         nkui_layout_session_render_frame(renderer, session, surface, &frame_info, 1) != NKUI_OK)
-        result = 16;
+        result = 22;
 
     /*
      * Custom-visual nodes render through the compiler's embedded-plan path
@@ -327,29 +397,31 @@ int main() {
         nkui_resource custom_paint{};
         nkui_resource custom_path{};
         nkui_display_list custom_list{};
-        std::vector<uint8_t> custom_commands;
-        if (nkui_paint_create_solid({1.0f, 0.0f, 0.0f, 1.0f}, &custom_paint) != NKUI_OK ||
-            nkui_path_create(rectangle, 5, &custom_path) != NKUI_OK ||
-            nkui_display_list_create(&custom_list) != NKUI_OK)
-            result = 18;
-        if (!result) {
-            append_bytes(custom_commands,
+        const auto make_custom_commands = [&](float x, float y) {
+            std::vector<uint8_t> commands;
+            append_bytes(commands,
                          nkui_resource_command{{NKUI_COMMAND_SET_PAINT, NKUI_COMMAND_VERSION,
                                                 sizeof(nkui_resource_command)},
                                                custom_paint});
-            /*
-             * Custom paint commands carry their own placement: the layout
-             * session does not re-apply the node transform, so the list is
-             * responsible for putting content where the node sits.
-             */
-            append_bytes(custom_commands,
+            append_bytes(commands,
                          nkui_transform_command{{NKUI_COMMAND_SET_TRANSFORM, NKUI_COMMAND_VERSION,
                                                  sizeof(nkui_transform_command)},
-                                                {1.0f, 0.0f, 0.0f, 1.0f, 12.0f, 20.0f}});
-            append_bytes(custom_commands,
+                                                {1.0f, 0.0f, 0.0f, 1.0f, x, y}});
+            append_bytes(commands,
                          nkui_resource_command{{NKUI_COMMAND_DRAW_PATH, NKUI_COMMAND_VERSION,
                                                 sizeof(nkui_resource_command)},
                                                custom_path});
+            return commands;
+        };
+        if (nkui_paint_create_solid({1.0f, 0.0f, 0.0f, 1.0f}, &custom_paint) != NKUI_OK ||
+            nkui_path_create(rectangle, 5, &custom_path) != NKUI_OK ||
+            nkui_display_list_create(&custom_list) != NKUI_OK)
+            result = 22;
+        if (!result) {
+            /* Custom paint commands carry their own placement: the layout
+             * session does not re-apply the node transform, so the list is
+             * responsible for putting content where the node sits. */
+            const auto custom_commands = make_custom_commands(12.0f, 20.0f);
             if (nkui_display_list_submit(custom_list, custom_commands.data(),
                                          static_cast<uint32_t>(custom_commands.size())) !=
                     NKUI_OK ||
@@ -357,9 +429,25 @@ int main() {
                                            static_cast<uint32_t>(custom_tree.size()),
                                            &frame) != NKUI_OK ||
                 nkui_layout_session_set_custom_paint(session, 2, custom_list) != NKUI_OK ||
-                nkui_layout_session_render_frame(renderer, session, surface, &frame_info, 0) !=
+                nkui_layout_session_set_cache_policy(session, 2, NKUI_LAYOUT_CACHE_RASTER) !=
                     NKUI_OK)
-                result = 18;
+                result = 23;
+        }
+        nkui_renderer_stats custom_cache_first{};
+        nkui_renderer_stats custom_cache_repeated{};
+        nkui_renderer_stats custom_cache_scaled{};
+        nkui_renderer_stats custom_cache_pressure{};
+        if (!result &&
+            nkui_layout_session_render_frame(renderer, session, surface, &frame_info, 0) !=
+                NKUI_OK)
+            result = 24;
+        if (!result &&
+            (nkui_renderer_get_stats(renderer, &custom_cache_first) != NKUI_OK ||
+             custom_cache_first.raster_cache_misses <= root_cache_moved.raster_cache_misses ||
+             custom_cache_first.raster_cache_entries == 0 ||
+             custom_cache_first.raster_cache_bytes == 0)) {
+            std::fprintf(stderr, "custom paint did not populate the raster cache\n");
+            result = 25;
         }
         if (!result) {
             /*
@@ -377,7 +465,96 @@ int main() {
             if (red < 20 * 20) {
                 std::fprintf(stderr, "custom paint covered %d of %d sampled pixels\n", red,
                              20 * 20);
-                result = 19;
+                result = 26;
+            }
+        }
+
+        if (!result) {
+            constexpr int repeated_frames = 24;
+            const auto started = std::chrono::steady_clock::now();
+            for (int repeat = 0; repeat < repeated_frames && !result; ++repeat) {
+                if (nkui_layout_session_render_frame(renderer, session, surface, &frame_info, 0) !=
+                    NKUI_OK)
+                    result = 27;
+            }
+            const auto elapsed = std::chrono::steady_clock::now() - started;
+            if (!result && nkui_renderer_get_stats(renderer, &custom_cache_repeated) != NKUI_OK)
+                result = 28;
+            if (!result && custom_cache_repeated.raster_cache_hits <
+                               custom_cache_first.raster_cache_hits + repeated_frames) {
+                std::fprintf(stderr, "custom raster frames did not hit the cache: %llu -> %llu\n",
+                             static_cast<unsigned long long>(custom_cache_first.raster_cache_hits),
+                             static_cast<unsigned long long>(
+                                 custom_cache_repeated.raster_cache_hits));
+                result = 29;
+            }
+            if (!result) {
+                const auto elapsed_ns =
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed).count();
+                std::printf("custom raster repeat: %d frames, %llu hits, %lld ns/frame\n",
+                             repeated_frames,
+                             static_cast<unsigned long long>(
+                                 custom_cache_repeated.raster_cache_hits -
+                                 custom_cache_first.raster_cache_hits),
+                             static_cast<long long>(elapsed_ns / repeated_frames));
+            }
+        }
+
+        /* A device-scale change produces a different physical raster, while
+         * returning to the original scale can reuse its retained entry. */
+        if (!result) {
+            constexpr float churn_scales[] = {1.25f, 2.0f, 1.0f};
+            for (float scale : churn_scales) {
+                const nkui_frame_info scaled_info{
+                    sizeof(scaled_info), framebuffer_width / scale, framebuffer_height / scale,
+                    framebuffer_width, framebuffer_height, scale};
+                if (nkui_layout_session_render_frame(renderer, session, surface, &scaled_info, 0) !=
+                    NKUI_OK) {
+                    result = 30;
+                    break;
+                }
+            }
+            if (!result && nkui_renderer_get_stats(renderer, &custom_cache_scaled) != NKUI_OK)
+                result = 31;
+            if (!result && custom_cache_scaled.raster_cache_misses <
+                               custom_cache_repeated.raster_cache_misses + 2) {
+                std::fprintf(stderr, "device-scale churn did not invalidate raster dimensions\n");
+                result = 32;
+            }
+        }
+
+        /* Feed more unique content versions than the bounded cache can retain
+         * and verify that capacity pressure evicts entries without allowing
+         * unbounded GPU memory growth. */
+        if (!result) {
+            constexpr int pressure_frames = 20;
+            for (int pressure = 0; pressure < pressure_frames && !result; ++pressure) {
+                const auto pressure_commands =
+                    make_custom_commands(20.0f + static_cast<float>(pressure), 20.0f);
+                if (nkui_display_list_submit(custom_list, pressure_commands.data(),
+                                             static_cast<uint32_t>(pressure_commands.size())) !=
+                    NKUI_OK ||
+                    nkui_layout_session_render_frame(renderer, session, surface, &frame_info, 0) !=
+                        NKUI_OK)
+                    result = 33;
+            }
+            if (!result && nkui_renderer_get_stats(renderer, &custom_cache_pressure) != NKUI_OK)
+                result = 34;
+            if (!result &&
+                (custom_cache_pressure.raster_cache_misses <
+                     custom_cache_scaled.raster_cache_misses + pressure_frames ||
+                 custom_cache_pressure.raster_cache_entries > 16 ||
+                 custom_cache_pressure.raster_cache_bytes > 64u * 1024u * 1024u)) {
+                std::fprintf(stderr,
+                             "raster cache pressure exceeded its bounds: misses=%llu entries=%llu "
+                             "bytes=%llu\n",
+                             static_cast<unsigned long long>(
+                                 custom_cache_pressure.raster_cache_misses),
+                             static_cast<unsigned long long>(
+                                 custom_cache_pressure.raster_cache_entries),
+                             static_cast<unsigned long long>(
+                                 custom_cache_pressure.raster_cache_bytes));
+                result = 35;
             }
         }
         nkui_layout_session_clear_custom_paints(session);
