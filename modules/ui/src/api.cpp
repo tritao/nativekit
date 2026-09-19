@@ -534,6 +534,7 @@ void shutdown_render_scheduler() noexcept {
 
 bool enqueue_render_submission(RenderSubmission *raw_submission) {
     std::unique_ptr<RenderSubmission> submission(raw_submission);
+    std::unique_ptr<RenderSubmission> stale_generation;
     std::unique_ptr<RenderSubmission> replaced;
     bool start_runner = false;
     const auto generation = nk::core::runtime_generation();
@@ -542,7 +543,7 @@ bool enqueue_render_submission(RenderSubmission *raw_submission) {
         /* A discarded render task does not run after nk_shutdown(). Drop its
            stale pending plan before accepting work from the next runtime. */
         if (render_submission_generation != generation) {
-            pending_render_submission.reset();
+            stale_generation = std::move(pending_render_submission);
             render_submission_runner_active = false;
             render_submission_generation = generation;
         }
@@ -553,6 +554,8 @@ bool enqueue_render_submission(RenderSubmission *raw_submission) {
             start_runner = true;
         }
     }
+    if (stale_generation)
+        cancel_render_submission_on_platform(*stale_generation);
     if (replaced)
         cancel_render_submission_on_platform(*replaced);
     if (!start_runner)
