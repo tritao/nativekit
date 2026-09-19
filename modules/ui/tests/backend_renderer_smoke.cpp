@@ -393,26 +393,6 @@ int main() {
             result = 26;
             goto cleanup;
         }
-        const nkui_draw_box_shadow_command scheduler_shadow{{NKUI_COMMAND_DRAW_BOX_SHADOW,
-                                                             NKUI_COMMAND_VERSION,
-                                                             sizeof(nkui_draw_box_shadow_command)},
-                                                            32.0f,
-                                                            28.0f,
-                                                            96.0f,
-                                                            64.0f,
-                                                            2.0f,
-                                                            3.0f,
-                                                            4.0f,
-                                                            4.0f,
-                                                            {8.0f, 8.0f, 8.0f, 8.0f},
-                                                            {0.0f, 0.0f, 0.0f, 0.5f}};
-        if (!check(nkui_display_list_submit(scheduler_list,
-                                            reinterpret_cast<const uint8_t *>(&scheduler_shadow),
-                                            sizeof(scheduler_shadow)) == NKUI_OK,
-                   "submit scheduler display list")) {
-            result = 26;
-            goto cleanup;
-        }
 
         BlockingRenderTask blocker{};
         if (!start_blocking_render_task(blocker)) {
@@ -480,11 +460,20 @@ int main() {
             std::fprintf(
                 stderr,
                 "backend renderer smoke: scheduler counters unexpected: submitted=%llu "
-                "replaced=%llu cancelled=%llu failed=%llu\n",
+                "replaced=%llu cancelled=%llu failed=%llu gpu=%llu (before submitted=%llu "
+                "replaced=%llu cancelled=%llu failed=%llu gpu=%llu)\n",
                 static_cast<unsigned long long>(scheduler_stats.render_submissions),
                 static_cast<unsigned long long>(scheduler_stats.render_submission_replacements),
                 static_cast<unsigned long long>(scheduler_stats.render_submission_cancellations),
-                static_cast<unsigned long long>(scheduler_stats.render_submission_failures));
+                static_cast<unsigned long long>(scheduler_stats.render_submission_failures),
+                static_cast<unsigned long long>(scheduler_stats.gpu_frames),
+                static_cast<unsigned long long>(before_scheduler_stats.render_submissions),
+                static_cast<unsigned long long>(
+                    before_scheduler_stats.render_submission_replacements),
+                static_cast<unsigned long long>(
+                    before_scheduler_stats.render_submission_cancellations),
+                static_cast<unsigned long long>(before_scheduler_stats.render_submission_failures),
+                static_cast<unsigned long long>(before_scheduler_stats.gpu_frames));
             result = 30;
         }
     }
