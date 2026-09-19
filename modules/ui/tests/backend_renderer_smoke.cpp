@@ -220,13 +220,32 @@ int main() {
                 result = 17;
                 goto cleanup;
             }
-            nk_event completion_event{};
-            completion_event.struct_size = sizeof(completion_event);
-            if (!check(nk_poll_event(&completion_event) == NK_OK, "nk_poll_event completion")) {
+            bool frame_closed = false;
+            for (int attempt = 0; attempt < 100; ++attempt) {
+                nk_surface_frame next_frame = NK_INVALID_HANDLE;
+                nk_surface_frame_target next_target{};
+                next_target.struct_size = sizeof(next_target);
+                if (nk_surface_acquire_frame(surface, &next_frame, &next_target) == NK_OK) {
+                    (void)nk_surface_cancel_frame(next_frame);
+                    frame_closed = true;
+                    break;
+                }
+                nk_event completion_event{};
+                completion_event.struct_size = sizeof(completion_event);
+                if (!check(nk_poll_event(&completion_event) == NK_OK, "nk_poll_event completion")) {
+                    result = 17;
+                    goto cleanup;
+                }
+                nk_event_release(&completion_event);
+                if (!check(nk_wait_events_timeout(0.01) == NK_OK, "nk_wait_events_timeout")) {
+                    result = 17;
+                    goto cleanup;
+                }
+            }
+            if (!check(frame_closed, "physical frame close")) {
                 result = 17;
                 goto cleanup;
             }
-            nk_event_release(&completion_event);
         }
     }
 cleanup:
