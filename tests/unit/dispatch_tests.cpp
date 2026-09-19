@@ -1,5 +1,6 @@
 #include "nativekit.h"
 #include "core/executor.hpp"
+#include "core/runtime.hpp"
 
 #include <atomic>
 #include <cassert>
@@ -23,6 +24,11 @@ void NK_CALL record_task(void *user_data) {
 }
 
 int nested_runs = 0;
+std::atomic<int> shutdown_hook_runs{0};
+
+void shutdown_hook() noexcept {
+    shutdown_hook_runs.fetch_add(1, std::memory_order_relaxed);
+}
 
 struct RenderRecord {
     std::atomic<int> runs{0};
@@ -77,6 +83,7 @@ int main() {
     assert(nk_executor_is_current(NK_EXECUTOR_RENDER) == 1);
     assert(nk_executor_is_current(NK_EXECUTOR_WORKER) == 0);
     assert(nk_executor_is_current(static_cast<nk_executor>(42)) == 0);
+    nk::core::register_runtime_shutdown_hook(&shutdown_hook);
     assert(nk_dispatch_to_app(nullptr, nullptr) == NK_ERROR_INVALID_ARGUMENT);
 
     RenderRecord render_record;
@@ -120,6 +127,7 @@ int main() {
     const int runs_before_shutdown = record.runs;
     assert(nk_dispatch_to_app(&record_task, &record) == NK_OK);
     nk_shutdown();
+    assert(shutdown_hook_runs.load(std::memory_order_relaxed) == 1);
     assert(record.runs == runs_before_shutdown);
     assert(nk_runtime_generation() == 0);
     assert(nk_executor_current() == NK_EXECUTOR_WORKER);
