@@ -1424,7 +1424,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	/**
 	 * Preparation and geometry-cache counters for one renderer.
 	 */
-	struct nkui_renderer_stats @layout(464, 8) {
+	struct nkui_renderer_stats @layout(472, 8) {
 		/**
 		 * Set to sizeof(nkui_renderer_stats) when returned by the API.
 		 */
@@ -1672,6 +1672,10 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		 * Render plans that failed execution or could not be dispatched.
 		 */
 			render_submission_failures: u64 @offset(488);
+		/**
+		 * Render plans removed from the pending slot and attempted on RENDER.
+		 */
+		render_submission_executions: u64 @offset(496);
 	}
 	/**
 	 * Payload for NKUI_COMMAND_SET_PAINT and resource-only draw commands.

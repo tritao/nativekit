@@ -242,6 +242,8 @@ typedef struct nkui_renderer_stats {
     uint64_t render_submission_cancellations;
     /** Render plans that failed execution or could not be dispatched. */
     uint64_t render_submission_failures;
+    /** Render plans removed from the pending slot and attempted on RENDER. */
+    uint64_t render_submission_executions;
 } nkui_renderer_stats;
 
 /** 16-bit opcode identifying one display-list command record. */

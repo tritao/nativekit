@@ -461,6 +461,8 @@ void NK_CALL finish_render_submission(void *data) {
 }
 
 void execute_render_submission(RenderSubmission &submission) {
+    record_render_submission_stat(submission.renderer,
+                                  &nkui_renderer_stats::render_submission_executions);
     bool success = false;
     const bool context_backend = submission.frame_target.api == NK_GRAPHICS_OPENGL ||
                                  submission.frame_target.api == NK_GRAPHICS_OPENGL_ES;

@@ -457,24 +457,27 @@ int main() {
              scheduler_stats.render_submission_cancellations >
                  before_scheduler_stats.render_submission_cancellations + 2 ||
              scheduler_stats.render_submission_failures >
-                 before_scheduler_stats.render_submission_failures + 1)) {
+                 before_scheduler_stats.render_submission_failures + 1 ||
+             scheduler_stats.render_submission_executions !=
+                 before_scheduler_stats.render_submission_executions + 1)) {
             std::fprintf(
                 stderr,
                 "backend renderer smoke: scheduler counters unexpected: submitted=%llu "
-                "replaced=%llu cancelled=%llu failed=%llu gpu=%llu (before submitted=%llu "
-                "replaced=%llu cancelled=%llu failed=%llu gpu=%llu)\n",
+                "replaced=%llu cancelled=%llu failed=%llu executions=%llu (before submitted=%llu "
+                "replaced=%llu cancelled=%llu failed=%llu executions=%llu)\n",
                 static_cast<unsigned long long>(scheduler_stats.render_submissions),
                 static_cast<unsigned long long>(scheduler_stats.render_submission_replacements),
                 static_cast<unsigned long long>(scheduler_stats.render_submission_cancellations),
                 static_cast<unsigned long long>(scheduler_stats.render_submission_failures),
-                static_cast<unsigned long long>(scheduler_stats.gpu_frames),
+                static_cast<unsigned long long>(scheduler_stats.render_submission_executions),
                 static_cast<unsigned long long>(before_scheduler_stats.render_submissions),
                 static_cast<unsigned long long>(
                     before_scheduler_stats.render_submission_replacements),
                 static_cast<unsigned long long>(
                     before_scheduler_stats.render_submission_cancellations),
                 static_cast<unsigned long long>(before_scheduler_stats.render_submission_failures),
-                static_cast<unsigned long long>(before_scheduler_stats.gpu_frames));
+                static_cast<unsigned long long>(
+                    before_scheduler_stats.render_submission_executions));
             result = 30;
         }
     }
