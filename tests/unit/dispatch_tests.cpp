@@ -70,7 +70,8 @@ int main() {
 
     const std::thread::id app_thread = std::this_thread::get_id();
     assert(nk_executor_current() == NK_EXECUTOR_APP);
-    /* Platform, application, and render still share the nk_init() thread. */
+    /* PLATFORM and APP stay on the init thread; aliased backends also satisfy
+       RENDER there, while physical backends keep RENDER exclusive. */
     assert(nk_executor_is_current(NK_EXECUTOR_PLATFORM) == 1);
     assert(nk_executor_is_current(NK_EXECUTOR_APP) == 1);
     assert(nk_executor_is_current(NK_EXECUTOR_RENDER) == 1);
