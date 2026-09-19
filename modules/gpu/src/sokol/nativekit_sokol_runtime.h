@@ -9,6 +9,8 @@
 #define NK_SOKOL_RUNTIME_CAT2(a, b) a##b
 #define NK_SOKOL_RUNTIME_CAT(a, b) NK_SOKOL_RUNTIME_CAT2(a, b)
 #define nk_sokol_runtime_acquire NK_SOKOL_RUNTIME_CAT(NK_SOKOL_RUNTIME_PREFIX, acquire)
+#define nk_sokol_runtime_is_compatible \
+    NK_SOKOL_RUNTIME_CAT(NK_SOKOL_RUNTIME_PREFIX, is_compatible)
 #define nk_sokol_runtime_release NK_SOKOL_RUNTIME_CAT(NK_SOKOL_RUNTIME_PREFIX, release)
 #define nk_sokol_external_image_create                                                             \
     NK_SOKOL_RUNTIME_CAT(NK_SOKOL_RUNTIME_PREFIX, external_image_create)
@@ -32,6 +34,8 @@ extern "C" {
  */
 int nk_sokol_runtime_acquire(const sg_desc *desc, nk_graphics_device device,
                              uint64_t native_device);
+int nk_sokol_runtime_is_compatible(const sg_desc *desc, nk_graphics_device device,
+                                   uint64_t native_device);
 void nk_sokol_runtime_release(void);
 
 /* Shared, retained sampled images used to bridge Sokol producers to consumers. */

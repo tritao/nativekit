@@ -55,13 +55,23 @@ static int runtime_config_matches(const sg_desc *desc) {
            runtime_sample_count == desc->environment.defaults.sample_count;
 }
 
+int nk_sokol_runtime_is_compatible(const sg_desc *desc, nk_graphics_device device,
+                                   uint64_t native_device) {
+    if (!desc || !device.id)
+        return 0;
+    if (!runtime_references)
+        return 1;
+    const uint64_t device_key = native_device ? native_device : device.id;
+    return runtime_config_matches(desc) && runtime_device == device_key;
+}
+
 int nk_sokol_runtime_acquire(const sg_desc *desc, nk_graphics_device device,
                              uint64_t native_device) {
     if (!desc || !device.id || runtime_references == UINT32_MAX)
         return 0;
-    const uint64_t device_key = native_device ? native_device : device.id;
-    if (runtime_references && (!runtime_config_matches(desc) || runtime_device != device_key))
+    if (!nk_sokol_runtime_is_compatible(desc, device, native_device))
         return 0;
+    const uint64_t device_key = native_device ? native_device : device.id;
     if (!runtime_references) {
         if (sg_isvalid())
             return 0;
