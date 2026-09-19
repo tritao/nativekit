@@ -9,6 +9,8 @@
 #include "nativekit_system.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
+#include "core/executor.hpp"
+#include "core/frame_backend.hpp"
 
 #import <dispatch/dispatch.h>
 #import <os/log.h>
@@ -17,6 +19,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
 #include <vector>
 
 namespace {
@@ -99,6 +104,136 @@ struct NKIOSFrameState {
     int32_t width = 0;
     int32_t height = 0;
 };
+
+struct NKIOSMetalFrameProbe {
+    std::mutex mutex;
+    std::condition_variable condition;
+    nk_surface_frame frame = NK_INVALID_HANDLE;
+    nk_surface_frame_target target = {};
+    bool entered = false;
+    bool release = false;
+    bool complete = false;
+    bool render_executor = false;
+    bool submitted = false;
+    nk_result render_result = NK_ERROR_UNKNOWN;
+    uint64_t surface_api_violations = 0;
+};
+
+void NK_CALL run_ios_metal_frame_probe(void *data) {
+    auto &probe = *static_cast<NKIOSMetalFrameProbe *>(data);
+    {
+        std::unique_lock lock(probe.mutex);
+        probe.entered = true;
+        probe.condition.notify_one();
+        probe.condition.wait(lock, [&probe] { return probe.release; });
+    }
+
+    probe.render_executor = nk::core::executor_current() == NK_EXECUTOR_RENDER;
+    nk::core::reset_render_surface_api_violations();
+    nk::core::set_render_surface_api_guard(true);
+    const nk_result bound = nk_graphics_bind_frame_target(&probe.target);
+    if (bound == NK_OK) {
+        probe.render_result = nk_frame_backend_submit(&probe.target);
+        if (probe.render_result == NK_OK)
+            probe.submitted = nk::core::mark_frame_render_submitted(probe.frame);
+        (void)nk_graphics_unbind_frame_target(&probe.target);
+    } else {
+        probe.render_result = bound;
+    }
+    nk::core::set_render_surface_api_guard(false);
+    probe.surface_api_violations = nk::core::render_surface_api_violations();
+
+    {
+        std::lock_guard lock(probe.mutex);
+        probe.complete = true;
+    }
+    probe.condition.notify_one();
+}
+
+bool run_ios_metal_frame_ticket(nk_surface surface) {
+    nk_surface_frame frame = NK_INVALID_HANDLE;
+    nk_surface_frame_target target = {};
+    target.struct_size = sizeof(target);
+    if (!check_result("nk_surface_acquire_frame(frame ticket)",
+                      nk_surface_acquire_frame(surface, &frame, &target)))
+        return false;
+
+    NKIOSMetalFrameProbe probe;
+    probe.frame = frame;
+    probe.target = target;
+    if (nk::core::dispatch_to_render(&run_ios_metal_frame_probe, &probe, nullptr,
+                                     sizeof(probe)) != NK_OK) {
+        (void)nk_surface_cancel_frame(frame);
+        return false;
+    }
+
+    {
+        std::unique_lock lock(probe.mutex);
+        if (!probe.condition.wait_for(lock, std::chrono::seconds(5),
+                                      [&probe] { return probe.entered; })) {
+            std::fprintf(stderr, "iOS Metal frame probe did not start on RENDER\n");
+            probe.release = true;
+            lock.unlock();
+            probe.condition.notify_one();
+            (void)nk_surface_cancel_frame(frame);
+            return false;
+        }
+    }
+
+    bool valid = target.api == NK_GRAPHICS_METAL && target.width > 0 && target.height > 0 &&
+                 target.native_present_target != 0;
+    valid = check_result("nk_surface_set_bounds(frame ticket)",
+                         nk_surface_set_bounds(surface, 0, 0, 480, 280)) &&
+            valid;
+    nk_surface_frame_target pending_target = {};
+    pending_target.struct_size = sizeof(pending_target);
+    valid = check_result("nk_surface_get_frame_target(frame ticket)",
+                         nk_surface_get_frame_target(surface, &pending_target)) &&
+            valid;
+    valid = pending_target.width == target.width && pending_target.height == target.height && valid;
+
+    {
+        std::lock_guard lock(probe.mutex);
+        probe.release = true;
+    }
+    probe.condition.notify_one();
+    {
+        std::unique_lock lock(probe.mutex);
+        if (!probe.condition.wait_for(lock, std::chrono::seconds(5),
+                                      [&probe] { return probe.complete; })) {
+            std::fprintf(stderr, "iOS Metal frame probe did not complete\n");
+            (void)nk_surface_cancel_frame(frame);
+            return false;
+        }
+    }
+    valid = probe.render_executor && probe.submitted && probe.render_result == NK_OK &&
+            probe.surface_api_violations == 0 && valid;
+    if (!valid) {
+        std::fprintf(stderr,
+                     "iOS Metal frame probe validation failed (executor=%d submitted=%d "
+                     "result=%d surface_calls=%llu)\n",
+                     probe.render_executor, probe.submitted, probe.render_result,
+                     static_cast<unsigned long long>(probe.surface_api_violations));
+        (void)nk_surface_cancel_frame(frame);
+        return false;
+    }
+    if (!check_result("nk_surface_present_frame(frame ticket)", nk_surface_present_frame(frame)))
+        return false;
+
+    nk_surface_frame resized_frame = NK_INVALID_HANDLE;
+    nk_surface_frame_target resized_target = {};
+    resized_target.struct_size = sizeof(resized_target);
+    if (!check_result("nk_surface_acquire_frame(resized ticket)",
+                      nk_surface_acquire_frame(surface, &resized_frame, &resized_target)))
+        return false;
+    valid = resized_target.width > 0 && resized_target.height > 0 &&
+            (resized_target.width != target.width || resized_target.height != target.height);
+    if (!valid)
+        std::fprintf(stderr, "iOS Metal deferred resize did not produce a new drawable size\n");
+    const bool canceled = check_result("nk_surface_cancel_frame(resized ticket)",
+                                       nk_surface_cancel_frame(resized_frame));
+    return valid && canceled;
+}
 
 void NK_CALL on_frame(nk_surface surface, int32_t width, int32_t height, void *user_data) {
     auto *state = static_cast<NKIOSFrameState *>(user_data);
@@ -474,6 +609,12 @@ enum class NKRuntimeStage {
         return;
     }
     report_stage("surface.frame_target.complete");
+    report_stage("surface.frame_ticket.begin");
+    if (!run_ios_metal_frame_ticket(_surface)) {
+        [self fail];
+        return;
+    }
+    report_stage("surface.frame_ticket.complete");
 
     nk_text_input_state text_state = {};
     text_state.struct_size = sizeof(text_state);

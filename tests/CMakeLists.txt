@@ -283,7 +283,10 @@ if(APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     add_test(NAME osx_create_destroy COMMAND nativekit_osx_integration)
     set_tests_properties(osx_create_destroy PROPERTIES LABELS "macos")
     add_executable(nativekit_osx_surface_metal integration/osx_surface_metal.c)
+    target_compile_features(nativekit_osx_surface_metal PRIVATE cxx_std_17)
     target_link_libraries(nativekit_osx_surface_metal PRIVATE NativeKit::nativekit)
+    set_source_files_properties(integration/osx_surface_metal.c PROPERTIES LANGUAGE OBJCXX)
+    target_include_directories(nativekit_osx_surface_metal PRIVATE "${PROJECT_SOURCE_DIR}/src")
     set_target_properties(nativekit_osx_surface_metal PROPERTIES LINKER_LANGUAGE OBJCXX)
     add_test(NAME osx_surface_metal COMMAND nativekit_osx_surface_metal)
     set_tests_properties(osx_surface_metal PROPERTIES LABELS "macos;graphics" SKIP_RETURN_CODE 77)
@@ -312,6 +315,7 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     add_executable(nativekit_ios_runtime_tests MACOSX_BUNDLE integration/ios_runtime.mm)
     target_compile_features(nativekit_ios_runtime_tests PRIVATE cxx_std_17)
+    target_include_directories(nativekit_ios_runtime_tests PRIVATE "${PROJECT_SOURCE_DIR}/src")
     target_link_libraries(nativekit_ios_runtime_tests PRIVATE NativeKit::nativekit
         "-framework Foundation" "-framework UIKit" "-framework CoreGraphics"
         "-framework Metal" "-framework QuartzCore" "-framework UniformTypeIdentifiers"
