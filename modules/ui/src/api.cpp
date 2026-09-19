@@ -27,6 +27,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <deque>
 #include <memory>
@@ -512,11 +513,23 @@ void execute_render_submission(RenderSubmission &submission) {
                     if (success)
                         success = renderer_impl->uploadAtlases(*adapter, new_backend);
             }
-            if (success)
+            if (success) {
+                nkui::RenderExecutionError execution_error{};
                 success = nkui::execute_render_plan(
                     *renderer_impl, *submission.plan,
                     {nkui::make_resource_id(nkui::ResourceKind::RenderTarget, 1, 1),
-                     submission.frame_target});
+                     submission.frame_target},
+                    &execution_error);
+#if defined(NKGPU_TESTING)
+                if (!success && nk::core::render_executor_physical())
+                    std::fprintf(stderr,
+                                 "nativekit ui: render submission failed at pass=%u command=%u: %s "
+                                 "(renderer=%s, gpu=%s)\n",
+                                 execution_error.pass_index, execution_error.command_index,
+                                 execution_error.message ? execution_error.message : "unknown",
+                                 renderer_impl->lastError(), nkgpu_last_error());
+#endif
+            }
         }
         /* Stats are protected by renderers_mutex.  Do not reacquire it while
            the shared execution lock is held: nkui_renderer_get_stats takes
