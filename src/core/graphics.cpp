@@ -1,6 +1,7 @@
 #include "nativekit_graphics.h"
 
 #include "core/error.hpp"
+#include "core/frame_backend.hpp"
 #include "core/runtime.hpp"
 
 #if !defined(NK_BACKEND_GTK) && !defined(NK_BACKEND_ANDROID) && !defined(NK_BACKEND_WEB) &&        \

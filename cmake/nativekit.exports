@@ -1,7 +1,7 @@
 NATIVEKIT_0 {
     global:
         nk_*;
+        _ZN2nk4core*;
     local:
         *;
 };
-
