@@ -2858,6 +2858,10 @@ nk_result NK_CALL nk_surface_make_current(nk_handle handle) {
         nk::core::set_error("Android graphics surface is not ready");
         return NK_ERROR_INVALID_REQUEST;
     }
+    if (resource->surface_destroy_pending.load(std::memory_order_acquire)) {
+        nk::core::set_error("Android graphics surface is being destroyed");
+        return NK_ERROR_INVALID_REQUEST;
+    }
     if (!eglMakeCurrent(resource->display, resource->surface, resource->surface,
                         resource->context)) {
         nk::core::set_error("could not make the Android EGL context current");
