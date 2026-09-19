@@ -138,7 +138,11 @@ struct AndroidFrameProbe {
     nk_surface_frame_target target{};
     uint32_t delay_ms = 0;
     nk_result render_result = NK_ERROR_UNKNOWN;
+    bool render_executor = false;
 };
+
+std::atomic<int32_t> last_android_render_probe_status{-1};
+std::atomic<uint64_t> last_android_render_surface_api_violations{0};
 
 void discard_android_frame_probe(void *data) noexcept {
     delete static_cast<AndroidFrameProbe *>(data);
@@ -184,6 +188,9 @@ void NK_CALL run_android_frame_probe(void *data) {
         return;
     if (probe->delay_ms)
         std::this_thread::sleep_for(std::chrono::milliseconds(probe->delay_ms));
+    probe->render_executor = nk::core::executor_current() == NK_EXECUTOR_RENDER;
+    nk::core::reset_render_surface_api_violations();
+    nk::core::set_render_surface_api_guard(true);
     const nk_result bound = nk_graphics_bind_frame_target(&probe->target);
     if (bound == NK_OK) {
         probe->render_result = nk_frame_backend_submit(&probe->target);
@@ -193,6 +200,11 @@ void NK_CALL run_android_frame_probe(void *data) {
     } else {
         probe->render_result = bound;
     }
+    nk::core::set_render_surface_api_guard(false);
+    last_android_render_probe_status.store(probe->render_executor ? 0 : 1,
+                                           std::memory_order_release);
+    last_android_render_surface_api_violations.store(nk::core::render_surface_api_violations(),
+                                                     std::memory_order_release);
     auto *completion =
         new (std::nothrow) AndroidFrameCompletion{probe->frame, probe->render_result};
     probe->frame = NK_INVALID_HANDLE;
@@ -2952,6 +2964,8 @@ nk_result NK_CALL nk_surface_make_current(nk_handle handle) {
 }
 
 nk_result NK_CALL nk_surface_present(nk_handle handle) {
+    if (const auto thread = require_thread(); thread != NK_OK)
+        return thread;
     auto resource = surface(handle);
     if (!resource)
         return NK_ERROR_INVALID_HANDLE;
@@ -3951,6 +3965,18 @@ JNIEXPORT jint JNICALL Java_io_nativekit_NativeKitHost_nativeProbeSurfaceFrame(J
         return queued;
     }
     return NK_OK;
+}
+
+JNIEXPORT jint JNICALL Java_io_nativekit_NativeKitHost_nativeRenderThreadProbe(JNIEnv *, jclass) {
+    return last_android_render_probe_status.load(std::memory_order_acquire);
+}
+
+JNIEXPORT jint JNICALL
+Java_io_nativekit_NativeKitHost_nativeRenderSurfaceApiViolationProbe(JNIEnv *, jclass) {
+    const auto violations =
+        last_android_render_surface_api_violations.load(std::memory_order_acquire);
+    return violations > static_cast<uint64_t>(INT32_MAX) ? INT32_MAX
+                                                         : static_cast<jint>(violations);
 }
 
 JNIEXPORT jint JNICALL Java_io_nativekit_NativeKitHost_nativeDestroySurface(JNIEnv *, jclass,

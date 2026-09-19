@@ -4,6 +4,7 @@
 #include "core/error.hpp"
 #include "core/runtime.hpp"
 
+#include <atomic>
 #include <cstddef>
 #include <condition_variable>
 #include <deque>
@@ -19,6 +20,8 @@ bool executor_bound = false;
 std::thread::id main_thread_id;
 std::thread::id render_thread_id;
 bool render_executor_exclusive = false;
+std::atomic_bool render_surface_api_guard = false;
+std::atomic<std::uint64_t> render_surface_api_violation_count = 0;
 
 std::mutex render_task_mutex;
 std::condition_variable render_task_condition;
@@ -161,6 +164,18 @@ bool render_executor_physical() noexcept {
     return physical_render_backend;
 }
 
+void set_render_surface_api_guard(bool enabled) noexcept {
+    render_surface_api_guard.store(enabled, std::memory_order_release);
+}
+
+void reset_render_surface_api_violations() noexcept {
+    render_surface_api_violation_count.store(0, std::memory_order_release);
+}
+
+std::uint64_t render_surface_api_violations() noexcept {
+    return render_surface_api_violation_count.load(std::memory_order_acquire);
+}
+
 nk_executor executor_current() noexcept {
     std::lock_guard lock(executor_mutex);
     if (physical_render_backend && executor_bound && std::this_thread::get_id() == render_thread_id)
@@ -197,6 +212,9 @@ nk_result require_executor(nk_executor executor) noexcept {
     const bool on_main_thread = std::this_thread::get_id() == main_thread_id;
     const bool on_render_thread =
         physical_render_backend && std::this_thread::get_id() == render_thread_id;
+    if (on_render_thread && executor != NK_EXECUTOR_RENDER &&
+        render_surface_api_guard.load(std::memory_order_acquire))
+        render_surface_api_violation_count.fetch_add(1, std::memory_order_relaxed);
     const bool satisfied =
         executor == NK_EXECUTOR_RENDER
             ? (on_render_thread || (!render_executor_exclusive && on_main_thread))
