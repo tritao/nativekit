@@ -427,6 +427,7 @@ static nkgpu_result begin_frame_with_target(Handle handle, const nk_surface_fram
     slot->value.frame_target = target;
     slot->value.has_frame_target = true;
     slot->value.context_target = target;
+    slot->value.context_target.frame = NK_INVALID_HANDLE;
     slot->value.context_target.native_target = 0;
     slot->value.context_target.native_depth_stencil_target = 0;
     slot->value.has_context_target = target.native_context != 0;
@@ -985,6 +986,7 @@ static nkgpu_result create_renderer_from_target(nk_surface surface,
     renderer_state.device = target.device;
     renderer_state.native_device = target.native_device;
     renderer_state.context_target = target;
+    renderer_state.context_target.frame = NK_INVALID_HANDLE;
     renderer_state.context_target.native_target = 0;
     renderer_state.context_target.native_depth_stencil_target = 0;
     renderer_state.has_context_target = target.native_context != 0;
