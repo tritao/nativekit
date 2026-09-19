@@ -126,6 +126,9 @@ struct RenderPlanEmbedOptions {
     std::size_t destination_main_pass = static_cast<std::size_t>(-1);
     bool has_clip = false;
     std::array<float, 4> clip{};
+    /** Optional transform prefix for custom commands in the embedded plan's main pass. */
+    bool has_command_transform = false;
+    std::array<float, 6> command_transform{1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
 };
 
 struct RenderPlanEmbedError {

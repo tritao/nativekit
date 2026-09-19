@@ -427,7 +427,10 @@ int main() {
                           engine.text_adapter(), &custom_paints, &raster_paints) ||
         raster_frame.plan().passes.size() != 3 ||
         raster_frame.plan().passes[1].kind != RenderPassKind::Raster ||
-        raster_frame.plan().passes[1].commands.size() != 1 ||
+        raster_frame.plan().passes[1].commands.size() < 2 ||
+        std::none_of(raster_frame.plan().passes[1].commands.begin(),
+                     raster_frame.plan().passes[1].commands.end(),
+                     [](const RenderCommand &command) { return command.custom_payload; }) ||
         raster_frame.plan().passes[2].commands.empty() ||
         raster_frame.plan().passes[2].commands.front().kind != RenderCommandKind::CompositeTarget ||
         raster_frame.plan().dependencies.size() != 1)
@@ -459,7 +462,77 @@ int main() {
     if (!compiler.compile(moved_snapshot, main_target, 1.5f, moved_subtree_frame, &compile_error,
                           false, engine.text_adapter(), nullptr, &subtree_paints))
         return 27;
+
+    // Custom paint descendants are embedded into the parent's raster target,
+    // and their world-space transform/clip is rebased along with native paint.
+    LayoutSnapshot moved_ordered_snapshot = moved_snapshot;
+    const auto moved_label_primitive = std::find_if(
+        moved_ordered_snapshot.primitives.begin(), moved_ordered_snapshot.primitives.end(),
+        [](const LayoutPrimitive &primitive) { return primitive.kind == LayoutPrimitiveKind::Text; });
+    const LayoutItem *moved_button_item = moved_ordered_snapshot.find(2);
+    if (moved_label_primitive == moved_ordered_snapshot.primitives.end() || !moved_button_item)
+        return 28;
+    LayoutPrimitive moved_custom_marker = custom_marker;
+    moved_custom_marker.bounds = moved_button_item->bounds;
+    moved_custom_marker.transform = moved_button_item->transform;
+    moved_ordered_snapshot.primitives.insert(moved_label_primitive, moved_custom_marker);
+    RenderPlan moved_custom_plan = custom_plan;
+    moved_custom_plan.passes.front().commands.front().transform[4] += 48.0f;
+    moved_custom_plan.passes.front().commands.front().transform[5] += 24.0f;
+    moved_custom_plan.passes.front().commands.front().scissor_x += 48.0f;
+    moved_custom_plan.passes.front().commands.front().scissor_y += 24.0f;
+    LayoutRenderCompiler::CustomPaintPlans moved_custom_paints{{2, &moved_custom_plan}};
+    LayoutRenderFrame mixed_frame;
+    LayoutRenderFrame moved_mixed_frame;
+    if (!compiler.compile(ordered_snapshot, main_target, 1.5f, mixed_frame, &compile_error, false,
+                          engine.text_adapter(), &custom_paints, &raster_paints) ||
+        !compiler.compile(moved_ordered_snapshot, main_target, 1.5f, moved_mixed_frame,
+                          &compile_error, false, engine.text_adapter(), &moved_custom_paints,
+                          &raster_paints) ||
+        mixed_frame.plan().passes.size() != 3 || moved_mixed_frame.plan().passes.size() != 3)
+        return 28;
+    const auto mixed_custom = std::find_if(
+        mixed_frame.plan().passes[1].commands.begin(), mixed_frame.plan().passes[1].commands.end(),
+        [](const RenderCommand &command) { return command.custom_payload; });
+    const auto moved_mixed_custom = std::find_if(
+        moved_mixed_frame.plan().passes[1].commands.begin(),
+        moved_mixed_frame.plan().passes[1].commands.end(),
+        [](const RenderCommand &command) { return command.custom_payload; });
+    if (mixed_custom == mixed_frame.plan().passes[1].commands.end() ||
+        moved_mixed_custom == moved_mixed_frame.plan().passes[1].commands.end())
+        return 28;
+    for (std::size_t component = 0; component < mixed_custom->transform.size(); ++component)
+        if (std::abs(mixed_custom->transform[component] -
+                     moved_mixed_custom->transform[component]) > 0.001f)
+            return 29;
+    if (std::abs(mixed_custom->scissor_x - moved_mixed_custom->scissor_x) > 0.001f ||
+        std::abs(mixed_custom->scissor_y - moved_mixed_custom->scissor_y) > 0.001f ||
+        std::abs(mixed_custom->scissor_width - moved_mixed_custom->scissor_width) > 0.001f ||
+        std::abs(mixed_custom->scissor_height - moved_mixed_custom->scissor_height) > 0.001f)
+        return 29;
+
+    NanoVGPath mixed_path;
+    mixed_path.move_to(0.0f, 0.0f);
+    mixed_path.line_to(12.0f, 0.0f);
+    mixed_path.line_to(12.0f, 8.0f);
+    mixed_path.line_to(0.0f, 8.0f);
+    mixed_path.close();
+    PreparedGeometry mixed_geometry;
+    PathPreparationParams mixed_path_params;
+    PreparedPaint mixed_paint{};
+    mixed_paint.transform[0] = mixed_paint.transform[3] = 1.0f;
+    mixed_paint.feather = 1.0f;
+    mixed_paint.inner_color = {1.0f, 0.0f, 0.0f, 1.0f};
+    mixed_paint.outer_color = mixed_paint.inner_color;
+    PreparedPath mixed_prepared;
+    if (!mixed_path.valid() || !prepare_fill(mixed_path, mixed_path_params, mixed_geometry) ||
+        !mixed_prepared.set(PreparedPathKind::Fill, mixed_geometry, mixed_paint))
+        return 30;
+
     RecordingRenderer subtree_backend;
+    if (!mixed_frame.resources().bind_path(custom_path, mixed_prepared, 0, 1) ||
+        !moved_mixed_frame.resources().bind_path(custom_path, mixed_prepared, 0, 1))
+        return 30;
     nk_surface_frame_target subtree_frame_target{};
     subtree_frame_target.struct_size = sizeof(subtree_frame_target);
     subtree_frame_target.width = 480;
@@ -472,6 +545,26 @@ int main() {
                              {main_target, subtree_frame_target}, &subtree_execution_error) ||
         subtree_backend.raster_cache_hits != 1)
         return 27;
+    RecordingRenderer mixed_backend;
+    if (!execute_render_plan(mixed_backend, mixed_frame.plan(), mixed_frame.resources(),
+                             {main_target, subtree_frame_target}, &subtree_execution_error) ||
+        !execute_render_plan(mixed_backend, moved_mixed_frame.plan(), moved_mixed_frame.resources(),
+                             {main_target, subtree_frame_target}, &subtree_execution_error) ||
+        mixed_backend.raster_cache_hits != 1)
+        return 30;
+    RenderPlan changed_custom_plan = moved_custom_plan;
+    changed_custom_plan.passes.front().commands.front().content_generation = 2;
+    LayoutRenderCompiler::CustomPaintPlans changed_custom_paints{{2, &changed_custom_plan}};
+    LayoutRenderFrame changed_mixed_frame;
+    if (!compiler.compile(moved_ordered_snapshot, main_target, 1.5f, changed_mixed_frame,
+                          &compile_error, false, engine.text_adapter(), &changed_custom_paints,
+                          &raster_paints) ||
+        !changed_mixed_frame.resources().bind_path(custom_path, mixed_prepared, 0, 1) ||
+        !execute_render_plan(mixed_backend, changed_mixed_frame.plan(),
+                             changed_mixed_frame.resources(),
+                             {main_target, subtree_frame_target}, &subtree_execution_error) ||
+        mixed_backend.raster_cache_hits != 1)
+        return 31;
 
     RenderPlan bounded_custom_plan;
     bounded_custom_plan.passes.push_back({main_target, {}, false, {}});
@@ -494,6 +587,44 @@ int main() {
     bounded_custom_plan.passes.back().commands.push_back(bounded_command);
     bounded_custom_plan.dependencies.push_back({bounded_target, main_target});
     LayoutRenderCompiler::CustomPaintPlans bounded_paints{{2, &bounded_custom_plan}};
+    nk_surface_frame_target nested_frame_target{};
+    nested_frame_target.struct_size = sizeof(nested_frame_target);
+    nested_frame_target.width = 480;
+    nested_frame_target.height = 300;
+    RenderExecutionError nested_execution_error;
+    LayoutRenderFrame nested_mixed_frame;
+    if (!compiler.compile(ordered_snapshot, main_target, 1.5f, nested_mixed_frame, &compile_error,
+                          false, engine.text_adapter(), &bounded_paints, &raster_paints) ||
+        nested_mixed_frame.plan().passes.size() != 4 ||
+        nested_mixed_frame.plan().passes[1].kind != RenderPassKind::Raster ||
+        nested_mixed_frame.plan().passes[2].kind != RenderPassKind::Draw ||
+        nested_mixed_frame.plan().dependencies.size() != 2)
+        return 32;
+    RenderPlan moved_bounded_custom_plan = bounded_custom_plan;
+    moved_bounded_custom_plan.passes.back().commands.front().transform[4] += 48.0f;
+    moved_bounded_custom_plan.passes.back().commands.front().transform[5] += 24.0f;
+    moved_bounded_custom_plan.passes.back().commands.front().scissor_x += 48.0f;
+    moved_bounded_custom_plan.passes.back().commands.front().scissor_y += 24.0f;
+    LayoutRenderCompiler::CustomPaintPlans moved_bounded_paints{{2,
+                                                                 &moved_bounded_custom_plan}};
+    LayoutRenderFrame moved_nested_mixed_frame;
+    if (!compiler.compile(moved_ordered_snapshot, main_target, 1.5f, moved_nested_mixed_frame,
+                          &compile_error, false, engine.text_adapter(), &moved_bounded_paints,
+                          &raster_paints) ||
+        moved_nested_mixed_frame.plan().passes.size() != 4)
+        return 32;
+    if (!nested_mixed_frame.resources().bind_path(custom_path, mixed_prepared, 0, 1) ||
+        !moved_nested_mixed_frame.resources().bind_path(custom_path, mixed_prepared, 0, 1))
+        return 32;
+    RecordingRenderer nested_mixed_backend;
+    if (!execute_render_plan(nested_mixed_backend, nested_mixed_frame.plan(),
+                             nested_mixed_frame.resources(),
+                             {main_target, nested_frame_target}, &nested_execution_error) ||
+        !execute_render_plan(nested_mixed_backend, moved_nested_mixed_frame.plan(),
+                             moved_nested_mixed_frame.resources(),
+                             {main_target, nested_frame_target}, &nested_execution_error) ||
+        nested_mixed_backend.raster_cache_hits != 1)
+        return 32;
     LayoutRenderFrame bounded_frame;
     if (!compiler.compile(ordered_snapshot, main_target, 1.5f, bounded_frame, &compile_error, false,
                           engine.text_adapter(), &bounded_paints) ||

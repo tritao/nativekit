@@ -228,6 +228,19 @@ void place_main_command(RenderCommand &command, const RenderPlanEmbedOptions &op
     if (command.kind == RenderCommandKind::CompositeTarget && !implicit_extent)
         command.transform = compose_transform(options.placement, command.transform);
 
+    if (options.has_command_transform) {
+        command.transform = compose_transform(options.command_transform, command.transform);
+        if (command.has_scissor) {
+            const EmbedBounds transformed = transform_bounds(
+                command.scissor_x, command.scissor_y, command.scissor_width,
+                command.scissor_height, options.command_transform);
+            command.scissor_x = transformed.x;
+            command.scissor_y = transformed.y;
+            command.scissor_width = transformed.width;
+            command.scissor_height = transformed.height;
+        }
+    }
+
     if (options.has_clip) {
         const EmbedBounds clip{options.clip[0], options.clip[1], options.clip[2], options.clip[3]};
         const EmbedBounds current = command.has_scissor

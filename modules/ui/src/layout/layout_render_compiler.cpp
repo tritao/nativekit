@@ -380,15 +380,12 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                 LayoutRect local_bounds = transform_bounds(item->bounds, transform_layout(root_local));
                 std::size_t first = snapshot.primitives.size();
                 std::size_t last = 0;
-                bool has_custom = false;
                 for (std::size_t index = 0; index < snapshot.primitives.size(); ++index) {
                     const auto &primitive = snapshot.primitives[index];
                     if (!belongs_to(primitive.node_id, node_id))
                         continue;
                     first = std::min(first, index);
                     last = std::max(last, index);
-                    if (primitive.kind == LayoutPrimitiveKind::Custom)
-                        has_custom = true;
                     if (primitive.kind != LayoutPrimitiveKind::ClipBegin &&
                         primitive.kind != LayoutPrimitiveKind::ClipEnd &&
                         finite_rect(primitive.bounds))
@@ -398,10 +395,7 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                                              transform_layout(compose_transform(base,
                                                                                transform_array(primitive.transform)))));
                 }
-                // Custom display-list plans can contain their own intermediate targets;
-                // keep those plans on their existing path until bounded embedding is taught
-                // to rebase every nested target into a subtree cache.
-                if (has_custom || first == snapshot.primitives.size() ||
+                if (first == snapshot.primitives.size() ||
                     local_bounds.width <= 0.0f || local_bounds.height <= 0.0f)
                     continue;
                 RasterRoot root;
@@ -422,11 +416,16 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                           return left.first < right.first;
                       });
         }
+        constexpr std::size_t no_raster_root = std::numeric_limits<std::size_t>::max();
+        std::size_t active_raster_root = no_raster_root;
+        ResourceId active_raster_target{};
         std::unordered_set<uint32_t> appended_custom_nodes;
         const auto append_custom_plan = [&](const RenderPlan &custom_plan,
                                             std::size_t primitive_index,
                                             ResourceId destination_target,
-                                            std::size_t destination_pass) -> bool {
+                                            std::size_t destination_pass,
+                                            const std::array<float, 6> *command_transform = nullptr,
+                                            const LayoutRect *clip_override = nullptr) -> bool {
             const auto &primitive = snapshot.primitives[primitive_index];
             std::unordered_map<uint32_t, ResourceId> remapped_targets;
             for (const auto &pass : custom_plan.passes) {
@@ -444,8 +443,11 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                                            primitive.transform.c,  primitive.transform.d,
                                            primitive.transform.tx, primitive.transform.ty};
             std::array<float, 4> clip{};
-            const bool has_clip = !clips.empty();
-            if (has_clip) {
+            const bool has_clip = clip_override || !clips.empty();
+            if (clip_override) {
+                clip = {clip_override->x, clip_override->y, clip_override->width,
+                        clip_override->height};
+            } else if (has_clip) {
                 clip = {clips.back().x, clips.back().y, clips.back().width, clips.back().height};
             }
             RenderPlanEmbedOptions options;
@@ -457,6 +459,9 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
             options.destination_main_pass = destination_pass;
             options.has_clip = has_clip;
             options.clip = clip;
+            options.has_command_transform = command_transform != nullptr;
+            if (command_transform)
+                options.command_transform = *command_transform;
             RenderPlanEmbedError embed_error;
             if (!append_embedded_render_plan(custom_plan, options, out.plan_, &embed_error))
                 return fail(error, primitive_index,
@@ -473,6 +478,17 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
             const auto found = custom_paints->find(primitive.node_id);
             if (found == custom_paints->end() || !found->second)
                 return true;
+            if (active_raster_root != no_raster_root) {
+                const auto &root = raster_roots[active_raster_root];
+                const LayoutRect local_clip = clips.empty()
+                                                   ? LayoutRect{}
+                                                   : transform_bounds(
+                                                         clips.back(),
+                                                         transform_layout(root.world_to_cache));
+                return append_custom_plan(
+                    *found->second, primitive_index, active_raster_target, current_main_pass,
+                    &root.world_to_cache, clips.empty() ? nullptr : &local_clip);
+            }
             const bool raster = raster_paint_nodes &&
                                 raster_paint_nodes->contains(primitive.node_id);
             if (!raster)
@@ -501,9 +517,6 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
             current_main_pass = out.plan_.passes.size() - 1;
             return true;
         };
-        constexpr std::size_t no_raster_root = std::numeric_limits<std::size_t>::max();
-        std::size_t active_raster_root = no_raster_root;
-        ResourceId active_raster_target{};
         const auto begin_raster_root = [&](std::size_t root_index) -> bool {
             auto &root = raster_roots[root_index];
             if (transient_target_slot > std::numeric_limits<uint16_t>::max())
