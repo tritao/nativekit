@@ -5,6 +5,7 @@
 #include "image_decode.h"
 
 #include "core/executor.hpp"
+#include "core/runtime.hpp"
 
 #include "display_list/display_list.h"
 #include "compositor/compositor.h"
@@ -378,6 +379,7 @@ struct DeferredRendererDestroy {
 std::mutex render_submission_mutex;
 std::unique_ptr<RenderSubmission> pending_render_submission;
 bool render_submission_runner_active = false;
+std::uint64_t render_submission_generation = 0;
 
 void NK_CALL run_next_render_submission(void *data);
 bool enqueue_render_submission(RenderSubmission *submission);
@@ -452,8 +454,16 @@ bool enqueue_render_submission(RenderSubmission *raw_submission) {
     std::unique_ptr<RenderSubmission> submission(raw_submission);
     std::unique_ptr<RenderSubmission> replaced;
     bool start_runner = false;
+    const auto generation = nk::core::runtime_generation();
     {
         std::lock_guard lock(render_submission_mutex);
+        /* A discarded render task does not run after nk_shutdown(). Drop its
+           stale pending plan before accepting work from the next runtime. */
+        if (render_submission_generation != generation) {
+            pending_render_submission.reset();
+            render_submission_runner_active = false;
+            render_submission_generation = generation;
+        }
         replaced = std::move(pending_render_submission);
         pending_render_submission = std::move(submission);
         if (!render_submission_runner_active) {
