@@ -396,8 +396,8 @@ NKUI_API nkui_result NK_CALL nkui_layout_session_get_resolved_items(
  * clipping, transforms, hit policies, and native paint order.
  */
 NKUI_API nkui_result NK_CALL nkui_layout_session_hit_test(
-    nkui_layout_session session, float x, float y,
-    uint8_t *out_path NK_OUT_BUFFER(inout_bytes), uint32_t *inout_bytes NK_INOUT);
+    nkui_layout_session session, float x, float y, uint8_t *out_path NK_OUT_BUFFER(inout_bytes),
+    uint32_t *inout_bytes NK_INOUT);
 
 /** Executes the submitted layout through the existing NativeKit renderer.
  *

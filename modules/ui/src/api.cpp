@@ -553,10 +553,10 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                 child_distribution > NKUI_LAYOUT_DISTRIBUTION_SPACE_EVENLY ||
                 wrap_mode > NKUI_LAYOUT_WRAP_WRAP ||
                 align_self > NKUI_LAYOUT_SELF_ALIGNMENT_BASELINE ||
-                (node_flags & ~(NKUI_LAYOUT_NODE_VISIBLE | NKUI_LAYOUT_NODE_FLOATING |
-                                NKUI_LAYOUT_NODE_CLIP_TO_PARENT |
-                                NKUI_LAYOUT_NODE_HIT_SELF_DISABLED |
-                                NKUI_LAYOUT_NODE_HIT_CHILDREN_DISABLED)) != 0 ||
+                (node_flags &
+                 ~(NKUI_LAYOUT_NODE_VISIBLE | NKUI_LAYOUT_NODE_FLOATING |
+                   NKUI_LAYOUT_NODE_CLIP_TO_PARENT | NKUI_LAYOUT_NODE_HIT_SELF_DISABLED |
+                   NKUI_LAYOUT_NODE_HIT_CHILDREN_DISABLED)) != 0 ||
                 (clip_to_parent && !floating) || z_index < std::numeric_limits<int16_t>::min() ||
                 z_index > std::numeric_limits<int16_t>::max() || !std::isfinite(position_x) ||
                 !std::isfinite(position_y) || width_sizing > NKUI_LAYOUT_SIZING_PERCENT)
@@ -1428,8 +1428,9 @@ extern "C" nkui_result nkui_layout_session_get_measure_stats(nkui_layout_session
     return NKUI_OK;
 }
 
-extern "C" nkui_result nkui_layout_session_get_hit_test_stats(
-    nkui_layout_session session, nkui_layout_hit_test_stats *out_stats) {
+extern "C" nkui_result
+nkui_layout_session_get_hit_test_stats(nkui_layout_session session,
+                                       nkui_layout_hit_test_stats *out_stats) {
     if (!out_stats)
         return NKUI_ERROR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(layout_sessions_mutex);
@@ -1503,8 +1504,8 @@ nkui_result set_cache_policy(LayoutSessionState *state, uint32_t node_id,
 }
 
 bool point_in_rect(const nkui::LayoutRect &rect, float x, float y) {
-    return rect.width > 0.0f && rect.height > 0.0f && x >= rect.x &&
-           x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height;
+    return rect.width > 0.0f && rect.height > 0.0f && x >= rect.x && x <= rect.x + rect.width &&
+           y >= rect.y && y <= rect.y + rect.height;
 }
 
 struct HitTestTraversalStats {
@@ -1518,10 +1519,10 @@ bool precisely_hits_self(const nkui::LayoutItem &item, float x, float y,
     ++stats.precise_hit_tests;
     if (!point_in_rect(item.world_bounds, x, y) || !point_in_rect(item.clip_bounds, x, y))
         return false;
-    const float layout_x = item.inverse_transform.a * x + item.inverse_transform.c * y +
-                           item.inverse_transform.tx;
-    const float layout_y = item.inverse_transform.b * x + item.inverse_transform.d * y +
-                           item.inverse_transform.ty;
+    const float layout_x =
+        item.inverse_transform.a * x + item.inverse_transform.c * y + item.inverse_transform.tx;
+    const float layout_y =
+        item.inverse_transform.b * x + item.inverse_transform.d * y + item.inverse_transform.ty;
     return point_in_rect(item.local_bounds, layout_x - item.bounds.x, layout_y - item.bounds.y);
 }
 
@@ -1714,9 +1715,8 @@ extern "C" nkui_result nkui_layout_session_get_resolved_items(nkui_layout_sessio
     return NKUI_OK;
 }
 
-extern "C" nkui_result nkui_layout_session_hit_test(nkui_layout_session session, float x,
-                                                     float y, uint8_t *out_path,
-                                                     uint32_t *inout_bytes) {
+extern "C" nkui_result nkui_layout_session_hit_test(nkui_layout_session session, float x, float y,
+                                                    uint8_t *out_path, uint32_t *inout_bytes) {
     if (!inout_bytes || !std::isfinite(x) || !std::isfinite(y))
         return NKUI_ERROR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(layout_sessions_mutex);

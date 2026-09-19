@@ -533,12 +533,11 @@ LayoutRect intersect_axes(LayoutRect clip, LayoutRect bounds, bool horizontal, b
 }
 
 LayoutRect intersect_rect(LayoutRect left, LayoutRect right) {
-    return {std::max(left.x, right.x),
-            std::max(left.y, right.y),
+    return {std::max(left.x, right.x), std::max(left.y, right.y),
             std::max(0.0f, std::min(left.x + left.width, right.x + right.width) -
-                                std::max(left.x, right.x)),
+                               std::max(left.x, right.x)),
             std::max(0.0f, std::min(left.y + left.height, right.y + right.height) -
-                                std::max(left.y, right.y))};
+                               std::max(left.y, right.y))};
 }
 
 bool has_area(LayoutRect rect) {
@@ -805,8 +804,8 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
         item.id = node.id;
         item.parent_id = node.parent >= 0 ? nodes[static_cast<std::size_t>(node.parent)].id : 0;
         item.index = static_cast<uint32_t>(index);
-        item.parent_index = node.parent >= 0 ? static_cast<uint32_t>(node.parent)
-                                             : kInvalidLayoutIndex;
+        item.parent_index =
+            node.parent >= 0 ? static_cast<uint32_t>(node.parent) : kInvalidLayoutIndex;
         item.child_offset = static_cast<uint32_t>(out.child_indices.size());
         item.child_count = static_cast<uint32_t>(state.children[index].size());
         for (const std::size_t child : state.children[index])
@@ -984,18 +983,18 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
     std::vector<std::size_t> paint_indices(out.items.size());
     for (std::size_t index = 0; index < paint_indices.size(); ++index)
         paint_indices[index] = index;
-    std::stable_sort(paint_indices.begin(), paint_indices.end(), [&](std::size_t left,
-                                                                      std::size_t right) {
-        const auto &left_key = paint_keys[left];
-        const auto &right_key = paint_keys[right];
-        if (left_key.layer_z != right_key.layer_z)
-            return left_key.layer_z < right_key.layer_z;
-        if (left_key.floating != right_key.floating)
-            return !left_key.floating;
-        if (left_key.owner_order != right_key.owner_order)
-            return left_key.owner_order < right_key.owner_order;
-        return left_key.traversal_order < right_key.traversal_order;
-    });
+    std::stable_sort(paint_indices.begin(), paint_indices.end(),
+                     [&](std::size_t left, std::size_t right) {
+                         const auto &left_key = paint_keys[left];
+                         const auto &right_key = paint_keys[right];
+                         if (left_key.layer_z != right_key.layer_z)
+                             return left_key.layer_z < right_key.layer_z;
+                         if (left_key.floating != right_key.floating)
+                             return !left_key.floating;
+                         if (left_key.owner_order != right_key.owner_order)
+                             return left_key.owner_order < right_key.owner_order;
+                         return left_key.traversal_order < right_key.traversal_order;
+                     });
     for (std::size_t order = 0; order < paint_indices.size(); ++order)
         out.items[paint_indices[order]].paint_order = order + 1;
 
