@@ -671,16 +671,22 @@ int main() {
             nk::core::reset_render_surface_api_violations();
             nk::core::set_render_surface_api_guard(true);
             nkgpu_test_forbid_surface_target_queries();
+            const nk_surface recovery_surface =
+                shared_native_device ? scheduler_surfaces[1] : surface;
+            const int32_t recovery_width =
+                shared_native_device ? scheduler_width[1] : surface_width;
+            const int32_t recovery_height =
+                shared_native_device ? scheduler_height[1] : surface_height;
             const nkui_frame_info recovery_frame{
                 sizeof(recovery_frame),
                 static_cast<float>(scheduler_window_options.width),
                 static_cast<float>(scheduler_window_options.height),
-                scheduler_width[1],
-                scheduler_height[1],
+                recovery_width,
+                recovery_height,
                 1.0f};
             auto submit_and_drain = [&](nkui_renderer frame_renderer, const char *operation) {
-                if (nkui_renderer_render_frame(frame_renderer, scheduler_list,
-                                               scheduler_surfaces[1], &recovery_frame) != NKUI_OK) {
+                if (nkui_renderer_render_frame(frame_renderer, scheduler_list, recovery_surface,
+                                               &recovery_frame) != NKUI_OK) {
                     std::fprintf(stderr, "backend renderer smoke: %s submission failed\n",
                                  operation);
                     return false;

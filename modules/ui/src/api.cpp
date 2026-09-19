@@ -547,6 +547,7 @@ void execute_render_submission(RenderSubmission &submission) {
                     {nkui::make_resource_id(nkui::ResourceKind::RenderTarget, 1, 1),
                      submission.frame_target},
                     &execution_error);
+#if defined(NKGPU_TESTING)
                 if (!success && nk::core::render_executor_physical())
                     std::fprintf(stderr,
                                  "nativekit ui: render submission failed at pass=%u command=%u: %s "
@@ -554,6 +555,7 @@ void execute_render_submission(RenderSubmission &submission) {
                                  execution_error.pass_index, execution_error.command_index,
                                  execution_error.message ? execution_error.message : "unknown",
                                  renderer_impl->lastError(), nkgpu_last_error());
+#endif
             }
         }
         /* Stats are protected by renderers_mutex.  Do not reacquire it while
@@ -562,14 +564,6 @@ void execute_render_submission(RenderSubmission &submission) {
         if (renderer_execution_lock.owns_lock())
             renderer_execution_lock.unlock();
     }
-
-    if (!success && nk::core::render_executor_physical())
-        std::fprintf(stderr,
-                     "nativekit ui: render submission setup failed (bound=%d renderer=%p new=%d "
-                     "error=%s, gpu=%s)\n",
-                     bound ? 1 : 0, static_cast<void *>(renderer_impl), new_backend ? 1 : 0,
-                     renderer_impl ? renderer_impl->lastError() : "renderer unavailable",
-                     nkgpu_last_error());
 
     /* GL/EGL retains a thread-local context through submit so sealed-plan
        resource destructors can release external images on RENDER. */
