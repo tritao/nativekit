@@ -875,8 +875,8 @@ void nkgpu_test_invalidate_all(void) {
     for (uint32_t index = 0; index < renderer_pool.slots.size(); ++index) {
         auto &slot = renderer_pool.slots[index];
         if (slot.active) {
-            const Handle handle = (uint32_t(RendererKind) << 28) |
-                                  (uint32_t(slot.generation) << 16) | (index + 1);
+            const Handle handle =
+                (uint32_t(RendererKind) << 28) | (uint32_t(slot.generation) << 16) | (index + 1);
             mark_renderer_lost(handle, slot.value);
         }
     }

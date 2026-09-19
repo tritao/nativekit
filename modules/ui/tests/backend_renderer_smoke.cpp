@@ -204,6 +204,7 @@ int main() {
     nkui_display_list scheduler_list{};
     nkui_renderer renderer{};
     nkui_renderer recovery_renderer{};
+    nkui_resource scheduler_image{};
     nk_window scheduler_windows[2]{};
     nk_surface scheduler_surfaces[2]{};
     nk_surface_frame_target scheduler_targets[2]{};
@@ -506,9 +507,24 @@ int main() {
             result = 26;
             goto cleanup;
         }
-        if (!check(nkui_display_list_submit(
-                       scheduler_list, reinterpret_cast<const uint8_t *>(&composite),
-                       sizeof(composite)) == NKUI_OK,
+        const uint8_t scheduler_pixels[] = {64, 160, 240, 255};
+        if (!check(nkui_image_create(1, 1, NKUI_IMAGE_RGBA8, scheduler_pixels,
+                                     sizeof(scheduler_pixels), &scheduler_image) == NKUI_OK,
+                   "create scheduler image")) {
+            result = 26;
+            goto cleanup;
+        }
+        nkui_draw_rect_command scheduler_composite{};
+        scheduler_composite.header = {NKUI_COMMAND_DRAW_IMAGE, NKUI_COMMAND_VERSION,
+                                      sizeof(nkui_draw_rect_command)};
+        scheduler_composite.resource = scheduler_image;
+        scheduler_composite.x = 16.0f;
+        scheduler_composite.y = 16.0f;
+        scheduler_composite.width = 64.0f;
+        scheduler_composite.height = 64.0f;
+        if (!check(nkui_display_list_submit(scheduler_list,
+                                            reinterpret_cast<const uint8_t *>(&scheduler_composite),
+                                            sizeof(scheduler_composite)) == NKUI_OK,
                    "submit scheduler display list")) {
             result = 26;
             goto cleanup;
@@ -649,7 +665,7 @@ int main() {
                 1.0f};
             auto submit_and_drain = [&](nkui_renderer frame_renderer, const char *operation) {
                 if (nkui_renderer_render_frame(frame_renderer, scheduler_list,
-                                                scheduler_surfaces[1], &recovery_frame) != NKUI_OK) {
+                                               scheduler_surfaces[1], &recovery_frame) != NKUI_OK) {
                     std::fprintf(stderr, "backend renderer smoke: %s submission failed\n",
                                  operation);
                     return false;
@@ -726,25 +742,34 @@ int main() {
                        "device-loss accounting") ||
                 !check(recovered_stats.gpu_frames >= before_loss_stats.gpu_frames + 1,
                        "recovery completed frame")) {
-                std::fprintf(stderr,
-                             "backend renderer smoke: loss stats before=(sub=%llu exec=%llu "
-                             "frames=%llu losses=%llu) after=(sub=%llu exec=%llu frames=%llu "
-                             "losses=%llu) recovered=(sub=%llu exec=%llu frames=%llu losses=%llu)\n",
-                             static_cast<unsigned long long>(before_loss_stats.render_submissions),
-                             static_cast<unsigned long long>(
-                                 before_loss_stats.render_submission_executions),
-                             static_cast<unsigned long long>(before_loss_stats.gpu_frames),
-                             static_cast<unsigned long long>(before_loss_stats.device_losses),
-                             static_cast<unsigned long long>(after_loss_stats.render_submissions),
-                             static_cast<unsigned long long>(
-                                 after_loss_stats.render_submission_executions),
-                             static_cast<unsigned long long>(after_loss_stats.gpu_frames),
-                             static_cast<unsigned long long>(after_loss_stats.device_losses),
-                             static_cast<unsigned long long>(recovered_stats.render_submissions),
-                             static_cast<unsigned long long>(
-                                 recovered_stats.render_submission_executions),
-                             static_cast<unsigned long long>(recovered_stats.gpu_frames),
-                             static_cast<unsigned long long>(recovered_stats.device_losses));
+                std::fprintf(
+                    stderr,
+                    "backend renderer smoke: loss stats before=(sub=%llu exec=%llu "
+                    "fail=%llu passes=%llu draws=%llu frames=%llu losses=%llu) "
+                    "after=(sub=%llu exec=%llu fail=%llu passes=%llu draws=%llu "
+                    "frames=%llu losses=%llu) recovered=(sub=%llu exec=%llu fail=%llu "
+                    "passes=%llu draws=%llu frames=%llu losses=%llu)\n",
+                    static_cast<unsigned long long>(before_loss_stats.render_submissions),
+                    static_cast<unsigned long long>(before_loss_stats.render_submission_executions),
+                    static_cast<unsigned long long>(before_loss_stats.render_submission_failures),
+                    static_cast<unsigned long long>(before_loss_stats.gpu_passes),
+                    static_cast<unsigned long long>(before_loss_stats.gpu_draw_calls),
+                    static_cast<unsigned long long>(before_loss_stats.gpu_frames),
+                    static_cast<unsigned long long>(before_loss_stats.device_losses),
+                    static_cast<unsigned long long>(after_loss_stats.render_submissions),
+                    static_cast<unsigned long long>(after_loss_stats.render_submission_executions),
+                    static_cast<unsigned long long>(after_loss_stats.render_submission_failures),
+                    static_cast<unsigned long long>(after_loss_stats.gpu_passes),
+                    static_cast<unsigned long long>(after_loss_stats.gpu_draw_calls),
+                    static_cast<unsigned long long>(after_loss_stats.gpu_frames),
+                    static_cast<unsigned long long>(after_loss_stats.device_losses),
+                    static_cast<unsigned long long>(recovered_stats.render_submissions),
+                    static_cast<unsigned long long>(recovered_stats.render_submission_executions),
+                    static_cast<unsigned long long>(recovered_stats.render_submission_failures),
+                    static_cast<unsigned long long>(recovered_stats.gpu_passes),
+                    static_cast<unsigned long long>(recovered_stats.gpu_draw_calls),
+                    static_cast<unsigned long long>(recovered_stats.gpu_frames),
+                    static_cast<unsigned long long>(recovered_stats.device_losses));
                 result = 34;
                 goto cleanup;
             }
@@ -761,6 +786,8 @@ cleanup:
     if (list.id && nkui_display_list_destroy(list) != NKUI_OK)
         result = result ? result : 22;
     if (imported_surface.id && nkui_resource_destroy(imported_surface) != NKUI_OK)
+        result = result ? result : 23;
+    if (scheduler_image.id && nkui_resource_destroy(scheduler_image) != NKUI_OK)
         result = result ? result : 23;
     if (producer.id) {
         destroy_task.surface = surface;
