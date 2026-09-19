@@ -25,8 +25,10 @@ extern "C" {
 /* Internal NativeKit-wide lease for Sokol's process-global runtime. */
 /*
  * Every NativeKit Sokol owner must use compatible environment defaults. The
- * first owner establishes the color/depth/sample configuration; later owners
- * retain the lease only when they request the same configuration.
+ * first owner establishes the native-device and color/depth/sample identity;
+ * later owners retain the lease only when they request the same configuration
+ * on that native device.  The logical NativeKit device remains a per-surface
+ * lifetime token and is therefore not suitable as the runtime identity.
  */
 int nk_sokol_runtime_acquire(const sg_desc *desc, nk_graphics_device device,
                              uint64_t native_device);
