@@ -60,8 +60,7 @@ int nk_sokol_runtime_acquire(const sg_desc *desc, nk_graphics_device device,
     if (!desc || !device.id || runtime_references == UINT32_MAX)
         return 0;
     const uint64_t device_key = native_device ? native_device : device.id;
-    if (runtime_references && (!runtime_config_matches(desc) ||
-                               runtime_device != device_key))
+    if (runtime_references && (!runtime_config_matches(desc) || runtime_device != device_key))
         return 0;
     if (!runtime_references) {
         if (sg_isvalid())
