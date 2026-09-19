@@ -3,6 +3,7 @@
 #include "nativekit_sokol_api.h"
 #include "adapter_internal.h"
 #include "core/graphics_image_registry.h"
+#include "core/executor.hpp"
 #if defined(NKGPU_TESTING)
 #include "testing.h"
 #endif
@@ -968,6 +969,9 @@ nkgpu_result nkgpu_renderer_create_for_frame_target(
         return fail(NKGPU_ERROR_WRONG_THREAD, "renderer creation requires the render executor");
     if (!frame_target)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "frame target is null");
+    const nkgpu_result bound = nkgpu_bind_frame_target(frame_target);
+    if (bound != NKGPU_OK)
+        return bound;
     return create_renderer_from_target(surface, *frame_target, out_renderer);
 }
 static void destroy_render_target(Pool<RenderTarget, RenderTargetKind, 128>::Slot &slot,
@@ -3105,8 +3109,21 @@ nkgpu_result nkgpu_bind_frame_target(const nk_surface_frame_target *frame_target
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid acquired frame target");
     if (!nk_executor_is_current(NK_EXECUTOR_RENDER))
         return fail(NKGPU_ERROR_WRONG_THREAD, "frame-target binding requires the render executor");
-    /* The current executor aliases PLATFORM/APP/RENDER. A future GL backend
-       binds frame_target->native_context here before touching Sokol state. */
+    /* Explicit APIs carry all state needed by Sokol in the immutable target.
+       Their immediate context/command queue is intentionally render-owned, so
+       binding is validation rather than a second surface lookup. */
+    if (frame_target->api == NK_GRAPHICS_D3D11 || frame_target->api == NK_GRAPHICS_METAL) {
+        if (!frame_target->native_device || !frame_target->native_context)
+            return fail(NKGPU_ERROR_INVALID_ARGUMENT,
+                        "explicit frame target is missing its device binding");
+        return NKGPU_OK;
+    }
+    /* GTK/Web remain aliased during the GL migration and already have the
+       current context on the calling thread. A physical GL/EGL backend must
+       provide a real context binding before it can opt into RENDER. */
+    if (nk::core::render_executor_physical())
+        return fail(NKGPU_ERROR_WRONG_STATE,
+                    "physical GL frame-target binding is not implemented for this backend");
     return NKGPU_OK;
 }
 

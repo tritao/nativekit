@@ -1031,11 +1031,10 @@ NKGPU_API nkgpu_result nkgpu_batch_seal(nkgpu_batch batch);
 /**
  * Binds the render-side context represented by an acquired frame target.
  *
- * This must be called on the render executor. It is currently a validated
- * no-op while RENDER aliases PLATFORM. It is the
- * stable seam for a future physical render thread: GL targets will carry the
- * backend context token in `native_context`, and the GPU backend will bind that
- * context here without changing batch or surface ABI signatures.
+ * This must be called on the render executor. Explicit APIs validate the
+ * device/context binding carried by the target without consulting a surface.
+ * Physical GL/EGL backends must implement context binding before opting into
+ * the split executor; aliased GTK/Web backends retain their current context.
  */
 NKGPU_API nkgpu_result nkgpu_bind_frame_target(const nk_surface_frame_target *frame_target);
 
