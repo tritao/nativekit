@@ -4,6 +4,7 @@ import NativeKit.Handle;
 import NativeKit.InputAction;
 import NativeKit.TouchAction;
 import NativeKit.WindowStateFlags;
+import NativeKit.WindowHandle;
 import NativeKitEventValue;
 import NativeKitEvents;
 import NativeKitEvents.NativeKitEventSubscription;
@@ -14,6 +15,7 @@ class NativeInputAdapter {
 	final source:Handle;
 	final accessibilitySource:Handle;
 	final cursor:NativeCursorController;
+	final window:WindowHandle;
 	var attachedEvents:Null<NativeKitEvents>;
 	var eventSubscription:Null<NativeKitEventSubscription>;
 	final eventListener:NativeKitEventValue->Void;
@@ -26,6 +28,7 @@ class NativeInputAdapter {
 		this.context = context;
 		this.source = source;
 		this.accessibilitySource = accessibilitySource == null ? source : accessibilitySource;
+		window = new WindowHandle(source.rawValue());
 		cursor = new NativeCursorController(source);
 		attachedEvents = null;
 		eventSubscription = null;
@@ -45,6 +48,16 @@ class NativeInputAdapter {
 		detach();
 		eventSubscription = events.listen(eventListener);
 		attachedEvents = events;
+		context.setPointerCaptureHandler(function(captured) {
+			try {
+				// NativeKit exposes physical capture through the window's pointer
+				// mode. Logical capture remains authoritative when a backend does
+				// not support the platform operation.
+				NativeKit.nk_window_set_cursor_mode_checked(window, cast (captured ? 2 : 0));
+			} catch (_:Dynamic) {
+				// Unsupported capture must not interrupt logical event routing.
+			}
+		});
 		context.setCursorHandler(function(shape) { cursor.apply(shape); });
 	}
 
@@ -55,6 +68,7 @@ class NativeInputAdapter {
 				eventSubscription.dispose();
 			eventSubscription = null;
 			attachedEvents = null;
+			context.setPointerCaptureHandler(null);
 			context.setCursorHandler(null);
 			cursor.reset();
 		}

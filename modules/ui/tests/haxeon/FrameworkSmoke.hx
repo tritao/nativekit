@@ -14,6 +14,7 @@ import LayoutAlignmentY;
 import LayoutAxis;
 import LayoutDirection;
 import LayoutFrame;
+import LayoutPositioning;
 import LayoutSizing;
 import LayoutStyle;
 import LayoutSizing;
@@ -43,8 +44,11 @@ import NativeKitRuntime;
 import NativeKitEventDecoderTests;
 import nativekit.ui.core.NativeInputAdapter;
 import nativekit.ui.core.CursorShape as UiCursorShape;
+import nativekit.ui.core.EventDispatcher;
+import nativekit.ui.core.FocusManager;
 import nativekit.ui.core.HitTest;
 import nativekit.ui.core.HitTestBehavior;
+import nativekit.ui.core.InteractionStateStore;
 import nativekit.ui.core.RenderNode;
 import nativekit.ui.core.State;
 import nativekit.ui.core.UiContext;
@@ -2871,7 +2875,113 @@ class FrameworkSmoke {
 		var singularItem = new ResolvedLayoutItem(901, 1, 0.0, 0.0, 20.0, 20.0,
 				new Rect(-100.0, -100.0, 200.0, 200.0),
 				new Rect(0.0, 0.0, 0.0, 0.0), singular, 0.0);
-		return !singularItem.hitTest(0.0, 0.0);
+		return !singularItem.hitTest(0.0, 0.0) && nestedSceneSemanticsValid();
+	}
+
+	/** Covers the shared Haxe scene policy around transforms, clipping, order, and events. */
+	static function nestedSceneSemanticsValid():Bool {
+		var broadClip = new Rect(-1000.0, -1000.0, 3000.0, 3000.0);
+		var root = new RenderNode(new WidgetId(910));
+		var panel = new RenderNode(new WidgetId(911));
+		var target = new RenderNode(new WidgetId(912));
+		root.hitTestSelf = false;
+		panel.hitTestSelf = false;
+		root.add(panel);
+		panel.add(target);
+		var rootTransform = Transform2D.translation(100.0, 40.0);
+		var panelTransform = rootTransform.multiply(Transform2D.rotation(0.21));
+		var targetTransform = panelTransform.multiply(Transform2D.identity().skewed(0.08, -0.05));
+		root.resolved = new ResolvedLayoutItem(910, 1, 0.0, 0.0, 400.0, 300.0,
+			broadClip, new Rect(0.0, 0.0, 0.0, 0.0), rootTransform, 0.0);
+		panel.resolved = new ResolvedLayoutItem(911, 1, 20.0, 30.0, 180.0, 120.0,
+			broadClip, new Rect(0.0, 0.0, 0.0, 0.0), panelTransform, 0.0);
+		target.resolved = new ResolvedLayoutItem(912, 1, 10.0, 15.0, 60.0, 40.0,
+			broadClip, new Rect(0.0, 0.0, 0.0, 0.0), targetTransform, 0.0);
+		var localPoint = new Point(8.0, 9.0);
+		var globalPoint = target.localToGlobal(localPoint);
+		var expectedRoot = root.globalToLocal(globalPoint);
+		var expectedPanel = panel.globalToLocal(globalPoint);
+		var order:Array<String> = [];
+		var rootLocalX = 0.0;
+		var panelLocalX = 0.0;
+		var targetLocalX = 0.0;
+		root.on(UiEventKind.PointerDown, function(event) {
+			order.push("root-capture");
+			rootLocalX = event.localX;
+		}, "capture");
+		panel.on(UiEventKind.PointerDown, function(event) {
+			order.push("panel-capture");
+			panelLocalX = event.localX;
+		}, "capture");
+		target.on(UiEventKind.PointerDown, function(event) {
+			order.push("target");
+			targetLocalX = event.localX;
+		});
+		panel.on(UiEventKind.PointerDown, function(event) {
+			order.push("panel-bubble");
+			if (!near(event.localX, expectedPanel.x))
+				order.push("panel-coordinate-error");
+		});
+		root.on(UiEventKind.PointerDown, function(event) {
+			order.push("root-bubble");
+			if (!near(event.localX, expectedRoot.x))
+				order.push("root-coordinate-error");
+		});
+		var dispatcher = new EventDispatcher(new FocusManager(), new InteractionStateStore());
+		dispatcher.setRoot(root);
+		dispatcher.pointerDown(globalPoint.x, globalPoint.y, 0);
+		if (order.join(",") != "root-capture,panel-capture,target,panel-bubble,root-bubble" ||
+			!near(rootLocalX, expectedRoot.x) || !near(panelLocalX, expectedPanel.x) ||
+			!near(targetLocalX, localPoint.x) || HitTest.path(root, globalPoint.x, globalPoint.y).length != 3)
+			return false;
+
+		// An inverse-transformed child remains clipped in viewport space, even
+		// when its own local bounds are reached by the pointer.
+		var clippedGlobal = target.localToGlobal(new Point(8.0, 32.0));
+		target.resolved = new ResolvedLayoutItem(912, 1, 10.0, 15.0, 60.0, 40.0,
+			new Rect(globalPoint.x - 1.0, globalPoint.y - 1.0, 2.0, 2.0),
+			new Rect(0.0, 0.0, 0.0, 0.0), targetTransform, 0.0);
+		if (HitTest.path(root, clippedGlobal.x, clippedGlobal.y).length != 0)
+			return false;
+
+		var stack = new RenderNode(new WidgetId(920));
+		stack.hitTestSelf = false;
+		stack.resolved = new ResolvedLayoutItem(920, 1, 0.0, 0.0, 100.0, 100.0,
+			broadClip, new Rect(0.0, 0.0, 0.0, 0.0), Transform2D.identity(), 0.0);
+		var lower = new RenderNode(new WidgetId(921));
+		var upper = new RenderNode(new WidgetId(922));
+		var equalFirst = new RenderNode(new WidgetId(923));
+		var equalSecond = new RenderNode(new WidgetId(924));
+		var flowFirst = new RenderNode(new WidgetId(925));
+		var flowSecond = new RenderNode(new WidgetId(926));
+		for (child in [lower, upper, equalFirst, equalSecond, flowFirst, flowSecond]) {
+			child.resolved = new ResolvedLayoutItem(child.id.value, 1, 0.0, 0.0, 100.0, 100.0,
+				broadClip, new Rect(0.0, 0.0, 0.0, 0.0), Transform2D.identity(), 0.0);
+			child.layout.style.positioning = LayoutPositioning.Absolute;
+		}
+		lower.layout.style.zIndex = 1;
+		upper.layout.style.zIndex = 5;
+		equalFirst.layout.style.zIndex = 7;
+		equalSecond.layout.style.zIndex = 7;
+		// Flow zIndex is intentionally ignored by the native renderer.
+		flowFirst.layout.style.positioning = LayoutPositioning.Flow;
+		flowFirst.layout.style.zIndex = 100;
+		flowSecond.layout.style.positioning = LayoutPositioning.Flow;
+		flowSecond.layout.style.zIndex = -100;
+		stack.add(lower);
+		stack.add(upper);
+		stack.add(equalFirst);
+		stack.add(equalSecond);
+		var hitPath = HitTest.path(stack, 10.0, 10.0);
+		if (hitPath.length != 2 || !hitPath[1].id.equals(equalSecond.id))
+			return false;
+		var flowStack = new RenderNode(new WidgetId(927));
+		flowStack.hitTestSelf = false;
+		flowStack.resolved = stack.resolved;
+		flowStack.add(flowFirst);
+		flowStack.add(flowSecond);
+		hitPath = HitTest.path(flowStack, 10.0, 10.0);
+		return hitPath.length == 2 && hitPath[1].id.equals(flowSecond.id);
 	}
 
 	static inline function near(left:Float, right:Float):Bool

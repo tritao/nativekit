@@ -140,7 +140,10 @@ int main(int argc, char **argv) {
         return 23;
     geometry_child_item = snapshot.find(301);
     if (!geometry_child_item || std::abs(geometry_child_item->transform.tx - 35.0f) > 0.0001f ||
-        std::abs(geometry_child_item->transform.ty + 5.0f) > 0.0001f)
+        std::abs(geometry_child_item->transform.ty + 5.0f) > 0.0001f ||
+        geometry_child_item->clip_bounds.x != 0.0f || geometry_child_item->clip_bounds.y != 0.0f ||
+        geometry_child_item->clip_bounds.width != 100.0f ||
+        geometry_child_item->clip_bounds.height != 80.0f)
         return 24;
 
     const auto hidden_primitive =
@@ -231,6 +234,36 @@ int main(int argc, char **argv) {
         lower_item->bounds.y != 12.0f || upper_item->bounds.x != 18.0f ||
         upper_item->bounds.y != 16.0f)
         return 24;
+
+    // Equal floating z-index values retain declaration order. This is the
+    // native paint-order contract mirrored by Haxe hit testing.
+    LayoutNode equal_stack_root = box(403, -1);
+    equal_stack_root.style.width = {LayoutSizing::Fixed, 100.0f};
+    equal_stack_root.style.height = {LayoutSizing::Fixed, 80.0f};
+    LayoutNode equal_first = lower_layer;
+    equal_first.id = 404;
+    equal_first.style.z_index = 7;
+    equal_first.style.background = {1.0f, 1.0f, 0.0f, 1.0f};
+    LayoutNode equal_second = lower_layer;
+    equal_second.id = 405;
+    equal_second.style.z_index = 7;
+    equal_second.style.background = {0.0f, 1.0f, 1.0f, 1.0f};
+    std::vector<LayoutNode> equal_stack_nodes{equal_stack_root, equal_first, equal_second};
+    if (!engine.layout(equal_stack_nodes, 100.0f, 80.0f, 1.0f / 60.0f, snapshot, &error))
+        return 29;
+    const auto equal_first_draw = std::find_if(
+        snapshot.primitives.begin(), snapshot.primitives.end(),
+        [](const LayoutPrimitive &primitive) {
+            return primitive.node_id == 404 && primitive.kind == LayoutPrimitiveKind::Rectangle;
+        });
+    const auto equal_second_draw = std::find_if(
+        snapshot.primitives.begin(), snapshot.primitives.end(),
+        [](const LayoutPrimitive &primitive) {
+            return primitive.node_id == 405 && primitive.kind == LayoutPrimitiveKind::Rectangle;
+        });
+    if (equal_first_draw == snapshot.primitives.end() || equal_second_draw == snapshot.primitives.end() ||
+        equal_first_draw >= equal_second_draw)
+        return 30;
 
     LayoutNode clip_root = box(410, -1);
     clip_root.style.width = {LayoutSizing::Fixed, 100.0f};
