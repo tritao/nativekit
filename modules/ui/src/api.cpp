@@ -451,14 +451,15 @@ void execute_render_submission(RenderSubmission &submission) {
     bool success = false;
     const bool context_backend = submission.frame_target.api == NK_GRAPHICS_OPENGL ||
                                  submission.frame_target.api == NK_GRAPHICS_OPENGL_ES;
-    const bool bound = !context_backend || nkgpu_bind_frame_target(&submission.frame_target) == NKGPU_OK;
+    const bool bound =
+        !context_backend || nkgpu_bind_frame_target(&submission.frame_target) == NKGPU_OK;
     if (!bound && context_backend && nk::core::render_executor_physical())
         /* A failed bind may follow a surface-destroy callback while a prior
            frame left the context current on this thread. */
         nk_graphics_unbind_frame_target(&submission.frame_target);
     if (bound) {
         std::shared_lock<std::shared_mutex> renderer_execution_lock(renderer_execution_mutex,
-                                                                     std::defer_lock);
+                                                                    std::defer_lock);
         nkui::UiRenderer *renderer_impl = nullptr;
         bool new_backend = false;
         {
@@ -516,8 +517,8 @@ void execute_render_submission(RenderSubmission &submission) {
     }
 
     auto *completion = new RenderCompletion{submission.frame, success};
-    if (nk::core::dispatch_to_executor(NK_EXECUTOR_PLATFORM, &finish_render_submission,
-                                       completion, &destroy_render_completion,
+    if (nk::core::dispatch_to_executor(NK_EXECUTOR_PLATFORM, &finish_render_submission, completion,
+                                       &destroy_render_completion,
                                        sizeof(RenderCompletion)) != NK_OK)
         delete completion;
 }
@@ -3026,11 +3027,10 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
                                          static_cast<uint64_t>(surface_slot->graphics_image.id)))
                             sealable = false;
                     } else if (surface_slot->surface) {
-                        const nk_graphics_image published =
-                            surface_slot->surface->retained_image();
+                        const nk_graphics_image published = surface_slot->surface->retained_image();
                         if (published.id) {
-                            const auto generation = static_cast<uint64_t>(
-                                surface_slot->surface->generation());
+                            const auto generation =
+                                static_cast<uint64_t>(surface_slot->surface->generation());
                             valid = frame_resources.bind_graphics_image(command.resource, published,
                                                                         generation);
                             if (valid && !owned_resources.bind_graphics_image(
@@ -3472,11 +3472,10 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                                          command.resource, surface_slot->graphics_image))
                             sealable = false;
                     } else if (surface_slot->surface) {
-                        const nk_graphics_image published =
-                            surface_slot->surface->retained_image();
+                        const nk_graphics_image published = surface_slot->surface->retained_image();
                         if (published.id) {
-                            const auto generation = static_cast<uint64_t>(
-                                surface_slot->surface->generation());
+                            const auto generation =
+                                static_cast<uint64_t>(surface_slot->surface->generation());
                             valid = frame_resources.bind_graphics_image(command.resource, published,
                                                                         generation);
                             if (valid && !owned_resources.bind_graphics_image(

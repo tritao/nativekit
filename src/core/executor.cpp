@@ -67,9 +67,8 @@ void render_loop() noexcept {
         nk::core::AppTask task;
         {
             std::unique_lock lock(render_task_mutex);
-            render_task_condition.wait(lock, [] {
-                return render_stopping || !render_tasks.empty();
-            });
+            render_task_condition.wait(lock,
+                                       [] { return render_stopping || !render_tasks.empty(); });
             if (render_stopping)
                 break;
             task = render_tasks.front();
@@ -176,8 +175,8 @@ bool executor_satisfies(nk_executor executor) noexcept {
     if (!executor_bound)
         return false;
     const bool on_main_thread = std::this_thread::get_id() == main_thread_id;
-    const bool on_render_thread = physical_render_backend &&
-                                  std::this_thread::get_id() == render_thread_id;
+    const bool on_render_thread =
+        physical_render_backend && std::this_thread::get_id() == render_thread_id;
     if (executor == NK_EXECUTOR_WORKER)
         return !on_main_thread && !on_render_thread;
     if (executor == NK_EXECUTOR_RENDER)
@@ -196,12 +195,13 @@ nk_result require_executor(nk_executor executor) noexcept {
         return NK_ERROR_NOT_INITIALIZED;
     }
     const bool on_main_thread = std::this_thread::get_id() == main_thread_id;
-    const bool on_render_thread = physical_render_backend &&
-                                  std::this_thread::get_id() == render_thread_id;
-    const bool satisfied = executor == NK_EXECUTOR_RENDER
-                               ? (on_render_thread || (!render_executor_exclusive && on_main_thread))
-                               : (executor == NK_EXECUTOR_WORKER ? !on_main_thread && !on_render_thread
-                                                                 : on_main_thread);
+    const bool on_render_thread =
+        physical_render_backend && std::this_thread::get_id() == render_thread_id;
+    const bool satisfied =
+        executor == NK_EXECUTOR_RENDER
+            ? (on_render_thread || (!render_executor_exclusive && on_main_thread))
+            : (executor == NK_EXECUTOR_WORKER ? !on_main_thread && !on_render_thread
+                                              : on_main_thread);
     if (!satisfied) {
         set_error("NativeKit executor API called from the wrong thread");
         return NK_ERROR_WRONG_THREAD;
@@ -264,8 +264,8 @@ nk_result dispatch_to_executor(nk_executor executor, nk_task_fn fn, void *user_d
     return NK_OK;
 }
 
-nk_result dispatch_to_render(nk_task_fn fn, void *user_data,
-                             void (*cleanup)(void *) noexcept, std::size_t bytes) noexcept {
+nk_result dispatch_to_render(nk_task_fn fn, void *user_data, void (*cleanup)(void *) noexcept,
+                             std::size_t bytes) noexcept {
     if (!fn) {
         set_error("nk_task_fn is null");
         return NK_ERROR_INVALID_ARGUMENT;
@@ -287,8 +287,7 @@ nk_result dispatch_to_render(nk_task_fn fn, void *user_data,
     }
     {
         std::lock_guard lock(render_task_mutex);
-        if (!render_accepting || render_stopping ||
-            render_tasks.size() >= app_task_capacity ||
+        if (!render_accepting || render_stopping || render_tasks.size() >= app_task_capacity ||
             render_task_bytes > app_task_byte_capacity - bytes) {
             set_error("the render dispatch queue is full");
             return NK_ERROR_QUEUE_FULL;

@@ -776,8 +776,8 @@ void sync_surface_drawable_size(MacSurfaceResource &resource) {
     const int32_t width = static_cast<int32_t>(std::max(0.0, view_size.width * effective_scale));
     const int32_t height = static_cast<int32_t>(std::max(0.0, view_size.height * effective_scale));
     if (resource.frame_prepared) {
-        resource.resize_pending = resource.framebuffer_width != width ||
-                                  resource.framebuffer_height != height;
+        resource.resize_pending =
+            resource.framebuffer_width != width || resource.framebuffer_height != height;
         return;
     }
     resource.layer.contentsScale = effective_scale;
@@ -5309,8 +5309,7 @@ nk_result NK_CALL nk_graphics_unbind_frame_target(const nk_surface_frame_target 
     return NK_OK;
 }
 
-nk_result NK_CALL nk_frame_backend_finish(nk_handle handle,
-                                          const nk_surface_frame_target *) {
+nk_result NK_CALL nk_frame_backend_finish(nk_handle handle, const nk_surface_frame_target *) {
     if (const auto result = enter_ui(); result != NK_OK)
         return result;
     auto resource = surface(handle);

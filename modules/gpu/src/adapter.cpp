@@ -366,8 +366,8 @@ static nk_result get_surface_frame_target(nk_surface surface, nk_surface_frame_t
 }
 
 static bool make_renderer_surface_current(const Renderer &renderer) {
-    if (nk::core::render_executor_physical() &&
-        nk_executor_is_current(NK_EXECUTOR_RENDER) && renderer.has_context_target)
+    if (nk::core::render_executor_physical() && nk_executor_is_current(NK_EXECUTOR_RENDER) &&
+        renderer.has_context_target)
         return nkgpu_bind_frame_target(&renderer.context_target) == NKGPU_OK;
     if (nk_surface_make_current(renderer.surface) != NK_OK)
         return false;
@@ -388,8 +388,8 @@ static nkgpu_result activate_renderer(Handle handle,
         return fail(NKGPU_ERROR_WRONG_STATE, "another renderer has an active frame");
     const bool context_backend = slot->value.graphics_api == NK_GRAPHICS_OPENGL ||
                                  slot->value.graphics_api == NK_GRAPHICS_OPENGL_ES;
-    const bool render_owned_context = nk::core::render_executor_physical() &&
-                                      nk_executor_is_current(NK_EXECUTOR_RENDER);
+    const bool render_owned_context =
+        nk::core::render_executor_physical() && nk_executor_is_current(NK_EXECUTOR_RENDER);
     if (!provided_target && render_owned_context && context_backend &&
         !renderer_is_active(slot->value) && slot->value.has_context_target) {
         const nkgpu_result bound = nkgpu_bind_frame_target(&slot->value.context_target);
@@ -397,19 +397,17 @@ static nkgpu_result activate_renderer(Handle handle,
             return bound;
     }
     if (!provided_target && !renderer_is_active(slot->value) && context_backend &&
-        !render_owned_context &&
-        nk_surface_make_current(slot->value.surface) != NK_OK)
+        !render_owned_context && nk_surface_make_current(slot->value.surface) != NK_OK)
         return fail(NKGPU_ERROR_UNKNOWN, "current: %s", nk_last_error());
-    nk_surface_frame_target target = provided_target
-                                         ? *provided_target
-                                         : (slot->value.has_frame_target
-                                                ? slot->value.frame_target
-                                                : nk_surface_frame_target{});
+    nk_surface_frame_target target =
+        provided_target
+            ? *provided_target
+            : (slot->value.has_frame_target ? slot->value.frame_target : nk_surface_frame_target{});
     if (!provided_target && !slot->value.has_frame_target)
         target.struct_size = sizeof(target);
-    const bool target_available = provided_target || slot->value.has_frame_target ||
-                                  (!render_owned_context &&
-                                   get_surface_frame_target(slot->value.surface, &target) == NK_OK);
+    const bool target_available =
+        provided_target || slot->value.has_frame_target ||
+        (!render_owned_context && get_surface_frame_target(slot->value.surface, &target) == NK_OK);
     if (target_available && target.device.id &&
         (target.api != slot->value.graphics_api || target.device.id != slot->value.device.id)) {
         ++slot->value.surface_recreations;
@@ -433,8 +431,8 @@ static nkgpu_result begin_frame_with_target(Handle handle, const nk_surface_fram
     if (target.width <= 0 || target.height <= 0 || target.api != slot->value.graphics_api ||
         target.device.id != slot->value.device.id)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "frame target does not belong to the renderer");
-    const bool context_backend = target.api == NK_GRAPHICS_OPENGL ||
-                                 target.api == NK_GRAPHICS_OPENGL_ES;
+    const bool context_backend =
+        target.api == NK_GRAPHICS_OPENGL || target.api == NK_GRAPHICS_OPENGL_ES;
     if (context_backend) {
         const nkgpu_result bound = nkgpu_bind_frame_target(&target);
         if (bound != NKGPU_OK)
@@ -632,8 +630,7 @@ static int release_graphics_image(nk_graphics_api graphics_api, const void *runt
     if (!api || !api->external_image_release || !device.id || !backend_image)
         return 0;
     if ((graphics_api == NK_GRAPHICS_OPENGL || graphics_api == NK_GRAPHICS_OPENGL_ES) &&
-        !nk_executor_is_current(NK_EXECUTOR_RENDER) &&
-        nk_surface_make_current(device.id) != NK_OK)
+        !nk_executor_is_current(NK_EXECUTOR_RENDER) && nk_surface_make_current(device.id) != NK_OK)
         return 0;
     api->external_image_release(static_cast<uint32_t>(backend_image));
     return 1;
@@ -1075,8 +1072,9 @@ nkgpu_result nkgpu_renderer_create(nk_surface surface, nkgpu_renderer *out) {
     return create_renderer_from_target(surface, target, out);
 }
 
-nkgpu_result nkgpu_renderer_create_for_frame_target(
-    nk_surface surface, const nk_surface_frame_target *frame_target, nkgpu_renderer *out_renderer) {
+nkgpu_result nkgpu_renderer_create_for_frame_target(nk_surface surface,
+                                                    const nk_surface_frame_target *frame_target,
+                                                    nkgpu_renderer *out_renderer) {
     if (!nk_executor_is_current(NK_EXECUTOR_RENDER))
         return fail(NKGPU_ERROR_WRONG_THREAD, "renderer creation requires the render executor");
     if (!frame_target)

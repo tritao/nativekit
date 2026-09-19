@@ -163,10 +163,8 @@ Java_io_nativekit_consumer_MainActivity_nativeStartFrameCallbackProbe(JNIEnv *, 
                                                                         jlong surface_value) {
     frame_callback_probe = {};
     frame_callback_probe.surface = static_cast<nk_surface>(surface_value);
-    return nk_surface_set_frame_callback(frame_callback_probe.surface, on_frame_callback,
-                                         &frame_callback_probe) == NK_OK
-               ? 0
-               : 1;
+    return static_cast<jint>(nk_surface_set_frame_callback(
+        frame_callback_probe.surface, on_frame_callback, &frame_callback_probe));
 }
 
 extern "C" JNIEXPORT jint JNICALL
