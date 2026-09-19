@@ -1029,7 +1029,7 @@ static nkgpu_result create_renderer_from_target(nk_surface surface,
     }
     if (nk_graphics_device_retain(target.device) != NK_OK)
         return fail(NKGPU_ERROR_UNKNOWN, "graphics device retention failed");
-    if (!api->runtime_acquire(&desc, target.device)) {
+    if (!api->runtime_acquire(&desc, target.device, target.native_device)) {
         nk_graphics_device_release(target.device);
         return fail(NKGPU_ERROR_UNKNOWN, "Sokol graphics runtime acquisition failed");
     }
