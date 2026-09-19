@@ -50,6 +50,12 @@ int main() {
     nkgpu_pipeline pipeline{};
     nkgpu_render_target target{};
     nkgpu_render_target lost_target{};
+    nkgpu_buffer descriptor_buffer{};
+    nkgpu_image descriptor_color{};
+    nkgpu_image descriptor_color_second{};
+    nkgpu_image descriptor_depth{};
+    nkgpu_image descriptor_mipped{};
+    nkgpu_image dynamic_image{};
     nk_graphics_image retained_image{};
     nk_graphics_image foreign_image{};
     const uint8_t buffer_data[] = {0, 0, 0, 0};
@@ -193,6 +199,113 @@ int main() {
     EXPECT_RESULT(nkgpu_end_render_target(first), NKGPU_OK);
     EXPECT_RESULT(nkgpu_render_target_destroy(first, target), NKGPU_OK);
 
+    {
+        nkgpu_features features{};
+        nkgpu_limits limits{};
+        features.struct_size = sizeof(features);
+        limits.struct_size = sizeof(limits);
+        EXPECT_RESULT(nkgpu_query_features(first, &features), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_query_limits(first, &limits), NKGPU_OK);
+        if (!features.mrt_count || !features.instancing || !limits.max_texture_size ||
+            !limits.max_color_attachments) {
+            result = __LINE__;
+            goto cleanup;
+        }
+
+        const uint8_t initial[] = {1, 2, 3, 4, 5, 6, 7, 8};
+        nkgpu_buffer_desc buffer_desc{};
+        buffer_desc.struct_size = sizeof(buffer_desc);
+        buffer_desc.size = sizeof(initial);
+        buffer_desc.usage = NKGPU_BUFFER_VERTEX;
+        buffer_desc.data = initial;
+        buffer_desc.data_size = sizeof(initial);
+        buffer_desc.dynamic_update = 1;
+        EXPECT_RESULT(nkgpu_buffer_create_desc(first, &buffer_desc, &descriptor_buffer), NKGPU_OK);
+        const uint8_t replacement[] = {9, 10, 11, 12};
+        EXPECT_RESULT(nkgpu_buffer_update(first, descriptor_buffer, 2, replacement,
+                                          sizeof(replacement)),
+                      NKGPU_OK);
+        EXPECT_RESULT(nkgpu_buffer_destroy(first, descriptor_buffer), NKGPU_OK);
+        descriptor_buffer = {};
+
+        uint8_t mip_pixels[80]{};
+        for (uint32_t index = 0; index < sizeof(mip_pixels); ++index)
+            mip_pixels[index] = static_cast<uint8_t>(index);
+        nkgpu_image_desc mipped_desc{};
+        mipped_desc.struct_size = sizeof(mipped_desc);
+        mipped_desc.width = 4;
+        mipped_desc.height = 4;
+        mipped_desc.format = NKGPU_IMAGEFORMAT_RGBA8;
+        mipped_desc.usage = NKGPU_IMAGE_SAMPLED;
+        mipped_desc.mip_count = 2;
+        mipped_desc.data = mip_pixels;
+        mipped_desc.data_size = sizeof(mip_pixels);
+        EXPECT_RESULT(nkgpu_image_create_desc(first, &mipped_desc, &descriptor_mipped), NKGPU_OK);
+
+        const uint8_t dynamic_pixels[] = {0, 0, 0, 255};
+        nkgpu_image_desc dynamic_desc{};
+        dynamic_desc.struct_size = sizeof(dynamic_desc);
+        dynamic_desc.width = 1;
+        dynamic_desc.height = 1;
+        dynamic_desc.format = NKGPU_IMAGEFORMAT_RGBA8;
+        dynamic_desc.usage = NKGPU_IMAGE_SAMPLED;
+        dynamic_desc.data = dynamic_pixels;
+        dynamic_desc.data_size = sizeof(dynamic_pixels);
+        dynamic_desc.dynamic_update = 1;
+        EXPECT_RESULT(nkgpu_image_create_desc(first, &dynamic_desc, &dynamic_image), NKGPU_OK);
+        const uint8_t updated_pixel[] = {255, 0, 0, 255};
+        EXPECT_RESULT(nkgpu_image_update(first, dynamic_image, 0, 0, 1, 1, updated_pixel, 4),
+                      NKGPU_OK);
+
+        nkgpu_image_desc color_desc{};
+        color_desc.struct_size = sizeof(color_desc);
+        color_desc.width = 16;
+        color_desc.height = 16;
+        color_desc.format = NKGPU_IMAGEFORMAT_RGBA8;
+        color_desc.usage = NKGPU_IMAGE_SAMPLED | NKGPU_IMAGE_RENDER_TARGET;
+        EXPECT_RESULT(nkgpu_image_create_desc(first, &color_desc, &descriptor_color), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_image_create_desc(first, &color_desc, &descriptor_color_second),
+                      NKGPU_OK);
+
+        nkgpu_image_desc depth_desc{};
+        depth_desc.struct_size = sizeof(depth_desc);
+        depth_desc.width = 16;
+        depth_desc.height = 16;
+        depth_desc.format = NKGPU_IMAGEFORMAT_DEPTH24_STENCIL8;
+        depth_desc.usage = NKGPU_IMAGE_DEPTH_STENCIL;
+        EXPECT_RESULT(nkgpu_image_create_desc(first, &depth_desc, &descriptor_depth), NKGPU_OK);
+
+        nkgpu_render_pass_desc pass_desc{};
+        pass_desc.struct_size = sizeof(pass_desc);
+        pass_desc.color_count = 2;
+        pass_desc.colors[0].image = descriptor_color;
+        pass_desc.colors[1].image = descriptor_color_second;
+        for (uint32_t index = 0; index < pass_desc.color_count; ++index) {
+            pass_desc.colors[index].action.load_action = NKGPU_LOADACTION_CLEAR;
+            pass_desc.colors[index].action.store_action = NKGPU_STOREACTION_STORE;
+            pass_desc.colors[index].action.clear_color = {0.1f, 0.2f, 0.3f, 1.0f};
+        }
+        pass_desc.depth_stencil = descriptor_depth;
+        pass_desc.depth_stencil_action.load_action = NKGPU_LOADACTION_CLEAR;
+        pass_desc.depth_stencil_action.store_action = NKGPU_STOREACTION_STORE;
+        pass_desc.depth_stencil_action.clear_depth = 1.0f;
+        EXPECT_RESULT(nkgpu_frame_begin(first), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_begin_render_pass(first, &pass_desc), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_apply_viewport(first, 0, 0, 16, 16), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_end_pass(first), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_end_frame(first), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_image_destroy(first, descriptor_depth), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_image_destroy(first, descriptor_color_second), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_image_destroy(first, descriptor_color), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_image_destroy(first, dynamic_image), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_image_destroy(first, descriptor_mipped), NKGPU_OK);
+        descriptor_depth = {};
+        descriptor_color_second = {};
+        descriptor_color = {};
+        dynamic_image = {};
+        descriptor_mipped = {};
+    }
+
     for (int iteration = 0; iteration < 1000; ++iteration) {
         nk_graphics_image borrowed{};
         nk_graphics_image_info info{};
@@ -271,6 +384,52 @@ int main() {
                                      fragment_source, &shader_builder),
                   NKGPU_OK);
     EXPECT_RESULT(nkgpu_shader_end(shader_builder, &shader), NKGPU_OK);
+    {
+        nkgpu_pipeline_builder expanded_pipeline{};
+        nkgpu_depth_state depth_state{};
+        depth_state.enabled = 1;
+        depth_state.compare = NKGPU_COMPAREFUNC_LESS_EQUAL;
+        depth_state.write_enabled = 1;
+        nkgpu_blend_state blend_state{};
+        blend_state.enabled = 1;
+        blend_state.src_rgb = NKGPU_BLENDFACTOR_SRC_COLOR;
+        blend_state.dst_rgb = NKGPU_BLENDFACTOR_ONE_MINUS_SRC_COLOR;
+        blend_state.op_rgb = NKGPU_BLENDOP_ADD;
+        blend_state.src_alpha = NKGPU_BLENDFACTOR_ONE;
+        blend_state.dst_alpha = NKGPU_BLENDFACTOR_ZERO;
+        blend_state.op_alpha = NKGPU_BLENDOP_ADD;
+        nkgpu_stencil_state stencil_state{};
+        stencil_state.enabled = 1;
+        stencil_state.read_mask = 0xff;
+        stencil_state.write_mask = 0xff;
+        stencil_state.reference = 1;
+        stencil_state.front = {NKGPU_COMPAREFUNC_ALWAYS, NKGPU_STENCILOP_KEEP,
+                               NKGPU_STENCILOP_KEEP, NKGPU_STENCILOP_KEEP};
+        stencil_state.back = stencil_state.front;
+        EXPECT_RESULT(nkgpu_pipeline_begin(first, shader, 4, &expanded_pipeline), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_pipeline_vertex_buffer(expanded_pipeline, 0, 4,
+                                                   NKGPU_VERTEXSTEP_PER_INSTANCE, 1),
+                      NKGPU_OK);
+        EXPECT_RESULT(nkgpu_pipeline_attribute(expanded_pipeline, 0, 0, 0,
+                                               NKGPU_VERTEXFORMAT_FLOAT),
+                      NKGPU_OK);
+        EXPECT_RESULT(nkgpu_pipeline_primitive_type(expanded_pipeline,
+                                                    NKGPU_PRIMITIVETYPE_POINTS),
+                      NKGPU_OK);
+        EXPECT_RESULT(nkgpu_pipeline_depth(expanded_pipeline, &depth_state), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_pipeline_blend(expanded_pipeline, &blend_state), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_pipeline_stencil(expanded_pipeline, &stencil_state), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_pipeline_cull_mode(expanded_pipeline, NKGPU_CULLMODE_FRONT,
+                                               NKGPU_FACEWINDING_CCW),
+                      NKGPU_OK);
+        EXPECT_RESULT(nkgpu_pipeline_color_target(expanded_pipeline, 0, NKGPU_IMAGEFORMAT_RGBA8,
+                                                  NKGPU_COLORMASK_RGBA, &blend_state),
+                      NKGPU_OK);
+        EXPECT_RESULT(nkgpu_pipeline_multisample(expanded_pipeline, 1, 0), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_pipeline_end(expanded_pipeline, &pipeline), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_pipeline_destroy(first, pipeline), NKGPU_OK);
+        pipeline = {};
+    }
     EXPECT_RESULT(nkgpu_pipeline_begin(second, shader, 4, &unfinished_pipeline),
                   NKGPU_ERROR_INVALID_HANDLE);
     EXPECT_RESULT(nkgpu_pipeline_begin(first, shader, 4, &unfinished_pipeline), NKGPU_OK);
@@ -353,6 +512,18 @@ int main() {
     }
 
 cleanup:
+    if (descriptor_depth.id)
+        nkgpu_image_destroy(first, descriptor_depth);
+    if (descriptor_color_second.id)
+        nkgpu_image_destroy(first, descriptor_color_second);
+    if (descriptor_color.id)
+        nkgpu_image_destroy(first, descriptor_color);
+    if (dynamic_image.id)
+        nkgpu_image_destroy(first, dynamic_image);
+    if (descriptor_mipped.id)
+        nkgpu_image_destroy(first, descriptor_mipped);
+    if (descriptor_buffer.id)
+        nkgpu_buffer_destroy(first, descriptor_buffer);
     if (retained_image.id)
         nk_graphics_image_release(retained_image);
     if (foreign_image.id)

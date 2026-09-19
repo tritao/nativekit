@@ -17,6 +17,10 @@ extern "C" {
 /** NativeKit lease plus the dispatch table for one Sokol runtime. */
 typedef struct nk_sokol_api {
     const sg_api *gfx;
+    sg_features (*query_features)(void);
+    sg_limits (*query_limits)(void);
+    void (*update_buffer)(sg_buffer buffer, const sg_range *data);
+    void (*apply_viewport)(int x, int y, int width, int height, bool origin_top_left);
     int (*runtime_acquire)(const sg_desc *desc, nk_graphics_device device, uint64_t native_device);
     int (*runtime_is_compatible)(const sg_desc *desc, nk_graphics_device device,
                                  uint64_t native_device);
