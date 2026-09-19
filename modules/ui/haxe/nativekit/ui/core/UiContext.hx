@@ -315,7 +315,7 @@ class UiContext {
 		var emptyPaintNodes = 0;
 		diagnosticStage = 22;
 		root.walk(function(node) {
-			if (node.resolved != null)
+			if (node.resolved != null && node.cachePolicy != CachePolicy.None)
 				session.setCachePolicy(node.id.value, node.cachePolicy);
 			if (!node.hasPaintHandler() || node.resolved == null)
 				return;
@@ -330,7 +330,8 @@ class UiContext {
 			if (displayList != null && canReuseCustomPaint(node)) {
 				if (customListHasCommands.get(nodeId) == true) {
 					session.setCustomPaint(nodeId, displayList);
-					session.setCustomPaintCachePolicy(nodeId, node.cachePolicy);
+					if (node.cachePolicy != CachePolicy.None)
+						session.setCustomPaintCachePolicy(nodeId, node.cachePolicy);
 				}
 				paintSkippedNodes++;
 				painted.set(nodeId, true);
@@ -359,7 +360,7 @@ class UiContext {
 			customListHasCommands.set(nodeId, hasCommands);
 			if (hasCommands)
 				session.setCustomPaint(nodeId, displayList);
-			if (hasCommands)
+			if (hasCommands && node.cachePolicy != CachePolicy.None)
 				session.setCustomPaintCachePolicy(nodeId, node.cachePolicy);
 			customGeometries.set(nodeId, geometry);
 			customStyles.set(nodeId, node.computedStyle);
