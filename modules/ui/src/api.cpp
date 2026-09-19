@@ -1436,6 +1436,7 @@ extern "C" nkui_result nkui_layout_session_get_hit_test_stats(
     auto *state = resolve(session);
     if (!state)
         return NKUI_ERROR_INVALID_HANDLE;
+    std::lock_guard<std::mutex> session_lock(state->mutex);
     *out_stats = state->hit_test_stats;
     out_stats->struct_size = sizeof(*out_stats);
     return NKUI_OK;
@@ -1665,6 +1666,7 @@ extern "C" nkui_result nkui_layout_session_get_resolved_items(nkui_layout_sessio
     auto *state = resolve(session);
     if (!state)
         return NKUI_ERROR_INVALID_HANDLE;
+    std::lock_guard<std::mutex> session_lock(state->mutex);
     if (!state->submitted)
         return NKUI_ERROR_INVALID_ARGUMENT;
 
@@ -1721,6 +1723,7 @@ extern "C" nkui_result nkui_layout_session_hit_test(nkui_layout_session session,
     auto *state = resolve(session);
     if (!state)
         return NKUI_ERROR_INVALID_HANDLE;
+    std::lock_guard<std::mutex> session_lock(state->mutex);
     if (!state->submitted)
         return NKUI_ERROR_INVALID_ARGUMENT;
 
