@@ -181,7 +181,7 @@ struct RendererSlot {
     std::unique_ptr<nkui::UiRenderer> renderer;
     nk_graphics_api backend_api = 0;
     nk_graphics_device backend_device{};
-    nk_surface backend_surface = 0;
+    uint64_t backend_native_device = 0;
     bool active = false;
     nkui::Compositor compositor;
     std::unordered_map<PathCacheKey, PreparedPathCacheEntry, PathCacheKeyHash> paths;
@@ -260,15 +260,15 @@ void accumulate_gpu_lifetime(nkui::UiGpuStats &total, const nkui::UiGpuStats &cu
     total.failed_allocations += current.failed_allocations;
 }
 
-void discard_stale_renderer(RendererSlot &slot, const nk_surface_frame_target &target,
-                            nk_surface surface) {
+void discard_stale_renderer(RendererSlot &slot, const nk_surface_frame_target &target) {
     if (!slot.renderer)
         return;
     const bool was_lost = slot.renderer->lost();
     const bool api_changed = slot.backend_api != target.api;
-    const bool device_changed = slot.backend_device.id != target.device.id;
-    const bool surface_changed = slot.backend_surface != surface;
-    if (!was_lost && !api_changed && !device_changed && !surface_changed)
+    const bool device_changed = slot.backend_native_device && target.native_device
+                                    ? slot.backend_native_device != target.native_device
+                                    : slot.backend_device.id != target.device.id;
+    if (!was_lost && !api_changed && !device_changed)
         return;
     const nkui::UiRendererStats old_stats = slot.renderer->stats();
     const nkui::UiGpuStats &old = old_stats.gpu;
@@ -278,7 +278,7 @@ void discard_stale_renderer(RendererSlot &slot, const nk_surface_frame_target &t
                                               old.pipelines_live + old.render_targets_live;
     if (old.device_losses == 0 && (was_lost || api_changed || device_changed))
         ++slot.retired_gpu.device_losses;
-    if (old.surface_recreations == 0 && (api_changed || device_changed || surface_changed))
+    if (old.surface_recreations == 0 && (api_changed || device_changed))
         ++slot.retired_gpu.surface_recreations;
     slot.stats.glyph_uploads += old_stats.glyph_uploads;
     slot.stats.atlas_rebuilds += old_stats.atlas_rebuilds;
@@ -485,14 +485,14 @@ void execute_render_submission(RenderSubmission &submission) {
             if (slot) {
                 {
                     std::lock_guard<std::mutex> cpu_lock(renderer_cpu_mutex);
-                    discard_stale_renderer(*slot, submission.frame_target, submission.surface);
+                    discard_stale_renderer(*slot, submission.frame_target);
                 }
                 if (!slot->renderer) {
                     slot->renderer =
                         nkui::create_ui_renderer(submission.surface, &submission.frame_target);
                     slot->backend_api = submission.frame_target.api;
                     slot->backend_device = submission.frame_target.device;
-                    slot->backend_surface = submission.surface;
+                    slot->backend_native_device = submission.frame_target.native_device;
                 }
                 if (slot->renderer) {
                     new_backend = !slot->renderer->valid();
@@ -2564,7 +2564,7 @@ extern "C" nkui_result nkui_renderer_create(nkui_renderer *out_renderer) {
                 slot.renderer.reset();
                 slot.backend_api = 0;
                 slot.backend_device = {};
-                slot.backend_surface = 0;
+                slot.backend_native_device = 0;
                 slot.custom_effects.clear();
                 slot.registered_custom_effects = 0;
                 slot.active = true;
@@ -2611,7 +2611,7 @@ extern "C" nkui_result nkui_renderer_destroy(nkui_renderer renderer) {
     }
     slot->backend_api = 0;
     slot->backend_device = {};
-    slot->backend_surface = 0;
+    slot->backend_native_device = 0;
     slot->active = false;
     slot->custom_effects.clear();
     slot->registered_custom_effects = 0;
@@ -2795,7 +2795,7 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
     if (!renderer_slot || !list_slot)
         return NKUI_ERROR_INVALID_HANDLE;
     if (!threaded)
-        discard_stale_renderer(*renderer_slot, frame_target, surface);
+        discard_stale_renderer(*renderer_slot, frame_target);
     if (!threaded && !renderer_slot->renderer) {
         auto ui_renderer = nkui::create_ui_renderer(surface);
         if (!ui_renderer)
@@ -2803,7 +2803,7 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
         renderer_slot->renderer = std::move(ui_renderer);
         renderer_slot->backend_api = frame_target.api;
         renderer_slot->backend_device = frame_target.device;
-        renderer_slot->backend_surface = surface;
+        renderer_slot->backend_native_device = frame_target.native_device;
     }
     const nkui::ResourceId main_target =
         nkui::make_resource_id(nkui::ResourceKind::RenderTarget, 1, 1);
@@ -3241,7 +3241,7 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
     if (!renderer_slot || !session_state || !session_state->submitted)
         return NKUI_ERROR_INVALID_HANDLE;
     if (!threaded)
-        discard_stale_renderer(*renderer_slot, frame_target, surface);
+        discard_stale_renderer(*renderer_slot, frame_target);
     if (!threaded && !renderer_slot->renderer) {
         auto ui_renderer = nkui::create_ui_renderer(surface);
         if (!ui_renderer)
@@ -3249,7 +3249,7 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
         renderer_slot->renderer = std::move(ui_renderer);
         renderer_slot->backend_api = frame_target.api;
         renderer_slot->backend_device = frame_target.device;
-        renderer_slot->backend_surface = surface;
+        renderer_slot->backend_native_device = frame_target.native_device;
     }
     const nkui::ResourceId main_target =
         nkui::make_resource_id(nkui::ResourceKind::RenderTarget, 1, 1);
