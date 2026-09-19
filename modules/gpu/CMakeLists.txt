@@ -2,6 +2,14 @@ add_library(nativekit_gpu ${NK_LIBRARY_TYPE} src/adapter.cpp)
 add_library(NativeKit::gpu ALIAS nativekit_gpu)
 target_compile_features(nativekit_gpu PRIVATE cxx_std_20)
 target_compile_definitions(nativekit_gpu PRIVATE NKGPU_BUILDING_LIBRARY)
+if(NK_ENABLE_NO_EXCEPTIONS)
+    target_compile_definitions(nativekit_gpu PRIVATE NK_ENABLE_NO_EXCEPTIONS=1)
+    if(MSVC)
+        target_compile_options(nativekit_gpu PRIVATE /EHs-c-)
+    else()
+        target_compile_options(nativekit_gpu PRIVATE -fno-exceptions)
+    endif()
+endif()
 target_include_directories(nativekit_gpu
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

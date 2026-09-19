@@ -59,11 +59,7 @@ template <class T, Kind K, size_t N> struct Pool {
         for (uint32_t i = 0; i < N; ++i)
             /* A retired slot still holds backend objects awaiting release. */
             if (!slots[i].active && !slots[i].pins && !slots[i].retired) {
-                try {
-                    slots[i].value = std::forward<U>(value);
-                } catch (...) {
-                    return 0;
-                }
+                slots[i].value = std::forward<U>(value);
                 slots[i].active = true;
                 slots[i].retired = false;
                 return (uint32_t(K) << 28) | (uint32_t(slots[i].generation) << 16) | (i + 1);
@@ -2302,7 +2298,7 @@ nkgpu_result nkgpu_image_end(nkgpu_image_builder h, nkgpu_image *out) {
 nkgpu_result nkgpu_image_create(nkgpu_renderer r, uint32_t width, uint32_t height,
                                 nkgpu_image_format format, const uint8_t *pixels, uint32_t size,
                                 uint32_t dynamic_update, nkgpu_image *out) {
-    try {
+    {
         const uint32_t bytes_per_pixel = format == NKGPU_IMAGEFORMAT_R8      ? 1
                                          : format == NKGPU_IMAGEFORMAT_RGBA8 ? 4
                                                                              : 0;
@@ -2373,9 +2369,6 @@ nkgpu_result nkgpu_image_create(nkgpu_renderer r, uint32_t width, uint32_t heigh
         record_resource_created(r, size);
         *out = handle;
         return NKGPU_OK;
-    } catch (...) {
-        record_allocation_failure(r);
-        return fail(NKGPU_ERROR_OUT_OF_MEMORY, "image creation failed");
     }
 }
 nkgpu_result nkgpu_image_update(nkgpu_renderer r, nkgpu_image h, uint32_t x, uint32_t y,
@@ -2402,12 +2395,7 @@ nkgpu_result nkgpu_image_update(nkgpu_renderer r, nkgpu_image h, uint32_t x, uin
     if (activated != NKGPU_OK)
         return activated;
     std::vector<uint8_t> next_pixels;
-    try {
-        next_pixels = image->value.pixels;
-    } catch (...) {
-        record_allocation_failure(r);
-        return fail(NKGPU_ERROR_OUT_OF_MEMORY, "image update allocation failed");
-    }
+    next_pixels = image->value.pixels;
     for (uint32_t row = 0; row < height; ++row) {
         const auto *source = pixels + static_cast<size_t>(row) * row_pitch;
         auto *destination =

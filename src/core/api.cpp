@@ -52,19 +52,15 @@ HandleRegistry &handles() noexcept {
 }
 
 nk_result push_event(QueuedEvent event) noexcept {
-    try {
-        nk_result result = NK_ERROR_NOT_INITIALIZED;
-        {
-            std::lock_guard lock(state_mutex);
-            if (event_queue)
-                result = event_queue->push(std::move(event));
-        }
-        if (result == NK_OK)
-            event_wake_condition.notify_all();
-        return result;
-    } catch (...) {
-        return NK_ERROR_OUT_OF_MEMORY;
+    nk_result result = NK_ERROR_NOT_INITIALIZED;
+    {
+        std::lock_guard lock(state_mutex);
+        if (event_queue)
+            result = event_queue->push(std::move(event));
     }
+    if (result == NK_OK)
+        event_wake_condition.notify_all();
+    return result;
 }
 
 nk_request_id next_request_id() noexcept {
@@ -116,76 +112,62 @@ uint64_t NK_CALL nk_runtime_generation(void) {
 }
 
 nk_result NK_CALL nk_init(const nk_init_options *options) {
-    try {
-        nk::core::clear_error();
-        constexpr auto init_prefix_size = offsetof(nk_init_options, application_id);
-        if (!options || options->struct_size < init_prefix_size) {
-            nk::core::set_error("nk_init_options is missing or too small");
-            return NK_ERROR_INVALID_ARGUMENT;
-        }
-        if (options->api_version != NK_API_VERSION) {
-            nk::core::set_error("unsupported NativeKit API version");
-            return NK_ERROR_UNSUPPORTED;
-        }
-        std::lock_guard lock(state_mutex);
-        if (event_queue) {
-            nk::core::set_error("NativeKit is already initialized");
-            return NK_ERROR_ALREADY_INITIALIZED;
-        }
-        const auto capacity = options->event_queue_capacity == 0 ? default_queue_capacity
-                                                                 : options->event_queue_capacity;
-        nk::core::system_initialize(options);
-        event_queue = std::make_unique<nk::core::EventQueue>(capacity);
-        nk::core::bind_main_thread();
-        auto generation = generation_counter.fetch_add(1, std::memory_order_relaxed) + 1;
-        if (generation == 0)
-            generation = generation_counter.fetch_add(1, std::memory_order_relaxed) + 1;
-        active_generation.store(generation, std::memory_order_release);
-        const auto task_result = nk::core::task_runtime_initialize(generation);
-        if (task_result != NK_OK) {
-            active_generation.store(0, std::memory_order_release);
-            nk::core::unbind_main_thread();
-            event_queue.reset();
-            nk::core::system_shutdown();
-            nk::core::set_error("could not initialize the native task executor");
-            return task_result;
-        }
-        return NK_OK;
-    } catch (const std::bad_alloc &) {
-        nk::core::system_shutdown();
-        nk::core::set_error("out of memory while initializing NativeKit");
-        return NK_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
-        nk::core::system_shutdown();
-        nk::core::set_error("unexpected exception while initializing NativeKit");
-        return NK_ERROR_UNKNOWN;
+    nk::core::clear_error();
+    constexpr auto init_prefix_size = offsetof(nk_init_options, application_id);
+    if (!options || options->struct_size < init_prefix_size) {
+        nk::core::set_error("nk_init_options is missing or too small");
+        return NK_ERROR_INVALID_ARGUMENT;
     }
+    if (options->api_version != NK_API_VERSION) {
+        nk::core::set_error("unsupported NativeKit API version");
+        return NK_ERROR_UNSUPPORTED;
+    }
+    std::lock_guard lock(state_mutex);
+    if (event_queue) {
+        nk::core::set_error("NativeKit is already initialized");
+        return NK_ERROR_ALREADY_INITIALIZED;
+    }
+    const auto capacity = options->event_queue_capacity == 0 ? default_queue_capacity
+                                                             : options->event_queue_capacity;
+    nk::core::system_initialize(options);
+    event_queue = std::make_unique<nk::core::EventQueue>(capacity);
+    nk::core::bind_main_thread();
+    auto generation = generation_counter.fetch_add(1, std::memory_order_relaxed) + 1;
+    if (generation == 0)
+        generation = generation_counter.fetch_add(1, std::memory_order_relaxed) + 1;
+    active_generation.store(generation, std::memory_order_release);
+    const auto task_result = nk::core::task_runtime_initialize(generation);
+    if (task_result != NK_OK) {
+        active_generation.store(0, std::memory_order_release);
+        nk::core::unbind_main_thread();
+        event_queue.reset();
+        nk::core::system_shutdown();
+        nk::core::set_error("could not initialize the native task executor");
+        return task_result;
+    }
+    return NK_OK;
 }
 
 void NK_CALL nk_shutdown(void) {
-    try {
-        /* Stop accepting task work before any backend teardown can produce
-         * callbacks. The task runtime joins native workers and drops queued
-         * cooperative work for this generation. */
-        nk::core::task_runtime_shutdown();
-        nk::net::shutdown();
-        /* Plugins observe a complete teardown before their runtime disappears. */
-        nk::core::plugins_shutdown();
-        nk::core::clear_app_tasks();
-        /* Backend resources are still valid while system leases are released. */
-        nk::core::system_shutdown();
-        nk::backend::shutdown();
-        nk::core::requests().clear();
-        std::lock_guard lock(state_mutex);
-        handle_registry.clear();
-        event_queue.reset();
-        active_generation.store(0, std::memory_order_release);
-        nk::core::unbind_main_thread();
-        nk::net::backend_shutdown();
-        nk::core::clear_error();
-    } catch (...) {
-        nk::core::set_error("unexpected exception while shutting down NativeKit");
-    }
+    /* Stop accepting task work before any backend teardown can produce
+     * callbacks. The task runtime joins native workers and drops queued
+     * cooperative work for this generation. */
+    nk::core::task_runtime_shutdown();
+    nk::net::shutdown();
+    /* Plugins observe a complete teardown before their runtime disappears. */
+    nk::core::plugins_shutdown();
+    nk::core::clear_app_tasks();
+    /* Backend resources are still valid while system leases are released. */
+    nk::core::system_shutdown();
+    nk::backend::shutdown();
+    nk::core::requests().clear();
+    std::lock_guard lock(state_mutex);
+    handle_registry.clear();
+    event_queue.reset();
+    active_generation.store(0, std::memory_order_release);
+    nk::core::unbind_main_thread();
+    nk::net::backend_shutdown();
+    nk::core::clear_error();
 }
 
 const char *NK_CALL nk_last_error(void) {
@@ -193,31 +175,23 @@ const char *NK_CALL nk_last_error(void) {
 }
 
 nk_result NK_CALL nk_poll_event(nk_event *event) {
-    try {
-        nk::core::clear_error();
-        if (!valid_event_struct(event)) {
-            nk::core::set_error("nk_event is missing or too small");
-            return NK_ERROR_INVALID_ARGUMENT;
-        }
-        if (event->data) {
-            nk::core::set_error("nk_event contains unreleased data");
-            return NK_ERROR_INVALID_ARGUMENT;
-        }
-        const auto thread_result = nk::core::require_ui_thread();
-        if (thread_result != NK_OK)
-            return thread_result;
-        nk::core::drain_app_tasks();
-        nk::backend::pump_events();
-        nk::core::run_cooperative_tasks();
-        std::lock_guard lock(state_mutex);
-        return event_queue->poll(*event);
-    } catch (const std::bad_alloc &) {
-        nk::core::set_error("out of memory while polling an event");
-        return NK_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
-        nk::core::set_error("unexpected exception while polling an event");
-        return NK_ERROR_UNKNOWN;
+    nk::core::clear_error();
+    if (!valid_event_struct(event)) {
+        nk::core::set_error("nk_event is missing or too small");
+        return NK_ERROR_INVALID_ARGUMENT;
     }
+    if (event->data) {
+        nk::core::set_error("nk_event contains unreleased data");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    const auto thread_result = nk::core::require_ui_thread();
+    if (thread_result != NK_OK)
+        return thread_result;
+    nk::core::drain_app_tasks();
+    nk::backend::pump_events();
+    nk::core::run_cooperative_tasks();
+    std::lock_guard lock(state_mutex);
+    return event_queue->poll(*event);
 }
 
 void NK_CALL nk_event_release(nk_event *event) {

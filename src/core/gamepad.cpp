@@ -454,36 +454,33 @@ nk_result NK_CALL nk_gamepad_get_options(nk_gamepad_options *out_options) {
 
 namespace nk::core::gamepad_events {
 void update(nk_handle joystick, bool emit_changes) noexcept {
-    try {
-        nk_gamepad_state current{};
-        current.struct_size = sizeof(current);
-        if (nk_gamepad_get_state(joystick, &current) != NK_OK) {
-            event_states.erase(joystick);
-            nk::core::clear_error();
-            return;
-        }
-        const auto found = event_states.find(joystick);
-        if (found == event_states.end()) {
-            event_states.emplace(joystick, current);
-            return;
-        }
-        if (emit_changes) {
-            for (std::uint32_t index = 0; index < NK_GAMEPAD_BUTTON_COUNT; ++index) {
-                if (found->second.buttons[index] == current.buttons[index])
-                    continue;
-                const nk_gamepad_button_event payload{index, current.buttons[index]};
-                emit_state_event(NK_EVENT_GAMEPAD_BUTTON, joystick, payload);
-            }
-            for (std::uint32_t index = 0; index < NK_GAMEPAD_AXIS_COUNT; ++index) {
-                if (found->second.axes[index] == current.axes[index])
-                    continue;
-                const nk_gamepad_axis_event payload{index, current.axes[index]};
-                emit_state_event(NK_EVENT_GAMEPAD_AXIS, joystick, payload);
-            }
-        }
-        found->second = current;
-    } catch (...) {
+    nk_gamepad_state current{};
+    current.struct_size = sizeof(current);
+    if (nk_gamepad_get_state(joystick, &current) != NK_OK) {
+        event_states.erase(joystick);
+        nk::core::clear_error();
+        return;
     }
+    const auto found = event_states.find(joystick);
+    if (found == event_states.end()) {
+        event_states.emplace(joystick, current);
+        return;
+    }
+    if (emit_changes) {
+        for (std::uint32_t index = 0; index < NK_GAMEPAD_BUTTON_COUNT; ++index) {
+            if (found->second.buttons[index] == current.buttons[index])
+                continue;
+            const nk_gamepad_button_event payload{index, current.buttons[index]};
+            emit_state_event(NK_EVENT_GAMEPAD_BUTTON, joystick, payload);
+        }
+        for (std::uint32_t index = 0; index < NK_GAMEPAD_AXIS_COUNT; ++index) {
+            if (found->second.axes[index] == current.axes[index])
+                continue;
+            const nk_gamepad_axis_event payload{index, current.axes[index]};
+            emit_state_event(NK_EVENT_GAMEPAD_AXIS, joystick, payload);
+        }
+    }
+    found->second = current;
 }
 
 void disconnect(nk_handle joystick) noexcept {

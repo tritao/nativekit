@@ -173,14 +173,7 @@ std::size_t header_callback_impl(char *data, std::size_t size, std::size_t count
 
 std::size_t header_callback(char *data, std::size_t size, std::size_t count,
                             void *user_data) noexcept {
-    try {
-        return header_callback_impl(data, size, count, user_data);
-    } catch (...) {
-        auto &request = *static_cast<nk::net::RequestContext *>(user_data);
-        std::lock_guard lock(request.mutex);
-        request.response_limit = true;
-        return 0;
-    }
+    return header_callback_impl(data, size, count, user_data);
 }
 
 std::size_t write_callback_impl(char *data, std::size_t size, std::size_t count, void *user_data) {
@@ -234,14 +227,7 @@ std::size_t write_callback_impl(char *data, std::size_t size, std::size_t count,
 
 std::size_t write_callback(char *data, std::size_t size, std::size_t count,
                            void *user_data) noexcept {
-    try {
-        return write_callback_impl(data, size, count, user_data);
-    } catch (...) {
-        auto &request = *static_cast<nk::net::RequestContext *>(user_data);
-        std::lock_guard lock(request.mutex);
-        request.response_limit = true;
-        return 0;
-    }
+    return write_callback_impl(data, size, count, user_data);
 }
 
 std::size_t read_callback_impl(char *data, std::size_t size, std::size_t count, void *user_data) {
@@ -261,13 +247,7 @@ std::size_t read_callback_impl(char *data, std::size_t size, std::size_t count, 
 
 std::size_t read_callback(char *data, std::size_t size, std::size_t count,
                           void *user_data) noexcept {
-    try {
-        return read_callback_impl(data, size, count, user_data);
-    } catch (...) {
-        auto &request = *static_cast<nk::net::RequestContext *>(user_data);
-        request.upload_result = NK_ERROR_UNKNOWN;
-        return CURL_READFUNC_ABORT;
-    }
+    return read_callback_impl(data, size, count, user_data);
 }
 
 int progress_callback_impl(void *user_data, curl_off_t download_total, curl_off_t downloaded,
@@ -289,12 +269,7 @@ int progress_callback_impl(void *user_data, curl_off_t download_total, curl_off_
 
 int progress_callback(void *user_data, curl_off_t download_total, curl_off_t downloaded,
                       curl_off_t upload_total, curl_off_t uploaded) noexcept {
-    try {
-        return progress_callback_impl(user_data, download_total, downloaded, upload_total,
-                                      uploaded);
-    } catch (...) {
-        return 1;
-    }
+    return progress_callback_impl(user_data, download_total, downloaded, upload_total, uploaded);
 }
 
 nk_result map_curl_error(CURLcode code, const nk::net::RequestContext &request) {
@@ -498,20 +473,10 @@ nk_result perform_impl(nk::net::RequestPtr request) {
 }
 
 void perform(nk::net::RequestPtr request) noexcept {
-    try {
-        const auto result = perform_impl(request);
-        nk::net::complete_request(request, result);
-        nk::net::worker_finished(request);
-        request.reset();
-    } catch (const std::bad_alloc &) {
-        nk::net::complete_request(request, NK_ERROR_OUT_OF_MEMORY);
-        nk::net::worker_finished(request);
-        request.reset();
-    } catch (...) {
-        nk::net::complete_request(request, NK_ERROR_UNKNOWN);
-        nk::net::worker_finished(request);
-        request.reset();
-    }
+    const auto result = perform_impl(request);
+    nk::net::complete_request(request, result);
+    nk::net::worker_finished(request);
+    request.reset();
 }
 
 } // namespace
@@ -529,14 +494,8 @@ nk_result backend_start(const RequestPtr &request) noexcept {
         if (!initialize_curl())
             return NK_ERROR_UNSUPPORTED;
     }
-    try {
-        std::thread([request] { perform(request); }).detach();
-        return NK_OK;
-    } catch (const std::bad_alloc &) {
-        return NK_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
-        return NK_ERROR_UNKNOWN;
-    }
+    std::thread([request] { perform(request); }).detach();
+    return NK_OK;
 }
 
 void backend_cancel(const RequestPtr &) noexcept {}

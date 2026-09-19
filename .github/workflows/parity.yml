@@ -20,9 +20,15 @@ jobs:
         run: >-
           cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=Debug
           -DNK_BUILD_SHARED=OFF -DNK_BUILD_EXAMPLES=OFF -DNK_BUILD_TESTS=ON
-          -DNK_BUILD_GPU=OFF -DNK_BUILD_UI=OFF
+          -DNK_BUILD_GPU=OFF -DNK_BUILD_UI=OFF -DNK_ENABLE_NO_EXCEPTIONS=ON
+      - name: Audit production C++ exception syntax
+        run: python3 scripts/check_no_exceptions.py
       - name: Build parity tests
         run: cmake --build build --target nativekit_platform_parity nativekit_capability_conformance
+      - name: Check exception runtime metadata
+        run: |
+          ! nm -A build/libnativekit.a | grep -E '__cxa_(throw|begin_catch|rethrow)'
+          ! objdump -h build/libnativekit.a | grep -E '\.gcc_except_table'
       - name: Run capability contract and conformance
         run: >-
           ctest --test-dir build --output-on-failure --timeout 120

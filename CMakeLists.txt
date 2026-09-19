@@ -28,6 +28,10 @@ option(NK_BUILD_GPU_BACKEND_MATRIX
 option(NK_BUILD_UI "Build the experimental retained UI module" OFF)
 option(NK_USE_SYSTEM_CURL "Use the system libcurl for the Linux networking backend" OFF)
 set(NK_NET_BACKEND_CURL OFF)
+# STL containers remain in use while this migration is staged. Their allocation
+# failures are therefore process-fatal in production targets for now.
+option(NK_ENABLE_NO_EXCEPTIONS
+    "Compile NativeKit production targets without C++ exception support" ON)
 option(NK_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 option(NK_ENABLE_WEBVIEW2 "Enable the Windows WebView2 backend" ON)
 
@@ -149,6 +153,9 @@ target_include_directories(nativekit
     PRIVATE src
 )
 target_compile_definitions(nativekit PRIVATE NK_BUILDING_LIBRARY)
+if(NK_ENABLE_NO_EXCEPTIONS)
+    target_compile_definitions(nativekit PRIVATE NK_ENABLE_NO_EXCEPTIONS=1)
+endif()
 if(NOT NK_BUILD_SHARED OR EMSCRIPTEN)
     target_compile_definitions(nativekit PUBLIC NK_STATIC)
 endif()
@@ -184,6 +191,13 @@ if(EMSCRIPTEN)
     target_include_directories(nativekit_wasm_host_allocator PRIVATE src)
     target_compile_definitions(nativekit_wasm_host_allocator PRIVATE
         NK_WASM_HOST_HEAP_LIMIT=${NK_WASM_HOST_HEAP_LIMIT})
+    if(NK_ENABLE_NO_EXCEPTIONS)
+        if(MSVC)
+            target_compile_options(nativekit_wasm_host_allocator PRIVATE /EHs-c-)
+        else()
+            target_compile_options(nativekit_wasm_host_allocator PRIVATE -fno-exceptions)
+        endif()
+    endif()
     target_link_options(nativekit_wasm_host_allocator INTERFACE "-sMALLOC=none")
 endif()
 
@@ -342,9 +356,17 @@ if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
 endif()
 
 if(MSVC)
-    target_compile_options(nativekit PRIVATE /W4 /permissive- /EHsc)
+    target_compile_options(nativekit PRIVATE /W4 /permissive-)
+    if(NK_ENABLE_NO_EXCEPTIONS)
+        target_compile_options(nativekit PRIVATE /EHs-c-)
+    else()
+        target_compile_options(nativekit PRIVATE /EHsc)
+    endif()
 else()
     target_compile_options(nativekit PRIVATE -Wall -Wextra -Wpedantic)
+    if(NK_ENABLE_NO_EXCEPTIONS)
+        target_compile_options(nativekit PRIVATE -fno-exceptions)
+    endif()
     if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         # _Nullable is retained in public headers for Haxeon's Clang importer;
         # Clang diagnoses that intentional extension under -Wpedantic.

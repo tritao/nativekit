@@ -54,25 +54,21 @@ bool active_type(nk_sensor_type type) {
 namespace nk::core::sensor_backend {
 
 nk_result list(std::vector<SensorBackendDescriptor> &out) noexcept {
-    try {
-        ensure_manager();
-        out.clear();
-        if (motion_manager.accelerometerAvailable)
-            out.push_back({NK_SENSOR_ACCELEROMETER, 3, 1000000ULL, 100000000ULL, 100.0f});
-        if (motion_manager.gyroAvailable)
-            out.push_back({NK_SENSOR_GYROSCOPE, 3, 1000000ULL, 100000000ULL, 100.0f});
-        if (motion_manager.magnetometerAvailable)
-            out.push_back({NK_SENSOR_MAGNETOMETER, 3, 1000000ULL, 100000000ULL, 2000.0f});
-        if (motion_manager.deviceMotionAvailable) {
-            out.push_back({NK_SENSOR_GRAVITY, 3, 1000000ULL, 100000000ULL, 100.0f});
-            out.push_back({NK_SENSOR_LINEAR_ACCELERATION, 3, 1000000ULL, 100000000ULL, 100.0f});
-            out.push_back({NK_SENSOR_ROTATION_VECTOR, 4, 1000000ULL, 100000000ULL, 1.0f});
-            out.push_back({NK_SENSOR_DEVICE_MOTION, 4, 1000000ULL, 100000000ULL, 1.0f});
-        }
-        return NK_OK;
-    } catch (...) {
-        return NK_ERROR_UNKNOWN;
+    ensure_manager();
+    out.clear();
+    if (motion_manager.accelerometerAvailable)
+        out.push_back({NK_SENSOR_ACCELEROMETER, 3, 1000000ULL, 100000000ULL, 100.0f});
+    if (motion_manager.gyroAvailable)
+        out.push_back({NK_SENSOR_GYROSCOPE, 3, 1000000ULL, 100000000ULL, 100.0f});
+    if (motion_manager.magnetometerAvailable)
+        out.push_back({NK_SENSOR_MAGNETOMETER, 3, 1000000ULL, 100000000ULL, 2000.0f});
+    if (motion_manager.deviceMotionAvailable) {
+        out.push_back({NK_SENSOR_GRAVITY, 3, 1000000ULL, 100000000ULL, 100.0f});
+        out.push_back({NK_SENSOR_LINEAR_ACCELERATION, 3, 1000000ULL, 100000000ULL, 100.0f});
+        out.push_back({NK_SENSOR_ROTATION_VECTOR, 4, 1000000ULL, 100000000ULL, 1.0f});
+        out.push_back({NK_SENSOR_DEVICE_MOTION, 4, 1000000ULL, 100000000ULL, 1.0f});
     }
+    return NK_OK;
 }
 
 nk_result start(nk_sensor sensor, nk_sensor_type type, const nk_sensor_options &options) noexcept {

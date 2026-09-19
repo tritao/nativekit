@@ -1693,7 +1693,7 @@ bool UiRendererImpl::beginEffectPass(ResourceId target_id, uint64_t cache_key, i
     if (!make_effect_cache_room(*state_, width, height))
         return beginTargetPass(target_id, width, height, false);
 
-    try {
+    {
         const auto inserted = state_->effect_cache.try_emplace(cache_key);
         if (!inserted.second)
             return fail(*state_, "effect cache insertion failed");
@@ -1710,14 +1710,6 @@ bool UiRendererImpl::beginEffectPass(ResourceId target_id, uint64_t cache_key, i
             state_->target_aliases.erase(target_id.value);
             return false;
         }
-    } catch (...) {
-        const auto inserted = state_->effect_cache.find(cache_key);
-        if (inserted != state_->effect_cache.end()) {
-            destroy_cached_effect(*state_, inserted->second);
-            state_->effect_cache.erase(inserted);
-        }
-        state_->target_aliases.erase(target_id.value);
-        return fail(*state_, "effect cache insertion failed");
     }
     return true;
 }

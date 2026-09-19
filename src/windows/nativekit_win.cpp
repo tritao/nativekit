@@ -1239,7 +1239,7 @@ std::wstring absolute_path(const char *path) {
 }
 
 void emit_drop_files(WinWindowResource &resource, HDROP drop) noexcept {
-    try {
+    {
         POINT point{};
         DragQueryPoint(drop, &point);
         const UINT count = DragQueryFileW(drop, 0xffffffffu, nullptr, 0);
@@ -1278,7 +1278,6 @@ void emit_drop_files(WinWindowResource &resource, HDROP drop) noexcept {
                 nk::core::push_event(std::move(resource_event));
             }
         }
-    } catch (...) {
     }
     DragFinish(drop);
 }
@@ -2069,7 +2068,7 @@ std::wstring html_document(std::wstring html, const std::wstring &base_url) {
 void emit_webview_text(nk_event_kind kind, nk_handle source, const wchar_t *value,
                        nk_result result = NK_OK, uint32_t flags = 0,
                        nk_request_id request = NK_INVALID_REQUEST_ID) noexcept {
-    try {
+    {
         nk::core::QueuedEvent event;
         event.kind = kind;
         event.source = source;
@@ -2078,7 +2077,6 @@ void emit_webview_text(nk_event_kind kind, nk_handle source, const wchar_t *valu
         event.flags = flags;
         event.data = text_bytes(utf8(value));
         nk::core::push_event(std::move(event));
-    } catch (...) {
     }
 }
 
@@ -2092,30 +2090,24 @@ HRESULT execute_script(const std::shared_ptr<WinWebViewResource> &resource,
                       &IID_ICoreWebView2ExecuteScriptCompletedHandler, HRESULT, LPCWSTR>(
             [handle = resource->handle, request,
              generation = resource->generation](HRESULT error, LPCWSTR result) -> HRESULT {
-                try {
-                    if (!nk::core::is_runtime_generation(generation))
-                        return S_OK;
-                    const auto pending = evaluations.find(request);
-                    if (pending == evaluations.end() || pending->second != handle)
-                        return S_OK;
-                    evaluations.erase(pending);
-                    // ExecuteScript reports JavaScript exceptions as a successful
-                    // COM call whose result is the unquoted JSON literal null.  A
-                    // script that evaluates to JavaScript null is returned by our
-                    // wrapper as the JSON string "null", so it remains distinct.
-                    if (FAILED(error) || !result || std::wstring_view(result) == L"null") {
-                        emit_webview_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, handle,
-                                          L"JavaScript evaluation failed", NK_ERROR_UNKNOWN, 0,
-                                          request);
-                    } else {
-                        const auto decoded = decode_json_string(result);
-                        emit_webview_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, handle, decoded.c_str(),
-                                          NK_OK, 0, request);
-                    }
-                } catch (...) {
+                if (!nk::core::is_runtime_generation(generation))
+                    return S_OK;
+                const auto pending = evaluations.find(request);
+                if (pending == evaluations.end() || pending->second != handle)
+                    return S_OK;
+                evaluations.erase(pending);
+                // ExecuteScript reports JavaScript exceptions as a successful
+                // COM call whose result is the unquoted JSON literal null.  A
+                // script that evaluates to JavaScript null is returned by our
+                // wrapper as the JSON string "null", so it remains distinct.
+                if (FAILED(error) || !result || std::wstring_view(result) == L"null") {
                     emit_webview_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, handle,
-                                      L"could not decode JavaScript result", NK_ERROR_OUT_OF_MEMORY,
-                                      0, request);
+                                      L"JavaScript evaluation failed", NK_ERROR_UNKNOWN, 0,
+                                      request);
+                } else {
+                    const auto decoded = decode_json_string(result);
+                    emit_webview_text(NK_EVENT_WEBVIEW_EVAL_COMPLETE, handle, decoded.c_str(),
+                                      NK_OK, 0, request);
                 }
                 return S_OK;
             });
@@ -2133,11 +2125,7 @@ void flush_webview_commands(const std::shared_ptr<WinWebViewResource> &resource)
             result = resource->webview->NavigateToString(
                 html_document(command.value, command.auxiliary).c_str());
         else {
-            try {
-                result = execute_script(resource, command.value, command.request);
-            } catch (...) {
-                result = E_OUTOFMEMORY;
-            }
+            result = execute_script(resource, command.value, command.request);
         }
         if (FAILED(result) && command.kind == WebViewCommandKind::evaluate) {
             evaluations.erase(command.request);
@@ -2205,7 +2193,7 @@ void configure_webview(const std::shared_ptr<WinWebViewResource> &resource) {
             nk_request_id pending_request = NK_INVALID_REQUEST_ID;
             UINT64 pending_navigation = 0;
             bool tracked_navigation = false;
-            try {
+            {
                 pending_request = nk::core::next_request_id();
                 nk::core::QueuedEvent event;
                 event.kind = NK_EVENT_WEBVIEW_NAVIGATION_REQUEST;
@@ -2229,12 +2217,6 @@ void configure_webview(const std::shared_ptr<WinWebViewResource> &resource) {
                         resource->policy_cancelled_navigation_ids.erase(pending_navigation);
                     args->put_Cancel(FALSE);
                 }
-            } catch (...) {
-                if (pending_request)
-                    navigation_decisions.erase(pending_request);
-                if (tracked_navigation)
-                    resource->policy_cancelled_navigation_ids.erase(pending_navigation);
-                return S_OK;
             }
             return S_OK;
         });
@@ -2336,7 +2318,7 @@ void begin_webview_creation(const std::shared_ptr<WinWebViewResource> &resource)
                       ICoreWebView2Environment *>([resource](HRESULT error,
                                                              ICoreWebView2Environment *environment)
                                                       -> HRESULT {
-            try {
+            {
                 if (!nk::core::is_runtime_generation(resource->generation)) {
                     complete_webview_creation(resource);
                     return S_OK;
@@ -2369,11 +2351,7 @@ void begin_webview_creation(const std::shared_ptr<WinWebViewResource> &resource)
                                 fail_webview(resource, L"WebView2 instance creation failed");
                                 return S_OK;
                             }
-                            try {
-                                configure_webview(resource);
-                            } catch (...) {
-                                fail_webview(resource, L"WebView2 event setup failed");
-                            }
+                            configure_webview(resource);
                             return S_OK;
                         });
                 const auto parent = get_window(resource->parent);
@@ -2383,10 +2361,6 @@ void begin_webview_creation(const std::shared_ptr<WinWebViewResource> &resource)
                     complete_webview_creation(resource);
                 }
                 return S_OK;
-            } catch (...) {
-                fail_webview(resource, L"WebView2 controller setup failed");
-                complete_webview_creation(resource);
-                return E_OUTOFMEMORY;
             }
         });
     const HRESULT result =
@@ -2514,11 +2488,8 @@ void run_file_dialog(const std::shared_ptr<WinDialogContext> &context) noexcept 
     context->complete = true;
     if (!nk::core::is_runtime_generation(context->generation))
         return;
-    try {
-        emit_file_completion(*context, std::move(paths), accepted && !canceled,
-                             (SUCCEEDED(status) || canceled) ? NK_OK : NK_ERROR_UNKNOWN);
-    } catch (...) {
-    }
+    emit_file_completion(*context, std::move(paths), accepted && !canceled,
+                         (SUCCEEDED(status) || canceled) ? NK_OK : NK_ERROR_UNKNOWN);
     release(dialog);
     if (SUCCEEDED(initialized))
         CoUninitialize();
@@ -2558,16 +2529,13 @@ void run_message_dialog(const std::shared_ptr<WinDialogContext> &context) noexce
     else if (response == IDNO)
         button = NK_MESSAGE_RESULT_NO;
     context->complete = true;
-    try {
-        nk::core::QueuedEvent event;
-        event.kind = NK_EVENT_DIALOG_MESSAGE_COMPLETE;
-        event.request_id = context->request;
-        event.flags = context->kind;
-        event.result = response ? NK_OK : NK_ERROR_UNKNOWN;
-        event.data = bytes_of(nk_dialog_message_result{button});
-        nk::core::push_event(std::move(event));
-    } catch (...) {
-    }
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_DIALOG_MESSAGE_COMPLETE;
+    event.request_id = context->request;
+    event.flags = context->kind;
+    event.result = response ? NK_OK : NK_ERROR_UNKNOWN;
+    event.data = bytes_of(nk_dialog_message_result{button});
+    nk::core::push_event(std::move(event));
 }
 
 BOOL CALLBACK close_thread_window(HWND window, LPARAM) {
@@ -2651,21 +2619,11 @@ nk_result start_file_dialog(nk_handle parent_handle, const nk_file_dialog_option
             return fail(NK_ERROR_INVALID_ARGUMENT, "file dialog filter is not valid UTF-8");
         context->filters.emplace_back(std::move(name), std::move(patterns));
     }
-    try {
-        {
-            std::lock_guard lock(dialogs_mutex);
-            dialogs.emplace(context->request, context);
-        }
-        try {
-            context->worker = std::thread(run_file_dialog, context);
-        } catch (...) {
-            std::lock_guard lock(dialogs_mutex);
-            dialogs.erase(context->request);
-            throw;
-        }
-    } catch (...) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "could not start file dialog");
+    {
+        std::lock_guard lock(dialogs_mutex);
+        dialogs.emplace(context->request, context);
     }
+    context->worker = std::thread(run_file_dialog, context);
     *out_request = context->request;
     return NK_OK;
 }
@@ -3068,7 +3026,7 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {
-    try {
+    {
         if (const auto result = enter_ui(); result != NK_OK)
             return result;
         if (!options || options->struct_size < sizeof(*options) || !out_window ||
@@ -3119,10 +3077,6 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
         }
         *out_window = resource->handle;
         return NK_OK;
-    } catch (const std::bad_alloc &) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while creating window");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while creating window");
     }
 }
 
@@ -3473,7 +3427,7 @@ nk_result NK_CALL nk_cursor_create_standard(nk_cursor_shape shape, nk_handle *ou
 }
 
 nk_result NK_CALL nk_cursor_create_custom(const nk_cursor_image *image, nk_handle *out_cursor) {
-    try {
+    {
         if (const auto result = enter_ui(); result != NK_OK)
             return result;
         if (!image || image->struct_size < sizeof(*image) || !out_cursor || !image->rgba ||
@@ -3540,10 +3494,6 @@ nk_result NK_CALL nk_cursor_create_custom(const nk_cursor_image *image, nk_handl
             return fail(NK_ERROR_OUT_OF_MEMORY, "cursor handle registry is full");
         *out_cursor = resource->handle;
         return NK_OK;
-    } catch (const std::bad_alloc &) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while creating custom cursor");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while creating custom cursor");
     }
 }
 
@@ -3817,8 +3767,12 @@ nk_result NK_CALL nk_monitor_list(nk_handle *monitors, uint32_t *inout_count) {
                            ? fail(NK_ERROR_BUFFER_TOO_SMALL, "monitor handle buffer is too small")
                            : NK_OK;
             uint32_t index = 0;
-            for (const auto native : connected_monitors())
-                monitors[index++] = monitor_handles.at(native);
+            for (const auto native : connected_monitors()) {
+                const auto found = monitor_handles.find(native);
+                if (found == monitor_handles.end())
+                    return fail(NK_ERROR_UNKNOWN, "monitor handle is missing");
+                monitors[index++] = found->second;
+            }
             return NK_OK;
         });
 }
@@ -3836,7 +3790,10 @@ nk_result NK_CALL nk_monitor_get_primary(nk_handle *out_monitor) {
             for (const auto native : connected_monitors()) {
                 MONITORINFOEXW info{};
                 if (monitor_info(native, info) && (info.dwFlags & MONITORINFOF_PRIMARY)) {
-                    *out_monitor = monitor_handles.at(native);
+                    const auto found = monitor_handles.find(native);
+                    if (found == monitor_handles.end())
+                        return fail(NK_ERROR_UNKNOWN, "primary monitor handle is missing");
+                    *out_monitor = found->second;
                     return NK_OK;
                 }
             }
@@ -4065,7 +4022,7 @@ nk_result NK_CALL nk_window_set_decorated(nk_handle h, uint32_t enabled) {
 nk_result NK_CALL nk_window_set_decoration_regions(nk_handle h,
                                                    const nk_window_decoration_region *regions,
                                                    uint32_t region_count) {
-    try {
+    {
         if (const auto r = enter_ui(); r != NK_OK)
             return r;
         if (region_count && !regions)
@@ -4090,10 +4047,6 @@ nk_result NK_CALL nk_window_set_decoration_regions(nk_handle h,
         else
             w->decoration_regions.assign(regions, regions + region_count);
         return NK_OK;
-    } catch (const std::bad_alloc &) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while setting decoration regions");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while setting decoration regions");
     }
 }
 
@@ -4165,7 +4118,7 @@ nk_result NK_CALL nk_window_get_native(nk_handle handle, nk_native_window *out_n
 }
 
 nk_result NK_CALL nk_window_wrap_native(const nk_native_window *native, nk_handle *out_window) {
-    try {
+    {
         if (const auto result = enter_ui(); result != NK_OK)
             return result;
         if (!native || native->struct_size < sizeof(*native) || !out_window ||
@@ -4186,16 +4139,12 @@ nk_result NK_CALL nk_window_wrap_native(const nk_native_window *native, nk_handl
             return fail(NK_ERROR_OUT_OF_MEMORY, "window handle registry is full");
         *out_window = resource->handle;
         return NK_OK;
-    } catch (const std::bad_alloc &) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while wrapping Win32 window");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while wrapping Win32 window");
     }
 }
 
 nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_options *options,
                                     nk_handle *out_surface) {
-    try {
+    {
         if (const auto result = enter_ui(); result != NK_OK)
             return result;
         constexpr nk_surface_flags supported_flags = NK_SURFACE_HIDDEN | NK_SURFACE_ALPHA |
@@ -4272,10 +4221,6 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
         nk::core::push_event(std::move(event));
         *out_surface = resource->handle;
         return NK_OK;
-    } catch (const std::bad_alloc &) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while creating Direct3D surface");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while creating Direct3D surface");
     }
 }
 
@@ -4491,7 +4436,7 @@ nk_result NK_CALL nk_surface_get_proc_address(nk_handle handle, const char *name
 #if defined(NK_HAS_WEBVIEW2)
 nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_options *options,
                                     nk_handle *out_webview) {
-    try {
+    {
         if (const auto result = enter_ui(); result != NK_OK)
             return result;
         if (!options || options->struct_size < sizeof(*options) || !out_webview ||
@@ -4523,19 +4468,9 @@ nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_op
         if (resource->handle == NK_INVALID_HANDLE)
             return fail(NK_ERROR_OUT_OF_MEMORY, "WebView handle registry is full");
         parent->children.push_back(resource->handle);
-        try {
-            begin_webview_creation(resource);
-        } catch (...) {
-            parent->children.pop_back();
-            nk::core::handles().erase(resource->handle, nk::core::ResourceType::webview);
-            throw;
-        }
+        begin_webview_creation(resource);
         *out_webview = resource->handle;
         return NK_OK;
-    } catch (const std::bad_alloc &) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while creating WebView");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while creating WebView");
     }
 }
 
@@ -4592,7 +4527,7 @@ nk_result NK_CALL nk_webview_set_bounds(nk_handle handle, int32_t x, int32_t y, 
 }
 
 nk_result NK_CALL nk_webview_navigate(nk_handle handle, const char *url) {
-    try {
+    {
         if (const auto result = enter_ui(); result != NK_OK)
             return result;
         if (!url)
@@ -4613,15 +4548,11 @@ nk_result NK_CALL nk_webview_navigate(nk_handle handle, const char *url) {
         return SUCCEEDED(resource->webview->Navigate(value.c_str()))
                    ? NK_OK
                    : fail(NK_ERROR_UNKNOWN, "WebView2 navigation request failed");
-    } catch (const std::bad_alloc &) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while queuing navigation");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while navigating WebView");
     }
 }
 
 nk_result NK_CALL nk_webview_set_html(nk_handle handle, const char *html, const char *base_url) {
-    try {
+    {
         if (const auto result = enter_ui(); result != NK_OK)
             return result;
         if (!html)
@@ -4646,10 +4577,6 @@ nk_result NK_CALL nk_webview_set_html(nk_handle handle, const char *html, const 
         return SUCCEEDED(resource->webview->NavigateToString(document.c_str()))
                    ? NK_OK
                    : fail(NK_ERROR_UNKNOWN, "WebView2 HTML navigation failed");
-    } catch (const std::bad_alloc &) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while queuing HTML");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while setting WebView HTML");
     }
 }
 
@@ -4724,7 +4651,7 @@ nk_result NK_CALL nk_webview_stop(nk_handle handle) {
 nk_result NK_CALL nk_webview_eval(nk_handle handle, const char *script,
                                   nk_request_id *out_request) {
     nk_request_id request = NK_INVALID_REQUEST_ID;
-    try {
+    {
         if (const auto result = enter_ui(); result != NK_OK)
             return result;
         if (!script || !out_request)
@@ -4753,14 +4680,6 @@ nk_result NK_CALL nk_webview_eval(nk_handle handle, const char *script,
         }
         *out_request = request;
         return NK_OK;
-    } catch (const std::bad_alloc &) {
-        if (request)
-            evaluations.erase(request);
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while evaluating JavaScript");
-    } catch (...) {
-        if (request)
-            evaluations.erase(request);
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while evaluating JavaScript");
     }
 }
 
@@ -4831,7 +4750,7 @@ nk_result NK_CALL nk_webview_navigation_decide(nk_request_id, uint32_t) {
 nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
                                     const nk_message_dialog_options *options,
                                     nk_request_id *out_request) {
-    try {
+    {
         if (const auto result = enter_ui(); result != NK_OK)
             return result;
         if (!options || options->struct_size < sizeof(*options) || !out_request ||
@@ -4856,19 +4775,9 @@ nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
             std::lock_guard lock(dialogs_mutex);
             dialogs.emplace(context->request, context);
         }
-        try {
-            context->worker = std::thread(run_message_dialog, context);
-        } catch (...) {
-            std::lock_guard lock(dialogs_mutex);
-            dialogs.erase(context->request);
-            throw;
-        }
+        context->worker = std::thread(run_message_dialog, context);
         *out_request = context->request;
         return NK_OK;
-    } catch (const std::bad_alloc &) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while creating message dialog");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while creating message dialog");
     }
 }
 
@@ -4918,7 +4827,7 @@ nk_result NK_CALL nk_clipboard_set_text(const char *text) {
 }
 
 nk_result NK_CALL nk_clipboard_set_files(const char *const *paths, uint32_t path_count) {
-    try {
+    {
         if (const auto result = enter_ui(); result != NK_OK)
             return result;
         if (!paths || path_count == 0)
@@ -4971,15 +4880,11 @@ nk_result NK_CALL nk_clipboard_set_files(const char *const *paths, uint32_t path
         }
         CloseClipboard();
         return NK_OK;
-    } catch (const std::bad_alloc &) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while writing clipboard files");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while writing clipboard files");
     }
 }
 
 nk_result NK_CALL nk_clipboard_read_text(nk_request_id *out_request) {
-    try {
+    {
         if (const auto result = enter_ui(); result != NK_OK)
             return result;
         if (!out_request)
@@ -5007,15 +4912,11 @@ nk_result NK_CALL nk_clipboard_read_text(nk_request_id *out_request) {
             return fail(result, "could not queue clipboard text result");
         *out_request = request;
         return NK_OK;
-    } catch (const std::bad_alloc &) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while reading clipboard text");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while reading clipboard text");
     }
 }
 
 nk_result NK_CALL nk_clipboard_read_files(nk_request_id *out_request) {
-    try {
+    {
         if (const auto result = enter_ui(); result != NK_OK)
             return result;
         if (!out_request)
@@ -5054,16 +4955,12 @@ nk_result NK_CALL nk_clipboard_read_files(nk_request_id *out_request) {
             return fail(result, "could not queue clipboard file result");
         *out_request = request;
         return NK_OK;
-    } catch (const std::bad_alloc &) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while reading clipboard files");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while reading clipboard files");
     }
 }
 
 nk_result NK_CALL nk_clipboard_set_resources(const nk_resource *resources,
                                              uint32_t resource_count) {
-    try {
+    {
         if (const auto result = enter_ui(); result != NK_OK)
             return result;
         if (const auto result = nk::platform::validate_resources(resources, resource_count, false);
@@ -5089,15 +4986,11 @@ nk_result NK_CALL nk_clipboard_set_resources(const nk_resource *resources,
         }
         CloseClipboard();
         return NK_OK;
-    } catch (const std::bad_alloc &) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while writing resource clipboard");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while writing resource clipboard");
     }
 }
 
 nk_result NK_CALL nk_clipboard_read_resources(nk_request_id *out_request) {
-    try {
+    {
         if (const auto result = enter_ui(); result != NK_OK)
             return result;
         if (!out_request)
@@ -5158,10 +5051,6 @@ nk_result NK_CALL nk_clipboard_read_resources(nk_request_id *out_request) {
             return fail(result, "could not queue resource clipboard result");
         *out_request = request;
         return NK_OK;
-    } catch (const std::bad_alloc &) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while reading resource clipboard");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while reading resource clipboard");
     }
 }
 
@@ -5383,12 +5272,7 @@ nk_result NK_CALL nk_notification_show(const nk_notification_options *options,
                 icon.dwInfoFlags |= NIIF_NOSOUND;
             icon.uTimeout = options->timeout_ms;
             notifications.emplace(request, WinNotification{request, id});
-            try {
-                notification_ids.emplace(id, request);
-            } catch (...) {
-                notifications.erase(request);
-                throw;
-            }
+            notification_ids.emplace(id, request);
             if (!Shell_NotifyIconW(NIM_ADD, &icon)) {
                 notification_ids.erase(id);
                 notifications.erase(request);

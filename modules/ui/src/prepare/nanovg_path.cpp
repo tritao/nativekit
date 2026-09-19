@@ -94,23 +94,18 @@ bool PreparedPath::set(PreparedPathKind kind, const PreparedGeometry &geometry,
     data_ = {};
     if (geometry.paths.empty() || geometry.vertices.empty())
         return false;
-    try {
-        data_.path_data = geometry.paths;
-        data_.vertex_data = geometry.vertices;
-        PreparedPathOperation operation{};
-        operation.kind = kind;
-        operation.paint = paint;
-        operation.fringe = geometry.fringe_width;
-        operation.stroke_width = geometry.stroke_width;
-        operation.fill_rule = geometry.fill_rule;
-        std::copy(geometry.bounds.begin(), geometry.bounds.end(), operation.bounds);
-        operation.path_count = static_cast<uint32_t>(data_.path_data.size());
-        operation.vertex_count = static_cast<uint32_t>(data_.vertex_data.size());
-        data_.operation_data.push_back(operation);
-    } catch (...) {
-        data_ = {};
-        return false;
-    }
+    data_.path_data = geometry.paths;
+    data_.vertex_data = geometry.vertices;
+    PreparedPathOperation operation{};
+    operation.kind = kind;
+    operation.paint = paint;
+    operation.fringe = geometry.fringe_width;
+    operation.stroke_width = geometry.stroke_width;
+    operation.fill_rule = geometry.fill_rule;
+    std::copy(geometry.bounds.begin(), geometry.bounds.end(), operation.bounds);
+    operation.path_count = static_cast<uint32_t>(data_.path_data.size());
+    operation.vertex_count = static_cast<uint32_t>(data_.vertex_data.size());
+    data_.operation_data.push_back(operation);
     return true;
 }
 
@@ -133,13 +128,7 @@ bool PreparedPath::set_view(PreparedPathKind kind, std::shared_ptr<const Prepare
     std::copy(geometry_view_->bounds.begin(), geometry_view_->bounds.end(), operation.bounds);
     operation.path_count = static_cast<uint32_t>(geometry_view_->paths.size());
     operation.vertex_count = static_cast<uint32_t>(geometry_view_->vertices.size());
-    try {
-        data_.operation_data.push_back(operation);
-    } catch (...) {
-        geometry_view_.reset();
-        data_ = {};
-        return false;
-    }
+    data_.operation_data.push_back(operation);
     return true;
 }
 

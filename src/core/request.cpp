@@ -5,12 +5,8 @@ namespace nk::core {
 bool RequestRegistry::begin(PendingRequest request) noexcept {
     if (request.id == NK_INVALID_REQUEST_ID || request.generation == 0 || request.kind == 0)
         return false;
-    try {
-        std::lock_guard lock(mutex_);
-        return pending_.emplace(request.id, request).second;
-    } catch (...) {
-        return false;
-    }
+    std::lock_guard lock(mutex_);
+    return pending_.emplace(request.id, request).second;
 }
 
 bool RequestRegistry::get(nk_request_id id, PendingRequest &out) const noexcept {
@@ -48,15 +44,11 @@ std::vector<PendingRequest> RequestRegistry::cancel_source(nk_handle source,
                                                            std::uint32_t kind) noexcept {
     std::vector<PendingRequest> canceled;
     std::lock_guard lock(mutex_);
-    try {
-        std::size_t count = 0;
-        for (const auto &entry : pending_)
-            if (entry.second.source == source && (kind == 0 || entry.second.kind == kind))
-                ++count;
-        canceled.reserve(count);
-    } catch (...) {
-        return {};
-    }
+    std::size_t count = 0;
+    for (const auto &entry : pending_)
+        if (entry.second.source == source && (kind == 0 || entry.second.kind == kind))
+            ++count;
+    canceled.reserve(count);
     for (auto found = pending_.begin(); found != pending_.end();) {
         if (found->second.source != source || (kind != 0 && found->second.kind != kind)) {
             ++found;
@@ -71,11 +63,7 @@ std::vector<PendingRequest> RequestRegistry::cancel_source(nk_handle source,
 std::vector<PendingRequest> RequestRegistry::cancel_all(std::uint32_t kind) noexcept {
     std::vector<PendingRequest> canceled;
     std::lock_guard lock(mutex_);
-    try {
-        canceled.reserve(pending_.size());
-    } catch (...) {
-        return {};
-    }
+    canceled.reserve(pending_.size());
     for (auto found = pending_.begin(); found != pending_.end();) {
         if (kind != 0 && found->second.kind != kind) {
             ++found;

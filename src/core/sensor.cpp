@@ -99,46 +99,40 @@ namespace nk::core {
 
 void sensor_publish(nk_sensor sensor, nk_sensor_type type, const float values[4],
                     nk_sensor_accuracy accuracy) noexcept {
-    try {
-        const auto resource = lookup(sensor);
-        if (!resource || !values)
+    const auto resource = lookup(sensor);
+    if (!resource || !values)
+        return;
+    nk_sensor_sample sample{};
+    {
+        std::lock_guard lock(resource->mutex);
+        if (!resource->started || resource->info.type != type)
             return;
-        nk_sensor_sample sample{};
-        {
-            std::lock_guard lock(resource->mutex);
-            if (!resource->started || resource->info.type != type)
-                return;
-            sample = resource->latest;
-            sample.struct_size = sizeof(sample);
-            sample.timestamp_ns = nk_time_now_ns();
-            sample.sequence = ++resource->sequence;
-            sample.accuracy = accuracy;
-            std::copy(values, values + 4, sample.values);
-            resource->latest = sample;
-        }
-        QueuedEvent event;
-        event.kind = NK_EVENT_SENSOR_UPDATE;
-        event.source = sensor;
-        event.data.resize(sizeof(sample));
-        std::memcpy(event.data.data(), &sample, sizeof(sample));
-        (void)push_event(std::move(event));
-    } catch (...) {
+        sample = resource->latest;
+        sample.struct_size = sizeof(sample);
+        sample.timestamp_ns = nk_time_now_ns();
+        sample.sequence = ++resource->sequence;
+        sample.accuracy = accuracy;
+        std::copy(values, values + 4, sample.values);
+        resource->latest = sample;
     }
+    QueuedEvent event;
+    event.kind = NK_EVENT_SENSOR_UPDATE;
+    event.source = sensor;
+    event.data.resize(sizeof(sample));
+    std::memcpy(event.data.data(), &sample, sizeof(sample));
+    (void)push_event(std::move(event));
 }
 
 void sensor_permission_complete(nk_request_id request, nk_result result,
                                 nk_sensor_permission_status status) noexcept {
-    try {
-        nk_sensor_permission_event payload{sizeof(payload), status, {0, 0, 0}};
-        QueuedEvent event;
-        event.kind = NK_EVENT_SENSOR_PERMISSION_COMPLETE;
-        event.request_id = request;
-        event.result = result;
-        event.data.resize(sizeof(payload));
-        std::memcpy(event.data.data(), &payload, sizeof(payload));
-        (void)push_event(std::move(event));
-    } catch (...) {
-    }
+    nk_sensor_permission_event payload{sizeof(payload), status, {0, 0, 0}};
+    QueuedEvent event;
+    event.kind = NK_EVENT_SENSOR_PERMISSION_COMPLETE;
+    event.request_id = request;
+    event.result = result;
+    event.data.resize(sizeof(payload));
+    std::memcpy(event.data.data(), &payload, sizeof(payload));
+    (void)push_event(std::move(event));
 }
 
 } // namespace nk::core

@@ -1271,10 +1271,14 @@ void refresh_gtk_accessibility(GtkSurfaceResource &resource) {
                 if (node.parent == parent_id)
                     ids.push_back(id);
             std::sort(ids.begin(), ids.end(), [&](auto left, auto right) {
-                const auto &a = resource.accessibility_nodes.at(left);
-                const auto &b = resource.accessibility_nodes.at(right);
-                return a.child_index == b.child_index ? left < right
-                                                      : a.child_index < b.child_index;
+                const auto a = resource.accessibility_nodes.find(left);
+                const auto b = resource.accessibility_nodes.find(right);
+                if (a == resource.accessibility_nodes.end() ||
+                    b == resource.accessibility_nodes.end())
+                    return left < right;
+                return a->second.child_index == b->second.child_index
+                           ? left < right
+                           : a->second.child_index < b->second.child_index;
             });
             for (const auto id : ids) {
                 auto *element = static_cast<NkAccessibilityElement *>(
@@ -1515,12 +1519,8 @@ struct ClipboardWatchResource final : nk::core::Resource {
 };
 
 void on_clipboard_owner_change(GtkClipboard *, GdkEventOwnerChange *event, gpointer data) {
-    try {
-        if (auto *watch = static_cast<ClipboardWatchResource *>(data))
-            watch->changed(event);
-    } catch (...) {
-        /* Native callbacks must never unwind through GTK. */
-    }
+    if (auto *watch = static_cast<ClipboardWatchResource *>(data))
+        watch->changed(event);
 }
 
 #if defined(NK_HAS_WEBKITGTK)
@@ -3053,8 +3053,11 @@ void cancel_dialogs_for_parent(nk_handle parent, bool emit_event) {
         if (dialog->parent == parent)
             requests.push_back(request);
     }
-    for (const auto request : requests)
-        cancel_dialog(dialogs.at(request), emit_event);
+    for (const auto request : requests) {
+        const auto found = dialogs.find(request);
+        if (found != dialogs.end())
+            cancel_dialog(found->second, emit_event);
+    }
 }
 
 void add_filters(GtkFileChooser *chooser, const nk_file_dialog_options *options) {
@@ -3454,39 +3457,31 @@ namespace nk::backend {
 
 nk_result clipboard_watch_start(const nk_clipboard_watch_options *options,
                                 nk_clipboard_watch *out_watch) noexcept {
-    try {
-        (void)options;
-        if (!ensure_gtk())
-            return NK_ERROR_UNSUPPORTED;
-        auto resource = std::make_shared<ClipboardWatchResource>();
-        resource->clipboard = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
-        if (!resource->clipboard) {
-            nk::core::set_error("GTK clipboard is unavailable");
-            return NK_ERROR_UNSUPPORTED;
-        }
-        resource->generation = nk::core::runtime_generation();
-        const auto handle =
-            nk::core::handles().insert(nk::core::ResourceType::clipboard_watch, resource);
-        if (handle == NK_INVALID_HANDLE)
-            return NK_ERROR_OUT_OF_MEMORY;
-        resource->handle = handle;
-        resource->signal = g_signal_connect(resource->clipboard, "owner-change",
-                                            G_CALLBACK(on_clipboard_owner_change), resource.get());
-        if (!resource->signal) {
-            nk::core::handles().erase(handle, nk::core::ResourceType::clipboard_watch);
-            nk::core::set_error("GTK could not register clipboard owner-change listener");
-            return NK_ERROR_UNSUPPORTED;
-        }
-        /* Signal registration establishes the baseline; no initial event is emitted. */
-        *out_watch = handle;
-        return NK_OK;
-    } catch (const std::bad_alloc &) {
-        nk::core::set_error("out of memory while starting clipboard watcher");
-        return NK_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
-        nk::core::set_error("unexpected error while starting clipboard watcher");
-        return NK_ERROR_UNKNOWN;
+    (void)options;
+    if (!ensure_gtk())
+        return NK_ERROR_UNSUPPORTED;
+    auto resource = std::make_shared<ClipboardWatchResource>();
+    resource->clipboard = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
+    if (!resource->clipboard) {
+        nk::core::set_error("GTK clipboard is unavailable");
+        return NK_ERROR_UNSUPPORTED;
     }
+    resource->generation = nk::core::runtime_generation();
+    const auto handle =
+        nk::core::handles().insert(nk::core::ResourceType::clipboard_watch, resource);
+    if (handle == NK_INVALID_HANDLE)
+        return NK_ERROR_OUT_OF_MEMORY;
+    resource->handle = handle;
+    resource->signal = g_signal_connect(resource->clipboard, "owner-change",
+                                        G_CALLBACK(on_clipboard_owner_change), resource.get());
+    if (!resource->signal) {
+        nk::core::handles().erase(handle, nk::core::ResourceType::clipboard_watch);
+        nk::core::set_error("GTK could not register clipboard owner-change listener");
+        return NK_ERROR_UNSUPPORTED;
+    }
+    /* Signal registration establishes the baseline; no initial event is emitted. */
+    *out_watch = handle;
+    return NK_OK;
 }
 
 nk_result clipboard_watch_stop(nk_clipboard_watch watch) noexcept {
@@ -4423,38 +4418,32 @@ nk_result NK_CALL nk_window_set_decorated(nk_handle h, uint32_t enabled) {
 nk_result NK_CALL nk_window_set_decoration_regions(nk_handle h,
                                                    const nk_window_decoration_region *regions,
                                                    uint32_t region_count) {
-    try {
-        if (const auto result = enter_ui(); result != NK_OK)
-            return result;
-        if (region_count && !regions)
-            return fail(NK_ERROR_INVALID_ARGUMENT, "decoration regions are missing");
-        auto resource = window(h);
-        if (!resource)
-            return invalid_handle("window");
-        if (resource->wrapped)
-            return fail(NK_ERROR_UNSUPPORTED,
-                        "custom decoration regions require a NativeKit-owned window");
-        for (uint32_t index = 0; index < region_count; ++index) {
-            const auto &region = regions[index];
-            if (!std::isfinite(region.x) || !std::isfinite(region.y) ||
-                !std::isfinite(region.width) || !std::isfinite(region.height) || region.x < 0.0f ||
-                region.y < 0.0f || region.width <= 0.0f || region.height <= 0.0f ||
-                region.kind > NK_WINDOW_DECORATION_RESIZE_SOUTHEAST ||
-                region.cursor_shape > NK_CURSOR_NOT_ALLOWED)
-                return fail(NK_ERROR_INVALID_ARGUMENT, "invalid decoration region");
-        }
-        if (region_count == 0)
-            resource->decoration_regions.clear();
-        else
-            resource->decoration_regions.assign(regions, regions + region_count);
-        if (resource->hovered)
-            apply_pointer_cursor(*resource);
-        return NK_OK;
-    } catch (const std::bad_alloc &) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while setting decoration regions");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while setting decoration regions");
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (region_count && !regions)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "decoration regions are missing");
+    auto resource = window(h);
+    if (!resource)
+        return invalid_handle("window");
+    if (resource->wrapped)
+        return fail(NK_ERROR_UNSUPPORTED,
+                    "custom decoration regions require a NativeKit-owned window");
+    for (uint32_t index = 0; index < region_count; ++index) {
+        const auto &region = regions[index];
+        if (!std::isfinite(region.x) || !std::isfinite(region.y) ||
+            !std::isfinite(region.width) || !std::isfinite(region.height) || region.x < 0.0f ||
+            region.y < 0.0f || region.width <= 0.0f || region.height <= 0.0f ||
+            region.kind > NK_WINDOW_DECORATION_RESIZE_SOUTHEAST ||
+            region.cursor_shape > NK_CURSOR_NOT_ALLOWED)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "invalid decoration region");
     }
+    if (region_count == 0)
+        resource->decoration_regions.clear();
+    else
+        resource->decoration_regions.assign(regions, regions + region_count);
+    if (resource->hovered)
+        apply_pointer_cursor(*resource);
+    return NK_OK;
 }
 
 nk_result NK_CALL nk_window_set_floating(nk_handle h, uint32_t enabled) {

@@ -74,32 +74,26 @@ extern "C" nk_result NK_CALL nk_core_graphics_image_register(
          api != NK_GRAPHICS_D3D11 && api != NK_GRAPHICS_METAL))
         return NK_ERROR_INVALID_ARGUMENT;
     out_image->id = 0;
-    try {
-        std::lock_guard<std::mutex> lock(registry_mutex);
-        size_t index = 0;
-        for (; index < registry.size(); ++index)
-            if (!registry[index].references)
-                break;
-        if (index == 0xFFFFu)
-            return NK_ERROR_OUT_OF_MEMORY;
-        if (index == registry.size())
-            registry.emplace_back();
-        if (!retain_device_locked(device))
-            return NK_ERROR_OUT_OF_MEMORY;
-        Slot &slot = registry[index];
-        slot.references = 1;
-        slot.releasing = false;
-        slot.info = {sizeof(nk_graphics_image_info), api, device, width, height, {0, 0}};
-        slot.runtime = runtime;
-        slot.backend_image = backend_image;
-        slot.release = release;
-        *out_image = handle_for(index, slot.generation);
-        return NK_OK;
-    } catch (const std::bad_alloc &) {
+    std::lock_guard<std::mutex> lock(registry_mutex);
+    size_t index = 0;
+    for (; index < registry.size(); ++index)
+        if (!registry[index].references)
+            break;
+    if (index == 0xFFFFu)
         return NK_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
-        return NK_ERROR_UNKNOWN;
-    }
+    if (index == registry.size())
+        registry.emplace_back();
+    if (!retain_device_locked(device))
+        return NK_ERROR_OUT_OF_MEMORY;
+    Slot &slot = registry[index];
+    slot.references = 1;
+    slot.releasing = false;
+    slot.info = {sizeof(nk_graphics_image_info), api, device, width, height, {0, 0}};
+    slot.runtime = runtime;
+    slot.backend_image = backend_image;
+    slot.release = release;
+    *out_image = handle_for(index, slot.generation);
+    return NK_OK;
 }
 
 extern "C" nk_result NK_CALL nk_graphics_image_retain(nk_graphics_image image) {
@@ -188,12 +182,8 @@ extern "C" nk_result NK_CALL nk_graphics_image_get_info(nk_graphics_image image,
 extern "C" nk_result NK_CALL nk_graphics_device_retain(nk_graphics_device device) {
     if (!device.id)
         return NK_ERROR_INVALID_ARGUMENT;
-    try {
-        std::lock_guard<std::mutex> lock(registry_mutex);
-        return retain_device_locked(device) ? NK_OK : NK_ERROR_OUT_OF_MEMORY;
-    } catch (const std::bad_alloc &) {
-        return NK_ERROR_OUT_OF_MEMORY;
-    }
+    std::lock_guard<std::mutex> lock(registry_mutex);
+    return retain_device_locked(device) ? NK_OK : NK_ERROR_OUT_OF_MEMORY;
 }
 
 extern "C" nk_result NK_CALL nk_graphics_device_release(nk_graphics_device device) {

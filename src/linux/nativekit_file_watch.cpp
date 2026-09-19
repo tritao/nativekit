@@ -321,11 +321,7 @@ struct FileWatchResource final : nk::core::Resource {
     }
 
     void run() noexcept {
-        try {
-            run_impl();
-        } catch (...) {
-            /* A backend worker must not unwind through std::thread. */
-        }
+        run_impl();
     }
 };
 
@@ -334,89 +330,54 @@ struct FileWatchResource final : nk::core::Resource {
 namespace nk::backend {
 
 nk_result file_watch_create(const nk_file_watch_options *, nk_file_watch *out_watch) noexcept {
-    try {
-        const auto descriptor = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
-        if (descriptor < 0) {
-            nk::core::set_error("inotify is unavailable");
-            return NK_ERROR_UNSUPPORTED;
-        }
-        auto resource = std::make_shared<FileWatchResource>();
-        resource->descriptor = descriptor;
-        resource->generation = nk::core::runtime_generation();
-        const auto handle =
-            nk::core::handles().insert(nk::core::ResourceType::file_watch, resource);
-        if (handle == NK_INVALID_HANDLE)
-            return NK_ERROR_OUT_OF_MEMORY;
-        resource->handle = handle;
-        try {
-            resource->worker = std::thread([resource] { resource->run(); });
-        } catch (...) {
-            nk::core::handles().erase(handle, nk::core::ResourceType::file_watch);
-            nk::core::set_error("could not start file-watch worker");
-            return NK_ERROR_OUT_OF_MEMORY;
-        }
-        *out_watch = handle;
-        return NK_OK;
-    } catch (const std::bad_alloc &) {
-        nk::core::set_error("out of memory while creating file watcher");
-        return NK_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
-        nk::core::set_error("unexpected error while creating file watcher");
-        return NK_ERROR_UNKNOWN;
+    const auto descriptor = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+    if (descriptor < 0) {
+        nk::core::set_error("inotify is unavailable");
+        return NK_ERROR_UNSUPPORTED;
     }
+    auto resource = std::make_shared<FileWatchResource>();
+    resource->descriptor = descriptor;
+    resource->generation = nk::core::runtime_generation();
+    const auto handle =
+        nk::core::handles().insert(nk::core::ResourceType::file_watch, resource);
+    if (handle == NK_INVALID_HANDLE)
+        return NK_ERROR_OUT_OF_MEMORY;
+    resource->handle = handle;
+    resource->worker = std::thread([resource] { resource->run(); });
+    *out_watch = handle;
+    return NK_OK;
 }
 
 nk_result file_watch_add_directory(nk_file_watch watch, const char *path,
                                    nk_bool recursive) noexcept {
-    try {
-        const auto resource = nk::core::handles().get(watch, nk::core::ResourceType::file_watch);
-        if (!resource) {
-            nk::core::set_error("invalid file-watch handle");
-            return NK_ERROR_INVALID_HANDLE;
-        }
-        return std::static_pointer_cast<FileWatchResource>(resource)->add_directory(path,
-                                                                                    recursive != 0);
-    } catch (const std::bad_alloc &) {
-        nk::core::set_error("out of memory while adding file-watch directory");
-        return NK_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
-        nk::core::set_error("unexpected error while adding file-watch directory");
-        return NK_ERROR_UNKNOWN;
+    const auto resource = nk::core::handles().get(watch, nk::core::ResourceType::file_watch);
+    if (!resource) {
+        nk::core::set_error("invalid file-watch handle");
+        return NK_ERROR_INVALID_HANDLE;
     }
+    return std::static_pointer_cast<FileWatchResource>(resource)->add_directory(path,
+                                                                                 recursive != 0);
 }
 
 nk_result file_watch_remove_directory(nk_file_watch watch, const char *path) noexcept {
-    try {
-        const auto resource = nk::core::handles().get(watch, nk::core::ResourceType::file_watch);
-        if (!resource) {
-            nk::core::set_error("invalid file-watch handle");
-            return NK_ERROR_INVALID_HANDLE;
-        }
-        return std::static_pointer_cast<FileWatchResource>(resource)->remove_directory(path);
-    } catch (const std::bad_alloc &) {
-        nk::core::set_error("out of memory while removing file-watch directory");
-        return NK_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
-        nk::core::set_error("unexpected error while removing file-watch directory");
-        return NK_ERROR_UNKNOWN;
+    const auto resource = nk::core::handles().get(watch, nk::core::ResourceType::file_watch);
+    if (!resource) {
+        nk::core::set_error("invalid file-watch handle");
+        return NK_ERROR_INVALID_HANDLE;
     }
+    return std::static_pointer_cast<FileWatchResource>(resource)->remove_directory(path);
 }
 
 nk_result file_watch_destroy(nk_file_watch watch) noexcept {
-    try {
-        const auto resource = nk::core::handles().get(watch, nk::core::ResourceType::file_watch);
-        if (!resource) {
-            nk::core::set_error("invalid file-watch handle");
-            return NK_ERROR_INVALID_HANDLE;
-        }
-        std::static_pointer_cast<FileWatchResource>(resource)->stop();
-        if (!nk::core::handles().erase(watch, nk::core::ResourceType::file_watch))
-            return NK_ERROR_INVALID_HANDLE;
-        return NK_OK;
-    } catch (...) {
-        nk::core::set_error("unexpected error while destroying file watcher");
-        return NK_ERROR_UNKNOWN;
+    const auto resource = nk::core::handles().get(watch, nk::core::ResourceType::file_watch);
+    if (!resource) {
+        nk::core::set_error("invalid file-watch handle");
+        return NK_ERROR_INVALID_HANDLE;
     }
+    std::static_pointer_cast<FileWatchResource>(resource)->stop();
+    if (!nk::core::handles().erase(watch, nk::core::ResourceType::file_watch))
+        return NK_ERROR_INVALID_HANDLE;
+    return NK_OK;
 }
 
 } // namespace nk::backend

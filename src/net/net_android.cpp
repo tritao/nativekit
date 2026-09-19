@@ -178,18 +178,13 @@ bool register_connection(JNIEnv *env, nk_request_id request, jobject connection)
     auto *global = env->NewGlobalRef(connection);
     if (env->ExceptionCheck() || !global)
         return false;
-    try {
-        std::lock_guard lock(active_connections_mutex);
-        const auto inserted = active_connections.emplace(request, global);
-        if (!inserted.second) {
-            env->DeleteGlobalRef(global);
-            return false;
-        }
-        return true;
-    } catch (...) {
+    std::lock_guard lock(active_connections_mutex);
+    const auto inserted = active_connections.emplace(request, global);
+    if (!inserted.second) {
         env->DeleteGlobalRef(global);
         return false;
     }
+    return true;
 }
 
 void unregister_connection(JNIEnv *env, nk_request_id request) {
@@ -1091,13 +1086,7 @@ nk_result perform(const nk::net::RequestPtr &request) {
 
 void perform_request(nk::net::RequestPtr request) noexcept {
     nk_result result = NK_HTTP_ERROR_CONNECTION;
-    try {
-        result = perform(request);
-    } catch (const std::bad_alloc &) {
-        result = NK_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
-        result = NK_ERROR_UNKNOWN;
-    }
+    result = perform(request);
     nk::net::complete_request(request, result);
     nk::net::worker_finished(request);
     request.reset();
@@ -1122,14 +1111,8 @@ nk_result backend_start(const RequestPtr &request) noexcept {
     if (!env)
         return NK_ERROR_UNSUPPORTED;
     nk::backend::android_jni_detach(attached);
-    try {
-        std::thread([request] { perform_request(request); }).detach();
-        return NK_OK;
-    } catch (const std::bad_alloc &) {
-        return NK_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
-        return NK_ERROR_UNKNOWN;
-    }
+    std::thread([request] { perform_request(request); }).detach();
+    return NK_OK;
 }
 
 void backend_cancel(const RequestPtr &request) noexcept {

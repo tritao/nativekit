@@ -113,44 +113,36 @@ nk_result invalid_argument(const char *message) {
 }
 
 bool utf8_to_wide(const std::string &input, std::wstring &output) {
-    try {
-        if (input.empty()) {
-            output.clear();
-            return true;
-        }
-        if (input.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
-            return false;
-        const int length = static_cast<int>(input.size());
-        const int required =
-            MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, input.data(), length, nullptr, 0);
-        if (required <= 0)
-            return false;
-        output.resize(static_cast<std::size_t>(required));
-        return MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, input.data(), length,
-                                   output.data(), required) == required;
-    } catch (...) {
-        return false;
+    if (input.empty()) {
+        output.clear();
+        return true;
     }
+    if (input.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+        return false;
+    const int length = static_cast<int>(input.size());
+    const int required =
+        MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, input.data(), length, nullptr, 0);
+    if (required <= 0)
+        return false;
+    output.resize(static_cast<std::size_t>(required));
+    return MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, input.data(), length,
+                               output.data(), required) == required;
 }
 
 bool wide_to_utf8(const wchar_t *input, std::string &output) {
-    try {
-        output.clear();
-        if (!input)
-            return true;
-        const int required = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, input, -1, nullptr,
-                                                 0, nullptr, nullptr);
-        if (required <= 0)
-            return false;
-        std::vector<char> buffer(static_cast<std::size_t>(required));
-        if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, input, -1, buffer.data(), required,
-                                nullptr, nullptr) != required)
-            return false;
-        output.assign(buffer.data(), static_cast<std::size_t>(required - 1));
+    output.clear();
+    if (!input)
         return true;
-    } catch (...) {
+    const int required = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, input, -1, nullptr,
+                                             0, nullptr, nullptr);
+    if (required <= 0)
         return false;
-    }
+    std::vector<char> buffer(static_cast<std::size_t>(required));
+    if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, input, -1, buffer.data(), required,
+                            nullptr, nullptr) != required)
+        return false;
+    output.assign(buffer.data(), static_cast<std::size_t>(required - 1));
+    return true;
 }
 
 bool valid_utf8(const char *value) {
@@ -475,19 +467,15 @@ bool uia_clients_are_listening() noexcept {
 }
 
 bool make_bstr(const std::string &value, BSTR *output) noexcept {
-    try {
-        std::wstring wide;
-        if (!utf8_to_wide(value, wide) || wide.size() > std::numeric_limits<UINT>::max())
-            return false;
-        if (wide.empty()) {
-            *output = SysAllocString(L"");
-            return *output != nullptr;
-        }
-        *output = SysAllocStringLen(wide.data(), static_cast<UINT>(wide.size()));
-        return *output != nullptr;
-    } catch (...) {
+    std::wstring wide;
+    if (!utf8_to_wide(value, wide) || wide.size() > std::numeric_limits<UINT>::max())
         return false;
+    if (wide.empty()) {
+        *output = SysAllocString(L"");
+        return *output != nullptr;
     }
+    *output = SysAllocStringLen(wide.data(), static_cast<UINT>(wide.size()));
+    return *output != nullptr;
 }
 
 void variant_bstr(VARIANT &value, const std::string &text) {
@@ -513,7 +501,7 @@ void variant_r8(VARIANT &value, double state) {
 
 HRESULT queue_action(const std::shared_ptr<AccessibilityHost> &host, const SemanticNode &node,
                      nk_accessibility_action action, const std::string &value = {}) noexcept {
-    try {
+    {
         if (!host)
             return UIA_E_ELEMENTNOTAVAILABLE;
         {
@@ -545,10 +533,6 @@ HRESULT queue_action(const std::shared_ptr<AccessibilityHost> &host, const Seman
         if (result == NK_ERROR_QUEUE_FULL)
             return HRESULT_FROM_WIN32(ERROR_NOT_ENOUGH_QUOTA);
         return result == NK_ERROR_OUT_OF_MEMORY ? E_OUTOFMEMORY : UIA_E_ELEMENTNOTAVAILABLE;
-    } catch (const std::bad_alloc &) {
-        return E_OUTOFMEMORY;
-    } catch (...) {
-        return E_FAIL;
     }
 }
 
@@ -701,7 +685,7 @@ HRESULT AccessibilityProvider::QueryInterface(REFIID iid, void **object) {
 }
 
 HRESULT AccessibilityProvider::snapshot(SemanticNode &node) const noexcept {
-    try {
+    {
         if (!host_)
             return UIA_E_ELEMENTNOTAVAILABLE;
         std::shared_lock lock(host_->mutex);
@@ -714,10 +698,6 @@ HRESULT AccessibilityProvider::snapshot(SemanticNode &node) const noexcept {
             return UIA_E_ELEMENTNOTAVAILABLE;
         node = found->second;
         return S_OK;
-    } catch (const std::bad_alloc &) {
-        return E_OUTOFMEMORY;
-    } catch (...) {
-        return E_FAIL;
     }
 }
 
@@ -962,7 +942,7 @@ HRESULT AccessibilityProvider::Navigate(NavigateDirection direction,
     HRESULT result = snapshot(node);
     if (FAILED(result))
         return result;
-    try {
+    {
         std::shared_lock lock(host_->mutex);
         if (direction == NavigateDirection_FirstChild || direction == NavigateDirection_LastChild) {
             auto children = children_of(*host_, node_);
@@ -1007,8 +987,6 @@ HRESULT AccessibilityProvider::Navigate(NavigateDirection direction,
         const auto target = current->id;
         lock.unlock();
         return make_provider(target, value);
-    } catch (...) {
-        return E_OUTOFMEMORY;
     }
 }
 
@@ -1125,7 +1103,7 @@ HRESULT AccessibilityProvider::ElementProviderFromPoint(double x, double y,
     const double scale = static_cast<double>(dpi) / 96.0;
     const double local_x = screen.x / scale;
     const double local_y = screen.y / scale;
-    try {
+    {
         std::shared_lock lock(host_->mutex);
         std::function<std::optional<nk_accessibility_node_id>(nk_accessibility_node_id)> hit;
         hit = [&](nk_accessibility_node_id parent) -> std::optional<nk_accessibility_node_id> {
@@ -1143,8 +1121,6 @@ HRESULT AccessibilityProvider::ElementProviderFromPoint(double x, double y,
         const auto target = hit(NK_ACCESSIBILITY_ROOT);
         lock.unlock();
         return make_provider(target.value_or(NK_ACCESSIBILITY_ROOT), value);
-    } catch (...) {
-        return E_OUTOFMEMORY;
     }
 }
 
@@ -1340,7 +1316,7 @@ HRESULT AccessibilityProvider::GetSelection(SAFEARRAY **value) {
         return result;
     if (!selection_container_role(node.role))
         return UIA_E_NOTSUPPORTED;
-    try {
+    {
         std::shared_lock lock(host_->mutex);
         if (!host_->active || host_->nodes.find(node_) == host_->nodes.end())
             return UIA_E_ELEMENTNOTAVAILABLE;
@@ -1367,8 +1343,6 @@ HRESULT AccessibilityProvider::GetSelection(SAFEARRAY **value) {
         }
         *value = array;
         return S_OK;
-    } catch (...) {
-        return E_OUTOFMEMORY;
     }
 }
 
@@ -1528,8 +1502,7 @@ void notify_update(const std::shared_ptr<AccessibilityHost> &host,
                    const std::unordered_map<nk_accessibility_node_id, SemanticNode> &after,
                    nk_accessibility_node_id old_focus,
                    nk_accessibility_node_id new_focus) noexcept {
-    try {
-        if (!uia_clients_are_listening())
+    if (!uia_clients_are_listening())
             return;
         bool structure_changed = before.size() != after.size();
         for (const auto &[id, old_node] : before) {
@@ -1625,9 +1598,6 @@ void notify_update(const std::shared_ptr<AccessibilityHost> &host,
                 provider->Release();
             }
         }
-    } catch (...) {
-        // UIA notifications are best-effort and must not invalidate an accepted tree update.
-    }
 }
 
 nk_result apply_update(nk_handle handle, const nk_accessibility_update *update) {
@@ -1645,7 +1615,7 @@ nk_result apply_update(nk_handle handle, const nk_accessibility_update *update) 
         update->focus > static_cast<uint32_t>(INT_MAX))
         return invalid_argument("invalid Windows accessibility update");
 
-    try {
+    {
         std::unordered_map<nk_accessibility_node_id, SemanticNode> before;
         nk_accessibility_node_id focus_before = NK_ACCESSIBILITY_ROOT;
         {
@@ -1706,10 +1676,6 @@ nk_result apply_update(nk_handle handle, const nk_accessibility_update *update) 
         }
         notify_update(host, before, committed, focus_before, focus_after);
         return NK_OK;
-    } catch (const std::bad_alloc &) {
-        return NK_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
-        return NK_ERROR_UNKNOWN;
     }
 }
 
@@ -1718,8 +1684,7 @@ nk_result apply_update(nk_handle handle, const nk_accessibility_update *update) 
 nk_result accessibility_attach(HWND window, nk_handle surface) noexcept {
     if (!window || surface == NK_INVALID_HANDLE)
         return NK_ERROR_INVALID_ARGUMENT;
-    try {
-        auto host = std::make_shared<AccessibilityHost>();
+    auto host = std::make_shared<AccessibilityHost>();
         host->window = window;
         host->surface = surface;
         std::lock_guard lock(hosts_mutex);
@@ -1727,16 +1692,8 @@ nk_result accessibility_attach(HWND window, nk_handle surface) noexcept {
             surfaces_by_window.find(window) != surfaces_by_window.end())
             return NK_ERROR_INVALID_REQUEST;
         hosts_by_surface.emplace(surface, host);
-        try {
-            surfaces_by_window.emplace(window, surface);
-        } catch (...) {
-            hosts_by_surface.erase(surface);
-            throw;
-        }
-        return NK_OK;
-    } catch (...) {
-        return NK_ERROR_OUT_OF_MEMORY;
-    }
+    surfaces_by_window.emplace(window, surface);
+    return NK_OK;
 }
 
 void accessibility_detach(HWND window) noexcept {
@@ -1789,7 +1746,6 @@ nk_result accessibility_update_tree(nk_handle surface,
 }
 
 nk_result accessibility_clear_tree(nk_handle surface) noexcept {
-    try {
         if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
             return thread;
         const auto host = host_for_surface(surface);
@@ -1810,19 +1766,13 @@ nk_result accessibility_clear_tree(nk_handle surface) noexcept {
         update.removed_nodes = ids.data();
         update.removed_node_count = static_cast<uint32_t>(ids.size());
         update.focus = NK_ACCESSIBILITY_ROOT;
-        return apply_update(surface, &update);
-    } catch (const std::bad_alloc &) {
-        return NK_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
-        return NK_ERROR_UNKNOWN;
-    }
+    return apply_update(surface, &update);
 }
 
 nk_result accessibility_set_text_ranges(nk_handle surface, nk_accessibility_node_id node,
                                         const nk_accessibility_text_range *ranges,
                                         uint32_t range_count) noexcept {
-    try {
-        if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
             return thread;
         const auto host = host_for_surface(surface);
         if (!host)
@@ -1849,12 +1799,7 @@ nk_result accessibility_set_text_ranges(nk_handle surface, nk_accessibility_node
             previous = range.end;
         }
         found->second.text_ranges = std::move(normalized);
-        return NK_OK;
-    } catch (const std::bad_alloc &) {
-        return NK_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
-        return NK_ERROR_UNKNOWN;
-    }
+    return NK_OK;
 }
 
 } // namespace nk::windows

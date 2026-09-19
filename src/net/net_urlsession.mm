@@ -450,7 +450,7 @@ nk_capabilities capabilities() noexcept {
 }
 
 nk_result backend_start(const RequestPtr &request) noexcept {
-    try {
+    {
         if (request->client->config.tls.flags != 0 ||
             request->client->config.tls.minimum_version != NK_HTTP_TLS_DEFAULT ||
             !request->client->config.tls.ca_bundle_path.empty())
@@ -546,10 +546,6 @@ nk_result backend_start(const RequestPtr &request) noexcept {
         }
         [task resume];
         return NK_OK;
-    } catch (const std::bad_alloc &) {
-        return NK_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
-        return NK_ERROR_UNKNOWN;
     }
 }
 

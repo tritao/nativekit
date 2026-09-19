@@ -21,7 +21,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
-#include <stdexcept>
 
 #define NK_CHECK(expression)                                                                       \
     do {                                                                                           \
@@ -112,20 +111,13 @@ int main() {
     NK_CHECK(std::strcmp(nk::core::vulkan::platform_extension(NK_NATIVE_WINDOW_WAYLAND),
                          "VK_KHR_wayland_surface") == 0);
     NK_CHECK(nk::core::vulkan::platform_extension(NK_NATIVE_WINDOW_COCOA) == nullptr);
-    NK_CHECK(nk::core::result_boundary("unexpected boundary exception", []() -> nk_result {
-                 throw std::bad_alloc{};
-             }) == NK_ERROR_OUT_OF_MEMORY);
-    NK_CHECK(nk::core::result_boundary("unexpected boundary exception", []() -> nk_result {
-                 throw std::runtime_error("test");
-             }) == NK_ERROR_UNKNOWN);
+    NK_CHECK(nk::core::result_boundary("direct result propagation", []() -> nk_result {
+               return NK_ERROR_INVALID_ARGUMENT;
+           }) == NK_ERROR_INVALID_ARGUMENT);
     bool callback_returned = false;
-    nk::core::callback_boundary([&] {
-        callback_returned = true;
-        throw std::runtime_error("test");
-    });
+    nk::core::callback_boundary([&] { callback_returned = true; });
     NK_CHECK(callback_returned);
-    NK_CHECK(
-        !nk::core::callback_boundary_or(false, []() -> bool { throw std::runtime_error("test"); }));
+    NK_CHECK(!nk::core::callback_boundary_or(false, []() -> bool { return false; }));
     NK_CHECK(nk::core::callback_boundary_or(false, [] { return true; }));
 
     nk::core::gamepad::Mapping mapping;

@@ -1117,30 +1117,26 @@ nk_result mobile_host_set_drop_enabled(nk_handle handle, bool enabled) {
 namespace nk::core::sensor_backend {
 
 nk_result list(std::vector<SensorBackendDescriptor> &out) noexcept {
-    try {
-        out.clear();
-        constexpr nk_sensor_type types[] = {
-            NK_SENSOR_ACCELEROMETER, NK_SENSOR_GYROSCOPE,           NK_SENSOR_MAGNETOMETER,
-            NK_SENSOR_GRAVITY,       NK_SENSOR_LINEAR_ACCELERATION, NK_SENSOR_ROTATION_VECTOR};
-        for (const auto type : types) {
-            const auto native_type = android_sensor_type(type);
-            if (!native_type)
-                continue;
-            jvalue argument{};
-            argument.i = native_type;
-            bool available = false;
-            if (!java_boolean("sensorAvailable", "(I)Z", &argument, &available))
-                return NK_ERROR_UNKNOWN;
-            if (!available)
-                continue;
-            const auto count = (type == NK_SENSOR_ROTATION_VECTOR) ? 4u : 3u;
-            out.push_back({type, count, 1000000ULL, 100000000ULL,
-                           type == NK_SENSOR_MAGNETOMETER ? 2000.0f : 100.0f});
-        }
-        return NK_OK;
-    } catch (...) {
-        return NK_ERROR_UNKNOWN;
+    out.clear();
+    constexpr nk_sensor_type types[] = {
+        NK_SENSOR_ACCELEROMETER, NK_SENSOR_GYROSCOPE,           NK_SENSOR_MAGNETOMETER,
+        NK_SENSOR_GRAVITY,       NK_SENSOR_LINEAR_ACCELERATION, NK_SENSOR_ROTATION_VECTOR};
+    for (const auto type : types) {
+        const auto native_type = android_sensor_type(type);
+        if (!native_type)
+            continue;
+        jvalue argument{};
+        argument.i = native_type;
+        bool available = false;
+        if (!java_boolean("sensorAvailable", "(I)Z", &argument, &available))
+            return NK_ERROR_UNKNOWN;
+        if (!available)
+            continue;
+        const auto count = (type == NK_SENSOR_ROTATION_VECTOR) ? 4u : 3u;
+        out.push_back({type, count, 1000000ULL, 100000000ULL,
+                       type == NK_SENSOR_MAGNETOMETER ? 2000.0f : 100.0f});
     }
+    return NK_OK;
 }
 
 nk_result start(nk_sensor sensor, nk_sensor_type type, const nk_sensor_options &options) noexcept {

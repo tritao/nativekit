@@ -846,14 +846,20 @@ void refresh_accessibility_elements(IOSSurface &resource) noexcept {
                     if (node.parent == parent)
                         children.push_back(id);
                 std::sort(children.begin(), children.end(), [&](auto lhs, auto rhs) {
-                    const auto &left = resource.accessibility_nodes.at(lhs);
-                    const auto &right = resource.accessibility_nodes.at(rhs);
-                    return left.child_index == right.child_index
+                    const auto left = resource.accessibility_nodes.find(lhs);
+                    const auto right = resource.accessibility_nodes.find(rhs);
+                    if (left == resource.accessibility_nodes.end() ||
+                        right == resource.accessibility_nodes.end())
+                        return lhs < rhs;
+                    return left->second.child_index == right->second.child_index
                                ? lhs < rhs
-                               : left.child_index < right.child_index;
+                               : left->second.child_index < right->second.child_index;
                 });
                 for (const auto id : children) {
-                    const auto &node = resource.accessibility_nodes.at(id);
+                    const auto found = resource.accessibility_nodes.find(id);
+                    if (found == resource.accessibility_nodes.end())
+                        continue;
+                    const auto &node = found->second;
                     auto element = [[NKIOSAccessibilityElement alloc]
                         initWithAccessibilityContainer:resource.accessibility_container];
                     if (!element)
@@ -2955,15 +2961,9 @@ nk_result mobile_host_attach(const nk_mobile_host_options &options, nk_handle &o
         nk::core::set_error("could not allocate an iOS mobile host handle");
         return NK_ERROR_OUT_OF_MEMORY;
     }
-    try {
-        resource->handle = handle;
-        hosts.emplace(handle, resource);
-        observe_view(resource, handle);
-    } catch (...) {
-        nk::core::handles().erase(handle, nk::core::ResourceType::mobile_host);
-        nk::core::set_error("could not retain the iOS mobile host");
-        return NK_ERROR_OUT_OF_MEMORY;
-    }
+    resource->handle = handle;
+    hosts.emplace(handle, resource);
+    observe_view(resource, handle);
     out_host = handle;
     queue_geometry(resource);
     return NK_OK;
@@ -3330,15 +3330,8 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
                 resource->device_handle = resource->handle;
             resource->input_view.surface = resource->handle;
             resource->accessibility_container.surface = resource->handle;
-            try {
-                surfaces.emplace(resource->handle, resource);
-                parent->surfaces.push_back(resource->handle);
-            } catch (...) {
-                surfaces.erase(resource->handle);
-                nk::core::handles().erase(resource->handle, nk::core::ResourceType::surface);
-                nk::core::set_error("could not retain the iOS Metal surface");
-                return NK_ERROR_OUT_OF_MEMORY;
-            }
+            surfaces.emplace(resource->handle, resource);
+            parent->surfaces.push_back(resource->handle);
             if (shared)
                 ++shared->share_dependents;
             resource->ready = true;
@@ -3699,15 +3692,8 @@ nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_op
                                 context:nullptr];
             resource->observing_title = true;
             [parent->view addSubview:resource->view];
-            try {
-                webviews.emplace(resource->handle, resource);
-                parent->webviews.push_back(resource->handle);
-            } catch (...) {
-                webviews.erase(resource->handle);
-                nk::core::handles().erase(resource->handle, nk::core::ResourceType::webview);
-                nk::core::set_error("could not retain the iOS WebView");
-                return NK_ERROR_OUT_OF_MEMORY;
-            }
+            webviews.emplace(resource->handle, resource);
+            parent->webviews.push_back(resource->handle);
             *out_webview = resource->handle;
             emit_webview_text(NK_EVENT_WEBVIEW_READY, resource->handle, nil);
             if (initial_url)
@@ -3940,12 +3926,7 @@ nk_result NK_CALL nk_webview_eval(nk_webview handle, const char *script,
             const nk_handle webview_handle = handle;
             const auto request = nk::core::next_request_id();
             const auto generation = nk::core::runtime_generation();
-            try {
-                evaluations.emplace(request, webview_handle);
-            } catch (...) {
-                nk::core::set_error("could not retain JavaScript evaluation");
-                return NK_ERROR_OUT_OF_MEMORY;
-            }
+            evaluations.emplace(request, webview_handle);
             [resource->view
                 evaluateJavaScript:wrapped
                  completionHandler:^(id value, NSError *error) {

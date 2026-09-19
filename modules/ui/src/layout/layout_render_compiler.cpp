@@ -231,13 +231,9 @@ bool LayoutRenderCompiler::add_font_from_data(const char *name, const void *data
                                               FontFamily family) {
     if (!fonts_ || !name || !*name || !data || !bytes)
         return false;
-    try {
-        auto owned = std::make_shared<std::vector<uint8_t>>(
-            static_cast<const uint8_t *>(data), static_cast<const uint8_t *>(data) + bytes);
-        return fonts_->add_font_from_shared_data(name, owned, family);
-    } catch (...) {
-        return false;
-    }
+    auto owned = std::make_shared<std::vector<uint8_t>>(
+        static_cast<const uint8_t *>(data), static_cast<const uint8_t *>(data) + bytes);
+    return fonts_->add_font_from_shared_data(name, owned, family);
 }
 
 bool LayoutRenderCompiler::add_system_fallbacks() {
@@ -257,7 +253,7 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
 
     out.reset();
     out.text_source_ = text_source;
-    try {
+    {
         std::size_t pass_capacity = 1;
         if (custom_paints)
             for (const auto &[node_id, custom_plan] : *custom_paints) {
@@ -476,8 +472,6 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
         }
         if (!clips.empty())
             return fail(error, snapshot.primitives.size(), "layout clip stack is unbalanced");
-    } catch (...) {
-        return fail(error, 0, "layout render compilation ran out of memory");
     }
     return true;
 }

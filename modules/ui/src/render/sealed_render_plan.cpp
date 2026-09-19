@@ -1,6 +1,5 @@
 #include "render/sealed_render_plan.h"
 
-#include <new>
 #include <utility>
 
 namespace nkui {
@@ -15,16 +14,9 @@ void fail(RenderPlanSealError *error, const char *message) {
 
 std::shared_ptr<const SealedRenderPlan>
 SealedRenderPlan::seal(RenderPlan plan, OwnedFrameResources resources, RenderPlanSealError *error) {
-    try {
-        return std::shared_ptr<const SealedRenderPlan>(
-            new SealedRenderPlan(std::move(plan), std::move(resources)));
-    } catch (const std::bad_alloc &) {
-        fail(error, "out of memory while sealing a render plan");
-        return {};
-    } catch (...) {
-        fail(error, "unexpected failure while sealing a render plan");
-        return {};
-    }
+    (void)error;
+    return std::shared_ptr<const SealedRenderPlan>(
+        new SealedRenderPlan(std::move(plan), std::move(resources)));
 }
 
 } // namespace nkui

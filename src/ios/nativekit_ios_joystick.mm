@@ -274,15 +274,7 @@ nk_result enter_ui() {
 }
 
 template <typename Function> nk_result boundary(Function &&function) noexcept {
-    try {
-        return function();
-    } catch (const std::bad_alloc &) {
-        nk::core::set_error("out of memory while accessing joysticks");
-        return NK_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
-        nk::core::set_error("unexpected error while accessing joysticks");
-        return NK_ERROR_UNKNOWN;
-    }
+    return function();
 }
 
 } // namespace
@@ -290,45 +282,39 @@ template <typename Function> nk_result boundary(Function &&function) noexcept {
 namespace nk::ios_joystick {
 void pump() noexcept {
     @autoreleasepool {
-        try {
-            GCController.shouldMonitorBackgroundEvents = YES;
-            NSMutableSet *present = [NSMutableSet set];
-            for (GCController *controller in GCController.controllers) {
-                void *key = (__bridge void *)controller;
-                [present addObject:[NSValue valueWithPointer:key]];
-                if (devices.find(key) == devices.end())
-                    add_device(controller);
-                else
-                    update(*devices[key]);
-                if (devices.find(key) != devices.end())
-                    nk::core::gamepad_events::update(devices[key]->handle, true);
-            }
-            std::vector<void *> removed;
-            for (const auto &[key, device] : devices) {
-                (void)device;
-                if (![present containsObject:[NSValue valueWithPointer:key]])
-                    removed.push_back(key);
-            }
-            for (void *key : removed)
-                remove_device(key);
-        } catch (...) {
+        GCController.shouldMonitorBackgroundEvents = YES;
+        NSMutableSet *present = [NSMutableSet set];
+        for (GCController *controller in GCController.controllers) {
+            void *key = (__bridge void *)controller;
+            [present addObject:[NSValue valueWithPointer:key]];
+            if (devices.find(key) == devices.end())
+                add_device(controller);
+            else
+                update(*devices[key]);
+            if (devices.find(key) != devices.end())
+                nk::core::gamepad_events::update(devices[key]->handle, true);
         }
+        std::vector<void *> removed;
+        for (const auto &[key, device] : devices) {
+            (void)device;
+            if (![present containsObject:[NSValue valueWithPointer:key]])
+                removed.push_back(key);
+        }
+        for (void *key : removed)
+            remove_device(key);
     }
 }
 
 void shutdown() noexcept {
     @autoreleasepool {
-        try {
-            std::vector<void *> keys;
-            keys.reserve(devices.size());
-            for (const auto &[key, device] : devices) {
-                (void)device;
-                keys.push_back(key);
-            }
-            for (void *key : keys)
-                remove_device(key);
-        } catch (...) {
+        std::vector<void *> keys;
+        keys.reserve(devices.size());
+        for (const auto &[key, device] : devices) {
+            (void)device;
+            keys.push_back(key);
         }
+        for (void *key : keys)
+            remove_device(key);
     }
 }
 

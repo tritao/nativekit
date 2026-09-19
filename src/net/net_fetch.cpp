@@ -270,58 +270,46 @@ extern "C" {
 
 EMSCRIPTEN_KEEPALIVE int32_t nk_net_fetch_headers(double id, int32_t status, const char *lines,
                                                   int32_t redirected) {
-    try {
-        const auto request = find_request(static_cast<nk_request_id>(id));
-        if (!request)
-            return NK_HTTP_ERROR_CANCELED;
-        std::vector<nk::net::OwnedHeader> headers;
-        std::string_view text(lines ? lines : "");
-        std::size_t index = 0;
-        while (index < text.size()) {
-            const auto name_end = text.find('\n', index);
-            if (name_end == std::string_view::npos)
-                return NK_HTTP_ERROR_PROTOCOL;
-            const auto value_begin = name_end + 1;
-            const auto value_end = text.find('\n', value_begin);
-            if (value_end == std::string_view::npos)
-                return NK_HTTP_ERROR_PROTOCOL;
-            auto name = trim(text.substr(index, name_end - index));
-            auto value = trim(text.substr(value_begin, value_end - value_begin));
-            headers.push_back({std::move(name), std::move(value)});
-            index = value_end + 1;
-        }
-        const auto length = content_length(headers);
-        if (redirected) {
-            std::lock_guard lock(request->mutex);
-            request->response_flags |= NK_HTTP_RESPONSE_REDIRECTED;
-        }
-        return nk::net::receive_response_headers(request, static_cast<uint32_t>(status),
-                                                 std::move(headers), length);
-    } catch (const std::bad_alloc &) {
-        return NK_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
-        return NK_HTTP_ERROR_PROTOCOL;
+    const auto request = find_request(static_cast<nk_request_id>(id));
+    if (!request)
+        return NK_HTTP_ERROR_CANCELED;
+    std::vector<nk::net::OwnedHeader> headers;
+    std::string_view text(lines ? lines : "");
+    std::size_t index = 0;
+    while (index < text.size()) {
+        const auto name_end = text.find('\n', index);
+        if (name_end == std::string_view::npos)
+            return NK_HTTP_ERROR_PROTOCOL;
+        const auto value_begin = name_end + 1;
+        const auto value_end = text.find('\n', value_begin);
+        if (value_end == std::string_view::npos)
+            return NK_HTTP_ERROR_PROTOCOL;
+        auto name = trim(text.substr(index, name_end - index));
+        auto value = trim(text.substr(value_begin, value_end - value_begin));
+        headers.push_back({std::move(name), std::move(value)});
+        index = value_end + 1;
     }
+    const auto length = content_length(headers);
+    if (redirected) {
+        std::lock_guard lock(request->mutex);
+        request->response_flags |= NK_HTTP_RESPONSE_REDIRECTED;
+    }
+    return nk::net::receive_response_headers(request, static_cast<uint32_t>(status),
+                                             std::move(headers), length);
 }
 
 EMSCRIPTEN_KEEPALIVE int32_t nk_net_fetch_data(double id, const void *data, uint32_t size,
                                                double total) {
-    try {
-        const auto request = find_request(static_cast<nk_request_id>(id));
-        if (!request)
-            return NK_HTTP_ERROR_CANCELED;
-        if (total >= 0 && total <= static_cast<double>(UINT64_MAX))
-            nk::net::set_response_total(request, static_cast<uint64_t>(total));
-        const auto result = nk::net::receive_response_data(
-            request, static_cast<const std::byte *>(data), static_cast<std::size_t>(size));
-        if (result == NK_OK && progress_due(*request))
-            nk::net::emit_progress(request, request->received, request->total, 0, 0);
-        return result;
-    } catch (const std::bad_alloc &) {
-        return NK_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
-        return NK_HTTP_ERROR_PROTOCOL;
-    }
+    const auto request = find_request(static_cast<nk_request_id>(id));
+    if (!request)
+        return NK_HTTP_ERROR_CANCELED;
+    if (total >= 0 && total <= static_cast<double>(UINT64_MAX))
+        nk::net::set_response_total(request, static_cast<uint64_t>(total));
+    const auto result = nk::net::receive_response_data(
+        request, static_cast<const std::byte *>(data), static_cast<std::size_t>(size));
+    if (result == NK_OK && progress_due(*request))
+        nk::net::emit_progress(request, request->received, request->total, 0, 0);
+    return result;
 }
 
 EMSCRIPTEN_KEEPALIVE void nk_net_fetch_complete(double id, int32_t result) {
@@ -343,54 +331,46 @@ nk_capabilities capabilities() noexcept {
 }
 
 nk_result backend_start(const RequestPtr &request) noexcept {
-    try {
-        if (request->client->config.cookie_policy != NK_HTTP_COOKIES_DISABLED ||
-            request->client->config.cache_policy != NK_HTTP_CACHE_DISABLED ||
-            request->client->config.proxy.kind != NK_HTTP_PROXY_NONE ||
-            request->client->config.tls.flags != 0 ||
-            request->client->config.tls.minimum_version != NK_HTTP_TLS_DEFAULT ||
-            !request->client->config.tls.ca_bundle_path.empty() ||
-            request->request.upload_stream != NK_INVALID_HANDLE)
-            return NK_ERROR_UNSUPPORTED;
-        if (request->request.body.size() > UINT32_MAX)
-            return NK_ERROR_INVALID_ARGUMENT;
-        const auto *method = method_name(request->request.method);
-        if (!method)
-            return NK_ERROR_INVALID_ARGUMENT;
-        std::string headers;
-        for (const auto &header : request->client->config.default_headers) {
-            headers += header.name;
-            headers += '\n';
-            headers += header.value;
-            headers += '\n';
-        }
-        for (const auto &header : request->request.headers) {
-            headers += header.name;
-            headers += '\n';
-            headers += header.value;
-            headers += '\n';
-        }
-        {
-            std::lock_guard lock(fetch_mutex);
-            fetch_requests.emplace(request->id, request);
-        }
-        start_fetch(static_cast<double>(request->id), request->request.url.c_str(), method,
-                    headers.c_str(),
-                    request->request.body.empty()
-                        ? 0
-                        : reinterpret_cast<uintptr_t>(request->request.body.data()),
-                    static_cast<uint32_t>(request->request.body.size()),
-                    request->client->config.max_header_size, request->request.max_response_size,
-                    request->request.redirect_limit, request->request.timeout_ms,
-                    (request->client->config.flags & NK_HTTP_CLIENT_ALLOW_HTTPS_TO_HTTP) != 0);
-        return NK_OK;
-    } catch (const std::bad_alloc &) {
-        erase_request(request->id);
-        return NK_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
-        erase_request(request->id);
-        return NK_ERROR_UNKNOWN;
+    if (request->client->config.cookie_policy != NK_HTTP_COOKIES_DISABLED ||
+        request->client->config.cache_policy != NK_HTTP_CACHE_DISABLED ||
+        request->client->config.proxy.kind != NK_HTTP_PROXY_NONE ||
+        request->client->config.tls.flags != 0 ||
+        request->client->config.tls.minimum_version != NK_HTTP_TLS_DEFAULT ||
+        !request->client->config.tls.ca_bundle_path.empty() ||
+        request->request.upload_stream != NK_INVALID_HANDLE)
+        return NK_ERROR_UNSUPPORTED;
+    if (request->request.body.size() > UINT32_MAX)
+        return NK_ERROR_INVALID_ARGUMENT;
+    const auto *method = method_name(request->request.method);
+    if (!method)
+        return NK_ERROR_INVALID_ARGUMENT;
+    std::string headers;
+    for (const auto &header : request->client->config.default_headers) {
+        headers += header.name;
+        headers += '\n';
+        headers += header.value;
+        headers += '\n';
     }
+    for (const auto &header : request->request.headers) {
+        headers += header.name;
+        headers += '\n';
+        headers += header.value;
+        headers += '\n';
+    }
+    {
+        std::lock_guard lock(fetch_mutex);
+        fetch_requests.emplace(request->id, request);
+    }
+    start_fetch(static_cast<double>(request->id), request->request.url.c_str(), method,
+                headers.c_str(),
+                request->request.body.empty()
+                    ? 0
+                    : reinterpret_cast<uintptr_t>(request->request.body.data()),
+                static_cast<uint32_t>(request->request.body.size()),
+                request->client->config.max_header_size, request->request.max_response_size,
+                request->request.redirect_limit, request->request.timeout_ms,
+                (request->client->config.flags & NK_HTTP_CLIENT_ALLOW_HTTPS_TO_HTTP) != 0);
+    return NK_OK;
 }
 
 void backend_cancel(const RequestPtr &request) noexcept {

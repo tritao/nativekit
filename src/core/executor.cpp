@@ -98,27 +98,22 @@ nk_result dispatch_to_executor(nk_executor executor, nk_task_fn fn, void *user_d
         set_error("the executor task exceeds the byte budget");
         return NK_ERROR_QUEUE_FULL;
     }
-    try {
-        {
-            std::lock_guard lock(executor_mutex);
-            if (!executor_bound) {
-                set_error("NativeKit is not initialized");
-                return NK_ERROR_NOT_INITIALIZED;
-            }
+    {
+        std::lock_guard lock(executor_mutex);
+        if (!executor_bound) {
+            set_error("NativeKit is not initialized");
+            return NK_ERROR_NOT_INITIALIZED;
         }
-        {
-            std::lock_guard lock(task_mutex);
-            if (pending_tasks.size() >= app_task_capacity ||
-                pending_task_bytes > app_task_byte_capacity - bytes) {
-                set_error("the application dispatch queue is full");
-                return NK_ERROR_QUEUE_FULL;
-            }
-            pending_tasks.push_back(AppTask{executor, fn, user_data, cleanup, bytes});
-            pending_task_bytes += bytes;
+    }
+    {
+        std::lock_guard lock(task_mutex);
+        if (pending_tasks.size() >= app_task_capacity ||
+            pending_task_bytes > app_task_byte_capacity - bytes) {
+            set_error("the application dispatch queue is full");
+            return NK_ERROR_QUEUE_FULL;
         }
-    } catch (...) {
-        set_error("out of memory while dispatching to the application executor");
-        return NK_ERROR_OUT_OF_MEMORY;
+        pending_tasks.push_back(AppTask{executor, fn, user_data, cleanup, bytes});
+        pending_task_bytes += bytes;
     }
     wake_events();
     return NK_OK;

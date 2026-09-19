@@ -362,34 +362,34 @@ bool checked_range(uint64_t offset, uint64_t size, uint64_t total) {
     return offset <= total && size <= total - offset;
 }
 
-std::vector<std::byte> response_payload(const RequestPtr &request, bool include_body) {
+bool response_payload(const RequestPtr &request, bool include_body, std::vector<std::byte> &data) {
     std::lock_guard lock(request->mutex);
     const auto header_bytes =
         static_cast<uint64_t>(request->response_headers.size()) * sizeof(WireHeader);
     uint64_t string_bytes = 0;
     for (const auto &header : request->response_headers) {
         if (header.name.size() > UINT32_MAX || header.value.size() > UINT32_MAX)
-            throw std::bad_alloc{};
+            return false;
         if (string_bytes >
             std::numeric_limits<uint64_t>::max() - header.name.size() - header.value.size())
-            throw std::bad_alloc{};
+            return false;
         string_bytes += header.name.size() + header.value.size();
     }
     const auto body_bytes = include_body ? request->response_body.size() : 0;
     if (header_bytes > std::numeric_limits<uint64_t>::max() - string_bytes)
-        throw std::bad_alloc{};
+        return false;
     const uint64_t headers_size = header_bytes + string_bytes;
     if (sizeof(WireResponse) > std::numeric_limits<uint64_t>::max() - headers_size)
-        throw std::bad_alloc{};
+        return false;
     const uint64_t body_offset = sizeof(WireResponse) + headers_size;
     if (body_bytes > std::numeric_limits<uint64_t>::max() - body_offset)
-        throw std::bad_alloc{};
+        return false;
     const uint64_t total_size = body_offset + body_bytes;
     if (headers_size > std::numeric_limits<std::size_t>::max() ||
         total_size > std::numeric_limits<std::size_t>::max())
-        throw std::bad_alloc{};
+        return false;
 
-    std::vector<std::byte> data(static_cast<std::size_t>(total_size));
+    data.resize(static_cast<std::size_t>(total_size));
     WireResponse wire{};
     wire.magic = wire_magic;
     wire.version = wire_version;
@@ -421,20 +421,18 @@ std::vector<std::byte> response_payload(const RequestPtr &request, bool include_
     }
     if (body_bytes != 0)
         std::memcpy(data.data() + body_offset, request->response_body.data(), body_bytes);
-    return data;
+    return true;
 }
 
 void finish_event(const RequestPtr &request, nk_result result) noexcept {
-    try {
-        nk::core::QueuedEvent event;
-        event.kind = NK_EVENT_HTTP_COMPLETE;
-        event.source = request->stream;
-        event.request_id = request->id;
-        event.result = result;
-        event.data = response_payload(request, request->request.mode == NK_HTTP_REQUEST_BUFFERED);
-        nk::core::push_event(std::move(event));
-    } catch (...) {
-    }
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_HTTP_COMPLETE;
+    event.source = request->stream;
+    event.request_id = request->id;
+    event.result = result;
+    if (!response_payload(request, request->request.mode == NK_HTTP_REQUEST_BUFFERED, event.data))
+        return;
+    nk::core::push_event(std::move(event));
 }
 
 } // namespace
@@ -442,48 +440,41 @@ void finish_event(const RequestPtr &request, nk_result result) noexcept {
 namespace nk::net {
 
 void emit_headers(const RequestPtr &request) noexcept {
-    try {
-        {
-            std::lock_guard lock(request->mutex);
-            if (request->headers_emitted || request->headers_event_pending ||
-                request->status_code == 0)
-                return;
-            request->headers_event_pending = true;
-        }
-        nk::core::QueuedEvent event;
-        event.kind = NK_EVENT_HTTP_HEADERS;
-        event.source = request->stream;
-        event.request_id = request->id;
-        event.data = response_payload(request, false);
-        const auto result = nk::core::push_event(std::move(event));
+    {
         std::lock_guard lock(request->mutex);
-        request->headers_event_pending = false;
-        if (result == NK_OK)
-            request->headers_emitted = true;
-    } catch (...) {
-        std::lock_guard lock(request->mutex);
-        request->headers_event_pending = false;
+        if (request->headers_emitted || request->headers_event_pending || request->status_code == 0)
+            return;
+        request->headers_event_pending = true;
     }
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_HTTP_HEADERS;
+    event.source = request->stream;
+    event.request_id = request->id;
+    if (!response_payload(request, false, event.data)) {
+        std::lock_guard lock(request->mutex);
+        request->headers_event_pending = false;
+        return;
+    }
+    const auto result = nk::core::push_event(std::move(event));
+    std::lock_guard lock(request->mutex);
+    request->headers_event_pending = false;
+    if (result == NK_OK)
+        request->headers_emitted = true;
 }
 
 void emit_data_available(const RequestPtr &request) noexcept {
-    try {
-        {
-            std::lock_guard lock(request->mutex);
-            if (request->data_event_pending || request->available == 0 || request->stream_closed)
-                return;
-            request->data_event_pending = true;
-        }
-        nk::core::QueuedEvent event;
-        event.kind = NK_EVENT_HTTP_DATA_AVAILABLE;
-        event.source = request->stream;
-        event.request_id = request->id;
-        const auto result = nk::core::push_event(std::move(event));
-        if (result != NK_OK) {
-            std::lock_guard lock(request->mutex);
-            request->data_event_pending = false;
-        }
-    } catch (...) {
+    {
+        std::lock_guard lock(request->mutex);
+        if (request->data_event_pending || request->available == 0 || request->stream_closed)
+            return;
+        request->data_event_pending = true;
+    }
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_HTTP_DATA_AVAILABLE;
+    event.source = request->stream;
+    event.request_id = request->id;
+    const auto result = nk::core::push_event(std::move(event));
+    if (result != NK_OK) {
         std::lock_guard lock(request->mutex);
         request->data_event_pending = false;
     }
@@ -491,120 +482,103 @@ void emit_data_available(const RequestPtr &request) noexcept {
 
 void emit_progress(const RequestPtr &request, uint64_t downloaded, uint64_t download_total,
                    uint64_t uploaded, uint64_t upload_total) noexcept {
-    try {
-        nk_http_progress progress{};
-        progress.struct_size = sizeof(progress);
-        progress.downloaded = downloaded;
-        progress.download_total = download_total;
-        progress.uploaded = uploaded;
-        progress.upload_total = upload_total;
-        const auto *begin = reinterpret_cast<const std::byte *>(&progress);
-        nk::core::QueuedEvent event;
-        event.kind = NK_EVENT_HTTP_PROGRESS;
-        event.source = request->stream;
-        event.request_id = request->id;
-        event.data.assign(begin, begin + sizeof(progress));
-        nk::core::push_event(std::move(event));
-    } catch (...) {
-    }
+    nk_http_progress progress{};
+    progress.struct_size = sizeof(progress);
+    progress.downloaded = downloaded;
+    progress.download_total = download_total;
+    progress.uploaded = uploaded;
+    progress.upload_total = upload_total;
+    const auto *begin = reinterpret_cast<const std::byte *>(&progress);
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_HTTP_PROGRESS;
+    event.source = request->stream;
+    event.request_id = request->id;
+    event.data.assign(begin, begin + sizeof(progress));
+    nk::core::push_event(std::move(event));
 }
 
 nk_result receive_response_headers(const RequestPtr &request, uint32_t status,
                                    std::vector<OwnedHeader> headers,
                                    uint64_t content_length) noexcept {
-    try {
-        if (status < 100 || status > 599)
-            return NK_HTTP_ERROR_PROTOCOL;
-        uint64_t header_bytes = 0;
-        if (headers.size() > max_header_count)
-            return NK_HTTP_ERROR_RESPONSE_LIMIT;
-        for (const auto &header : headers) {
-            if (!valid_header_text(header.name, true) || !valid_header_text(header.value, false) ||
-                header_bytes >
-                    std::numeric_limits<uint64_t>::max() - header.name.size() - header.value.size())
-                return NK_HTTP_ERROR_RESPONSE_LIMIT;
-            header_bytes += header.name.size() + header.value.size();
-        }
-        if (header_bytes > request->client->config.max_header_size)
-            return NK_HTTP_ERROR_RESPONSE_LIMIT;
-        {
-            std::lock_guard lock(request->mutex);
-            if (request->canceled.load(std::memory_order_acquire))
-                return NK_HTTP_ERROR_CANCELED;
-            if (request->response_limit)
-                return NK_HTTP_ERROR_RESPONSE_LIMIT;
-            request->status_code = status;
-            request->response_headers = std::move(headers);
-            request->response_header_bytes = header_bytes;
-            request->content_length = content_length;
-            request->total = content_length;
-        }
-        emit_headers(request);
-        return NK_OK;
-    } catch (const std::bad_alloc &) {
-        return NK_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
+    if (status < 100 || status > 599)
         return NK_HTTP_ERROR_PROTOCOL;
+    uint64_t header_bytes = 0;
+    if (headers.size() > max_header_count)
+        return NK_HTTP_ERROR_RESPONSE_LIMIT;
+    for (const auto &header : headers) {
+        if (!valid_header_text(header.name, true) || !valid_header_text(header.value, false) ||
+            header_bytes >
+                std::numeric_limits<uint64_t>::max() - header.name.size() - header.value.size())
+            return NK_HTTP_ERROR_RESPONSE_LIMIT;
+        header_bytes += header.name.size() + header.value.size();
     }
+    if (header_bytes > request->client->config.max_header_size)
+        return NK_HTTP_ERROR_RESPONSE_LIMIT;
+    {
+        std::lock_guard lock(request->mutex);
+        if (request->canceled.load(std::memory_order_acquire))
+            return NK_HTTP_ERROR_CANCELED;
+        if (request->response_limit)
+            return NK_HTTP_ERROR_RESPONSE_LIMIT;
+        request->status_code = status;
+        request->response_headers = std::move(headers);
+        request->response_header_bytes = header_bytes;
+        request->content_length = content_length;
+        request->total = content_length;
+    }
+    emit_headers(request);
+    return NK_OK;
 }
 
 nk_result receive_response_data(const RequestPtr &request, const std::byte *data,
                                 std::size_t size) noexcept {
-    try {
-        if (!data && size != 0)
-            return NK_HTTP_ERROR_PROTOCOL;
+    if (!data && size != 0)
+        return NK_HTTP_ERROR_PROTOCOL;
+    if (request->canceled.load(std::memory_order_acquire))
+        return NK_HTTP_ERROR_CANCELED;
+    if (size == 0)
+        return NK_OK;
+    emit_headers(request);
+    std::unique_lock lock(request->mutex);
+    if (request->response_limit)
+        return NK_HTTP_ERROR_RESPONSE_LIMIT;
+    if (request->request.mode == NK_HTTP_REQUEST_BUFFERED) {
+        if (request->response_body.size() > request->request.max_response_size ||
+            size > request->request.max_response_size - request->response_body.size()) {
+            request->response_limit = true;
+            return NK_HTTP_ERROR_RESPONSE_LIMIT;
+        }
+        request->response_body.insert(request->response_body.end(), data, data + size);
+        request->received += size;
+        return NK_OK;
+    }
+
+    std::size_t offset = 0;
+    while (offset < size) {
+        request->condition.wait(lock, [&] {
+            return request->canceled.load(std::memory_order_acquire) ||
+                   request->stream_closed || request->available < request->request.stream_buffer_size;
+        });
         if (request->canceled.load(std::memory_order_acquire))
             return NK_HTTP_ERROR_CANCELED;
-        if (size == 0)
-            return NK_OK;
-        emit_headers(request);
-        std::unique_lock lock(request->mutex);
-        if (request->response_limit)
+        if (request->stream_closed)
+            return NK_HTTP_ERROR_CANCELED;
+        const auto remaining_capacity = request->request.stream_buffer_size - request->available;
+        const auto amount = std::min<std::size_t>(size - offset, remaining_capacity);
+        if (request->received > request->request.max_response_size ||
+            amount > request->request.max_response_size - request->received) {
+            request->response_limit = true;
             return NK_HTTP_ERROR_RESPONSE_LIMIT;
-        if (request->request.mode == NK_HTTP_REQUEST_BUFFERED) {
-            if (request->response_body.size() > request->request.max_response_size ||
-                size > request->request.max_response_size - request->response_body.size()) {
-                request->response_limit = true;
-                return NK_HTTP_ERROR_RESPONSE_LIMIT;
-            }
-            request->response_body.insert(request->response_body.end(), data, data + size);
-            request->received += size;
-            return NK_OK;
         }
-
-        std::size_t offset = 0;
-        while (offset < size) {
-            request->condition.wait(lock, [&] {
-                return request->canceled.load(std::memory_order_acquire) ||
-                       request->stream_closed ||
-                       request->available < request->request.stream_buffer_size;
-            });
-            if (request->canceled.load(std::memory_order_acquire))
-                return NK_HTTP_ERROR_CANCELED;
-            if (request->stream_closed)
-                return NK_HTTP_ERROR_CANCELED;
-            const auto remaining_capacity =
-                request->request.stream_buffer_size - request->available;
-            const auto amount = std::min<std::size_t>(size - offset, remaining_capacity);
-            if (request->received > request->request.max_response_size ||
-                amount > request->request.max_response_size - request->received) {
-                request->response_limit = true;
-                return NK_HTTP_ERROR_RESPONSE_LIMIT;
-            }
-            request->chunks.emplace_back(data + offset, data + offset + amount);
-            request->available += amount;
-            request->received += amount;
-            offset += amount;
-            lock.unlock();
-            emit_data_available(request);
-            lock.lock();
-        }
-        return NK_OK;
-    } catch (const std::bad_alloc &) {
-        return NK_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
-        return NK_HTTP_ERROR_PROTOCOL;
+        request->chunks.emplace_back(data + offset, data + offset + amount);
+        request->available += amount;
+        request->received += amount;
+        offset += amount;
+        lock.unlock();
+        emit_data_available(request);
+        lock.lock();
     }
+    return NK_OK;
 }
 
 void set_response_total(const RequestPtr &request, uint64_t total) noexcept {

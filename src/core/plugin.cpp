@@ -139,35 +139,30 @@ std::shared_ptr<PluginInstanceResource> live_instance(nk_plugin_instance instanc
 nk_result push_plugin_event(nk_event_kind kind, nk_plugin_instance instance, nk_service_id service,
                             nk_method_id method, nk_result result, nk_request_id request,
                             nk_handle handle, const void *payload, uint64_t payload_size) noexcept {
-    try {
-        nk_plugin_event_data header{};
-        header.struct_size = plugin_event_data_v1_size;
-        if (payload_size != 0)
-            header.flags |= NK_PLUGIN_EVENT_HAS_PAYLOAD;
-        if (handle != NK_INVALID_HANDLE)
-            header.flags |= NK_PLUGIN_EVENT_HAS_HANDLE;
-        header.service_id = service;
-        header.method_id = method;
-        header.handle = handle;
-        header.payload_size = payload_size;
+    nk_plugin_event_data header{};
+    header.struct_size = plugin_event_data_v1_size;
+    if (payload_size != 0)
+        header.flags |= NK_PLUGIN_EVENT_HAS_PAYLOAD;
+    if (handle != NK_INVALID_HANDLE)
+        header.flags |= NK_PLUGIN_EVENT_HAS_HANDLE;
+    header.service_id = service;
+    header.method_id = method;
+    header.handle = handle;
+    header.payload_size = payload_size;
 
-        QueuedEvent event;
-        event.kind = kind;
-        event.source = static_cast<nk_handle>(instance);
-        event.flags = header.flags;
-        event.request_id = request;
-        event.result = result;
-        event.data_count = 1;
-        event.data.resize(plugin_event_data_v1_size + static_cast<std::size_t>(payload_size));
-        std::memcpy(event.data.data(), &header, plugin_event_data_v1_size);
-        if (payload_size != 0)
-            std::memcpy(event.data.data() + plugin_event_data_v1_size, payload,
-                        static_cast<std::size_t>(payload_size));
-        return push_event(std::move(event));
-    } catch (...) {
-        set_error("out of memory while queueing a plugin event");
-        return NK_ERROR_OUT_OF_MEMORY;
-    }
+    QueuedEvent event;
+    event.kind = kind;
+    event.source = static_cast<nk_handle>(instance);
+    event.flags = header.flags;
+    event.request_id = request;
+    event.result = result;
+    event.data_count = 1;
+    event.data.resize(plugin_event_data_v1_size + static_cast<std::size_t>(payload_size));
+    std::memcpy(event.data.data(), &header, plugin_event_data_v1_size);
+    if (payload_size != 0)
+        std::memcpy(event.data.data() + plugin_event_data_v1_size, payload,
+                    static_cast<std::size_t>(payload_size));
+    return push_event(std::move(event));
 }
 
 nk_plugin_host make_host() {
@@ -292,12 +287,8 @@ void dispatch_plugin_call(const PluginCallTask &task) noexcept {
     reply.struct_size = plugin_reply_v1_size;
     nk_result result = NK_ERROR_UNKNOWN;
     if (service.descriptor.invoke) {
-        try {
-            result = service.descriptor.invoke(service.instance, method_id, request_payload,
-                                               request_size, task.request, &reply);
-        } catch (...) {
-            result = NK_ERROR_UNKNOWN;
-        }
+        result = service.descriptor.invoke(service.instance, method_id, request_payload,
+                                           request_size, task.request, &reply);
     }
 
     nk_handle reply_handle = NK_INVALID_HANDLE;
@@ -355,13 +346,8 @@ void plugins_shutdown() noexcept {
         if (!plugin || plugin->destroyed.load(std::memory_order_acquire))
             continue;
         plugin->begin_destroy();
-        if (plugin->destroy) {
-            try {
-                plugin->destroy(instance);
-            } catch (...) {
-                /* Plugin teardown must not escape the runtime shutdown path. */
-            }
-        }
+        if (plugin->destroy)
+            plugin->destroy(instance);
         plugin->finish_destroy();
         handles().erase(static_cast<nk_handle>(instance), ResourceType::plugin);
     }
@@ -430,11 +416,7 @@ nk_result NK_CALL nk_plugin_register(const nk_plugin_descriptor *descriptor,
 
             const nk_plugin_host host = nk::core::make_host();
             nk_result result = NK_ERROR_UNKNOWN;
-            try {
-                result = descriptor->create(&host, instance);
-            } catch (...) {
-                result = NK_ERROR_UNKNOWN;
-            }
+            result = descriptor->create(&host, instance);
             if (result != NK_OK) {
                 nk::core::forget_services(instance);
                 nk::core::cancel_plugin_requests(instance, NK_ERROR_INVALID_REQUEST);
@@ -465,13 +447,8 @@ nk_result NK_CALL nk_plugin_unregister(nk_plugin_instance instance) {
             nk::core::cancel_plugin_requests(instance, NK_ERROR_INVALID_REQUEST);
             nk::core::forget_instance(instance, plugin->id);
             plugin->begin_destroy();
-            if (plugin->destroy) {
-                try {
-                    plugin->destroy(instance);
-                } catch (...) {
-                    nk::core::set_error("plugin destroy raised an exception");
-                }
-            }
+            if (plugin->destroy)
+                plugin->destroy(instance);
             plugin->finish_destroy();
             nk::core::handles().erase(static_cast<nk_handle>(instance),
                                       nk::core::ResourceType::plugin);

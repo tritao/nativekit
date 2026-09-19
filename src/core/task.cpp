@@ -14,7 +14,6 @@
 #include <deque>
 #include <memory>
 #include <mutex>
-#include <new>
 #include <thread>
 #include <unordered_map>
 #include <utility>
@@ -134,14 +133,9 @@ class TaskManager final {
             std::lock_guard lock(mutex_);
             accepting_ = false;
             generation_ = 0;
-            try {
-                tasks.reserve(tasks_.size());
-                for (const auto &entry : tasks_)
-                    tasks.push_back(entry.second);
-            } catch (...) {
-                for (const auto &entry : tasks_)
-                    entry.second->mark_destroyed();
-            }
+            tasks.reserve(tasks_.size());
+            for (const auto &entry : tasks_)
+                tasks.push_back(entry.second);
         }
 
         nk::backend::stop_cooperative_tasks();
@@ -166,67 +160,44 @@ class TaskManager final {
         }
         nk_task handle = NK_INVALID_HANDLE;
         std::shared_ptr<Task> task;
-        try {
-            std::uint64_t generation = 0;
-            {
-                std::lock_guard lock(mutex_);
-                if (!accepting_ || generation_ == 0) {
-                    set_error("NativeKit is not initialized");
-                    return NK_ERROR_NOT_INITIALIZED;
-                }
-                generation = generation_;
+        std::uint64_t generation = 0;
+        {
+            std::lock_guard lock(mutex_);
+            if (!accepting_ || generation_ == 0) {
+                set_error("NativeKit is not initialized");
+                return NK_ERROR_NOT_INITIALIZED;
             }
-            task =
-                std::make_shared<Task>(generation, mode, options.step_budget_us, step, user_data);
-            handle = handles().insert(ResourceType::task, task);
-            if (handle == NK_INVALID_HANDLE) {
-                set_error("could not allocate a native task handle");
-                return NK_ERROR_OUT_OF_MEMORY;
-            }
-            task->set_handle(handle);
-            {
-                std::lock_guard lock(mutex_);
-                if (!accepting_ || generation_ != task->generation()) {
-                    (void)handles().erase(handle, ResourceType::task);
-                    set_error("NativeKit is shutting down");
-                    return NK_ERROR_INVALID_REQUEST;
-                }
-                tasks_.emplace(handle, task);
-            }
-            const auto result = enqueue(task);
-            if (result != NK_OK) {
-                task->mark_destroyed();
-                {
-                    std::lock_guard lock(mutex_);
-                    tasks_.erase(handle);
-                }
-                (void)handles().erase(handle, ResourceType::task);
-                set_error("the native task queue is full");
-                return result;
-            }
-            *out_task = handle;
-            return NK_OK;
-        } catch (const std::bad_alloc &) {
-            if (task)
-                task->mark_destroyed();
-            if (handle != NK_INVALID_HANDLE) {
-                std::lock_guard lock(mutex_);
-                tasks_.erase(handle);
-                (void)handles().erase(handle, ResourceType::task);
-            }
-            set_error("out of memory while starting a native task");
-            return NK_ERROR_OUT_OF_MEMORY;
-        } catch (...) {
-            if (task)
-                task->mark_destroyed();
-            if (handle != NK_INVALID_HANDLE) {
-                std::lock_guard lock(mutex_);
-                tasks_.erase(handle);
-                (void)handles().erase(handle, ResourceType::task);
-            }
-            set_error("unexpected error while starting a native task");
-            return NK_ERROR_UNKNOWN;
+            generation = generation_;
         }
+        task = std::make_shared<Task>(generation, mode, options.step_budget_us, step, user_data);
+        handle = handles().insert(ResourceType::task, task);
+        if (handle == NK_INVALID_HANDLE) {
+            set_error("could not allocate a native task handle");
+            return NK_ERROR_OUT_OF_MEMORY;
+        }
+        task->set_handle(handle);
+        {
+            std::lock_guard lock(mutex_);
+            if (!accepting_ || generation_ != task->generation()) {
+                (void)handles().erase(handle, ResourceType::task);
+                set_error("NativeKit is shutting down");
+                return NK_ERROR_INVALID_REQUEST;
+            }
+            tasks_.emplace(handle, task);
+        }
+        const auto result = enqueue(task);
+        if (result != NK_OK) {
+            task->mark_destroyed();
+            {
+                std::lock_guard lock(mutex_);
+                tasks_.erase(handle);
+            }
+            (void)handles().erase(handle, ResourceType::task);
+            set_error("the native task queue is full");
+            return result;
+        }
+        *out_task = handle;
+        return NK_OK;
     }
 
     std::shared_ptr<Task> lookup(nk_task handle) const noexcept {
@@ -299,34 +270,26 @@ class TaskManager final {
         }
         if (task->queued_.exchange(true, std::memory_order_acq_rel))
             return NK_OK;
-        try {
-            if (task->mode() == NK_TASK_EXECUTION_COOPERATIVE) {
-                {
-                    std::lock_guard lock(cooperative_mutex_);
-                    if (cooperative_queue_.size() >= cooperative_queue_capacity) {
-                        task->queued_.store(false, std::memory_order_release);
-                        return NK_ERROR_QUEUE_FULL;
-                    }
-                    cooperative_queue_.push_back(task);
+        if (task->mode() == NK_TASK_EXECUTION_COOPERATIVE) {
+            {
+                std::lock_guard lock(cooperative_mutex_);
+                if (cooperative_queue_.size() >= cooperative_queue_capacity) {
+                    task->queued_.store(false, std::memory_order_release);
+                    return NK_ERROR_QUEUE_FULL;
                 }
-                nk::backend::schedule_cooperative_tasks();
-                return NK_OK;
+                cooperative_queue_.push_back(task);
             }
-            const auto result = workers_.submit([this, task] {
-                task->queued_.store(false, std::memory_order_release);
-                if (!task->is_destroyed())
-                    task->run(*this, task);
-            });
-            if (result != NK_OK)
-                task->queued_.store(false, std::memory_order_release);
-            return result;
-        } catch (const std::bad_alloc &) {
-            task->queued_.store(false, std::memory_order_release);
-            return NK_ERROR_OUT_OF_MEMORY;
-        } catch (...) {
-            task->queued_.store(false, std::memory_order_release);
-            return NK_ERROR_UNKNOWN;
+            nk::backend::schedule_cooperative_tasks();
+            return NK_OK;
         }
+        const auto result = workers_.submit([this, task] {
+            task->queued_.store(false, std::memory_order_release);
+            if (!task->is_destroyed())
+                task->run(*this, task);
+        });
+        if (result != NK_OK)
+            task->queued_.store(false, std::memory_order_release);
+        return result;
     }
 
   private:
@@ -403,35 +366,22 @@ void Task::run(TaskManager &manager, const std::shared_ptr<Task> &self) noexcept
     output.struct_size = sizeof(output);
     output.result = NK_ERROR_UNKNOWN;
     nk_task_step_result step_result = NK_TASK_STEP_FAILED;
-    bool callback_failed = false;
-    try {
-        step_result = step_(&context, &output);
-    } catch (...) {
-        callback_failed = true;
-    }
+    step_result = step_(&context, &output);
 
     std::vector<std::byte> progress;
     std::vector<std::byte> result_payload;
-    try {
-        if (!valid_payload(output.progress_data, output.progress_size) ||
-            !valid_payload(output.result_data, output.result_size)) {
-            emit_terminal(NK_TASK_STATE_FAILED, NK_ERROR_PAYLOAD_TOO_LARGE, {}, 0);
-            return;
-        }
-        if (output.progress_size != 0) {
-            const auto *first = static_cast<const std::byte *>(output.progress_data);
-            progress.assign(first, first + output.progress_size);
-        }
-        if (output.result_size != 0) {
-            const auto *first = static_cast<const std::byte *>(output.result_data);
-            result_payload.assign(first, first + output.result_size);
-        }
-    } catch (const std::bad_alloc &) {
-        emit_terminal(NK_TASK_STATE_FAILED, NK_ERROR_OUT_OF_MEMORY, {}, 0);
+    if (!valid_payload(output.progress_data, output.progress_size) ||
+        !valid_payload(output.result_data, output.result_size)) {
+        emit_terminal(NK_TASK_STATE_FAILED, NK_ERROR_PAYLOAD_TOO_LARGE, {}, 0);
         return;
-    } catch (...) {
-        emit_terminal(NK_TASK_STATE_FAILED, NK_ERROR_UNKNOWN, {}, 0);
-        return;
+    }
+    if (output.progress_size != 0) {
+        const auto *first = static_cast<const std::byte *>(output.progress_data);
+        progress.assign(first, first + output.progress_size);
+    }
+    if (output.result_size != 0) {
+        const auto *first = static_cast<const std::byte *>(output.result_data);
+        result_payload.assign(first, first + output.result_size);
     }
 
     if (!progress.empty() || output.progress_count != 0)
@@ -441,7 +391,7 @@ void Task::run(TaskManager &manager, const std::shared_ptr<Task> &self) noexcept
                       output.result_count);
         return;
     }
-    if (callback_failed || step_result == NK_TASK_STEP_FAILED) {
+    if (step_result == NK_TASK_STEP_FAILED) {
         const auto failure = output.result == NK_OK || output.result == NK_PENDING
                                  ? NK_ERROR_UNKNOWN
                                  : output.result;

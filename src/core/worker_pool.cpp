@@ -1,10 +1,6 @@
 #include "core/worker_pool.hpp"
 
 #include "core/boundary.hpp"
-#include "core/error.hpp"
-
-#include <algorithm>
-#include <new>
 
 namespace nk::core {
 
@@ -20,44 +16,16 @@ nk_result WorkerPool::start(std::size_t worker_count, std::size_t queue_capacity
 #else
     if (worker_count == 0 || queue_capacity == 0)
         return NK_ERROR_INVALID_ARGUMENT;
-    try {
-        std::lock_guard lock(mutex_);
-        if (accepting_ || !workers_.empty())
-            return NK_ERROR_ALREADY_INITIALIZED;
-        queue_capacity_ = queue_capacity;
-        stopping_ = false;
-        accepting_ = true;
-        workers_.reserve(worker_count);
-        for (std::size_t index = 0; index < worker_count; ++index)
-            workers_.emplace_back([this] { worker_loop(); });
-        return NK_OK;
-    } catch (const std::bad_alloc &) {
-        {
-            std::lock_guard lock(mutex_);
-            accepting_ = false;
-            stopping_ = true;
-            queue_.clear();
-        }
-        condition_.notify_all();
-        for (auto &worker : workers_)
-            if (worker.joinable())
-                worker.join();
-        workers_.clear();
-        return NK_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
-        {
-            std::lock_guard lock(mutex_);
-            accepting_ = false;
-            stopping_ = true;
-            queue_.clear();
-        }
-        condition_.notify_all();
-        for (auto &worker : workers_)
-            if (worker.joinable())
-                worker.join();
-        workers_.clear();
-        return NK_ERROR_UNKNOWN;
-    }
+    std::lock_guard lock(mutex_);
+    if (accepting_ || !workers_.empty())
+        return NK_ERROR_ALREADY_INITIALIZED;
+    queue_capacity_ = queue_capacity;
+    stopping_ = false;
+    accepting_ = true;
+    workers_.reserve(worker_count);
+    for (std::size_t index = 0; index < worker_count; ++index)
+        workers_.emplace_back([this] { worker_loop(); });
+    return NK_OK;
 #endif
 }
 
@@ -67,22 +35,16 @@ nk_result WorkerPool::submit(std::function<void()> work) {
 #if defined(NK_BACKEND_WEB)
     return NK_ERROR_UNSUPPORTED;
 #else
-    try {
-        {
-            std::lock_guard lock(mutex_);
-            if (!accepting_ || stopping_)
-                return NK_ERROR_INVALID_REQUEST;
-            if (queue_.size() >= queue_capacity_)
-                return NK_ERROR_QUEUE_FULL;
-            queue_.push_back(std::move(work));
-        }
-        condition_.notify_one();
-        return NK_OK;
-    } catch (const std::bad_alloc &) {
-        return NK_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
-        return NK_ERROR_UNKNOWN;
+    {
+        std::lock_guard lock(mutex_);
+        if (!accepting_ || stopping_)
+            return NK_ERROR_INVALID_REQUEST;
+        if (queue_.size() >= queue_capacity_)
+            return NK_ERROR_QUEUE_FULL;
+        queue_.push_back(std::move(work));
     }
+    condition_.notify_one();
+    return NK_OK;
 #endif
 }
 

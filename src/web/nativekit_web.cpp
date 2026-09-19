@@ -283,19 +283,16 @@ bool is_web_file_handle_uri(const char *uri) {
 }
 
 void flush_web_resource_writes() noexcept {
-    try {
-        std::vector<PendingWebResourceWrite> writes;
-        {
-            std::lock_guard lock(pending_resource_writes_mutex);
-            writes.swap(pending_resource_writes);
-        }
-        for (const auto &write : writes) {
-            if (write.data.size() > std::numeric_limits<uint32_t>::max())
-                continue;
-            nk::web::write_resource(write.uri.c_str(), write.data.data(),
-                                    static_cast<uint32_t>(write.data.size()));
-        }
-    } catch (...) {
+    std::vector<PendingWebResourceWrite> writes;
+    {
+        std::lock_guard lock(pending_resource_writes_mutex);
+        writes.swap(pending_resource_writes);
+    }
+    for (const auto &write : writes) {
+        if (write.data.size() > std::numeric_limits<uint32_t>::max())
+            continue;
+        nk::web::write_resource(write.uri.c_str(), write.data.data(),
+                                static_cast<uint32_t>(write.data.size()));
     }
 }
 
@@ -1898,8 +1895,7 @@ std::shared_ptr<WebGamepadResource> lookup_web_gamepad(nk_handle handle);
 namespace nk::web_gamepad {
 
 void poll() noexcept {
-    try {
-        for (const auto &[index, device] : web_gamepads) {
+    for (const auto &[index, device] : web_gamepads) {
             (void)index;
             device->seen = false;
         }
@@ -1909,25 +1905,20 @@ void poll() noexcept {
         for (const auto &[index, device] : web_gamepads)
             if (!device->seen)
                 disconnected.push_back(index);
-        for (const auto index : disconnected)
-            remove_web_gamepad(index);
-    } catch (...) {
-    }
+    for (const auto index : disconnected)
+        remove_web_gamepad(index);
 }
 
 void shutdown() noexcept {
-    try {
-        std::vector<int32_t> indexes;
-        indexes.reserve(web_gamepads.size());
-        for (const auto &[index, device] : web_gamepads) {
-            (void)device;
-            indexes.push_back(index);
-        }
-        for (const auto index : indexes)
-            remove_web_gamepad(index);
-        web_gamepads.clear();
-    } catch (...) {
+    std::vector<int32_t> indexes;
+    indexes.reserve(web_gamepads.size());
+    for (const auto &[index, device] : web_gamepads) {
+        (void)device;
+        indexes.push_back(index);
     }
+    for (const auto index : indexes)
+        remove_web_gamepad(index);
+    web_gamepads.clear();
 }
 
 bool standard_gamepad(nk_handle handle) noexcept {
@@ -1990,11 +1981,7 @@ nk_result stop(nk_sensor sensor) noexcept {
 }
 
 nk_result request_permission(nk_request_id request) noexcept {
-    try {
-        pending_sensor_permission_requests.insert(request);
-    } catch (...) {
-        return NK_ERROR_OUT_OF_MEMORY;
-    }
+    pending_sensor_permission_requests.insert(request);
     if (nk::web::request_sensor_permission(request))
         return NK_OK;
     pending_sensor_permission_requests.erase(request);
@@ -2047,15 +2034,12 @@ void stop_cooperative_tasks() noexcept {
 }
 
 void pump_events() noexcept {
-    try {
-        const auto windows = web_windows;
-        for (const auto handle : windows)
-            if (auto window = get_window(handle))
-                sync_canvas_size(*window);
-        flush_web_resource_writes();
-        nk::web_gamepad::poll();
-    } catch (...) {
-    }
+    const auto windows = web_windows;
+    for (const auto handle : windows)
+        if (auto window = get_window(handle))
+            sync_canvas_size(*window);
+    flush_web_resource_writes();
+    nk::web_gamepad::poll();
 }
 
 void shutdown() noexcept {
@@ -2094,12 +2078,7 @@ nk_result get_orientation(nk_system_orientation &out_orientation) noexcept {
 }
 
 nk_result request_device_orientation(nk_request_id request) noexcept {
-    try {
-        pending_device_orientation_requests.insert(request);
-    } catch (...) {
-        nk::core::set_error("could not allocate browser orientation request state");
-        return NK_ERROR_OUT_OF_MEMORY;
-    }
+    pending_device_orientation_requests.insert(request);
     if (nk::web::request_device_orientation(request))
         return NK_OK;
     pending_device_orientation_requests.erase(request);

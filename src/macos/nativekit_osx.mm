@@ -1230,14 +1230,20 @@ void refresh_mac_accessibility_elements(MacSurfaceResource &resource) noexcept {
                     if (node.parent == parent)
                         children.push_back(id);
                 std::sort(children.begin(), children.end(), [&](auto lhs, auto rhs) {
-                    const auto &left = resource.accessibility_nodes.at(lhs);
-                    const auto &right = resource.accessibility_nodes.at(rhs);
-                    return left.child_index == right.child_index
+                    const auto left = resource.accessibility_nodes.find(lhs);
+                    const auto right = resource.accessibility_nodes.find(rhs);
+                    if (left == resource.accessibility_nodes.end() ||
+                        right == resource.accessibility_nodes.end())
+                        return lhs < rhs;
+                    return left->second.child_index == right->second.child_index
                                ? lhs < rhs
-                               : left.child_index < right.child_index;
+                               : left->second.child_index < right->second.child_index;
                 });
                 for (const auto id : children) {
-                    const auto &node = resource.accessibility_nodes.at(id);
+                    const auto found = resource.accessibility_nodes.find(id);
+                    if (found == resource.accessibility_nodes.end())
+                        continue;
+                    const auto &node = found->second;
                     auto element = [[NKMacAccessibilityElement alloc] init];
                     if (!element)
                         continue;
@@ -1299,10 +1305,14 @@ void refresh_mac_accessibility_elements(MacSurfaceResource &resource) noexcept {
                 if (child.parent == node_id)
                     child_ids.push_back(child_id);
             std::sort(child_ids.begin(), child_ids.end(), [&](auto lhs, auto rhs) {
-                const auto &left = resource.accessibility_nodes.at(lhs);
-                const auto &right = resource.accessibility_nodes.at(rhs);
-                return left.child_index == right.child_index ? lhs < rhs
-                                                             : left.child_index < right.child_index;
+                const auto left = resource.accessibility_nodes.find(lhs);
+                const auto right = resource.accessibility_nodes.find(rhs);
+                if (left == resource.accessibility_nodes.end() ||
+                    right == resource.accessibility_nodes.end())
+                    return lhs < rhs;
+                return left->second.child_index == right->second.child_index
+                           ? lhs < rhs
+                           : left->second.child_index < right->second.child_index;
             });
             for (const auto child_id : child_ids) {
                 const auto child = elements_by_id.find(child_id);
@@ -4547,8 +4557,12 @@ nk_result NK_CALL nk_monitor_list(nk_handle *monitors, uint32_t *inout_count) {
             uint32_t index = 0;
             for (NSScreen *screen in NSScreen.screens) {
                 const auto display = display_id(screen);
-                if (display != kCGNullDirectDisplay)
-                    monitors[index++] = monitor_handles.at(display);
+                if (display != kCGNullDirectDisplay) {
+                    const auto found = monitor_handles.find(display);
+                    if (found == monitor_handles.end())
+                        return fail(NK_ERROR_UNKNOWN, "monitor handle is missing");
+                    monitors[index++] = found->second;
+                }
             }
             return NK_OK;
         });
@@ -4768,7 +4782,7 @@ nk_result NK_CALL nk_window_set_decorated(nk_handle h, uint32_t enabled) {
 nk_result NK_CALL nk_window_set_decoration_regions(nk_handle h,
                                                    const nk_window_decoration_region *regions,
                                                    uint32_t region_count) {
-    try {
+    {
         if (const auto r = enter_ui(); r != NK_OK)
             return r;
         if (region_count && !regions)
@@ -4795,10 +4809,6 @@ nk_result NK_CALL nk_window_set_decoration_regions(nk_handle h,
         if (w->hovered)
             apply_pointer_cursor(*w, NSMakePoint(w->pointer_x, w->pointer_y));
         return NK_OK;
-    } catch (const std::bad_alloc &) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while setting decoration regions");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while setting decoration regions");
     }
 }
 
@@ -4864,7 +4874,7 @@ nk_result NK_CALL nk_window_get_native(nk_handle handle, nk_native_window *out_n
 }
 
 nk_result NK_CALL nk_window_wrap_native(const nk_native_window *native, nk_handle *out_window) {
-    try {
+    {
         if (const auto result = enter_ui(); result != NK_OK)
             return result;
         if (!native || native->struct_size < sizeof(*native) || !out_window ||
@@ -4890,10 +4900,6 @@ nk_result NK_CALL nk_window_wrap_native(const nk_native_window *native, nk_handl
             return fail(NK_ERROR_OUT_OF_MEMORY, "window handle registry is full");
         *out_window = resource->handle;
         return NK_OK;
-    } catch (const std::bad_alloc &) {
-        return fail(NK_ERROR_OUT_OF_MEMORY, "out of memory while wrapping Cocoa window");
-    } catch (...) {
-        return fail(NK_ERROR_UNKNOWN, "unexpected error while wrapping Cocoa window");
     }
 }
 

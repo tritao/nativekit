@@ -420,7 +420,7 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                read_node_float(record, field + 2 * sizeof(float), out.blue) &&
                read_node_float(record, field + 3 * sizeof(float), out.alpha);
     };
-    try {
+    {
         nodes.clear();
         nodes.reserve(node_count);
         for (uint32_t index = 0; index < node_count; ++index) {
@@ -643,9 +643,6 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
             node.text.assign(reinterpret_cast<const char *>(bytes + text_offset), text_length);
             nodes.push_back(std::move(node));
         }
-    } catch (...) {
-        nodes.clear();
-        return false;
     }
     return true;
 }
@@ -686,7 +683,7 @@ nkui_result ensure_mutable_font_collection(ResourceSlot &slot) {
         return NKUI_ERROR_INVALID_HANDLE;
     if (slot.font_collection.use_count() == 1)
         return NKUI_OK;
-    try {
+    {
         auto replacement = std::make_shared<nkui::SkribidiFontCollection>();
         if (!replacement->valid())
             return NKUI_ERROR_OUT_OF_MEMORY;
@@ -700,8 +697,6 @@ nkui_result ensure_mutable_font_collection(ResourceSlot &slot) {
         if (slot.system_fallbacks && !replacement->add_system_fallbacks())
             return NKUI_ERROR_INVALID_ARGUMENT;
         slot.font_collection = std::move(replacement);
-    } catch (...) {
-        return NKUI_ERROR_OUT_OF_MEMORY;
     }
     return NKUI_OK;
 }
@@ -720,13 +715,7 @@ nkui_result create_text_layout_locked(nkui_resource fonts, const char *text, flo
         allocate_resource(nkui::ResourceKind::TextLayout, out_layout, &layout_slot);
     if (allocated != NKUI_OK)
         return allocated;
-    try {
-        layout_slot->text = std::make_unique<nkui::SkribidiAdapter>(shared_fonts);
-    } catch (...) {
-        release_resource_slot(*layout_slot);
-        out_layout->id = 0;
-        return NKUI_ERROR_OUT_OF_MEMORY;
-    }
+    layout_slot->text = std::make_unique<nkui::SkribidiAdapter>(shared_fonts);
     bool valid = layout_slot->text->valid() &&
                  layout_slot->text->set_atlas_namespace(static_cast<uint16_t>(out_layout->id));
     valid = valid && layout_slot->text->layout_utf8(text, width, options);
@@ -919,7 +908,7 @@ PreparedPathCacheEntry *prepare_cached_path(RendererSlot &renderer, nkui_resourc
     const uint64_t geometry_bytes = geometry_memory_bytes(geometry);
     renderer.stats.path_vertices_generated += geometry.vertices.size();
     renderer.stats.path_geometry_bytes_allocated += geometry_bytes;
-    try {
+    {
         auto cached_geometry = std::make_shared<const nkui::PreparedGeometry>(std::move(geometry));
         auto [found, inserted] = renderer.paths.emplace(key, PreparedPathCacheEntry{});
         if (!inserted)
@@ -927,8 +916,6 @@ PreparedPathCacheEntry *prepare_cached_path(RendererSlot &renderer, nkui_resourc
         found->second.geometry = std::move(cached_geometry);
         renderer.stats.path_geometry_bytes_retained += geometry_bytes;
         return &found->second;
-    } catch (...) {
-        return nullptr;
     }
 }
 
@@ -987,22 +974,14 @@ nkui_result allocate_resource(nkui::ResourceKind kind, nkui_resource *out,
         }
     }
     if (kind == nkui::ResourceKind::RenderTarget && resources.empty()) {
-        try {
-            resources.emplace_back(); // Slot one is reserved for the window render target.
-        } catch (...) {
-            return NKUI_ERROR_OUT_OF_MEMORY;
-        }
+        resources.emplace_back(); // Slot one is reserved for the window render target.
     }
     if (resources.size() >= slot_limit)
         return NKUI_ERROR_OUT_OF_MEMORY;
-    try {
-        resources.emplace_back();
-        resources.back().kind = kind;
-        resources.back().externally_alive = true;
-        resources.back().display_refs = 0;
-    } catch (...) {
-        return NKUI_ERROR_OUT_OF_MEMORY;
-    }
+    resources.emplace_back();
+    resources.back().kind = kind;
+    resources.back().externally_alive = true;
+    resources.back().display_refs = 0;
     out->id = nkui::make_resource_id(kind, 1, static_cast<uint16_t>(resources.size())).value;
     *out_slot = &resources.back();
     return NKUI_OK;
@@ -1127,13 +1106,7 @@ extern "C" NKUI_API nkui_result nkui_showcase_cube_create(nkui_resource *out_sur
         allocate_resource(nkui::ResourceKind::RenderTarget, out_surface, &slot);
     if (allocated != NKUI_OK)
         return allocated;
-    try {
-        slot->surface = std::make_unique<nkui::CubeSurfaceProducer>();
-    } catch (...) {
-        release_resource_slot(*slot);
-        out_surface->id = 0;
-        return NKUI_ERROR_OUT_OF_MEMORY;
-    }
+    slot->surface = std::make_unique<nkui::CubeSurfaceProducer>();
     return NKUI_OK;
 }
 
@@ -1155,7 +1128,7 @@ extern "C" nkui_result nkui_display_list_create(nkui_display_list *out_list) {
     if (!out_list)
         return NKUI_ERROR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(lists_mutex);
-    try {
+    {
         for (uint32_t index = 0; index < lists.size(); ++index) {
             auto &slot = lists[index];
             if (!slot.list) {
@@ -1169,8 +1142,6 @@ extern "C" nkui_result nkui_display_list_create(nkui_display_list *out_list) {
         lists.push_back({std::make_unique<nkui::DisplayList>(), {}, 0, 1});
         out_list->id = make_handle(1, static_cast<uint16_t>(lists.size()));
         return NKUI_OK;
-    } catch (...) {
-        return NKUI_ERROR_OUT_OF_MEMORY;
     }
 }
 
@@ -1207,11 +1178,7 @@ extern "C" nkui_result nkui_display_list_submit(nkui_display_list list, const ui
     if (!slot)
         return NKUI_ERROR_INVALID_HANDLE;
     std::vector<nkui::ResourceId> retained;
-    try {
-        collect_display_resources(commands, command_bytes, retained);
-    } catch (...) {
-        return NKUI_ERROR_OUT_OF_MEMORY;
-    }
+    collect_display_resources(commands, command_bytes, retained);
     size_t retained_count = 0;
     for (const auto id : retained) {
         if (retain_display_resource(id)) {
@@ -1251,13 +1218,7 @@ extern "C" nkui_result nkui_font_collection_create(nkui_resource *out_fonts) {
     const auto result = allocate_resource(nkui::ResourceKind::FontCollection, out_fonts, &slot);
     if (result != NKUI_OK)
         return result;
-    try {
-        slot->font_collection = std::make_shared<nkui::SkribidiFontCollection>();
-    } catch (...) {
-        release_resource_slot(*slot);
-        out_fonts->id = 0;
-        return NKUI_ERROR_OUT_OF_MEMORY;
-    }
+    slot->font_collection = std::make_shared<nkui::SkribidiFontCollection>();
     if (!slot->font_collection->valid()) {
         release_resource_slot(*slot);
         out_fonts->id = 0;
@@ -1277,7 +1238,7 @@ extern "C" nkui_result nkui_font_collection_add(nkui_resource fonts, const char 
     const auto mutable_result = ensure_mutable_font_collection(*slot);
     if (mutable_result != NKUI_OK)
         return mutable_result;
-    try {
+    {
         slot->fonts.push_back({path, family == NKUI_FONT_FAMILY_EMOJI ? nkui::FontFamily::Emoji
                                                                       : nkui::FontFamily::Default});
         const auto &entry = slot->fonts.back();
@@ -1285,8 +1246,6 @@ extern "C" nkui_result nkui_font_collection_add(nkui_resource fonts, const char 
             slot->fonts.pop_back();
             return NKUI_ERROR_INVALID_ARGUMENT;
         }
-    } catch (...) {
-        return NKUI_ERROR_OUT_OF_MEMORY;
     }
     return NKUI_OK;
 }
@@ -1304,7 +1263,7 @@ extern "C" nkui_result nkui_font_collection_add_data(nkui_resource fonts, const 
     const auto mutable_result = ensure_mutable_font_collection(*slot);
     if (mutable_result != NKUI_OK)
         return mutable_result;
-    try {
+    {
         auto data = std::make_shared<std::vector<uint8_t>>(font_data, font_data + font_bytes);
         slot->fonts.push_back(
             {name,
@@ -1316,8 +1275,6 @@ extern "C" nkui_result nkui_font_collection_add_data(nkui_resource fonts, const 
             slot->fonts.pop_back();
             return NKUI_ERROR_INVALID_ARGUMENT;
         }
-    } catch (...) {
-        return NKUI_ERROR_OUT_OF_MEMORY;
     }
     return NKUI_OK;
 }
@@ -1341,7 +1298,7 @@ extern "C" nkui_result nkui_layout_session_create(nkui_layout_session *out_sessi
         return NKUI_ERROR_INVALID_ARGUMENT;
     out_session->id = 0;
     std::lock_guard<std::mutex> lock(layout_sessions_mutex);
-    try {
+    {
         for (uint32_t index = 0; index < layout_sessions.size(); ++index) {
             auto &slot = layout_sessions[index];
             if (slot.session)
@@ -1365,8 +1322,6 @@ extern "C" nkui_result nkui_layout_session_create(nkui_layout_session *out_sessi
         layout_sessions.push_back(std::move(slot));
         out_session->id = make_handle(1, static_cast<uint16_t>(layout_sessions.size()));
         return NKUI_OK;
-    } catch (...) {
-        return NKUI_ERROR_OUT_OF_MEMORY;
     }
 }
 
@@ -1396,7 +1351,7 @@ extern "C" nkui_result nkui_layout_session_set_font_collection(nkui_layout_sessi
     auto *font_slot = resolve(fonts, nkui::ResourceKind::FontCollection);
     if (!state || !font_slot || state->fonts_configured)
         return NKUI_ERROR_INVALID_HANDLE;
-    try {
+    {
         if (!font_slot->font_collection || !font_slot->font_collection->valid())
             return NKUI_ERROR_INVALID_HANDLE;
         const auto shared_fonts = font_slot->font_collection;
@@ -1406,8 +1361,6 @@ extern "C" nkui_result nkui_layout_session_set_font_collection(nkui_layout_sessi
         state->compiler.set_font_collection(shared_fonts);
         configure_layout_measure_callback(*state);
         state->fonts_configured = true;
-    } catch (...) {
-        return NKUI_ERROR_OUT_OF_MEMORY;
     }
     return NKUI_OK;
 }
@@ -1420,12 +1373,10 @@ extern "C" nkui_result nkui_layout_session_set_measure_callback(
     auto *state = resolve(session);
     if (!state)
         return NKUI_ERROR_INVALID_HANDLE;
-    try {
+    {
         state->measure_callback = callback;
         state->measure_user_data = callback ? user_data : nullptr;
         configure_layout_measure_callback(*state);
-    } catch (...) {
-        return NKUI_ERROR_OUT_OF_MEMORY;
     }
     return NKUI_OK;
 }
@@ -1485,14 +1436,10 @@ extern "C" nkui_result nkui_layout_session_set_custom_paint(nkui_layout_session 
     const nkui_display_list previous_handle = replacing ? existing->second : nkui_display_list{};
     if (list->custom_refs == std::numeric_limits<uint32_t>::max())
         return NKUI_ERROR_OUT_OF_MEMORY;
-    try {
-        if (!replacing)
-            state->custom_paints.emplace(node_id, display_list);
-        else
-            state->custom_paints.find(node_id)->second = display_list;
-    } catch (...) {
-        return NKUI_ERROR_OUT_OF_MEMORY;
-    }
+    if (!replacing)
+        state->custom_paints.emplace(node_id, display_list);
+    else
+        state->custom_paints.find(node_id)->second = display_list;
     ++list->custom_refs;
     if (replacing) {
         auto *previous = resolve(previous_handle);
@@ -1743,13 +1690,9 @@ extern "C" nkui_result nkui_text_layout_get_selection_rects(nkui_resource layout
     if (!slot || !slot->text)
         return NKUI_ERROR_INVALID_HANDLE;
     std::vector<nkui::TextRect> rectangles;
-    try {
-        rectangles =
-            slot->text->selection_rects({start.offset, static_cast<uint8_t>(start.affinity)},
-                                        {end.offset, static_cast<uint8_t>(end.affinity)});
-    } catch (...) {
-        return NKUI_ERROR_OUT_OF_MEMORY;
-    }
+    rectangles =
+        slot->text->selection_rects({start.offset, static_cast<uint8_t>(start.affinity)},
+                                    {end.offset, static_cast<uint8_t>(end.affinity)});
     if (rectangles.size() > std::numeric_limits<uint32_t>::max() / sizeof(nkui_text_rect))
         return NKUI_ERROR_OUT_OF_MEMORY;
     const uint32_t required = static_cast<uint32_t>(rectangles.size() * sizeof(nkui_text_rect));
@@ -1943,7 +1886,7 @@ extern "C" nkui_result nkui_path_create(const nkui_path_element *elements, uint3
     const auto result = allocate_resource(nkui::ResourceKind::Path, out_path, &slot);
     if (result != NKUI_OK)
         return result;
-    try {
+    {
         auto path = std::make_unique<nkui::NanoVGPath>();
         if (!path->valid() ||
             !append_path(*path, std::vector<nkui_path_element>(elements, elements + count))) {
@@ -1952,10 +1895,6 @@ extern "C" nkui_result nkui_path_create(const nkui_path_element *elements, uint3
             return NKUI_ERROR_OUT_OF_MEMORY;
         }
         slot->path = std::move(path);
-    } catch (...) {
-        release_resource_slot(*slot);
-        out_path->id = 0;
-        return NKUI_ERROR_OUT_OF_MEMORY;
     }
     return NKUI_OK;
 }
@@ -2003,15 +1942,11 @@ extern "C" nkui_result nkui_paint_create_linear_gradient(float start_x, float st
     const auto result = allocate_resource(nkui::ResourceKind::Paint, out_paint, &slot);
     if (result != NKUI_OK)
         return result;
-    try {
+    {
         slot->paint_kind = nkui::PreparedPaintKind::LinearGradient;
         slot->gradient_start = {start_x, start_y};
         slot->gradient_end = {end_x, end_y};
         slot->gradient_stops.assign(stops, stops + stop_count);
-    } catch (...) {
-        release_resource_slot(*slot);
-        out_paint->id = 0;
-        return NKUI_ERROR_OUT_OF_MEMORY;
     }
     return NKUI_OK;
 }
@@ -2040,13 +1975,7 @@ extern "C" nkui_result nkui_image_create_filtered(uint32_t width, uint32_t heigh
     const auto result = allocate_resource(nkui::ResourceKind::Image, out_image, &slot);
     if (result != NKUI_OK)
         return result;
-    try {
-        slot->pixels.assign(pixels, pixels + pixel_bytes);
-    } catch (...) {
-        release_resource_slot(*slot);
-        out_image->id = 0;
-        return NKUI_ERROR_OUT_OF_MEMORY;
-    }
+    slot->pixels.assign(pixels, pixels + pixel_bytes);
     slot->image_width = width;
     slot->image_height = height;
     slot->image_format = format;
@@ -2106,7 +2035,7 @@ extern "C" nkui_result nkui_renderer_create(nkui_renderer *out_renderer) {
         return NKUI_ERROR_INVALID_ARGUMENT;
     out_renderer->id = 0;
     std::lock_guard<std::mutex> lock(renderers_mutex);
-    try {
+    {
         for (uint32_t index = 0; index < renderers.size(); ++index) {
             auto &slot = renderers[index];
             if (!slot.active) {
@@ -2132,8 +2061,6 @@ extern "C" nkui_result nkui_renderer_create(nkui_renderer *out_renderer) {
         slot.stats = {};
         out_renderer->id = make_handle(1, static_cast<uint16_t>(renderers.size()));
         return NKUI_OK;
-    } catch (...) {
-        return NKUI_ERROR_OUT_OF_MEMORY;
     }
 }
 
@@ -2177,7 +2104,7 @@ nkui_renderer_register_custom_effect(nkui_renderer renderer,
     for (const auto &existing : slot->custom_effects)
         if (existing.registration_id == registration->registration_id)
             return NKUI_ERROR_INVALID_ARGUMENT;
-    try {
+    {
         CustomEffectRegistrationStorage stored{};
         stored.registration_id = registration->registration_id;
         stored.name = registration->name;
@@ -2200,8 +2127,6 @@ nkui_renderer_register_custom_effect(nkui_renderer renderer,
             slot->custom_effects.pop_back();
             return NKUI_ERROR_RENDERING;
         }
-    } catch (...) {
-        return NKUI_ERROR_OUT_OF_MEMORY;
     }
     return NKUI_OK;
 }
@@ -2713,7 +2638,7 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
     const nkui::ResourceId compile_target = has_backdrop ? backdrop_root_target() : main_target;
     std::vector<std::pair<uint32_t, nkui::RenderPlan>> custom_plan_storage;
     nkui::LayoutRenderCompiler::CustomPaintPlans custom_plans;
-    try {
+    {
         custom_plan_storage.reserve(session_state->custom_paints.size());
         for (const auto &[node_id, list_handle] : session_state->custom_paints) {
             const auto *item = session_state->snapshot.find(node_id);
@@ -2731,8 +2656,6 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
         custom_plans.reserve(custom_plan_storage.size());
         for (const auto &[node_id, custom_plan] : custom_plan_storage)
             custom_plans.emplace(node_id, &custom_plan);
-    } catch (...) {
-        return NKUI_ERROR_OUT_OF_MEMORY;
     }
     nkui::LayoutRenderCompileError compile_error{};
     if (!session_state->compiler.compile(session_state->snapshot, compile_target,

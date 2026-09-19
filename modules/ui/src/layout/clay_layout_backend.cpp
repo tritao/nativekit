@@ -113,12 +113,7 @@ struct LayoutEngine::Impl {
         const std::size_t cache_words =
             capacity > (max_capacity - 32) / 8 ? max_capacity : capacity * 8 + 32;
         Clay_SetMaxMeasureTextCacheWordCount(static_cast<int32_t>(cache_words));
-        try {
-            clay_memory.resize(Clay_MinMemorySize());
-        } catch (...) {
-            clay_memory.clear();
-            return false;
-        }
+        clay_memory.resize(Clay_MinMemorySize());
         if (clay_memory.empty())
             return false;
         Clay_ErrorHandler error_handler{};
@@ -330,7 +325,7 @@ Clay_TextLayoutResult LayoutEngine::Impl::layout_text(Clay_StringSlice text,
         return result;
     }
 
-    try {
+    {
         const std::string value(text.chars ? text.chars : "",
                                 static_cast<std::size_t>(text.length));
         const auto *node = static_cast<const LayoutNode *>(config->userData);
@@ -385,8 +380,6 @@ Clay_TextLayoutResult LayoutEngine::Impl::layout_text(Clay_StringSlice text,
         result.lines = state.callback_lines.data();
         result.layoutId = shaped.id;
         return result;
-    } catch (...) {
-        return {};
     }
 }
 
@@ -943,13 +936,7 @@ bool LayoutEngine::layout(const std::vector<LayoutNode> &nodes, float width, flo
             error->message = "layout implementation is unavailable";
         return false;
     }
-    try {
-        return impl_->layout(nodes, width, height, delta_seconds, out, error);
-    } catch (...) {
-        if (error)
-            error->message = "layout ran out of memory";
-        return false;
-    }
+    return impl_->layout(nodes, width, height, delta_seconds, out, error);
 }
 
 } // namespace nkui

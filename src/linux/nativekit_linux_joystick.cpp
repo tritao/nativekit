@@ -507,16 +507,8 @@ nk_result copy_string(const std::string &source, char *output, std::uint32_t *in
 }
 
 template <typename Function> nk_result boundary(Function &&function) noexcept {
-    try {
-        nk::core::clear_error();
-        return function();
-    } catch (const std::bad_alloc &) {
-        nk::core::set_error("out of memory while accessing joysticks");
-        return NK_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
-        nk::core::set_error("unexpected error while accessing joysticks");
-        return NK_ERROR_UNKNOWN;
-    }
+    nk::core::clear_error();
+    return function();
 }
 
 } // namespace
@@ -526,41 +518,35 @@ void pump() noexcept {
     if (pumping)
         return;
     pumping = true;
-    try {
-        initialize();
-        poll_hotplug();
-        std::vector<std::shared_ptr<Joystick>> snapshot;
-        snapshot.reserve(devices.size());
-        for (const auto &[path, device] : devices) {
-            (void)path;
-            snapshot.push_back(device);
-        }
-        for (const auto &device : snapshot)
-            if (devices.find(device->path) != devices.end())
-                poll_device(device);
-    } catch (...) {
+    initialize();
+    poll_hotplug();
+    std::vector<std::shared_ptr<Joystick>> snapshot;
+    snapshot.reserve(devices.size());
+    for (const auto &[path, device] : devices) {
+        (void)path;
+        snapshot.push_back(device);
     }
+    for (const auto &device : snapshot)
+        if (devices.find(device->path) != devices.end())
+            poll_device(device);
     pumping = false;
 }
 
 void shutdown() noexcept {
-    try {
-        for (const auto &[path, device] : devices) {
-            (void)path;
-            nk::core::handles().erase(device->handle, nk::core::ResourceType::joystick);
-        }
-        devices.clear();
-        nk::core::gamepad_events::reset();
-        if (notify_watch >= 0 && notify_fd >= 0)
-            inotify_rm_watch(notify_fd, notify_watch);
-        if (notify_fd >= 0)
-            close(notify_fd);
-        notify_fd = -1;
-        notify_watch = -1;
-        initialized = false;
-        transport_diagnostic.clear();
-    } catch (...) {
+    for (const auto &[path, device] : devices) {
+        (void)path;
+        nk::core::handles().erase(device->handle, nk::core::ResourceType::joystick);
     }
+    devices.clear();
+    nk::core::gamepad_events::reset();
+    if (notify_watch >= 0 && notify_fd >= 0)
+        inotify_rm_watch(notify_fd, notify_watch);
+    if (notify_fd >= 0)
+        close(notify_fd);
+    notify_fd = -1;
+    notify_watch = -1;
+    initialized = false;
+    transport_diagnostic.clear();
 }
 } // namespace nk::linux_joystick
 

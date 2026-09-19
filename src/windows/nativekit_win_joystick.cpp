@@ -219,23 +219,14 @@ nk_result enter_ui() {
 }
 
 template <typename Function> nk_result boundary(Function &&function) noexcept {
-    try {
-        return function();
-    } catch (const std::bad_alloc &) {
-        nk::core::set_error("out of memory while accessing joysticks");
-        return NK_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
-        nk::core::set_error("unexpected error while accessing joysticks");
-        return NK_ERROR_UNKNOWN;
-    }
+    return function();
 }
 
 } // namespace
 
 namespace nk::windows_joystick {
 void pump() noexcept {
-    try {
-        for (std::size_t index = 0; index < devices.size(); ++index) {
+    for (std::size_t index = 0; index < devices.size(); ++index) {
             XINPUT_STATE state{};
             const bool connected =
                 XInputGetState(static_cast<DWORD>(index), &state) == ERROR_SUCCESS;
@@ -257,18 +248,13 @@ void pump() noexcept {
                 update(*devices[index], state);
             if (devices[index])
                 nk::core::gamepad_events::update(devices[index]->handle, true);
-        }
-    } catch (...) {
     }
 }
 
 void shutdown() noexcept {
-    try {
-        for (std::size_t index = 0; index < devices.size(); ++index)
-            remove_device(index);
-        rumble_deadlines.clear();
-    } catch (...) {
-    }
+    for (std::size_t index = 0; index < devices.size(); ++index)
+        remove_device(index);
+    rumble_deadlines.clear();
 }
 
 bool standard_gamepad(nk_handle handle) noexcept {
