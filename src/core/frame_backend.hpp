@@ -3,6 +3,7 @@
 #include "nativekit_graphics.h"
 #include "core/internal_api.hpp"
 
+#include <cstddef>
 #include <cstdint>
 
 namespace nk::core {
@@ -74,6 +75,8 @@ NK_INTERNAL_API FrameBackend
 frame_backend_for_target(const nk_surface_frame_target &target) noexcept;
 NK_INTERNAL_API bool mark_frame_render_submitted(nk_surface_frame frame) noexcept;
 NK_INTERNAL_API bool take_frame_ticket(nk_surface_frame frame, FrameTicket *out_ticket) noexcept;
+/** Returns the number of open frame tickets in the current runtime. */
+NK_INTERNAL_API std::size_t frame_ticket_count() noexcept;
 NK_INTERNAL_API void clear_frame_tickets() noexcept;
 
 } // namespace nk::core

@@ -6,6 +6,7 @@
 #include "nativekit_window.h"
 #include "adapter_internal.h"
 #include "core/executor.hpp"
+#include "core/frame_backend.hpp"
 #include "testing.h"
 
 #include <chrono>
@@ -188,6 +189,156 @@ void destroy_offscreen_resources(RenderTask &task) noexcept {
     task.producer = {};
     task.image = {};
     task.success = true;
+}
+
+bool run_shutdown_orphan_completion_test() {
+    if (!nk::core::render_executor_physical())
+        return true;
+
+    nk_init_options init{};
+    init.struct_size = sizeof(init);
+    init.api_version = NK_API_VERSION;
+    bool initialized = false;
+    nk_window first_window{};
+    nk_surface first_surface{};
+    nk_window second_window{};
+    nk_surface second_surface{};
+    nkui_display_list list{};
+    nkui_renderer renderer{};
+
+    auto shutdown_runtime = [&] {
+        if (initialized) {
+            nk_shutdown();
+            initialized = false;
+        }
+    };
+    auto release_blocker = [](BlockingRenderTask &task) {
+        {
+            std::lock_guard lock(task.mutex);
+            task.release = true;
+        }
+        task.condition.notify_one();
+    };
+    auto fail = [&](const char *operation) {
+        std::fprintf(stderr, "backend renderer smoke: shutdown orphan test: %s failed: %s\n",
+                     operation, nk_last_error());
+        shutdown_runtime();
+        return false;
+    };
+
+    if (!check(nk_init(&init) == NK_OK, "shutdown orphan nk_init"))
+        return false;
+    initialized = true;
+    nk_window_options options{};
+    options.struct_size = sizeof(options);
+    options.width = 256;
+    options.height = 192;
+    options.title = "NativeKit shutdown orphan smoke";
+    if (!check(nk_window_create(&options, &first_window) == NK_OK,
+               "create shutdown orphan window") ||
+        !check(nkgpu_surface_create(first_window, options.width, options.height, &first_surface) ==
+                   NKGPU_OK,
+               "create shutdown orphan surface"))
+        return fail("create first shutdown orphan runtime");
+    int32_t width = 0;
+    int32_t height = 0;
+    nk_surface_frame_target target{};
+    if (!wait_surface_ready(first_window, first_surface, width, height, target))
+        return fail("wait for first shutdown orphan surface");
+    if (!check(nkui_display_list_create(&list) == NKUI_OK, "create shutdown orphan display list") ||
+        !check(nkui_renderer_create(&renderer) == NKUI_OK, "create shutdown orphan renderer"))
+        return fail("create shutdown orphan UI resources");
+
+    const nkui_frame_info frame{sizeof(frame),
+                                static_cast<float>(options.width),
+                                static_cast<float>(options.height),
+                                width,
+                                height,
+                                1.0f};
+    BlockingRenderTask blocker{};
+    if (!start_blocking_render_task(blocker)) {
+        release_blocker(blocker);
+        return fail("start shutdown orphan blocker");
+    }
+    nk::core::reset_render_surface_api_violations();
+    nk::core::set_render_surface_api_guard(true);
+    nkgpu_test_forbid_surface_target_queries();
+    nk::core::fail_next_platform_dispatch();
+    const nkui_result submitted = nkui_renderer_render_frame(renderer, list, first_surface, &frame);
+    if (submitted != NKUI_OK) {
+        nk::core::set_render_surface_api_guard(false);
+        nkgpu_test_allow_surface_target_queries();
+        release_blocker(blocker);
+        return fail("submit shutdown orphan frame");
+    }
+    release_blocker(blocker);
+    RenderTask barrier{};
+    barrier.function = [](RenderTask &task) noexcept { task.success = true; };
+    if (!dispatch_render_task(barrier)) {
+        nk::core::set_render_surface_api_guard(false);
+        nkgpu_test_allow_surface_target_queries();
+        return fail("drain shutdown orphan render task");
+    }
+    const uint64_t surface_call_violations = nk::core::render_surface_api_violations();
+    nk::core::set_render_surface_api_guard(false);
+    nkgpu_test_allow_surface_target_queries();
+    nkui_renderer_stats stats{};
+    if (!check(surface_call_violations == 0, "shutdown orphan render surface API ownership") ||
+        !check(nkui_renderer_get_stats(renderer, &stats) == NKUI_OK,
+               "read shutdown orphan stats") ||
+        !check(stats.render_submission_failures >= 1, "shutdown orphan failure accounting") ||
+        !check(nk::core::frame_ticket_count() == 1, "shutdown orphan frame ticket remains open")) {
+        shutdown_runtime();
+        return false;
+    }
+
+    if (!check(nkui_renderer_destroy(renderer) == NKUI_OK, "destroy shutdown orphan renderer") ||
+        !check(nkui_display_list_destroy(list) == NKUI_OK,
+               "destroy shutdown orphan display list")) {
+        shutdown_runtime();
+        return false;
+    }
+    renderer = {};
+    list = {};
+    RenderTask destroy_barrier{};
+    destroy_barrier.function = [](RenderTask &task) noexcept { task.success = true; };
+    if (!dispatch_render_task(destroy_barrier)) {
+        shutdown_runtime();
+        return false;
+    }
+
+    shutdown_runtime();
+    if (!check(nk::core::frame_ticket_count() == 0, "shutdown orphan frame tickets cleared"))
+        return false;
+
+    if (!check(nk_init(&init) == NK_OK, "reinitialize after shutdown orphan"))
+        return false;
+    initialized = true;
+    if (!check(nk_window_create(&options, &second_window) == NK_OK,
+               "create reinitialized shutdown orphan window") ||
+        !check(nkgpu_surface_create(second_window, options.width, options.height,
+                                    &second_surface) == NKGPU_OK,
+               "create reinitialized shutdown orphan surface"))
+        return fail("create reinitialized shutdown orphan runtime");
+    if (!wait_surface_ready(second_window, second_surface, width, height, target))
+        return fail("wait for reinitialized shutdown orphan surface");
+    nk_surface_frame frame_token = NK_INVALID_HANDLE;
+    target.struct_size = sizeof(target);
+    if (!check(nk_surface_acquire_frame(second_surface, &frame_token, &target) == NK_OK,
+               "acquire frame after shutdown orphan") ||
+        !check(nk_surface_cancel_frame(frame_token) == NK_OK,
+               "cancel frame after shutdown orphan")) {
+        if (frame_token != NK_INVALID_HANDLE)
+            (void)nk_surface_cancel_frame(frame_token);
+        return fail("verify reinitialized shutdown orphan frame");
+    }
+    if (!check(nk_surface_destroy(second_surface) == NK_OK,
+               "destroy reinitialized shutdown orphan surface") ||
+        !check(nk_window_destroy(second_window) == NK_OK,
+               "destroy reinitialized shutdown orphan window"))
+        return fail("destroy reinitialized shutdown orphan runtime");
+    shutdown_runtime();
+    return true;
 }
 
 } // namespace
@@ -943,5 +1094,7 @@ cleanup:
     }
     if (initialized)
         nk_shutdown();
+    if (!result && !run_shutdown_orphan_completion_test())
+        result = 35;
     return result;
 }
