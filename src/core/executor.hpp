@@ -4,6 +4,7 @@
 #include "core/internal_api.hpp"
 
 #include <cstddef>
+#include <cstdint>
 
 namespace nk::core {
 
@@ -34,6 +35,13 @@ void set_render_executor_exclusive(bool exclusive) noexcept;
 
 /** Whether this runtime has a physical render thread. */
 NK_INTERNAL_API bool render_executor_physical() noexcept;
+
+/** Enables the test-only guard used to prove RENDER does not call platform APIs. */
+NK_INTERNAL_API void set_render_surface_api_guard(bool enabled) noexcept;
+
+/** Clears and reads platform/surface-affine calls attempted from RENDER. */
+NK_INTERNAL_API void reset_render_surface_api_violations() noexcept;
+NK_INTERNAL_API std::uint64_t render_surface_api_violations() noexcept;
 
 /** Returns the logical executor of the calling thread, or NK_EXECUTOR_WORKER. */
 nk_executor executor_current() noexcept;

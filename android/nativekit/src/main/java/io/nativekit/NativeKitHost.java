@@ -62,6 +62,14 @@ public final class NativeKitHost implements AutoCloseable {
         return nativeProbeSurfaceFrame(surface, delayMillis);
     }
 
+    /** Returns 0 after a queued frame callback ran on RENDER. */
+    public int renderThreadProbe() { return nativeRenderThreadProbe(); }
+
+    /** Returns the number of platform/surface-affine calls attempted from RENDER. */
+    public int renderSurfaceApiViolationProbe() {
+        return nativeRenderSurfaceApiViolationProbe();
+    }
+
     public int destroyGraphicsSurface(long surface) {
         if (handle == 0)
             throw new IllegalStateException("host is closed");
@@ -199,6 +207,8 @@ public final class NativeKitHost implements AutoCloseable {
     private static native int nativeSetSurfaceBounds(long surface, int width, int height);
     private static native int nativeSetSurfaceVisible(long surface, boolean visible);
     private static native int nativeProbeSurfaceFrame(long surface, int delayMillis);
+    private static native int nativeRenderThreadProbe();
+    private static native int nativeRenderSurfaceApiViolationProbe();
     private static native int nativeDestroySurface(long surface);
     private static native boolean nativeHandleBack(long webView);
     private static native void nativeSetLifecycle(long handle, int state);

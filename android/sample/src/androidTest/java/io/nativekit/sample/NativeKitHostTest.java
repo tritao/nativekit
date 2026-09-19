@@ -25,6 +25,7 @@ import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.json.JSONObject;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -70,6 +71,13 @@ public final class NativeKitHostTest {
                 assertEquals(0, activity.host.setGraphicsSurfaceVisible(surface[0], false)));
             assertEquals(surface[0],
                          awaitEventForSource(scenario, EVENT_SURFACE_LOST, surface[0]).source);
+            waitForRenderThreadProbe(scenario);
+            scenario.onActivity(activity -> {
+                assertEquals("frame must execute on RENDER", 0,
+                             activity.host.renderThreadProbe());
+                assertEquals("RENDER must not call platform/surface APIs", 0,
+                             activity.host.renderSurfaceApiViolationProbe());
+            });
 
             /* The same native surface handle can recover when SurfaceView is recreated. */
             scenario.onActivity(activity ->
@@ -93,9 +101,31 @@ public final class NativeKitHostTest {
                 });
                 Thread.sleep(50);
             }
+            waitForRenderThreadProbe(scenario);
+            scenario.onActivity(activity -> {
+                assertEquals("recovered frame must execute on RENDER", 0,
+                             activity.host.renderThreadProbe());
+                assertEquals("recovered RENDER path must stay surface-free", 0,
+                             activity.host.renderSurfaceApiViolationProbe());
+            });
             scenario.onActivity(activity ->
                 assertEquals(0, activity.host.destroyGraphicsSurface(surface[0])));
         }
+    }
+
+    private static void waitForRenderThreadProbe(ActivityScenario<NativeKitTestActivity> scenario)
+        throws InterruptedException {
+        long deadline = android.os.SystemClock.uptimeMillis() + 5_000;
+        AtomicInteger result = new AtomicInteger(-1);
+        while (android.os.SystemClock.uptimeMillis() < deadline) {
+            scenario.onActivity(activity -> result.set(activity.host.renderThreadProbe()));
+            if (result.get() == 0)
+                return;
+            if (result.get() > 0)
+                throw new AssertionError("Android frame did not run on RENDER");
+            Thread.sleep(50);
+        }
+        throw new AssertionError("Android RENDER frame probe did not complete");
     }
 
     @Test
