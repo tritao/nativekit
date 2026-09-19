@@ -127,8 +127,8 @@ nk_result NK_CALL nk_init(const nk_init_options *options) {
         nk::core::set_error("NativeKit is already initialized");
         return NK_ERROR_ALREADY_INITIALIZED;
     }
-    const auto capacity = options->event_queue_capacity == 0 ? default_queue_capacity
-                                                             : options->event_queue_capacity;
+    const auto capacity =
+        options->event_queue_capacity == 0 ? default_queue_capacity : options->event_queue_capacity;
     nk::core::system_initialize(options);
     event_queue = std::make_unique<nk::core::EventQueue>(capacity);
     nk::core::bind_main_thread();

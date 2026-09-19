@@ -125,16 +125,16 @@ bool utf8_to_wide(const std::string &input, std::wstring &output) {
     if (required <= 0)
         return false;
     output.resize(static_cast<std::size_t>(required));
-    return MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, input.data(), length,
-                               output.data(), required) == required;
+    return MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, input.data(), length, output.data(),
+                               required) == required;
 }
 
 bool wide_to_utf8(const wchar_t *input, std::string &output) {
     output.clear();
     if (!input)
         return true;
-    const int required = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, input, -1, nullptr,
-                                             0, nullptr, nullptr);
+    const int required =
+        WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, input, -1, nullptr, 0, nullptr, nullptr);
     if (required <= 0)
         return false;
     std::vector<char> buffer(static_cast<std::size_t>(required));
@@ -1503,101 +1503,100 @@ void notify_update(const std::shared_ptr<AccessibilityHost> &host,
                    nk_accessibility_node_id old_focus,
                    nk_accessibility_node_id new_focus) noexcept {
     if (!uia_clients_are_listening())
-            return;
-        bool structure_changed = before.size() != after.size();
-        for (const auto &[id, old_node] : before) {
-            const auto found = after.find(id);
-            if (found == after.end()) {
-                structure_changed = true;
-                continue;
-            }
-            const auto &next = found->second;
-            if (old_node.parent != next.parent || old_node.child_index != next.child_index)
-                structure_changed = true;
-            if (old_node.label != next.label)
-                raise_text_property(host, id, UIA_NamePropertyId, old_node.label, next.label);
-            if (old_node.value != next.value && next.role == NK_ACCESSIBILITY_TEXT_FIELD)
-                raise_text_property(host, id, UIA_ValueValuePropertyId, old_node.value, next.value);
-            if (next.role == NK_ACCESSIBILITY_TEXT_FIELD) {
-                const bool old_read_only = (old_node.states & NK_ACCESSIBILITY_READ_ONLY) != 0 ||
-                                           !has_action(old_node, NK_ACCESSIBILITY_CAN_SET_VALUE);
-                const bool new_read_only = (next.states & NK_ACCESSIBILITY_READ_ONLY) != 0 ||
-                                           !has_action(next, NK_ACCESSIBILITY_CAN_SET_VALUE);
-                if (old_read_only != new_read_only)
-                    raise_bool_property(host, id, UIA_ValueIsReadOnlyPropertyId, old_read_only,
-                                        new_read_only);
-            }
-            if (old_node.role != next.role)
-                raise_i4_property(host, id, UIA_ControlTypePropertyId, control_type(old_node.role),
-                                  control_type(next.role));
-            if (enabled(old_node) != enabled(next))
-                raise_bool_property(host, id, UIA_IsEnabledPropertyId, enabled(old_node),
-                                    enabled(next));
-            if (focusable(old_node) != focusable(next))
-                raise_bool_property(host, id, UIA_IsKeyboardFocusablePropertyId,
-                                    focusable(old_node), focusable(next));
-            if (next.role == NK_ACCESSIBILITY_SLIDER &&
-                old_node.numeric_value != next.numeric_value)
-                raise_r8_property(host, id, UIA_RangeValueValuePropertyId, old_node.numeric_value,
-                                  next.numeric_value);
-            if (next.role == NK_ACCESSIBILITY_SLIDER) {
-                if (old_node.numeric_minimum != next.numeric_minimum)
-                    raise_r8_property(host, id, UIA_RangeValueMinimumPropertyId,
-                                      old_node.numeric_minimum, next.numeric_minimum);
-                if (old_node.numeric_maximum != next.numeric_maximum)
-                    raise_r8_property(host, id, UIA_RangeValueMaximumPropertyId,
-                                      old_node.numeric_maximum, next.numeric_maximum);
-                const bool old_read_only = !has_action(old_node, NK_ACCESSIBILITY_CAN_SET_VALUE);
-                const bool new_read_only = !has_action(next, NK_ACCESSIBILITY_CAN_SET_VALUE);
-                if (old_read_only != new_read_only)
-                    raise_bool_property(host, id, UIA_RangeValueIsReadOnlyPropertyId, old_read_only,
-                                        new_read_only);
-            }
-            if ((next.role == NK_ACCESSIBILITY_CHECKBOX || next.role == NK_ACCESSIBILITY_SWITCH) &&
-                ((old_node.states ^ next.states) & NK_ACCESSIBILITY_CHECKED))
-                raise_i4_property(
-                    host, id, UIA_ToggleToggleStatePropertyId,
-                    (old_node.states & NK_ACCESSIBILITY_CHECKED) ? ToggleState_On : ToggleState_Off,
-                    (next.states & NK_ACCESSIBILITY_CHECKED) ? ToggleState_On : ToggleState_Off);
-            if (supports_selection_item(next, after) && selected(old_node) != selected(next))
-                raise_bool_property(host, id, UIA_SelectionItemIsSelectedPropertyId,
-                                    selected(old_node), selected(next));
-            if (((old_node.states ^ next.states) & NK_ACCESSIBILITY_EXPANDED) &&
-                (has_action(next, NK_ACCESSIBILITY_CAN_EXPAND) ||
-                 has_action(next, NK_ACCESSIBILITY_CAN_COLLAPSE)))
-                raise_i4_property(
-                    host, id, UIA_ExpandCollapseExpandCollapseStatePropertyId,
-                    (old_node.states & NK_ACCESSIBILITY_EXPANDED) ? ExpandCollapseState_Expanded
-                                                                  : ExpandCollapseState_Collapsed,
-                    (next.states & NK_ACCESSIBILITY_EXPANDED) ? ExpandCollapseState_Expanded
-                                                              : ExpandCollapseState_Collapsed);
+        return;
+    bool structure_changed = before.size() != after.size();
+    for (const auto &[id, old_node] : before) {
+        const auto found = after.find(id);
+        if (found == after.end()) {
+            structure_changed = true;
+            continue;
         }
-        for (const auto &[id, node] : after) {
-            (void)node;
-            if (before.find(id) == before.end())
-                structure_changed = true;
+        const auto &next = found->second;
+        if (old_node.parent != next.parent || old_node.child_index != next.child_index)
+            structure_changed = true;
+        if (old_node.label != next.label)
+            raise_text_property(host, id, UIA_NamePropertyId, old_node.label, next.label);
+        if (old_node.value != next.value && next.role == NK_ACCESSIBILITY_TEXT_FIELD)
+            raise_text_property(host, id, UIA_ValueValuePropertyId, old_node.value, next.value);
+        if (next.role == NK_ACCESSIBILITY_TEXT_FIELD) {
+            const bool old_read_only = (old_node.states & NK_ACCESSIBILITY_READ_ONLY) != 0 ||
+                                       !has_action(old_node, NK_ACCESSIBILITY_CAN_SET_VALUE);
+            const bool new_read_only = (next.states & NK_ACCESSIBILITY_READ_ONLY) != 0 ||
+                                       !has_action(next, NK_ACCESSIBILITY_CAN_SET_VALUE);
+            if (old_read_only != new_read_only)
+                raise_bool_property(host, id, UIA_ValueIsReadOnlyPropertyId, old_read_only,
+                                    new_read_only);
         }
-        if (old_focus != new_focus) {
-            if (old_focus && after.find(old_focus) != after.end())
-                raise_bool_property(host, old_focus, UIA_HasKeyboardFocusPropertyId, true, false);
-            if (new_focus && after.find(new_focus) != after.end())
-                raise_bool_property(host, new_focus, UIA_HasKeyboardFocusPropertyId, false, true);
-            auto *provider = new (std::nothrow)
-                AccessibilityProvider(host, new_focus ? new_focus : NK_ACCESSIBILITY_ROOT);
-            if (provider) {
-                if (const auto function = uia_api().raise_automation_event)
-                    function(provider, UIA_AutomationFocusChangedEventId);
-                provider->Release();
-            }
+        if (old_node.role != next.role)
+            raise_i4_property(host, id, UIA_ControlTypePropertyId, control_type(old_node.role),
+                              control_type(next.role));
+        if (enabled(old_node) != enabled(next))
+            raise_bool_property(host, id, UIA_IsEnabledPropertyId, enabled(old_node),
+                                enabled(next));
+        if (focusable(old_node) != focusable(next))
+            raise_bool_property(host, id, UIA_IsKeyboardFocusablePropertyId, focusable(old_node),
+                                focusable(next));
+        if (next.role == NK_ACCESSIBILITY_SLIDER && old_node.numeric_value != next.numeric_value)
+            raise_r8_property(host, id, UIA_RangeValueValuePropertyId, old_node.numeric_value,
+                              next.numeric_value);
+        if (next.role == NK_ACCESSIBILITY_SLIDER) {
+            if (old_node.numeric_minimum != next.numeric_minimum)
+                raise_r8_property(host, id, UIA_RangeValueMinimumPropertyId,
+                                  old_node.numeric_minimum, next.numeric_minimum);
+            if (old_node.numeric_maximum != next.numeric_maximum)
+                raise_r8_property(host, id, UIA_RangeValueMaximumPropertyId,
+                                  old_node.numeric_maximum, next.numeric_maximum);
+            const bool old_read_only = !has_action(old_node, NK_ACCESSIBILITY_CAN_SET_VALUE);
+            const bool new_read_only = !has_action(next, NK_ACCESSIBILITY_CAN_SET_VALUE);
+            if (old_read_only != new_read_only)
+                raise_bool_property(host, id, UIA_RangeValueIsReadOnlyPropertyId, old_read_only,
+                                    new_read_only);
         }
-        if (structure_changed) {
-            auto *provider = new (std::nothrow) AccessibilityProvider(host, NK_ACCESSIBILITY_ROOT);
-            if (provider) {
-                if (const auto function = uia_api().raise_structure_changed)
-                    function(provider, StructureChangeType_ChildrenInvalidated, nullptr, 0);
-                provider->Release();
-            }
+        if ((next.role == NK_ACCESSIBILITY_CHECKBOX || next.role == NK_ACCESSIBILITY_SWITCH) &&
+            ((old_node.states ^ next.states) & NK_ACCESSIBILITY_CHECKED))
+            raise_i4_property(
+                host, id, UIA_ToggleToggleStatePropertyId,
+                (old_node.states & NK_ACCESSIBILITY_CHECKED) ? ToggleState_On : ToggleState_Off,
+                (next.states & NK_ACCESSIBILITY_CHECKED) ? ToggleState_On : ToggleState_Off);
+        if (supports_selection_item(next, after) && selected(old_node) != selected(next))
+            raise_bool_property(host, id, UIA_SelectionItemIsSelectedPropertyId, selected(old_node),
+                                selected(next));
+        if (((old_node.states ^ next.states) & NK_ACCESSIBILITY_EXPANDED) &&
+            (has_action(next, NK_ACCESSIBILITY_CAN_EXPAND) ||
+             has_action(next, NK_ACCESSIBILITY_CAN_COLLAPSE)))
+            raise_i4_property(
+                host, id, UIA_ExpandCollapseExpandCollapseStatePropertyId,
+                (old_node.states & NK_ACCESSIBILITY_EXPANDED) ? ExpandCollapseState_Expanded
+                                                              : ExpandCollapseState_Collapsed,
+                (next.states & NK_ACCESSIBILITY_EXPANDED) ? ExpandCollapseState_Expanded
+                                                          : ExpandCollapseState_Collapsed);
+    }
+    for (const auto &[id, node] : after) {
+        (void)node;
+        if (before.find(id) == before.end())
+            structure_changed = true;
+    }
+    if (old_focus != new_focus) {
+        if (old_focus && after.find(old_focus) != after.end())
+            raise_bool_property(host, old_focus, UIA_HasKeyboardFocusPropertyId, true, false);
+        if (new_focus && after.find(new_focus) != after.end())
+            raise_bool_property(host, new_focus, UIA_HasKeyboardFocusPropertyId, false, true);
+        auto *provider = new (std::nothrow)
+            AccessibilityProvider(host, new_focus ? new_focus : NK_ACCESSIBILITY_ROOT);
+        if (provider) {
+            if (const auto function = uia_api().raise_automation_event)
+                function(provider, UIA_AutomationFocusChangedEventId);
+            provider->Release();
         }
+    }
+    if (structure_changed) {
+        auto *provider = new (std::nothrow) AccessibilityProvider(host, NK_ACCESSIBILITY_ROOT);
+        if (provider) {
+            if (const auto function = uia_api().raise_structure_changed)
+                function(provider, StructureChangeType_ChildrenInvalidated, nullptr, 0);
+            provider->Release();
+        }
+    }
 }
 
 nk_result apply_update(nk_handle handle, const nk_accessibility_update *update) {
@@ -1685,13 +1684,13 @@ nk_result accessibility_attach(HWND window, nk_handle surface) noexcept {
     if (!window || surface == NK_INVALID_HANDLE)
         return NK_ERROR_INVALID_ARGUMENT;
     auto host = std::make_shared<AccessibilityHost>();
-        host->window = window;
-        host->surface = surface;
-        std::lock_guard lock(hosts_mutex);
-        if (hosts_by_surface.find(surface) != hosts_by_surface.end() ||
-            surfaces_by_window.find(window) != surfaces_by_window.end())
-            return NK_ERROR_INVALID_REQUEST;
-        hosts_by_surface.emplace(surface, host);
+    host->window = window;
+    host->surface = surface;
+    std::lock_guard lock(hosts_mutex);
+    if (hosts_by_surface.find(surface) != hosts_by_surface.end() ||
+        surfaces_by_window.find(window) != surfaces_by_window.end())
+        return NK_ERROR_INVALID_REQUEST;
+    hosts_by_surface.emplace(surface, host);
     surfaces_by_window.emplace(window, surface);
     return NK_OK;
 }
@@ -1746,26 +1745,26 @@ nk_result accessibility_update_tree(nk_handle surface,
 }
 
 nk_result accessibility_clear_tree(nk_handle surface) noexcept {
-        if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
-            return thread;
-        const auto host = host_for_surface(surface);
-        if (!host)
-            return NK_ERROR_INVALID_HANDLE;
-        std::vector<nk_accessibility_node_id> ids;
-        {
-            std::shared_lock lock(host->mutex);
-            ids.reserve(host->nodes.size());
-            for (const auto &[id, node] : host->nodes) {
-                if (node.parent == NK_ACCESSIBILITY_ROOT)
-                    ids.push_back(id);
-            }
+    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+        return thread;
+    const auto host = host_for_surface(surface);
+    if (!host)
+        return NK_ERROR_INVALID_HANDLE;
+    std::vector<nk_accessibility_node_id> ids;
+    {
+        std::shared_lock lock(host->mutex);
+        ids.reserve(host->nodes.size());
+        for (const auto &[id, node] : host->nodes) {
+            if (node.parent == NK_ACCESSIBILITY_ROOT)
+                ids.push_back(id);
         }
-        nk_accessibility_update update{};
-        update.struct_size = sizeof(update);
-        update.flags = NK_ACCESSIBILITY_UPDATE_FOCUS;
-        update.removed_nodes = ids.data();
-        update.removed_node_count = static_cast<uint32_t>(ids.size());
-        update.focus = NK_ACCESSIBILITY_ROOT;
+    }
+    nk_accessibility_update update{};
+    update.struct_size = sizeof(update);
+    update.flags = NK_ACCESSIBILITY_UPDATE_FOCUS;
+    update.removed_nodes = ids.data();
+    update.removed_node_count = static_cast<uint32_t>(ids.size());
+    update.focus = NK_ACCESSIBILITY_ROOT;
     return apply_update(surface, &update);
 }
 
@@ -1773,32 +1772,30 @@ nk_result accessibility_set_text_ranges(nk_handle surface, nk_accessibility_node
                                         const nk_accessibility_text_range *ranges,
                                         uint32_t range_count) noexcept {
     if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
-            return thread;
-        const auto host = host_for_surface(surface);
-        if (!host)
-            return NK_ERROR_INVALID_HANDLE;
-        if (!node || (range_count && !ranges) || range_count > static_cast<uint32_t>(INT_MAX / 4))
-            return invalid_argument("invalid Windows accessibility text ranges");
-        std::unique_lock lock(host->mutex);
-        const auto found = host->nodes.find(node);
-        if (!host->active || found == host->nodes.end())
-            return NK_ERROR_INVALID_HANDLE;
-        std::vector<TextRange> normalized;
-        normalized.reserve(range_count);
-        nk_accessibility_text_position previous = 0;
-        for (uint32_t index = 0; index < range_count; ++index) {
-            const auto &range = ranges[index];
-            if (range.start >= range.end || range.start < previous ||
-                range.end > found->second.document_length || !std::isfinite(range.x) ||
-                !std::isfinite(range.y) || !std::isfinite(range.width) ||
-                !std::isfinite(range.height) || range.width < 0 || range.height < 0)
-                return invalid_argument(
-                    "Windows accessibility text ranges are invalid or unordered");
-            normalized.push_back(
-                {range.start, range.end, range.x, range.y, range.width, range.height});
-            previous = range.end;
-        }
-        found->second.text_ranges = std::move(normalized);
+        return thread;
+    const auto host = host_for_surface(surface);
+    if (!host)
+        return NK_ERROR_INVALID_HANDLE;
+    if (!node || (range_count && !ranges) || range_count > static_cast<uint32_t>(INT_MAX / 4))
+        return invalid_argument("invalid Windows accessibility text ranges");
+    std::unique_lock lock(host->mutex);
+    const auto found = host->nodes.find(node);
+    if (!host->active || found == host->nodes.end())
+        return NK_ERROR_INVALID_HANDLE;
+    std::vector<TextRange> normalized;
+    normalized.reserve(range_count);
+    nk_accessibility_text_position previous = 0;
+    for (uint32_t index = 0; index < range_count; ++index) {
+        const auto &range = ranges[index];
+        if (range.start >= range.end || range.start < previous ||
+            range.end > found->second.document_length || !std::isfinite(range.x) ||
+            !std::isfinite(range.y) || !std::isfinite(range.width) ||
+            !std::isfinite(range.height) || range.width < 0 || range.height < 0)
+            return invalid_argument("Windows accessibility text ranges are invalid or unordered");
+        normalized.push_back({range.start, range.end, range.x, range.y, range.width, range.height});
+        previous = range.end;
+    }
+    found->second.text_ranges = std::move(normalized);
     return NK_OK;
 }
 

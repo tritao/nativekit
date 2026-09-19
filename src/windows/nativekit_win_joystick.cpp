@@ -227,27 +227,26 @@ template <typename Function> nk_result boundary(Function &&function) noexcept {
 namespace nk::windows_joystick {
 void pump() noexcept {
     for (std::size_t index = 0; index < devices.size(); ++index) {
-            XINPUT_STATE state{};
-            const bool connected =
-                XInputGetState(static_cast<DWORD>(index), &state) == ERROR_SUCCESS;
-            if (!connected) {
-                remove_device(index);
-                continue;
+        XINPUT_STATE state{};
+        const bool connected = XInputGetState(static_cast<DWORD>(index), &state) == ERROR_SUCCESS;
+        if (!connected) {
+            remove_device(index);
+            continue;
+        }
+        if (devices[index]) {
+            const auto deadline = rumble_deadlines.find(devices[index]->handle);
+            if (deadline != rumble_deadlines.end() && nk_time_now_ns() >= deadline->second) {
+                XINPUT_VIBRATION stop{};
+                XInputSetState(static_cast<DWORD>(index), &stop);
+                rumble_deadlines.erase(deadline);
             }
-            if (devices[index]) {
-                const auto deadline = rumble_deadlines.find(devices[index]->handle);
-                if (deadline != rumble_deadlines.end() && nk_time_now_ns() >= deadline->second) {
-                    XINPUT_VIBRATION stop{};
-                    XInputSetState(static_cast<DWORD>(index), &stop);
-                    rumble_deadlines.erase(deadline);
-                }
-            }
-            if (!devices[index])
-                add_device(index, state);
-            else
-                update(*devices[index], state);
-            if (devices[index])
-                nk::core::gamepad_events::update(devices[index]->handle, true);
+        }
+        if (!devices[index])
+            add_device(index, state);
+        else
+            update(*devices[index], state);
+        if (devices[index])
+            nk::core::gamepad_events::update(devices[index]->handle, true);
     }
 }
 

@@ -4430,9 +4430,9 @@ nk_result NK_CALL nk_window_set_decoration_regions(nk_handle h,
                     "custom decoration regions require a NativeKit-owned window");
     for (uint32_t index = 0; index < region_count; ++index) {
         const auto &region = regions[index];
-        if (!std::isfinite(region.x) || !std::isfinite(region.y) ||
-            !std::isfinite(region.width) || !std::isfinite(region.height) || region.x < 0.0f ||
-            region.y < 0.0f || region.width <= 0.0f || region.height <= 0.0f ||
+        if (!std::isfinite(region.x) || !std::isfinite(region.y) || !std::isfinite(region.width) ||
+            !std::isfinite(region.height) || region.x < 0.0f || region.y < 0.0f ||
+            region.width <= 0.0f || region.height <= 0.0f ||
             region.kind > NK_WINDOW_DECORATION_RESIZE_SOUTHEAST ||
             region.cursor_shape > NK_CURSOR_NOT_ALLOWED)
             return fail(NK_ERROR_INVALID_ARGUMENT, "invalid decoration region");

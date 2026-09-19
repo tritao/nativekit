@@ -1896,15 +1896,15 @@ namespace nk::web_gamepad {
 
 void poll() noexcept {
     for (const auto &[index, device] : web_gamepads) {
-            (void)index;
-            device->seen = false;
-        }
-        if (!nk::web::poll_gamepads())
-            return;
-        std::vector<int32_t> disconnected;
-        for (const auto &[index, device] : web_gamepads)
-            if (!device->seen)
-                disconnected.push_back(index);
+        (void)index;
+        device->seen = false;
+    }
+    if (!nk::web::poll_gamepads())
+        return;
+    std::vector<int32_t> disconnected;
+    for (const auto &[index, device] : web_gamepads)
+        if (!device->seen)
+            disconnected.push_back(index);
     for (const auto index : disconnected)
         remove_web_gamepad(index);
 }

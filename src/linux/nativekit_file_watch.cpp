@@ -320,9 +320,7 @@ struct FileWatchResource final : nk::core::Resource {
         flush_moves();
     }
 
-    void run() noexcept {
-        run_impl();
-    }
+    void run() noexcept { run_impl(); }
 };
 
 } // namespace
@@ -338,8 +336,7 @@ nk_result file_watch_create(const nk_file_watch_options *, nk_file_watch *out_wa
     auto resource = std::make_shared<FileWatchResource>();
     resource->descriptor = descriptor;
     resource->generation = nk::core::runtime_generation();
-    const auto handle =
-        nk::core::handles().insert(nk::core::ResourceType::file_watch, resource);
+    const auto handle = nk::core::handles().insert(nk::core::ResourceType::file_watch, resource);
     if (handle == NK_INVALID_HANDLE)
         return NK_ERROR_OUT_OF_MEMORY;
     resource->handle = handle;
@@ -356,7 +353,7 @@ nk_result file_watch_add_directory(nk_file_watch watch, const char *path,
         return NK_ERROR_INVALID_HANDLE;
     }
     return std::static_pointer_cast<FileWatchResource>(resource)->add_directory(path,
-                                                                                 recursive != 0);
+                                                                                recursive != 0);
 }
 
 nk_result file_watch_remove_directory(nk_file_watch watch, const char *path) noexcept {

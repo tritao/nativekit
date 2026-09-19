@@ -361,15 +361,14 @@ nk_result backend_start(const RequestPtr &request) noexcept {
         std::lock_guard lock(fetch_mutex);
         fetch_requests.emplace(request->id, request);
     }
-    start_fetch(static_cast<double>(request->id), request->request.url.c_str(), method,
-                headers.c_str(),
-                request->request.body.empty()
-                    ? 0
-                    : reinterpret_cast<uintptr_t>(request->request.body.data()),
-                static_cast<uint32_t>(request->request.body.size()),
-                request->client->config.max_header_size, request->request.max_response_size,
-                request->request.redirect_limit, request->request.timeout_ms,
-                (request->client->config.flags & NK_HTTP_CLIENT_ALLOW_HTTPS_TO_HTTP) != 0);
+    start_fetch(
+        static_cast<double>(request->id), request->request.url.c_str(), method, headers.c_str(),
+        request->request.body.empty() ? 0
+                                      : reinterpret_cast<uintptr_t>(request->request.body.data()),
+        static_cast<uint32_t>(request->request.body.size()),
+        request->client->config.max_header_size, request->request.max_response_size,
+        request->request.redirect_limit, request->request.timeout_ms,
+        (request->client->config.flags & NK_HTTP_CLIENT_ALLOW_HTTPS_TO_HTTP) != 0);
     return NK_OK;
 }
 

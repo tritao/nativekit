@@ -1118,9 +1118,9 @@ namespace nk::core::sensor_backend {
 
 nk_result list(std::vector<SensorBackendDescriptor> &out) noexcept {
     out.clear();
-    constexpr nk_sensor_type types[] = {
-        NK_SENSOR_ACCELEROMETER, NK_SENSOR_GYROSCOPE,           NK_SENSOR_MAGNETOMETER,
-        NK_SENSOR_GRAVITY,       NK_SENSOR_LINEAR_ACCELERATION, NK_SENSOR_ROTATION_VECTOR};
+    constexpr nk_sensor_type types[] = {NK_SENSOR_ACCELEROMETER,       NK_SENSOR_GYROSCOPE,
+                                        NK_SENSOR_MAGNETOMETER,        NK_SENSOR_GRAVITY,
+                                        NK_SENSOR_LINEAR_ACCELERATION, NK_SENSOR_ROTATION_VECTOR};
     for (const auto type : types) {
         const auto native_type = android_sensor_type(type);
         if (!native_type)

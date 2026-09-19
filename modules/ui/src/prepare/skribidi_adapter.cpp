@@ -369,8 +369,8 @@ bool SkribidiAdapter::add_font_from_data(const char *name, const void *data, std
                                          FontFamily family) {
     if (!name || !*name || !data || !bytes || !valid())
         return false;
-    auto owned = std::make_shared<std::vector<uint8_t>>(
-        static_cast<const uint8_t *>(data), static_cast<const uint8_t *>(data) + bytes);
+    auto owned = std::make_shared<std::vector<uint8_t>>(static_cast<const uint8_t *>(data),
+                                                        static_cast<const uint8_t *>(data) + bytes);
     return add_font_from_shared_data(name, owned, family);
 }
 

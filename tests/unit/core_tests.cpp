@@ -112,8 +112,8 @@ int main() {
                          "VK_KHR_wayland_surface") == 0);
     NK_CHECK(nk::core::vulkan::platform_extension(NK_NATIVE_WINDOW_COCOA) == nullptr);
     NK_CHECK(nk::core::result_boundary("direct result propagation", []() -> nk_result {
-               return NK_ERROR_INVALID_ARGUMENT;
-           }) == NK_ERROR_INVALID_ARGUMENT);
+                 return NK_ERROR_INVALID_ARGUMENT;
+             }) == NK_ERROR_INVALID_ARGUMENT);
     bool callback_returned = false;
     nk::core::callback_boundary([&] { callback_returned = true; });
     NK_CHECK(callback_returned);

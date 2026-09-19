@@ -1690,9 +1690,8 @@ extern "C" nkui_result nkui_text_layout_get_selection_rects(nkui_resource layout
     if (!slot || !slot->text)
         return NKUI_ERROR_INVALID_HANDLE;
     std::vector<nkui::TextRect> rectangles;
-    rectangles =
-        slot->text->selection_rects({start.offset, static_cast<uint8_t>(start.affinity)},
-                                    {end.offset, static_cast<uint8_t>(end.affinity)});
+    rectangles = slot->text->selection_rects({start.offset, static_cast<uint8_t>(start.affinity)},
+                                             {end.offset, static_cast<uint8_t>(end.affinity)});
     if (rectangles.size() > std::numeric_limits<uint32_t>::max() / sizeof(nkui_text_rect))
         return NKUI_ERROR_OUT_OF_MEMORY;
     const uint32_t required = static_cast<uint32_t>(rectangles.size() * sizeof(nkui_text_rect));

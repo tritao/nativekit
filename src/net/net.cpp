@@ -556,8 +556,8 @@ nk_result receive_response_data(const RequestPtr &request, const std::byte *data
     std::size_t offset = 0;
     while (offset < size) {
         request->condition.wait(lock, [&] {
-            return request->canceled.load(std::memory_order_acquire) ||
-                   request->stream_closed || request->available < request->request.stream_buffer_size;
+            return request->canceled.load(std::memory_order_acquire) || request->stream_closed ||
+                   request->available < request->request.stream_buffer_size;
         });
         if (request->canceled.load(std::memory_order_acquire))
             return NK_HTTP_ERROR_CANCELED;

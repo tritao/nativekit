@@ -231,8 +231,8 @@ bool LayoutRenderCompiler::add_font_from_data(const char *name, const void *data
                                               FontFamily family) {
     if (!fonts_ || !name || !*name || !data || !bytes)
         return false;
-    auto owned = std::make_shared<std::vector<uint8_t>>(
-        static_cast<const uint8_t *>(data), static_cast<const uint8_t *>(data) + bytes);
+    auto owned = std::make_shared<std::vector<uint8_t>>(static_cast<const uint8_t *>(data),
+                                                        static_cast<const uint8_t *>(data) + bytes);
     return fonts_->add_font_from_shared_data(name, owned, family);
 }
 
