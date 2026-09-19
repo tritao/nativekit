@@ -293,7 +293,11 @@ int main() {
             result = __LINE__;
             goto cleanup;
         }
+        /* Once the platform hands the immutable target to RENDER, the whole
+           submission must use that snapshot without querying the surface. */
+        nkgpu_test_forbid_surface_target_queries();
         EXPECT_RESULT(nkgpu_batch_submit(renderer, batch, &frame_target), NKGPU_OK);
+        nkgpu_test_allow_surface_target_queries();
         EXPECT_RESULT(nk_surface_present_frame(frame), NK_OK);
     }
     /* A sealed batch can be replayed. */
@@ -668,6 +672,7 @@ int main() {
     retained_image = {};
 
 cleanup:
+    nkgpu_test_allow_surface_target_queries();
     if (batch.id)
         nkgpu_batch_destroy(batch);
     if (retained_image.id)

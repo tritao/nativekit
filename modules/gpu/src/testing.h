@@ -23,6 +23,8 @@ extern "C" {
 NKGPU_TEST_API void nkgpu_test_fail_next_image_creation(void);
 NKGPU_TEST_API void nkgpu_test_fail_next_buffer_creation(void);
 NKGPU_TEST_API void nkgpu_test_fail_next_present(void);
+NKGPU_TEST_API void nkgpu_test_forbid_surface_target_queries(void);
+NKGPU_TEST_API void nkgpu_test_allow_surface_target_queries(void);
 NKGPU_TEST_API nkgpu_result nkgpu_test_lose_after_frames(nkgpu_renderer renderer, uint32_t frames);
 NKGPU_TEST_API void nkgpu_test_lose_all_after_frames(uint32_t frames);
 NKGPU_TEST_API nkgpu_result nkgpu_test_invalidate_surface(nkgpu_renderer renderer);
