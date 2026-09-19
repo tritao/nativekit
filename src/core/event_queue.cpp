@@ -102,8 +102,8 @@ void promote_deferred_readiness(std::deque<QueuedEvent> &queue, std::deque<Queue
     }
 }
 
-void promote_pending_overflow(std::deque<QueuedEvent> &queue,
-                              std::optional<QueuedEvent> &pending, std::size_t capacity) {
+void promote_pending_overflow(std::deque<QueuedEvent> &queue, std::optional<QueuedEvent> &pending,
+                              std::size_t capacity) {
     if (!pending || (!queue.empty() && queue.size() >= capacity))
         return;
     queue.push_back(std::move(*pending));

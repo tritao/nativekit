@@ -127,9 +127,8 @@ int main() {
     NK_CHECK(callback_returned);
     NK_CHECK(!nk::core::callback_boundary_or(false, []() -> bool { return false; }));
     NK_CHECK(nk::core::callback_boundary_or(false, [] { return true; }));
-    NK_CHECK(nk::core::callback_boundary_or(17, []() -> int {
-                 throw std::runtime_error("callback failure");
-             }) == 17);
+    NK_CHECK(nk::core::callback_boundary_or(
+                 17, []() -> int { throw std::runtime_error("callback failure"); }) == 17);
 
     nk::core::gamepad::Mapping mapping;
     NK_CHECK(nk::core::gamepad::parse_mapping(

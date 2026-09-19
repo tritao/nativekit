@@ -197,8 +197,8 @@ int main() {
     nk_http_client client = NK_INVALID_HANDLE;
     const char invalid_name[] = "Bad Header";
     const char invalid_value[] = "value";
-    nk_http_header malformed_header{
-        invalid_name, sizeof(invalid_name) - 1, invalid_value, sizeof(invalid_value) - 1};
+    nk_http_header malformed_header{invalid_name, sizeof(invalid_name) - 1, invalid_value,
+                                    sizeof(invalid_value) - 1};
     client_options.default_headers = &malformed_header;
     client_options.default_header_count = 1;
     NK_CHECK(nk_http_client_create(&client_options, &client) == NK_ERROR_INVALID_ARGUMENT);

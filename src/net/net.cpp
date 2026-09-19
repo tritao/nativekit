@@ -160,8 +160,7 @@ bool valid_header_text(std::string_view value, bool name) {
                                byte == '~';
             if (!token)
                 return false;
-        } else if (byte == '\r' || byte == '\n' || byte == 0x7f ||
-                   (byte < 0x20 && byte != '\t')) {
+        } else if (byte == '\r' || byte == '\n' || byte == 0x7f || (byte < 0x20 && byte != '\t')) {
             return false;
         }
     }
