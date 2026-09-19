@@ -531,6 +531,12 @@ class UiContext {
 			handler(currentCursor);
 	}
 
+	/** Installs the host bridge used for physical window/surface pointer capture. */
+	public function setPointerCaptureHandler(handler:Null<Bool->Void>):Void {
+		ensureLive();
+		events.setPointerCaptureHandler(handler);
+	}
+
 	public function scroll(x:Float, y:Float, deltaX:Float, deltaY:Float, modifiers:Int = 0):Void {
 		ensureLive();
 		events.scroll(x, y, deltaX, deltaY, modifiers);
@@ -654,6 +660,7 @@ class UiContext {
 		if (cursorHandler != null)
 			cursorHandler(CursorShape.Arrow);
 		cursorHandler = null;
+		events.setPointerCaptureHandler(null);
 		currentCursor = CursorShape.Arrow;
 		animations.cancelAll();
 		if (accessibilityBridge != null)

@@ -134,6 +134,15 @@ int main(int argc, char **argv) {
         geometry_child_item->clip_bounds.width != 100.0f ||
         geometry_child_item->clip_bounds.height != 80.0f || hidden_child_item->visible)
         return 20;
+
+    geometry_nodes[1].style.transform = {0.0f, 1.0f, -1.0f, 0.0f, 0.0f, 0.0f};
+    if (!engine.layout(geometry_nodes, 100.0f, 80.0f, 1.0f / 60.0f, snapshot, &error))
+        return 23;
+    geometry_child_item = snapshot.find(301);
+    if (!geometry_child_item || std::abs(geometry_child_item->transform.tx - 35.0f) > 0.0001f ||
+        std::abs(geometry_child_item->transform.ty + 5.0f) > 0.0001f)
+        return 24;
+
     const auto hidden_primitive =
         std::find_if(snapshot.primitives.begin(), snapshot.primitives.end(),
                      [](const LayoutPrimitive &primitive) { return primitive.node_id == 302; });

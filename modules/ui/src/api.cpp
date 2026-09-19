@@ -453,6 +453,8 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
             float aspect_ratio = 0.0f;
             float width_grow_weight = 1.0f;
             float height_grow_weight = 1.0f;
+            float transform_origin_x = 0.5f;
+            float transform_origin_y = 0.5f;
             uint32_t wrap_mode = 0;
             uint32_t align_self = 0;
             if (!read_node_u32(record, NKUI_LAYOUT_NODE_ID_OFFSET, id) ||
@@ -530,7 +532,11 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                 !read_node_float(record, NKUI_LAYOUT_NODE_WIDTH_GROW_WEIGHT_OFFSET,
                                  width_grow_weight) ||
                 !read_node_float(record, NKUI_LAYOUT_NODE_HEIGHT_GROW_WEIGHT_OFFSET,
-                                 height_grow_weight))
+                                 height_grow_weight) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_TRANSFORM_ORIGIN_X_OFFSET,
+                                 transform_origin_x) ||
+                !read_node_float(record, NKUI_LAYOUT_NODE_TRANSFORM_ORIGIN_Y_OFFSET,
+                                 transform_origin_y))
                 return false;
             const uint32_t child_align_x = child_alignment & 0xffu;
             const uint32_t child_align_y = (child_alignment >> 8u) & 0xffu;
@@ -558,6 +564,10 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                 !valid_spacing(node.style.padding_bottom) || !valid_spacing(node.style.child_gap) ||
                 !valid_spacing(node.style.row_gap) || !valid_spacing(node.style.column_gap))
                 return false;
+            if (!std::isfinite(transform_origin_x) || transform_origin_x < 0.0f ||
+                transform_origin_x > 1.0f || !std::isfinite(transform_origin_y) ||
+                transform_origin_y < 0.0f || transform_origin_y > 1.0f)
+                return false;
             const float determinant = transform[0] * transform[3] - transform[1] * transform[2];
             if (std::any_of(transform.begin(), transform.end(),
                             [](float value) { return !std::isfinite(value); }) ||
@@ -568,6 +578,8 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
             node.style.visible = (node_flags & NKUI_LAYOUT_NODE_VISIBLE) != 0;
             node.style.transform = {transform[0], transform[1], transform[2],
                                     transform[3], transform[4], transform[5]};
+            node.style.transform_origin_x = transform_origin_x;
+            node.style.transform_origin_y = transform_origin_y;
             node.style.width.sizing = static_cast<nkui::LayoutSizing>(width_sizing);
             node.style.height.sizing = static_cast<nkui::LayoutSizing>(height_sizing);
             node.style.width.min = width_min;

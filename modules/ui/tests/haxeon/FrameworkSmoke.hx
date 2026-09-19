@@ -20,6 +20,7 @@ import LayoutSizing;
 import LayoutVisualKind;
 import TextAlignment;
 import Rect;
+import Point;
 import ResolvedLayoutItem;
 import Transform2D;
 import TextLayout;
@@ -42,6 +43,8 @@ import NativeKitRuntime;
 import NativeKitEventDecoderTests;
 import nativekit.ui.core.NativeInputAdapter;
 import nativekit.ui.core.CursorShape as UiCursorShape;
+import nativekit.ui.core.HitTest;
+import nativekit.ui.core.HitTestBehavior;
 import nativekit.ui.core.RenderNode;
 import nativekit.ui.core.State;
 import nativekit.ui.core.UiContext;
@@ -167,6 +170,8 @@ import AccessibilityContract;
 
 class FrameworkSmoke {
 	static function main():Int {
+		if (!coordinateMathValid())
+			return 240;
 		var fontPath = Sys.getEnv("NKUI_TEST_FONT_PATH");
 		if (fontPath == null)
 			return 2;
@@ -867,12 +872,42 @@ class FrameworkSmoke {
 		}, "capture");
 		var buttonNode = root.children[0];
 		var initialId = buttonNode.id;
+		root.hitTestBehavior = HitTestBehavior.ChildrenOnly;
+		if (HitTest.path(root, 4.0, 4.0).length < 2)
+			return 241;
+		root.hitTestBehavior = HitTestBehavior.SelfOnly;
+		if (HitTest.path(root, 4.0, 4.0).length != 1)
+			return 242;
+		root.hitTestBehavior = HitTestBehavior.None;
+		if (HitTest.path(root, 4.0, 4.0).length != 0)
+			return 243;
+		root.hitTestBehavior = HitTestBehavior.Auto;
 		var state:State<Int> = context.buildContext.state(buttonNode.id, 0);
 		if (root.children.length != 3 || buttonNode.resolved == null ||
 			!buttonNode.focusable || !buttonNode.resolved.hitTest(4.0, 4.0) || context.isDirty())
 			return 3;
 		if (context.dirtyFlags != UiDirtyFlag.None)
 			return 221;
+		var rootLocalX = -1.0;
+		var buttonLocalX = -1.0;
+		root.on(UiEventKind.PointerDown, function(event) {
+			if (event.data == "coordinate-test")
+				rootLocalX = event.localX;
+		}, "capture");
+		buttonNode.on(UiEventKind.PointerDown, function(event) {
+			if (event.data == "coordinate-test") {
+				buttonLocalX = event.localX;
+				event.preventDefault();
+			}
+		});
+		var coordinatePoint = new Point(6.0, 7.0);
+		var coordinateGlobal = buttonNode.localToGlobal(coordinatePoint);
+		context.pointerDown(coordinateGlobal.x, coordinateGlobal.y, 0, 0, 0, "coordinate-test");
+		context.pointerUp(coordinateGlobal.x, coordinateGlobal.y, 0, 0, 0, "coordinate-test");
+		var expectedRootPoint = root.globalToLocal(coordinateGlobal);
+		if (!near(rootLocalX, expectedRootPoint.x) || !near(buttonLocalX, coordinatePoint.x) ||
+			!near(coordinateGlobal.x, buttonNode.localToGlobal(coordinatePoint).x))
+			return 244;
 		var semanticTree = AccessibilityBridge.project(root, buttonNode.id);
 		if (semanticTree.length != 3 || semanticTree[0].id != buttonNode.id.value ||
 			semanticTree[0].parentId != 0 || semanticTree[0].role != AccessibilityRole.Button ||
@@ -2059,6 +2094,8 @@ class FrameworkSmoke {
 		var captureSplit = new SplitView("pointer-capture-split", new Text("Leading"),
 			new Button("Drag target", null, function() { captureClicks++; }), captureOptions);
 		var captureRoot = context.submit(captureSplit, new LayoutFrame(320.0, 192.0));
+		var platformCaptureStates:Array<Bool> = [];
+		context.setPointerCaptureHandler(function(captured) platformCaptureStates.push(captured));
 		var captureDivider = captureRoot.children[1];
 		var captureButton = captureRoot.children[2].children[0];
 		var captureHoverEnters = 0;
@@ -2073,7 +2110,8 @@ class FrameworkSmoke {
 		var captureButtonY = captureButtonGeometry.y + 2.0;
 		context.pointerMove(captureDividerX, captureDividerY);
 		context.pointerDown(captureDividerX, captureDividerY, 0);
-		if (!context.events.hasPointerCapture(captureDivider.id))
+		if (!context.events.hasPointerCapture(captureDivider.id) || platformCaptureStates.length != 1 ||
+			!platformCaptureStates[0])
 			return 248;
 		context.pointerMove(captureButtonX, captureButtonY);
 		if (captureHoverEnters != 0 || capturePointerDowns != 0 || captureClicks != 0 ||
@@ -2084,6 +2122,7 @@ class FrameworkSmoke {
 		context.pointerUp(captureButtonX, captureButtonY, 0);
 		if (captureHoverEnters != 1 || captureClicks != 0 ||
 			context.events.hasPointerCapture(captureDivider.id) ||
+			platformCaptureStates.length != 2 || platformCaptureStates[1] ||
 			context.events.hoveredId() == null ||
 			!context.events.hoveredId().equals(captureButton.id) ||
 			context.events.cursorShape() != UiCursorShape.Arrow)
@@ -2093,14 +2132,17 @@ class FrameworkSmoke {
 		context.pointerMove(captureButtonX, captureButtonY);
 		context.pointerCancel(0, captureButtonX, captureButtonY);
 		if (context.events.hasPointerCapture(captureDivider.id) ||
+			platformCaptureStates.length != 4 || !platformCaptureStates[2] || platformCaptureStates[3] ||
 			context.events.hoveredId() != null ||
 			context.events.cursorShape() != UiCursorShape.Arrow)
 			return 251;
 		context.pointerMove(captureDividerX, captureDividerY);
 		context.pointerDown(captureDividerX, captureDividerY, 0);
 		context.submit(new Text("Unmounted capture owner"), new LayoutFrame(320.0, 192.0));
-		if (context.events.hasPointerCapture(captureDivider.id))
+		if (context.events.hasPointerCapture(captureDivider.id) || platformCaptureStates.length != 6 ||
+			!platformCaptureStates[4] || platformCaptureStates[5])
 			return 252;
+		context.setPointerCaptureHandler(null);
 		if (!checkSplitKeyboard(context))
 			return 247;
 		var inheritedColor = Color.rgba(0.24, 0.31, 0.42, 1.0);
@@ -2795,4 +2837,43 @@ class FrameworkSmoke {
 			return false;
 		return !requirePaint || metrics.paintInvalidatedNodes > 0;
 	}
+
+	static function coordinateMathValid():Bool {
+		var local = new Point(23.0, 11.0);
+		var transforms:Array<Transform2D> = [
+			Transform2D.translation(40.0, 25.0),
+			Transform2D.identity().scaled(1.5, 0.75).translated(12.0, -8.0),
+			Transform2D.identity().rotated(0.37).translated(18.0, 9.0),
+			Transform2D.identity().skewed(0.17, -0.11).translated(-6.0, 14.0)
+		];
+		for (transform in transforms) {
+			var item = new ResolvedLayoutItem(900, 1, 17.0, 13.0, 120.0, 64.0,
+				new Rect(-1000.0, -1000.0, 2000.0, 2000.0),
+				new Rect(0.0, 0.0, 0.0, 0.0), transform, 0.0);
+			var global = item.localToViewport(local);
+			var roundTrip = item.viewportToLocal(global);
+			if (!near(roundTrip.x, local.x) || !near(roundTrip.y, local.y) ||
+				!item.hitTest(global.x, global.y))
+				return false;
+		}
+
+		var parent = Transform2D.translation(100.0, 40.0).rotated(0.23).scaled(1.2, 0.8);
+		var child = Transform2D.translation(12.0, 7.0).skewed(0.09, -0.04);
+		var world = parent.multiply(child);
+		var worldPoint = world.transformPoint(local);
+		var nestedRoundTrip = world.inverse().transformPoint(worldPoint);
+		if (!near(nestedRoundTrip.x, local.x) || !near(nestedRoundTrip.y, local.y))
+			return false;
+
+		var singular = Transform2D.scale(0.0, 1.0);
+		if (singular.isInvertible() || singular.tryInverse() != null)
+			return false;
+		var singularItem = new ResolvedLayoutItem(901, 1, 0.0, 0.0, 20.0, 20.0,
+				new Rect(-100.0, -100.0, 200.0, 200.0),
+				new Rect(0.0, 0.0, 0.0, 0.0), singular, 0.0);
+		return !singularItem.hitTest(0.0, 0.0);
+	}
+
+	static inline function near(left:Float, right:Float):Bool
+		return Math.abs(left - right) < 0.00001;
 }

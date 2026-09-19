@@ -60,6 +60,10 @@ class LayoutTransaction {
 			if (!finitePositive(node.textStyle.fontSize) || !finite(node.textStyle.letterSpacing) ||
 				!finite(lineHeight) || lineHeight < 0.0)
 				throw "Layout text style values are invalid";
+			if (!finite(style.transformOriginX) || style.transformOriginX < 0.0 ||
+				style.transformOriginX > 1.0 || !finite(style.transformOriginY) ||
+				style.transformOriginY < 0.0 || style.transformOriginY > 1.0)
+				throw "Layout transform origin must be normalized";
 			if (!validAxis(style.width) || !validAxis(style.height) || !finite(style.aspectRatio) ||
 				style.aspectRatio < 0.0)
 				throw "Layout sizing values are invalid";
@@ -160,6 +164,10 @@ class LayoutTransaction {
 				alignSelf);
 			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_MEASURE_VERSION_OFFSET,
 				measureVersion);
+			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_TRANSFORM_ORIGIN_X_OFFSET,
+				style.transformOriginX);
+			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_TRANSFORM_ORIGIN_Y_OFFSET,
+				style.transformOriginY);
 			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_POSITION_X_OFFSET,
 				style.positionX);
 			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_POSITION_Y_OFFSET,

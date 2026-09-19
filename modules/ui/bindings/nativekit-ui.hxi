@@ -9,7 +9,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	const NKUI_EFFECT_PROGRAM_MAX_OPS = 8;
 	const NKUI_GRADIENT_MAX_STOPS = 8;
 	const NKUI_LAYER_COMMAND_VERSION = 2;
-	const NKUI_LAYOUT_API_VERSION = 17;
+	const NKUI_LAYOUT_API_VERSION = 18;
 	const NKUI_LAYOUT_MAX_TRANSACTION_BYTES = 16777216;
 	/**
 	 * Per-child cross-axis alignment override; zero inherits the parent.
@@ -76,7 +76,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	const NKUI_LAYOUT_NODE_RADIUS_BOTTOM_RIGHT_OFFSET = 80;
 	const NKUI_LAYOUT_NODE_RADIUS_TOP_LEFT_OFFSET = 68;
 	const NKUI_LAYOUT_NODE_RADIUS_TOP_RIGHT_OFFSET = 72;
-	const NKUI_LAYOUT_NODE_RECORD_BYTES = 240;
+	const NKUI_LAYOUT_NODE_RECORD_BYTES = 248;
 	/**
 	 * Vertical gap between wrapped rows.
 	 */
@@ -92,6 +92,14 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	const NKUI_LAYOUT_NODE_TRANSFORM_B_OFFSET = 148;
 	const NKUI_LAYOUT_NODE_TRANSFORM_C_OFFSET = 152;
 	const NKUI_LAYOUT_NODE_TRANSFORM_D_OFFSET = 156;
+	/**
+	 * Normalized horizontal transform origin, in the range 0..1.
+	 */
+	const NKUI_LAYOUT_NODE_TRANSFORM_ORIGIN_X_OFFSET = 240;
+	/**
+	 * Normalized vertical transform origin, in the range 0..1.
+	 */
+	const NKUI_LAYOUT_NODE_TRANSFORM_ORIGIN_Y_OFFSET = 244;
 	const NKUI_LAYOUT_NODE_TRANSFORM_TX_OFFSET = 160;
 	const NKUI_LAYOUT_NODE_TRANSFORM_TY_OFFSET = 164;
 	const NKUI_LAYOUT_NODE_VISUAL_KIND_OFFSET = 8;
@@ -119,7 +127,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	const NKUI_LAYOUT_NODE_Z_INDEX_OFFSET = 184;
 	const NKUI_LAYOUT_RESOLVED_ITEM_BYTES = 96;
 	const NKUI_LAYOUT_TRANSACTION_HEADER_BYTES = 16;
-	const NKUI_LAYOUT_TRANSACTION_VERSION = 14;
+	const NKUI_LAYOUT_TRANSACTION_VERSION = 15;
 	/**
 	 * 16-bit opcode identifying one display-list command record.
 	 */
@@ -657,8 +665,9 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	 * transaction. The native side copies all values before returning, so the
 	 * input buffer may be reused. The transaction is bounded by
 	 * NKUI_LAYOUT_MAX_TRANSACTION_BYTES; node capacity grows with submitted data.
-	 * Each node transform is applied about that node's top-left layout origin;
-	 * clipped nodes must have an axis-aligned cumulative transform.
+	 * Each node transform is applied about its normalized resolved-box origin;
+	 * clipped nodes must have an axis-aligned cumulative transform. The default
+	 * origin is the center of the resolved box.
 	 */
 	extern fn nkui_layout_session_submit(session: nkui_layout_session, transaction: ptr<const<u8>> @in_array("transaction_bytes"), transaction_bytes: u32, frame: ptr<const<nkui_layout_frame_input>>) -> nkui_result;
 	/**

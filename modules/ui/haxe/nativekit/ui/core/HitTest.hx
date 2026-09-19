@@ -28,13 +28,22 @@ class HitTest {
 		if (geometry == null || !geometry.visible || !inside(geometry.clipBounds, x, y))
 			return false;
 		path.push(node);
+		var behavior = node.hitTestBehavior;
+		if (behavior == HitTestBehavior.None) {
+			path.pop();
+			return false;
+		}
+		var visitChildren = behavior != HitTestBehavior.SelfOnly;
+		var testSelf = behavior != HitTestBehavior.ChildrenOnly && node.hitTestSelf;
 		var ordered:Array<RenderNode> = [];
-		for (child in node.children) {
-			var zIndex = child.layout.style.zIndex;
-			var index = ordered.length;
-			while (index > 0 && zIndex < childZIndex(ordered[index - 1]))
-				index--;
-			ordered.insert(index, child);
+		if (visitChildren) {
+			for (child in node.children) {
+				var zIndex = child.layout.style.zIndex;
+				var index = ordered.length;
+				while (index > 0 && zIndex < childZIndex(ordered[index - 1]))
+					index--;
+				ordered.insert(index, child);
+			}
 		}
 		var index = ordered.length - 1;
 		while (index >= 0) {
@@ -42,7 +51,7 @@ class HitTest {
 				return true;
 			index--;
 		}
-		if (node.hitTestSelf && geometry.hitTest(x, y))
+		if (testSelf && geometry.hitTest(x, y))
 			return true;
 		path.pop();
 		return false;

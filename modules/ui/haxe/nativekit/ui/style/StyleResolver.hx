@@ -209,7 +209,9 @@ class StyleResolver {
 		result = mix(result, floatFingerprint(local.transform.c));
 		result = mix(result, floatFingerprint(local.transform.d));
 		result = mix(result, floatFingerprint(local.transform.tx));
-		return mix(result, floatFingerprint(local.transform.ty));
+		result = mix(result, floatFingerprint(local.transform.ty));
+		result = mix(result, floatFingerprint(local.transformOriginX));
+		return mix(result, floatFingerprint(local.transformOriginY));
 	}
 
 	static function colorFingerprint(seed:Int, value:Color):Int {
@@ -268,7 +270,8 @@ class StyleResolver {
 			left.radiusTopLeft == right.radiusTopLeft && left.radiusTopRight == right.radiusTopRight &&
 			left.radiusBottomRight == right.radiusBottomRight && left.radiusBottomLeft == right.radiusBottomLeft &&
 			left.clipHorizontal == right.clipHorizontal && left.clipVertical == right.clipVertical &&
-			left.visible == right.visible && sameTransform(left.transform, right.transform);
+			left.visible == right.visible && sameTransform(left.transform, right.transform) &&
+			left.transformOriginX == right.transformOriginX && left.transformOriginY == right.transformOriginY;
 
 	static function sourceKey(source:Null<StyleSource>):String
 		return source == null ? "none" : stringKey(source.stylesheet) + "|" + stringKey(source.selector) +
@@ -396,6 +399,10 @@ class StyleResolver {
 			result.set(StyleProperty.Visible, local.visible, source);
 		if (!sameTransform(local.transform, defaults.transform))
 			result.set(StyleProperty.Transform, local.transform, source);
+		if (local.transformOriginX != defaults.transformOriginX)
+			result.set(StyleProperty.TransformOriginX, local.transformOriginX, source);
+		if (local.transformOriginY != defaults.transformOriginY)
+			result.set(StyleProperty.TransformOriginY, local.transformOriginY, source);
 	}
 
 	static function sameColor(left:Color, right:Color):Bool

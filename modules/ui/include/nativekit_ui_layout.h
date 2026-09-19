@@ -17,10 +17,10 @@ extern "C" {
 
 /** Layout bridge and wire-format versions and fixed sizes. */
 enum {
-    NKUI_LAYOUT_API_VERSION = 17,
-    NKUI_LAYOUT_TRANSACTION_VERSION = 14,
+    NKUI_LAYOUT_API_VERSION = 18,
+    NKUI_LAYOUT_TRANSACTION_VERSION = 15,
     NKUI_LAYOUT_TRANSACTION_HEADER_BYTES = 16,
-    NKUI_LAYOUT_NODE_RECORD_BYTES = 240,
+    NKUI_LAYOUT_NODE_RECORD_BYTES = 248,
     NKUI_LAYOUT_MAX_TRANSACTION_BYTES = 16 * 1024 * 1024,
     NKUI_LAYOUT_RESOLVED_ITEM_BYTES = 96
 };
@@ -179,7 +179,11 @@ enum {
     /** Per-child cross-axis alignment override; zero inherits the parent. */
     NKUI_LAYOUT_NODE_ALIGN_SELF_OFFSET = 232,
     /** Application-defined intrinsic-content version used by measurement caching. */
-    NKUI_LAYOUT_NODE_MEASURE_VERSION_OFFSET = 236
+    NKUI_LAYOUT_NODE_MEASURE_VERSION_OFFSET = 236,
+    /** Normalized horizontal transform origin, in the range 0..1. */
+    NKUI_LAYOUT_NODE_TRANSFORM_ORIGIN_X_OFFSET = 240,
+    /** Normalized vertical transform origin, in the range 0..1. */
+    NKUI_LAYOUT_NODE_TRANSFORM_ORIGIN_Y_OFFSET = 244
 };
 
 /** Opaque retained layout session used by a Haxe-owned component tree. */
@@ -318,8 +322,9 @@ NKUI_API nkui_result NK_CALL nkui_layout_session_set_custom_paint(nkui_layout_se
  * transaction. The native side copies all values before returning, so the
  * input buffer may be reused. The transaction is bounded by
  * NKUI_LAYOUT_MAX_TRANSACTION_BYTES; node capacity grows with submitted data.
- * Each node transform is applied about that node's top-left layout origin;
- * clipped nodes must have an axis-aligned cumulative transform.
+ * Each node transform is applied about its normalized resolved-box origin;
+ * clipped nodes must have an axis-aligned cumulative transform. The default
+ * origin is the center of the resolved box.
  */
 NKUI_API nkui_result NK_CALL nkui_layout_session_submit(
     nkui_layout_session session, const uint8_t *transaction NKUI_IN_ARRAY(transaction_bytes),

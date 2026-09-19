@@ -15,6 +15,8 @@ class EventDispatcher {
 	final pressedIds:Map<Int, WidgetId>;
 	final capturedIds:Map<Int, WidgetId>;
 	final suppressedClicks:Map<Int, Bool>;
+	var pointerCaptureHandler:Null<Bool->Void>;
+	var platformPointerCaptured:Bool;
 
 	public function new(focus:FocusManager, ?interactionStates:InteractionStateStore) {
 		this.focus = focus;
@@ -25,6 +27,17 @@ class EventDispatcher {
 		pressedIds = new Map();
 		capturedIds = new Map();
 		suppressedClicks = new Map();
+		pointerCaptureHandler = null;
+		platformPointerCaptured = false;
+	}
+
+	/** Installs the host bridge for physical window/surface pointer capture. */
+	public function setPointerCaptureHandler(handler:Null<Bool->Void>):Void {
+		if (pointerCaptureHandler != null && platformPointerCaptured)
+			pointerCaptureHandler(false);
+		pointerCaptureHandler = handler;
+		platformPointerCaptured = false;
+		syncPlatformPointerCapture();
 	}
 
 	public function setRoot(root:Null<RenderNode>):Void {
@@ -36,7 +49,7 @@ class EventDispatcher {
 				stale.push(pointerId);
 		}
 		for (pointerId in stale)
-			capturedIds.remove(pointerId);
+			clearPointerCapture(pointerId);
 		stale = [];
 		for (pointerId in pressedIds.keys()) {
 			var id = pressedIds.get(pointerId);
@@ -114,6 +127,7 @@ class EventDispatcher {
 		root.walk(function(node) {
 			if (event.propagationStopped || contains(path, node))
 				return;
+			event.setCurrentTarget(node);
 			node.invokePointerDownOutside(event);
 		});
 	}
@@ -134,7 +148,7 @@ class EventDispatcher {
 		var clickSuppressed = suppressedClicks.exists(pointerId);
 		if (path.length == 0)
 			path = pressedPath(pointerId);
-		capturedIds.remove(pointerId);
+		clearPointerCapture(pointerId);
 		pressedIds.remove(pointerId);
 		suppressedClicks.remove(pointerId);
 		if (path.length > 0) {
@@ -156,7 +170,7 @@ class EventDispatcher {
 		var path = capturedPath(pointerId);
 		if (path.length == 0)
 			path = pressedPath(pointerId);
-		capturedIds.remove(pointerId);
+		clearPointerCapture(pointerId);
 		pressedIds.remove(pointerId);
 		suppressedClicks.remove(pointerId);
 		if (path.length > 0) {
@@ -222,7 +236,7 @@ class EventDispatcher {
 
 	public function clearPointer(pointerId:Int = 0):Void {
 		updateHover(pointerId, [], 0.0, 0.0);
-		capturedIds.remove(pointerId);
+		clearPointerCapture(pointerId);
 		pressedIds.remove(pointerId);
 		suppressedClicks.remove(pointerId);
 		pointerLocations.remove(pointerId);
@@ -325,9 +339,37 @@ class EventDispatcher {
 
 	function applyPointerCaptureRequest(pointerId:Int, event:UiEvent):Void {
 		if (event.pointerReleaseRequested)
-			capturedIds.remove(pointerId);
+			clearPointerCapture(pointerId);
 		else if (event.pointerCaptureTarget != null)
-			capturedIds.set(pointerId, event.pointerCaptureTarget);
+			setPointerCapture(pointerId, event.pointerCaptureTarget);
+	}
+
+	function setPointerCapture(pointerId:Int, id:WidgetId):Void {
+		capturedIds.set(pointerId, id);
+		syncPlatformPointerCapture();
+	}
+
+	function clearPointerCapture(pointerId:Int):Void {
+		if (!capturedIds.exists(pointerId))
+			return;
+		capturedIds.remove(pointerId);
+		syncPlatformPointerCapture();
+	}
+
+	function syncPlatformPointerCapture():Void {
+		if (pointerCaptureHandler == null) {
+			platformPointerCaptured = false;
+			return;
+		}
+		var requested = false;
+		for (_ in capturedIds.keys()) {
+			requested = true;
+			break;
+		}
+		if (requested == platformPointerCaptured)
+			return;
+		platformPointerCaptured = requested;
+		pointerCaptureHandler(requested);
 	}
 
 	function rememberPointer(pointerId:Int, x:Float, y:Float):Void {
@@ -366,8 +408,8 @@ class EventDispatcher {
 		if (node == null)
 			return;
 		var event = new UiEvent(kind, id);
-		event.currentTarget = id;
 		event.phase = "target";
+		event.setCurrentTarget(node);
 		node.invoke(event);
 	}
 
@@ -407,21 +449,21 @@ class EventDispatcher {
 			return;
 		event.phase = "capture";
 		for (index in 0...(path.length - 1)) {
-			event.currentTarget = path[index].id;
+			event.setCurrentTarget(path[index]);
 			path[index].invoke(event);
 			if (event.propagationStopped)
 				return;
 		}
 		var targetIndex = path.length - 1;
 		event.phase = "target";
-		event.currentTarget = path[targetIndex].id;
+		event.setCurrentTarget(path[targetIndex]);
 		path[targetIndex].invoke(event);
 		if (event.propagationStopped)
 			return;
 		event.phase = "bubble";
 		var index = targetIndex - 1;
 		while (index >= 0) {
-			event.currentTarget = path[index].id;
+			event.setCurrentTarget(path[index]);
 			path[index].invoke(event);
 			if (event.propagationStopped)
 				return;

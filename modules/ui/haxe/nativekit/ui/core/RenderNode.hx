@@ -6,6 +6,8 @@ import LayoutVisualKind;
 import Canvas;
 import CompositeMode;
 import ResolvedLayoutItem;
+import Point;
+import Rect;
 import NativeKit.WindowDecorationRegionKind;
 import nativekit.ui.style.ComputedStyle;
 import nativekit.ui.style.Decoration;
@@ -22,6 +24,7 @@ class RenderNode {
 	public var focusable:Bool;
 	public var focusTrap:Bool;
 	public var hitTestSelf:Bool;
+	public var hitTestBehavior:HitTestBehavior;
 	public var enabled:Bool;
 	/** Generic pseudo-state flags maintained by the routed interaction system. */
 	public var states:Int;
@@ -58,6 +61,7 @@ class RenderNode {
 		focusable = false;
 		focusTrap = false;
 		hitTestSelf = true;
+		hitTestBehavior = HitTestBehavior.Auto;
 		enabled = true;
 		states = 0;
 		styleType = null;
@@ -103,6 +107,33 @@ class RenderNode {
 		children.push(child);
 		layout.add(child.layout);
 		return child;
+	}
+
+	/** Converts a point in this node's local space into viewport/global space. */
+	public function localToGlobal(point:Point):Point
+		return requireResolved().localToViewport(point);
+
+	/** Converts a viewport/global point into this node's local space. */
+	public function globalToLocal(point:Point):Point
+		return requireResolved().viewportToLocal(point);
+
+	/** Converts a point from this node's local space into another node's local space. */
+	public function localToNode(point:Point, other:RenderNode):Point {
+		if (other == null)
+			throw "Coordinate conversion requires another render node";
+		return other.globalToLocal(localToGlobal(point));
+	}
+
+	public function localBounds():Rect
+		return requireResolved().localBounds();
+
+	public function globalBounds():Rect
+		return requireResolved().viewportBounds();
+
+	public function containsGlobalPoint(point:Point):Bool {
+		if (point == null)
+			throw "Global points cannot be null";
+		return requireResolved().hitTest(point.x, point.y);
 	}
 
 	/** Copies resolved typography onto this node's concrete layout payload. */
@@ -369,5 +400,11 @@ class RenderNode {
 			node = present.parent;
 		}
 		return result;
+	}
+
+	function requireResolved():ResolvedLayoutItem {
+		if (resolved == null)
+			throw "Render node has no resolved geometry; submit the UI first";
+		return cast resolved;
 	}
 }

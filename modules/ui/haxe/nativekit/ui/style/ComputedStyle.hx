@@ -128,6 +128,10 @@ class ComputedStyle {
 			var transform:Transform2D = cast copyValue(cast StyleProperty.Transform, values.get(StyleProperty.Transform.name));
 			result.transform = transform;
 		}
+		if (values.exists(StyleProperty.TransformOriginX.name))
+			result.transformOriginX = cast values.get(StyleProperty.TransformOriginX.name);
+		if (values.exists(StyleProperty.TransformOriginY.name))
+			result.transformOriginY = cast values.get(StyleProperty.TransformOriginY.name);
 		return result;
 	}
 

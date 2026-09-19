@@ -33,6 +33,10 @@ class LayoutStyle {
 	public var clipVertical:Bool;
 	public var visible:Bool;
 	public var transform:Transform2D;
+	/** Normalized horizontal pivot used after layout resolves the node width. */
+	public var transformOriginX:Float;
+	/** Normalized vertical pivot used after layout resolves the node height. */
+	public var transformOriginY:Float;
 
 	public function new() {
 		width = LayoutAxis.fit();
@@ -62,6 +66,8 @@ class LayoutStyle {
 		clipVertical = false;
 		visible = true;
 		transform = Transform2D.identity();
+		transformOriginX = 0.5;
+		transformOriginY = 0.5;
 	}
 
 	/** Returns an independent style value for compositional widget builders. */
@@ -95,6 +101,8 @@ class LayoutStyle {
 		result.visible = visible;
 		result.transform = new Transform2D(transform.a, transform.b, transform.c,
 			transform.d, transform.tx, transform.ty);
+		result.transformOriginX = transformOriginX;
+		result.transformOriginY = transformOriginY;
 		return result;
 	}
 

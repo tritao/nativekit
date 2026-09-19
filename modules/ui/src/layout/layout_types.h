@@ -170,6 +170,8 @@ struct LayoutStyle {
     bool clip_vertical = false;
     bool visible = true;
     LayoutTransform transform{};
+    float transform_origin_x = 0.5f;
+    float transform_origin_y = 0.5f;
 };
 
 /** A flat, frame-scoped render/layout tree. Parent indices refer to this array. */

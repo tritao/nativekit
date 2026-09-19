@@ -1,5 +1,7 @@
 package nativekit.ui.core;
 
+import Point;
+
 /** Routed event shared by capture, target, and bubble handlers. */
 class UiEvent {
 	public final kind:String;
@@ -16,6 +18,12 @@ class UiEvent {
 	public final timestamp:Float;
 	public final text:Null<String>;
 	public final data:Dynamic;
+	/** Viewport coordinates retained under the explicit global names. */
+	public var globalX(get, never):Float;
+	public var globalY(get, never):Float;
+	/** Coordinates transformed into the currentTarget's local space. */
+	public var localX(default, null):Float;
+	public var localY(default, null):Float;
 	public var currentTarget:Null<WidgetId>;
 	public var phase:String;
 	public var defaultPrevented(default, null):Bool;
@@ -44,6 +52,8 @@ class UiEvent {
 		this.timestamp = timestamp;
 		this.text = text;
 		this.data = data;
+		localX = x;
+		localY = y;
 		currentTarget = null;
 		phase = "target";
 		defaultPrevented = false;
@@ -51,6 +61,28 @@ class UiEvent {
 		immediatePropagationStopped = false;
 		pointerCaptureTarget = null;
 		pointerReleaseRequested = false;
+	}
+
+	inline function get_globalX():Float
+		return x;
+
+	inline function get_globalY():Float
+		return y;
+
+	@:allow(nativekit.ui.core.EventDispatcher)
+	function setCurrentTarget(node:RenderNode):Void {
+		if (node == null)
+			throw "Routed events require a current target";
+		currentTarget = node.id;
+		var local = node.resolved == null ? null :
+			node.resolved.tryViewportToLocal(new Point(globalX, globalY));
+		if (local == null) {
+			localX = globalX;
+			localY = globalY;
+		} else {
+			localX = local.x;
+			localY = local.y;
+		}
 	}
 
 	public function stopPropagation():Void
