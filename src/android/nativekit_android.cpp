@@ -2807,6 +2807,16 @@ nk_result NK_CALL nk_surface_present(nk_handle handle) {
     return NK_OK;
 }
 
+nk_result NK_CALL nk_surface_submit_frame(const nk_surface_frame_target *) {
+    /* Android GLES remains aliased until the EGL binding is moved to RENDER. */
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_finish_frame(nk_handle handle,
+                                          const nk_surface_frame_target *) {
+    return nk_surface_present(handle);
+}
+
 nk_result NK_CALL nk_surface_set_frame_callback(nk_handle handle,
                                                 nk_surface_frame_callback callback,
                                                 void *user_data) {

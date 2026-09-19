@@ -3152,8 +3152,12 @@ static nkgpu_result end_frame(nkgpu_renderer r, bool present_surface) {
     if (rs->value.in_pass)
         sg_end_pass();
     sg_commit();
-    if (!present_surface && rs->value.frame_target.frame != NK_INVALID_HANDLE)
+    if (!present_surface && rs->value.frame_target.frame != NK_INVALID_HANDLE) {
+        const nk_result submitted = nk_surface_submit_frame(&rs->value.frame_target);
+        if (submitted != NK_OK)
+            return fail(NKGPU_ERROR_UNKNOWN, "render submit: %s", nk_last_error());
         nk::core::mark_frame_render_submitted(rs->value.frame_target.frame);
+    }
     rs->value.state = RendererState::Ready;
     rs->value.in_pass = false;
     rs->value.active_target = 0;

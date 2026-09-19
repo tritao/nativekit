@@ -52,5 +52,11 @@ nk_result NK_CALL nk_surface_get_frame_target(nk_handle, nk_surface_frame_target
 nk_result NK_CALL nk_surface_get_proc_address(nk_handle, const char *, nk_graphics_proc *) {
     return unsupported_graphics();
 }
+nk_result NK_CALL nk_surface_submit_frame(const nk_surface_frame_target *) {
+    return unsupported_graphics();
+}
+nk_result NK_CALL nk_surface_finish_frame(nk_handle, const nk_surface_frame_target *) {
+    return unsupported_graphics();
+}
 }
 #endif

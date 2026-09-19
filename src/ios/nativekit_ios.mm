@@ -3481,6 +3481,31 @@ nk_result NK_CALL nk_surface_present(nk_handle handle) {
     return NK_OK;
 }
 
+nk_result NK_CALL nk_surface_submit_frame(const nk_surface_frame_target *target) {
+    if (!target || target->api != NK_GRAPHICS_METAL || !target->native_present_target)
+        return NK_ERROR_INVALID_ARGUMENT;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_finish_frame(nk_handle handle,
+                                          const nk_surface_frame_target *) {
+    nk::core::clear_error();
+    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+        return thread;
+    auto resource = surface(handle);
+    if (!resource) {
+        nk::core::set_error("invalid or stale iOS graphics surface handle");
+        return NK_ERROR_INVALID_HANDLE;
+    }
+    if (!resource->frame_prepared) {
+        nk::core::set_error("iOS Metal surface has no prepared frame");
+        return NK_ERROR_INVALID_REQUEST;
+    }
+    resource->drawable = nil;
+    resource->frame_prepared = false;
+    return NK_OK;
+}
+
 nk_result NK_CALL nk_surface_set_frame_callback(nk_handle handle,
                                                 nk_surface_frame_callback callback,
                                                 void *user_data) {

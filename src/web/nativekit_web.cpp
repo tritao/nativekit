@@ -3419,6 +3419,15 @@ nk_result NK_CALL nk_surface_get_proc_address(nk_handle, const char *, nk_graphi
     return unsupported("WebGL functions are linked by Emscripten and have no proc-address table");
 }
 
+nk_result NK_CALL nk_surface_submit_frame(const nk_surface_frame_target *) {
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_finish_frame(nk_handle handle,
+                                          const nk_surface_frame_target *) {
+    return nk_surface_present(handle);
+}
+
 nk_result NK_CALL nk_key_get_state(nk_handle handle, nk_key key, nk_input_action *out_action) {
     if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
         return result;
