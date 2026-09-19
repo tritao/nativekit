@@ -3430,6 +3430,8 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnSurfaceFrame(JN
         auto resource = surface(handle);
         if (!resource || resource->destroying || !resource->frame_callback ||
             resource->api != NK_GRAPHICS_OPENGL_ES || resource->surface == EGL_NO_SURFACE ||
+            resource->frame_prepared ||
+            resource->surface_destroy_pending.load(std::memory_order_acquire) ||
             resource->framebuffer_width <= 0 || resource->framebuffer_height <= 0)
             return;
         /* The Java surface keeps posting frames; on-demand surfaces skip them. */
@@ -3440,7 +3442,8 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnSurfaceFrame(JN
             return;
         resource = surface(handle);
         if (!resource || resource->destroying || !resource->frame_callback ||
-            resource->surface == EGL_NO_SURFACE)
+            resource->surface == EGL_NO_SURFACE ||
+            resource->surface_destroy_pending.load(std::memory_order_acquire))
             return;
         const auto callback = resource->frame_callback;
         void *user_data = resource->frame_user_data;
