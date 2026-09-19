@@ -285,6 +285,7 @@ struct MacSurfaceResource final : nk::core::Resource {
     void *frame_user_data = nullptr;
     nk::core::FrameRequestState frame_requests;
     bool frame_prepared = false;
+    bool resize_pending = false;
     bool ready = false;
     bool lost_reported = false;
     bool destroying = false;
@@ -771,11 +772,16 @@ void sync_surface_drawable_size(MacSurfaceResource &resource) {
         return;
     const CGFloat scale = resource.view.window ? resource.view.window.backingScaleFactor : 1.0;
     const NSSize view_size = resource.view.bounds.size;
-    resource.layer.contentsScale = scale > 0.0 ? scale : 1.0;
-    resource.layer.drawableSize =
-        CGSizeMake(std::max(0.0, view_size.width * scale), std::max(0.0, view_size.height * scale));
-    const int32_t width = static_cast<int32_t>(resource.layer.drawableSize.width);
-    const int32_t height = static_cast<int32_t>(resource.layer.drawableSize.height);
+    const CGFloat effective_scale = scale > 0.0 ? scale : 1.0;
+    const int32_t width = static_cast<int32_t>(std::max(0.0, view_size.width * effective_scale));
+    const int32_t height = static_cast<int32_t>(std::max(0.0, view_size.height * effective_scale));
+    if (resource.frame_prepared) {
+        resource.resize_pending = resource.framebuffer_width != width ||
+                                  resource.framebuffer_height != height;
+        return;
+    }
+    resource.layer.contentsScale = effective_scale;
+    resource.layer.drawableSize = CGSizeMake(width, height);
     if (resource.framebuffer_width == width && resource.framebuffer_height == height)
         return;
     const bool changed = resource.framebuffer_width != 0 || resource.framebuffer_height != 0;
@@ -784,6 +790,7 @@ void sync_surface_drawable_size(MacSurfaceResource &resource) {
     resource.depth_stencil = nil;
     resource.drawable = nil;
     resource.frame_prepared = false;
+    resource.resize_pending = false;
     if (resource.ready && changed)
         emit_surface_resize(resource);
 }
@@ -5280,6 +5287,10 @@ nk_result NK_CALL nk_surface_present(nk_handle handle) {
     // Sokol schedules the drawable for presentation when its command buffer commits.
     resource->drawable = nil;
     resource->frame_prepared = false;
+    if (resource->resize_pending) {
+        resource->resize_pending = false;
+        sync_surface_drawable_size(*resource);
+    }
     return NK_OK;
 }
 
@@ -5301,6 +5312,10 @@ nk_result NK_CALL nk_surface_finish_frame(nk_handle handle,
         return fail(NK_ERROR_INVALID_REQUEST, "Metal surface has no prepared frame");
     resource->drawable = nil;
     resource->frame_prepared = false;
+    if (resource->resize_pending) {
+        resource->resize_pending = false;
+        sync_surface_drawable_size(*resource);
+    }
     return NK_OK;
 }
 

@@ -208,6 +208,7 @@ struct IOSSurface final : nk::core::Resource {
     void *frame_user_data = nullptr;
     nk::core::FrameRequestState frame_requests;
     bool frame_prepared = false;
+    bool resize_pending = false;
     bool ready = false;
     bool lost_reported = false;
     bool destroying = false;
@@ -1750,11 +1751,17 @@ void sync_surface_drawable_size(IOSSurface &resource) {
     const CGFloat scale =
         resource.host_view.contentScaleFactor > 0 ? resource.host_view.contentScaleFactor : 1.0;
     const CGSize size = resource.layer.bounds.size;
+    const int32_t framebuffer_width =
+        static_cast<int32_t>(std::max<CGFloat>(0, size.width * scale));
+    const int32_t framebuffer_height =
+        static_cast<int32_t>(std::max<CGFloat>(0, size.height * scale));
+    if (resource.frame_prepared) {
+        resource.resize_pending = resource.framebuffer_width != framebuffer_width ||
+                                  resource.framebuffer_height != framebuffer_height;
+        return;
+    }
     resource.layer.contentsScale = scale;
-    resource.layer.drawableSize = CGSizeMake(std::max<CGFloat>(0, size.width * scale),
-                                             std::max<CGFloat>(0, size.height * scale));
-    const int32_t framebuffer_width = static_cast<int32_t>(resource.layer.drawableSize.width);
-    const int32_t framebuffer_height = static_cast<int32_t>(resource.layer.drawableSize.height);
+    resource.layer.drawableSize = CGSizeMake(framebuffer_width, framebuffer_height);
     if (resource.framebuffer_width == framebuffer_width &&
         resource.framebuffer_height == framebuffer_height)
         return;
@@ -1764,6 +1771,7 @@ void sync_surface_drawable_size(IOSSurface &resource) {
     resource.depth_stencil = nil;
     resource.drawable = nil;
     resource.frame_prepared = false;
+    resource.resize_pending = false;
     if (resource.ready && changed)
         emit_surface_resize(resource);
 }
@@ -3478,6 +3486,10 @@ nk_result NK_CALL nk_surface_present(nk_handle handle) {
     }
     resource->drawable = nil;
     resource->frame_prepared = false;
+    if (resource->resize_pending) {
+        resource->resize_pending = false;
+        sync_surface_drawable_size(*resource);
+    }
     return NK_OK;
 }
 
@@ -3503,6 +3515,10 @@ nk_result NK_CALL nk_surface_finish_frame(nk_handle handle,
     }
     resource->drawable = nil;
     resource->frame_prepared = false;
+    if (resource->resize_pending) {
+        resource->resize_pending = false;
+        sync_surface_drawable_size(*resource);
+    }
     return NK_OK;
 }
 
