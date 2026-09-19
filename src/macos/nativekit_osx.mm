@@ -5292,7 +5292,7 @@ nk_result NK_CALL nk_surface_present(nk_handle handle) {
     return NK_OK;
 }
 
-nk_result NK_CALL nk_surface_submit_frame(const nk_surface_frame_target *target) {
+nk_result NK_CALL nk_frame_backend_submit(const nk_surface_frame_target *target) {
     if (!target || target->api != NK_GRAPHICS_METAL || !target->native_present_target)
         return NK_ERROR_INVALID_ARGUMENT;
     /* Sokol associates the drawable with the command buffer at commit time. */
@@ -5307,7 +5307,7 @@ nk_result NK_CALL nk_graphics_unbind_frame_target(const nk_surface_frame_target 
     return NK_OK;
 }
 
-nk_result NK_CALL nk_surface_finish_frame(nk_handle handle,
+nk_result NK_CALL nk_frame_backend_finish(nk_handle handle,
                                           const nk_surface_frame_target *) {
     if (const auto result = enter_ui(); result != NK_OK)
         return result;
