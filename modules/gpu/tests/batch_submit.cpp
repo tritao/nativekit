@@ -316,6 +316,20 @@ int main() {
         nkgpu_test_allow_surface_target_queries();
         EXPECT_RESULT(nk_surface_present_frame(frame), NK_OK);
     }
+    /* A submitted ticket can also be cancelled exactly once; physical
+       backends use this path to release a drawable without presenting it. */
+    {
+        nk_surface_frame frame = NK_INVALID_HANDLE;
+        nk_surface_frame_target frame_target{};
+        frame_target.struct_size = sizeof(frame_target);
+        EXPECT_RESULT(nk_surface_acquire_frame(surface, &frame, &frame_target), NK_OK);
+        nkgpu_test_forbid_surface_target_queries();
+        EXPECT_RESULT(nkgpu_batch_submit(renderer, batch, &frame_target), NKGPU_OK);
+        nkgpu_test_allow_surface_target_queries();
+        EXPECT_RESULT(nk_surface_cancel_frame(frame), NK_OK);
+        EXPECT_RESULT(nk_surface_cancel_frame(frame), NK_ERROR_INVALID_HANDLE);
+        EXPECT_RESULT(nk_surface_present_frame(frame), NK_ERROR_INVALID_HANDLE);
+    }
     /* A sealed batch can be replayed. */
     EXPECT_RESULT(nkgpu_batch_submit(renderer, batch), NKGPU_OK);
     /* A window frame left by a batch must be closed before other work. */
