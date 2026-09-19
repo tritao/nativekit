@@ -51,6 +51,13 @@ class RecordingRenderer final : public UiRenderer {
         ++pass_count;
         return true;
     }
+    bool beginRasterPass(ResourceId, uint64_t cache_key, int, int, bool &cache_hit) override {
+        cache_hit = cache_key != 0 && !raster_cache_keys.insert(cache_key).second;
+        if (cache_hit)
+            ++raster_cache_hits;
+        ++pass_count;
+        return true;
+    }
     bool beginSurfacePass(ResourceId, const SurfaceDescriptor &, bool) override {
         ++pass_count;
         return true;
@@ -83,6 +90,7 @@ class RecordingRenderer final : public UiRenderer {
     }
     bool drawImage(const PreparedTexture &, float, float, float, float, const float[6],
                    float) override {
+        ++image_count;
         return true;
     }
     bool drawBoxShadow(float, float, float, float, const float[6], float,
@@ -133,9 +141,12 @@ class RecordingRenderer final : public UiRenderer {
     uint32_t mask_count = 0;
     uint32_t surface_mesh_count = 0;
     uint32_t box_shadow_count = 0;
+    uint32_t image_count = 0;
     uint32_t commit_count = 0;
     uint32_t effect_cache_hits = 0;
+    uint32_t raster_cache_hits = 0;
     std::unordered_set<uint64_t> effect_cache_keys;
+    std::unordered_set<uint64_t> raster_cache_keys;
     bool last_scissor_enabled = false;
     std::array<float, 4> last_scissor{};
     std::string error;
@@ -409,6 +420,18 @@ int main() {
         (decorated_position - 1)->kind != RenderCommandKind::Path ||
         decorated_position->resource.value != custom_path.value)
         return 24;
+
+    LayoutRenderCompiler::RasterPaintNodes raster_paints{2};
+    LayoutRenderFrame raster_frame;
+    if (!compiler.compile(ordered_snapshot, main_target, 1.5f, raster_frame, &compile_error, false,
+                          engine.text_adapter(), &custom_paints, &raster_paints) ||
+        raster_frame.plan().passes.size() != 3 ||
+        raster_frame.plan().passes[1].kind != RenderPassKind::Raster ||
+        raster_frame.plan().passes[1].commands.size() != 1 ||
+        raster_frame.plan().passes[2].commands.empty() ||
+        raster_frame.plan().passes[2].commands.front().kind != RenderCommandKind::CompositeTarget ||
+        raster_frame.plan().dependencies.size() != 1)
+        return 25;
 
     RenderPlan bounded_custom_plan;
     bounded_custom_plan.passes.push_back({main_target, {}, false, {}});
@@ -703,6 +726,36 @@ int main() {
         !execute_cache_plan() || cache_backend.effect_cache_keys.size() != 5 ||
         cache_backend.effect_cache_hits != 3 || cache_backend.effect_count != 5)
         return 33;
+
+    RenderPlan raster_cache_plan;
+    const ResourceId raster_cache_target = make_resource_id(ResourceKind::RenderTarget, 1, 470);
+    RenderPass raster_cache_pass;
+    raster_cache_pass.target = raster_cache_target;
+    raster_cache_pass.kind = RenderPassKind::Raster;
+    RenderCommand raster_image_command;
+    raster_image_command.kind = RenderCommandKind::Image;
+    raster_image_command.resource = cache_source_image;
+    raster_image_command.width = raster_image_command.height = 10.0f;
+    raster_cache_pass.commands.push_back(raster_image_command);
+    raster_cache_plan.passes.push_back(std::move(raster_cache_pass));
+    RenderPass raster_cache_main;
+    raster_cache_main.target = cache_main;
+    raster_cache_main.commands.push_back(
+        {RenderCommandKind::CompositeTarget, raster_cache_target, 0.0f, 0.0f, 10.0f, 10.0f});
+    raster_cache_plan.passes.push_back(std::move(raster_cache_main));
+    raster_cache_plan.dependencies.push_back({raster_cache_target, cache_main});
+    RecordingRenderer raster_cache_backend;
+    auto execute_raster_cache_plan = [&] {
+        return execute_render_plan(raster_cache_backend, raster_cache_plan, cache_resources,
+                                   {cache_main, frame_target}, &execution_error);
+    };
+    if (!execute_raster_cache_plan() || !execute_raster_cache_plan() ||
+        raster_cache_backend.raster_cache_hits != 1 || raster_cache_backend.image_count != 1)
+        return 34;
+    if (!cache_resources.bind_image(cache_source_image, cache_source_texture, 12) ||
+        !execute_raster_cache_plan() || raster_cache_backend.raster_cache_hits != 1 ||
+        raster_cache_backend.image_count != 2)
+        return 35;
 
     LayoutSnapshot recolored = snapshot;
     for (auto &primitive : recolored.primitives) {

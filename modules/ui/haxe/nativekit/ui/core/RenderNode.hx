@@ -25,6 +25,8 @@ class RenderNode {
 	public var focusTrap:Bool;
 	public var hitTestSelf:Bool;
 	public var hitTestBehavior:HitTestBehavior;
+	/** Controls GPU raster reuse for this node's custom paint. */
+	public var cachePolicy:CachePolicy;
 	public var enabled:Bool;
 	/** Generic pseudo-state flags maintained by the routed interaction system. */
 	public var states:Int;
@@ -62,6 +64,7 @@ class RenderNode {
 		focusTrap = false;
 		hitTestSelf = true;
 		hitTestBehavior = HitTestBehavior.Auto;
+		cachePolicy = CachePolicy.None;
 		enabled = true;
 		states = 0;
 		styleType = null;

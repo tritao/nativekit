@@ -190,6 +190,7 @@ struct LayoutSessionState {
     nkui::LayoutRenderFrame frame;
     nkui::LayoutSnapshot snapshot;
     std::unordered_map<uint32_t, nkui_display_list> custom_paints;
+    std::unordered_map<uint32_t, nkui_layout_cache_policy> custom_paint_cache_policies;
     nkui_nullable_layout_measure_callback measure_callback = nullptr;
     void *measure_user_data = nullptr;
     bool fonts_configured = false;
@@ -279,6 +280,8 @@ void discard_stale_renderer(RendererSlot &slot, const nk_surface_frame_target &t
     slot.stats.transient_target_pool_misses += old_stats.transient_target_pool_misses;
     slot.stats.effect_cache_hits += old_stats.effect_cache_hits;
     slot.stats.effect_cache_misses += old_stats.effect_cache_misses;
+    slot.stats.raster_cache_hits += old_stats.raster_cache_hits;
+    slot.stats.raster_cache_misses += old_stats.raster_cache_misses;
     slot.renderer.reset();
 }
 
@@ -782,7 +785,10 @@ uint32_t float_bits(float value) {
 void add_effect_cache_pixel_scale(nkui::RenderPlan &plan, float pixel_scale) {
     const uint32_t scale = float_bits(pixel_scale);
     for (auto &pass : plan.passes) {
-        if (pass.kind != nkui::RenderPassKind::Effect || !pass.cache_key)
+        if (pass.kind == nkui::RenderPassKind::Raster && !pass.cache_key)
+            pass.cache_key = static_cast<uint64_t>(scale) ^ UINT64_C(0xD6E8FEB86659FD93);
+        if ((pass.kind != nkui::RenderPassKind::Effect &&
+             pass.kind != nkui::RenderPassKind::Raster) || !pass.cache_key)
             continue;
         pass.cache_key ^= static_cast<uint64_t>(scale) + UINT64_C(0x9E3779B97F4A7C15) +
                           (pass.cache_key << 6) + (pass.cache_key >> 2);
@@ -1063,6 +1069,7 @@ void release_custom_paints(LayoutSessionState &session) {
             --list->custom_refs;
     }
     session.custom_paints.clear();
+    session.custom_paint_cache_policies.clear();
 }
 
 bool collect_display_resources(const uint8_t *data, size_t size,
@@ -1461,6 +1468,26 @@ extern "C" nkui_result nkui_layout_session_set_custom_paint(nkui_layout_session 
     return NKUI_OK;
 }
 
+extern "C" nkui_result nkui_layout_session_set_custom_paint_cache_policy(
+    nkui_layout_session session, uint32_t node_id, nkui_layout_cache_policy policy) {
+    if (active_measure_session)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    if (!node_id || policy > NKUI_LAYOUT_CACHE_RASTER)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(layout_sessions_mutex);
+    auto *state = resolve(session);
+    if (!state || !state->submitted)
+        return NKUI_ERROR_INVALID_HANDLE;
+    const auto *item = state->snapshot.find(node_id);
+    if (!item || item->visual_kind != nkui::LayoutVisualKind::Custom)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    if (policy == NKUI_LAYOUT_CACHE_NONE)
+        state->custom_paint_cache_policies.erase(node_id);
+    else
+        state->custom_paint_cache_policies[node_id] = policy;
+    return NKUI_OK;
+}
+
 extern "C" nkui_result nkui_layout_session_submit(nkui_layout_session session,
                                                   const uint8_t *transaction,
                                                   uint32_t transaction_bytes,
@@ -1506,6 +1533,15 @@ extern "C" nkui_result nkui_layout_session_submit(nkui_layout_session session,
         if (list && list->custom_refs)
             --list->custom_refs;
         it = state->custom_paints.erase(it);
+    }
+    for (auto it = state->custom_paint_cache_policies.begin();
+         it != state->custom_paint_cache_policies.end();) {
+        const auto *item = state->snapshot.find(it->first);
+        if (item && item->visual_kind == nkui::LayoutVisualKind::Custom &&
+            state->custom_paints.find(it->first) != state->custom_paints.end())
+            ++it;
+        else
+            it = state->custom_paint_cache_policies.erase(it);
     }
     return NKUI_OK;
 }
@@ -2205,6 +2241,11 @@ extern "C" nkui_result nkui_renderer_get_stats(nkui_renderer renderer,
             slot->stats.effect_cache_misses + ui_stats.effect_cache_misses;
         out_stats->effect_cache_entries = ui_stats.effect_cache_entries;
         out_stats->effect_cache_bytes = ui_stats.effect_cache_bytes;
+        out_stats->raster_cache_hits = slot->stats.raster_cache_hits + ui_stats.raster_cache_hits;
+        out_stats->raster_cache_misses =
+            slot->stats.raster_cache_misses + ui_stats.raster_cache_misses;
+        out_stats->raster_cache_entries = ui_stats.raster_cache_entries;
+        out_stats->raster_cache_bytes = ui_stats.raster_cache_bytes;
         out_stats->text_layout_cache_hits = ui_stats.text_layout_cache_hits;
         out_stats->text_layout_cache_misses = ui_stats.text_layout_cache_misses;
     }
@@ -2649,6 +2690,7 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
     const nkui::ResourceId compile_target = has_backdrop ? backdrop_root_target() : main_target;
     std::vector<std::pair<uint32_t, nkui::RenderPlan>> custom_plan_storage;
     nkui::LayoutRenderCompiler::CustomPaintPlans custom_plans;
+    nkui::LayoutRenderCompiler::RasterPaintNodes raster_paint_nodes;
     {
         custom_plan_storage.reserve(session_state->custom_paints.size());
         for (const auto &[node_id, list_handle] : session_state->custom_paints) {
@@ -2665,14 +2707,20 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
             custom_plan_storage.emplace_back(node_id, std::move(custom_plan));
         }
         custom_plans.reserve(custom_plan_storage.size());
-        for (const auto &[node_id, custom_plan] : custom_plan_storage)
+        for (const auto &[node_id, custom_plan] : custom_plan_storage) {
             custom_plans.emplace(node_id, &custom_plan);
+            const auto policy = session_state->custom_paint_cache_policies.find(node_id);
+            if (policy != session_state->custom_paint_cache_policies.end() &&
+                policy->second >= NKUI_LAYOUT_CACHE_AUTO)
+                raster_paint_nodes.insert(node_id);
+        }
     }
     nkui::LayoutRenderCompileError compile_error{};
     if (!session_state->compiler.compile(session_state->snapshot, compile_target,
                                          frame_info->pixel_scale, session_state->frame,
                                          &compile_error, load_existing != 0,
-                                         session_state->engine->text_adapter(), &custom_plans))
+                                         session_state->engine->text_adapter(), &custom_plans,
+                                         &raster_paint_nodes))
         return NKUI_ERROR_INVALID_TRANSACTION;
 
     if (has_backdrop)

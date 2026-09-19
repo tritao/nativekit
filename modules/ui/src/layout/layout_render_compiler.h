@@ -10,6 +10,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace nkui {
@@ -76,6 +77,7 @@ class LayoutRenderFrame {
 class LayoutRenderCompiler {
   public:
     using CustomPaintPlans = std::unordered_map<uint32_t, const RenderPlan *>;
+    using RasterPaintNodes = std::unordered_set<uint32_t>;
 
     LayoutRenderCompiler();
     void set_font_collection(std::shared_ptr<SkribidiFontCollection> fonts);
@@ -87,7 +89,8 @@ class LayoutRenderCompiler {
     bool compile(const LayoutSnapshot &snapshot, ResourceId main_target, float pixel_scale,
                  LayoutRenderFrame &out, LayoutRenderCompileError *error = nullptr,
                  bool load_existing = false, SkribidiAdapter *text_source = nullptr,
-                 const CustomPaintPlans *custom_paints = nullptr) const;
+                 const CustomPaintPlans *custom_paints = nullptr,
+                 const RasterPaintNodes *raster_paint_nodes = nullptr) const;
 
   private:
     std::shared_ptr<SkribidiFontCollection> fonts_;

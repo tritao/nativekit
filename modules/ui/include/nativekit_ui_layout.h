@@ -17,7 +17,7 @@ extern "C" {
 
 /** Layout bridge and wire-format versions and fixed sizes. */
 enum {
-    NKUI_LAYOUT_API_VERSION = 18,
+    NKUI_LAYOUT_API_VERSION = 19,
     NKUI_LAYOUT_TRANSACTION_VERSION = 15,
     NKUI_LAYOUT_TRANSACTION_HEADER_BYTES = 16,
     NKUI_LAYOUT_NODE_RECORD_BYTES = 248,
@@ -38,6 +38,14 @@ enum NK_FLAGS(nkui_layout_node_flags) {
     NKUI_LAYOUT_NODE_VISIBLE = 1u << 0,
     NKUI_LAYOUT_NODE_FLOATING = 1u << 1,
     NKUI_LAYOUT_NODE_CLIP_TO_PARENT = 1u << 2
+};
+
+/** Persistent rendering policy for a retained custom-paint plane. */
+typedef uint32_t nkui_layout_cache_policy;
+enum NK_ENUM(nkui_layout_cache_policy) {
+    NKUI_LAYOUT_CACHE_NONE = 0,
+    NKUI_LAYOUT_CACHE_AUTO = 1,
+    NKUI_LAYOUT_CACHE_RASTER = 2
 };
 
 /** Flags returned with each resolved item. */
@@ -312,6 +320,10 @@ NKUI_API nkui_result NK_CALL nkui_layout_session_clear_custom_paints(nkui_layout
 NKUI_API nkui_result NK_CALL nkui_layout_session_set_custom_paint(nkui_layout_session session,
                                                                   uint32_t node_id,
                                                                   nkui_display_list display_list);
+
+/** Selects whether a custom-paint plane is rendered as vector content or cached as a raster. */
+NKUI_API nkui_result NK_CALL nkui_layout_session_set_custom_paint_cache_policy(
+    nkui_layout_session session, uint32_t node_id, nkui_layout_cache_policy policy);
 
 /**
  * Submits one flat, Haxe-owned render/layout tree transaction.

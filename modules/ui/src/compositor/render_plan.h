@@ -4,6 +4,7 @@
 #include "display_list/display_list.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <unordered_map>
 #include <vector>
@@ -23,6 +24,7 @@ enum class RenderPassKind : uint8_t {
     Draw = 1,
     Effect,
     Mask,
+    Raster,
 };
 
 enum class RenderTargetFormat : uint8_t {
@@ -120,6 +122,8 @@ struct RenderPlanEmbedOptions {
     std::array<float, 6> placement{1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
     float pixel_scale = 1.0f;
     const std::unordered_map<uint32_t, ResourceId> *target_remap = nullptr;
+    /** Optional destination pass when several continuations share a target. */
+    std::size_t destination_main_pass = static_cast<std::size_t>(-1);
     bool has_clip = false;
     std::array<float, 4> clip{};
 };

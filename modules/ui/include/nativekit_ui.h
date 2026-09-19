@@ -226,6 +226,14 @@ typedef struct nkui_renderer_stats {
     uint64_t effect_cache_entries;
     /** Estimated bytes retained by cached effect results. */
     uint64_t effect_cache_bytes;
+    /** Rasterized custom-paint results served by the persistent renderer cache. */
+    uint64_t raster_cache_hits;
+    /** Rasterized custom-paint results that required a new render pass. */
+    uint64_t raster_cache_misses;
+    /** Number of rasterized custom-paint results retained by the renderer cache. */
+    uint64_t raster_cache_entries;
+    /** Estimated bytes retained by cached rasterized custom-paint results. */
+    uint64_t raster_cache_bytes;
 } nkui_renderer_stats;
 
 /** 16-bit opcode identifying one display-list command record. */

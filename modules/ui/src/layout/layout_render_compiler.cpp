@@ -244,7 +244,8 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                                    float pixel_scale, LayoutRenderFrame &out,
                                    LayoutRenderCompileError *error, bool load_existing,
                                    SkribidiAdapter *text_source,
-                                   const CustomPaintPlans *custom_paints) const {
+                                   const CustomPaintPlans *custom_paints,
+                                   const RasterPaintNodes *raster_paint_nodes) const {
     if (error)
         *error = {};
     if (!is_resource_id(main_target, ResourceKind::RenderTarget) || !std::isfinite(pixel_scale) ||
@@ -279,10 +280,12 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
         uint32_t transient_slot = 1;
         uint32_t transient_target_slot =
             (static_cast<uint16_t>(main_target.value) == 0x8000u) ? 0x8001 : 0x8000;
-        auto &commands = out.plan_.passes.front().commands;
+        std::size_t current_main_pass = 0;
         std::unordered_set<uint32_t> appended_custom_nodes;
         const auto append_custom_plan = [&](const RenderPlan &custom_plan,
-                                            std::size_t primitive_index) -> bool {
+                                            std::size_t primitive_index,
+                                            ResourceId destination_target,
+                                            std::size_t destination_pass) -> bool {
             const auto &primitive = snapshot.primitives[primitive_index];
             std::unordered_map<uint32_t, ResourceId> remapped_targets;
             for (const auto &pass : custom_plan.passes) {
@@ -306,10 +309,11 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
             }
             RenderPlanEmbedOptions options;
             options.source_main_target = main_target;
-            options.destination_main_target = main_target;
+            options.destination_main_target = destination_target;
             options.placement = placement;
             options.pixel_scale = pixel_scale;
             options.target_remap = &remapped_targets;
+            options.destination_main_pass = destination_pass;
             options.has_clip = has_clip;
             options.clip = clip;
             RenderPlanEmbedError embed_error;
@@ -326,8 +330,35 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
             if (!appended_custom_nodes.insert(primitive.node_id).second)
                 return true;
             const auto found = custom_paints->find(primitive.node_id);
-            return found == custom_paints->end() || !found->second ||
-                   append_custom_plan(*found->second, primitive_index);
+            if (found == custom_paints->end() || !found->second)
+                return true;
+            const bool raster = raster_paint_nodes &&
+                                raster_paint_nodes->contains(primitive.node_id);
+            if (!raster)
+                return append_custom_plan(*found->second, primitive_index, main_target,
+                                          current_main_pass);
+            if (transient_target_slot > std::numeric_limits<uint16_t>::max())
+                return fail(error, primitive_index, "raster cache target limit exceeded");
+            const ResourceId raster_target =
+                make_resource_id(ResourceKind::RenderTarget, 1,
+                                 static_cast<uint16_t>(transient_target_slot++));
+            RenderPass raster_pass;
+            raster_pass.target = raster_target;
+            raster_pass.kind = RenderPassKind::Raster;
+            out.plan_.passes.push_back(std::move(raster_pass));
+            const std::size_t raster_pass_index = out.plan_.passes.size() - 1;
+            if (!append_custom_plan(*found->second, primitive_index, raster_target,
+                                    raster_pass_index))
+                return false;
+            out.plan_.dependencies.push_back({raster_target, main_target});
+            RenderPass continuation;
+            continuation.target = main_target;
+            continuation.load_existing = true;
+            RenderCommand composite{RenderCommandKind::CompositeTarget, raster_target};
+            continuation.commands.push_back(std::move(composite));
+            out.plan_.passes.push_back(std::move(continuation));
+            current_main_pass = out.plan_.passes.size() - 1;
+            return true;
         };
         for (std::size_t index = 0; index < snapshot.primitives.size(); ++index) {
             const auto &primitive = snapshot.primitives[index];
@@ -386,7 +417,7 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                 command.content_generation = primitive_content_generation(primitive);
                 if (!clips.empty())
                     set_scissor(command, clips.back(), pixel_scale);
-                commands.push_back(command);
+                out.plan_.passes[current_main_pass].commands.push_back(std::move(command));
                 out.paths_.push_back(std::move(prepared));
                 if (!append_custom_for_primitive(index))
                     return false;
@@ -464,7 +495,7 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                 command.transform = device_transform(primitive.transform, pixel_scale);
                 if (!clips.empty())
                     set_scissor(command, clips.back(), pixel_scale);
-                commands.push_back(command);
+                out.plan_.passes[current_main_pass].commands.push_back(std::move(command));
                 out.glyphs_.push_back(std::move(glyphs));
                 if (!append_custom_for_primitive(index))
                     return false;

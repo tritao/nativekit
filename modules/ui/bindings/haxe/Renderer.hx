@@ -50,7 +50,8 @@ class Renderer {
 		var stats = result.out_stats;
 		return new RendererStats(stats.get_path_preparations(), stats.get_path_cache_hits(), stats.get_path_cache_misses(),
 			stats.get_path_vertices_generated(), stats.get_path_geometry_bytes_allocated(), stats.get_path_tessellation_nanoseconds(),
-			stats.get_path_geometry_bytes_retained());
+			stats.get_path_geometry_bytes_retained(), stats.get_raster_cache_hits(), stats.get_raster_cache_misses(),
+			stats.get_raster_cache_entries(), stats.get_raster_cache_bytes());
 	}
 
 	/** Releases the renderer and its backend resources. Repeated disposal is safe. */
@@ -86,9 +87,15 @@ class RendererStats {
 	public final pathGeometryBytesAllocated:haxe.Int64;
 	public final pathTessellationNanoseconds:haxe.Int64;
 	public final pathGeometryBytesRetained:haxe.Int64;
+	public final rasterCacheHits:haxe.Int64;
+	public final rasterCacheMisses:haxe.Int64;
+	public final rasterCacheEntries:haxe.Int64;
+	public final rasterCacheBytes:haxe.Int64;
 
 	public function new(pathPreparations:haxe.Int64, pathCacheHits:haxe.Int64, pathCacheMisses:haxe.Int64, pathVerticesGenerated:haxe.Int64,
-		pathGeometryBytesAllocated:haxe.Int64, pathTessellationNanoseconds:haxe.Int64, pathGeometryBytesRetained:haxe.Int64) {
+		pathGeometryBytesAllocated:haxe.Int64, pathTessellationNanoseconds:haxe.Int64, pathGeometryBytesRetained:haxe.Int64,
+		rasterCacheHits:haxe.Int64, rasterCacheMisses:haxe.Int64, rasterCacheEntries:haxe.Int64,
+		rasterCacheBytes:haxe.Int64) {
 		this.pathPreparations = pathPreparations;
 		this.pathCacheHits = pathCacheHits;
 		this.pathCacheMisses = pathCacheMisses;
@@ -96,5 +103,9 @@ class RendererStats {
 		this.pathGeometryBytesAllocated = pathGeometryBytesAllocated;
 		this.pathTessellationNanoseconds = pathTessellationNanoseconds;
 		this.pathGeometryBytesRetained = pathGeometryBytesRetained;
+		this.rasterCacheHits = rasterCacheHits;
+		this.rasterCacheMisses = rasterCacheMisses;
+		this.rasterCacheEntries = rasterCacheEntries;
+		this.rasterCacheBytes = rasterCacheBytes;
 	}
 }

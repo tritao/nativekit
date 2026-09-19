@@ -9,7 +9,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	const NKUI_EFFECT_PROGRAM_MAX_OPS = 8;
 	const NKUI_GRADIENT_MAX_STOPS = 8;
 	const NKUI_LAYER_COMMAND_VERSION = 2;
-	const NKUI_LAYOUT_API_VERSION = 18;
+	const NKUI_LAYOUT_API_VERSION = 19;
 	const NKUI_LAYOUT_MAX_TRANSACTION_BYTES = 16777216;
 	/**
 	 * Per-child cross-axis alignment override; zero inherits the parent.
@@ -288,6 +288,14 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 		 * Aligns child baselines in horizontal rows; baseline-less children use their bottom edge.
 		 */
 		NKUI_LAYOUT_ALIGNMENT_BASELINE = 3;
+	}
+	/**
+	 * Persistent rendering policy for a retained custom-paint plane.
+	 */
+	enum nkui_layout_cache_policy : u32 {
+		NKUI_LAYOUT_CACHE_NONE = 0;
+		NKUI_LAYOUT_CACHE_AUTO = 1;
+		NKUI_LAYOUT_CACHE_RASTER = 2;
 	}
 	/**
 	 * Bit flags stored in each node's clip-flags field.
@@ -645,6 +653,10 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	 * cleared, or the session is destroyed.
 	 */
 	extern fn nkui_layout_session_set_custom_paint(session: nkui_layout_session, node_id: u32, display_list: nkui_display_list) -> nkui_result;
+	/**
+	 * Selects whether a custom-paint plane is rendered as vector content or cached as a raster.
+	 */
+	extern fn nkui_layout_session_set_custom_paint_cache_policy(session: nkui_layout_session, node_id: u32, policy: nkui_layout_cache_policy) -> nkui_result;
 	/**
 	 * Copies the font collection configuration into the layout session.
 	 */
@@ -1352,7 +1364,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	/**
 	 * Preparation and geometry-cache counters for one renderer.
 	 */
-	struct nkui_renderer_stats @layout(432, 8) {
+	struct nkui_renderer_stats @layout(464, 8) {
 		/**
 		 * Set to sizeof(nkui_renderer_stats) when returned by the API.
 		 */
@@ -1569,6 +1581,22 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 		 * Estimated bytes retained by cached effect results.
 		 */
 		effect_cache_bytes: u64 @offset(424);
+		/**
+		 * Rasterized custom-paint results served by the persistent renderer cache.
+		 */
+		raster_cache_hits: u64 @offset(432);
+		/**
+		 * Rasterized custom-paint results that required a new render pass.
+		 */
+		raster_cache_misses: u64 @offset(440);
+		/**
+		 * Number of rasterized custom-paint results retained by the renderer cache.
+		 */
+		raster_cache_entries: u64 @offset(448);
+		/**
+		 * Estimated bytes retained by cached rasterized custom-paint results.
+		 */
+		raster_cache_bytes: u64 @offset(456);
 	}
 	/**
 	 * Payload for NKUI_COMMAND_SET_PAINT and resource-only draw commands.

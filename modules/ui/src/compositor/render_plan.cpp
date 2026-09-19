@@ -293,10 +293,19 @@ bool append_embedded_render_plan(const RenderPlan &source, const RenderPlanEmbed
         !finite_transform(options.placement) || !valid_embed_clip(options))
         return fail_embed("invalid render-plan embedding options");
 
-    const auto destination_main = std::find_if(
-        destination.passes.begin(), destination.passes.end(), [&options](const RenderPass &pass) {
-            return pass.target.value == options.destination_main_target.value;
-        });
+    const auto destination_main = [&]() {
+        if (options.destination_main_pass != static_cast<std::size_t>(-1)) {
+            if (options.destination_main_pass >= destination.passes.size() ||
+                destination.passes[options.destination_main_pass].target.value !=
+                    options.destination_main_target.value)
+                return destination.passes.end();
+            return destination.passes.begin() + options.destination_main_pass;
+        }
+        return std::find_if(
+            destination.passes.begin(), destination.passes.end(), [&options](const RenderPass &pass) {
+                return pass.target.value == options.destination_main_target.value;
+            });
+    }();
     if (destination_main == destination.passes.end())
         return fail_embed("destination render target is unavailable");
     const std::size_t destination_main_index =
@@ -393,7 +402,7 @@ bool schedule_render_plan(const RenderPlan &plan, std::vector<uint32_t> &order,
         if (!is_resource_id(pass.target, ResourceKind::RenderTarget) ||
             !valid_descriptor(pass.target_descriptor) ||
             (pass.kind != RenderPassKind::Draw && pass.kind != RenderPassKind::Effect &&
-             pass.kind != RenderPassKind::Mask) ||
+             pass.kind != RenderPassKind::Mask && pass.kind != RenderPassKind::Raster) ||
             ((pass.kind == RenderPassKind::Effect || pass.kind == RenderPassKind::Mask) &&
              (!is_resource_id(pass.input_target, ResourceKind::RenderTarget) ||
               pass.input_target.value == pass.target.value || !pass.commands.empty() ||

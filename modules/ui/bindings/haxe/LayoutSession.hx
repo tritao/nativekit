@@ -115,6 +115,15 @@ class LayoutSession {
 			displayList.nativeHandle()), "layoutSession.setCustomPaint");
 	}
 
+	/** Selects vector or persistent GPU-raster rendering for a custom paint plane. */
+	public function setCustomPaintCachePolicy(nodeId:Int, policy:Int):Void {
+		ensureLive();
+		if (nodeId <= 0 || policy < 0 || policy > 2)
+			throw "Custom paint cache policy is invalid";
+		UiResult.check(NativeKitUI.nkui_layout_session_set_custom_paint_cache_policy(value,
+			nodeId, policy), "layoutSession.setCustomPaintCachePolicy");
+	}
+
 	/** Executes the last submitted tree through the existing renderer backend. */
 	public function render(renderer:Renderer, surface:Surface, frame:FrameInfo):Void {
 		ensureLive();

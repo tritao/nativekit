@@ -326,8 +326,10 @@ class UiContext {
 			var nodeId = node.id.value;
 			var displayList = customLists.get(nodeId);
 			if (displayList != null && canReuseCustomPaint(node)) {
-				if (customListHasCommands.get(nodeId) == true)
+				if (customListHasCommands.get(nodeId) == true) {
 					session.setCustomPaint(nodeId, displayList);
+					session.setCustomPaintCachePolicy(nodeId, node.cachePolicy);
+				}
 				paintSkippedNodes++;
 				painted.set(nodeId, true);
 				return;
@@ -355,6 +357,8 @@ class UiContext {
 			customListHasCommands.set(nodeId, hasCommands);
 			if (hasCommands)
 				session.setCustomPaint(nodeId, displayList);
+			if (hasCommands)
+				session.setCustomPaintCachePolicy(nodeId, node.cachePolicy);
 			customGeometries.set(nodeId, geometry);
 			customStyles.set(nodeId, node.computedStyle);
 			customPaintKeys.set(nodeId, node.retainedPaintKey());

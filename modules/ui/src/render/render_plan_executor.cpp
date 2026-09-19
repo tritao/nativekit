@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstring>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -23,6 +24,34 @@ void hash_runtime_u32(uint64_t &hash, uint32_t value) {
 void hash_runtime_u64(uint64_t &hash, uint64_t value) {
     hash_runtime_u32(hash, static_cast<uint32_t>(value));
     hash_runtime_u32(hash, static_cast<uint32_t>(value >> 32));
+}
+
+void hash_runtime_float(uint64_t &hash, float value) {
+    uint32_t bits = 0;
+    std::memcpy(&bits, &value, sizeof(bits));
+    hash_runtime_u32(hash, bits);
+}
+
+void hash_runtime_command_geometry(uint64_t &hash, const RenderCommand &command) {
+    for (const float value : {command.x, command.y, command.width, command.height,
+                              command.opacity, command.scissor_x, command.scissor_y,
+                              command.scissor_width, command.scissor_height, command.stroke_width,
+                              command.miter_limit})
+        hash_runtime_float(hash, value);
+    for (const float value : command.transform)
+        hash_runtime_float(hash, value);
+    hash_runtime_u32(hash, static_cast<uint32_t>(command.composite));
+    hash_runtime_u32(hash, command.has_scissor ? 1u : 0u);
+    hash_runtime_u32(hash, command.line_cap);
+    hash_runtime_u32(hash, command.line_join);
+    hash_runtime_u32(hash, command.custom_payload ? 1u : 0u);
+    for (const float value : {command.box_shadow.offset_x, command.box_shadow.offset_y,
+                              command.box_shadow.blur_sigma, command.box_shadow.spread})
+        hash_runtime_float(hash, value);
+    for (const float value : command.box_shadow.radii)
+        hash_runtime_float(hash, value);
+    for (const float value : command.box_shadow.color)
+        hash_runtime_float(hash, value);
 }
 
 void hash_runtime_resource(uint64_t &hash, const FrameResources &resources, ResourceId resource) {
@@ -76,12 +105,24 @@ uint64_t runtime_pass_hash(const RenderPass &pass, const FrameResources &resourc
             hash_runtime_u64(hash, execution_serial);
         for (const auto &command : pass.commands) {
             hash_runtime_u64(hash, command.content_generation);
+            hash_runtime_command_geometry(hash, command);
             hash_runtime_command_source(hash, resources, target_hashes, command);
         }
-    } else {
+    } else if (pass.kind == RenderPassKind::Effect || pass.kind == RenderPassKind::Mask) {
         hash_runtime_target(hash, resources, target_hashes, pass.input_target);
         if (pass.kind == RenderPassKind::Mask && pass.mask.kind == MaskKind::Image)
             hash_runtime_resource(hash, resources, pass.mask.image);
+    } else {
+        const auto previous = target_hashes.find(pass.target.value);
+        if (previous != target_hashes.end())
+            hash_runtime_u64(hash, previous->second);
+        if (pass.load_existing)
+            hash_runtime_u64(hash, execution_serial);
+        for (const auto &command : pass.commands) {
+            hash_runtime_u64(hash, command.content_generation);
+            hash_runtime_command_geometry(hash, command);
+            hash_runtime_command_source(hash, resources, target_hashes, command);
+        }
     }
     return hash ? hash : 1;
 }
@@ -240,6 +281,10 @@ bool execute_render_plan(UiRenderer &renderer, const RenderPlan &plan,
                 ? renderer.beginEffectPass(
                       pass.target, frame_effect_cache_key(runtime_hash, window.frame_target),
                       pass_width, pass_height, effect_cache_hit)
+                : pass.kind == RenderPassKind::Raster
+                       ? renderer.beginRasterPass(
+                             pass.target, frame_effect_cache_key(runtime_hash, window.frame_target),
+                             pass_width, pass_height, effect_cache_hit)
                 : (window_pass
                        ? renderer.beginWindowPass(pass_width, pass_height, !pass.load_existing)
                        : renderer.beginTargetPass(pass.target, pass_width, pass_height,
@@ -269,6 +314,8 @@ bool execute_render_plan(UiRenderer &renderer, const RenderPlan &plan,
                 return fail(error, pass_index, 0, renderer.lastError());
             continue;
         }
+        if (pass.kind == RenderPassKind::Raster && effect_cache_hit)
+            continue;
         if (pass.kind == RenderPassKind::Mask) {
             const PreparedTexture *image = nullptr;
             if (pass.mask.kind == MaskKind::Image) {

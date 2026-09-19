@@ -29,6 +29,8 @@ class UiRendererImpl final : public UiRenderer {
     bool beginTargetPass(ResourceId target, int width, int height, bool load_existing) override;
     bool beginEffectPass(ResourceId target, uint64_t cache_key, int width, int height,
                          bool &cache_hit) override;
+    bool beginRasterPass(ResourceId target, uint64_t cache_key, int width, int height,
+                         bool &cache_hit) override;
     bool beginSurfacePass(ResourceId target, const SurfaceDescriptor &description,
                           bool load_existing) override;
     bool drawSurfaceMesh(const SurfaceMeshView &mesh) override;
@@ -113,6 +115,11 @@ struct UiRendererImpl::State {
         uint64_t last_used_frame = 0;
     };
 
+    struct TargetAlias {
+        bool raster = false;
+        uint64_t key = 0;
+    };
+
     struct SurfaceState {
         uint32_t generation = 0;
         int width = 0;
@@ -187,9 +194,12 @@ struct UiRendererImpl::State {
     uint64_t transient_target_pool_hits = 0;
     uint64_t transient_target_pool_misses = 0;
     std::unordered_map<uint64_t, EffectCacheEntry> effect_cache;
-    std::unordered_map<uint32_t, uint64_t> target_aliases;
+    std::unordered_map<uint64_t, EffectCacheEntry> raster_cache;
+    std::unordered_map<uint32_t, TargetAlias> target_aliases;
     uint64_t effect_cache_hits = 0;
     uint64_t effect_cache_misses = 0;
+    uint64_t raster_cache_hits = 0;
+    uint64_t raster_cache_misses = 0;
     uint64_t frame_serial = 0;
     std::unordered_map<uint32_t, SurfaceState> surfaces;
     std::unordered_map<const PreparedPathData *, std::unordered_map<PreparedImageToken, PaintImage>>
@@ -698,7 +708,27 @@ uint64_t cached_effect_bytes(const UiRendererImpl::State &state) {
     return result;
 }
 
+uint64_t cached_raster_bytes(const UiRendererImpl::State &state) {
+    uint64_t result = 0;
+    for (const auto &[key, entry] : state.raster_cache) {
+        (void)key;
+        const uint64_t bytes = effect_target_bytes(entry.target);
+        if (result > std::numeric_limits<uint64_t>::max() - bytes)
+            return std::numeric_limits<uint64_t>::max();
+        result += bytes;
+    }
+    return result;
+}
+
 void destroy_cached_effect(UiRendererImpl::State &state,
+                           UiRendererImpl::State::EffectCacheEntry &entry) {
+    const bool alive = entry.target.handle.id != 0;
+    destroy_target(state, entry.target);
+    if (alive && state.stats.gpu_resources)
+        --state.stats.gpu_resources;
+}
+
+void destroy_cached_raster(UiRendererImpl::State &state,
                            UiRendererImpl::State::EffectCacheEntry &entry) {
     const bool alive = entry.target.handle.id != 0;
     destroy_target(state, entry.target);
@@ -749,12 +779,61 @@ bool make_effect_cache_room(UiRendererImpl::State &state, int width, int height)
     return true;
 }
 
+bool make_raster_cache_room(UiRendererImpl::State &state, int width, int height) {
+    if (width <= 0 || height <= 0)
+        return false;
+    const uint64_t width_value = static_cast<uint64_t>(width);
+    const uint64_t height_value = static_cast<uint64_t>(height);
+    if (width_value > std::numeric_limits<uint64_t>::max() / height_value / 4u)
+        return false;
+    const uint64_t bytes = width_value * height_value * 4u;
+    if (bytes > kMaxCachedEffectBytes)
+        return false;
+    while (state.raster_cache.size() >= kMaxCachedEffectTargets) {
+        auto victim = state.raster_cache.end();
+        for (auto iterator = state.raster_cache.begin(); iterator != state.raster_cache.end();
+             ++iterator) {
+            if (iterator->second.last_used_frame == state.frame_serial)
+                continue;
+            if (victim == state.raster_cache.end() ||
+                iterator->second.last_used_frame < victim->second.last_used_frame)
+                victim = iterator;
+        }
+        if (victim == state.raster_cache.end())
+            return false;
+        destroy_cached_raster(state, victim->second);
+        state.raster_cache.erase(victim);
+    }
+    while (cached_raster_bytes(state) > kMaxCachedEffectBytes - bytes) {
+        auto victim = state.raster_cache.end();
+        for (auto iterator = state.raster_cache.begin(); iterator != state.raster_cache.end();
+             ++iterator) {
+            if (iterator->second.last_used_frame == state.frame_serial)
+                continue;
+            if (victim == state.raster_cache.end() ||
+                iterator->second.last_used_frame < victim->second.last_used_frame)
+                victim = iterator;
+        }
+        if (victim == state.raster_cache.end())
+            return false;
+        destroy_cached_raster(state, victim->second);
+        state.raster_cache.erase(victim);
+    }
+    return true;
+}
+
 UiRendererImpl::State::Target *resolve_target(UiRendererImpl::State &state, ResourceId id) {
     const auto alias = state.target_aliases.find(id.value);
     if (alias != state.target_aliases.end()) {
-        const auto cached = state.effect_cache.find(alias->second);
-        if (cached != state.effect_cache.end())
-            return &cached->second.target;
+        if (alias->second.raster) {
+            const auto cached = state.raster_cache.find(alias->second.key);
+            if (cached != state.raster_cache.end())
+                return &cached->second.target;
+        } else {
+            const auto cached = state.effect_cache.find(alias->second.key);
+            if (cached != state.effect_cache.end())
+                return &cached->second.target;
+        }
         state.target_aliases.erase(alias);
     }
     const auto found = state.targets.find(id.value);
@@ -1683,7 +1762,7 @@ bool UiRendererImpl::beginEffectPass(ResourceId target_id, uint64_t cache_key, i
     }
     if (found != state_->effect_cache.end()) {
         found->second.last_used_frame = state_->frame_serial;
-        state_->target_aliases[target_id.value] = cache_key;
+        state_->target_aliases[target_id.value] = {false, cache_key};
         ++state_->effect_cache_hits;
         cache_hit = true;
         return true;
@@ -1703,13 +1782,59 @@ bool UiRendererImpl::beginEffectPass(ResourceId target_id, uint64_t cache_key, i
             return false;
         }
         entry.last_used_frame = state_->frame_serial;
-        state_->target_aliases[target_id.value] = cache_key;
+        state_->target_aliases[target_id.value] = {false, cache_key};
         if (!begin_target_pass(*state_, entry.target, false)) {
             destroy_cached_effect(*state_, entry);
             state_->effect_cache.erase(inserted.first);
             state_->target_aliases.erase(target_id.value);
             return false;
         }
+    }
+    return true;
+}
+
+bool UiRendererImpl::beginRasterPass(ResourceId target_id, uint64_t cache_key, int width,
+                                     int height, bool &cache_hit) {
+    cache_hit = false;
+    if (!valid() || !state_->in_frame || state_->in_pass ||
+        !is_resource_id(target_id, ResourceKind::RenderTarget) || width <= 0 || height <= 0)
+        return fail(*state_, "invalid UI raster pass");
+    if (!cache_key)
+        return beginTargetPass(target_id, width, height, false);
+
+    auto found = state_->raster_cache.find(cache_key);
+    if (found != state_->raster_cache.end() &&
+        (found->second.target.width != width || found->second.target.height != height ||
+         !found->second.target.handle.id || !found->second.target.image.id)) {
+        destroy_cached_raster(*state_, found->second);
+        state_->raster_cache.erase(found);
+        found = state_->raster_cache.end();
+    }
+    if (found != state_->raster_cache.end()) {
+        found->second.last_used_frame = state_->frame_serial;
+        state_->target_aliases[target_id.value] = {true, cache_key};
+        ++state_->raster_cache_hits;
+        cache_hit = true;
+        return true;
+    }
+    ++state_->raster_cache_misses;
+    if (!make_raster_cache_room(*state_, width, height))
+        return beginTargetPass(target_id, width, height, false);
+    const auto inserted = state_->raster_cache.try_emplace(cache_key);
+    if (!inserted.second)
+        return fail(*state_, "raster cache insertion failed");
+    auto &entry = inserted.first->second;
+    if (!create_target(*state_, entry.target, width, height)) {
+        state_->raster_cache.erase(inserted.first);
+        return false;
+    }
+    entry.last_used_frame = state_->frame_serial;
+    state_->target_aliases[target_id.value] = {true, cache_key};
+    if (!begin_target_pass(*state_, entry.target, false)) {
+        destroy_cached_raster(*state_, entry);
+        state_->raster_cache.erase(inserted.first);
+        state_->target_aliases.erase(target_id.value);
+        return false;
     }
     return true;
 }
@@ -2421,6 +2546,10 @@ UiRendererStats UiRendererImpl::stats() const {
     stats.effect_cache_misses = state_->effect_cache_misses;
     stats.effect_cache_entries = state_->effect_cache.size();
     stats.effect_cache_bytes = cached_effect_bytes(*state_);
+    stats.raster_cache_hits = state_->raster_cache_hits;
+    stats.raster_cache_misses = state_->raster_cache_misses;
+    stats.raster_cache_entries = state_->raster_cache.size();
+    stats.raster_cache_bytes = cached_raster_bytes(*state_);
     if (state_->renderer.id) {
         nkgpu_renderer_stats gpu{};
         if (nkgpu_renderer_get_stats(state_->renderer, &gpu) == NKGPU_OK) {

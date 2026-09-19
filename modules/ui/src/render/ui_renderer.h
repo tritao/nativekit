@@ -92,6 +92,10 @@ struct UiRendererStats {
     uint64_t effect_cache_misses = 0;
     uint64_t effect_cache_entries = 0;
     uint64_t effect_cache_bytes = 0;
+    uint64_t raster_cache_hits = 0;
+    uint64_t raster_cache_misses = 0;
+    uint64_t raster_cache_entries = 0;
+    uint64_t raster_cache_bytes = 0;
     UiGpuStats gpu{};
 };
 
@@ -129,6 +133,9 @@ class UiRenderer {
     virtual bool beginTargetPass(ResourceId target, int width, int height, bool load_existing) = 0;
     /** Begin an effect output pass, reusing a persistent cached result when its key matches. */
     virtual bool beginEffectPass(ResourceId target, uint64_t cache_key, int width, int height,
+                                 bool &cache_hit) = 0;
+    /** Begin a cached raster pass containing ordinary draw commands. */
+    virtual bool beginRasterPass(ResourceId target, uint64_t cache_key, int width, int height,
                                  bool &cache_hit) = 0;
     virtual bool beginSurfacePass(ResourceId target, const SurfaceDescriptor &description,
                                   bool load_existing) = 0;

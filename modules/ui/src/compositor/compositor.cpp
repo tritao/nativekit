@@ -208,7 +208,7 @@ uint64_t target_content_hash(const std::unordered_map<uint32_t, uint64_t> &targe
 void assign_effect_cache_keys(RenderPlan &plan) {
     std::unordered_map<uint32_t, uint64_t> target_hashes;
     for (auto &pass : plan.passes) {
-        if (pass.kind == RenderPassKind::Draw) {
+        if (pass.kind == RenderPassKind::Draw || pass.kind == RenderPassKind::Raster) {
             uint64_t hash = kCacheHashOffset;
             hash_u32(hash, static_cast<uint32_t>(pass.kind));
             hash_u32(hash, pass.load_existing ? 1u : 0u);
