@@ -496,11 +496,11 @@ void execute_render_submission(RenderSubmission &submission) {
         /* A failed bind may follow a surface-destroy callback while a prior
            frame left the context current on this thread. */
         nk_graphics_unbind_frame_target(&submission.frame_target);
+    nkui::UiRenderer *renderer_impl = nullptr;
+    bool new_backend = false;
     if (bound) {
         std::shared_lock<std::shared_mutex> renderer_execution_lock(renderer_execution_mutex,
                                                                     std::defer_lock);
-        nkui::UiRenderer *renderer_impl = nullptr;
-        bool new_backend = false;
         {
             std::lock_guard<std::mutex> lock(renderers_mutex);
             renderer_execution_lock.lock();
@@ -562,6 +562,14 @@ void execute_render_submission(RenderSubmission &submission) {
         if (renderer_execution_lock.owns_lock())
             renderer_execution_lock.unlock();
     }
+
+    if (!success && nk::core::render_executor_physical())
+        std::fprintf(stderr,
+                     "nativekit ui: render submission setup failed (bound=%d renderer=%p new=%d "
+                     "error=%s, gpu=%s)\n",
+                     bound ? 1 : 0, static_cast<void *>(renderer_impl), new_backend ? 1 : 0,
+                     renderer_impl ? renderer_impl->lastError() : "renderer unavailable",
+                     nkgpu_last_error());
 
     /* GL/EGL retains a thread-local context through submit so sealed-plan
        resource destructors can release external images on RENDER. */
