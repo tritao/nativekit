@@ -14,11 +14,12 @@ class UiStyleInvalidationMetrics {
 	public final paintInvalidatedNodes:Int;
 	public final compositeInvalidatedNodes:Int;
 	public final semanticsInvalidatedNodes:Int;
+	public final hitGeometryInvalidatedNodes:Int;
 
 	function new(styleChangedNodes:Int, styleUnchangedNodes:Int, invalidationFlags:Int,
 			layoutInvalidatedNodes:Int, textLayoutInvalidatedNodes:Int,
 			paintInvalidatedNodes:Int, compositeInvalidatedNodes:Int,
-			semanticsInvalidatedNodes:Int) {
+			semanticsInvalidatedNodes:Int, hitGeometryInvalidatedNodes:Int) {
 		this.styleChangedNodes = styleChangedNodes;
 		this.styleUnchangedNodes = styleUnchangedNodes;
 		this.invalidationFlags = invalidationFlags;
@@ -27,6 +28,7 @@ class UiStyleInvalidationMetrics {
 		this.paintInvalidatedNodes = paintInvalidatedNodes;
 		this.compositeInvalidatedNodes = compositeInvalidatedNodes;
 		this.semanticsInvalidatedNodes = semanticsInvalidatedNodes;
+		this.hitGeometryInvalidatedNodes = hitGeometryInvalidatedNodes;
 	}
 
 	/** Compares current nodes against the prior submitted tree without touching layout. */
@@ -43,6 +45,7 @@ class UiStyleInvalidationMetrics {
 		var paintInvalidatedNodes = 0;
 		var compositeInvalidatedNodes = 0;
 		var semanticsInvalidatedNodes = 0;
+		var hitGeometryInvalidatedNodes = 0;
 		if (current != null)
 			current.walk(function(node) {
 				var prior = previousById.get(node.id.value);
@@ -59,10 +62,11 @@ class UiStyleInvalidationMetrics {
 				if (UiDirtyFlag.contains(flags, UiDirtyFlag.NeedsPaint)) paintInvalidatedNodes++;
 				if (UiDirtyFlag.contains(flags, UiDirtyFlag.NeedsComposite)) compositeInvalidatedNodes++;
 				if (UiDirtyFlag.contains(flags, UiDirtyFlag.NeedsSemantics)) semanticsInvalidatedNodes++;
+				if (UiDirtyFlag.contains(flags, UiDirtyFlag.NeedsHitGeometry)) hitGeometryInvalidatedNodes++;
 			});
 
 		return new UiStyleInvalidationMetrics(styleChangedNodes, styleUnchangedNodes, invalidationFlags,
 			layoutInvalidatedNodes, textLayoutInvalidatedNodes, paintInvalidatedNodes,
-			compositeInvalidatedNodes, semanticsInvalidatedNodes);
+			compositeInvalidatedNodes, semanticsInvalidatedNodes, hitGeometryInvalidatedNodes);
 	}
 }

@@ -8,4 +8,6 @@ enum abstract StyleImpact(Int) from Int to Int {
 	var Paint = 1 << 2;
 	var Composite = 1 << 3;
 	var Semantics = 1 << 4;
+	/** Changes resolved visual geometry used by native picking without relayout. */
+	var HitGeometry = 1 << 5;
 }

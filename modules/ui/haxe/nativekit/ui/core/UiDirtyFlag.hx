@@ -12,6 +12,8 @@ class UiDirtyFlag {
 	public static inline var NeedsPaint:Int = 1 << 4;
 	public static inline var NeedsComposite:Int = 1 << 5;
 	public static inline var NeedsSemantics:Int = 1 << 6;
+	/** Resolved transforms, clips, bounds, or paint order must be refreshed. */
+	public static inline var NeedsHitGeometry:Int = 1 << 7;
 
 	public static function fromStyleImpact(impact:StyleImpact):Int {
 		var result = 0;
@@ -20,6 +22,7 @@ class UiDirtyFlag {
 		if ((impact & StyleImpact.Paint) != 0) result |= NeedsPaint;
 		if ((impact & StyleImpact.Composite) != 0) result |= NeedsComposite;
 		if ((impact & StyleImpact.Semantics) != 0) result |= NeedsSemantics;
+		if ((impact & StyleImpact.HitGeometry) != 0) result |= NeedsHitGeometry;
 		return result;
 	}
 

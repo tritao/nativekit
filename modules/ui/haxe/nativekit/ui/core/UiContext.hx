@@ -212,7 +212,7 @@ class UiContext {
 			frameNumber++;
 			lastFrameMetrics = new UiFrameMetrics(frameNumber, submittedNodeCount, 0, 0, 0,
 				buildContext.styleResolver.cachedStyleCount, 0, submittedNodeCount, UiDirtyFlag.None,
-				0, 0, 0, 0, 0, Sys.time() - submitStartedAt);
+				0, 0, 0, 0, 0, 0, Sys.time() - submitStartedAt);
 			lastFrameMetrics.markReusedSubmission();
 			diagnosticStage = 0;
 			return cast root;
@@ -294,6 +294,7 @@ class UiContext {
 			styleInvalidation.invalidationFlags, styleInvalidation.layoutInvalidatedNodes,
 			styleInvalidation.textLayoutInvalidatedNodes, styleInvalidation.paintInvalidatedNodes,
 			styleInvalidation.compositeInvalidatedNodes, styleInvalidation.semanticsInvalidatedNodes,
+			styleInvalidation.hitGeometryInvalidatedNodes,
 			Sys.time() - submitStartedAt);
 		diagnosticStage = 0;
 		return next;

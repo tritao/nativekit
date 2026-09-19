@@ -16,6 +16,7 @@ class UiFrameMetrics {
 	public final paintInvalidatedNodes:Int;
 	public final compositeInvalidatedNodes:Int;
 	public final semanticsInvalidatedNodes:Int;
+	public final hitGeometryInvalidatedNodes:Int;
 	public final submitSeconds:Float;
 	public var paintedNodes(default, null):Int;
 	public var paintSkippedNodes(default, null):Int;
@@ -31,6 +32,7 @@ class UiFrameMetrics {
 			layoutInvalidatedNodes:Int, textLayoutInvalidatedNodes:Int,
 			paintInvalidatedNodes:Int, compositeInvalidatedNodes:Int,
 			semanticsInvalidatedNodes:Int,
+			hitGeometryInvalidatedNodes:Int,
 			submitSeconds:Float) {
 		this.frameNumber = frameNumber;
 		this.nodeCount = nodeCount;
@@ -46,6 +48,7 @@ class UiFrameMetrics {
 		this.paintInvalidatedNodes = paintInvalidatedNodes;
 		this.compositeInvalidatedNodes = compositeInvalidatedNodes;
 		this.semanticsInvalidatedNodes = semanticsInvalidatedNodes;
+		this.hitGeometryInvalidatedNodes = hitGeometryInvalidatedNodes;
 		this.submitSeconds = submitSeconds;
 		paintedNodes = 0;
 		paintSkippedNodes = 0;

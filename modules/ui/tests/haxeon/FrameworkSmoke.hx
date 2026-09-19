@@ -2469,6 +2469,7 @@ class FrameworkSmoke {
 		var transformMetrics:Null<UiFrameMetrics> = context.frameMetrics;
 		if (transformMetrics == null || transformMetrics.layoutInvalidatedNodes != 0 ||
 			transformMetrics.compositeInvalidatedNodes <= 0 ||
+			transformMetrics.hitGeometryInvalidatedNodes <= 0 ||
 			transformGeometry.width != transformWidth ||
 			transformGeometry.height != transformHeight ||
 			transformGeometry.transform.tx == 0.0)

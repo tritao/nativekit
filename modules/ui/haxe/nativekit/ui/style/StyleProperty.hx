@@ -174,13 +174,13 @@ class StyleProperty<T> {
 		"visible", true, false, StyleImpact.Paint, null,
 		function(style) return style.visible, function(style, value) style.visible = value);
 	public static final Transform:StyleProperty<Transform2D> = new StyleProperty(
-		"transform", Transform2D.identity(), false, StyleImpact.Composite, null,
+		"transform", Transform2D.identity(), false, StyleImpact.Composite | StyleImpact.HitGeometry, null,
 		function(style) return style.transform, function(style, value) style.transform = value, transformEqual);
 	public static final TransformOriginX:StyleProperty<Float> = new StyleProperty(
-		"transformOriginX", 0.5, false, StyleImpact.Composite, floatInterpolate,
+		"transformOriginX", 0.5, false, StyleImpact.Composite | StyleImpact.HitGeometry, floatInterpolate,
 		function(style) return style.transformOriginX, function(style, value) style.transformOriginX = value);
 	public static final TransformOriginY:StyleProperty<Float> = new StyleProperty(
-		"transformOriginY", 0.5, false, StyleImpact.Composite, floatInterpolate,
+		"transformOriginY", 0.5, false, StyleImpact.Composite | StyleImpact.HitGeometry, floatInterpolate,
 		function(style) return style.transformOriginY, function(style, value) style.transformOriginY = value);
 	public static final BorderColor:StyleProperty<Color> = new StyleProperty(
 		"borderColor", Color.rgba(0.0, 0.0, 0.0, 0.0), false, StyleImpact.Paint, colorInterpolate,
