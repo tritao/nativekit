@@ -203,6 +203,7 @@ int main() {
     nkui_display_list list{};
     nkui_display_list scheduler_list{};
     nkui_renderer renderer{};
+    nkui_renderer recovery_renderer{};
     nk_window scheduler_windows[2]{};
     nk_surface scheduler_surfaces[2]{};
     nk_surface_frame_target scheduler_targets[2]{};
@@ -624,13 +625,11 @@ int main() {
            submission observes or trips loss, and the next sealed plan retires
            the lost UiRenderer and creates a fresh GPU renderer on RENDER. */
         if (!result) {
-            nkui_renderer_stats before_loss_stats{};
-            if (!check(nkui_renderer_get_stats(renderer, &before_loss_stats) == NKUI_OK,
-                       "read pre-loss stats")) {
+            if (!check(nkui_renderer_create(&recovery_renderer) == NKUI_OK,
+                       "create recovery renderer")) {
                 result = 31;
                 goto cleanup;
             }
-            nkgpu_test_lose_all_after_frames(1);
             nk::core::reset_render_surface_api_violations();
             nk::core::set_render_surface_api_guard(true);
             nkgpu_test_forbid_surface_target_queries();
@@ -641,9 +640,9 @@ int main() {
                 scheduler_width[1],
                 scheduler_height[1],
                 1.0f};
-            auto submit_and_drain = [&](const char *operation) {
-                if (nkui_renderer_render_frame(renderer, scheduler_list, scheduler_surfaces[1],
-                                               &recovery_frame) != NKUI_OK) {
+            auto submit_and_drain = [&](nkui_renderer frame_renderer, const char *operation) {
+                if (nkui_renderer_render_frame(frame_renderer, scheduler_list,
+                                                scheduler_surfaces[1], &recovery_frame) != NKUI_OK) {
                     std::fprintf(stderr, "backend renderer smoke: %s submission failed\n",
                                  operation);
                     return false;
@@ -659,7 +658,23 @@ int main() {
                 nk_event_release(&completion_event);
                 return true;
             };
-            if (!submit_and_drain("device-loss") ||
+            if (!submit_and_drain(recovery_renderer, "recovery warmup") ||
+                !check(nk::core::render_surface_api_violations() == 0,
+                       "recovery warmup render surface API ownership")) {
+                nk::core::set_render_surface_api_guard(false);
+                nkgpu_test_allow_surface_target_queries();
+                result = 31;
+                goto cleanup;
+            }
+            nkui_renderer_stats before_loss_stats{};
+            if (!check(nkui_renderer_get_stats(recovery_renderer, &before_loss_stats) == NKUI_OK,
+                       "read pre-loss stats")) {
+                result = 31;
+                goto cleanup;
+            }
+            nkgpu_test_lose_all_after_frames(1);
+            nk::core::reset_render_surface_api_violations();
+            if (!submit_and_drain(recovery_renderer, "device-loss") ||
                 !check(nk::core::render_surface_api_violations() == 0,
                        "device-loss render surface API ownership")) {
                 nk::core::set_render_surface_api_guard(false);
@@ -668,7 +683,7 @@ int main() {
                 goto cleanup;
             }
             nkui_renderer_stats after_loss_stats{};
-            if (!check(nkui_renderer_get_stats(renderer, &after_loss_stats) == NKUI_OK,
+            if (!check(nkui_renderer_get_stats(recovery_renderer, &after_loss_stats) == NKUI_OK,
                        "read post-loss stats") ||
                 !check(after_loss_stats.render_submissions ==
                            before_loss_stats.render_submissions + 1,
@@ -681,7 +696,7 @@ int main() {
                 result = 32;
                 goto cleanup;
             }
-            if (!submit_and_drain("device-loss recovery") ||
+            if (!submit_and_drain(recovery_renderer, "device-loss recovery") ||
                 !check(nk::core::render_surface_api_violations() == 0,
                        "recovery render surface API ownership")) {
                 nk::core::set_render_surface_api_guard(false);
@@ -692,7 +707,7 @@ int main() {
             nkui_renderer_stats recovered_stats{};
             nk::core::set_render_surface_api_guard(false);
             nkgpu_test_allow_surface_target_queries();
-            if (!check(nkui_renderer_get_stats(renderer, &recovered_stats) == NKUI_OK,
+            if (!check(nkui_renderer_get_stats(recovery_renderer, &recovered_stats) == NKUI_OK,
                        "read recovered stats") ||
                 !check(recovered_stats.render_submissions ==
                            before_loss_stats.render_submissions + 2,
@@ -731,6 +746,8 @@ int main() {
 cleanup:
     nk::core::set_render_surface_api_guard(false);
     if (renderer.id && nkui_renderer_destroy(renderer) != NKUI_OK)
+        result = result ? result : 20;
+    if (recovery_renderer.id && nkui_renderer_destroy(recovery_renderer) != NKUI_OK)
         result = result ? result : 20;
     if (scheduler_list.id && nkui_display_list_destroy(scheduler_list) != NKUI_OK)
         result = result ? result : 21;
