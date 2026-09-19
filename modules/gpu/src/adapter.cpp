@@ -12,6 +12,7 @@
 #include "sokol_gfx.h"
 
 #include <algorithm>
+#include <atomic>
 #include <array>
 #include <cstdarg>
 #include <cstdio>
@@ -281,7 +282,7 @@ static nkgpu_result fail(nkgpu_result code, const char *format, ...);
 static bool fail_next_image_creation = false;
 static bool fail_next_buffer_creation = false;
 static bool fail_next_present = false;
-static bool forbid_surface_target_queries = false;
+static std::atomic_bool forbid_surface_target_queries = false;
 #endif
 
 static bool renderer_is_active(const Renderer &renderer) {
@@ -359,7 +360,7 @@ static const sg_api *runtime_gfx() {
 
 static nk_result get_surface_frame_target(nk_surface surface, nk_surface_frame_target *target) {
 #if defined(NKGPU_TESTING)
-    if (forbid_surface_target_queries)
+    if (forbid_surface_target_queries.load(std::memory_order_acquire))
         return NK_ERROR_UNKNOWN;
 #endif
     return nk_surface_get_frame_target(surface, target);
@@ -919,11 +920,11 @@ int32_t nkgpu_test_generation_exhaustion(void) {
 }
 
 void nkgpu_test_forbid_surface_target_queries(void) {
-    forbid_surface_target_queries = true;
+    forbid_surface_target_queries.store(true, std::memory_order_release);
 }
 
 void nkgpu_test_allow_surface_target_queries(void) {
-    forbid_surface_target_queries = false;
+    forbid_surface_target_queries.store(false, std::memory_order_release);
 }
 
 nkgpu_result nkgpu_test_lose_after_frames(nkgpu_renderer renderer, uint32_t frames) {

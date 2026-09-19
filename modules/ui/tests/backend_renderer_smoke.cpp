@@ -4,10 +4,15 @@
 #include "nativekit_time.h"
 #include "nativekit_ui.h"
 #include "nativekit_window.h"
+#include "adapter_internal.h"
+#include "core/executor.hpp"
+#include "testing.h"
 
 #include <chrono>
+#include <condition_variable>
 #include <cstdio>
 #include <cstring>
+#include <mutex>
 #include <thread>
 
 namespace {
@@ -19,7 +24,8 @@ bool check(bool result, const char *operation) {
     return false;
 }
 
-bool acquire_surface_frame(nk_window window, nk_surface surface, int32_t &width, int32_t &height) {
+bool acquire_surface_frame(nk_window window, nk_surface surface, int32_t &width, int32_t &height,
+                           nk_surface_frame_target &target) {
     if (!check(nk_window_activate(window) == NK_OK, "nk_window_activate"))
         return false;
     for (int attempt = 0; attempt < 500; ++attempt) {
@@ -34,7 +40,11 @@ bool acquire_surface_frame(nk_window window, nk_surface surface, int32_t &width,
             if (!check(nk_surface_get_framebuffer_size(surface, &width, &height) == NK_OK,
                        "nk_surface_get_framebuffer_size"))
                 return false;
-            if (width > 0 && height > 0)
+            target.struct_size = sizeof(target);
+            if (!check(nk_surface_get_frame_target(surface, &target) == NK_OK,
+                       "nk_surface_get_frame_target"))
+                return false;
+            if (width > 0 && height > 0 && target.width == width && target.height == height)
                 return true;
         } else if (current != NK_ERROR_INVALID_REQUEST) {
             return check(false, "nk_surface_make_current");
@@ -44,6 +54,84 @@ bool acquire_surface_frame(nk_window window, nk_surface surface, int32_t &width,
     }
     std::fprintf(stderr, "backend renderer smoke: surface frame did not become available\n");
     return false;
+}
+
+struct RenderTask {
+    using Function = void (*)(RenderTask &) noexcept;
+
+    std::mutex mutex;
+    std::condition_variable condition;
+    Function function = nullptr;
+    bool complete = false;
+    bool success = false;
+    nk_surface surface = NK_INVALID_HANDLE;
+    nk_surface_frame_target target{};
+    nkgpu_renderer producer{};
+    nkgpu_render_target render_target{};
+    nk_graphics_image image{};
+};
+
+void NK_CALL run_render_task(void *data) {
+    auto &task = *static_cast<RenderTask *>(data);
+    if (!nk_executor_is_current(NK_EXECUTOR_RENDER)) {
+        std::lock_guard lock(task.mutex);
+        task.complete = true;
+        task.condition.notify_one();
+        return;
+    }
+    task.function(task);
+    {
+        std::lock_guard lock(task.mutex);
+        task.complete = true;
+    }
+    task.condition.notify_one();
+}
+
+bool dispatch_render_task(RenderTask &task) {
+    if (!nk::core::render_executor_physical()) {
+        task.function(task);
+        return task.success;
+    }
+    if (!check(nk::core::dispatch_to_render(&run_render_task, &task, nullptr, sizeof(task)) ==
+                   NK_OK,
+               "dispatch render task"))
+        return false;
+    std::unique_lock lock(task.mutex);
+    if (!task.condition.wait_for(lock, std::chrono::seconds(5),
+                                 [&task] { return task.complete; })) {
+        std::fprintf(stderr, "backend renderer smoke: render task timed out\n");
+        task.condition.wait(lock, [&task] { return task.complete; });
+    }
+    return task.success;
+}
+
+void create_offscreen_resources(RenderTask &task) noexcept {
+    const nkgpu_result created =
+        nk::core::render_executor_physical()
+            ? nkgpu_renderer_create_for_frame_target(task.surface, &task.target, &task.producer)
+            : nkgpu_renderer_create(task.surface, &task.producer);
+    if (created != NKGPU_OK)
+        return;
+    if (nkgpu_render_target_create(task.producer, 32, 32, 0, &task.render_target) != NKGPU_OK)
+        return;
+    if (nkgpu_begin_render_target(task.producer, task.render_target, 1) != NKGPU_OK)
+        return;
+    if (nkgpu_end_render_target(task.producer) != NKGPU_OK)
+        return;
+    if (nkgpu_render_target_get_image(task.producer, task.render_target, &task.image) != NKGPU_OK)
+        return;
+    task.success = true;
+}
+
+void destroy_offscreen_resources(RenderTask &task) noexcept {
+    if (task.render_target.id)
+        (void)nkgpu_render_target_destroy(task.producer, task.render_target);
+    if (task.producer.id)
+        (void)nkgpu_renderer_destroy(task.producer);
+    task.render_target = {};
+    task.producer = {};
+    task.image = {};
+    task.success = true;
 }
 
 } // namespace
@@ -63,6 +151,10 @@ int main() {
     int result = 0;
     int32_t surface_width = 0;
     int32_t surface_height = 0;
+    nk_surface_frame_target setup_target{};
+    RenderTask setup_task{};
+    RenderTask destroy_task{};
+    bool setup_ok = false;
 
     nk_init_options init{};
     init.struct_size = sizeof(init);
@@ -70,11 +162,6 @@ int main() {
     if (!check(nk_init(&init) == NK_OK, "nk_init"))
         return 1;
     initialized = true;
-    if (!nk_executor_is_current(NK_EXECUTOR_RENDER)) {
-        std::fprintf(stderr, "backend renderer smoke: skipped while GPU ownership is on RENDER\n");
-        nk_shutdown();
-        return 77;
-    }
 
     nk_window_options window_options{};
     window_options.struct_size = sizeof(window_options);
@@ -114,35 +201,39 @@ int main() {
         }
     }
 
-    if (!acquire_surface_frame(window, surface, surface_width, surface_height)) {
+    if (!acquire_surface_frame(window, surface, surface_width, surface_height, setup_target)) {
         result = 6;
         goto cleanup;
     }
 
-    if (!check(nkgpu_renderer_create(surface, &producer) == NKGPU_OK, "nkgpu_renderer_create")) {
+    setup_task.surface = surface;
+    setup_task.target = setup_target;
+    setup_task.function = &create_offscreen_resources;
+    if (nk::core::render_executor_physical())
+        nkgpu_test_forbid_surface_target_queries();
+    setup_ok = dispatch_render_task(setup_task);
+    if (nk::core::render_executor_physical())
+        nkgpu_test_allow_surface_target_queries();
+    producer = setup_task.producer;
+    target = setup_task.render_target;
+    image = setup_task.image;
+    if (!setup_ok) {
+        std::fprintf(stderr, "backend renderer smoke: offscreen setup failed: %s\n",
+                     nkgpu_last_error());
         result = 7;
         goto cleanup;
     }
-    if (!check(nkgpu_render_target_create(producer, 32, 32, 0, &target) == NKGPU_OK,
-               "nkgpu_render_target_create")) {
-        result = 8;
-        goto cleanup;
-    }
-    if (!check(nkgpu_begin_render_target(producer, target, 1) == NKGPU_OK &&
-                   nkgpu_end_render_target(producer) == NKGPU_OK,
-               "offscreen clear")) {
-        result = 9;
-        goto cleanup;
-    }
-
     image_info.struct_size = sizeof(image_info);
-    if (!check(nkgpu_render_target_get_image(producer, target, &image) == NKGPU_OK &&
-                   nk_graphics_image_get_info(image, &image_info) == NK_OK &&
-                   image_info.width == 32 && image_info.height == 32 &&
+    if (!check(nk_graphics_image_get_info(image, &image_info) == NK_OK && image_info.width == 32 &&
+                   image_info.height == 32 &&
                    image_info.api == nkgpu_query_graphics_api(producer) &&
                    image_info.device.id != 0,
                "offscreen graphics image metadata")) {
-        result = 10;
+        result = 8;
+        goto cleanup;
+    }
+    if (!check(nk_surface_present(surface) == NK_OK, "close setup frame")) {
+        result = 9;
         goto cleanup;
     }
     if (!check(nkui_graphics_surface_create(image, &imported_surface) == NKUI_OK,
@@ -189,9 +280,11 @@ int main() {
         frame.framebuffer_width = width;
         frame.framebuffer_height = height;
         frame.pixel_scale = static_cast<float>(width) / window_options.width;
+        nkgpu_test_forbid_surface_target_queries();
         const nkui_result render_result =
             nkui_renderer_render_frame(renderer, list, surface, &frame);
         if (render_result != NKUI_OK) {
+            nkgpu_test_allow_surface_target_queries();
             std::fprintf(stderr,
                          "backend renderer smoke: render imported image failed: result=%d, "
                          "gpu=%s, window=%s\n",
@@ -199,26 +292,46 @@ int main() {
             result = 16;
             goto cleanup;
         }
-        if (!check(nk_surface_present(surface) == NK_OK, "nk_surface_present")) {
+        RenderTask barrier{};
+        barrier.function = [](RenderTask &task) noexcept { task.success = true; };
+        if (!dispatch_render_task(barrier)) {
+            nkgpu_test_allow_surface_target_queries();
             result = 17;
+            goto cleanup;
+        }
+        nkgpu_test_allow_surface_target_queries();
+        nk_event completion_event{};
+        completion_event.struct_size = sizeof(completion_event);
+        if (!check(nk_poll_event(&completion_event) == NK_OK, "drain render completion")) {
+            result = 18;
+            goto cleanup;
+        }
+        nk_event_release(&completion_event);
+        if (!nk::core::render_executor_physical() &&
+            !check(nk_surface_present(surface) == NK_OK, "nk_surface_present")) {
+            result = 19;
             goto cleanup;
         }
     }
 cleanup:
     if (renderer.id && nkui_renderer_destroy(renderer) != NKUI_OK)
-        result = result ? result : 18;
-    if (list.id && nkui_display_list_destroy(list) != NKUI_OK)
-        result = result ? result : 19;
-    if (imported_surface.id && nkui_resource_destroy(imported_surface) != NKUI_OK)
         result = result ? result : 20;
-    if (target.id && nkgpu_render_target_destroy(producer, target) != NKGPU_OK)
+    if (list.id && nkui_display_list_destroy(list) != NKUI_OK)
         result = result ? result : 21;
-    if (producer.id && nkgpu_renderer_destroy(producer) != NKGPU_OK)
+    if (imported_surface.id && nkui_resource_destroy(imported_surface) != NKUI_OK)
         result = result ? result : 22;
+    if (producer.id) {
+        destroy_task.surface = surface;
+        destroy_task.producer = producer;
+        destroy_task.render_target = target;
+        destroy_task.function = &destroy_offscreen_resources;
+        if (!dispatch_render_task(destroy_task))
+            result = result ? result : 23;
+    }
     if (surface && nk_surface_destroy(surface) != NK_OK)
-        result = result ? result : 23;
-    if (window && nk_window_destroy(window) != NK_OK)
         result = result ? result : 24;
+    if (window && nk_window_destroy(window) != NK_OK)
+        result = result ? result : 25;
     if (initialized)
         nk_shutdown();
     return result;

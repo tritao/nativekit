@@ -103,6 +103,9 @@ if(NK_BUILD_TESTS)
     if(WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
         add_executable(nativekit_ui_backend_smoke_test
             tests/backend_renderer_smoke.cpp)
+        target_compile_definitions(nativekit_ui_backend_smoke_test PRIVATE NKGPU_TESTING=1)
+        target_include_directories(nativekit_ui_backend_smoke_test PRIVATE
+            "${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/modules/gpu/src")
         target_link_libraries(nativekit_ui_backend_smoke_test PRIVATE
             NativeKit::ui NativeKit::gpu NativeKit::nativekit)
         set(NKUI_BACKEND_SMOKE_REGISTERED OFF)
@@ -124,7 +127,6 @@ if(NK_BUILD_TESTS)
         if(NKUI_BACKEND_SMOKE_REGISTERED)
             set_tests_properties(nativekit_ui_backend_smoke PROPERTIES
                 LABELS "graphics;gpu;ui"
-                SKIP_RETURN_CODE 77
                 TIMEOUT 15)
         endif()
     endif()
