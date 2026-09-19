@@ -37,6 +37,10 @@ class EventDispatcher {
 	public function setHitTestProvider(provider:Null<Float->Float->Array<RenderNode>>):Void
 		hitTestProvider = provider;
 
+	/** Returns the active geometric path; useful for diagnostics and parity tests. */
+	public function hitTestPath(x:Float, y:Float):Array<RenderNode>
+		return hitPath(x, y);
+
 	/** Installs the host bridge for physical window/surface pointer capture. */
 	public function setPointerCaptureHandler(handler:Null<Bool->Void>):Void {
 		if (pointerCaptureHandler != null && platformPointerCaptured)

@@ -7,6 +7,7 @@ import LayoutStyle;
 import LayoutVisualKind;
 import ResolvedLayoutItem;
 import nativekit.ui.core.Key;
+import nativekit.ui.core.HitTest;
 import nativekit.ui.core.RenderNode;
 import nativekit.ui.core.UiContext;
 import nativekit.ui.core.UiEventKind;
@@ -424,9 +425,20 @@ class AccessibilityContract {
 		var option:ResolvedLayoutItem = cast selectRoot.children[1].children[0].resolved;
 		var x = option.x + 3.0;
 		var y = option.y + option.height * 0.5;
+		if (!samePath(context.events.hitTestPath(x, y), HitTest.path(root, x, y)))
+			return false;
 		context.pointerDown(x, y, 0);
 		context.pointerUp(x, y, 0);
 		return selected == "comfortable" && underlyingClicks == 0;
+	}
+
+	static function samePath(left:Array<RenderNode>, right:Array<RenderNode>):Bool {
+		if (left.length != right.length)
+			return false;
+		for (index in 0...left.length)
+			if (!left[index].id.equals(right[index].id))
+				return false;
+		return true;
 	}
 
 	static function checkMovingHover(context:UiContext):Bool {
