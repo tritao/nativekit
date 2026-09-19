@@ -37,7 +37,7 @@ constexpr std::size_t app_task_byte_capacity = 4u * 1024u * 1024u;
 std::size_t pending_task_bytes = 0;
 
 constexpr bool physical_render_backend =
-#if defined(NK_BACKEND_GTK) || defined(NK_BACKEND_WEB)
+#if defined(NK_BACKEND_GTK) || defined(NK_BACKEND_WEB) || defined(NK_BACKEND_ANDROID)
     false;
 #else
     true;
