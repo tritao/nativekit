@@ -3,6 +3,7 @@
 #include "core/error.hpp"
 #include "core/event_queue.hpp"
 #include "core/executor.hpp"
+#include "core/frame_backend.hpp"
 #include "core/plugin.hpp"
 #include "core/request.hpp"
 #include "core/runtime.hpp"
@@ -171,6 +172,7 @@ void NK_CALL nk_shutdown(void) {
     nk::core::system_shutdown();
     nk::backend::shutdown();
     nk::core::requests().clear();
+    nk::core::clear_frame_tickets();
     std::lock_guard lock(state_mutex);
     handle_registry.clear();
     event_queue.reset();
