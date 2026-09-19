@@ -499,9 +499,8 @@ NK_API nk_executor NK_CALL nk_executor_current(void);
 /**
  * Reports whether the calling thread satisfies the affinity of `executor`.
  * PLATFORM and APP are satisfied by the nk_init() thread. On a physical render
- * backend, RENDER is satisfied by the render thread (and remains accepted on
- * the application thread during the executor migration). GTK and default Web
- * backends satisfy RENDER on the application thread. NK_EXECUTOR_WORKER is
+ * backend, RENDER is satisfied by the dedicated render thread. GTK and default
+ * Web backends satisfy RENDER on the application thread. NK_EXECUTOR_WORKER is
  * satisfied by other runtime threads because it never implies affinity.
  */
 NK_API nk_bool NK_CALL nk_executor_is_current(nk_executor executor);

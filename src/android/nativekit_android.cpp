@@ -15,6 +15,7 @@
 
 #include "core/boundary.hpp"
 #include "core/error.hpp"
+#include "core/executor.hpp"
 #include "core/frame_request.hpp"
 #include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
@@ -94,6 +95,11 @@ struct AndroidSurface final : nk::core::Resource {
     int32_t height = 0;
     int32_t framebuffer_width = 0;
     int32_t framebuffer_height = 0;
+    int32_t pending_framebuffer_width = 0;
+    int32_t pending_framebuffer_height = 0;
+    bool frame_prepared = false;
+    bool resize_pending = false;
+    bool surface_destroy_pending = false;
     std::unordered_map<nk_accessibility_node_id, nk_accessibility_node_id> semantic_parents;
 };
 
@@ -700,6 +706,10 @@ nk_result destroy_webview(nk_handle handle) {
 }
 
 void release_surface_window(AndroidSurface &resource) {
+    if (resource.frame_prepared) {
+        resource.surface_destroy_pending = true;
+        return;
+    }
     const bool was_ready = resource.window != nullptr;
     if (resource.surface != EGL_NO_SURFACE) {
         if (eglGetCurrentContext() == resource.context)
@@ -713,6 +723,10 @@ void release_surface_window(AndroidSurface &resource) {
     }
     resource.framebuffer_width = 0;
     resource.framebuffer_height = 0;
+    resource.pending_framebuffer_width = 0;
+    resource.pending_framebuffer_height = 0;
+    resource.resize_pending = false;
+    resource.surface_destroy_pending = false;
     if (was_ready && !resource.destroying) {
         nk::core::QueuedEvent lost;
         lost.kind = NK_EVENT_SURFACE_LOST;
@@ -730,6 +744,10 @@ nk_result destroy_surface(nk_handle handle) {
     auto resource = found->second;
     if (resource->share_dependents) {
         nk::core::set_error("graphics surface is still shared by another surface");
+        return NK_ERROR_INVALID_REQUEST;
+    }
+    if (resource->frame_prepared) {
+        nk::core::set_error("cannot destroy an Android graphics surface with a frame in flight");
         return NK_ERROR_INVALID_REQUEST;
     }
     auto device_surface = resource.get();
@@ -2793,6 +2811,7 @@ nk_result NK_CALL nk_surface_make_current(nk_handle handle) {
         nk::core::set_error("could not make the Android EGL context current");
         return NK_ERROR_UNKNOWN;
     }
+    resource->frame_prepared = true;
     return NK_OK;
 }
 
@@ -2804,17 +2823,78 @@ nk_result NK_CALL nk_surface_present(nk_handle handle) {
         nk::core::set_error("could not present the Android EGL surface");
         return NK_ERROR_UNKNOWN;
     }
+    resource->frame_prepared = false;
+    if (resource->surface_destroy_pending)
+        release_surface_window(*resource);
     return NK_OK;
 }
 
-nk_result NK_CALL nk_surface_submit_frame(const nk_surface_frame_target *) {
-    /* Android GLES remains aliased until the EGL binding is moved to RENDER. */
+nk_result NK_CALL nk_graphics_bind_frame_target(const nk_surface_frame_target *target) {
+    if (!target || target->api != NK_GRAPHICS_OPENGL_ES || !target->native_device ||
+        !target->native_context || !target->native_present_target)
+        return NK_ERROR_INVALID_ARGUMENT;
+    const auto display = reinterpret_cast<EGLDisplay>(static_cast<uintptr_t>(target->native_device));
+    const auto context = reinterpret_cast<EGLContext>(static_cast<uintptr_t>(target->native_context));
+    const auto surface = reinterpret_cast<EGLSurface>(
+        static_cast<uintptr_t>(target->native_present_target));
+    if (!eglMakeCurrent(display, surface, surface, context)) {
+        nk::core::set_error("could not bind the Android EGL frame target");
+        return NK_ERROR_UNKNOWN;
+    }
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_graphics_unbind_frame_target(const nk_surface_frame_target *target) {
+    if (!target || target->api != NK_GRAPHICS_OPENGL_ES || !target->native_device)
+        return NK_ERROR_INVALID_ARGUMENT;
+    const auto display = reinterpret_cast<EGLDisplay>(static_cast<uintptr_t>(target->native_device));
+    if (!eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
+        nk::core::set_error("could not release the Android EGL frame target");
+        return NK_ERROR_UNKNOWN;
+    }
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_submit_frame(const nk_surface_frame_target *target) {
+    if (!target || target->api != NK_GRAPHICS_OPENGL_ES || !target->native_device ||
+        !target->native_present_target)
+        return NK_ERROR_INVALID_ARGUMENT;
+    const auto display = reinterpret_cast<EGLDisplay>(static_cast<uintptr_t>(target->native_device));
+    const auto surface = reinterpret_cast<EGLSurface>(
+        static_cast<uintptr_t>(target->native_present_target));
+    if (!eglSwapBuffers(display, surface)) {
+        nk::core::set_error("could not present the Android EGL surface");
+        return NK_ERROR_UNKNOWN;
+    }
+    /* The EGL context belongs to RENDER only for the duration of submission;
+       releasing it lets PLATFORM tear down or replace the Surface safely. */
+    if (!eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
+        nk::core::set_error("could not release the Android EGL frame target");
+        return NK_ERROR_UNKNOWN;
+    }
     return NK_OK;
 }
 
 nk_result NK_CALL nk_surface_finish_frame(nk_handle handle,
                                           const nk_surface_frame_target *) {
-    return nk_surface_present(handle);
+    if (const auto result = require_thread(); result != NK_OK)
+        return result;
+    auto resource = surface(handle);
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    if (!resource->frame_prepared) {
+        nk::core::set_error("Android surface has no prepared frame");
+        return NK_ERROR_INVALID_REQUEST;
+    }
+    resource->frame_prepared = false;
+    if (resource->resize_pending) {
+        resource->framebuffer_width = resource->pending_framebuffer_width;
+        resource->framebuffer_height = resource->pending_framebuffer_height;
+        resource->resize_pending = false;
+    }
+    if (resource->surface_destroy_pending)
+        release_surface_window(*resource);
+    return NK_OK;
 }
 
 nk_result NK_CALL nk_surface_set_frame_callback(nk_handle handle,
@@ -2825,7 +2905,8 @@ nk_result NK_CALL nk_surface_set_frame_callback(nk_handle handle,
     auto resource = surface(handle);
     if (!resource)
         return NK_ERROR_INVALID_HANDLE;
-    if (callback && resource->api != NK_GRAPHICS_OPENGL_ES) {
+    if (callback && (resource->api != NK_GRAPHICS_OPENGL_ES ||
+                     nk::core::render_executor_physical())) {
         nk::core::set_error("Android frame callbacks require an OpenGL ES surface");
         return NK_ERROR_UNSUPPORTED;
     }
@@ -2922,11 +3003,22 @@ nk_result NK_CALL nk_surface_get_frame_target(nk_handle handle,
     target.width = width;
     target.height = height;
     target.native_target = static_cast<uint64_t>(static_cast<uint32_t>(framebuffer));
+    target.native_device = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(resource->display));
+    target.native_context = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(resource->context));
+    target.native_present_target =
+        static_cast<uint64_t>(reinterpret_cast<uintptr_t>(resource->surface));
     auto device_surface = resource.get();
     while (device_surface->shared_surface)
         device_surface = device_surface->shared_surface.get();
     target.device.id = device_surface->handle;
     nk::core::write_surface_frame_target(out_target, target);
+    if (nk::core::render_executor_physical()) {
+        const auto display = resource->display;
+        if (!eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
+            nk::core::set_error("could not release the Android EGL frame target");
+            return NK_ERROR_UNKNOWN;
+        }
+    }
     return NK_OK;
 }
 
@@ -3244,8 +3336,14 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnSurfaceChanged(
         return;
     resource->width = width;
     resource->height = height;
-    resource->framebuffer_width = framebuffer_width;
-    resource->framebuffer_height = framebuffer_height;
+    if (resource->frame_prepared) {
+        resource->pending_framebuffer_width = framebuffer_width;
+        resource->pending_framebuffer_height = framebuffer_height;
+        resource->resize_pending = true;
+    } else {
+        resource->framebuffer_width = framebuffer_width;
+        resource->framebuffer_height = framebuffer_height;
+    }
     const nk_surface_resize_event payload{width, height, framebuffer_width, framebuffer_height};
     nk::core::QueuedEvent event;
     event.kind = NK_EVENT_SURFACE_RESIZE;

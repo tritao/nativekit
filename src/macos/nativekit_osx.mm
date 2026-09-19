@@ -5301,6 +5301,14 @@ nk_result NK_CALL nk_surface_submit_frame(const nk_surface_frame_target *target)
     return NK_OK;
 }
 
+nk_result NK_CALL nk_graphics_bind_frame_target(const nk_surface_frame_target *) {
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_graphics_unbind_frame_target(const nk_surface_frame_target *) {
+    return NK_OK;
+}
+
 nk_result NK_CALL nk_surface_finish_frame(nk_handle handle,
                                           const nk_surface_frame_target *) {
     if (const auto result = enter_ui(); result != NK_OK)

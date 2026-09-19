@@ -418,6 +418,13 @@ static nkgpu_result begin_frame_with_target(Handle handle, const nk_surface_fram
     if (target.width <= 0 || target.height <= 0 || target.api != slot->value.graphics_api ||
         target.device.id != slot->value.device.id)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "frame target does not belong to the renderer");
+    const bool context_backend = target.api == NK_GRAPHICS_OPENGL ||
+                                 target.api == NK_GRAPHICS_OPENGL_ES;
+    if (context_backend) {
+        const nkgpu_result bound = nkgpu_bind_frame_target(&target);
+        if (bound != NKGPU_OK)
+            return bound;
+    }
     const nkgpu_result activated = activate_renderer(handle, &target);
     if (activated != NKGPU_OK)
         return activated;
@@ -3213,12 +3220,13 @@ nkgpu_result nkgpu_bind_frame_target(const nk_surface_frame_target *frame_target
                         "explicit frame target is missing its device binding");
         return NKGPU_OK;
     }
-    /* GTK/Web remain aliased during the GL migration and already have the
-       current context on the calling thread. A physical GL/EGL backend must
-       provide a real context binding before it can opt into RENDER. */
-    if (nk::core::render_executor_physical())
-        return fail(NKGPU_ERROR_WRONG_STATE,
-                    "physical GL frame-target binding is not implemented for this backend");
+    /* GTK/Web remain aliased during the GL migration. Physical GL/EGL backends
+       bind their retained context and drawable without querying the surface. */
+    if (nk::core::render_executor_physical()) {
+        const nk_result bound = nk_graphics_bind_frame_target(frame_target);
+        if (bound != NK_OK)
+            return fail(NKGPU_ERROR_UNKNOWN, "frame-target binding: %s", nk_last_error());
+    }
     return NKGPU_OK;
 }
 
