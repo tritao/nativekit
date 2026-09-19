@@ -788,7 +788,8 @@ void add_effect_cache_pixel_scale(nkui::RenderPlan &plan, float pixel_scale) {
         if (pass.kind == nkui::RenderPassKind::Raster && !pass.cache_key)
             pass.cache_key = static_cast<uint64_t>(scale) ^ UINT64_C(0xD6E8FEB86659FD93);
         if ((pass.kind != nkui::RenderPassKind::Effect &&
-             pass.kind != nkui::RenderPassKind::Raster) || !pass.cache_key)
+             pass.kind != nkui::RenderPassKind::Raster) ||
+            !pass.cache_key)
             continue;
         pass.cache_key ^= static_cast<uint64_t>(scale) + UINT64_C(0x9E3779B97F4A7C15) +
                           (pass.cache_key << 6) + (pass.cache_key >> 2);
@@ -1482,16 +1483,18 @@ nkui_result set_cache_policy(LayoutSessionState *state, uint32_t node_id,
     return NKUI_OK;
 }
 
-extern "C" nkui_result nkui_layout_session_set_custom_paint_cache_policy(
-    nkui_layout_session session, uint32_t node_id, nkui_layout_cache_policy policy) {
+extern "C" nkui_result
+nkui_layout_session_set_custom_paint_cache_policy(nkui_layout_session session, uint32_t node_id,
+                                                  nkui_layout_cache_policy policy) {
     if (active_measure_session || !node_id || policy > NKUI_LAYOUT_CACHE_RASTER)
         return NKUI_ERROR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(layout_sessions_mutex);
     return set_cache_policy(resolve(session), node_id, policy, true);
 }
 
-extern "C" nkui_result nkui_layout_session_set_cache_policy(
-    nkui_layout_session session, uint32_t node_id, nkui_layout_cache_policy policy) {
+extern "C" nkui_result nkui_layout_session_set_cache_policy(nkui_layout_session session,
+                                                            uint32_t node_id,
+                                                            nkui_layout_cache_policy policy) {
     if (active_measure_session || !node_id || policy > NKUI_LAYOUT_CACHE_RASTER)
         return NKUI_ERROR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(layout_sessions_mutex);
@@ -2723,11 +2726,10 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                 raster_paint_nodes.insert(node_id);
     }
     nkui::LayoutRenderCompileError compile_error{};
-    if (!session_state->compiler.compile(session_state->snapshot, compile_target,
-                                         frame_info->pixel_scale, session_state->frame,
-                                         &compile_error, load_existing != 0,
-                                         session_state->engine->text_adapter(), &custom_plans,
-                                         &raster_paint_nodes))
+    if (!session_state->compiler.compile(
+            session_state->snapshot, compile_target, frame_info->pixel_scale, session_state->frame,
+            &compile_error, load_existing != 0, session_state->engine->text_adapter(),
+            &custom_plans, &raster_paint_nodes))
         return NKUI_ERROR_INVALID_TRANSACTION;
 
     if (has_backdrop)

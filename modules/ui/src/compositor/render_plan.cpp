@@ -231,9 +231,9 @@ void place_main_command(RenderCommand &command, const RenderPlanEmbedOptions &op
     if (options.has_command_transform) {
         command.transform = compose_transform(options.command_transform, command.transform);
         if (command.has_scissor) {
-            const EmbedBounds transformed = transform_bounds(
-                command.scissor_x, command.scissor_y, command.scissor_width,
-                command.scissor_height, options.command_transform);
+            const EmbedBounds transformed =
+                transform_bounds(command.scissor_x, command.scissor_y, command.scissor_width,
+                                 command.scissor_height, options.command_transform);
             command.scissor_x = transformed.x;
             command.scissor_y = transformed.y;
             command.scissor_width = transformed.width;
@@ -314,10 +314,10 @@ bool append_embedded_render_plan(const RenderPlan &source, const RenderPlanEmbed
                 return destination.passes.end();
             return destination.passes.begin() + options.destination_main_pass;
         }
-        return std::find_if(
-            destination.passes.begin(), destination.passes.end(), [&options](const RenderPass &pass) {
-                return pass.target.value == options.destination_main_target.value;
-            });
+        return std::find_if(destination.passes.begin(), destination.passes.end(),
+                            [&options](const RenderPass &pass) {
+                                return pass.target.value == options.destination_main_target.value;
+                            });
     }();
     if (destination_main == destination.passes.end())
         return fail_embed("destination render target is unavailable");

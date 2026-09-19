@@ -326,8 +326,9 @@ NKUI_API nkui_result NK_CALL nkui_layout_session_set_custom_paint_cache_policy(
     nkui_layout_session session, uint32_t node_id, nkui_layout_cache_policy policy);
 
 /** Selects whether a render-node subtree is rendered normally or cached as a raster. */
-NKUI_API nkui_result NK_CALL nkui_layout_session_set_cache_policy(
-    nkui_layout_session session, uint32_t node_id, nkui_layout_cache_policy policy);
+NKUI_API nkui_result NK_CALL nkui_layout_session_set_cache_policy(nkui_layout_session session,
+                                                                  uint32_t node_id,
+                                                                  nkui_layout_cache_policy policy);
 
 /**
  * Submits one flat, Haxe-owned render/layout tree transaction.

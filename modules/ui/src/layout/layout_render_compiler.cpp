@@ -377,7 +377,8 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                     {1.0f, 0.0f, 0.0f, 1.0f, -item->bounds.x, -item->bounds.y}, inverse_root);
                 const std::array<float, 6> root_local =
                     compose_transform(base, transform_array(item->transform));
-                LayoutRect local_bounds = transform_bounds(item->bounds, transform_layout(root_local));
+                LayoutRect local_bounds =
+                    transform_bounds(item->bounds, transform_layout(root_local));
                 std::size_t first = snapshot.primitives.size();
                 std::size_t last = 0;
                 for (std::size_t index = 0; index < snapshot.primitives.size(); ++index) {
@@ -392,11 +393,11 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                         local_bounds = union_bounds(
                             local_bounds,
                             transform_bounds(primitive.bounds,
-                                             transform_layout(compose_transform(base,
-                                                                               transform_array(primitive.transform)))));
+                                             transform_layout(compose_transform(
+                                                 base, transform_array(primitive.transform)))));
                 }
-                if (first == snapshot.primitives.size() ||
-                    local_bounds.width <= 0.0f || local_bounds.height <= 0.0f)
+                if (first == snapshot.primitives.size() || local_bounds.width <= 0.0f ||
+                    local_bounds.height <= 0.0f)
                     continue;
                 RasterRoot root;
                 root.node_id = node_id;
@@ -405,10 +406,10 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                 root.bounds = local_bounds;
                 root.world_to_cache = compose_transform(
                     {1.0f, 0.0f, 0.0f, 1.0f, -local_bounds.x, -local_bounds.y}, base);
-                root.cache_to_world = compose_transform(
-                    transform_array(item->transform),
-                    {1.0f, 0.0f, 0.0f, 1.0f, item->bounds.x + local_bounds.x,
-                     item->bounds.y + local_bounds.y});
+                root.cache_to_world =
+                    compose_transform(transform_array(item->transform),
+                                      {1.0f, 0.0f, 0.0f, 1.0f, item->bounds.x + local_bounds.x,
+                                       item->bounds.y + local_bounds.y});
                 raster_roots.push_back(root);
             }
             std::sort(raster_roots.begin(), raster_roots.end(),
@@ -420,12 +421,11 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
         std::size_t active_raster_root = no_raster_root;
         ResourceId active_raster_target{};
         std::unordered_set<uint32_t> appended_custom_nodes;
-        const auto append_custom_plan = [&](const RenderPlan &custom_plan,
-                                            std::size_t primitive_index,
-                                            ResourceId destination_target,
-                                            std::size_t destination_pass,
-                                            const std::array<float, 6> *command_transform = nullptr,
-                                            const LayoutRect *clip_override = nullptr) -> bool {
+        const auto append_custom_plan =
+            [&](const RenderPlan &custom_plan, std::size_t primitive_index,
+                ResourceId destination_target, std::size_t destination_pass,
+                const std::array<float, 6> *command_transform = nullptr,
+                const LayoutRect *clip_override = nullptr) -> bool {
             const auto &primitive = snapshot.primitives[primitive_index];
             std::unordered_map<uint32_t, ResourceId> remapped_targets;
             for (const auto &pass : custom_plan.passes) {
@@ -480,25 +480,23 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                 return true;
             if (active_raster_root != no_raster_root) {
                 const auto &root = raster_roots[active_raster_root];
-                const LayoutRect local_clip = clips.empty()
-                                                   ? LayoutRect{}
-                                                   : transform_bounds(
-                                                         clips.back(),
-                                                         transform_layout(root.world_to_cache));
-                return append_custom_plan(
-                    *found->second, primitive_index, active_raster_target, current_main_pass,
-                    &root.world_to_cache, clips.empty() ? nullptr : &local_clip);
+                const LayoutRect local_clip =
+                    clips.empty()
+                        ? LayoutRect{}
+                        : transform_bounds(clips.back(), transform_layout(root.world_to_cache));
+                return append_custom_plan(*found->second, primitive_index, active_raster_target,
+                                          current_main_pass, &root.world_to_cache,
+                                          clips.empty() ? nullptr : &local_clip);
             }
-            const bool raster = raster_paint_nodes &&
-                                raster_paint_nodes->contains(primitive.node_id);
+            const bool raster =
+                raster_paint_nodes && raster_paint_nodes->contains(primitive.node_id);
             if (!raster)
                 return append_custom_plan(*found->second, primitive_index, main_target,
                                           current_main_pass);
             if (transient_target_slot > std::numeric_limits<uint16_t>::max())
                 return fail(error, primitive_index, "raster cache target limit exceeded");
-            const ResourceId raster_target =
-                make_resource_id(ResourceKind::RenderTarget, 1,
-                                 static_cast<uint16_t>(transient_target_slot++));
+            const ResourceId raster_target = make_resource_id(
+                ResourceKind::RenderTarget, 1, static_cast<uint16_t>(transient_target_slot++));
             RenderPass raster_pass;
             raster_pass.target = raster_target;
             raster_pass.kind = RenderPassKind::Raster;
@@ -521,8 +519,8 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
             auto &root = raster_roots[root_index];
             if (transient_target_slot > std::numeric_limits<uint16_t>::max())
                 return fail(error, root.first, "raster cache target limit exceeded");
-            active_raster_target = make_resource_id(
-                ResourceKind::RenderTarget, 1, static_cast<uint16_t>(transient_target_slot++));
+            active_raster_target = make_resource_id(ResourceKind::RenderTarget, 1,
+                                                    static_cast<uint16_t>(transient_target_slot++));
             RenderPass pass;
             pass.target = active_raster_target;
             pass.kind = RenderPassKind::Raster;
@@ -540,8 +538,12 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
             RenderPass continuation;
             continuation.target = main_target;
             continuation.load_existing = true;
-            RenderCommand composite{RenderCommandKind::CompositeTarget, active_raster_target,
-                                    0.0f, 0.0f, root.bounds.width, root.bounds.height};
+            RenderCommand composite{RenderCommandKind::CompositeTarget,
+                                    active_raster_target,
+                                    0.0f,
+                                    0.0f,
+                                    root.bounds.width,
+                                    root.bounds.height};
             composite.transform = root.cache_to_world;
             if (root.outer_clip.width > 0.0f && root.outer_clip.height > 0.0f)
                 set_scissor(composite, root.outer_clip, pixel_scale);
@@ -552,28 +554,28 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
             active_raster_target = {};
         };
         const auto close_raster_if_last = [&](std::size_t index) {
-            if (active_raster_root != no_raster_root && index == raster_roots[active_raster_root].last)
+            if (active_raster_root != no_raster_root &&
+                index == raster_roots[active_raster_root].last)
                 end_raster_root();
         };
         const auto draw_transform_for = [&](const LayoutPrimitive &primitive) {
             if (active_raster_root == no_raster_root)
                 return primitive.transform;
-            return transform_layout(compose_transform(
-                raster_roots[active_raster_root].world_to_cache,
-                transform_array(primitive.transform)));
+            return transform_layout(
+                compose_transform(raster_roots[active_raster_root].world_to_cache,
+                                  transform_array(primitive.transform)));
         };
         const auto clip_for = [&](const LayoutRect &clip) {
             if (active_raster_root == no_raster_root)
                 return clip;
-            return transform_bounds(clip,
-                                    transform_layout(raster_roots[active_raster_root].world_to_cache));
+            return transform_bounds(
+                clip, transform_layout(raster_roots[active_raster_root].world_to_cache));
         };
         for (std::size_t index = 0; index < snapshot.primitives.size(); ++index) {
             const auto &primitive = snapshot.primitives[index];
             if (active_raster_root == no_raster_root) {
                 for (std::size_t root_index = 0; root_index < raster_roots.size(); ++root_index) {
-                    if (raster_roots[root_index].first == index &&
-                        !begin_raster_root(root_index))
+                    if (raster_roots[root_index].first == index && !begin_raster_root(root_index))
                         return false;
                 }
             }
@@ -636,8 +638,7 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                 if (!out.resources_.bind_path(id, *prepared, 0, content_generation))
                     return fail(error, index, "layout path resource binding failed");
                 out.paths_.push_back(std::move(prepared));
-                if (!out.owned_resources_.bind_path(id, out.paths_.back(), 0,
-                                                    content_generation))
+                if (!out.owned_resources_.bind_path(id, out.paths_.back(), 0, content_generation))
                     out.sealable_ = false;
                 RenderCommand command{RenderCommandKind::Path, id};
                 command.content_generation = content_generation;
@@ -701,9 +702,8 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                 const LayoutTransform draw_transform = draw_transform_for(primitive);
                 auto generation_primitive = primitive;
                 generation_primitive.transform = draw_transform;
-                const uint64_t content_generation =
-                    primitive_content_generation(generation_primitive, text,
-                                                 glyphs->layout_generation);
+                const uint64_t content_generation = primitive_content_generation(
+                    generation_primitive, text, glyphs->layout_generation);
                 if (!out.resources_.bind_text(id, *glyphs, content_generation))
                     return fail(error, index, "layout text resource binding failed");
                 const GlyphTint tint{

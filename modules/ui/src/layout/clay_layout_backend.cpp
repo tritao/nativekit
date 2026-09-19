@@ -742,10 +742,10 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
                                       LayoutRect parent_clip, LayoutRect parent_bounds) -> bool {
         const auto &node = nodes[index];
         const LayoutRect node_bounds_rect = node_bounds[index];
-        const float origin_x = node_bounds_rect.x +
-                               node_bounds_rect.width * node.style.transform_origin_x;
-        const float origin_y = node_bounds_rect.y +
-                               node_bounds_rect.height * node.style.transform_origin_y;
+        const float origin_x =
+            node_bounds_rect.x + node_bounds_rect.width * node.style.transform_origin_x;
+        const float origin_y =
+            node_bounds_rect.y + node_bounds_rect.height * node.style.transform_origin_y;
         const LayoutTransform to_origin = translated(origin_x, origin_y);
         const LayoutTransform from_origin = translated(-origin_x, -origin_y);
         const LayoutTransform local_transform =
