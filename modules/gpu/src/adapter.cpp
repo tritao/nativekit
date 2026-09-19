@@ -277,6 +277,7 @@ static nkgpu_result fail(nkgpu_result code, const char *format, ...);
 static bool fail_next_image_creation = false;
 static bool fail_next_buffer_creation = false;
 static bool fail_next_present = false;
+static bool forbid_surface_target_queries = false;
 #endif
 
 static bool renderer_is_active(const Renderer &renderer) {
@@ -352,12 +353,20 @@ static const sg_api *runtime_gfx() {
     return selected_api ? selected_api->gfx : nullptr;
 }
 
+static nk_result get_surface_frame_target(nk_surface surface, nk_surface_frame_target *target) {
+#if defined(NKGPU_TESTING)
+    if (forbid_surface_target_queries)
+        return NK_ERROR_UNKNOWN;
+#endif
+    return nk_surface_get_frame_target(surface, target);
+}
+
 static bool make_renderer_surface_current(const Renderer &renderer) {
     if (nk_surface_make_current(renderer.surface) != NK_OK)
         return false;
     nk_surface_frame_target target{};
     target.struct_size = sizeof(target);
-    return nk_surface_get_frame_target(renderer.surface, &target) == NK_OK &&
+    return get_surface_frame_target(renderer.surface, &target) == NK_OK &&
            target.api == renderer.graphics_api && target.device.id == renderer.device.id;
 }
 
@@ -375,11 +384,15 @@ static nkgpu_result activate_renderer(Handle handle,
     if (!provided_target && !renderer_is_active(slot->value) && context_backend &&
         nk_surface_make_current(slot->value.surface) != NK_OK)
         return fail(NKGPU_ERROR_UNKNOWN, "current: %s", nk_last_error());
-    nk_surface_frame_target target = provided_target ? *provided_target : nk_surface_frame_target{};
-    if (!provided_target)
+    nk_surface_frame_target target = provided_target
+                                         ? *provided_target
+                                         : (slot->value.has_frame_target
+                                                ? slot->value.frame_target
+                                                : nk_surface_frame_target{});
+    if (!provided_target && !slot->value.has_frame_target)
         target.struct_size = sizeof(target);
-    const bool target_available =
-        provided_target || (nk_surface_get_frame_target(slot->value.surface, &target) == NK_OK);
+    const bool target_available = provided_target || slot->value.has_frame_target ||
+                                  get_surface_frame_target(slot->value.surface, &target) == NK_OK;
     if (target_available && target.device.id &&
         (target.api != slot->value.graphics_api || target.device.id != slot->value.device.id)) {
         ++slot->value.surface_recreations;
@@ -877,6 +890,14 @@ int32_t nkgpu_test_generation_exhaustion(void) {
         transient.remove(*current_slot);
     }
     return transient.add(65520) != 0 ? 1 : 0;
+}
+
+void nkgpu_test_forbid_surface_target_queries(void) {
+    forbid_surface_target_queries = true;
+}
+
+void nkgpu_test_allow_surface_target_queries(void) {
+    forbid_surface_target_queries = false;
 }
 
 nkgpu_result nkgpu_test_lose_after_frames(nkgpu_renderer renderer, uint32_t frames) {
