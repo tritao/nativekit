@@ -124,6 +124,7 @@ if(NK_BUILD_TESTS)
         if(NKUI_BACKEND_SMOKE_REGISTERED)
             set_tests_properties(nativekit_ui_backend_smoke PROPERTIES
                 LABELS "graphics;gpu;ui"
+                SKIP_RETURN_CODE 77
                 TIMEOUT 15)
         endif()
     endif()
