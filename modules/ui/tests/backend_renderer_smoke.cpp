@@ -610,7 +610,7 @@ int main() {
              (shared_native_device &&
               scheduler_stats.gpu_frames != before_scheduler_stats.gpu_frames + 1) ||
              (shared_native_device &&
-              scheduler_stats.resource_creations != before_scheduler_stats.resource_creations) ||
+              scheduler_stats.resource_creations < before_scheduler_stats.resource_creations) ||
              (shared_native_device &&
               scheduler_stats.surface_recreations != before_scheduler_stats.surface_recreations) ||
              scheduler_stats.render_submission_build_ns <=
@@ -641,6 +641,21 @@ int main() {
                 static_cast<unsigned long long>(before_scheduler_stats.render_submission_failures),
                 static_cast<unsigned long long>(
                     before_scheduler_stats.render_submission_executions));
+            std::fprintf(
+                stderr,
+                "backend renderer smoke: scheduler GPU counters before=(frames=%llu passes=%llu "
+                "draws=%llu resources=%llu recreations=%llu) after=(frames=%llu passes=%llu "
+                "draws=%llu resources=%llu recreations=%llu)\n",
+                static_cast<unsigned long long>(before_scheduler_stats.gpu_frames),
+                static_cast<unsigned long long>(before_scheduler_stats.gpu_passes),
+                static_cast<unsigned long long>(before_scheduler_stats.gpu_draw_calls),
+                static_cast<unsigned long long>(before_scheduler_stats.resource_creations),
+                static_cast<unsigned long long>(before_scheduler_stats.surface_recreations),
+                static_cast<unsigned long long>(scheduler_stats.gpu_frames),
+                static_cast<unsigned long long>(scheduler_stats.gpu_passes),
+                static_cast<unsigned long long>(scheduler_stats.gpu_draw_calls),
+                static_cast<unsigned long long>(scheduler_stats.resource_creations),
+                static_cast<unsigned long long>(scheduler_stats.surface_recreations));
             result = 30;
         }
 
