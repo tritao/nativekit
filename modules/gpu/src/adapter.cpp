@@ -883,23 +883,16 @@ nkgpu_result nkgpu_surface_destroy(nk_surface s) {
                ? NKGPU_OK
                : fail(NKGPU_ERROR_UNKNOWN, "destroy surface: %s", nk_last_error());
 }
-nkgpu_result nkgpu_renderer_create(nk_surface surface, nkgpu_renderer *out) {
+static nkgpu_result create_renderer_from_target(nk_surface surface,
+                                                const nk_surface_frame_target &target,
+                                                nkgpu_renderer *out) {
     if (!surface || !out)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid renderer arguments");
     if (active_renderer)
         return fail(NKGPU_ERROR_WRONG_STATE, "cannot create a renderer during an active frame");
-    // Explicit APIs initialize against the surface-owned device without
-    // acquiring a presentation image. The first frame prepares its target.
-    nk_surface_frame_target target{};
-    target.struct_size = sizeof(target);
-    if (nk_surface_get_frame_target(surface, &target) != NK_OK)
-        return fail(NKGPU_ERROR_UNKNOWN, "surface target query: %s", nk_last_error());
-    const bool context_backend =
-        target.api == NK_GRAPHICS_OPENGL || target.api == NK_GRAPHICS_OPENGL_ES;
-    if (context_backend && nk_surface_make_current(surface) != NK_OK)
-        return fail(NKGPU_ERROR_UNKNOWN, "current: %s", nk_last_error());
-    if (context_backend && nk_surface_get_frame_target(surface, &target) != NK_OK)
-        return fail(NKGPU_ERROR_UNKNOWN, "surface target query: %s", nk_last_error());
+    if (target.struct_size < sizeof(nk_surface_frame_target) || target.api == 0 ||
+        target.width <= 0 || target.height <= 0)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid frame target");
     if (!target.device.id)
         return fail(NKGPU_ERROR_UNKNOWN, "surface has no graphics-device identity");
     if ((target.api == NK_GRAPHICS_D3D11 && (!target.native_device || !target.native_context)) ||
@@ -950,6 +943,32 @@ nkgpu_result nkgpu_renderer_create(nk_surface surface, nkgpu_renderer *out) {
     selected_api = api;
     *out = h;
     return NKGPU_OK;
+}
+nkgpu_result nkgpu_renderer_create(nk_surface surface, nkgpu_renderer *out) {
+    if (!surface || !out)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid renderer arguments");
+    /* Explicit APIs initialize against the surface-owned device without
+       acquiring a presentation image. The first frame prepares its target. */
+    nk_surface_frame_target target{};
+    target.struct_size = sizeof(target);
+    if (nk_surface_get_frame_target(surface, &target) != NK_OK)
+        return fail(NKGPU_ERROR_UNKNOWN, "surface target query: %s", nk_last_error());
+    const bool context_backend =
+        target.api == NK_GRAPHICS_OPENGL || target.api == NK_GRAPHICS_OPENGL_ES;
+    if (context_backend && nk_surface_make_current(surface) != NK_OK)
+        return fail(NKGPU_ERROR_UNKNOWN, "current: %s", nk_last_error());
+    if (context_backend && nk_surface_get_frame_target(surface, &target) != NK_OK)
+        return fail(NKGPU_ERROR_UNKNOWN, "surface target query: %s", nk_last_error());
+    return create_renderer_from_target(surface, target, out);
+}
+
+nkgpu_result nkgpu_renderer_create_for_frame_target(
+    nk_surface surface, const nk_surface_frame_target *frame_target, nkgpu_renderer *out_renderer) {
+    if (!nk_executor_is_current(NK_EXECUTOR_RENDER))
+        return fail(NKGPU_ERROR_WRONG_THREAD, "renderer creation requires the render executor");
+    if (!frame_target)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "frame target is null");
+    return create_renderer_from_target(surface, *frame_target, out_renderer);
 }
 static void destroy_render_target(Pool<RenderTarget, RenderTargetKind, 128>::Slot &slot,
                                   bool backend_available) {
