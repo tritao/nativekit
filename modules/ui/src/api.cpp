@@ -2810,13 +2810,26 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
                                          command.resource, surface_slot->graphics_image,
                                          static_cast<uint64_t>(surface_slot->graphics_image.id)))
                             sealable = false;
+                    } else if (surface_slot->surface) {
+                        const nk_graphics_image published =
+                            surface_slot->surface->retained_image();
+                        if (published.id) {
+                            const auto generation = static_cast<uint64_t>(
+                                surface_slot->surface->generation());
+                            valid = frame_resources.bind_graphics_image(command.resource, published,
+                                                                        generation);
+                            if (valid && !owned_resources.bind_graphics_image(
+                                             command.resource, published, generation))
+                                sealable = false;
+                        } else {
+                            valid = frame_resources.bind_surface(
+                                command.resource, *surface_slot->surface,
+                                static_cast<uint64_t>(surface_slot->surface->generation()));
+                            /* A live result producer is a callback and cannot be sealed. */
+                            sealable = false;
+                        }
                     } else {
-                        valid = surface_slot->surface &&
-                                frame_resources.bind_surface(
-                                    command.resource, *surface_slot->surface,
-                                    static_cast<uint64_t>(surface_slot->surface->generation()));
-                        /* A live result producer is a callback and cannot be sealed. */
-                        sealable = false;
+                        valid = false;
                     }
                     if (!valid)
                         break;
@@ -3241,12 +3254,23 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                         if (valid && !owned_resources.bind_graphics_image(
                                          command.resource, surface_slot->graphics_image))
                             sealable = false;
-                    } else {
-                        valid =
-                            surface_slot->surface &&
-                            frame_resources.bind_surface(command.resource, *surface_slot->surface);
-                        /* A live result producer is a callback and cannot be sealed. */
-                        sealable = false;
+                    } else if (surface_slot->surface) {
+                        const nk_graphics_image published =
+                            surface_slot->surface->retained_image();
+                        if (published.id) {
+                            const auto generation = static_cast<uint64_t>(
+                                surface_slot->surface->generation());
+                            valid = frame_resources.bind_graphics_image(command.resource, published,
+                                                                        generation);
+                            if (valid && !owned_resources.bind_graphics_image(
+                                             command.resource, published, generation))
+                                sealable = false;
+                        } else {
+                            valid = frame_resources.bind_surface(command.resource,
+                                                                 *surface_slot->surface);
+                            /* A live result producer is a callback and cannot be sealed. */
+                            sealable = false;
+                        }
                     }
                 }
             }

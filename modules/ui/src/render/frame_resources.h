@@ -62,6 +62,13 @@ class SurfaceProducer {
     // Return a non-zero revision for the pixels produced by this surface. The backend may reuse
     // the target while this revision and the resolved descriptor remain unchanged.
     virtual uint32_t generation() const = 0;
+    /**
+     * Return a borrowed retained image when this producer publishes its
+     * output instead of rendering through a callback. The frame planner
+     * retains the image while sealing an asynchronous submission. Returning a
+     * zero handle keeps the legacy callback path unchanged.
+     */
+    virtual nk_graphics_image retained_image() const { return {}; }
     // Return Unavailable for a transient synchronization miss; Failed aborts the frame.
     virtual SurfaceRenderResult render(UiRenderer &renderer, ResourceId target,
                                        const SurfaceDescriptor &description) = 0;
