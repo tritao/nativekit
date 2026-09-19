@@ -366,6 +366,9 @@ static nk_result get_surface_frame_target(nk_surface surface, nk_surface_frame_t
 }
 
 static bool make_renderer_surface_current(const Renderer &renderer) {
+    if (nk::core::render_executor_physical() &&
+        nk_executor_is_current(NK_EXECUTOR_RENDER) && renderer.has_context_target)
+        return nkgpu_bind_frame_target(&renderer.context_target) == NKGPU_OK;
     if (nk_surface_make_current(renderer.surface) != NK_OK)
         return false;
     nk_surface_frame_target target{};
