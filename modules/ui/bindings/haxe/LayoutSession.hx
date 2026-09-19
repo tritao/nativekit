@@ -77,6 +77,20 @@ class LayoutSession {
 		return resolved;
 	}
 
+	/** Returns the native root-to-target geometric hit path for viewport coordinates. */
+	public function hitTest(x:Float, y:Float):Array<Int> {
+		ensureLive();
+		var result = NativeKitUI.nkui_layout_session_hit_test(value, x, y);
+		UiResult.check(result.status, "layoutSession.hitTest");
+		var bytes:Bytes = result.out_path;
+		if (bytes.length % 4 != 0)
+			throw "Native hit testing returned a truncated node path";
+		var path:Array<Int> = [];
+		for (offset in 0...Std.int(bytes.length / 4))
+			path.push(bytes.getInt32(offset * 4));
+		return path;
+	}
+
 	/** Returns pre-transform layout bounds of a node after the latest submission. */
 	public function item(node:LayoutNode):Rect {
 		ensureLive();

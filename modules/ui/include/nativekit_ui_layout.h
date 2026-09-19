@@ -364,6 +364,19 @@ NKUI_API nkui_result NK_CALL nkui_layout_session_get_resolved_items(
     nkui_layout_session session, uint8_t *out_buffer NK_OUT_BUFFER(inout_bytes),
     uint32_t *inout_bytes NK_INOUT);
 
+/** Returns the root-to-target geometric hit path for a viewport point.
+ *
+ * The returned path contains stable node IDs in root-to-target order. Pass
+ * NULL to query the required byte count, then provide a buffer containing at
+ * least that many bytes. The path buffer is an array of uint32_t values even
+ * though its capacity is reported in bytes. A point with no eligible target
+ * returns an empty path. Geometric questions only are considered: visibility,
+ * clipping, transforms, hit policies, and native paint order.
+ */
+NKUI_API nkui_result NK_CALL nkui_layout_session_hit_test(
+    nkui_layout_session session, float x, float y,
+    uint8_t *out_path NK_OUT_BUFFER(inout_bytes), uint32_t *inout_bytes NK_INOUT);
+
 /** Executes the submitted layout through the existing NativeKit renderer.
  *
  * The retained UI surface uses on-demand scheduling; request another frame

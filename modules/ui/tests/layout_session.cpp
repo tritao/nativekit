@@ -191,6 +191,43 @@ int main() {
         return 4;
     }
 
+    uint32_t hit_bytes = 0;
+    if (nkui_layout_session_hit_test(session, 250.0f, 180.0f, nullptr, &hit_bytes) != NKUI_OK ||
+        hit_bytes != sizeof(uint32_t))
+        return 52;
+    uint32_t hit_path[2] = {};
+    uint32_t undersized_hit_bytes = 0;
+    if (nkui_layout_session_hit_test(session, 250.0f, 180.0f,
+                                      reinterpret_cast<uint8_t *>(hit_path),
+                                      &undersized_hit_bytes) != NKUI_ERROR_INVALID_ARGUMENT ||
+        undersized_hit_bytes != sizeof(uint32_t))
+        return 53;
+    hit_bytes = sizeof(hit_path);
+    if (nkui_layout_session_hit_test(session, 250.0f, 180.0f,
+                                      reinterpret_cast<uint8_t *>(hit_path), &hit_bytes) != NKUI_OK ||
+        hit_bytes != sizeof(uint32_t) || hit_path[0] != 1)
+        return 54;
+
+    hit_bytes = 0;
+    if (nkui_layout_session_hit_test(session, 150.0f, 75.0f, nullptr, &hit_bytes) != NKUI_OK ||
+        hit_bytes != 2 * sizeof(uint32_t))
+        return 55;
+    hit_bytes = 2 * sizeof(uint32_t);
+    if (nkui_layout_session_hit_test(session, 150.0f, 75.0f,
+                                      reinterpret_cast<uint8_t *>(hit_path), &hit_bytes) != NKUI_OK ||
+        hit_bytes != 2 * sizeof(uint32_t) || hit_path[0] != 1 || hit_path[1] != 2)
+        return 56;
+
+    auto hidden_hit = bytes;
+    const std::size_t hidden_panel_record =
+        NKUI_LAYOUT_TRANSACTION_HEADER_BYTES + NKUI_LAYOUT_NODE_RECORD_BYTES;
+    write_u32(hidden_hit, hidden_panel_record + NKUI_LAYOUT_NODE_FLAGS_OFFSET, 0);
+    if (nkui_layout_session_submit(session, hidden_hit.data(), hidden_hit.size(), &frame) !=
+            NKUI_OK ||
+        nkui_layout_session_hit_test(session, 150.0f, 75.0f, nullptr, &hit_bytes) != NKUI_OK ||
+        hit_bytes != sizeof(uint32_t))
+        return 57;
+
     auto constraints = transaction_with_nodes(2);
     const std::size_t constraints_record =
         NKUI_LAYOUT_TRANSACTION_HEADER_BYTES + NKUI_LAYOUT_NODE_RECORD_BYTES;

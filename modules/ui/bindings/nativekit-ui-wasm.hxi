@@ -647,6 +647,17 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	 */
 	extern fn nkui_layout_session_get_resolved_items(session: nkui_layout_session, out_buffer: nullable<ptr<u8>> @out_buffer("inout_bytes"), inout_bytes: ptr<u32> @inout) -> nkui_result;
 	/**
+	 * Returns the root-to-target geometric hit path for a viewport point.
+	 *
+	 * The returned path contains stable node IDs in root-to-target order. Pass
+	 * NULL to query the required byte count, then provide a buffer containing at
+	 * least that many bytes. The path buffer is an array of uint32_t values even
+	 * though its capacity is reported in bytes. A point with no eligible target
+	 * returns an empty path. Geometric questions only are considered: visibility,
+	 * clipping, transforms, hit policies, and native paint order.
+	 */
+	extern fn nkui_layout_session_hit_test(session: nkui_layout_session, x: f32, y: f32, out_path: nullable<ptr<u8>> @out_buffer("inout_bytes"), inout_bytes: ptr<u32> @inout) -> nkui_result;
+	/**
 	 * Executes the submitted layout through the existing NativeKit renderer.
 	 *
 	 * The retained UI surface uses on-demand scheduling; request another frame

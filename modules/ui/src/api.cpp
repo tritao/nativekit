@@ -1487,6 +1487,71 @@ nkui_result set_cache_policy(LayoutSessionState *state, uint32_t node_id,
     return NKUI_OK;
 }
 
+bool point_in_rect(const nkui::LayoutRect &rect, float x, float y) {
+    return rect.width > 0.0f && rect.height > 0.0f && x >= rect.x &&
+           x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height;
+}
+
+bool precisely_hits_self(const nkui::LayoutItem &item, float x, float y) {
+    if (!point_in_rect(item.world_bounds, x, y) || !point_in_rect(item.clip_bounds, x, y))
+        return false;
+    const float layout_x = item.inverse_transform.a * x + item.inverse_transform.c * y +
+                           item.inverse_transform.tx;
+    const float layout_y = item.inverse_transform.b * x + item.inverse_transform.d * y +
+                           item.inverse_transform.ty;
+    return point_in_rect(item.local_bounds, layout_x - item.bounds.x, layout_y - item.bounds.y);
+}
+
+struct HitTestCandidate {
+    bool found = false;
+    uint64_t paint_order = 0;
+    uint32_t index = nkui::kInvalidLayoutIndex;
+    std::vector<uint32_t> path;
+};
+
+void visit_hit_test(const nkui::LayoutSnapshot &snapshot, uint32_t index, float x, float y,
+                    std::vector<uint32_t> &path, HitTestCandidate &candidate) {
+    if (index >= snapshot.items.size())
+        return;
+    const auto &item = snapshot.items[index];
+    if (!item.visible || !point_in_rect(item.subtree_hit_bounds, x, y) ||
+        !point_in_rect(item.clip_bounds, x, y))
+        return;
+
+    path.push_back(item.id);
+    if (item.hit_children) {
+        for (uint32_t child_offset = 0; child_offset < item.child_count; ++child_offset) {
+            const uint32_t child_index = item.child_offset + child_offset;
+            if (child_index >= snapshot.child_indices.size())
+                break;
+            visit_hit_test(snapshot, snapshot.child_indices[child_index], x, y, path, candidate);
+        }
+    }
+
+    if (item.hit_self && precisely_hits_self(item, x, y) &&
+        (!candidate.found || item.paint_order > candidate.paint_order ||
+         (item.paint_order == candidate.paint_order && item.index > candidate.index))) {
+        candidate.found = true;
+        candidate.paint_order = item.paint_order;
+        candidate.index = item.index;
+        candidate.path = path;
+    }
+    path.pop_back();
+}
+
+std::vector<uint32_t> hit_test(const nkui::LayoutSnapshot &snapshot, float x, float y) {
+    const auto root = std::find_if(snapshot.items.begin(), snapshot.items.end(),
+                                   [](const nkui::LayoutItem &item) {
+                                       return item.parent_index == nkui::kInvalidLayoutIndex;
+                                   });
+    if (root == snapshot.items.end())
+        return {};
+    std::vector<uint32_t> path;
+    HitTestCandidate candidate;
+    visit_hit_test(snapshot, root->index, x, y, path, candidate);
+    return candidate.path;
+}
+
 extern "C" nkui_result
 nkui_layout_session_set_custom_paint_cache_policy(nkui_layout_session session, uint32_t node_id,
                                                   nkui_layout_cache_policy policy) {
@@ -1613,6 +1678,37 @@ extern "C" nkui_result nkui_layout_session_get_resolved_items(nkui_layout_sessio
         item.baseline = resolved.baseline;
         std::memcpy(out_buffer + index * sizeof(item), &item, sizeof(item));
     }
+    *inout_bytes = required;
+    return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_layout_session_hit_test(nkui_layout_session session, float x,
+                                                     float y, uint8_t *out_path,
+                                                     uint32_t *inout_bytes) {
+    if (!inout_bytes || !std::isfinite(x) || !std::isfinite(y))
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(layout_sessions_mutex);
+    auto *state = resolve(session);
+    if (!state)
+        return NKUI_ERROR_INVALID_HANDLE;
+    if (!state->submitted)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+
+    const std::vector<uint32_t> path = hit_test(state->snapshot, x, y);
+    const size_t required_size = path.size() * sizeof(uint32_t);
+    if (required_size > UINT32_MAX)
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    const uint32_t required = static_cast<uint32_t>(required_size);
+    if (!out_path) {
+        *inout_bytes = required;
+        return NKUI_OK;
+    }
+    if (*inout_bytes < required) {
+        *inout_bytes = required;
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    }
+    if (required)
+        std::memcpy(out_path, path.data(), required);
     *inout_bytes = required;
     return NKUI_OK;
 }
