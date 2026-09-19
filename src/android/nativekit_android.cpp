@@ -821,6 +821,14 @@ bool attach_surface_window(AndroidSurface &resource, JNIEnv *env, jobject java_s
     return true;
 }
 
+void apply_pending_resize(AndroidSurface &resource) {
+    if (!resource.resize_pending.exchange(false, std::memory_order_acq_rel))
+        return;
+    resource.framebuffer_width = resource.pending_framebuffer_width.load(std::memory_order_relaxed);
+    resource.framebuffer_height =
+        resource.pending_framebuffer_height.load(std::memory_order_relaxed);
+}
+
 void emit_surface_ready(const AndroidSurface &resource) {
     nk::core::QueuedEvent ready;
     ready.kind = NK_EVENT_SURFACE_READY;
@@ -2987,11 +2995,13 @@ nk_result NK_CALL nk_surface_present(nk_handle handle) {
     if (!eglSwapBuffers(resource->display, resource->surface)) {
         nk::core::set_error("could not present the Android EGL surface");
         resource->frame_prepared.store(false, std::memory_order_release);
+        apply_pending_resize(*resource);
         if (resource->surface_destroy_pending.load(std::memory_order_acquire))
             release_surface_window(*resource);
         return NK_ERROR_UNKNOWN;
     }
     resource->frame_prepared.store(false, std::memory_order_release);
+    apply_pending_resize(*resource);
     if (resource->surface_destroy_pending.load(std::memory_order_acquire))
         release_surface_window(*resource);
     return NK_OK;
@@ -3080,13 +3090,7 @@ nk_result NK_CALL nk_frame_backend_finish(nk_handle handle, const nk_surface_fra
         return NK_ERROR_INVALID_REQUEST;
     }
     resource->frame_prepared.store(false, std::memory_order_release);
-    if (resource->resize_pending.load(std::memory_order_acquire)) {
-        resource->framebuffer_width =
-            resource->pending_framebuffer_width.load(std::memory_order_relaxed);
-        resource->framebuffer_height =
-            resource->pending_framebuffer_height.load(std::memory_order_relaxed);
-        resource->resize_pending.store(false, std::memory_order_release);
-    }
+    apply_pending_resize(*resource);
     if (resource->surface_destroy_pending.load(std::memory_order_acquire))
         release_surface_window(*resource);
     return NK_OK;
@@ -3965,6 +3969,20 @@ JNIEXPORT jint JNICALL Java_io_nativekit_NativeKitHost_nativeProbeSurfaceFrame(J
         return queued;
     }
     return NK_OK;
+}
+
+JNIEXPORT jint JNICALL Java_io_nativekit_NativeKitHost_nativeProbeSurfaceFrameSize(
+    JNIEnv *, jclass, jlong surface_handle, jint framebuffer_width, jint framebuffer_height) {
+    nk_surface_frame frame = NK_INVALID_HANDLE;
+    nk_surface_frame_target target{};
+    target.struct_size = sizeof(target);
+    const auto acquired =
+        nk_surface_acquire_frame(static_cast<nk_surface>(surface_handle), &frame, &target);
+    if (acquired != NK_OK)
+        return acquired;
+    const bool matches = target.width == framebuffer_width && target.height == framebuffer_height;
+    const auto canceled = nk_surface_cancel_frame(frame);
+    return canceled != NK_OK ? canceled : matches ? NK_OK : NK_ERROR_INVALID_REQUEST;
 }
 
 JNIEXPORT jint JNICALL Java_io_nativekit_NativeKitHost_nativeRenderThreadProbe(JNIEnv *, jclass) {

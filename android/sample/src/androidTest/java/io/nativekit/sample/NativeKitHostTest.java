@@ -108,6 +108,14 @@ public final class NativeKitHostTest {
                 assertEquals("recovered RENDER path must stay surface-free", 0,
                              activity.host.renderSurfaceApiViolationProbe());
             });
+            ByteBuffer finalResizeData = ByteBuffer.wrap(finalResize.data)
+                .order(ByteOrder.nativeOrder());
+            int expectedFramebufferWidth = finalResizeData.getInt(8);
+            int expectedFramebufferHeight = finalResizeData.getInt(12);
+            scenario.onActivity(activity -> assertEquals(
+                "deferred EGL resize must be visible on the next acquired frame", 0,
+                activity.host.probeGraphicsSurfaceFrameSize(
+                    surface[0], expectedFramebufferWidth, expectedFramebufferHeight)));
             scenario.onActivity(activity ->
                 assertEquals(0, activity.host.destroyGraphicsSurface(surface[0])));
         }
