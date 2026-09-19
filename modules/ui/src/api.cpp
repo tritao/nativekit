@@ -547,7 +547,6 @@ void execute_render_submission(RenderSubmission &submission) {
                     {nkui::make_resource_id(nkui::ResourceKind::RenderTarget, 1, 1),
                      submission.frame_target},
                     &execution_error);
-#if defined(NKGPU_TESTING)
                 if (!success && nk::core::render_executor_physical())
                     std::fprintf(stderr,
                                  "nativekit ui: render submission failed at pass=%u command=%u: %s "
@@ -555,7 +554,6 @@ void execute_render_submission(RenderSubmission &submission) {
                                  execution_error.pass_index, execution_error.command_index,
                                  execution_error.message ? execution_error.message : "unknown",
                                  renderer_impl->lastError(), nkgpu_last_error());
-#endif
             }
         }
         /* Stats are protected by renderers_mutex.  Do not reacquire it while
