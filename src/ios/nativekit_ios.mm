@@ -14,6 +14,7 @@
 #include "core/boundary.hpp"
 #include "core/error.hpp"
 #include "core/frame_request.hpp"
+#include "core/frame_backend.hpp"
 #include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
 #include "core/handle_registry.hpp"

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nativekit.h"
+#include "core/internal_api.hpp"
 
 #include <cstddef>
 
@@ -32,7 +33,7 @@ void stop_render_executor() noexcept;
 void set_render_executor_exclusive(bool exclusive) noexcept;
 
 /** Whether this runtime has a physical render thread. */
-bool render_executor_physical() noexcept;
+NK_INTERNAL_API bool render_executor_physical() noexcept;
 
 /** Returns the logical executor of the calling thread, or NK_EXECUTOR_WORKER. */
 nk_executor executor_current() noexcept;
@@ -51,12 +52,14 @@ nk_result dispatch_to_app(nk_task_fn fn, void *user_data) noexcept;
  * queue when the selected backend has a dedicated render thread; otherwise it
  * remains in the application queue without changing callers or the ABI.
  */
-nk_result dispatch_to_executor(nk_executor executor, nk_task_fn fn, void *user_data,
-                               void (*cleanup)(void *) noexcept, std::size_t bytes) noexcept;
+NK_INTERNAL_API nk_result dispatch_to_executor(nk_executor executor, nk_task_fn fn, void *user_data,
+                                               void (*cleanup)(void *) noexcept,
+                                               std::size_t bytes) noexcept;
 
 /** Queues owned work on the physical render executor. */
-nk_result dispatch_to_render(nk_task_fn fn, void *user_data, void (*cleanup)(void *) noexcept,
-                             std::size_t bytes) noexcept;
+NK_INTERNAL_API nk_result dispatch_to_render(nk_task_fn fn, void *user_data,
+                                             void (*cleanup)(void *) noexcept,
+                                             std::size_t bytes) noexcept;
 
 /** Runs the tasks queued so far on the application executor. */
 void drain_app_tasks() noexcept;

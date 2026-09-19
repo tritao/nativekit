@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nativekit_graphics.h"
+#include "core/internal_api.hpp"
 
 #include <cstdint>
 
@@ -65,19 +66,21 @@ struct FrameBackend {
 };
 
 /** Copies an open platform-owned ticket for render-side scheduling. */
-bool lookup_frame_ticket(nk_surface_frame frame, FrameTicket *out_ticket) noexcept;
-bool mark_frame_render_submitted(nk_surface_frame frame) noexcept;
-bool take_frame_ticket(nk_surface_frame frame, FrameTicket *out_ticket) noexcept;
-void clear_frame_tickets() noexcept;
+NK_INTERNAL_API bool lookup_frame_ticket(nk_surface_frame frame, FrameTicket *out_ticket) noexcept;
+NK_INTERNAL_API bool mark_frame_render_submitted(nk_surface_frame frame) noexcept;
+NK_INTERNAL_API bool take_frame_ticket(nk_surface_frame frame, FrameTicket *out_ticket) noexcept;
+NK_INTERNAL_API void clear_frame_tickets() noexcept;
 
 } // namespace nk::core
 
 /* Backend hooks used by RENDER for APIs whose presentation is tied to submit. */
 extern "C" {
 /* Bind/unbind a backend context without rediscovering a surface on RENDER. */
-nk_result NK_CALL nk_graphics_bind_frame_target(const nk_surface_frame_target *target);
-nk_result NK_CALL nk_graphics_unbind_frame_target(const nk_surface_frame_target *target);
-nk_result NK_CALL nk_frame_backend_submit(const nk_surface_frame_target *target);
-nk_result NK_CALL nk_frame_backend_finish(nk_surface surface,
-                                          const nk_surface_frame_target *target);
+NK_INTERNAL_API nk_result NK_CALL
+nk_graphics_bind_frame_target(const nk_surface_frame_target *target);
+NK_INTERNAL_API nk_result NK_CALL
+nk_graphics_unbind_frame_target(const nk_surface_frame_target *target);
+NK_INTERNAL_API nk_result NK_CALL nk_frame_backend_submit(const nk_surface_frame_target *target);
+NK_INTERNAL_API nk_result NK_CALL nk_frame_backend_finish(nk_surface surface,
+                                                          const nk_surface_frame_target *target);
 }
