@@ -57,17 +57,10 @@ void prune_dead_surfaces() {
 }
 
 nk_surface_frame close_frame(nk_surface_frame frame) noexcept {
-    std::lock_guard lock(frame_mutex);
-    const auto entry = surface_by_frame.find(frame);
-    if (entry == surface_by_frame.end())
+    FrameTicket ticket{};
+    if (!take_frame_ticket(frame, &ticket))
         return NK_INVALID_HANDLE;
-    const nk_surface surface = entry->second;
-    surface_by_frame.erase(entry);
-    ticket_by_frame.erase(frame);
-    const auto owner = frame_by_surface.find(surface);
-    if (owner != frame_by_surface.end() && owner->second == frame)
-        frame_by_surface.erase(owner);
-    return surface;
+    return ticket.surface;
 }
 
 } // namespace
@@ -80,6 +73,36 @@ bool lookup_frame_ticket(nk_surface_frame frame, FrameTicket *out_ticket) noexce
     if (entry == ticket_by_frame.end())
         return false;
     *out_ticket = entry->second;
+    return true;
+}
+
+bool mark_frame_render_submitted(nk_surface_frame frame) noexcept {
+    std::lock_guard lock(frame_mutex);
+    const auto entry = ticket_by_frame.find(frame);
+    if (entry == ticket_by_frame.end())
+        return false;
+    entry->second.render_submitted = true;
+    return true;
+}
+
+bool take_frame_ticket(nk_surface_frame frame, FrameTicket *out_ticket) noexcept {
+    if (!out_ticket)
+        return false;
+    std::lock_guard lock(frame_mutex);
+    const auto ticket = ticket_by_frame.find(frame);
+    if (ticket == ticket_by_frame.end())
+        return false;
+    *out_ticket = ticket->second;
+    ticket_by_frame.erase(ticket);
+    const auto surface_entry = surface_by_frame.find(frame);
+    const nk_surface surface = surface_entry == surface_by_frame.end()
+                                   ? ticket->second.surface
+                                   : surface_entry->second;
+    if (surface_entry != surface_by_frame.end())
+        surface_by_frame.erase(surface_entry);
+    const auto owner = frame_by_surface.find(surface);
+    if (owner != frame_by_surface.end() && owner->second == frame)
+        frame_by_surface.erase(owner);
     return true;
 }
 
@@ -161,12 +184,12 @@ nk_result NK_CALL nk_surface_present_frame(nk_surface_frame frame) {
             if (const auto affinity = nk::core::require_executor(NK_EXECUTOR_PLATFORM);
                 affinity != NK_OK)
                 return affinity;
-            const auto surface = nk::core::close_frame(frame);
-            if (surface == NK_INVALID_HANDLE) {
+            nk::core::FrameTicket ticket{};
+            if (!nk::core::take_frame_ticket(frame, &ticket)) {
                 nk::core::set_error("the frame token is not open on this runtime");
                 return NK_ERROR_INVALID_HANDLE;
             }
-            return nk_surface_present(surface);
+            return nk_surface_present(ticket.surface);
         });
 }
 
