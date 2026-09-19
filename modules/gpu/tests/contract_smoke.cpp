@@ -19,6 +19,8 @@
     } while (0)
 
 int main() {
+    if (!nkgpu_test_generation_exhaustion())
+        return 1;
     nk_init_options init{};
     init.struct_size = sizeof(init);
     init.api_version = NK_API_VERSION;

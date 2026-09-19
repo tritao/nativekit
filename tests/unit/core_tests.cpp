@@ -21,6 +21,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <new>
+#include <stdexcept>
 
 #define NK_CHECK(expression)                                                                       \
     do {                                                                                           \
@@ -114,11 +116,20 @@ int main() {
     NK_CHECK(nk::core::result_boundary("direct result propagation", []() -> nk_result {
                  return NK_ERROR_INVALID_ARGUMENT;
              }) == NK_ERROR_INVALID_ARGUMENT);
+    NK_CHECK(nk::core::result_boundary("allocation translation", []() -> nk_result {
+                 throw std::bad_alloc();
+             }) == NK_ERROR_OUT_OF_MEMORY);
+    NK_CHECK(nk::core::result_boundary("exception translation", []() -> nk_result {
+                 throw std::runtime_error("boundary failure");
+             }) == NK_ERROR_UNKNOWN);
     bool callback_returned = false;
     nk::core::callback_boundary([&] { callback_returned = true; });
     NK_CHECK(callback_returned);
     NK_CHECK(!nk::core::callback_boundary_or(false, []() -> bool { return false; }));
     NK_CHECK(nk::core::callback_boundary_or(false, [] { return true; }));
+    NK_CHECK(nk::core::callback_boundary_or(17, []() -> int {
+                 throw std::runtime_error("callback failure");
+             }) == 17);
 
     nk::core::gamepad::Mapping mapping;
     NK_CHECK(nk::core::gamepad::parse_mapping(
@@ -240,6 +251,79 @@ int main() {
     NK_CHECK(readiness_queue.poll(event) == NK_OK);
     NK_CHECK(event.kind == NK_EVENT_HTTP_DATA_AVAILABLE);
     NK_CHECK(event.source == first);
+    nk_event_release(&event);
+
+    /* Readiness remains discoverable even when an accepted terminal payload
+     * has already exceeded the byte budget. */
+    nk::core::EventQueue byte_pressure_queue(1, 1);
+    nk::core::QueuedEvent oversized_completion;
+    oversized_completion.kind = NK_EVENT_HTTP_COMPLETE;
+    oversized_completion.source = first;
+    oversized_completion.request_id = 100;
+    oversized_completion.data.resize(2);
+    NK_CHECK(byte_pressure_queue.push(std::move(oversized_completion)) == NK_OK);
+    nk::core::QueuedEvent pressured_readiness;
+    pressured_readiness.kind = NK_EVENT_HTTP_DATA_AVAILABLE;
+    pressured_readiness.source = first;
+    pressured_readiness.request_id = 100;
+    NK_CHECK(byte_pressure_queue.push(std::move(pressured_readiness)) == NK_OK);
+    event = {};
+    event.struct_size = sizeof(event);
+    NK_CHECK(byte_pressure_queue.poll(event) == NK_OK);
+    NK_CHECK(event.kind == NK_EVENT_HTTP_COMPLETE);
+    nk_event_release(&event);
+    event.struct_size = sizeof(event);
+    NK_CHECK(byte_pressure_queue.poll(event) == NK_OK);
+    NK_CHECK(event.kind == NK_EVENT_HTTP_DATA_AVAILABLE);
+    nk_event_release(&event);
+
+    /* An overflow notification must not evict an accepted completion. */
+    nk::core::EventQueue overflow_terminal_queue(1);
+    nk::core::QueuedEvent accepted_completion;
+    accepted_completion.kind = NK_EVENT_HTTP_COMPLETE;
+    accepted_completion.source = first;
+    accepted_completion.request_id = 101;
+    NK_CHECK(overflow_terminal_queue.push(std::move(accepted_completion)) == NK_OK);
+    nk::core::QueuedEvent terminal_overflow;
+    terminal_overflow.kind = NK_EVENT_FILE_WATCH_OVERFLOW;
+    NK_CHECK(overflow_terminal_queue.push(std::move(terminal_overflow)) == NK_OK);
+    event = {};
+    event.struct_size = sizeof(event);
+    NK_CHECK(overflow_terminal_queue.poll(event) == NK_OK);
+    NK_CHECK(event.kind == NK_EVENT_HTTP_COMPLETE);
+    nk_event_release(&event);
+    event.struct_size = sizeof(event);
+    NK_CHECK(overflow_terminal_queue.poll(event) == NK_OK);
+    NK_CHECK(event.kind == NK_EVENT_FILE_WATCH_OVERFLOW);
+    nk_event_release(&event);
+
+    /* Deferred response headers stay ahead of that request's completion. */
+    nk::core::EventQueue ordered_http_queue(1);
+    nk::core::QueuedEvent unrelated;
+    unrelated.kind = NK_EVENT_WEBVIEW_MESSAGE;
+    NK_CHECK(ordered_http_queue.push(std::move(unrelated)) == NK_OK);
+    nk::core::QueuedEvent deferred_headers;
+    deferred_headers.kind = NK_EVENT_HTTP_HEADERS;
+    deferred_headers.source = first;
+    deferred_headers.request_id = 102;
+    NK_CHECK(ordered_http_queue.push(std::move(deferred_headers)) == NK_OK);
+    nk::core::QueuedEvent ordered_completion;
+    ordered_completion.kind = NK_EVENT_HTTP_COMPLETE;
+    ordered_completion.source = first;
+    ordered_completion.request_id = 102;
+    NK_CHECK(ordered_http_queue.push(std::move(ordered_completion)) == NK_OK);
+    event = {};
+    event.struct_size = sizeof(event);
+    NK_CHECK(ordered_http_queue.poll(event) == NK_OK);
+    NK_CHECK(event.kind == NK_EVENT_WEBVIEW_MESSAGE);
+    nk_event_release(&event);
+    event.struct_size = sizeof(event);
+    NK_CHECK(ordered_http_queue.poll(event) == NK_OK);
+    NK_CHECK(event.kind == NK_EVENT_HTTP_HEADERS);
+    nk_event_release(&event);
+    event.struct_size = sizeof(event);
+    NK_CHECK(ordered_http_queue.poll(event) == NK_OK);
+    NK_CHECK(event.kind == NK_EVENT_HTTP_COMPLETE);
     nk_event_release(&event);
 
     event.struct_size = sizeof(event);

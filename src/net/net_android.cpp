@@ -1086,7 +1086,17 @@ nk_result perform(const nk::net::RequestPtr &request) {
 
 void perform_request(nk::net::RequestPtr request) noexcept {
     nk_result result = NK_HTTP_ERROR_CONNECTION;
+#if NK_ENABLE_NO_EXCEPTIONS
     result = perform(request);
+#else
+    try {
+        result = perform(request);
+    } catch (const std::bad_alloc &) {
+        result = NK_ERROR_OUT_OF_MEMORY;
+    } catch (...) {
+        result = NK_ERROR_UNKNOWN;
+    }
+#endif
     nk::net::complete_request(request, result);
     nk::net::worker_finished(request);
     request.reset();
@@ -1111,8 +1121,19 @@ nk_result backend_start(const RequestPtr &request) noexcept {
     if (!env)
         return NK_ERROR_UNSUPPORTED;
     nk::backend::android_jni_detach(attached);
+#if NK_ENABLE_NO_EXCEPTIONS
     std::thread([request] { perform_request(request); }).detach();
     return NK_OK;
+#else
+    try {
+        std::thread([request] { perform_request(request); }).detach();
+        return NK_OK;
+    } catch (const std::bad_alloc &) {
+        return NK_ERROR_OUT_OF_MEMORY;
+    } catch (...) {
+        return NK_ERROR_UNKNOWN;
+    }
+#endif
 }
 
 void backend_cancel(const RequestPtr &request) noexcept {

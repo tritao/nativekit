@@ -643,7 +643,17 @@ nk_result perform_impl(nk::net::RequestPtr request) {
 }
 
 void perform(nk::net::RequestPtr request) noexcept {
+#if NK_ENABLE_NO_EXCEPTIONS
     nk::net::complete_request(request, perform_impl(request));
+#else
+    try {
+        nk::net::complete_request(request, perform_impl(request));
+    } catch (const std::bad_alloc &) {
+        nk::net::complete_request(request, NK_ERROR_OUT_OF_MEMORY);
+    } catch (...) {
+        nk::net::complete_request(request, NK_ERROR_UNKNOWN);
+    }
+#endif
     nk::net::worker_finished(request);
 }
 
@@ -656,8 +666,19 @@ nk_capabilities capabilities() noexcept {
 }
 
 nk_result backend_start(const RequestPtr &request) noexcept {
+#if NK_ENABLE_NO_EXCEPTIONS
     std::thread([request] { perform(request); }).detach();
     return NK_OK;
+#else
+    try {
+        std::thread([request] { perform(request); }).detach();
+        return NK_OK;
+    } catch (const std::bad_alloc &) {
+        return NK_ERROR_OUT_OF_MEMORY;
+    } catch (...) {
+        return NK_ERROR_UNKNOWN;
+    }
+#endif
 }
 
 void backend_cancel(const RequestPtr &request) noexcept {

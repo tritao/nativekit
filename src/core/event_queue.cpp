@@ -12,6 +12,8 @@
 namespace nk::core {
 
 namespace {
+constexpr std::size_t max_pending_readiness = 1024;
+
 bool is_terminal_request_event(const QueuedEvent &event) {
     if (event.kind == NK_EVENT_TASK_COMPLETE || event.kind == NK_EVENT_TASK_FAILED ||
         event.kind == NK_EVENT_TASK_CANCELLED)
@@ -92,18 +94,45 @@ EventQueue::EventQueue(std::size_t capacity, std::size_t byte_capacity)
 
 void promote_deferred_readiness(std::deque<QueuedEvent> &queue, std::deque<QueuedEvent> &deferred,
                                 std::size_t capacity) {
-    while (queue.size() < capacity && !deferred.empty()) {
+    /* A zero-capacity queue still has to be able to deliver a mandatory
+     * event. It is represented as one over-capacity item until it is polled. */
+    while ((queue.size() < capacity || queue.empty()) && !deferred.empty()) {
         queue.push_back(std::move(deferred.front()));
         deferred.pop_front();
+    }
+}
+
+void promote_pending_overflow(std::deque<QueuedEvent> &queue,
+                              std::optional<QueuedEvent> &pending, std::size_t capacity) {
+    if (!pending || (!queue.empty() && queue.size() >= capacity))
+        return;
+    queue.push_back(std::move(*pending));
+    pending.reset();
+}
+
+void promote_readiness_for_request(std::deque<QueuedEvent> &queue,
+                                   std::deque<QueuedEvent> &deferred, const QueuedEvent &terminal) {
+    for (auto iterator = deferred.begin(); iterator != deferred.end();) {
+        if (iterator->request_id != terminal.request_id || iterator->source != terminal.source) {
+            ++iterator;
+            continue;
+        }
+        queue.push_back(std::move(*iterator));
+        iterator = deferred.erase(iterator);
     }
 }
 
 nk_result EventQueue::push(QueuedEvent event) {
     std::lock_guard lock(mutex_);
     const std::size_t event_bytes = event.data.size();
-    if (event_bytes > byte_capacity_ || queued_bytes_ > byte_capacity_ - event_bytes)
-        if (!is_terminal_request_event(event))
-            return NK_ERROR_QUEUE_FULL;
+    const bool terminal = is_terminal_request_event(event);
+    const bool readiness = is_persistent_readiness(event.kind);
+    const bool overflow = event.kind == NK_EVENT_FILE_WATCH_OVERFLOW;
+    /* Terminal outcomes, persistent readiness, and overflow recovery must not
+     * disappear merely because unrelated payloads consumed the byte budget. */
+    if (!terminal && !readiness && !overflow &&
+        (event_bytes > byte_capacity_ || queued_bytes_ > byte_capacity_ - event_bytes))
+        return NK_ERROR_QUEUE_FULL;
     if (is_coalescible(event.kind) && !queue_.empty()) {
         if (event.kind == NK_EVENT_SENSOR_UPDATE || event.kind == NK_EVENT_TASK_PROGRESS) {
             /* Sensor producers interleave several sources; each sensor gets
@@ -124,19 +153,34 @@ nk_result EventQueue::push(QueuedEvent event) {
             return NK_OK;
         }
     }
-    if (queue_.size() >= capacity_ && !is_terminal_request_event(event)) {
+    if (queue_.size() >= capacity_ && !terminal) {
         if (event.kind == NK_EVENT_FILE_WATCH_OVERFLOW) {
             /* Overflow is a recovery instruction, not an ordinary best-effort
-             * notification. Make room by discarding an older coalescible item. */
+             * notification. Make room by discarding only a disposable item. */
             auto victim = std::find_if(queue_.begin(), queue_.end(), [](const QueuedEvent &queued) {
                 return is_coalescible(queued.kind);
             });
+            if (victim == queue_.end()) {
+                victim = std::find_if(queue_.begin(), queue_.end(), [](const QueuedEvent &queued) {
+                    return !is_terminal_request_event(queued) &&
+                           !is_persistent_readiness(queued.kind);
+                });
+            }
             if (victim != queue_.end()) {
                 queued_bytes_ -= victim->data.size();
                 queue_.erase(victim);
-            } else if (!queue_.empty()) {
-                queued_bytes_ -= queue_.front().data.size();
-                queue_.pop_front();
+            } else {
+                /* Do not evict an accepted completion or readiness record.
+                 * Coalesce overflow until polling makes room. */
+                if (pending_file_watch_overflow_) {
+                    queued_bytes_ -= pending_file_watch_overflow_->data.size();
+                    pending_file_watch_overflow_ = std::move(event);
+                    queued_bytes_ += event_bytes;
+                } else {
+                    pending_file_watch_overflow_ = std::move(event);
+                    queued_bytes_ += event_bytes;
+                }
+                return NK_OK;
             }
         } else if (!is_persistent_readiness(event.kind)) {
             return NK_ERROR_QUEUE_FULL;
@@ -147,11 +191,15 @@ nk_result EventQueue::push(QueuedEvent event) {
             for (const auto &queued : deferred_readiness_)
                 if (same_readiness_target(queued, event))
                     return NK_OK;
+            if (deferred_readiness_.size() >= max_pending_readiness)
+                return NK_ERROR_QUEUE_FULL;
             deferred_readiness_.push_back(std::move(event));
             queued_bytes_ += event_bytes;
             return NK_OK;
         }
     }
+    if (terminal)
+        promote_readiness_for_request(queue_, deferred_readiness_, event);
     queue_.push_back(std::move(event));
     queued_bytes_ += event_bytes;
     return NK_OK;
@@ -160,6 +208,7 @@ nk_result EventQueue::push(QueuedEvent event) {
 nk_result EventQueue::poll(nk_event &output) {
     std::lock_guard lock(mutex_);
     promote_deferred_readiness(queue_, deferred_readiness_, capacity_);
+    promote_pending_overflow(queue_, pending_file_watch_overflow_, capacity_);
     if (queue_.empty()) {
         output.kind = NK_EVENT_NONE;
         return NK_OK;
@@ -184,12 +233,13 @@ nk_result EventQueue::poll(nk_event &output) {
     queued_bytes_ -= event.data.size();
     queue_.pop_front();
     promote_deferred_readiness(queue_, deferred_readiness_, capacity_);
+    promote_pending_overflow(queue_, pending_file_watch_overflow_, capacity_);
     return NK_OK;
 }
 
 bool EventQueue::empty() {
     std::lock_guard lock(mutex_);
-    return queue_.empty() && deferred_readiness_.empty();
+    return queue_.empty() && deferred_readiness_.empty() && !pending_file_watch_overflow_;
 }
 
 void EventQueue::clear() {
@@ -197,6 +247,7 @@ void EventQueue::clear() {
     queue_.clear();
     queued_bytes_ = 0;
     deferred_readiness_.clear();
+    pending_file_watch_overflow_.reset();
 }
 
 } // namespace nk::core

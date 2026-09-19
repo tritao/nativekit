@@ -173,7 +173,18 @@ std::size_t header_callback_impl(char *data, std::size_t size, std::size_t count
 
 std::size_t header_callback(char *data, std::size_t size, std::size_t count,
                             void *user_data) noexcept {
+#if NK_ENABLE_NO_EXCEPTIONS
     return header_callback_impl(data, size, count, user_data);
+#else
+    try {
+        return header_callback_impl(data, size, count, user_data);
+    } catch (...) {
+        auto &request = *static_cast<nk::net::RequestContext *>(user_data);
+        std::lock_guard lock(request.mutex);
+        request.response_limit = true;
+        return 0;
+    }
+#endif
 }
 
 std::size_t write_callback_impl(char *data, std::size_t size, std::size_t count, void *user_data) {
@@ -227,7 +238,18 @@ std::size_t write_callback_impl(char *data, std::size_t size, std::size_t count,
 
 std::size_t write_callback(char *data, std::size_t size, std::size_t count,
                            void *user_data) noexcept {
+#if NK_ENABLE_NO_EXCEPTIONS
     return write_callback_impl(data, size, count, user_data);
+#else
+    try {
+        return write_callback_impl(data, size, count, user_data);
+    } catch (...) {
+        auto &request = *static_cast<nk::net::RequestContext *>(user_data);
+        std::lock_guard lock(request.mutex);
+        request.response_limit = true;
+        return 0;
+    }
+#endif
 }
 
 std::size_t read_callback_impl(char *data, std::size_t size, std::size_t count, void *user_data) {
@@ -247,7 +269,17 @@ std::size_t read_callback_impl(char *data, std::size_t size, std::size_t count, 
 
 std::size_t read_callback(char *data, std::size_t size, std::size_t count,
                           void *user_data) noexcept {
+#if NK_ENABLE_NO_EXCEPTIONS
     return read_callback_impl(data, size, count, user_data);
+#else
+    try {
+        return read_callback_impl(data, size, count, user_data);
+    } catch (...) {
+        auto &request = *static_cast<nk::net::RequestContext *>(user_data);
+        request.upload_result = NK_ERROR_UNKNOWN;
+        return CURL_READFUNC_ABORT;
+    }
+#endif
 }
 
 int progress_callback_impl(void *user_data, curl_off_t download_total, curl_off_t downloaded,
@@ -269,7 +301,16 @@ int progress_callback_impl(void *user_data, curl_off_t download_total, curl_off_
 
 int progress_callback(void *user_data, curl_off_t download_total, curl_off_t downloaded,
                       curl_off_t upload_total, curl_off_t uploaded) noexcept {
+#if NK_ENABLE_NO_EXCEPTIONS
     return progress_callback_impl(user_data, download_total, downloaded, upload_total, uploaded);
+#else
+    try {
+        return progress_callback_impl(user_data, download_total, downloaded, upload_total,
+                                      uploaded);
+    } catch (...) {
+        return 1;
+    }
+#endif
 }
 
 nk_result map_curl_error(CURLcode code, const nk::net::RequestContext &request) {
@@ -319,6 +360,17 @@ nk_result perform_impl(nk::net::RequestPtr request) {
     nk_result result = NK_HTTP_ERROR_CONNECTION;
     CURL *curl = curl_easy_init();
     curl_slist *header_list = nullptr;
+    struct CurlCleanup {
+        CURL *&curl;
+        curl_slist *&header_list;
+
+        ~CurlCleanup() {
+            if (header_list)
+                curl_slist_free_all(header_list);
+            if (curl)
+                curl_easy_cleanup(curl);
+        }
+    } cleanup{curl, header_list};
     std::shared_ptr<CurlClientState> state;
     if (curl) {
         auto add_headers = [&](const std::vector<nk::net::OwnedHeader> &headers) {
@@ -465,15 +517,22 @@ nk_result perform_impl(nk::net::RequestPtr request) {
             }
         }
     }
-    if (header_list)
-        curl_slist_free_all(header_list);
-    if (curl)
-        curl_easy_cleanup(curl);
     return result;
 }
 
 void perform(nk::net::RequestPtr request) noexcept {
+#if NK_ENABLE_NO_EXCEPTIONS
     const auto result = perform_impl(request);
+#else
+    nk_result result = NK_ERROR_UNKNOWN;
+    try {
+        result = perform_impl(request);
+    } catch (const std::bad_alloc &) {
+        result = NK_ERROR_OUT_OF_MEMORY;
+    } catch (...) {
+        result = NK_ERROR_UNKNOWN;
+    }
+#endif
     nk::net::complete_request(request, result);
     nk::net::worker_finished(request);
     request.reset();
@@ -494,8 +553,19 @@ nk_result backend_start(const RequestPtr &request) noexcept {
         if (!initialize_curl())
             return NK_ERROR_UNSUPPORTED;
     }
+#if NK_ENABLE_NO_EXCEPTIONS
     std::thread([request] { perform(request); }).detach();
     return NK_OK;
+#else
+    try {
+        std::thread([request] { perform(request); }).detach();
+        return NK_OK;
+    } catch (const std::bad_alloc &) {
+        return NK_ERROR_OUT_OF_MEMORY;
+    } catch (...) {
+        return NK_ERROR_UNKNOWN;
+    }
+#endif
 }
 
 void backend_cancel(const RequestPtr &) noexcept {}

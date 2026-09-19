@@ -28,8 +28,11 @@ option(NK_BUILD_GPU_BACKEND_MATRIX
 option(NK_BUILD_UI "Build the experimental retained UI module" OFF)
 option(NK_USE_SYSTEM_CURL "Use the system libcurl for the Linux networking backend" OFF)
 set(NK_NET_BACKEND_CURL OFF)
-# STL containers remain in use while this migration is staged. Their allocation
-# failures are therefore process-fatal in production targets for now.
+# STL containers remain in use while this migration is staged. With this option
+# enabled, production targets use a fail-fast C ABI: C++ allocation and thread
+# failures are not translated because exceptions are disabled. Turn it off for
+# the exception-enabled build, whose C boundaries translate bad_alloc and other
+# C++ failures to NativeKit results.
 option(NK_ENABLE_NO_EXCEPTIONS
     "Compile NativeKit production targets without C++ exception support" ON)
 option(NK_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)

@@ -151,8 +151,19 @@ bool valid_header_text(std::string_view value, bool name) {
         return false;
     for (const auto character : value) {
         const auto byte = static_cast<unsigned char>(character);
-        if (byte == '\r' || byte == '\n' || (name && (byte == ':' || byte < 0x20)))
+        if (name) {
+            const bool token = (byte >= 'a' && byte <= 'z') || (byte >= 'A' && byte <= 'Z') ||
+                               (byte >= '0' && byte <= '9') || byte == '!' || byte == '#' ||
+                               byte == '$' || byte == '%' || byte == '&' || byte == '\'' ||
+                               byte == '*' || byte == '+' || byte == '-' || byte == '.' ||
+                               byte == '^' || byte == '_' || byte == '`' || byte == '|' ||
+                               byte == '~';
+            if (!token)
+                return false;
+        } else if (byte == '\r' || byte == '\n' || byte == 0x7f ||
+                   (byte < 0x20 && byte != '\t')) {
             return false;
+        }
     }
     return true;
 }

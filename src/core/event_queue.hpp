@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <deque>
 #include <mutex>
+#include <optional>
 #include <vector>
 
 namespace nk::core {
@@ -35,6 +36,7 @@ class EventQueue {
     std::mutex mutex_;
     std::deque<QueuedEvent> queue_;
     std::deque<QueuedEvent> deferred_readiness_;
+    std::optional<QueuedEvent> pending_file_watch_overflow_;
 };
 
 } // namespace nk::core

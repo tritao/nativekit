@@ -195,6 +195,21 @@ int main() {
     client_options.flags = NK_HTTP_CLIENT_ALLOW_HTTP;
     client_options.stream_buffer_size = 4;
     nk_http_client client = NK_INVALID_HANDLE;
+    const char invalid_name[] = "Bad Header";
+    const char invalid_value[] = "value";
+    nk_http_header malformed_header{
+        invalid_name, sizeof(invalid_name) - 1, invalid_value, sizeof(invalid_value) - 1};
+    client_options.default_headers = &malformed_header;
+    client_options.default_header_count = 1;
+    NK_CHECK(nk_http_client_create(&client_options, &client) == NK_ERROR_INVALID_ARGUMENT);
+    const char invalid_control[] = {'b', 'a', 'd', '\x01'};
+    malformed_header.name = "X-Test";
+    malformed_header.name_size = 6;
+    malformed_header.value = invalid_control;
+    malformed_header.value_size = sizeof(invalid_control);
+    NK_CHECK(nk_http_client_create(&client_options, &client) == NK_ERROR_INVALID_ARGUMENT);
+    client_options.default_headers = nullptr;
+    client_options.default_header_count = 0;
     NK_CHECK(nk_http_client_create(&client_options, &client) == NK_OK);
 
     nk_http_request_options buffered_options{};

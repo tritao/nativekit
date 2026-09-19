@@ -52,13 +52,17 @@ template <class T, Kind K, size_t N> struct Pool {
            generation so retained handles still resolve, and is never reused. */
         uint32_t pins = 0;
         bool retired = false;
+        /* Generation space is finite. Once the last representable generation
+           has been destroyed, the slot must never identify a new resource. */
+        bool generation_exhausted = false;
         T value{};
     };
     std::array<Slot, N> slots{};
     template <class U> Handle add(U &&value) {
         for (uint32_t i = 0; i < N; ++i)
             /* A retired slot still holds backend objects awaiting release. */
-            if (!slots[i].active && !slots[i].pins && !slots[i].retired) {
+            if (!slots[i].active && !slots[i].pins && !slots[i].retired &&
+                !slots[i].generation_exhausted) {
                 slots[i].value = std::forward<U>(value);
                 slots[i].active = true;
                 slots[i].retired = false;
@@ -80,6 +84,13 @@ template <class T, Kind K, size_t N> struct Pool {
         Slot &s = slots[encoded - 1];
         return (s.active || s.pins) && s.generation == generation ? &s : nullptr;
     }
+    void advance_generation(Slot &s) {
+        if (s.generation == 0xFFF) {
+            s.generation_exhausted = true;
+            return;
+        }
+        ++s.generation;
+    }
     void remove(Slot &s) {
         s.active = false;
         if (s.pins) {
@@ -88,7 +99,7 @@ template <class T, Kind K, size_t N> struct Pool {
             return;
         }
         s.retired = false;
-        s.generation = (s.generation % 0xFFF) + 1;
+        advance_generation(s);
         s.value = T{};
     }
     /* Final release of a retired slot once its last pin is gone. */
@@ -96,7 +107,7 @@ template <class T, Kind K, size_t N> struct Pool {
         s.active = false;
         s.retired = false;
         s.pins = 0;
-        s.generation = (s.generation % 0xFFF) + 1;
+        advance_generation(s);
         s.value = T{};
     }
 };
@@ -797,6 +808,47 @@ void nkgpu_test_fail_next_buffer_creation(void) {
 }
 void nkgpu_test_fail_next_present(void) {
     fail_next_present = true;
+}
+
+int32_t nkgpu_test_generation_exhaustion(void) {
+    using TestPool = Pool<uint32_t, BufferKind, 1>;
+
+    TestPool immediate;
+    const auto stale = immediate.add(1);
+    auto *stale_slot = immediate.get(stale);
+    if (!stale || !stale_slot)
+        return 0;
+    immediate.remove(*stale_slot);
+    for (uint32_t cycle = 0; cycle != 4094; ++cycle) {
+        const auto current = immediate.add(cycle);
+        auto *current_slot = immediate.get(current);
+        if (!current || current == stale || !current_slot)
+            return 0;
+        immediate.remove(*current_slot);
+    }
+    if (immediate.get(stale) || immediate.add(2) != 0)
+        return 0;
+
+    TestPool pinned;
+    const auto retained = pinned.add(1);
+    auto *retained_slot = pinned.get(retained);
+    if (!retained || !retained_slot)
+        return 0;
+    retained_slot->pins = 1;
+    pinned.remove(*retained_slot);
+    if (!pinned.get_retained(retained))
+        return 0;
+    pinned.release(*retained_slot);
+    if (pinned.get_retained(retained))
+        return 0;
+    for (uint32_t cycle = 0; cycle != 4094; ++cycle) {
+        const auto current = pinned.add(cycle);
+        auto *current_slot = pinned.get(current);
+        if (!current || !current_slot)
+            return 0;
+        pinned.remove(*current_slot);
+    }
+    return pinned.add(2) == 0 ? 1 : 0;
 }
 
 nkgpu_result nkgpu_test_lose_after_frames(nkgpu_renderer renderer, uint32_t frames) {

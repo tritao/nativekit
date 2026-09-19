@@ -117,48 +117,8 @@ EM_JS(void, start_fetch,
        uint32_t redirect_limit, uint32_t timeout_ms, uint32_t allow_https_to_http),
       {
           const states = Module['NativeKitFetches'] || (Module['NativeKitFetches'] = new Map());
-          const state = {controller : new AbortController(), failed : 0, timed_out : 0, timer : 0};
+          const state = {controller : null, failed : 0, timed_out : 0, timer : 0};
           states.set(id, state);
-          state.timer = setTimeout(() => {
-              if (!states.has(id))
-                  return;
-              state.timed_out = 1;
-              state.controller.abort();
-          }, Number(timeout_ms));
-          const header_text = UTF8ToString(headers);
-          const header_lines = header_text.length === 0 ? [] : header_text.split('\n');
-          const request_headers = new Headers();
-          for (let index = 0; index + 1 < header_lines.length; index += 2)
-              request_headers.append(header_lines[index], header_lines[index + 1]);
-          const request_url = UTF8ToString(url);
-          let request_method = UTF8ToString(method);
-          let request_body =
-              body_size === 0 ? null : HEAPU8.slice(Number(body), Number(body) + body_size);
-          const call_headers = (status, response, redirected) => {
-              let text = '';
-              response.headers.forEach((value, name) => { text += name + '\n' + value + '\n'; });
-              if (lengthBytesUTF8(text) > Number(max_header_size))
-                  return -106;
-              const length = lengthBytesUTF8(text) + 1;
-              const pointer = _malloc(length);
-              stringToUTF8(text, pointer, length);
-              const result = Module.ccall('nk_net_fetch_headers', 'number',
-                                          [ 'number', 'number', 'number', 'number' ],
-                                          [ id, status, pointer, redirected ? 1 : 0 ]);
-              _free(pointer);
-              return result;
-          };
-          const call_data = (bytes, total) => {
-              if (bytes.length > Number(max_response_size))
-                  return -106;
-              const pointer = _malloc(bytes.length);
-              HEAPU8.set(bytes, pointer);
-              const result = Module.ccall('nk_net_fetch_data', 'number',
-                                          [ 'number', 'number', 'number', 'number' ],
-                                          [ id, pointer, bytes.length, total ]);
-              _free(pointer);
-              return result;
-          };
           const finish = (result) => {
               if (!states.has(id))
                   return;
@@ -166,8 +126,59 @@ EM_JS(void, start_fetch,
               states.delete(id);
               Module.ccall('nk_net_fetch_complete', null, [ 'number', 'number' ], [ id, result ]);
           };
+          try {
+              state.controller = new AbortController();
+              state.timer = setTimeout(() => {
+                  if (!states.has(id))
+                      return;
+                  state.timed_out = 1;
+                  state.controller.abort();
+              }, Number(timeout_ms));
+          } catch (error) {
+              finish(-101);
+              return;
+          }
           (async() =>
                {
+                   /* Header construction, decoding, and body preparation all
+                    * live inside the promise boundary. Headers.append() can
+                    * throw synchronously for a token the native validator
+                    * rejected, and that failure must still finalize the
+                    * already-registered request. */
+                   const header_text = UTF8ToString(headers);
+                   const header_lines = header_text.length === 0 ? [] : header_text.split('\n');
+                   const request_headers = new Headers();
+                   for (let index = 0; index + 1 < header_lines.length; index += 2)
+                       request_headers.append(header_lines[index], header_lines[index + 1]);
+                   const request_url = UTF8ToString(url);
+                   let request_method = UTF8ToString(method);
+                   let request_body =
+                       body_size === 0 ? null : HEAPU8.slice(Number(body), Number(body) + body_size);
+                   const call_headers = (status, response, redirected) => {
+                       let text = '';
+                       response.headers.forEach((value, name) => { text += name + '\n' + value + '\n'; });
+                       if (lengthBytesUTF8(text) > Number(max_header_size))
+                           return -106;
+                       const length = lengthBytesUTF8(text) + 1;
+                       const pointer = _malloc(length);
+                       stringToUTF8(text, pointer, length);
+                       const result = Module.ccall('nk_net_fetch_headers', 'number',
+                                                   [ 'number', 'number', 'number', 'number' ],
+                                                   [ id, status, pointer, redirected ? 1 : 0 ]);
+                       _free(pointer);
+                       return result;
+                   };
+                   const call_data = (bytes, total) => {
+                       if (bytes.length > Number(max_response_size))
+                           return -106;
+                       const pointer = _malloc(bytes.length);
+                       HEAPU8.set(bytes, pointer);
+                       const result = Module.ccall('nk_net_fetch_data', 'number',
+                                                   [ 'number', 'number', 'number', 'number' ],
+                                                   [ id, pointer, bytes.length, total ]);
+                       _free(pointer);
+                       return result;
+                   };
                    let current_url = request_url;
                    let redirects = 0;
                    for (;;) {
@@ -260,7 +271,8 @@ EM_JS(void, cancel_fetch, (double id), {
         const state = states.get(id);
         clearTimeout(state.timer);
         states.delete(id);
-        state.controller.abort();
+        if (state.controller)
+            state.controller.abort();
     }
 });
 
