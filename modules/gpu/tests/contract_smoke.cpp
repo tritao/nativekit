@@ -51,11 +51,16 @@ int main() {
     nkgpu_render_target target{};
     nkgpu_render_target lost_target{};
     nkgpu_buffer descriptor_buffer{};
+    nkgpu_buffer compute_buffer{};
     nkgpu_image descriptor_color{};
     nkgpu_image descriptor_color_second{};
     nkgpu_image descriptor_depth{};
     nkgpu_image descriptor_mipped{};
     nkgpu_image dynamic_image{};
+    nkgpu_shader compute_shader{};
+    nkgpu_shader_builder compute_shader_builder{};
+    nkgpu_pipeline compute_pipeline{};
+    nkgpu_pipeline_builder compute_pipeline_builder{};
     nk_graphics_image retained_image{};
     nk_graphics_image foreign_image{};
     const uint8_t buffer_data[] = {0, 0, 0, 0};
@@ -294,6 +299,59 @@ int main() {
         EXPECT_RESULT(nkgpu_apply_viewport(first, 0, 0, 16, 16), NKGPU_OK);
         EXPECT_RESULT(nkgpu_end_pass(first), NKGPU_OK);
         EXPECT_RESULT(nkgpu_end_frame(first), NKGPU_OK);
+
+        if (features.compute) {
+            const char *compute_source =
+                nkgpu_query_graphics_api(first) == NK_GRAPHICS_OPENGL_ES
+                    ? "#version 310 es\n"
+                      "layout(local_size_x=1, local_size_y=1, local_size_z=1) in;\n"
+                      "layout(std430, binding=0) buffer Data { uint value[]; };\n"
+                      "void main(){ value[0] = value[0] + 1u; }\n"
+                    : "#version 430\n"
+                      "layout(local_size_x=1, local_size_y=1, local_size_z=1) in;\n"
+                      "layout(std430, binding=0) buffer Data { uint value[]; };\n"
+                      "void main(){ value[0] = value[0] + 1u; }\n";
+            EXPECT_RESULT(nkgpu_shader_begin_compute(first, NKGPU_SHADERLANGUAGE_GLSL,
+                                                     compute_source, &compute_shader_builder),
+                          NKGPU_OK);
+            EXPECT_RESULT(nkgpu_shader_storage_buffer(compute_shader_builder, 0,
+                                                      NKGPU_SHADERSTAGE_COMPUTE, 0), NKGPU_OK);
+            EXPECT_RESULT(nkgpu_shader_end(compute_shader_builder, &compute_shader), NKGPU_OK);
+            compute_shader_builder = {};
+
+            EXPECT_RESULT(nkgpu_pipeline_begin_compute(first, compute_shader,
+                                                       &compute_pipeline_builder), NKGPU_OK);
+            EXPECT_RESULT(nkgpu_pipeline_end(compute_pipeline_builder, &compute_pipeline),
+                          NKGPU_OK);
+            compute_pipeline_builder = {};
+
+            const uint32_t compute_value = 7;
+            nkgpu_buffer_desc compute_desc{};
+            compute_desc.struct_size = sizeof(compute_desc);
+            compute_desc.size = sizeof(compute_value);
+            compute_desc.usage = NKGPU_BUFFER_STORAGE;
+            compute_desc.data = reinterpret_cast<const uint8_t *>(&compute_value);
+            compute_desc.data_size = sizeof(compute_value);
+            EXPECT_RESULT(nkgpu_buffer_create_desc(first, &compute_desc, &compute_buffer), NKGPU_OK);
+
+            EXPECT_RESULT(nkgpu_frame_begin(first), NKGPU_OK);
+            EXPECT_RESULT(nkgpu_begin_compute_pass(first), NKGPU_OK);
+            EXPECT_RESULT(nkgpu_apply_pipeline(first, compute_pipeline), NKGPU_OK);
+            EXPECT_RESULT(nkgpu_apply_storage_buffer(first, 0, compute_buffer), NKGPU_OK);
+            EXPECT_RESULT(nkgpu_dispatch(first, 1, 1, 1), NKGPU_OK);
+            EXPECT_RESULT(nkgpu_end_pass(first), NKGPU_OK);
+            EXPECT_RESULT(nkgpu_begin_window_pass(first, window_options.width, window_options.height,
+                                                  0),
+                          NKGPU_OK);
+            EXPECT_RESULT(nkgpu_end_frame(first), NKGPU_OK);
+
+            EXPECT_RESULT(nkgpu_buffer_destroy(first, compute_buffer), NKGPU_OK);
+            EXPECT_RESULT(nkgpu_pipeline_destroy(first, compute_pipeline), NKGPU_OK);
+            EXPECT_RESULT(nkgpu_shader_destroy(first, compute_shader), NKGPU_OK);
+            compute_buffer = {};
+            compute_pipeline = {};
+            compute_shader = {};
+        }
         EXPECT_RESULT(nkgpu_image_destroy(first, descriptor_depth), NKGPU_OK);
         EXPECT_RESULT(nkgpu_image_destroy(first, descriptor_color_second), NKGPU_OK);
         EXPECT_RESULT(nkgpu_image_destroy(first, descriptor_color), NKGPU_OK);
@@ -524,6 +582,12 @@ cleanup:
         nkgpu_image_destroy(first, descriptor_mipped);
     if (descriptor_buffer.id)
         nkgpu_buffer_destroy(first, descriptor_buffer);
+    if (compute_buffer.id)
+        nkgpu_buffer_destroy(first, compute_buffer);
+    if (compute_pipeline.id)
+        nkgpu_pipeline_destroy(first, compute_pipeline);
+    if (compute_shader.id)
+        nkgpu_shader_destroy(first, compute_shader);
     if (retained_image.id)
         nk_graphics_image_release(retained_image);
     if (foreign_image.id)

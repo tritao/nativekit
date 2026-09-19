@@ -177,11 +177,15 @@ The portable C API is being expanded in milestones rather than mirroring
 builder model while adding descriptor-backed buffers and images, explicit
 image usages and formats, general render passes with four color attachments,
 depth/stencil actions, optional resolve images, richer pipeline state,
-instanced vertex-buffer layouts, viewport commands, and capability/limit
-queries. The older `nkgpu_render_target_*` functions remain as compatibility
-wrappers for existing callers.
+instanced vertex-buffer layouts, viewport commands, capability/limit queries,
+compute shader metadata, compute pipelines and passes, storage-buffer/image
+views, dispatch commands, and compute-capable sealed batches. The older
+`nkgpu_render_target_*` functions remain as compatibility wrappers for existing
+callers.
 
-The next slices are reserved for storage bindings and compute, transfer and
-readback objects, versioned command records, and an explicitly advanced native
-device/context escape hatch. Those additions will be gated by the reported
-capabilities so the normal API remains backend-agnostic.
+The next slices are reserved for transfer and readback objects, versioned
+command records, and an explicitly advanced native device/context escape hatch.
+Those additions will be gated by the reported capabilities so the normal API
+remains backend-agnostic. The pinned Sokol revision currently has no portable
+GPU copy/readback primitive, so those operations are not emulated as if they
+were GPU-visible.

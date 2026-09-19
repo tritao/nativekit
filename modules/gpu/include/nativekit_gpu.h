@@ -529,6 +529,8 @@ enum NK_ENUM(nkgpu_shader_stage) {
     NKGPU_SHADERSTAGE_VERTEX = 1,
     /** The fragment shader stage. */
     NKGPU_SHADERSTAGE_FRAGMENT = 2,
+    /** The compute shader stage. */
+    NKGPU_SHADERSTAGE_COMPUTE = 3,
 };
 
 /** Source language accepted by the shader creation functions. */
@@ -611,6 +613,12 @@ enum NK_ENUM(nkgpu_command) {
     NKGPU_COMMAND_APPLY_GRAPHICS_IMAGE = 9,
     /** Apply a viewport; payload: x, y, width, and height. */
     NKGPU_COMMAND_APPLY_VIEWPORT = 10,
+    /** Apply a storage buffer; payload: view slot and buffer handle. */
+    NKGPU_COMMAND_APPLY_STORAGE_BUFFER = 11,
+    /** Apply a storage image; payload: view slot and image handle. */
+    NKGPU_COMMAND_APPLY_STORAGE_IMAGE = 12,
+    /** Dispatch compute workgroups; payload: x, y, and z group counts. */
+    NKGPU_COMMAND_DISPATCH = 13,
 };
 
 /* ------------------------------------------------------------------------- */
@@ -883,6 +891,12 @@ NKGPU_API nkgpu_result nkgpu_shader_begin(nkgpu_renderer renderer, nkgpu_shader_
                                           const char *fragment_source NKGPU_UTF8,
                                           nkgpu_shader_builder *out_builder NKGPU_OUT);
 
+/** Starts building a compute-only shader with one UTF-8 source string. */
+NKGPU_API nkgpu_result nkgpu_shader_begin_compute(nkgpu_renderer renderer,
+                                                  nkgpu_shader_language language,
+                                                  const char *compute_source NKGPU_UTF8,
+                                                  nkgpu_shader_builder *out_builder NKGPU_OUT);
+
 /**
  * Describes a vertex input for a shader builder.
  *
@@ -898,8 +912,8 @@ NKGPU_API nkgpu_result nkgpu_shader_attribute(nkgpu_shader_builder builder, uint
 /**
  * Describes one shader uniform block in a shader builder.
  *
- * `slot` is the block binding slot, `stage` selects the vertex or fragment
- * shader, and `size` is the block's byte size. The uniform data later supplied
+ * `slot` is the block binding slot, `stage` selects the vertex, fragment, or
+ * compute shader, and `size` is the block's byte size. The uniform data later supplied
  * to nkgpu_apply_uniforms() must use the same layout and size.
  */
 NKGPU_API nkgpu_result nkgpu_shader_uniform_block(nkgpu_shader_builder builder, uint32_t slot,
@@ -928,6 +942,14 @@ NKGPU_API nkgpu_result nkgpu_shader_texture(nkgpu_shader_builder builder, uint32
                                             uint32_t sampler_slot, nkgpu_shader_stage stage,
                                             const char *name NKGPU_UTF8);
 
+/** Describes a storage-buffer binding with explicit read-only metadata. */
+NKGPU_API nkgpu_result nkgpu_shader_storage_buffer(nkgpu_shader_builder builder, uint32_t view_slot,
+                                                   nkgpu_shader_stage stage, uint32_t readonly);
+
+/** Describes a compute storage-image binding and its access format. */
+NKGPU_API nkgpu_result nkgpu_shader_storage_image(nkgpu_shader_builder builder, uint32_t view_slot,
+                                                  nkgpu_image_format format, uint32_t writeonly);
+
 /**
  * Creates a shader from a shader builder and consumes the builder.
  *
@@ -951,6 +973,13 @@ NKGPU_API nkgpu_result nkgpu_shader_end(nkgpu_shader_builder builder,
 NKGPU_API nkgpu_result nkgpu_pipeline_begin(nkgpu_renderer renderer, nkgpu_shader shader,
                                             uint32_t stride,
                                             nkgpu_pipeline_builder *out_builder NKGPU_OUT);
+
+/** Starts building a compute pipeline for a compute shader. */
+NKGPU_API nkgpu_result nkgpu_pipeline_begin_compute(nkgpu_renderer renderer, nkgpu_shader shader,
+                                                    nkgpu_pipeline_builder *out_builder NKGPU_OUT);
+
+/** Converts a pipeline builder into a compute pipeline descriptor. */
+NKGPU_API nkgpu_result nkgpu_pipeline_compute(nkgpu_pipeline_builder builder);
 
 /**
  * Configures one vertex attribute in a pipeline builder.
@@ -1068,6 +1097,9 @@ NKGPU_API nkgpu_result nkgpu_begin_frame(nkgpu_renderer renderer);
 
 /** Begins a frame without opening a pass, for plans that contain several passes. */
 NKGPU_API nkgpu_result nkgpu_frame_begin(nkgpu_renderer renderer);
+
+/** Begins a compute pass inside an active frame. */
+NKGPU_API nkgpu_result nkgpu_begin_compute_pass(nkgpu_renderer renderer);
 
 /** Begins a window-surface pass inside a frame. */
 NKGPU_API nkgpu_result nkgpu_begin_window_pass(nkgpu_renderer renderer, uint32_t width,
@@ -1192,6 +1224,14 @@ NKGPU_API nkgpu_result nkgpu_sampler_destroy(nkgpu_renderer renderer, nkgpu_samp
 /** Binds an image view to a slot in the currently active frame. */
 NKGPU_API nkgpu_result nkgpu_apply_image(nkgpu_renderer renderer, uint32_t slot, nkgpu_image image);
 
+/** Binds a storage buffer view in the currently active render or compute pass. */
+NKGPU_API nkgpu_result nkgpu_apply_storage_buffer(nkgpu_renderer renderer, uint32_t slot,
+                                                  nkgpu_buffer buffer);
+
+/** Binds a storage image view in the currently active compute pass. */
+NKGPU_API nkgpu_result nkgpu_apply_storage_image(nkgpu_renderer renderer, uint32_t slot,
+                                                 nkgpu_image image);
+
 /** Applies a NativeKit graphics image after validating its runtime and device. */
 NKGPU_API nkgpu_result nkgpu_apply_graphics_image(nkgpu_renderer renderer, uint32_t slot,
                                                   nk_graphics_image image);
@@ -1209,6 +1249,10 @@ NKGPU_API nkgpu_result nkgpu_apply_sampler(nkgpu_renderer renderer, uint32_t slo
  */
 NKGPU_API nkgpu_result nkgpu_draw(nkgpu_renderer renderer, uint32_t base_element,
                                   uint32_t element_count, uint32_t instance_count);
+
+/** Dispatches compute workgroups in the active compute pass. */
+NKGPU_API nkgpu_result nkgpu_dispatch(nkgpu_renderer renderer, uint32_t x, uint32_t y,
+                                      uint32_t z);
 
 /**
  * Submits a packed little-endian command stream in the active frame.
@@ -1229,6 +1273,8 @@ enum NK_ENUM(nkgpu_batch_pass_kind) {
     NKGPU_BATCH_PASS_WINDOW = 1,
     /** The pass targets an offscreen render target. */
     NKGPU_BATCH_PASS_TARGET = 2,
+    /** A compute pass with no render target. */
+    NKGPU_BATCH_PASS_COMPUTE = 3,
 };
 
 /** One render pass recorded into a submission batch. */
@@ -1237,13 +1283,13 @@ typedef struct nkgpu_batch_pass {
     uint32_t struct_size NK_STRUCT_SIZE;
     /** Selects how the pass target fields below are interpreted. */
     nkgpu_batch_pass_kind kind;
-    /** Offscreen target for NKGPU_BATCH_PASS_TARGET; ignored for window passes. */
+    /** Offscreen target for NKGPU_BATCH_PASS_TARGET; ignored for window/compute passes. */
     nkgpu_render_target target;
     /** Non-zero to clear the target at the start of the pass, zero to load it. */
     uint32_t clear;
-    /** Framebuffer width for NKGPU_BATCH_PASS_WINDOW; ignored for target passes. */
+    /** Framebuffer width for NKGPU_BATCH_PASS_WINDOW; ignored for target/compute passes. */
     uint32_t width;
-    /** Framebuffer height for NKGPU_BATCH_PASS_WINDOW; ignored for target passes. */
+    /** Framebuffer height for NKGPU_BATCH_PASS_WINDOW; ignored for target/compute passes. */
     uint32_t height;
 } nkgpu_batch_pass;
 

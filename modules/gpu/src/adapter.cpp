@@ -115,6 +115,7 @@ struct Renderer {
     sg_bindings bindings{};
     RendererState state = RendererState::Ready;
     bool in_pass = false;
+    bool compute_pass = false;
     Handle active_target = 0;
     int32_t pass_width = 0;
     int32_t pass_height = 0;
@@ -143,6 +144,7 @@ struct Buffer {
     nkgpu_buffer_usage usage = NKGPU_BUFFER_VERTEX;
     bool dynamic_update = false;
     std::vector<uint8_t> pixels;
+    sg_view storage_view{};
 };
 struct Shader {
     Handle owner = 0;
@@ -169,6 +171,7 @@ struct ShaderBuilder {
     sg_shader_desc desc{};
     std::string vertex_source;
     std::string fragment_source;
+    std::string compute_source;
     std::array<std::array<std::string, SG_MAX_UNIFORMBLOCK_MEMBERS>, SG_MAX_UNIFORMBLOCK_BINDSLOTS>
         uniform_names;
     std::array<std::string, SG_MAX_TEXTURE_SAMPLER_PAIRS> texture_names;
@@ -195,6 +198,7 @@ struct Image {
     bool dynamic_update = false;
     bool external = false;
     std::vector<uint8_t> pixels;
+    sg_view storage_image{};
     sg_view color_attachment{};
     sg_view resolve_attachment{};
     sg_view depth_attachment{};
@@ -288,6 +292,7 @@ static void mark_renderer_lost(Handle handle, Renderer &renderer) {
         return;
     renderer.state = RendererState::Lost;
     renderer.in_pass = false;
+    renderer.compute_pass = false;
     renderer.active_target = 0;
     renderer.pass_width = 0;
     renderer.pass_height = 0;
@@ -443,6 +448,7 @@ static nkgpu_result begin_frame_with_target(Handle handle, const nk_surface_fram
     slot->value.has_context_target = target.native_context != 0;
     slot->value.state = RendererState::FrameActive;
     slot->value.in_pass = false;
+    slot->value.compute_pass = false;
     slot->value.active_target = 0;
     slot->value.bindings = {};
     active_renderer = handle;
@@ -522,6 +528,7 @@ static nkgpu_result prepare_resource_destroy(Handle handle, bool &backend_availa
 #define sg_destroy_sampler(...) (runtime_gfx()->destroy_sampler(__VA_ARGS__))
 #define sg_destroy_shader(...) (runtime_gfx()->destroy_shader(__VA_ARGS__))
 #define sg_destroy_view(...) (runtime_gfx()->destroy_view(__VA_ARGS__))
+#define sg_dispatch(...) (selected_api->dispatch(__VA_ARGS__))
 #define sg_draw(...) (runtime_gfx()->draw(__VA_ARGS__))
 #define sg_end_pass(...) (runtime_gfx()->end_pass(__VA_ARGS__))
 #define sg_make_buffer(...) (runtime_gfx()->make_buffer(__VA_ARGS__))
@@ -745,6 +752,22 @@ static sg_pixel_format convert_image_format(nkgpu_image_format format) {
         return SG_PIXELFORMAT_DEPTH_STENCIL;
     default:
         return SG_PIXELFORMAT_NONE;
+    }
+}
+
+static bool convert_shader_stage(nkgpu_shader_stage stage, sg_shader_stage &out) {
+    switch (stage) {
+    case NKGPU_SHADERSTAGE_VERTEX:
+        out = SG_SHADERSTAGE_VERTEX;
+        return true;
+    case NKGPU_SHADERSTAGE_FRAGMENT:
+        out = SG_SHADERSTAGE_FRAGMENT;
+        return true;
+    case NKGPU_SHADERSTAGE_COMPUTE:
+        out = SG_SHADERSTAGE_COMPUTE;
+        return true;
+    default:
+        return false;
     }
 }
 
@@ -1278,6 +1301,8 @@ nkgpu_result nkgpu_renderer_create_for_frame_target(nk_surface surface,
     return create_renderer_from_target(surface, *frame_target, out_renderer);
 }
 static void destroy_image_backend(Image &image) {
+    if (image.storage_image.id)
+        sg_destroy_view(image.storage_image);
     if (image.depth_attachment.id)
         sg_destroy_view(image.depth_attachment);
     if (image.resolve_attachment.id)
@@ -1289,6 +1314,14 @@ static void destroy_image_backend(Image &image) {
     if (image.object.id)
         sg_destroy_image(image.object);
     image = {};
+}
+
+static void destroy_buffer_backend(Buffer &buffer) {
+    if (buffer.storage_view.id)
+        sg_destroy_view(buffer.storage_view);
+    if (buffer.object.id)
+        sg_destroy_buffer(buffer.object);
+    buffer = {};
 }
 
 static sg_load_action convert_load_action(nkgpu_load_action action) {
@@ -1400,6 +1433,7 @@ nkgpu_result nkgpu_begin_render_pass(nkgpu_renderer renderer,
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "render pass has no attachments");
     sg_begin_pass(&pass);
     owner->value.in_pass = true;
+    owner->value.compute_pass = false;
     ++owner->value.passes;
     owner->value.active_target = 0;
     owner->value.pass_width = pass_width;
@@ -1509,7 +1543,7 @@ static void unpin_resource(uint32_t kind, uint32_t slot_index, bool backend_avai
         /* Without a reachable backend the slot stays retired and is
            released when the renderer is torn down. */
         if (!s.pins && s.retired && backend_available) {
-            sg_destroy_buffer(s.value.object);
+            destroy_buffer_backend(s.value);
             buffer_pool.release(s);
         }
         break;
@@ -1579,7 +1613,7 @@ static void destroy_owned(Handle owner, bool backend_available) {
         if ((s.active || s.retired || s.pins) && s.value.owner == owner) {
             s.pins = 0;
             if (backend_available)
-                sg_destroy_buffer(s.value.object);
+                destroy_buffer_backend(s.value);
             record_resource_destroyed(owner);
             buffer_pool.remove(s);
         }
@@ -1810,6 +1844,7 @@ nkgpu_result nkgpu_begin_render_target(nkgpu_renderer renderer, nkgpu_render_tar
     sg_begin_pass(&pass);
     owner->value.state = RendererState::RenderTargetActive;
     owner->value.in_pass = true;
+    owner->value.compute_pass = false;
     ++owner->value.passes;
     owner->value.active_target = handle;
     owner->value.pass_width = target->value.width;
@@ -1853,8 +1888,22 @@ static nkgpu_result save_buffer(Handle owner, sg_buffer object, uint32_t size,
         value.pixels.resize(size);
     if (data && size)
         value.pixels.assign(data, data + size);
+    if (usage & NKGPU_BUFFER_STORAGE) {
+        sg_view_desc view_desc{};
+        view_desc.storage_buffer.buffer = object;
+        value.storage_view = sg_make_view(&view_desc);
+        if (sg_query_view_state(value.storage_view) != SG_RESOURCESTATE_VALID) {
+            if (value.storage_view.id)
+                sg_destroy_view(value.storage_view);
+            sg_destroy_buffer(object);
+            record_allocation_failure(owner);
+            return fail(NKGPU_ERROR_OUT_OF_MEMORY, "storage-buffer view creation failed");
+        }
+    }
     Handle h = buffer_pool.add(std::move(value));
     if (!h) {
+        if (value.storage_view.id)
+            sg_destroy_view(value.storage_view);
         sg_destroy_buffer(object);
         record_allocation_failure(owner);
         return fail(NKGPU_ERROR_UNKNOWN, "buffer pool full");
@@ -1887,22 +1936,7 @@ nkgpu_result nkgpu_buffer_create_stream(nkgpu_renderer r, uint32_t capacity,
         record_allocation_failure(r);
         return fail(NKGPU_ERROR_OUT_OF_MEMORY, "stream buffer creation failed");
     }
-    Buffer value{};
-    value.owner = r;
-    value.object = object;
-    value.size = capacity;
-    value.stream = true;
-    value.usage = usage;
-    value.dynamic_update = true;
-    const Handle handle = buffer_pool.add(std::move(value));
-    if (!handle) {
-        sg_destroy_buffer(object);
-        record_allocation_failure(r);
-        return fail(NKGPU_ERROR_OUT_OF_MEMORY, "buffer pool full");
-    }
-    record_resource_created(r);
-    *out = handle;
-    return NKGPU_OK;
+    return save_buffer(r, object, capacity, usage, true, true, nullptr, out);
 }
 nkgpu_result nkgpu_buffer_append(nkgpu_renderer r, nkgpu_buffer h, const uint8_t *data,
                                  uint32_t size, uint32_t *out_offset) {
@@ -2086,7 +2120,7 @@ nkgpu_result nkgpu_buffer_destroy(nkgpu_renderer r, nkgpu_buffer h) {
         return ready;
     /* A batch may still reference this buffer; defer its backend destruction. */
     if (backend_available && !s->pins)
-        sg_destroy_buffer(s->value.object);
+        destroy_buffer_backend(s->value);
     record_resource_destroyed(r);
     buffer_pool.remove(*s);
     return NKGPU_OK;
@@ -2126,8 +2160,24 @@ nkgpu_result nkgpu_buffer_update(nkgpu_renderer r, nkgpu_buffer h, uint32_t offs
         record_allocation_failure(r);
         return fail(NKGPU_ERROR_OUT_OF_MEMORY, "buffer update upload failed");
     }
+    sg_view storage_view{};
+    if (s->value.usage & NKGPU_BUFFER_STORAGE) {
+        sg_view_desc view_desc{};
+        view_desc.storage_buffer.buffer = object;
+        storage_view = sg_make_view(&view_desc);
+        if (sg_query_view_state(storage_view) != SG_RESOURCESTATE_VALID) {
+            if (storage_view.id)
+                sg_destroy_view(storage_view);
+            sg_destroy_buffer(object);
+            record_allocation_failure(r);
+            return fail(NKGPU_ERROR_OUT_OF_MEMORY, "updated storage-buffer view failed");
+        }
+    }
+    if (s->value.storage_view.id)
+        sg_destroy_view(s->value.storage_view);
     sg_destroy_buffer(s->value.object);
     s->value.object = object;
+    s->value.storage_view = storage_view;
     s->value.pixels = std::move(next_pixels);
     renderer_pool.get(r)->value.upload_bytes += size;
     return NKGPU_OK;
@@ -2221,6 +2271,33 @@ nkgpu_result nkgpu_shader_begin(nkgpu_renderer r, nkgpu_shader_language language
     return NKGPU_OK;
 }
 
+nkgpu_result nkgpu_shader_begin_compute(nkgpu_renderer r, nkgpu_shader_language language,
+                                        const char *source, nkgpu_shader_builder *out) {
+    if (!renderer_pool.get(r))
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    if (!source || !out || !shader_language_matches_renderer(r, language))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid compute shader builder");
+    const nkgpu_result idle = require_idle_renderer(r);
+    if (idle != NKGPU_OK)
+        return idle;
+    Handle h = shader_builder_pool.add(ShaderBuilder{});
+    if (!h)
+        return fail(NKGPU_ERROR_UNKNOWN, "shader builder pool full");
+    auto *s = shader_builder_pool.get(h);
+    s->value.owner = r;
+    s->value.language = language;
+    s->value.compute_source = source;
+    s->value.desc.compute_func.source = s->value.compute_source.c_str();
+    if (language == NKGPU_SHADERLANGUAGE_HLSL5) {
+        s->value.desc.compute_func.d3d11_target = "cs_5_0";
+        s->value.desc.compute_func.entry = "main";
+    } else if (language == NKGPU_SHADERLANGUAGE_MSL) {
+        s->value.desc.compute_func.entry = "main0";
+    }
+    *out = h;
+    return NKGPU_OK;
+}
+
 nkgpu_result nkgpu_shader_attribute(nkgpu_shader_builder h, uint32_t location,
                                     const char *glsl_name, const char *hlsl_semantic,
                                     uint32_t hlsl_semantic_index) {
@@ -2248,14 +2325,15 @@ nkgpu_result nkgpu_shader_attribute(nkgpu_shader_builder h, uint32_t location,
 nkgpu_result nkgpu_shader_uniform_block(nkgpu_shader_builder h, uint32_t slot,
                                         nkgpu_shader_stage stage, uint32_t size) {
     auto *s = shader_builder_pool.get(h);
+    sg_shader_stage converted{};
     if (!s || slot >= SG_MAX_UNIFORMBLOCK_BINDSLOTS || !size ||
-        (stage != NKGPU_SHADERSTAGE_VERTEX && stage != NKGPU_SHADERSTAGE_FRAGMENT))
+        !convert_shader_stage(stage, converted))
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid uniform block");
     const nkgpu_result idle = require_idle_renderer(s->value.owner);
     if (idle != NKGPU_OK)
         return idle;
     auto &b = s->value.desc.uniform_blocks[slot];
-    b.stage = stage == NKGPU_SHADERSTAGE_VERTEX ? SG_SHADERSTAGE_VERTEX : SG_SHADERSTAGE_FRAGMENT;
+    b.stage = converted;
     b.size = size;
     b.layout = SG_UNIFORMLAYOUT_STD140;
     b.hlsl_register_b_n = static_cast<uint8_t>(slot);
@@ -2281,16 +2359,15 @@ nkgpu_result nkgpu_shader_uniform(nkgpu_shader_builder h, uint32_t block, uint32
 }
 nkgpu_result nkgpu_shader_texture(nkgpu_shader_builder h, uint32_t view_slot, uint32_t sampler_slot,
                                   nkgpu_shader_stage stage, const char *name) {
+    sg_shader_stage converted{};
     auto *s = shader_builder_pool.get(h);
     if (!s || view_slot >= SG_MAX_VIEW_BINDSLOTS || sampler_slot >= SG_MAX_SAMPLER_BINDSLOTS ||
         view_slot >= SG_MAX_TEXTURE_SAMPLER_PAIRS || !name ||
-        (stage != NKGPU_SHADERSTAGE_VERTEX && stage != NKGPU_SHADERSTAGE_FRAGMENT))
+        !convert_shader_stage(stage, converted))
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid shader texture binding");
     const nkgpu_result idle = require_idle_renderer(s->value.owner);
     if (idle != NKGPU_OK)
         return idle;
-    const sg_shader_stage converted =
-        stage == NKGPU_SHADERSTAGE_VERTEX ? SG_SHADERSTAGE_VERTEX : SG_SHADERSTAGE_FRAGMENT;
     s->value.desc.views[view_slot].texture.stage = converted;
     s->value.desc.views[view_slot].texture.image_type = SG_IMAGETYPE_2D;
     s->value.desc.views[view_slot].texture.sample_type = SG_IMAGESAMPLETYPE_FLOAT;
@@ -2306,6 +2383,51 @@ nkgpu_result nkgpu_shader_texture(nkgpu_shader_builder h, uint32_t view_slot, ui
     pair.view_slot = (uint8_t)view_slot;
     pair.sampler_slot = (uint8_t)sampler_slot;
     pair.glsl_name = s->value.texture_names[view_slot].c_str();
+    return NKGPU_OK;
+}
+
+nkgpu_result nkgpu_shader_storage_buffer(nkgpu_shader_builder h, uint32_t view_slot,
+                                         nkgpu_shader_stage stage, uint32_t readonly) {
+    auto *s = shader_builder_pool.get(h);
+    sg_shader_stage converted{};
+    if (!s || view_slot >= SG_MAX_VIEW_BINDSLOTS || readonly > 1 ||
+        !convert_shader_stage(stage, converted))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid shader storage-buffer binding");
+    const nkgpu_result idle = require_idle_renderer(s->value.owner);
+    if (idle != NKGPU_OK)
+        return idle;
+    auto &binding = s->value.desc.views[view_slot].storage_buffer;
+    binding.stage = converted;
+    binding.readonly = readonly != 0;
+    binding.hlsl_register_t_n = static_cast<uint8_t>(view_slot);
+    binding.hlsl_register_u_n = static_cast<uint8_t>(view_slot);
+    binding.msl_buffer_n = static_cast<uint8_t>(view_slot);
+    binding.wgsl_group1_binding_n = static_cast<uint8_t>(view_slot);
+    binding.spirv_set1_binding_n = static_cast<uint8_t>(view_slot);
+    binding.glsl_binding_n = static_cast<uint8_t>(view_slot);
+    return NKGPU_OK;
+}
+
+nkgpu_result nkgpu_shader_storage_image(nkgpu_shader_builder h, uint32_t view_slot,
+                                        nkgpu_image_format format, uint32_t writeonly) {
+    auto *s = shader_builder_pool.get(h);
+    const sg_pixel_format native_format = convert_image_format(format);
+    if (!s || view_slot >= SG_MAX_VIEW_BINDSLOTS || native_format == SG_PIXELFORMAT_NONE ||
+        image_format_is_depth(format) || writeonly > 1)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid shader storage-image binding");
+    const nkgpu_result idle = require_idle_renderer(s->value.owner);
+    if (idle != NKGPU_OK)
+        return idle;
+    auto &binding = s->value.desc.views[view_slot].storage_image;
+    binding.stage = SG_SHADERSTAGE_COMPUTE;
+    binding.image_type = SG_IMAGETYPE_2D;
+    binding.access_format = native_format;
+    binding.writeonly = writeonly != 0;
+    binding.hlsl_register_u_n = static_cast<uint8_t>(view_slot);
+    binding.msl_texture_n = static_cast<uint8_t>(view_slot);
+    binding.wgsl_group1_binding_n = static_cast<uint8_t>(view_slot);
+    binding.spirv_set1_binding_n = static_cast<uint8_t>(view_slot);
+    binding.glsl_binding_n = static_cast<uint8_t>(view_slot);
     return NKGPU_OK;
 }
 nkgpu_result nkgpu_shader_end(nkgpu_shader_builder h, nkgpu_shader *out) {
@@ -2362,12 +2484,54 @@ nkgpu_result nkgpu_pipeline_begin(nkgpu_renderer r, nkgpu_shader shader, uint32_
     *out = h;
     return NKGPU_OK;
 }
+nkgpu_result nkgpu_pipeline_begin_compute(nkgpu_renderer r, nkgpu_shader shader,
+                                          nkgpu_pipeline_builder *out) {
+    auto *sh = shader_pool.get(shader);
+    if (!renderer_pool.get(r))
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    if (!sh || sh->value.owner != r || !out)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign compute shader");
+    const nkgpu_result idle = require_idle_renderer(r);
+    if (idle != NKGPU_OK)
+        return idle;
+    const nkgpu_result activated = activate_renderer(r);
+    if (activated != NKGPU_OK)
+        return activated;
+    if (!selected_api->query_features().compute)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "compute is not supported by this backend");
+    PipelineBuilder b{};
+    b.owner = r;
+    b.desc.compute = true;
+    b.desc.shader = sh->value.object;
+    Handle h = pipeline_builder_pool.add(b);
+    if (!h)
+        return fail(NKGPU_ERROR_UNKNOWN, "builder pool full");
+    *out = h;
+    return NKGPU_OK;
+}
+nkgpu_result nkgpu_pipeline_compute(nkgpu_pipeline_builder h) {
+    auto *s = pipeline_builder_pool.get(h);
+    if (!s)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale pipeline builder");
+    const nkgpu_result idle = require_idle_renderer(s->value.owner);
+    if (idle != NKGPU_OK)
+        return idle;
+    const nkgpu_result activated = activate_renderer(s->value.owner);
+    if (activated != NKGPU_OK)
+        return activated;
+    if (!selected_api->query_features().compute)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "compute is not supported by this backend");
+    s->value.desc.compute = true;
+    s->value.desc.color_count = 0;
+    s->value.desc.depth.pixel_format = SG_PIXELFORMAT_NONE;
+    return NKGPU_OK;
+}
 nkgpu_result nkgpu_pipeline_attribute(nkgpu_pipeline_builder h, uint32_t location,
                                       uint32_t buffer_index, uint32_t offset,
                                       nkgpu_vertex_format format) {
     auto *s = pipeline_builder_pool.get(h);
     auto f = convert_format(format);
-    if (!s || location >= SG_MAX_VERTEX_ATTRIBUTES ||
+    if (!s || s->value.desc.compute || location >= SG_MAX_VERTEX_ATTRIBUTES ||
         buffer_index >= SG_MAX_VERTEXBUFFER_BINDSLOTS || f == SG_VERTEXFORMAT_INVALID)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "invalid pipeline attribute");
     const nkgpu_result idle = require_idle_renderer(s->value.owner);
@@ -2667,9 +2831,37 @@ nkgpu_result nkgpu_frame_begin(nkgpu_renderer h) {
     s->value.has_frame_target = false;
     s->value.frame_target = {};
     s->value.in_pass = false;
+    s->value.compute_pass = false;
     s->value.active_target = 0;
     s->value.bindings = {};
     active_renderer = h;
+    return NKGPU_OK;
+}
+
+nkgpu_result nkgpu_begin_compute_pass(nkgpu_renderer h) {
+    auto *renderer = renderer_pool.get(h);
+    if (!renderer)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    if (renderer->value.state == RendererState::Lost)
+        return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
+    if (renderer->value.state != RendererState::FrameActive || renderer->value.in_pass ||
+        active_renderer != h)
+        return fail(NKGPU_ERROR_WRONG_STATE, "compute pass requires a frame with no active pass");
+    const nkgpu_result activated = activate_renderer(h);
+    if (activated != NKGPU_OK)
+        return activated;
+    if (!selected_api->query_features().compute)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "compute is not supported by this backend");
+    sg_pass pass{};
+    pass.compute = true;
+    sg_begin_pass(&pass);
+    renderer->value.in_pass = true;
+    renderer->value.compute_pass = true;
+    ++renderer->value.passes;
+    renderer->value.active_target = 0;
+    renderer->value.pass_width = 0;
+    renderer->value.pass_height = 0;
+    renderer->value.bindings = {};
     return NKGPU_OK;
 }
 
@@ -2791,6 +2983,7 @@ nkgpu_result nkgpu_end_pass(nkgpu_renderer h) {
         return activated;
     sg_end_pass();
     renderer->value.in_pass = false;
+    renderer->value.compute_pass = false;
     renderer->value.active_target = 0;
     renderer->value.bindings = {};
     return NKGPU_OK;
@@ -3121,6 +3314,15 @@ nkgpu_result nkgpu_image_create_desc(nkgpu_renderer r, const nkgpu_image_desc *i
             return fail(NKGPU_ERROR_OUT_OF_MEMORY, "resolve attachment view creation failed");
         }
     }
+    if (usage & NKGPU_IMAGE_STORAGE) {
+        sg_view_desc view_desc{};
+        view_desc.storage_image.image = object;
+        if (!make_view(view_desc, image_value.storage_image)) {
+            destroy_image_backend(image_value);
+            record_allocation_failure(r);
+            return fail(NKGPU_ERROR_OUT_OF_MEMORY, "storage-image view creation failed");
+        }
+    }
     if (usage & NKGPU_IMAGE_DEPTH_STENCIL) {
         sg_view_desc view_desc{};
         view_desc.depth_stencil_attachment.image = object;
@@ -3139,16 +3341,7 @@ nkgpu_result nkgpu_image_create_desc(nkgpu_renderer r, const nkgpu_image_desc *i
 
     const Handle handle = image_pool.add(image_value);
     if (!handle) {
-        const Image &value = image_value;
-        if (value.depth_attachment.id)
-            sg_destroy_view(value.depth_attachment);
-        if (value.resolve_attachment.id)
-            sg_destroy_view(value.resolve_attachment);
-        if (value.color_attachment.id)
-            sg_destroy_view(value.color_attachment);
-        if (value.view.id)
-            sg_destroy_view(value.view);
-        sg_destroy_image(object);
+        destroy_image_backend(image_value);
         record_allocation_failure(r);
         return fail(NKGPU_ERROR_OUT_OF_MEMORY, "image pool full");
     }
@@ -3371,6 +3564,32 @@ nkgpu_result nkgpu_apply_image(nkgpu_renderer r, uint32_t slot, nkgpu_image h) {
     rs->value.bindings.views[slot] = image->value.view;
     return NKGPU_OK;
 }
+nkgpu_result nkgpu_apply_storage_buffer(nkgpu_renderer r, uint32_t slot, nkgpu_buffer h) {
+    auto *rs = renderer_pool.get(r);
+    auto *buffer = buffer_pool.get(h);
+    const nkgpu_result pass = require_active_pass(r);
+    if (pass != NKGPU_OK)
+        return pass;
+    if (!rs || !buffer || buffer->value.owner != r ||
+        slot >= SG_MAX_VIEW_BINDSLOTS || !buffer->value.storage_view.id ||
+        !(buffer->value.usage & NKGPU_BUFFER_STORAGE))
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "invalid storage-buffer/frame");
+    rs->value.bindings.views[slot] = buffer->value.storage_view;
+    return NKGPU_OK;
+}
+nkgpu_result nkgpu_apply_storage_image(nkgpu_renderer r, uint32_t slot, nkgpu_image h) {
+    auto *rs = renderer_pool.get(r);
+    auto *image = image_pool.get(h);
+    const nkgpu_result pass = require_active_pass(r);
+    if (pass != NKGPU_OK)
+        return pass;
+    if (!rs || !rs->value.compute_pass || !image || image->value.owner != r ||
+        slot >= SG_MAX_VIEW_BINDSLOTS || !image->value.storage_image.id ||
+        !(image->value.usage & NKGPU_IMAGE_STORAGE))
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "invalid storage-image/frame");
+    rs->value.bindings.views[slot] = image->value.storage_image;
+    return NKGPU_OK;
+}
 /*
  * Resolves an external graphics image to a backend view, rejecting images that
  * belong to another runtime or device. Shared by the immediate and batch paths
@@ -3430,11 +3649,23 @@ nkgpu_result nkgpu_draw(nkgpu_renderer r, uint32_t base, uint32_t count, uint32_
     const nkgpu_result pass = require_active_pass(r);
     if (pass != NKGPU_OK)
         return pass;
-    if (!rs || !count || !instances)
+    if (!rs || rs->value.compute_pass || !count || !instances)
         return fail(NKGPU_ERROR_WRONG_STATE, "invalid draw/frame");
     sg_apply_bindings(&rs->value.bindings);
     sg_draw((int)base, (int)count, (int)instances);
     ++rs->value.draw_calls;
+    return NKGPU_OK;
+}
+nkgpu_result nkgpu_dispatch(nkgpu_renderer r, uint32_t x, uint32_t y, uint32_t z) {
+    auto *rs = renderer_pool.get(r);
+    const nkgpu_result pass = require_active_pass(r);
+    if (pass != NKGPU_OK)
+        return pass;
+    if (!rs || !rs->value.compute_pass || !x || !y || !z || x >= 65536 || y >= 65536 ||
+        z >= 65536)
+        return fail(NKGPU_ERROR_WRONG_STATE, "invalid compute dispatch/pass");
+    sg_apply_bindings(&rs->value.bindings);
+    sg_dispatch(static_cast<int>(x), static_cast<int>(y), static_cast<int>(z));
     return NKGPU_OK;
 }
 static uint32_t read_u32(const uint8_t *data) {
@@ -3460,6 +3691,14 @@ static nkgpu_result submit_command(nkgpu_renderer r, uint32_t opcode, const uint
         return size == 8
                    ? nkgpu_apply_image(r, read_u32(payload), nkgpu_image{read_u32(payload + 4)})
                    : NKGPU_ERROR_INVALID_ARGUMENT;
+    case NKGPU_COMMAND_APPLY_STORAGE_BUFFER:
+        return size == 8 ? nkgpu_apply_storage_buffer(r, read_u32(payload),
+                                                       nkgpu_buffer{read_u32(payload + 4)})
+                         : NKGPU_ERROR_INVALID_ARGUMENT;
+    case NKGPU_COMMAND_APPLY_STORAGE_IMAGE:
+        return size == 8 ? nkgpu_apply_storage_image(r, read_u32(payload),
+                                                      nkgpu_image{read_u32(payload + 4)})
+                         : NKGPU_ERROR_INVALID_ARGUMENT;
     case NKGPU_COMMAND_APPLY_SAMPLER:
         return size == 8
                    ? nkgpu_apply_sampler(r, read_u32(payload), nkgpu_sampler{read_u32(payload + 4)})
@@ -3479,6 +3718,10 @@ static nkgpu_result submit_command(nkgpu_renderer r, uint32_t opcode, const uint
         return size == 12
                    ? nkgpu_draw(r, read_u32(payload), read_u32(payload + 4), read_u32(payload + 8))
                    : NKGPU_ERROR_INVALID_ARGUMENT;
+    case NKGPU_COMMAND_DISPATCH:
+        return size == 12 ? nkgpu_dispatch(r, read_u32(payload), read_u32(payload + 4),
+                                           read_u32(payload + 8))
+                          : NKGPU_ERROR_INVALID_ARGUMENT;
     case NKGPU_COMMAND_APPLY_SCISSOR:
         return size == 20 ? nkgpu_apply_scissor(r, read_u32(payload),
                                                 static_cast<int32_t>(read_u32(payload + 4)),
@@ -3666,6 +3909,18 @@ static bool retain_batch_records(Batch &batch, const uint8_t *commands, uint32_t
             if (!retain_batch_resource(batch, ImageKind, read_u32(payload + 4)))
                 return invalid_batch_record(opcode, offset, "unusable image");
             break;
+        case NKGPU_COMMAND_APPLY_STORAGE_BUFFER:
+            if (payload_size != 8 || read_u32(payload) >= SG_MAX_VIEW_BINDSLOTS)
+                return invalid_batch_record(opcode, offset, "bad storage-buffer payload");
+            if (!retain_batch_resource(batch, BufferKind, read_u32(payload + 4)))
+                return invalid_batch_record(opcode, offset, "unusable storage buffer");
+            break;
+        case NKGPU_COMMAND_APPLY_STORAGE_IMAGE:
+            if (payload_size != 8 || read_u32(payload) >= SG_MAX_VIEW_BINDSLOTS)
+                return invalid_batch_record(opcode, offset, "bad storage-image payload");
+            if (!retain_batch_resource(batch, ImageKind, read_u32(payload + 4)))
+                return invalid_batch_record(opcode, offset, "unusable storage image");
+            break;
         case NKGPU_COMMAND_APPLY_SAMPLER:
             if (payload_size != 8 || read_u32(payload) >= SG_MAX_SAMPLER_BINDSLOTS)
                 return invalid_batch_record(opcode, offset, "bad sampler payload");
@@ -3693,6 +3948,10 @@ static bool retain_batch_records(Batch &batch, const uint8_t *commands, uint32_t
         case NKGPU_COMMAND_DRAW:
             if (payload_size != 12)
                 return invalid_batch_record(opcode, offset, "bad draw payload");
+            break;
+        case NKGPU_COMMAND_DISPATCH:
+            if (payload_size != 12)
+                return invalid_batch_record(opcode, offset, "bad dispatch payload");
             break;
         default:
             return invalid_batch_record(opcode, offset, "unknown opcode");
@@ -3801,7 +4060,8 @@ nkgpu_result nkgpu_batch_append_pass(nkgpu_batch batch, const nkgpu_batch_pass *
         return fail(NKGPU_ERROR_WRONG_STATE, "batch is sealed");
     if (!pass || pass->struct_size < sizeof(nkgpu_batch_pass))
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid batch pass");
-    if (pass->kind != NKGPU_BATCH_PASS_WINDOW && pass->kind != NKGPU_BATCH_PASS_TARGET)
+    if (pass->kind != NKGPU_BATCH_PASS_WINDOW && pass->kind != NKGPU_BATCH_PASS_TARGET &&
+        pass->kind != NKGPU_BATCH_PASS_COMPUTE)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid batch pass kind");
     if (pass->clear > 1)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid batch pass clear flag");
@@ -3813,7 +4073,7 @@ nkgpu_result nkgpu_batch_append_pass(nkgpu_batch batch, const nkgpu_batch_pass *
             return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid batch window-pass extent");
         recorded.width = pass->width;
         recorded.height = pass->height;
-    } else {
+    } else if (pass->kind == NKGPU_BATCH_PASS_TARGET) {
         auto *target = render_target_pool.get(pass->target);
         if (!target || target->value.owner != slot->value.owner)
             return fail(NKGPU_ERROR_INVALID_HANDLE, "invalid or foreign render target");
@@ -3906,10 +4166,12 @@ nkgpu_result nkgpu_batch_submit(nkgpu_renderer renderer, nkgpu_batch batch,
     size_t index = 0;
     while (result == NKGPU_OK && index < bs->value.passes.size()) {
         const BatchPass &pass = bs->value.passes[index];
-        result =
-            pass.kind == NKGPU_BATCH_PASS_WINDOW
-                ? nkgpu_begin_window_pass(renderer, pass.width, pass.height, pass.clear)
-                : nkgpu_begin_target_pass(renderer, nkgpu_render_target{pass.target}, pass.clear);
+        if (pass.kind == NKGPU_BATCH_PASS_WINDOW)
+            result = nkgpu_begin_window_pass(renderer, pass.width, pass.height, pass.clear);
+        else if (pass.kind == NKGPU_BATCH_PASS_TARGET)
+            result = nkgpu_begin_target_pass(renderer, nkgpu_render_target{pass.target}, pass.clear);
+        else
+            result = nkgpu_begin_compute_pass(renderer);
         if (result != NKGPU_OK)
             break;
         if (!pass.commands.empty())
@@ -4008,6 +4270,7 @@ static nkgpu_result end_frame(nkgpu_renderer r, bool present_surface) {
     }
     rs->value.state = RendererState::Ready;
     rs->value.in_pass = false;
+    rs->value.compute_pass = false;
     rs->value.active_target = 0;
     rs->value.pass_width = 0;
     rs->value.pass_height = 0;
