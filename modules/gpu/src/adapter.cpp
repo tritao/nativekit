@@ -951,6 +951,17 @@ void nkgpu_test_lose_all_after_frames(uint32_t frames) {
             slot.value.test_frames_before_loss = frames;
 }
 
+void nkgpu_test_invalidate_all(void) {
+    for (uint32_t index = 0; index < renderer_pool.slots.size(); ++index) {
+        auto &slot = renderer_pool.slots[index];
+        if (slot.active) {
+            const Handle handle = (uint32_t(RendererKind) << 28) |
+                                  (uint32_t(slot.generation) << 16) | (index + 1);
+            mark_renderer_lost(handle, slot.value);
+        }
+    }
+}
+
 nkgpu_result nkgpu_test_invalidate_surface(nkgpu_renderer renderer) {
     auto *slot = renderer_pool.get(renderer);
     if (!slot)

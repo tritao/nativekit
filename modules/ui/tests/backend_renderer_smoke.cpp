@@ -629,8 +629,8 @@ int main() {
         }
 
         /* Device loss is recoverable at the scheduler boundary: the first
-           submission observes or trips loss, and the next sealed plan retires
-           the lost UiRenderer and creates a fresh GPU renderer on RENDER. */
+           submission observes the invalidated renderer, and the next sealed
+           plan retires it and creates a fresh GPU renderer on RENDER. */
         if (!result) {
             if (!check(nkui_renderer_create(&recovery_renderer) == NKUI_OK,
                        "create recovery renderer")) {
@@ -679,7 +679,7 @@ int main() {
                 result = 31;
                 goto cleanup;
             }
-            nkgpu_test_lose_all_after_frames(1);
+            nkgpu_test_invalidate_all();
             nk::core::reset_render_surface_api_violations();
             if (!submit_and_drain(recovery_renderer, "device-loss") ||
                 !check(nk::core::render_surface_api_violations() == 0,
