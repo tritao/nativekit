@@ -621,6 +621,17 @@ enum NK_ENUM(nkgpu_command) {
     NKGPU_COMMAND_DISPATCH = 13,
 };
 
+/** Current version for the explicitly versioned command-stream envelope. */
+enum { NKGPU_COMMAND_STREAM_VERSION_1 = 1 };
+
+/** Versioned wrapper for packed command records. */
+typedef struct nkgpu_command_stream_desc {
+    uint32_t struct_size NK_STRUCT_SIZE;
+    uint32_t version;
+    const uint8_t *commands;
+    uint32_t size;
+} nkgpu_command_stream_desc;
+
 /* ------------------------------------------------------------------------- */
 /* Diagnostics                                                               */
 /* ------------------------------------------------------------------------- */
@@ -660,6 +671,8 @@ typedef struct nkgpu_features {
     uint32_t storage_image;
     uint32_t compute;
     uint32_t instancing;
+    uint32_t buffer_copy;
+    uint32_t image_copy;
     uint32_t image_readback;
 } nkgpu_features;
 
@@ -675,10 +688,22 @@ typedef struct nkgpu_limits {
     uint32_t max_storage_image_bindings;
 } nkgpu_limits;
 
+/** Opaque backend tokens for advanced native integration. */
+typedef struct nkgpu_native_context {
+    uint32_t struct_size NK_STRUCT_SIZE;
+    nkgpu_backend backend;
+    uint64_t device;
+    uint64_t context;
+} nkgpu_native_context;
+
 NKGPU_API nkgpu_result nkgpu_query_features(nkgpu_renderer renderer,
                                             nkgpu_features *out_features NKGPU_OUT);
 NKGPU_API nkgpu_result nkgpu_query_limits(nkgpu_renderer renderer,
                                           nkgpu_limits *out_limits NKGPU_OUT);
+
+/** Returns opaque native device/context tokens for advanced backend integration. */
+NKGPU_API nkgpu_result nkgpu_get_native_context(nkgpu_renderer renderer,
+                                                nkgpu_native_context *out_context NKGPU_OUT);
 
 /* ------------------------------------------------------------------------- */
 /* Surface and renderer lifecycle                                            */
@@ -1266,6 +1291,10 @@ NKGPU_API nkgpu_result nkgpu_dispatch(nkgpu_renderer renderer, uint32_t x, uint3
 NKGPU_API nkgpu_result nkgpu_submit_commands(nkgpu_renderer renderer, const uint8_t *commands,
                                              uint32_t size);
 
+/** Submits a command stream after checking its explicit ABI version. */
+NKGPU_API nkgpu_result nkgpu_submit_command_stream(nkgpu_renderer renderer,
+                                                   const nkgpu_command_stream_desc *desc);
+
 /** Render pass kind recorded into a submission batch. */
 typedef uint32_t nkgpu_batch_pass_kind;
 enum NK_ENUM(nkgpu_batch_pass_kind) {
@@ -1326,6 +1355,10 @@ NKGPU_API nkgpu_result nkgpu_batch_append_pass(nkgpu_batch batch, const nkgpu_ba
  */
 NKGPU_API nkgpu_result nkgpu_batch_append_command(nkgpu_batch batch, const uint8_t *commands,
                                                   uint32_t size);
+
+/** Appends a command stream after checking its explicit ABI version. */
+NKGPU_API nkgpu_result nkgpu_batch_append_command_stream(
+    nkgpu_batch batch, const nkgpu_command_stream_desc *desc);
 
 /**
  * Freezes a batch.

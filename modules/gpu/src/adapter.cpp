@@ -1071,6 +1071,8 @@ nkgpu_result nkgpu_query_features(nkgpu_renderer renderer, nkgpu_features *out_f
     features.storage_image = native.compute ? 1u : 0u;
     features.compute = native.compute ? 1u : 0u;
     features.instancing = 1;
+    features.buffer_copy = 0;
+    features.image_copy = 0;
     features.image_readback = 0;
     *out_features = features;
     return NKGPU_OK;
@@ -1101,6 +1103,28 @@ nkgpu_result nkgpu_query_limits(nkgpu_renderer renderer, nkgpu_limits *out_limit
     limits.max_storage_image_bindings =
         static_cast<uint32_t>(std::max(0, native.max_storage_image_bindings_per_stage));
     *out_limits = limits;
+    return NKGPU_OK;
+}
+
+nkgpu_result nkgpu_get_native_context(nkgpu_renderer renderer,
+                                      nkgpu_native_context *out_context) {
+    auto *slot = renderer_pool.get(renderer);
+    if (!slot || !out_context)
+        return fail(!out_context ? NKGPU_ERROR_INVALID_ARGUMENT : NKGPU_ERROR_INVALID_HANDLE,
+                    "invalid native context query");
+    if (out_context->struct_size < sizeof(nkgpu_native_context))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "native context output is too small");
+    if (slot->value.state == RendererState::Lost)
+        return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
+    const nkgpu_result activated = activate_renderer(renderer);
+    if (activated != NKGPU_OK)
+        return activated;
+    nkgpu_native_context context{};
+    context.struct_size = sizeof(context);
+    context.backend = convert_backend(slot->value.api);
+    context.device = slot->value.native_device;
+    context.context = slot->value.has_context_target ? slot->value.context_target.native_context : 0;
+    *out_context = context;
     return NKGPU_OK;
 }
 
@@ -3768,6 +3792,16 @@ nkgpu_result nkgpu_submit_commands(nkgpu_renderer r, const uint8_t *commands, ui
     return NKGPU_OK;
 }
 
+nkgpu_result nkgpu_submit_command_stream(nkgpu_renderer renderer,
+                                         const nkgpu_command_stream_desc *desc) {
+    if (!desc || desc->struct_size < sizeof(nkgpu_command_stream_desc))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid command stream descriptor");
+    if (desc->version != NKGPU_COMMAND_STREAM_VERSION_1)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "unsupported command stream version %u",
+                    desc->version);
+    return nkgpu_submit_commands(renderer, desc->commands, desc->size);
+}
+
 /* ------------------------------------------------------------------------- */
 /* Sealed submission batches                                                 */
 /* ------------------------------------------------------------------------- */
@@ -4112,6 +4146,16 @@ nkgpu_result nkgpu_batch_append_command(nkgpu_batch batch, const uint8_t *comman
     auto &pass = slot->value.passes.back();
     pass.commands.insert(pass.commands.end(), commands, commands + size);
     return NKGPU_OK;
+}
+
+nkgpu_result nkgpu_batch_append_command_stream(nkgpu_batch batch,
+                                                const nkgpu_command_stream_desc *desc) {
+    if (!desc || desc->struct_size < sizeof(nkgpu_command_stream_desc))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid command stream descriptor");
+    if (desc->version != NKGPU_COMMAND_STREAM_VERSION_1)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "unsupported command stream version %u",
+                    desc->version);
+    return nkgpu_batch_append_command(batch, desc->commands, desc->size);
 }
 
 nkgpu_result nkgpu_batch_seal(nkgpu_batch batch) {

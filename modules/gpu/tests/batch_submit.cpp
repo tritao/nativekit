@@ -233,9 +233,15 @@ int main() {
         append_apply_vertex_buffer(commands, 0, buffer, 0);
         append_apply_scissor(commands, 1, 0, 0, window_options.width, window_options.height);
         append_draw(commands, 0, 3, 1);
-        EXPECT_RESULT(nkgpu_batch_append_command(batch, commands.data(),
-                                                 static_cast<uint32_t>(commands.size())),
-                      NKGPU_OK);
+        nkgpu_command_stream_desc stream{};
+        stream.struct_size = sizeof(stream);
+        stream.version = NKGPU_COMMAND_STREAM_VERSION_1;
+        stream.commands = commands.data();
+        stream.size = static_cast<uint32_t>(commands.size());
+        EXPECT_RESULT(nkgpu_batch_append_command_stream(batch, &stream), NKGPU_OK);
+        stream.version = 99;
+        EXPECT_RESULT(nkgpu_batch_append_command_stream(batch, &stream),
+                      NKGPU_ERROR_INVALID_ARGUMENT);
 
         /* A second pass with a partial scissor covers pass ordering. */
         nkgpu_batch_pass overlay{};
