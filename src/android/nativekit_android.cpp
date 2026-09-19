@@ -2866,12 +2866,8 @@ nk_result NK_CALL nk_frame_backend_submit(const nk_surface_frame_target *target)
         nk::core::set_error("could not present the Android EGL surface");
         return NK_ERROR_UNKNOWN;
     }
-    /* The EGL context belongs to RENDER only for the duration of submission;
-       releasing it lets PLATFORM tear down or replace the Surface safely. */
-    if (!eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
-        nk::core::set_error("could not release the Android EGL frame target");
-        return NK_ERROR_UNKNOWN;
-    }
+    /* RENDER keeps the context current until its sealed plan releases any
+       retained external images; the scheduler unbinds it at task completion. */
     return NK_OK;
 }
 

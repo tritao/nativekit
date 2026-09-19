@@ -5,6 +5,7 @@
 #include "image_decode.h"
 
 #include "core/executor.hpp"
+#include "core/frame_backend.hpp"
 #include "core/runtime.hpp"
 
 #include "display_list/display_list.h"
@@ -436,6 +437,15 @@ void execute_render_submission(RenderSubmission &submission) {
                          submission.frame_target});
             }
         }
+    }
+
+    /* GL/EGL retains a thread-local context through submit so sealed-plan
+       resource destructors can release external images on RENDER. */
+    if (nk::core::render_executor_physical() &&
+        (submission.frame_target.api == NK_GRAPHICS_OPENGL ||
+         submission.frame_target.api == NK_GRAPHICS_OPENGL_ES)) {
+        submission.plan.reset();
+        nk_graphics_unbind_frame_target(&submission.frame_target);
     }
 
     auto *completion = new RenderCompletion{submission.frame, success};
