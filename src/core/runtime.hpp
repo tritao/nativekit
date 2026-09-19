@@ -11,6 +11,8 @@
 
 namespace nk::core {
 
+using RuntimeShutdownHook = void (*)() noexcept;
+
 nk_result require_ui_thread() noexcept;
 HandleRegistry &handles() noexcept;
 nk_result push_event(QueuedEvent event) noexcept;
@@ -23,6 +25,10 @@ bool events_pending() noexcept;
 std::uint64_t wake_sequence() noexcept;
 bool wait_for_wake(std::uint64_t sequence, std::chrono::milliseconds timeout) noexcept;
 void wake_events() noexcept;
+/** Registers a module-owned cleanup hook invoked during nk_shutdown(). */
+void register_runtime_shutdown_hook(RuntimeShutdownHook hook) noexcept;
+/** Runs registered module cleanup after the render executor has stopped. */
+void run_runtime_shutdown_hooks() noexcept;
 
 } // namespace nk::core
 
