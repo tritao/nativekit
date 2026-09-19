@@ -2417,6 +2417,34 @@ class FrameworkSmoke {
 		context.submit(new Text("Tween"), animationFrame);
 		if (animation.value != 100.0 || animation.active || animationCompletions != 1)
 			return 90;
+
+		// Transform animation is a composite-only change: the resolved box keeps
+		// its layout size while the visual transform changes between submits.
+		var transformStyle = new LayoutStyle();
+		transformStyle.width = LayoutAxis.fixed(120.0);
+		transformStyle.height = LayoutAxis.fixed(48.0);
+		var transformCanvas = CanvasView.simple("transform-animation", function(_) {},
+			transformStyle);
+		var transformFrame = new LayoutFrame(256.0, 192.0);
+		transformFrame.deltaSeconds = 0.0;
+		var transformRoot = context.submit(transformCanvas, transformFrame);
+		var initialTransformGeometry:ResolvedLayoutItem = cast transformRoot.resolved;
+		var transformWidth = initialTransformGeometry.width;
+		var transformHeight = initialTransformGeometry.height;
+		var transformAnimation = new AnimationController(context.animations, function(value) {
+			transformCanvas.style.transform = Transform2D.translation(value, 0.0);
+		});
+		transformAnimation.play(0.0, 48.0, 1.0, Easing.EaseInOut);
+		transformFrame.deltaSeconds = 0.5;
+		transformRoot = context.submit(transformCanvas, transformFrame);
+		var transformGeometry:ResolvedLayoutItem = cast transformRoot.resolved;
+		var transformMetrics:Null<UiFrameMetrics> = context.frameMetrics;
+		if (transformMetrics == null || transformMetrics.layoutInvalidatedNodes != 0 ||
+			transformMetrics.compositeInvalidatedNodes <= 0 ||
+			transformGeometry.width != transformWidth ||
+			transformGeometry.height != transformHeight ||
+			transformGeometry.transform.tx == 0.0)
+			return 241;
 		var spring = new SpringController(0.0, 180.0, 24.0, 1.0, 0.001,
 			context.animations);
 		spring.setTarget(1.0);

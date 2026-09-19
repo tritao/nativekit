@@ -81,6 +81,31 @@ void hash_runtime_target(uint64_t &hash, const FrameResources &resources,
     hash_runtime_resource(hash, resources, target);
 }
 
+void hash_runtime_effect(uint64_t &hash, const RenderPass &pass) {
+    hash_runtime_u32(hash, static_cast<uint32_t>(pass.effect.kind));
+    for (const float value : pass.effect.color_matrix)
+        hash_runtime_float(hash, value);
+    hash_runtime_u32(hash, pass.custom_effect.registration_id);
+    hash_runtime_u32(hash, pass.custom_effect.parameter_count);
+    hash_runtime_u32(hash, pass.custom_effect.pass_count);
+    hash_runtime_u32(hash, pass.custom_effect.sampling_inputs);
+    for (const float value : pass.custom_effect.parameters)
+        hash_runtime_float(hash, value);
+    for (const float value : pass.custom_effect.ink_overflow)
+        hash_runtime_float(hash, value);
+    hash_runtime_u32(hash, pass.backdrop ? 1u : 0u);
+    hash_runtime_u32(hash, pass.has_input_rect ? 1u : 0u);
+    for (const float value : pass.input_rect)
+        hash_runtime_float(hash, value);
+}
+
+void hash_runtime_mask(uint64_t &hash, const MaskDescriptor &mask) {
+    hash_runtime_u32(hash, static_cast<uint32_t>(mask.kind));
+    hash_runtime_u32(hash, mask.image.value);
+    for (const float value : mask.values)
+        hash_runtime_float(hash, value);
+}
+
 void hash_runtime_command_source(uint64_t &hash, const FrameResources &resources,
                                  const std::unordered_map<uint32_t, uint64_t> &target_hashes,
                                  const RenderCommand &command) {
@@ -110,8 +135,13 @@ uint64_t runtime_pass_hash(const RenderPass &pass, const FrameResources &resourc
         }
     } else if (pass.kind == RenderPassKind::Effect || pass.kind == RenderPassKind::Mask) {
         hash_runtime_target(hash, resources, target_hashes, pass.input_target);
-        if (pass.kind == RenderPassKind::Mask && pass.mask.kind == MaskKind::Image)
-            hash_runtime_resource(hash, resources, pass.mask.image);
+        if (pass.kind == RenderPassKind::Effect)
+            hash_runtime_effect(hash, pass);
+        else {
+            hash_runtime_mask(hash, pass.mask);
+            if (pass.mask.kind == MaskKind::Image)
+                hash_runtime_resource(hash, resources, pass.mask.image);
+        }
     } else {
         const auto previous = target_hashes.find(pass.target.value);
         if (previous != target_hashes.end())

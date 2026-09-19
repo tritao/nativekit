@@ -10,6 +10,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -44,15 +45,19 @@ class RecordingRenderer final : public UiRenderer {
         ++pass_count;
         return true;
     }
-    bool beginEffectPass(ResourceId, uint64_t cache_key, int, int, bool &cache_hit) override {
-        cache_hit = cache_key != 0 && !effect_cache_keys.insert(cache_key).second;
+    bool beginEffectPass(ResourceId, uint64_t cache_key, int width, int height,
+                         bool &cache_hit) override {
+        cache_hit = cached_pass(effect_cache_keys, effect_cache_dimensions, cache_key, width,
+                                height);
         if (cache_hit)
             ++effect_cache_hits;
         ++pass_count;
         return true;
     }
-    bool beginRasterPass(ResourceId, uint64_t cache_key, int, int, bool &cache_hit) override {
-        cache_hit = cache_key != 0 && !raster_cache_keys.insert(cache_key).second;
+    bool beginRasterPass(ResourceId, uint64_t cache_key, int width, int height,
+                         bool &cache_hit) override {
+        cache_hit = cached_pass(raster_cache_keys, raster_cache_dimensions, cache_key, width,
+                                height);
         if (cache_hit)
             ++raster_cache_hits;
         ++pass_count;
@@ -132,6 +137,20 @@ class RecordingRenderer final : public UiRenderer {
     UiRendererStats stats() const override { return {}; }
     const char *lastError() const override { return error.c_str(); }
 
+  private:
+    static bool cached_pass(std::unordered_set<uint64_t> &keys,
+                            std::unordered_map<uint64_t, std::array<int, 2>> &dimensions,
+                            uint64_t cache_key, int width, int height) {
+        if (!cache_key)
+            return false;
+        const auto found = dimensions.find(cache_key);
+        const bool hit = found != dimensions.end() && found->second == std::array<int, 2>{width, height};
+        keys.insert(cache_key);
+        dimensions[cache_key] = {width, height};
+        return hit;
+    }
+
+  public:
     uint32_t frame_count = 0;
     bool recorded_frame = false;
     uint32_t pass_count = 0;
@@ -147,6 +166,8 @@ class RecordingRenderer final : public UiRenderer {
     uint32_t raster_cache_hits = 0;
     std::unordered_set<uint64_t> effect_cache_keys;
     std::unordered_set<uint64_t> raster_cache_keys;
+    std::unordered_map<uint64_t, std::array<int, 2>> effect_cache_dimensions;
+    std::unordered_map<uint64_t, std::array<int, 2>> raster_cache_dimensions;
     bool last_scissor_enabled = false;
     std::array<float, 4> last_scissor{};
     std::string error;
@@ -451,6 +472,18 @@ int main() {
         subtree_frame.plan().passes[2].commands.front().kind != RenderCommandKind::CompositeTarget)
         return 26;
 
+    // Nested raster policies collapse to the outermost cache boundary. The
+    // child must not create a second cache target or invalidate independently.
+    LayoutRenderCompiler::RasterPaintNodes nested_raster_paints{1, 2};
+    LayoutRenderFrame nested_policy_frame;
+    if (!compiler.compile(snapshot, main_target, 1.5f, nested_policy_frame, &compile_error, false,
+                          engine.text_adapter(), nullptr, &nested_raster_paints) ||
+        std::count_if(nested_policy_frame.plan().passes.begin(),
+                      nested_policy_frame.plan().passes.end(), [](const RenderPass &pass) {
+                          return pass.kind == RenderPassKind::Raster;
+                      }) != 1)
+        return 126;
+
     std::vector<LayoutNode> moved_nodes = nodes;
     moved_nodes[0].style.transform.tx = 48.0f;
     moved_nodes[0].style.transform.ty = 24.0f;
@@ -544,7 +577,24 @@ int main() {
                              moved_subtree_frame.resources(),
                              {main_target, subtree_frame_target}, &subtree_execution_error) ||
         subtree_backend.raster_cache_hits != 1)
-        return 27;
+        return 127;
+
+    // Raster entries are keyed by content, but the renderer must also reject
+    // a cached surface when its physical dimensions change (resize/DPR).
+    auto &subtree_raster_pass = subtree_frame.plan().passes[1];
+    subtree_raster_pass.target_descriptor.width =
+        std::max(1, static_cast<int>(std::ceil(subtree_raster_pass.target_descriptor.logical_width *
+                                               2.0f)));
+    subtree_raster_pass.target_descriptor.height =
+        std::max(1, static_cast<int>(std::ceil(subtree_raster_pass.target_descriptor.logical_height *
+                                               2.0f)));
+    if (!execute_render_plan(subtree_backend, subtree_frame.plan(), subtree_frame.resources(),
+                             {main_target, subtree_frame_target}, &subtree_execution_error) ||
+        subtree_backend.raster_cache_hits != 1 ||
+        !execute_render_plan(subtree_backend, subtree_frame.plan(), subtree_frame.resources(),
+                             {main_target, subtree_frame_target}, &subtree_execution_error) ||
+        subtree_backend.raster_cache_hits != 2)
+        return 127;
     RecordingRenderer mixed_backend;
     if (!execute_render_plan(mixed_backend, mixed_frame.plan(), mixed_frame.resources(),
                              {main_target, subtree_frame_target}, &subtree_execution_error) ||
@@ -625,6 +675,86 @@ int main() {
                              {main_target, nested_frame_target}, &nested_execution_error) ||
         nested_mixed_backend.raster_cache_hits != 1)
         return 32;
+
+    // An embedded cached subtree may itself contain an effect and a mask.
+    // Their intermediate targets stay local to the cache, and changes to
+    // either descriptor must invalidate the enclosing raster entry.
+    const ResourceId embedded_effect_input = make_resource_id(ResourceKind::RenderTarget, 1, 480);
+    const ResourceId embedded_effect_output = make_resource_id(ResourceKind::RenderTarget, 1, 481);
+    const ResourceId embedded_mask_output = make_resource_id(ResourceKind::RenderTarget, 1, 482);
+    RenderPlan effect_mask_plan;
+    effect_mask_plan.passes.push_back({main_target, {}, false, {}});
+    RenderCommand effect_mask_composite{RenderCommandKind::CompositeTarget,
+                                        embedded_mask_output, 0.0f, 0.0f, 20.0f, 10.0f};
+    effect_mask_plan.passes.front().commands.push_back(effect_mask_composite);
+    RenderPass embedded_input_pass;
+    embedded_input_pass.target = embedded_effect_input;
+    embedded_input_pass.target_descriptor.logical_width = 20.0f;
+    embedded_input_pass.target_descriptor.logical_height = 10.0f;
+    embedded_input_pass.commands.push_back({RenderCommandKind::Path, custom_path});
+    effect_mask_plan.passes.push_back(std::move(embedded_input_pass));
+    RenderPass embedded_effect_pass;
+    embedded_effect_pass.target = embedded_effect_output;
+    embedded_effect_pass.target_descriptor.logical_width = 20.0f;
+    embedded_effect_pass.target_descriptor.logical_height = 10.0f;
+    embedded_effect_pass.kind = RenderPassKind::Effect;
+    embedded_effect_pass.input_target = embedded_effect_input;
+    embedded_effect_pass.effect.kind = EffectKind::ColorMatrix;
+    embedded_effect_pass.effect.color_matrix[0] = 1.0f;
+    embedded_effect_pass.effect.color_matrix[6] = 1.0f;
+    embedded_effect_pass.effect.color_matrix[12] = 1.0f;
+    embedded_effect_pass.effect.color_matrix[18] = 1.0f;
+    effect_mask_plan.passes.push_back(std::move(embedded_effect_pass));
+    RenderPass embedded_mask_pass;
+    embedded_mask_pass.target = embedded_mask_output;
+    embedded_mask_pass.target_descriptor.logical_width = 20.0f;
+    embedded_mask_pass.target_descriptor.logical_height = 10.0f;
+    embedded_mask_pass.kind = RenderPassKind::Mask;
+    embedded_mask_pass.input_target = embedded_effect_output;
+    embedded_mask_pass.mask.kind = MaskKind::RoundedRect;
+    embedded_mask_pass.mask.values[0] = 3.0f;
+    effect_mask_plan.passes.push_back(std::move(embedded_mask_pass));
+    effect_mask_plan.dependencies.push_back({embedded_mask_output, main_target});
+    LayoutRenderCompiler::CustomPaintPlans effect_mask_paints{{2, &effect_mask_plan}};
+    LayoutRenderFrame effect_mask_frame;
+    if (!compiler.compile(ordered_snapshot, main_target, 1.5f, effect_mask_frame, &compile_error,
+                          false, engine.text_adapter(), &effect_mask_paints, &raster_paints) ||
+        effect_mask_frame.plan().passes.size() != 6 ||
+        effect_mask_frame.plan().passes[2].kind != RenderPassKind::Draw ||
+        effect_mask_frame.plan().passes[3].kind != RenderPassKind::Effect ||
+        effect_mask_frame.plan().passes[4].kind != RenderPassKind::Mask)
+        return 132;
+    if (!effect_mask_frame.resources().bind_path(custom_path, mixed_prepared, 0, 1))
+        return 133;
+    RecordingRenderer effect_mask_backend;
+    const bool effect_mask_first = execute_render_plan(
+        effect_mask_backend, effect_mask_frame.plan(), effect_mask_frame.resources(),
+        {main_target, nested_frame_target}, &nested_execution_error);
+    const bool effect_mask_second = effect_mask_first && execute_render_plan(
+                                                       effect_mask_backend,
+                                                       effect_mask_frame.plan(),
+                                                       effect_mask_frame.resources(),
+                                                       {main_target, nested_frame_target},
+                                                       &nested_execution_error);
+    if (!effect_mask_first || !effect_mask_second || effect_mask_backend.effect_count != 1 ||
+        effect_mask_backend.mask_count != 2 || effect_mask_backend.raster_cache_hits != 1)
+        return 134;
+    RenderPlan changed_effect_mask_plan = effect_mask_plan;
+    changed_effect_mask_plan.passes[2].effect.color_matrix[0] = 0.75f;
+    LayoutRenderCompiler::CustomPaintPlans changed_effect_mask_paints{{2,
+                                                                         &changed_effect_mask_plan}};
+    LayoutRenderFrame changed_effect_mask_frame;
+    if (!compiler.compile(ordered_snapshot, main_target, 1.5f, changed_effect_mask_frame,
+                          &compile_error, false, engine.text_adapter(),
+                          &changed_effect_mask_paints, &raster_paints) ||
+        !changed_effect_mask_frame.resources().bind_path(custom_path, mixed_prepared, 0, 1) ||
+        !execute_render_plan(effect_mask_backend, changed_effect_mask_frame.plan(),
+                             changed_effect_mask_frame.resources(),
+                             {main_target, nested_frame_target}, &nested_execution_error) ||
+        effect_mask_backend.effect_count != 2 || effect_mask_backend.mask_count != 3 ||
+        effect_mask_backend.raster_cache_hits != 1)
+        return 135;
+
     LayoutRenderFrame bounded_frame;
     if (!compiler.compile(ordered_snapshot, main_target, 1.5f, bounded_frame, &compile_error, false,
                           engine.text_adapter(), &bounded_paints) ||
