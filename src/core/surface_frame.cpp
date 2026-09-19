@@ -56,13 +56,6 @@ void prune_dead_surfaces() {
     }
 }
 
-nk_surface_frame close_frame(nk_surface_frame frame) noexcept {
-    FrameTicket ticket{};
-    if (!take_frame_ticket(frame, &ticket))
-        return NK_INVALID_HANDLE;
-    return ticket.surface;
-}
-
 } // namespace
 
 bool lookup_frame_ticket(nk_surface_frame frame, FrameTicket *out_ticket) noexcept {
@@ -218,10 +211,13 @@ nk_result NK_CALL nk_surface_cancel_frame(nk_surface_frame frame) {
             if (const auto affinity = nk::core::require_executor(NK_EXECUTOR_PLATFORM);
                 affinity != NK_OK)
                 return affinity;
-            if (nk::core::close_frame(frame) == NK_INVALID_HANDLE) {
+            nk::core::FrameTicket ticket{};
+            if (!nk::core::take_frame_ticket(frame, &ticket)) {
                 nk::core::set_error("the frame token is not open on this runtime");
                 return NK_ERROR_INVALID_HANDLE;
             }
+            if (nk::core::render_executor_physical())
+                return nk_frame_backend_finish(ticket.surface, &ticket.target);
             return NK_OK;
         });
 }
