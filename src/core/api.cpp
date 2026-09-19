@@ -44,7 +44,8 @@ nk_capabilities optional_capabilities() noexcept {
 }
 
 nk_result require_ui_thread() noexcept {
-    /* Platform, application, and render work still share the nk_init() thread. */
+    /* Platform and application APIs stay on the nk_init() thread; physical
+       render backends use the dedicated RENDER executor. */
     return require_executor(NK_EXECUTOR_APP);
 }
 
