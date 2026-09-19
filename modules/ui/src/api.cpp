@@ -4,6 +4,8 @@
 #include "nativekit_graphics.h"
 #include "image_decode.h"
 
+#include "core/executor.hpp"
+
 #include "display_list/display_list.h"
 #include "compositor/compositor.h"
 #include "prepare/image_pixels.h"
@@ -352,6 +354,77 @@ RendererSlot *resolve(nkui_renderer handle) {
         return nullptr;
     auto &entry = renderers[slot - 1];
     return entry.active && entry.generation == generation ? &entry : nullptr;
+}
+
+struct RenderSubmission {
+    nkui_renderer renderer{};
+    nk_surface surface = NK_INVALID_HANDLE;
+    nk_surface_frame frame = NK_INVALID_HANDLE;
+    nk_surface_frame_target frame_target{};
+    std::shared_ptr<const nkui::SealedRenderPlan> plan;
+    std::vector<nkui::TextEngine *> text_engines;
+};
+
+struct RenderCompletion {
+    nk_surface_frame frame = NK_INVALID_HANDLE;
+    bool success = false;
+};
+
+void destroy_render_submission(void *data) noexcept {
+    delete static_cast<RenderSubmission *>(data);
+}
+
+void destroy_render_completion(void *data) noexcept {
+    delete static_cast<RenderCompletion *>(data);
+}
+
+void NK_CALL finish_render_submission(void *data) {
+    auto *completion = static_cast<RenderCompletion *>(data);
+    if (completion->frame != NK_INVALID_HANDLE) {
+        if (completion->success)
+            nk_surface_present_frame(completion->frame);
+        else
+            nk_surface_cancel_frame(completion->frame);
+    }
+}
+
+void NK_CALL execute_render_submission(void *data) {
+    auto *submission = static_cast<RenderSubmission *>(data);
+    bool success = false;
+    {
+        std::scoped_lock lock(renderers_mutex, resources_mutex);
+        auto *slot = resolve(submission->renderer);
+        if (slot) {
+            discard_stale_renderer(*slot, submission->frame_target, submission->surface);
+            if (!slot->renderer) {
+                slot->renderer = nkui::create_ui_renderer(submission->surface,
+                                                           &submission->frame_target);
+                slot->backend_api = submission->frame_target.api;
+                slot->backend_device = submission->frame_target.device;
+                slot->backend_surface = submission->surface;
+            }
+            if (slot->renderer) {
+                const bool new_backend = !slot->renderer->valid();
+                success = !new_backend || slot->renderer->initialize();
+                if (success && new_backend)
+                    success = register_custom_effects(*slot);
+                for (auto *engine : submission->text_engines)
+                    if (success)
+                        success = slot->renderer->uploadAtlases(*engine, new_backend);
+                if (success)
+                    success = nkui::execute_render_plan(
+                        *slot->renderer, *submission->plan,
+                        {nkui::make_resource_id(nkui::ResourceKind::RenderTarget, 1, 1),
+                         submission->frame_target});
+            }
+        }
+    }
+
+    auto *completion = new RenderCompletion{submission->frame, success};
+    if (nk::core::dispatch_to_executor(NK_EXECUTOR_PLATFORM, &finish_render_submission,
+                                       completion, &destroy_render_completion,
+                                       sizeof(RenderCompletion)) != NK_OK)
+        delete completion;
 }
 
 LayoutSessionState *resolve(nkui_layout_session handle) {
@@ -2419,20 +2492,37 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
         return NKUI_ERROR_INVALID_ARGUMENT;
     const int32_t width = frame_info->framebuffer_width;
     const int32_t height = frame_info->framebuffer_height;
-    if (!surface || nk_surface_set_frame_mode(surface, NK_SURFACE_FRAME_ON_DEMAND) != NK_OK ||
-        nk_surface_make_current(surface) != NK_OK)
+    const bool threaded = nk::core::render_executor_physical();
+    if (!surface || nk_surface_set_frame_mode(surface, NK_SURFACE_FRAME_ON_DEMAND) != NK_OK)
         return NKUI_ERROR_INVALID_ARGUMENT;
+    nk_surface_frame frame = NK_INVALID_HANDLE;
+    struct AcquiredFrameGuard {
+        nk_surface_frame frame = NK_INVALID_HANDLE;
+        bool handed_off = false;
+        ~AcquiredFrameGuard() {
+            if (frame != NK_INVALID_HANDLE && !handed_off)
+                nk_surface_cancel_frame(frame);
+        }
+    } frame_guard;
     nk_surface_frame_target frame_target{};
     frame_target.struct_size = sizeof(frame_target);
-    if (nk_surface_get_frame_target(surface, &frame_target) != NK_OK)
-        return NKUI_ERROR_RENDERING;
+    if (threaded) {
+        if (nk_surface_acquire_frame(surface, &frame, &frame_target) != NK_OK)
+            return NKUI_ERROR_RENDERING;
+        frame_guard.frame = frame;
+    } else {
+        if (nk_surface_make_current(surface) != NK_OK ||
+            nk_surface_get_frame_target(surface, &frame_target) != NK_OK)
+            return NKUI_ERROR_RENDERING;
+    }
     std::scoped_lock lock(renderers_mutex, lists_mutex, resources_mutex);
     auto *renderer_slot = resolve(renderer);
     auto *list_slot = resolve(list);
     if (!renderer_slot || !list_slot)
         return NKUI_ERROR_INVALID_HANDLE;
-    discard_stale_renderer(*renderer_slot, frame_target, surface);
-    if (!renderer_slot->renderer) {
+    if (!threaded)
+        discard_stale_renderer(*renderer_slot, frame_target, surface);
+    if (!threaded && !renderer_slot->renderer) {
         auto ui_renderer = nkui::create_ui_renderer(surface);
         if (!ui_renderer)
             return NKUI_ERROR_RENDERING;
@@ -2764,20 +2854,36 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
             !owned_resources.bind_text(bind.id, std::move(snapshot), bind.content_generation))
             sealable = false;
     }
-    const bool new_backend = !renderer_slot->renderer->valid();
-    if (new_backend && !renderer_slot->renderer->initialize())
+    if (!sealable && threaded)
         return NKUI_ERROR_RENDERING;
-    if (new_backend && !register_custom_effects(*renderer_slot))
-        return NKUI_ERROR_RENDERING;
-    for (auto *engine : text_engines)
-        if (!renderer_slot->renderer->uploadAtlases(*engine, new_backend))
+    if (!threaded) {
+        const bool new_backend = !renderer_slot->renderer->valid();
+        if (new_backend && !renderer_slot->renderer->initialize())
             return NKUI_ERROR_RENDERING;
+        if (new_backend && !register_custom_effects(*renderer_slot))
+            return NKUI_ERROR_RENDERING;
+        for (auto *engine : text_engines)
+            if (!renderer_slot->renderer->uploadAtlases(*engine, new_backend))
+                return NKUI_ERROR_RENDERING;
+    }
     if (sealable) {
         nkui::RenderPlanSealError seal_error;
         auto sealed =
             nkui::SealedRenderPlan::seal(std::move(plan), std::move(owned_resources), &seal_error);
         if (!sealed)
             return NKUI_ERROR_OUT_OF_MEMORY;
+        if (threaded) {
+            auto *submission = new RenderSubmission{renderer, surface, frame, frame_target,
+                                                    std::move(sealed), std::move(text_engines)};
+            if (nk::core::dispatch_to_render(&execute_render_submission, submission,
+                                             &destroy_render_submission,
+                                             sizeof(RenderSubmission)) != NK_OK) {
+                delete submission;
+                return NKUI_ERROR_RENDERING;
+            }
+            frame_guard.handed_off = true;
+            return NKUI_OK;
+        }
         const bool sealed_executed = nkui::execute_render_plan(*renderer_slot->renderer, *sealed,
                                                                {main_target, frame_target});
         return sealed_executed ? NKUI_OK : NKUI_ERROR_RENDERING;
