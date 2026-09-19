@@ -2831,12 +2831,14 @@ nk_result NK_CALL nk_surface_present(nk_handle handle) {
 
 nk_result NK_CALL nk_graphics_bind_frame_target(const nk_surface_frame_target *target) {
     if (!target || target->api != NK_GRAPHICS_OPENGL_ES || !target->native_device ||
-        !target->native_context || !target->native_present_target)
+        !target->native_context)
         return NK_ERROR_INVALID_ARGUMENT;
     const auto display = reinterpret_cast<EGLDisplay>(static_cast<uintptr_t>(target->native_device));
     const auto context = reinterpret_cast<EGLContext>(static_cast<uintptr_t>(target->native_context));
-    const auto surface = reinterpret_cast<EGLSurface>(
-        static_cast<uintptr_t>(target->native_present_target));
+    const auto surface = target->native_present_target
+                             ? reinterpret_cast<EGLSurface>(static_cast<uintptr_t>(
+                                   target->native_present_target))
+                             : EGL_NO_SURFACE;
     if (!eglMakeCurrent(display, surface, surface, context)) {
         nk::core::set_error("could not bind the Android EGL frame target");
         return NK_ERROR_UNKNOWN;
