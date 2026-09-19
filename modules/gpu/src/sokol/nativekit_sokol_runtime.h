@@ -28,7 +28,8 @@ extern "C" {
  * first owner establishes the color/depth/sample configuration; later owners
  * retain the lease only when they request the same configuration.
  */
-int nk_sokol_runtime_acquire(const sg_desc *desc, nk_graphics_device device);
+int nk_sokol_runtime_acquire(const sg_desc *desc, nk_graphics_device device,
+                             uint64_t native_device);
 void nk_sokol_runtime_release(void);
 
 /* Shared, retained sampled images used to bridge Sokol producers to consumers. */

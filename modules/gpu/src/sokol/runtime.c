@@ -21,7 +21,7 @@ static uint32_t runtime_references;
 static int runtime_color_format;
 static int runtime_depth_format;
 static int runtime_sample_count;
-static uint32_t runtime_device;
+static uint64_t runtime_device;
 static nk_sokol_external_image_slot external_images[NK_SOKOL_EXTERNAL_IMAGE_CAPACITY];
 
 #if defined(NKGPU_TESTING)
@@ -55,10 +55,13 @@ static int runtime_config_matches(const sg_desc *desc) {
            runtime_sample_count == desc->environment.defaults.sample_count;
 }
 
-int nk_sokol_runtime_acquire(const sg_desc *desc, nk_graphics_device device) {
+int nk_sokol_runtime_acquire(const sg_desc *desc, nk_graphics_device device,
+                             uint64_t native_device) {
     if (!desc || !device.id || runtime_references == UINT32_MAX)
         return 0;
-    if (runtime_references && (!runtime_config_matches(desc) || runtime_device != device.id))
+    const uint64_t device_key = native_device ? native_device : device.id;
+    if (runtime_references && (!runtime_config_matches(desc) ||
+                               runtime_device != device_key))
         return 0;
     if (!runtime_references) {
         if (sg_isvalid())
@@ -66,7 +69,7 @@ int nk_sokol_runtime_acquire(const sg_desc *desc, nk_graphics_device device) {
         runtime_color_format = desc->environment.defaults.color_format;
         runtime_depth_format = desc->environment.defaults.depth_format;
         runtime_sample_count = desc->environment.defaults.sample_count;
-        runtime_device = device.id;
+        runtime_device = device_key;
         sg_desc runtime_desc = *desc;
 #if defined(NKGPU_TESTING)
         runtime_desc.logger.func = nk_sokol_test_log;

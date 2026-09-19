@@ -17,7 +17,8 @@ extern "C" {
 /** NativeKit lease plus the dispatch table for one Sokol runtime. */
 typedef struct nk_sokol_api {
     const sg_api *gfx;
-    int (*runtime_acquire)(const sg_desc *desc, nk_graphics_device device);
+    int (*runtime_acquire)(const sg_desc *desc, nk_graphics_device device,
+                           uint64_t native_device);
     void (*runtime_release)(void);
     uint32_t (*external_image_create)(sg_image image, sg_view view, int32_t width, int32_t height);
     void (*external_image_release)(uint32_t image);
