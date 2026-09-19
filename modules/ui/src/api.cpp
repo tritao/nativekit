@@ -380,6 +380,7 @@ struct RenderSubmission {
 };
 
 struct RenderCompletion {
+    nkui_renderer renderer{};
     nk_surface_frame frame = NK_INVALID_HANDLE;
     bool success = false;
 };
@@ -402,6 +403,13 @@ std::unique_ptr<RenderSubmission> pending_render_submission;
 bool render_submission_runner_active = false;
 std::uint64_t render_submission_generation = 0;
 
+void record_render_submission_stat(nkui_renderer renderer,
+                                   uint64_t nkui_renderer_stats::*counter) noexcept {
+    std::lock_guard lock(renderers_mutex);
+    if (auto *slot = resolve(renderer))
+        ++(slot->stats.*counter);
+}
+
 void NK_CALL run_next_render_submission(void *data);
 bool enqueue_render_submission(RenderSubmission *submission);
 void shutdown_render_scheduler() noexcept;
@@ -420,6 +428,8 @@ void destroy_render_completion(void *data) noexcept {
         /* APP owns completion delivery.  If its bounded queue drops this
            task, the cleanup callback is the last chance to close the
            platform-owned frame ticket before shutdown clears the registry. */
+        record_render_submission_stat(completion->renderer,
+                                      &nkui_renderer_stats::render_submission_cancellations);
         (void)nk_surface_cancel_frame(completion->frame);
         completion->frame = NK_INVALID_HANDLE;
     }
@@ -440,8 +450,11 @@ void NK_CALL finish_render_submission(void *data) {
     if (completion->frame != NK_INVALID_HANDLE) {
         if (completion->success)
             nk_surface_present_frame(completion->frame);
-        else
+        else {
+            record_render_submission_stat(completion->renderer,
+                                          &nkui_renderer_stats::render_submission_cancellations);
             nk_surface_cancel_frame(completion->frame);
+        }
         /* The token was consumed even when the backend reports an error. */
         completion->frame = NK_INVALID_HANDLE;
     }
@@ -507,6 +520,11 @@ void execute_render_submission(RenderSubmission &submission) {
                     {nkui::make_resource_id(nkui::ResourceKind::RenderTarget, 1, 1),
                      submission.frame_target});
         }
+        /* Stats are protected by renderers_mutex.  Do not reacquire it while
+           the shared execution lock is held: nkui_renderer_get_stats takes
+           those locks in the opposite order. */
+        if (renderer_execution_lock.owns_lock())
+            renderer_execution_lock.unlock();
     }
 
     /* GL/EGL retains a thread-local context through submit so sealed-plan
@@ -516,16 +534,25 @@ void execute_render_submission(RenderSubmission &submission) {
         nk_graphics_unbind_frame_target(&submission.frame_target);
     }
 
-    auto *completion = new RenderCompletion{submission.frame, success};
+    if (!success)
+        record_render_submission_stat(submission.renderer,
+                                      &nkui_renderer_stats::render_submission_failures);
+    auto *completion = new RenderCompletion{submission.renderer, submission.frame, success};
     if (nk::core::dispatch_to_executor(NK_EXECUTOR_PLATFORM, &finish_render_submission, completion,
                                        &destroy_render_completion,
-                                       sizeof(RenderCompletion)) != NK_OK)
+                                       sizeof(RenderCompletion)) != NK_OK) {
+        record_render_submission_stat(submission.renderer,
+                                      &nkui_renderer_stats::render_submission_failures);
         delete completion;
+    }
 }
 
 void cancel_render_submission_on_platform(RenderSubmission &submission) {
-    if (submission.frame != NK_INVALID_HANDLE)
+    if (submission.frame != NK_INVALID_HANDLE) {
+        record_render_submission_stat(submission.renderer,
+                                      &nkui_renderer_stats::render_submission_cancellations);
         nk_surface_cancel_frame(submission.frame);
+    }
 }
 
 void shutdown_render_scheduler() noexcept {
@@ -546,6 +573,7 @@ bool enqueue_render_submission(RenderSubmission *raw_submission) {
     std::unique_ptr<RenderSubmission> replaced;
     bool start_runner = false;
     const auto generation = nk::core::runtime_generation();
+    const auto renderer = submission->renderer;
     {
         std::lock_guard lock(render_submission_mutex);
         /* A discarded render task does not run after nk_shutdown(). Drop its
@@ -562,10 +590,14 @@ bool enqueue_render_submission(RenderSubmission *raw_submission) {
             start_runner = true;
         }
     }
+    record_render_submission_stat(renderer, &nkui_renderer_stats::render_submissions);
     if (stale_generation)
         cancel_render_submission_on_platform(*stale_generation);
-    if (replaced)
+    if (replaced) {
+        record_render_submission_stat(replaced->renderer,
+                                      &nkui_renderer_stats::render_submission_replacements);
         cancel_render_submission_on_platform(*replaced);
+    }
     if (!start_runner)
         return true;
     if (nk::core::dispatch_to_render(&run_next_render_submission, nullptr, nullptr, 0) == NK_OK)
@@ -577,6 +609,9 @@ bool enqueue_render_submission(RenderSubmission *raw_submission) {
         failed = std::move(pending_render_submission);
         render_submission_runner_active = false;
     }
+    if (failed)
+        record_render_submission_stat(failed->renderer,
+                                      &nkui_renderer_stats::render_submission_failures);
     if (failed)
         cancel_render_submission_on_platform(*failed);
     return false;
@@ -609,13 +644,16 @@ void NK_CALL run_next_render_submission(void *) {
             failed = std::move(pending_render_submission);
             render_submission_runner_active = false;
         }
-        if (failed)
+        if (failed) {
             /* The callback is already on RENDER, so hand cancellation back to PLATFORM. */
-            if (auto *completion = new RenderCompletion{failed->frame, false};
+            record_render_submission_stat(failed->renderer,
+                                          &nkui_renderer_stats::render_submission_failures);
+            if (auto *completion = new RenderCompletion{failed->renderer, failed->frame, false};
                 nk::core::dispatch_to_executor(NK_EXECUTOR_PLATFORM, &finish_render_submission,
                                                completion, &destroy_render_completion,
                                                sizeof(RenderCompletion)) != NK_OK)
                 delete completion;
+        }
     }
 }
 

@@ -234,6 +234,14 @@ typedef struct nkui_renderer_stats {
     uint64_t raster_cache_entries;
     /** Estimated bytes retained by cached rasterized custom-paint results. */
     uint64_t raster_cache_bytes;
+    /** Sealed render plans accepted by the serialized render scheduler. */
+    uint64_t render_submissions;
+    /** Pending render plans replaced by a newer plan before execution. */
+    uint64_t render_submission_replacements;
+    /** Render plans whose frame tickets were cancelled before presentation. */
+    uint64_t render_submission_cancellations;
+    /** Render plans that failed execution or could not be dispatched. */
+    uint64_t render_submission_failures;
 } nkui_renderer_stats;
 
 /** 16-bit opcode identifying one display-list command record. */
