@@ -167,6 +167,9 @@ struct Buffer {
     sg_buffer object{};
     uint32_t size = 0;
     bool stream = false;
+    nkgpu_buffer_usage usage = NKGPU_BUFFER_VERTEX;
+    bool dynamic_update = false;
+    std::vector<uint8_t> pixels;
 };
 struct Shader {
     Handle owner = 0;
@@ -181,7 +184,7 @@ struct BufferBuilder {
     Handle owner = 0;
     uint8_t *data = nullptr;
     uint32_t size = 0;
-    bool index = false;
+    nkgpu_buffer_usage usage = NKGPU_BUFFER_VERTEX;
 };
 struct PipelineBuilder {
     Handle owner = 0;
@@ -212,9 +215,16 @@ struct Image {
     uint32_t width = 0;
     uint32_t height = 0;
     nkgpu_image_format format = NKGPU_IMAGEFORMAT_RGBA8;
+    nkgpu_image_usage usage = NKGPU_IMAGE_SAMPLED;
+    uint32_t mip_count = 1;
+    uint32_t sample_count = 1;
+    uint32_t layer_count = 1;
     bool dynamic_update = false;
     bool external = false;
     std::vector<uint8_t> pixels;
+    sg_view color_attachment{};
+    sg_view resolve_attachment{};
+    sg_view depth_attachment{};
 };
 struct ImageBuilder {
     Handle owner = 0;
@@ -450,7 +460,7 @@ static nkgpu_result begin_frame_with_target(Handle handle, const nk_surface_fram
     const nkgpu_result activated = activate_renderer(handle, &target);
     if (activated != NKGPU_OK)
         return activated;
-    sg_reset_state_cache();
+    slot->value.api->gfx->reset_state_cache();
     slot->value.frame_target = target;
     slot->value.has_frame_target = true;
     slot->value.context_target = target;
@@ -554,6 +564,7 @@ static nkgpu_result prepare_resource_destroy(Handle handle, bool &backend_availa
 #define sg_query_shader_state(...) (runtime_gfx()->query_shader_state(__VA_ARGS__))
 #define sg_query_view_state(...) (runtime_gfx()->query_view_state(__VA_ARGS__))
 #define sg_reset_state_cache(...) (runtime_gfx()->reset_state_cache(__VA_ARGS__))
+#define sg_update_buffer(...) (selected_api->update_buffer(__VA_ARGS__))
 
 static const nk_sokol_api *api_for_graphics_api(nk_graphics_api api,
                                                 nk_surface surface = NK_INVALID_HANDLE) {
@@ -675,19 +686,152 @@ static bool shader_language_matches_renderer(nkgpu_renderer renderer,
 }
 static sg_vertex_format convert_format(nkgpu_vertex_format f) {
     switch (f) {
-    case 1:
+    case NKGPU_VERTEXFORMAT_FLOAT:
         return SG_VERTEXFORMAT_FLOAT;
-    case 2:
+    case NKGPU_VERTEXFORMAT_FLOAT2:
         return SG_VERTEXFORMAT_FLOAT2;
-    case 3:
+    case NKGPU_VERTEXFORMAT_FLOAT3:
         return SG_VERTEXFORMAT_FLOAT3;
-    case 4:
+    case NKGPU_VERTEXFORMAT_FLOAT4:
         return SG_VERTEXFORMAT_FLOAT4;
     case NKGPU_VERTEXFORMAT_UBYTE4N:
         return SG_VERTEXFORMAT_UBYTE4N;
+    case NKGPU_VERTEXFORMAT_INT:
+        return SG_VERTEXFORMAT_INT;
+    case NKGPU_VERTEXFORMAT_INT2:
+        return SG_VERTEXFORMAT_INT2;
+    case NKGPU_VERTEXFORMAT_INT3:
+        return SG_VERTEXFORMAT_INT3;
+    case NKGPU_VERTEXFORMAT_INT4:
+        return SG_VERTEXFORMAT_INT4;
+    case NKGPU_VERTEXFORMAT_UINT:
+        return SG_VERTEXFORMAT_UINT;
+    case NKGPU_VERTEXFORMAT_UINT2:
+        return SG_VERTEXFORMAT_UINT2;
+    case NKGPU_VERTEXFORMAT_UINT3:
+        return SG_VERTEXFORMAT_UINT3;
+    case NKGPU_VERTEXFORMAT_UINT4:
+        return SG_VERTEXFORMAT_UINT4;
+    case NKGPU_VERTEXFORMAT_BYTE4:
+        return SG_VERTEXFORMAT_BYTE4;
+    case NKGPU_VERTEXFORMAT_BYTE4N:
+        return SG_VERTEXFORMAT_BYTE4N;
+    case NKGPU_VERTEXFORMAT_UBYTE4:
+        return SG_VERTEXFORMAT_UBYTE4;
+    case NKGPU_VERTEXFORMAT_SHORT2:
+        return SG_VERTEXFORMAT_SHORT2;
+    case NKGPU_VERTEXFORMAT_SHORT2N:
+        return SG_VERTEXFORMAT_SHORT2N;
+    case NKGPU_VERTEXFORMAT_USHORT2:
+        return SG_VERTEXFORMAT_USHORT2;
+    case NKGPU_VERTEXFORMAT_USHORT2N:
+        return SG_VERTEXFORMAT_USHORT2N;
+    case NKGPU_VERTEXFORMAT_SHORT4:
+        return SG_VERTEXFORMAT_SHORT4;
+    case NKGPU_VERTEXFORMAT_SHORT4N:
+        return SG_VERTEXFORMAT_SHORT4N;
+    case NKGPU_VERTEXFORMAT_USHORT4:
+        return SG_VERTEXFORMAT_USHORT4;
+    case NKGPU_VERTEXFORMAT_USHORT4N:
+        return SG_VERTEXFORMAT_USHORT4N;
+    case NKGPU_VERTEXFORMAT_HALF2:
+        return SG_VERTEXFORMAT_HALF2;
+    case NKGPU_VERTEXFORMAT_HALF4:
+        return SG_VERTEXFORMAT_HALF4;
     default:
         return SG_VERTEXFORMAT_INVALID;
     }
+}
+
+static sg_pixel_format convert_image_format(nkgpu_image_format format) {
+    switch (format) {
+    case NKGPU_IMAGEFORMAT_R8:
+        return SG_PIXELFORMAT_R8;
+    case NKGPU_IMAGEFORMAT_RG8:
+        return SG_PIXELFORMAT_RG8;
+    case NKGPU_IMAGEFORMAT_RGBA8:
+        return SG_PIXELFORMAT_RGBA8;
+    case NKGPU_IMAGEFORMAT_BGRA8:
+        return SG_PIXELFORMAT_BGRA8;
+    case NKGPU_IMAGEFORMAT_R16F:
+        return SG_PIXELFORMAT_R16F;
+    case NKGPU_IMAGEFORMAT_RG16F:
+        return SG_PIXELFORMAT_RG16F;
+    case NKGPU_IMAGEFORMAT_RGBA16F:
+        return SG_PIXELFORMAT_RGBA16F;
+    case NKGPU_IMAGEFORMAT_R32F:
+        return SG_PIXELFORMAT_R32F;
+    case NKGPU_IMAGEFORMAT_RGBA32F:
+        return SG_PIXELFORMAT_RGBA32F;
+    case NKGPU_IMAGEFORMAT_R32_UINT:
+        return SG_PIXELFORMAT_R32UI;
+    case NKGPU_IMAGEFORMAT_DEPTH16:
+    case NKGPU_IMAGEFORMAT_DEPTH32F:
+        return SG_PIXELFORMAT_DEPTH;
+    case NKGPU_IMAGEFORMAT_DEPTH24_STENCIL8:
+        return SG_PIXELFORMAT_DEPTH_STENCIL;
+    default:
+        return SG_PIXELFORMAT_NONE;
+    }
+}
+
+static uint32_t image_format_bytes(nkgpu_image_format format) {
+    switch (format) {
+    case NKGPU_IMAGEFORMAT_R8:
+        return 1;
+    case NKGPU_IMAGEFORMAT_RG8:
+        return 2;
+    case NKGPU_IMAGEFORMAT_RGBA8:
+    case NKGPU_IMAGEFORMAT_BGRA8:
+    case NKGPU_IMAGEFORMAT_R32F:
+    case NKGPU_IMAGEFORMAT_R32_UINT:
+        return 4;
+    case NKGPU_IMAGEFORMAT_R16F:
+        return 2;
+    case NKGPU_IMAGEFORMAT_RG16F:
+        return 4;
+    case NKGPU_IMAGEFORMAT_RGBA16F:
+        return 8;
+    case NKGPU_IMAGEFORMAT_RGBA32F:
+        return 16;
+    case NKGPU_IMAGEFORMAT_DEPTH16:
+        return 2;
+    case NKGPU_IMAGEFORMAT_DEPTH24_STENCIL8:
+    case NKGPU_IMAGEFORMAT_DEPTH32F:
+        return 4;
+    default:
+        return 0;
+    }
+}
+
+static bool image_format_is_depth(nkgpu_image_format format) {
+    return format == NKGPU_IMAGEFORMAT_DEPTH16 ||
+           format == NKGPU_IMAGEFORMAT_DEPTH24_STENCIL8 ||
+           format == NKGPU_IMAGEFORMAT_DEPTH32F;
+}
+
+static sg_image_usage convert_image_usage(nkgpu_image_usage usage, bool dynamic_update) {
+    sg_image_usage result{};
+    result.storage_image = (usage & NKGPU_IMAGE_STORAGE) != 0;
+    result.color_attachment = (usage & NKGPU_IMAGE_RENDER_TARGET) != 0;
+    result.depth_stencil_attachment = (usage & NKGPU_IMAGE_DEPTH_STENCIL) != 0;
+    result.immutable = !dynamic_update;
+    result.dynamic_update = dynamic_update;
+    return result;
+}
+
+static sg_buffer_usage convert_buffer_usage(nkgpu_buffer_usage usage, bool dynamic_update,
+                                            bool stream) {
+    sg_buffer_usage result{};
+    result.vertex_buffer = (usage & NKGPU_BUFFER_VERTEX) != 0;
+    result.index_buffer = (usage & NKGPU_BUFFER_INDEX) != 0;
+    result.storage_buffer = (usage & NKGPU_BUFFER_STORAGE) != 0;
+    const bool write_transient =
+        (usage & (NKGPU_BUFFER_UNIFORM | NKGPU_BUFFER_TRANSFER)) != 0 && !dynamic_update && !stream;
+    result.immutable = !dynamic_update && !stream && !write_transient;
+    result.dynamic_update = dynamic_update || stream;
+    result.write_transient = write_transient;
+    return result;
 }
 
 static sg_blend_factor convert_blend_factor(nkgpu_blend_factor value) {
@@ -700,8 +844,47 @@ static sg_blend_factor convert_blend_factor(nkgpu_blend_factor value) {
         return SG_BLENDFACTOR_SRC_ALPHA;
     case NKGPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA:
         return SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    case NKGPU_BLENDFACTOR_SRC_COLOR:
+        return SG_BLENDFACTOR_SRC_COLOR;
+    case NKGPU_BLENDFACTOR_ONE_MINUS_SRC_COLOR:
+        return SG_BLENDFACTOR_ONE_MINUS_SRC_COLOR;
+    case NKGPU_BLENDFACTOR_DST_COLOR:
+        return SG_BLENDFACTOR_DST_COLOR;
+    case NKGPU_BLENDFACTOR_ONE_MINUS_DST_COLOR:
+        return SG_BLENDFACTOR_ONE_MINUS_DST_COLOR;
+    case NKGPU_BLENDFACTOR_DST_ALPHA:
+        return SG_BLENDFACTOR_DST_ALPHA;
+    case NKGPU_BLENDFACTOR_ONE_MINUS_DST_ALPHA:
+        return SG_BLENDFACTOR_ONE_MINUS_DST_ALPHA;
+    case NKGPU_BLENDFACTOR_SRC_ALPHA_SATURATED:
+        return SG_BLENDFACTOR_SRC_ALPHA_SATURATED;
+    case NKGPU_BLENDFACTOR_BLEND_COLOR:
+        return SG_BLENDFACTOR_BLEND_COLOR;
+    case NKGPU_BLENDFACTOR_ONE_MINUS_BLEND_COLOR:
+        return SG_BLENDFACTOR_ONE_MINUS_BLEND_COLOR;
+    case NKGPU_BLENDFACTOR_BLEND_ALPHA:
+        return SG_BLENDFACTOR_BLEND_ALPHA;
+    case NKGPU_BLENDFACTOR_ONE_MINUS_BLEND_ALPHA:
+        return SG_BLENDFACTOR_ONE_MINUS_BLEND_ALPHA;
     default:
         return _SG_BLENDFACTOR_DEFAULT;
+    }
+}
+
+static sg_blend_op convert_blend_op(nkgpu_blend_op value) {
+    switch (value) {
+    case NKGPU_BLENDOP_ADD:
+        return SG_BLENDOP_ADD;
+    case NKGPU_BLENDOP_SUBTRACT:
+        return SG_BLENDOP_SUBTRACT;
+    case NKGPU_BLENDOP_REVERSE_SUBTRACT:
+        return SG_BLENDOP_REVERSE_SUBTRACT;
+    case NKGPU_BLENDOP_MIN:
+        return SG_BLENDOP_MIN;
+    case NKGPU_BLENDOP_MAX:
+        return SG_BLENDOP_MAX;
+    default:
+        return _SG_BLENDOP_DEFAULT;
     }
 }
 
@@ -715,6 +898,14 @@ static sg_compare_func convert_compare(nkgpu_compare_func value) {
         return SG_COMPAREFUNC_EQUAL;
     case NKGPU_COMPAREFUNC_NOT_EQUAL:
         return SG_COMPAREFUNC_NOT_EQUAL;
+    case NKGPU_COMPAREFUNC_NEVER:
+        return SG_COMPAREFUNC_NEVER;
+    case NKGPU_COMPAREFUNC_LESS:
+        return SG_COMPAREFUNC_LESS;
+    case NKGPU_COMPAREFUNC_GREATER:
+        return SG_COMPAREFUNC_GREATER;
+    case NKGPU_COMPAREFUNC_GREATER_EQUAL:
+        return SG_COMPAREFUNC_GREATER_EQUAL;
     default:
         return _SG_COMPAREFUNC_DEFAULT;
     }
@@ -861,6 +1052,59 @@ nkgpu_result nkgpu_renderer_get_stats(nkgpu_renderer renderer, nkgpu_renderer_st
         }
     }
     *out_stats = stats;
+    return NKGPU_OK;
+}
+
+nkgpu_result nkgpu_query_features(nkgpu_renderer renderer, nkgpu_features *out_features) {
+    auto *slot = renderer_pool.get(renderer);
+    if (!slot || !out_features)
+        return fail(!out_features ? NKGPU_ERROR_INVALID_ARGUMENT : NKGPU_ERROR_INVALID_HANDLE,
+                    "invalid GPU feature query");
+    if (slot->value.state == RendererState::Lost)
+        return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
+    const nkgpu_result activated = activate_renderer(renderer);
+    if (activated != NKGPU_OK)
+        return activated;
+    const sg_features native = selected_api->query_features();
+    nkgpu_features features{};
+    features.struct_size = sizeof(features);
+    const sg_limits native_limits = selected_api->query_limits();
+    features.mrt_count = static_cast<uint32_t>(native_limits.max_color_attachments);
+    features.max_samples = 1;
+    features.storage_buffer = native.compute ? 1u : 0u;
+    features.storage_image = native.compute ? 1u : 0u;
+    features.compute = native.compute ? 1u : 0u;
+    features.instancing = 1;
+    features.image_readback = 0;
+    *out_features = features;
+    return NKGPU_OK;
+}
+
+nkgpu_result nkgpu_query_limits(nkgpu_renderer renderer, nkgpu_limits *out_limits) {
+    auto *slot = renderer_pool.get(renderer);
+    if (!slot || !out_limits)
+        return fail(!out_limits ? NKGPU_ERROR_INVALID_ARGUMENT : NKGPU_ERROR_INVALID_HANDLE,
+                    "invalid GPU limit query");
+    if (slot->value.state == RendererState::Lost)
+        return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
+    const nkgpu_result activated = activate_renderer(renderer);
+    if (activated != NKGPU_OK)
+        return activated;
+    const sg_limits native = selected_api->query_limits();
+    nkgpu_limits limits{};
+    limits.struct_size = sizeof(limits);
+    limits.max_texture_size = static_cast<uint32_t>(std::max(0, native.max_image_size_2d));
+    limits.max_array_layers = static_cast<uint32_t>(std::max(0, native.max_image_array_layers));
+    limits.max_vertex_attributes = static_cast<uint32_t>(std::max(0, native.max_vertex_attrs));
+    limits.max_color_attachments =
+        static_cast<uint32_t>(std::max(0, native.max_color_attachments));
+    limits.max_texture_bindings =
+        static_cast<uint32_t>(std::max(0, native.max_texture_bindings_per_stage));
+    limits.max_storage_buffer_bindings =
+        static_cast<uint32_t>(std::max(0, native.max_storage_buffer_bindings_per_stage));
+    limits.max_storage_image_bindings =
+        static_cast<uint32_t>(std::max(0, native.max_storage_image_bindings_per_stage));
+    *out_limits = limits;
     return NKGPU_OK;
 }
 
@@ -1113,6 +1357,137 @@ nkgpu_result nkgpu_renderer_create_for_frame_target(nk_surface surface,
         return bound;
     return create_renderer_from_target(surface, *frame_target, out_renderer);
 }
+static void destroy_image_backend(Image &image) {
+    if (image.depth_attachment.id)
+        sg_destroy_view(image.depth_attachment);
+    if (image.resolve_attachment.id)
+        sg_destroy_view(image.resolve_attachment);
+    if (image.color_attachment.id)
+        sg_destroy_view(image.color_attachment);
+    if (image.view.id)
+        sg_destroy_view(image.view);
+    if (image.object.id)
+        sg_destroy_image(image.object);
+    image = {};
+}
+
+static sg_load_action convert_load_action(nkgpu_load_action action) {
+    switch (action) {
+    case NKGPU_LOADACTION_LOAD:
+        return SG_LOADACTION_LOAD;
+    case NKGPU_LOADACTION_DISCARD:
+        return SG_LOADACTION_DONTCARE;
+    case NKGPU_LOADACTION_CLEAR:
+    default:
+        return SG_LOADACTION_CLEAR;
+    }
+}
+
+static sg_store_action convert_store_action(nkgpu_store_action action) {
+    return action == NKGPU_STOREACTION_DISCARD ? SG_STOREACTION_DONTCARE : SG_STOREACTION_STORE;
+}
+
+static bool valid_attachment_action(const nkgpu_attachment_action &action) {
+    return action.load_action <= NKGPU_LOADACTION_DISCARD &&
+           action.store_action <= NKGPU_STOREACTION_DISCARD;
+}
+
+static void fill_color_action(sg_color_attachment_action &native,
+                              const nkgpu_attachment_action &action) {
+    native.load_action = convert_load_action(action.load_action);
+    native.store_action = convert_store_action(action.store_action);
+    native.clear_value = {action.clear_color.r, action.clear_color.g, action.clear_color.b,
+                          action.clear_color.a};
+}
+
+nkgpu_result nkgpu_begin_render_pass(nkgpu_renderer renderer,
+                                     const nkgpu_render_pass_desc *desc) {
+    auto *owner = renderer_pool.get(renderer);
+    if (!owner || !desc)
+        return fail(!desc ? NKGPU_ERROR_INVALID_ARGUMENT : NKGPU_ERROR_INVALID_HANDLE,
+                    "invalid render-pass descriptor");
+    if (desc->struct_size < sizeof(nkgpu_render_pass_desc) ||
+        desc->color_count > NKGPU_MAX_COLOR_ATTACHMENTS)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid render-pass descriptor size");
+    if (owner->value.state == RendererState::Lost)
+        return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
+    if (owner->value.state != RendererState::FrameActive || owner->value.in_pass ||
+        active_renderer != renderer)
+        return fail(NKGPU_ERROR_WRONG_STATE, "render pass requires a frame with no active pass");
+    const nkgpu_result activated = activate_renderer(renderer);
+    if (activated != NKGPU_OK)
+        return activated;
+
+    sg_pass pass{};
+    int32_t pass_width = 0;
+    int32_t pass_height = 0;
+    uint32_t pass_sample_count = 1;
+    for (uint32_t index = 0; index < desc->color_count; ++index) {
+        const nkgpu_color_attachment &attachment = desc->colors[index];
+        auto *color = image_pool.get(attachment.image);
+        if (!color || color->value.owner != renderer || !color->value.color_attachment.id ||
+            !(color->value.usage & NKGPU_IMAGE_RENDER_TARGET) ||
+            !valid_attachment_action(attachment.action))
+            return fail(NKGPU_ERROR_INVALID_HANDLE, "invalid render-pass color attachment");
+        if (!pass_width) {
+            pass_width = static_cast<int32_t>(color->value.width);
+            pass_height = static_cast<int32_t>(color->value.height);
+            pass_sample_count = color->value.sample_count;
+        }
+        if (color->value.width != static_cast<uint32_t>(pass_width) ||
+            color->value.height != static_cast<uint32_t>(pass_height) ||
+            color->value.sample_count != pass_sample_count)
+            return fail(NKGPU_ERROR_INVALID_ARGUMENT, "render-pass attachments have mismatched extents");
+        fill_color_action(pass.action.colors[index], attachment.action);
+        pass.attachments.colors[index] = color->value.color_attachment;
+        if (attachment.resolve_image.id) {
+            auto *resolve = image_pool.get(attachment.resolve_image);
+            if (!resolve || resolve->value.owner != renderer ||
+                !resolve->value.resolve_attachment.id ||
+                !(resolve->value.usage & NKGPU_IMAGE_RENDER_TARGET) ||
+                resolve->value.width != color->value.width ||
+                resolve->value.height != color->value.height || resolve->value.sample_count != 1 ||
+                color->value.sample_count <= 1)
+                return fail(NKGPU_ERROR_INVALID_HANDLE, "invalid render-pass resolve image");
+            pass.attachments.resolves[index] = resolve->value.resolve_attachment;
+        }
+    }
+    if (desc->depth_stencil.id) {
+        auto *depth = image_pool.get(desc->depth_stencil);
+        if (!depth || depth->value.owner != renderer || !depth->value.depth_attachment.id ||
+            !(depth->value.usage & NKGPU_IMAGE_DEPTH_STENCIL) ||
+            !valid_attachment_action(desc->depth_stencil_action))
+            return fail(NKGPU_ERROR_INVALID_HANDLE, "invalid render-pass depth attachment");
+        if (!pass_width) {
+            pass_width = static_cast<int32_t>(depth->value.width);
+            pass_height = static_cast<int32_t>(depth->value.height);
+            pass_sample_count = depth->value.sample_count;
+        }
+        if (depth->value.width != static_cast<uint32_t>(pass_width) ||
+            depth->value.height != static_cast<uint32_t>(pass_height) ||
+            depth->value.sample_count != pass_sample_count)
+            return fail(NKGPU_ERROR_INVALID_ARGUMENT, "render-pass depth extent does not match colors");
+        pass.action.depth = {convert_load_action(desc->depth_stencil_action.load_action),
+                             convert_store_action(desc->depth_stencil_action.store_action),
+                             desc->depth_stencil_action.clear_depth};
+        pass.action.stencil = {
+            convert_load_action(desc->depth_stencil_action.load_action),
+            convert_store_action(desc->depth_stencil_action.store_action),
+            static_cast<uint8_t>(std::min(desc->depth_stencil_action.clear_stencil, 255u))};
+        pass.attachments.depth_stencil = depth->value.depth_attachment;
+    }
+    if (!pass_width || !pass_height)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "render pass has no attachments");
+    sg_begin_pass(&pass);
+    owner->value.in_pass = true;
+    ++owner->value.passes;
+    owner->value.active_target = 0;
+    owner->value.pass_width = pass_width;
+    owner->value.pass_height = pass_height;
+    owner->value.bindings = {};
+    return NKGPU_OK;
+}
+
 static void destroy_render_target(Pool<RenderTarget, RenderTargetKind, 128>::Slot &slot,
                                   bool backend_available) {
     auto &target = slot.value;
@@ -1186,8 +1561,7 @@ static void unpin_resource(uint32_t kind, uint32_t slot_index, bool backend_avai
         /* Without a reachable backend the slot stays retired and is
            released when the renderer is torn down. */
         if (!s.pins && s.retired && backend_available) {
-            sg_destroy_view(s.value.view);
-            sg_destroy_image(s.value.object);
+            destroy_image_backend(s.value);
             image_pool.release(s);
         }
         break;
@@ -1261,10 +1635,8 @@ static void destroy_owned(Handle owner, bool backend_available) {
     for (auto &s : image_pool.slots)
         if ((s.active || s.retired || s.pins) && s.value.owner == owner) {
             s.pins = 0;
-            if (backend_available) {
-                sg_destroy_view(s.value.view);
-                sg_destroy_image(s.value.object);
-            }
+            if (backend_available)
+                destroy_image_backend(s.value);
             record_resource_destroyed(owner);
             image_pool.remove(s);
         }
@@ -1547,8 +1919,21 @@ nkgpu_result nkgpu_end_render_target(nkgpu_renderer renderer) {
     ++owner->value.frames;
     return NKGPU_OK;
 }
-static nkgpu_result save_buffer(Handle owner, sg_buffer object, uint32_t size, nkgpu_buffer *out) {
-    Handle h = buffer_pool.add(Buffer{owner, object, size, false});
+static nkgpu_result save_buffer(Handle owner, sg_buffer object, uint32_t size,
+                                nkgpu_buffer_usage usage, bool dynamic_update, bool stream,
+                                const uint8_t *data, nkgpu_buffer *out) {
+    Buffer value{};
+    value.owner = owner;
+    value.object = object;
+    value.size = size;
+    value.stream = stream;
+    value.usage = usage;
+    value.dynamic_update = dynamic_update;
+    if (!stream && dynamic_update)
+        value.pixels.resize(size);
+    if (data && size)
+        value.pixels.assign(data, data + size);
+    Handle h = buffer_pool.add(std::move(value));
     if (!h) {
         sg_destroy_buffer(object);
         record_allocation_failure(owner);
@@ -1560,8 +1945,11 @@ static nkgpu_result save_buffer(Handle owner, sg_buffer object, uint32_t size, n
 }
 nkgpu_result nkgpu_buffer_create_stream(nkgpu_renderer r, uint32_t capacity,
                                         nkgpu_buffer_usage usage, nkgpu_buffer *out) {
+    const uint32_t known_usage = NKGPU_BUFFER_VERTEX | NKGPU_BUFFER_INDEX | NKGPU_BUFFER_STORAGE |
+                                 NKGPU_BUFFER_UNIFORM | NKGPU_BUFFER_TRANSFER;
     if (!capacity || capacity > static_cast<uint32_t>(INT32_MAX) || !out ||
-        (usage != NKGPU_BUFFER_VERTEX && usage != NKGPU_BUFFER_INDEX))
+        (usage & ~known_usage) || !(usage & (NKGPU_BUFFER_VERTEX | NKGPU_BUFFER_INDEX)) ||
+        (usage & NKGPU_BUFFER_VERTEX) && (usage & NKGPU_BUFFER_INDEX))
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid stream buffer arguments");
     const nkgpu_result idle = require_idle_renderer(r);
     if (idle != NKGPU_OK)
@@ -1573,16 +1961,20 @@ nkgpu_result nkgpu_buffer_create_stream(nkgpu_renderer r, uint32_t capacity,
         return fail(NKGPU_ERROR_OUT_OF_MEMORY, "injected buffer allocation failure");
     sg_buffer_desc desc{};
     desc.size = capacity;
-    desc.usage.vertex_buffer = usage == NKGPU_BUFFER_VERTEX;
-    desc.usage.index_buffer = usage == NKGPU_BUFFER_INDEX;
-    desc.usage.immutable = false;
-    desc.usage.dynamic_update = true;
+    desc.usage = convert_buffer_usage(usage, true, true);
     const sg_buffer object = sg_make_buffer(&desc);
     if (sg_query_buffer_state(object) != SG_RESOURCESTATE_VALID) {
         record_allocation_failure(r);
         return fail(NKGPU_ERROR_OUT_OF_MEMORY, "stream buffer creation failed");
     }
-    const Handle handle = buffer_pool.add(Buffer{r, object, capacity, true});
+    Buffer value{};
+    value.owner = r;
+    value.object = object;
+    value.size = capacity;
+    value.stream = true;
+    value.usage = usage;
+    value.dynamic_update = true;
+    const Handle handle = buffer_pool.add(std::move(value));
     if (!handle) {
         sg_destroy_buffer(object);
         record_allocation_failure(r);
@@ -1621,6 +2013,36 @@ nkgpu_result nkgpu_buffer_create(nkgpu_renderer r, const uint8_t *data, uint32_t
                                  nkgpu_buffer *out) {
     if (!data || !size || !out)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid buffer arguments");
+    nkgpu_buffer_desc desc{};
+    desc.struct_size = sizeof(desc);
+    desc.size = size;
+    desc.usage = NKGPU_BUFFER_VERTEX;
+    desc.data = data;
+    desc.data_size = size;
+    return nkgpu_buffer_create_desc(r, &desc, out);
+}
+
+nkgpu_result nkgpu_buffer_create_desc(nkgpu_renderer r, const nkgpu_buffer_desc *input,
+                                      nkgpu_buffer *out) {
+    if (!input || !out || input->struct_size < sizeof(nkgpu_buffer_desc))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid buffer descriptor");
+    const nkgpu_buffer_desc &desc = *input;
+    const uint32_t known_usage = NKGPU_BUFFER_VERTEX | NKGPU_BUFFER_INDEX | NKGPU_BUFFER_STORAGE |
+                                 NKGPU_BUFFER_UNIFORM | NKGPU_BUFFER_TRANSFER;
+    const uint32_t size = desc.size ? desc.size : desc.data_size;
+    const bool stream = desc.stream != 0;
+    const bool dynamic_update = desc.dynamic_update != 0;
+    if (!size || size > static_cast<uint32_t>(INT32_MAX) || (desc.usage & ~known_usage) ||
+        !desc.usage || desc.data_size > size || (desc.data_size && !desc.data) ||
+        (stream && !(desc.usage & (NKGPU_BUFFER_VERTEX | NKGPU_BUFFER_INDEX))) ||
+        (stream && (desc.usage & NKGPU_BUFFER_VERTEX) && (desc.usage & NKGPU_BUFFER_INDEX)) ||
+        desc.dynamic_update > 1 || desc.stream > 1)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid buffer descriptor values");
+    if ((desc.usage & NKGPU_BUFFER_VERTEX) && (desc.usage & NKGPU_BUFFER_INDEX))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "vertex/index buffer usage must be distinct");
+    if (!desc.data_size && !stream && !dynamic_update &&
+        !(desc.usage & (NKGPU_BUFFER_STORAGE | NKGPU_BUFFER_UNIFORM | NKGPU_BUFFER_TRANSFER)))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "immutable buffer requires initial data");
     const nkgpu_result idle = require_idle_renderer(r);
     if (idle != NKGPU_OK)
         return idle;
@@ -1629,13 +2051,30 @@ nkgpu_result nkgpu_buffer_create(nkgpu_renderer r, const uint8_t *data, uint32_t
         return activated;
     if (consume_buffer_creation_failure(r))
         return fail(NKGPU_ERROR_OUT_OF_MEMORY, "injected buffer allocation failure");
-    sg_buffer_desc desc{};
-    desc.data = {data, size};
-    sg_buffer b = sg_make_buffer(&desc);
-    return sg_query_buffer_state(b) == SG_RESOURCESTATE_VALID
-               ? save_buffer(r, b, size, out)
-               : (record_allocation_failure(r),
-                  fail(NKGPU_ERROR_OUT_OF_MEMORY, "buffer creation failed"));
+    sg_buffer_desc native_desc{};
+    native_desc.size = size;
+    native_desc.usage = convert_buffer_usage(desc.usage, dynamic_update, stream);
+    if (desc.data_size && !dynamic_update && !stream && !native_desc.usage.write_transient)
+        native_desc.data = {desc.data, desc.data_size};
+    const sg_buffer object = sg_make_buffer(&native_desc);
+    if (sg_query_buffer_state(object) != SG_RESOURCESTATE_VALID) {
+        record_allocation_failure(r);
+        return fail(NKGPU_ERROR_OUT_OF_MEMORY, "buffer creation failed");
+    }
+    if (desc.data_size && (dynamic_update || native_desc.usage.write_transient)) {
+        const sg_range initial_data{desc.data, desc.data_size};
+        sg_update_buffer(object, &initial_data);
+        if (sg_query_buffer_state(object) != SG_RESOURCESTATE_VALID) {
+            sg_destroy_buffer(object);
+            record_allocation_failure(r);
+            return fail(NKGPU_ERROR_OUT_OF_MEMORY, "buffer initial update failed");
+        }
+    }
+    const nkgpu_result saved = save_buffer(r, object, size, desc.usage, dynamic_update, stream,
+                                           desc.data_size == size ? desc.data : nullptr, out);
+    if (saved != NKGPU_OK)
+        return saved;
+    return NKGPU_OK;
 }
 nkgpu_result nkgpu_buffer_begin(nkgpu_renderer r, uint32_t size, nkgpu_buffer_builder *out) {
     return nkgpu_buffer_begin_kind(r, size, NKGPU_BUFFER_VERTEX, out);
@@ -1644,7 +2083,11 @@ nkgpu_result nkgpu_buffer_begin_kind(nkgpu_renderer r, uint32_t size, nkgpu_buff
                                      nkgpu_buffer_builder *out) {
     if (!size || !out)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid buffer builder");
-    if (usage != NKGPU_BUFFER_VERTEX && usage != NKGPU_BUFFER_INDEX)
+    const uint32_t known_usage = NKGPU_BUFFER_VERTEX | NKGPU_BUFFER_INDEX | NKGPU_BUFFER_STORAGE |
+                                 NKGPU_BUFFER_UNIFORM | NKGPU_BUFFER_TRANSFER;
+    if ((usage & ~known_usage) || !usage ||
+        ((usage & NKGPU_BUFFER_VERTEX) && (usage & NKGPU_BUFFER_INDEX)) ||
+        !(usage & (NKGPU_BUFFER_VERTEX | NKGPU_BUFFER_INDEX)))
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid buffer usage");
     const nkgpu_result idle = require_idle_renderer(r);
     if (idle != NKGPU_OK)
@@ -1652,7 +2095,7 @@ nkgpu_result nkgpu_buffer_begin_kind(nkgpu_renderer r, uint32_t size, nkgpu_buff
     uint8_t *data = (uint8_t *)calloc(1, size);
     if (!data)
         return fail(NKGPU_ERROR_UNKNOWN, "allocation failed");
-    Handle h = buffer_builder_pool.add(BufferBuilder{r, data, size, usage == NKGPU_BUFFER_INDEX});
+    Handle h = buffer_builder_pool.add(BufferBuilder{r, data, size, usage});
     if (!h) {
         free(data);
         return fail(NKGPU_ERROR_UNKNOWN, "builder pool full");
@@ -1700,15 +2143,18 @@ nkgpu_result nkgpu_buffer_end(nkgpu_buffer_builder h, nkgpu_buffer *out) {
     }
     sg_buffer_desc desc{};
     desc.data = {s->value.data, s->value.size};
-    desc.usage.index_buffer = s->value.index;
-    desc.usage.vertex_buffer = !s->value.index;
+    desc.usage = convert_buffer_usage(s->value.usage, false, false);
     sg_buffer b = sg_make_buffer(&desc);
+    nkgpu_result result = NKGPU_OK;
+    if (sg_query_buffer_state(b) == SG_RESOURCESTATE_VALID)
+        result = save_buffer(owner, b, size, s->value.usage, false, false, s->value.data, out);
+    else {
+        record_allocation_failure(owner);
+        result = fail(NKGPU_ERROR_OUT_OF_MEMORY, "buffer creation failed");
+    }
     free(s->value.data);
     buffer_builder_pool.remove(*s);
-    return sg_query_buffer_state(b) == SG_RESOURCESTATE_VALID
-               ? save_buffer(owner, b, size, out)
-               : (record_allocation_failure(owner),
-                  fail(NKGPU_ERROR_OUT_OF_MEMORY, "buffer creation failed"));
+    return result;
 }
 nkgpu_result nkgpu_buffer_destroy(nkgpu_renderer r, nkgpu_buffer h) {
     auto *s = buffer_pool.get(h);
@@ -1723,6 +2169,47 @@ nkgpu_result nkgpu_buffer_destroy(nkgpu_renderer r, nkgpu_buffer h) {
         sg_destroy_buffer(s->value.object);
     record_resource_destroyed(r);
     buffer_pool.remove(*s);
+    return NKGPU_OK;
+}
+nkgpu_result nkgpu_buffer_update(nkgpu_renderer r, nkgpu_buffer h, uint32_t offset,
+                                 const uint8_t *data, uint32_t size) {
+    auto *s = buffer_pool.get(h);
+    if (!renderer_pool.get(r) || !s || s->value.owner != r)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale/foreign buffer");
+    if (!s->value.dynamic_update || s->value.stream || !data || !size || offset > s->value.size ||
+        size > s->value.size - offset || s->value.pixels.size() != s->value.size)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "buffer is not updateable or range is invalid");
+    if (s->pins)
+        return fail(NKGPU_ERROR_WRONG_STATE, "buffer is retained by a sealed batch");
+    const nkgpu_result idle = require_idle_renderer(r);
+    if (idle != NKGPU_OK)
+        return idle;
+    const nkgpu_result activated = activate_renderer(r);
+    if (activated != NKGPU_OK)
+        return activated;
+    std::vector<uint8_t> next_pixels = s->value.pixels;
+    memcpy(next_pixels.data() + offset, data, size);
+    sg_buffer_desc desc{};
+    desc.size = s->value.size;
+    desc.usage = convert_buffer_usage(s->value.usage, true, false);
+    if (consume_buffer_creation_failure(r))
+        return fail(NKGPU_ERROR_OUT_OF_MEMORY, "injected buffer allocation failure");
+    const sg_buffer object = sg_make_buffer(&desc);
+    if (sg_query_buffer_state(object) != SG_RESOURCESTATE_VALID) {
+        record_allocation_failure(r);
+        return fail(NKGPU_ERROR_OUT_OF_MEMORY, "buffer update allocation failed");
+    }
+    const sg_range updated_data{next_pixels.data(), next_pixels.size()};
+    sg_update_buffer(object, &updated_data);
+    if (sg_query_buffer_state(object) != SG_RESOURCESTATE_VALID) {
+        sg_destroy_buffer(object);
+        record_allocation_failure(r);
+        return fail(NKGPU_ERROR_OUT_OF_MEMORY, "buffer update upload failed");
+    }
+    sg_destroy_buffer(s->value.object);
+    s->value.object = object;
+    s->value.pixels = std::move(next_pixels);
+    renderer_pool.get(r)->value.upload_bytes += size;
     return NKGPU_OK;
 }
 nkgpu_result nkgpu_shader_create(nkgpu_renderer r, nkgpu_shader_language language, const char *vs,
@@ -1946,6 +2433,9 @@ nkgpu_result nkgpu_pipeline_begin(nkgpu_renderer r, nkgpu_shader shader, uint32_
     b.desc.shader = sh->value.object;
     b.desc.layout.buffers[0].stride = (int)stride;
     b.desc.depth.pixel_format = renderer_pool.get(r)->value.surface_depth_format;
+    b.desc.color_count = 1;
+    b.desc.colors[0].pixel_format = renderer_pool.get(r)->value.surface_color_format;
+    b.desc.colors[0].write_mask = SG_COLORMASK_RGBA;
     Handle h = pipeline_builder_pool.add(b);
     if (!h)
         return fail(NKGPU_ERROR_UNKNOWN, "builder pool full");
@@ -1967,6 +2457,36 @@ nkgpu_result nkgpu_pipeline_attribute(nkgpu_pipeline_builder h, uint32_t locatio
     a.buffer_index = (int)buffer_index;
     a.offset = (int)offset;
     a.format = f;
+    return NKGPU_OK;
+}
+nkgpu_result nkgpu_pipeline_vertex_buffer(nkgpu_pipeline_builder h, uint32_t buffer_index,
+                                          uint32_t stride, nkgpu_vertex_step step,
+                                          uint32_t step_rate) {
+    auto *s = pipeline_builder_pool.get(h);
+    if (!s || buffer_index >= SG_MAX_VERTEXBUFFER_BINDSLOTS || !stride ||
+        (step != NKGPU_VERTEXSTEP_PER_VERTEX && step != NKGPU_VERTEXSTEP_PER_INSTANCE) ||
+        !step_rate)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid pipeline vertex-buffer layout");
+    const nkgpu_result idle = require_idle_renderer(s->value.owner);
+    if (idle != NKGPU_OK)
+        return idle;
+    auto &buffer = s->value.desc.layout.buffers[buffer_index];
+    buffer.stride = static_cast<int>(stride);
+    buffer.step_func = step == NKGPU_VERTEXSTEP_PER_INSTANCE ? SG_VERTEXSTEP_PER_INSTANCE
+                                                               : SG_VERTEXSTEP_PER_VERTEX;
+    buffer.step_rate = static_cast<int>(step_rate);
+    return NKGPU_OK;
+}
+nkgpu_result nkgpu_pipeline_primitive_type(nkgpu_pipeline_builder h,
+                                           nkgpu_primitive_type primitive_type) {
+    auto *s = pipeline_builder_pool.get(h);
+    if (!s || primitive_type < NKGPU_PRIMITIVETYPE_POINTS ||
+        primitive_type > NKGPU_PRIMITIVETYPE_TRIANGLE_STRIP)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid pipeline primitive type");
+    const nkgpu_result idle = require_idle_renderer(s->value.owner);
+    if (idle != NKGPU_OK)
+        return idle;
+    s->value.desc.primitive_type = static_cast<sg_primitive_type>(primitive_type + 0);
     return NKGPU_OK;
 }
 nkgpu_result nkgpu_pipeline_index_type(nkgpu_pipeline_builder h, nkgpu_index_type type) {
@@ -1997,10 +2517,31 @@ nkgpu_result nkgpu_pipeline_depth_stencil(nkgpu_pipeline_builder h, uint32_t ena
     s->value.desc.depth.compare = enabled ? SG_COMPAREFUNC_LESS_EQUAL : SG_COMPAREFUNC_ALWAYS;
     return NKGPU_OK;
 }
+nkgpu_result nkgpu_pipeline_depth(nkgpu_pipeline_builder h, const nkgpu_depth_state *state) {
+    auto *s = pipeline_builder_pool.get(h);
+    if (!s || !state || state->enabled > 1 || state->write_enabled > 1 ||
+        convert_compare(state->compare) == _SG_COMPAREFUNC_DEFAULT)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid pipeline depth state");
+    const nkgpu_result idle = require_idle_renderer(s->value.owner);
+    if (idle != NKGPU_OK)
+        return idle;
+    const auto *renderer = renderer_pool.get(s->value.owner);
+    if (state->enabled && renderer->value.surface_depth_format == SG_PIXELFORMAT_NONE)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "depth state requires a depth target");
+    s->value.desc.depth.pixel_format =
+        state->enabled ? renderer->value.surface_depth_format : SG_PIXELFORMAT_NONE;
+    s->value.desc.depth.compare = convert_compare(state->compare);
+    s->value.desc.depth.write_enabled = state->write_enabled != 0;
+    s->value.desc.depth.bias = state->bias;
+    s->value.desc.depth.bias_slope_scale = state->bias_slope_scale;
+    s->value.desc.depth.bias_clamp = state->bias_clamp;
+    return NKGPU_OK;
+}
 nkgpu_result nkgpu_pipeline_blend(nkgpu_pipeline_builder h, const nkgpu_blend_state *state) {
     auto *s = pipeline_builder_pool.get(h);
-    if (!s || !state || state->enabled > 1 || state->op_rgb != NKGPU_BLENDOP_ADD ||
-        state->op_alpha != NKGPU_BLENDOP_ADD ||
+    if (!s || !state || state->enabled > 1 ||
+        convert_blend_op(state->op_rgb) == _SG_BLENDOP_DEFAULT ||
+        convert_blend_op(state->op_alpha) == _SG_BLENDOP_DEFAULT ||
         convert_blend_factor(state->src_rgb) == _SG_BLENDFACTOR_DEFAULT ||
         convert_blend_factor(state->dst_rgb) == _SG_BLENDFACTOR_DEFAULT ||
         convert_blend_factor(state->src_alpha) == _SG_BLENDFACTOR_DEFAULT ||
@@ -2013,10 +2554,10 @@ nkgpu_result nkgpu_pipeline_blend(nkgpu_pipeline_builder h, const nkgpu_blend_st
     blend.enabled = state->enabled != 0;
     blend.src_factor_rgb = convert_blend_factor(state->src_rgb);
     blend.dst_factor_rgb = convert_blend_factor(state->dst_rgb);
-    blend.op_rgb = SG_BLENDOP_ADD;
+    blend.op_rgb = convert_blend_op(state->op_rgb);
     blend.src_factor_alpha = convert_blend_factor(state->src_alpha);
     blend.dst_factor_alpha = convert_blend_factor(state->dst_alpha);
-    blend.op_alpha = SG_BLENDOP_ADD;
+    blend.op_alpha = convert_blend_op(state->op_alpha);
     return NKGPU_OK;
 }
 nkgpu_result nkgpu_pipeline_stencil(nkgpu_pipeline_builder h, const nkgpu_stencil_state *state) {
@@ -2038,6 +2579,7 @@ nkgpu_result nkgpu_pipeline_stencil(nkgpu_pipeline_builder h, const nkgpu_stenci
     stencil.enabled = state->enabled != 0;
     stencil.read_mask = state->read_mask;
     stencil.write_mask = state->write_mask;
+    stencil.ref = state->reference;
     stencil.front = convert_stencil_face(state->front);
     stencil.back = convert_stencil_face(state->back);
     if (state->enabled && s->value.desc.depth.pixel_format == SG_PIXELFORMAT_NONE)
@@ -2047,15 +2589,64 @@ nkgpu_result nkgpu_pipeline_stencil(nkgpu_pipeline_builder h, const nkgpu_stenci
 nkgpu_result nkgpu_pipeline_cull_mode(nkgpu_pipeline_builder h, nkgpu_cull_mode mode,
                                       nkgpu_face_winding winding) {
     auto *s = pipeline_builder_pool.get(h);
-    if (!s || (mode != NKGPU_CULLMODE_NONE && mode != NKGPU_CULLMODE_BACK) ||
+    if (!s || (mode != NKGPU_CULLMODE_NONE && mode != NKGPU_CULLMODE_FRONT &&
+               mode != NKGPU_CULLMODE_BACK) ||
         (winding != NKGPU_FACEWINDING_CCW && winding != NKGPU_FACEWINDING_CW))
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid pipeline cull state");
     const nkgpu_result idle = require_idle_renderer(s->value.owner);
     if (idle != NKGPU_OK)
         return idle;
-    s->value.desc.cull_mode = mode == NKGPU_CULLMODE_BACK ? SG_CULLMODE_BACK : SG_CULLMODE_NONE;
+    s->value.desc.cull_mode = mode == NKGPU_CULLMODE_BACK   ? SG_CULLMODE_BACK
+                              : mode == NKGPU_CULLMODE_FRONT ? SG_CULLMODE_FRONT
+                                                              : SG_CULLMODE_NONE;
     s->value.desc.face_winding =
         winding == NKGPU_FACEWINDING_CCW ? SG_FACEWINDING_CCW : SG_FACEWINDING_CW;
+    return NKGPU_OK;
+}
+nkgpu_result nkgpu_pipeline_color_target(nkgpu_pipeline_builder h, uint32_t color_index,
+                                         nkgpu_image_format format,
+                                         nkgpu_color_write_mask write_mask,
+                                         const nkgpu_blend_state *blend) {
+    auto *s = pipeline_builder_pool.get(h);
+    const sg_pixel_format native_format = convert_image_format(format);
+    if (!s || color_index >= SG_MAX_COLOR_ATTACHMENTS || native_format == SG_PIXELFORMAT_NONE ||
+        image_format_is_depth(format) || (write_mask & ~NKGPU_COLORMASK_RGBA))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid pipeline color target");
+    if (blend && (blend->enabled > 1 || convert_blend_op(blend->op_rgb) == _SG_BLENDOP_DEFAULT ||
+                  convert_blend_op(blend->op_alpha) == _SG_BLENDOP_DEFAULT ||
+                  convert_blend_factor(blend->src_rgb) == _SG_BLENDFACTOR_DEFAULT ||
+                  convert_blend_factor(blend->dst_rgb) == _SG_BLENDFACTOR_DEFAULT ||
+                  convert_blend_factor(blend->src_alpha) == _SG_BLENDFACTOR_DEFAULT ||
+                  convert_blend_factor(blend->dst_alpha) == _SG_BLENDFACTOR_DEFAULT))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid pipeline color blend state");
+    const nkgpu_result idle = require_idle_renderer(s->value.owner);
+    if (idle != NKGPU_OK)
+        return idle;
+    auto &color = s->value.desc.colors[color_index];
+    color.pixel_format = native_format;
+    color.write_mask = static_cast<sg_color_mask>(write_mask);
+    if (blend) {
+        color.blend.enabled = blend->enabled != 0;
+        color.blend.src_factor_rgb = convert_blend_factor(blend->src_rgb);
+        color.blend.dst_factor_rgb = convert_blend_factor(blend->dst_rgb);
+        color.blend.op_rgb = convert_blend_op(blend->op_rgb);
+        color.blend.src_factor_alpha = convert_blend_factor(blend->src_alpha);
+        color.blend.dst_factor_alpha = convert_blend_factor(blend->dst_alpha);
+        color.blend.op_alpha = convert_blend_op(blend->op_alpha);
+    }
+    s->value.desc.color_count = std::max(s->value.desc.color_count, static_cast<int>(color_index + 1));
+    return NKGPU_OK;
+}
+nkgpu_result nkgpu_pipeline_multisample(nkgpu_pipeline_builder h, uint32_t sample_count,
+                                        uint32_t alpha_to_coverage) {
+    auto *s = pipeline_builder_pool.get(h);
+    if (!s || !sample_count || alpha_to_coverage > 1)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid pipeline multisample state");
+    const nkgpu_result idle = require_idle_renderer(s->value.owner);
+    if (idle != NKGPU_OK)
+        return idle;
+    s->value.desc.sample_count = static_cast<int>(sample_count);
+    s->value.desc.alpha_to_coverage_enabled = alpha_to_coverage != 0;
     return NKGPU_OK;
 }
 nkgpu_result nkgpu_pipeline_color_write_mask(nkgpu_pipeline_builder h,
@@ -2308,6 +2899,16 @@ nkgpu_result nkgpu_apply_scissor(nkgpu_renderer h, uint32_t enabled, int32_t x, 
                           std::max(0, bottom_clamped - top_clamped), true);
     return NKGPU_OK;
 }
+nkgpu_result nkgpu_apply_viewport(nkgpu_renderer h, int32_t x, int32_t y, int32_t width,
+                                  int32_t height) {
+    const nkgpu_result pass = require_active_pass(h);
+    if (pass != NKGPU_OK)
+        return pass;
+    if (width <= 0 || height <= 0)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid viewport rectangle");
+    selected_api->apply_viewport(x, y, width, height, true);
+    return NKGPU_OK;
+}
 nkgpu_result nkgpu_apply_pipeline(nkgpu_renderer r, nkgpu_pipeline h) {
     auto *rs = renderer_pool.get(r);
     auto *p = pipeline_pool.get(h);
@@ -2443,6 +3044,213 @@ nkgpu_result nkgpu_image_write_rgba8(nkgpu_image_builder h, uint32_t x, uint32_t
     pixel[3] = (uint8_t)alpha;
     return NKGPU_OK;
 }
+
+nkgpu_result nkgpu_image_create_desc(nkgpu_renderer r, const nkgpu_image_desc *input,
+                                     nkgpu_image *out) {
+    if (!input || !out || input->struct_size < sizeof(nkgpu_image_desc))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid image descriptor");
+    const nkgpu_image_desc &desc = *input;
+    const uint32_t known_usage = NKGPU_IMAGE_SAMPLED | NKGPU_IMAGE_RENDER_TARGET |
+                                 NKGPU_IMAGE_DEPTH_STENCIL | NKGPU_IMAGE_STORAGE;
+    const sg_pixel_format native_format = convert_image_format(desc.format);
+    const uint32_t bytes_per_pixel = image_format_bytes(desc.format);
+    nkgpu_image_usage usage = desc.usage ? desc.usage : NKGPU_IMAGE_SAMPLED;
+    const uint32_t mip_count = desc.mip_count ? desc.mip_count : 1;
+    const uint32_t sample_count = desc.sample_count ? desc.sample_count : 1;
+    const uint32_t layer_count = desc.layer_count ? desc.layer_count : 1;
+    if (!desc.width || !desc.height || desc.width > static_cast<uint32_t>(INT32_MAX) ||
+        desc.height > static_cast<uint32_t>(INT32_MAX) || !bytes_per_pixel ||
+        native_format == SG_PIXELFORMAT_NONE || (usage & ~known_usage) || !mip_count ||
+        mip_count > SG_MAX_MIPMAPS || !sample_count || layer_count > static_cast<uint32_t>(INT32_MAX) ||
+        desc.dynamic_update > 1 ||
+        (!desc.data && desc.data_size) ||
+        ((usage & NKGPU_IMAGE_SAMPLED) &&
+         !(usage & (NKGPU_IMAGE_RENDER_TARGET | NKGPU_IMAGE_DEPTH_STENCIL | NKGPU_IMAGE_STORAGE)) &&
+         !desc.data_size))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid image descriptor values");
+    if (image_format_is_depth(desc.format) != ((usage & NKGPU_IMAGE_DEPTH_STENCIL) != 0))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "depth image format and usage do not match");
+    if ((usage & NKGPU_IMAGE_DEPTH_STENCIL) && (usage & NKGPU_IMAGE_STORAGE))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "depth-storage images are not portable");
+    if (desc.dynamic_update && (usage & (NKGPU_IMAGE_RENDER_TARGET | NKGPU_IMAGE_DEPTH_STENCIL |
+                                         NKGPU_IMAGE_STORAGE)))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "dynamic images must be sampled images");
+
+    uint64_t total_tight_size = 0;
+    uint64_t total_source_size = 0;
+    for (uint32_t mip = 0; mip < mip_count; ++mip) {
+        const uint32_t mip_width = std::max(1u, desc.width >> mip);
+        const uint32_t mip_height = std::max(1u, desc.height >> mip);
+        const uint64_t tight_row = static_cast<uint64_t>(mip_width) * bytes_per_pixel;
+        const uint64_t source_row = mip == 0 && desc.row_pitch ? desc.row_pitch : tight_row;
+        const uint64_t tight_level_size = tight_row * mip_height * layer_count;
+        const uint64_t source_level_size = source_row * mip_height * layer_count;
+        if (source_row < tight_row || total_tight_size > UINT64_MAX - tight_level_size ||
+            total_source_size > UINT64_MAX - source_level_size)
+            return fail(NKGPU_ERROR_INVALID_ARGUMENT, "image data pitch or size overflow");
+        total_tight_size += tight_level_size;
+        total_source_size += source_level_size;
+    }
+    if (total_tight_size > SIZE_MAX || total_source_size > UINT32_MAX ||
+        (desc.data_size && desc.data_size != total_source_size) ||
+        (usage & (NKGPU_IMAGE_RENDER_TARGET | NKGPU_IMAGE_DEPTH_STENCIL | NKGPU_IMAGE_STORAGE)) &&
+            desc.data_size)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "image data pitch or size is invalid");
+
+    const nkgpu_result access = require_streaming_resource_access(r);
+    if (access != NKGPU_OK)
+        return access;
+    const nkgpu_result activated = activate_renderer(r);
+    if (activated != NKGPU_OK)
+        return activated;
+    if (consume_image_creation_failure(r))
+        return fail(NKGPU_ERROR_OUT_OF_MEMORY, "injected image allocation failure");
+
+    std::vector<uint8_t> pixels;
+    if (desc.data_size) {
+        pixels.resize(static_cast<size_t>(total_tight_size));
+        size_t source_offset = 0;
+        size_t destination_offset = 0;
+        for (uint32_t mip = 0; mip < mip_count; ++mip) {
+            const uint32_t mip_width = std::max(1u, desc.width >> mip);
+            const uint32_t mip_height = std::max(1u, desc.height >> mip);
+            const uint64_t tight_row = static_cast<uint64_t>(mip_width) * bytes_per_pixel;
+            const uint64_t source_row = mip == 0 && desc.row_pitch ? desc.row_pitch : tight_row;
+            const size_t tight_level_size =
+                static_cast<size_t>(tight_row * mip_height * layer_count);
+            const size_t source_level_size =
+                static_cast<size_t>(source_row * mip_height * layer_count);
+            for (uint32_t layer = 0; layer < layer_count; ++layer) {
+                for (uint32_t row = 0; row < mip_height; ++row) {
+                    const uint8_t *source = desc.data + source_offset +
+                        (static_cast<size_t>(layer) * mip_height + row) * source_row;
+                    uint8_t *destination = pixels.data() + destination_offset +
+                        (static_cast<size_t>(layer) * mip_height + row) * tight_row;
+                    memcpy(destination, source, static_cast<size_t>(tight_row));
+                }
+            }
+            source_offset += source_level_size;
+            destination_offset += tight_level_size;
+        }
+    }
+
+    sg_image_desc native_desc{};
+    native_desc.width = static_cast<int>(desc.width);
+    native_desc.height = static_cast<int>(desc.height);
+    native_desc.type = layer_count > 1 ? SG_IMAGETYPE_ARRAY : SG_IMAGETYPE_2D;
+    native_desc.num_slices = static_cast<int>(layer_count);
+    native_desc.num_mipmaps = static_cast<int>(mip_count);
+    native_desc.sample_count = static_cast<int>(sample_count);
+    native_desc.pixel_format = native_format;
+    /* NativeKit dynamic images are CPU-mirrored and recreated on update, so
+       keep the Sokol resource immutable while retaining dynamic_update in the
+       NativeKit-side metadata. */
+    native_desc.usage = convert_image_usage(usage, false);
+    /* A render-target image may be selected as either a source or an MSAA
+       resolve destination by a later pass. Creating both view types here keeps
+       the portable descriptor small and avoids a second image kind. */
+    if (usage & NKGPU_IMAGE_RENDER_TARGET)
+        native_desc.usage.resolve_attachment = true;
+    size_t mip_offset = 0;
+    for (uint32_t mip = 0; mip < mip_count; ++mip) {
+        const uint32_t mip_width = std::max(1u, desc.width >> mip);
+        const uint32_t mip_height = std::max(1u, desc.height >> mip);
+        const size_t mip_size = static_cast<size_t>(mip_width) * mip_height * bytes_per_pixel *
+                                layer_count;
+        if (!pixels.empty())
+            native_desc.data.mip_levels[mip] = {pixels.data() + mip_offset, mip_size};
+        mip_offset += mip_size;
+    }
+    const sg_image object = sg_make_image(&native_desc);
+    if (sg_query_image_state(object) != SG_RESOURCESTATE_VALID) {
+        record_allocation_failure(r);
+        return fail(NKGPU_ERROR_OUT_OF_MEMORY, "image creation failed");
+    }
+
+    Image image_value{};
+    image_value.owner = r;
+    image_value.object = object;
+    image_value.width = desc.width;
+    image_value.height = desc.height;
+    image_value.format = desc.format;
+    image_value.usage = usage;
+    image_value.mip_count = mip_count;
+    image_value.sample_count = sample_count;
+    image_value.layer_count = layer_count;
+    image_value.dynamic_update = desc.dynamic_update != 0;
+    image_value.pixels = std::move(pixels);
+
+    auto make_view = [&](sg_view_desc view_desc, sg_view &out_view) -> bool {
+        out_view = sg_make_view(&view_desc);
+        return sg_query_view_state(out_view) == SG_RESOURCESTATE_VALID;
+    };
+    if (usage & NKGPU_IMAGE_SAMPLED) {
+        sg_view_desc view_desc{};
+        view_desc.texture.image = object;
+        if (!make_view(view_desc, image_value.view)) {
+            sg_destroy_image(object);
+            record_allocation_failure(r);
+            return fail(NKGPU_ERROR_OUT_OF_MEMORY, "texture view creation failed");
+        }
+    }
+    if (usage & NKGPU_IMAGE_RENDER_TARGET) {
+        sg_view_desc view_desc{};
+        view_desc.color_attachment.image = object;
+        if (!make_view(view_desc, image_value.color_attachment)) {
+            if (image_value.view.id)
+                sg_destroy_view(image_value.view);
+            sg_destroy_image(object);
+            record_allocation_failure(r);
+            return fail(NKGPU_ERROR_OUT_OF_MEMORY, "color attachment view creation failed");
+        }
+        view_desc = {};
+        view_desc.resolve_attachment.image = object;
+        if (!make_view(view_desc, image_value.resolve_attachment)) {
+            if (image_value.color_attachment.id)
+                sg_destroy_view(image_value.color_attachment);
+            if (image_value.view.id)
+                sg_destroy_view(image_value.view);
+            sg_destroy_image(object);
+            record_allocation_failure(r);
+            return fail(NKGPU_ERROR_OUT_OF_MEMORY, "resolve attachment view creation failed");
+        }
+    }
+    if (usage & NKGPU_IMAGE_DEPTH_STENCIL) {
+        sg_view_desc view_desc{};
+        view_desc.depth_stencil_attachment.image = object;
+        if (!make_view(view_desc, image_value.depth_attachment)) {
+            if (image_value.resolve_attachment.id)
+                sg_destroy_view(image_value.resolve_attachment);
+            if (image_value.color_attachment.id)
+                sg_destroy_view(image_value.color_attachment);
+            if (image_value.view.id)
+                sg_destroy_view(image_value.view);
+            sg_destroy_image(object);
+            record_allocation_failure(r);
+            return fail(NKGPU_ERROR_OUT_OF_MEMORY, "depth attachment view creation failed");
+        }
+    }
+
+    const Handle handle = image_pool.add(image_value);
+    if (!handle) {
+        const Image &value = image_value;
+        if (value.depth_attachment.id)
+            sg_destroy_view(value.depth_attachment);
+        if (value.resolve_attachment.id)
+            sg_destroy_view(value.resolve_attachment);
+        if (value.color_attachment.id)
+            sg_destroy_view(value.color_attachment);
+        if (value.view.id)
+            sg_destroy_view(value.view);
+        sg_destroy_image(object);
+        record_allocation_failure(r);
+        return fail(NKGPU_ERROR_OUT_OF_MEMORY, "image pool full");
+    }
+    record_resource_created(r, desc.data_size);
+    *out = handle;
+    return NKGPU_OK;
+}
+
 nkgpu_result nkgpu_image_end(nkgpu_image_builder h, nkgpu_image *out) {
     auto *s = image_builder_pool.get(h);
     if (!s || !out)
@@ -2503,78 +3311,18 @@ nkgpu_result nkgpu_image_end(nkgpu_image_builder h, nkgpu_image *out) {
 nkgpu_result nkgpu_image_create(nkgpu_renderer r, uint32_t width, uint32_t height,
                                 nkgpu_image_format format, const uint8_t *pixels, uint32_t size,
                                 uint32_t dynamic_update, nkgpu_image *out) {
-    {
-        const uint32_t bytes_per_pixel = format == NKGPU_IMAGEFORMAT_R8      ? 1
-                                         : format == NKGPU_IMAGEFORMAT_RGBA8 ? 4
-                                                                             : 0;
-        if (!width || !height || width > INT32_MAX || height > INT32_MAX || !bytes_per_pixel ||
-            !pixels || !out || dynamic_update > 1 ||
-            static_cast<uint64_t>(width) * height * bytes_per_pixel != size)
-            return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid image creation arguments");
-        *out = 0;
-        const nkgpu_result access = require_streaming_resource_access(r);
-        if (access != NKGPU_OK)
-            return access;
-        const nkgpu_result activated = activate_renderer(r);
-        if (activated != NKGPU_OK)
-            return activated;
-        if (consume_image_creation_failure(r))
-            return fail(NKGPU_ERROR_OUT_OF_MEMORY, "injected image allocation failure");
-        sg_image_desc desc{};
-        desc.width = static_cast<int>(width);
-        desc.height = static_cast<int>(height);
-        desc.pixel_format =
-            format == NKGPU_IMAGEFORMAT_R8 ? SG_PIXELFORMAT_R8 : SG_PIXELFORMAT_RGBA8;
-        // Keep the public update contract independent of Sokol's per-frame
-        // dynamic-image update restriction. Mutable images are replaced from
-        // their CPU mirror when updated; every Sokol image starts with valid data.
-        desc.data.mip_levels[0] = {pixels, size};
-        sg_image object = sg_make_image(&desc);
-        struct ImageGuard {
-            sg_image object{};
-            ~ImageGuard() {
-                if (object.id)
-                    sg_destroy_image(object);
-            }
-        } image_guard{object};
-        if (sg_query_image_state(object) != SG_RESOURCESTATE_VALID) {
-            record_allocation_failure(r);
-            return fail(NKGPU_ERROR_OUT_OF_MEMORY, "image creation failed");
-        }
-        sg_view_desc view_desc{};
-        view_desc.texture.image = object;
-        sg_view view = sg_make_view(&view_desc);
-        struct ViewGuard {
-            sg_view view{};
-            ~ViewGuard() {
-                if (view.id)
-                    sg_destroy_view(view);
-            }
-        } view_guard{view};
-        if (sg_query_view_state(view) != SG_RESOURCESTATE_VALID) {
-            record_allocation_failure(r);
-            return fail(NKGPU_ERROR_OUT_OF_MEMORY, "texture view creation failed");
-        }
-        Image image_value{};
-        image_value.owner = r;
-        image_value.object = object;
-        image_value.view = view;
-        image_value.width = width;
-        image_value.height = height;
-        image_value.format = format;
-        image_value.dynamic_update = dynamic_update != 0;
-        image_value.pixels.assign(pixels, pixels + size);
-        const Handle handle = image_pool.add(std::move(image_value));
-        if (!handle) {
-            record_allocation_failure(r);
-            return fail(NKGPU_ERROR_OUT_OF_MEMORY, "image pool full");
-        }
-        image_guard.object = {};
-        view_guard.view = {};
-        record_resource_created(r, size);
-        *out = handle;
-        return NKGPU_OK;
-    }
+    if (!out || dynamic_update > 1)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid image creation arguments");
+    nkgpu_image_desc desc{};
+    desc.struct_size = sizeof(desc);
+    desc.width = width;
+    desc.height = height;
+    desc.format = format;
+    desc.usage = NKGPU_IMAGE_SAMPLED;
+    desc.data = pixels;
+    desc.data_size = size;
+    desc.dynamic_update = dynamic_update;
+    return nkgpu_image_create_desc(r, &desc, out);
 }
 nkgpu_result nkgpu_image_update(nkgpu_renderer r, nkgpu_image h, uint32_t x, uint32_t y,
                                 uint32_t width, uint32_t height, const uint8_t *pixels,
@@ -2582,12 +3330,14 @@ nkgpu_result nkgpu_image_update(nkgpu_renderer r, nkgpu_image h, uint32_t x, uin
     auto *image = image_pool.get(h);
     if (!renderer_pool.get(r) || !image || image->value.owner != r)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign image");
-    const uint32_t bytes_per_pixel = image->value.format == NKGPU_IMAGEFORMAT_R8 ? 1 : 4;
+    const uint32_t bytes_per_pixel = image_format_bytes(image->value.format);
     if (!image->value.dynamic_update || !pixels || !width || !height || x > image->value.width ||
         y > image->value.height || width > image->value.width - x ||
         height > image->value.height - y ||
         row_pitch < static_cast<uint64_t>(width) * bytes_per_pixel ||
-        row_pitch % bytes_per_pixel != 0 || row_pitch > INT32_MAX)
+        !bytes_per_pixel || row_pitch % bytes_per_pixel != 0 || row_pitch > INT32_MAX ||
+        image->value.usage != NKGPU_IMAGE_SAMPLED || image->value.sample_count != 1 ||
+        image->value.mip_count != 1 || image->value.layer_count != 1)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid image update region");
     const uint64_t source_size = static_cast<uint64_t>(row_pitch) * (height - 1) +
                                  static_cast<uint64_t>(width) * bytes_per_pixel;
@@ -2611,8 +3361,10 @@ nkgpu_result nkgpu_image_update(nkgpu_renderer r, nkgpu_image h, uint32_t x, uin
     sg_image_desc desc{};
     desc.width = static_cast<int>(image->value.width);
     desc.height = static_cast<int>(image->value.height);
-    desc.pixel_format =
-        image->value.format == NKGPU_IMAGEFORMAT_R8 ? SG_PIXELFORMAT_R8 : SG_PIXELFORMAT_RGBA8;
+    desc.pixel_format = convert_image_format(image->value.format);
+    desc.num_slices = static_cast<int>(image->value.layer_count);
+    desc.num_mipmaps = static_cast<int>(image->value.mip_count);
+    desc.usage = convert_image_usage(image->value.usage, false);
     desc.data.mip_levels[0] = {next_pixels.data(), next_pixels.size()};
     if (consume_image_creation_failure(r))
         return fail(NKGPU_ERROR_OUT_OF_MEMORY, "injected image allocation failure");
@@ -2648,8 +3400,7 @@ nkgpu_result nkgpu_image_destroy(nkgpu_renderer r, nkgpu_image h) {
         return ready;
     /* A batch may still reference this image; defer its backend destruction. */
     if (backend_available && !s->pins) {
-        sg_destroy_view(s->value.view);
-        sg_destroy_image(s->value.object);
+        destroy_image_backend(s->value);
     }
     record_resource_destroyed(r);
     image_pool.remove(*s);
@@ -2708,7 +3459,8 @@ nkgpu_result nkgpu_apply_image(nkgpu_renderer r, uint32_t slot, nkgpu_image h) {
     const nkgpu_result pass = require_active_pass(r);
     if (pass != NKGPU_OK)
         return pass;
-    if (!rs || !image || image->value.owner != r || slot >= SG_MAX_VIEW_BINDSLOTS)
+    if (!rs || !image || image->value.owner != r || slot >= SG_MAX_VIEW_BINDSLOTS ||
+        !image->value.view.id || !(image->value.usage & NKGPU_IMAGE_SAMPLED))
         return fail(NKGPU_ERROR_INVALID_HANDLE, "invalid image/frame");
     rs->value.bindings.views[slot] = image->value.view;
     return NKGPU_OK;
@@ -2832,6 +3584,13 @@ static nkgpu_result submit_command(nkgpu_renderer r, uint32_t opcode, const uint
         return size == 8 ? nkgpu_apply_graphics_image(r, read_u32(payload),
                                                       nk_graphics_image{read_u32(payload + 4)})
                          : NKGPU_ERROR_INVALID_ARGUMENT;
+    case NKGPU_COMMAND_APPLY_VIEWPORT:
+        return size == 16
+                   ? nkgpu_apply_viewport(r, static_cast<int32_t>(read_u32(payload)),
+                                          static_cast<int32_t>(read_u32(payload + 4)),
+                                          static_cast<int32_t>(read_u32(payload + 8)),
+                                          static_cast<int32_t>(read_u32(payload + 12)))
+                   : NKGPU_ERROR_INVALID_ARGUMENT;
     default:
         return NKGPU_ERROR_INVALID_ARGUMENT;
     }
@@ -3020,6 +3779,10 @@ static bool retain_batch_records(Batch &batch, const uint8_t *commands, uint32_t
                 return invalid_batch_record(opcode, offset, "bad graphics-image payload");
             if (!retain_batch_graphics_image(batch, read_u32(payload), read_u32(payload + 4)))
                 return invalid_batch_record(opcode, offset, "unusable graphics image");
+            break;
+        case NKGPU_COMMAND_APPLY_VIEWPORT:
+            if (payload_size != 16)
+                return invalid_batch_record(opcode, offset, "bad viewport payload");
             break;
         case NKGPU_COMMAND_DRAW:
             if (payload_size != 12)

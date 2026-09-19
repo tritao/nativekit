@@ -169,3 +169,19 @@ wrapper for offscreen targets; its sampled image can be imported with
 `GraphicsSurface.fromImage()` and outlives the target while retained. This is
 the intended seam for future render producers (for example a 3D viewport),
 while backend-specific resource creation stays in the GPU module's Sokol implementation.
+
+## GPU feature-envelope direction
+
+The portable C API is being expanded in milestones rather than mirroring
+`sokol_gfx.h` directly. The first envelope keeps the existing handle and
+builder model while adding descriptor-backed buffers and images, explicit
+image usages and formats, general render passes with four color attachments,
+depth/stencil actions, optional resolve images, richer pipeline state,
+instanced vertex-buffer layouts, viewport commands, and capability/limit
+queries. The older `nkgpu_render_target_*` functions remain as compatibility
+wrappers for existing callers.
+
+The next slices are reserved for storage bindings and compute, transfer and
+readback objects, versioned command records, and an explicitly advanced native
+device/context escape hatch. Those additions will be gated by the reported
+capabilities so the normal API remains backend-agnostic.
