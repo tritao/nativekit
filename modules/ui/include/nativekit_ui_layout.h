@@ -280,6 +280,24 @@ typedef struct nkui_layout_measure_stats {
     uint64_t cache_capacity;
 } nkui_layout_measure_stats;
 
+/** Cumulative geometric hit-test activity for one layout session. */
+typedef struct nkui_layout_hit_test_stats {
+    /** Set to sizeof(nkui_layout_hit_test_stats) when returned by the API. */
+    uint32_t struct_size NK_STRUCT_SIZE;
+    /** Valid native hit-test queries performed by the session. */
+    uint64_t hit_test_count;
+    /** Resolved scene nodes inspected across all queries. */
+    uint64_t nodes_visited;
+    /** Scene branches rejected by visibility, bounds, or clipping. */
+    uint64_t subtrees_rejected;
+    /** Precise inverse-transform self tests performed. */
+    uint64_t precise_hit_tests;
+    /** Maximum resolved scene nodes inspected by one query. */
+    uint64_t max_nodes_visited;
+    /** Monotonic elapsed time spent in native hit testing, in nanoseconds. */
+    uint64_t hit_test_time_nanoseconds;
+} nkui_layout_hit_test_stats;
+
 /** Synchronous intrinsic measurement callback for custom-visual nodes.
  *
  * The callback may use unrelated UI registries, but must not re-enter layout
@@ -312,6 +330,10 @@ NKUI_API nkui_result NK_CALL nkui_layout_session_set_measure_callback(
 /** Returns cumulative intrinsic-measure counters and current cache occupancy. */
 NKUI_API nkui_result NK_CALL nkui_layout_session_get_measure_stats(
     nkui_layout_session session, nkui_layout_measure_stats *out_stats NKUI_OUT);
+
+/** Returns cumulative geometric hit-test counters for the session. */
+NKUI_API nkui_result NK_CALL nkui_layout_session_get_hit_test_stats(
+    nkui_layout_session session, nkui_layout_hit_test_stats *out_stats NKUI_OUT);
 
 /** Clears all custom-paint display lists attached to the session. */
 NKUI_API nkui_result NK_CALL nkui_layout_session_clear_custom_paints(nkui_layout_session session);

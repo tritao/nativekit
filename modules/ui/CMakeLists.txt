@@ -626,6 +626,7 @@ if(NK_BUILD_EXAMPLES)
                 _nkui_layout_session_clear_custom_paints
                 _nkui_layout_session_create
                 _nkui_layout_session_destroy
+                _nkui_layout_session_get_hit_test_stats
                 _nkui_layout_session_get_resolved_items
                 _nkui_layout_session_hit_test
                 _nkui_layout_session_render_frame

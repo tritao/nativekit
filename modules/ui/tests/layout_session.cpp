@@ -227,6 +227,12 @@ int main() {
         nkui_layout_session_hit_test(session, 150.0f, 75.0f, nullptr, &hit_bytes) != NKUI_OK ||
         hit_bytes != sizeof(uint32_t))
         return 57;
+    nkui_layout_hit_test_stats hit_stats{};
+    if (nkui_layout_session_get_hit_test_stats(session, &hit_stats) != NKUI_OK ||
+        hit_stats.struct_size != sizeof(hit_stats) || hit_stats.hit_test_count < 6 ||
+        hit_stats.nodes_visited < hit_stats.hit_test_count || hit_stats.precise_hit_tests == 0 ||
+        hit_stats.max_nodes_visited == 0 || hit_stats.hit_test_time_nanoseconds == 0)
+        return 58;
 
     auto constraints = transaction_with_nodes(2);
     const std::size_t constraints_record =

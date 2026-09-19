@@ -191,6 +191,7 @@ struct LayoutSessionState {
     nkui::LayoutSnapshot snapshot;
     std::unordered_map<uint32_t, nkui_display_list> custom_paints;
     std::unordered_map<uint32_t, nkui_layout_cache_policy> cache_policies;
+    nkui_layout_hit_test_stats hit_test_stats{};
     nkui_nullable_layout_measure_callback measure_callback = nullptr;
     void *measure_user_data = nullptr;
     bool fonts_configured = false;
@@ -1427,6 +1428,19 @@ extern "C" nkui_result nkui_layout_session_get_measure_stats(nkui_layout_session
     return NKUI_OK;
 }
 
+extern "C" nkui_result nkui_layout_session_get_hit_test_stats(
+    nkui_layout_session session, nkui_layout_hit_test_stats *out_stats) {
+    if (!out_stats)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(layout_sessions_mutex);
+    auto *state = resolve(session);
+    if (!state)
+        return NKUI_ERROR_INVALID_HANDLE;
+    *out_stats = state->hit_test_stats;
+    out_stats->struct_size = sizeof(*out_stats);
+    return NKUI_OK;
+}
+
 extern "C" nkui_result nkui_layout_session_clear_custom_paints(nkui_layout_session session) {
     if (active_measure_session)
         return NKUI_ERROR_INVALID_ARGUMENT;
@@ -1492,7 +1506,15 @@ bool point_in_rect(const nkui::LayoutRect &rect, float x, float y) {
            x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height;
 }
 
-bool precisely_hits_self(const nkui::LayoutItem &item, float x, float y) {
+struct HitTestTraversalStats {
+    uint64_t nodes_visited = 0;
+    uint64_t subtrees_rejected = 0;
+    uint64_t precise_hit_tests = 0;
+};
+
+bool precisely_hits_self(const nkui::LayoutItem &item, float x, float y,
+                         HitTestTraversalStats &stats) {
+    ++stats.precise_hit_tests;
     if (!point_in_rect(item.world_bounds, x, y) || !point_in_rect(item.clip_bounds, x, y))
         return false;
     const float layout_x = item.inverse_transform.a * x + item.inverse_transform.c * y +
@@ -1510,13 +1532,19 @@ struct HitTestCandidate {
 };
 
 void visit_hit_test(const nkui::LayoutSnapshot &snapshot, uint32_t index, float x, float y,
-                    std::vector<uint32_t> &path, HitTestCandidate &candidate) {
-    if (index >= snapshot.items.size())
+                    std::vector<uint32_t> &path, HitTestCandidate &candidate,
+                    HitTestTraversalStats &stats) {
+    if (index >= snapshot.items.size()) {
+        ++stats.subtrees_rejected;
         return;
+    }
+    ++stats.nodes_visited;
     const auto &item = snapshot.items[index];
     if (!item.visible || !point_in_rect(item.subtree_hit_bounds, x, y) ||
-        !point_in_rect(item.clip_bounds, x, y))
+        !point_in_rect(item.clip_bounds, x, y)) {
+        ++stats.subtrees_rejected;
         return;
+    }
 
     path.push_back(item.id);
     if (item.hit_children) {
@@ -1524,11 +1552,12 @@ void visit_hit_test(const nkui::LayoutSnapshot &snapshot, uint32_t index, float 
             const uint32_t child_index = item.child_offset + child_offset;
             if (child_index >= snapshot.child_indices.size())
                 break;
-            visit_hit_test(snapshot, snapshot.child_indices[child_index], x, y, path, candidate);
+            visit_hit_test(snapshot, snapshot.child_indices[child_index], x, y, path, candidate,
+                           stats);
         }
     }
 
-    if (item.hit_self && precisely_hits_self(item, x, y) &&
+    if (item.hit_self && precisely_hits_self(item, x, y, stats) &&
         (!candidate.found || item.paint_order > candidate.paint_order ||
          (item.paint_order == candidate.paint_order && item.index > candidate.index))) {
         candidate.found = true;
@@ -1539,7 +1568,8 @@ void visit_hit_test(const nkui::LayoutSnapshot &snapshot, uint32_t index, float 
     path.pop_back();
 }
 
-std::vector<uint32_t> hit_test(const nkui::LayoutSnapshot &snapshot, float x, float y) {
+std::vector<uint32_t> hit_test(const nkui::LayoutSnapshot &snapshot, float x, float y,
+                               HitTestTraversalStats &stats) {
     const auto root = std::find_if(snapshot.items.begin(), snapshot.items.end(),
                                    [](const nkui::LayoutItem &item) {
                                        return item.parent_index == nkui::kInvalidLayoutIndex;
@@ -1548,7 +1578,7 @@ std::vector<uint32_t> hit_test(const nkui::LayoutSnapshot &snapshot, float x, fl
         return {};
     std::vector<uint32_t> path;
     HitTestCandidate candidate;
-    visit_hit_test(snapshot, root->index, x, y, path, candidate);
+    visit_hit_test(snapshot, root->index, x, y, path, candidate, stats);
     return candidate.path;
 }
 
@@ -1694,7 +1724,19 @@ extern "C" nkui_result nkui_layout_session_hit_test(nkui_layout_session session,
     if (!state->submitted)
         return NKUI_ERROR_INVALID_ARGUMENT;
 
-    const std::vector<uint32_t> path = hit_test(state->snapshot, x, y);
+    const auto started = std::chrono::steady_clock::now();
+    HitTestTraversalStats traversal_stats;
+    const std::vector<uint32_t> path = hit_test(state->snapshot, x, y, traversal_stats);
+    const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                             std::chrono::steady_clock::now() - started)
+                             .count();
+    ++state->hit_test_stats.hit_test_count;
+    state->hit_test_stats.nodes_visited += traversal_stats.nodes_visited;
+    state->hit_test_stats.subtrees_rejected += traversal_stats.subtrees_rejected;
+    state->hit_test_stats.precise_hit_tests += traversal_stats.precise_hit_tests;
+    state->hit_test_stats.max_nodes_visited =
+        std::max(state->hit_test_stats.max_nodes_visited, traversal_stats.nodes_visited);
+    state->hit_test_stats.hit_test_time_nanoseconds += static_cast<uint64_t>(elapsed);
     const size_t required_size = path.size() * sizeof(uint32_t);
     if (required_size > UINT32_MAX)
         return NKUI_ERROR_OUT_OF_MEMORY;

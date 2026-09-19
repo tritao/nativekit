@@ -2,6 +2,7 @@ package nativekit.ui.core;
 
 import LayoutFrame;
 import LayoutSession;
+import LayoutHitTestStats;
 import Canvas;
 import DisplayList;
 import Renderer;
@@ -641,6 +642,11 @@ class UiContext {
 	public var frameMetrics(get, never):Null<UiFrameMetrics>;
 	function get_frameMetrics():Null<UiFrameMetrics>
 		return lastFrameMetrics;
+
+	/** Returns cumulative native geometric hit-test diagnostics. */
+	public var hitTestMetrics(get, never):LayoutHitTestStats;
+	function get_hitTestMetrics():LayoutHitTestStats
+		return session.hitTestStats();
 
 	/** Formats the current render and semantic tree for logs or developer tools. */
 	public function dumpTree():String {

@@ -91,6 +91,17 @@ class LayoutSession {
 		return path;
 	}
 
+	/** Returns cumulative native geometric hit-test traversal counters. */
+	public function hitTestStats():LayoutHitTestStats {
+		ensureLive();
+		var result = NativeKitUI.nkui_layout_session_get_hit_test_stats(value);
+		UiResult.check(result.status, "layoutSession.hitTestStats");
+		var stats = result.out_stats;
+		return new LayoutHitTestStats(stats.get_hit_test_count(), stats.get_nodes_visited(),
+			stats.get_subtrees_rejected(), stats.get_precise_hit_tests(),
+			stats.get_max_nodes_visited(), stats.get_hit_test_time_nanoseconds());
+	}
+
 	/** Returns pre-transform layout bounds of a node after the latest submission. */
 	public function item(node:LayoutNode):Rect {
 		ensureLive();
