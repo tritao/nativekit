@@ -675,9 +675,7 @@ int main() {
                        "device-loss submission count") ||
                 !check(after_loss_stats.render_submission_executions ==
                            before_loss_stats.render_submission_executions + 1,
-                       "device-loss execution count") ||
-                !check(after_loss_stats.device_losses > before_loss_stats.device_losses,
-                       "device-loss accounting")) {
+                       "device-loss execution count")) {
                 nk::core::set_render_surface_api_guard(false);
                 nkgpu_test_allow_surface_target_queries();
                 result = 32;
@@ -702,6 +700,8 @@ int main() {
                 !check(recovered_stats.render_submission_executions ==
                            before_loss_stats.render_submission_executions + 2,
                        "recovery execution count") ||
+                !check(recovered_stats.device_losses > before_loss_stats.device_losses,
+                       "device-loss accounting") ||
                 !check(recovered_stats.gpu_frames >= before_loss_stats.gpu_frames + 1,
                        "recovery completed frame")) {
                 result = 34;
