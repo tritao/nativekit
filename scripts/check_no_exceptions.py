@@ -16,6 +16,89 @@ from pathlib import Path
 SOURCE_SUFFIXES = {".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx", ".m", ".mm"}
 EM_JS_START = re.compile(r"\bEM_(?:ASYNC_)?JS\s*\(")
 TOKEN = re.compile(r"\b(?:try|catch|throw)\b")
+PREPROCESSOR_DIRECTIVE = re.compile(r"^\s*#\s*(if|ifdef|ifndef|elif|else|endif)\b(.*)$")
+
+
+def evaluate_no_exceptions_condition(directive: str) -> bool | None:
+    """Evaluate a preprocessor condition involving NK_ENABLE_NO_EXCEPTIONS.
+
+    The audit models the production configuration, where this option is enabled.
+    Conditions for other platform or build macros remain unknown so both branches
+    continue to be audited.
+    """
+
+    expression = directive.strip()
+    if not re.search(r"\bNK_ENABLE_NO_EXCEPTIONS\b", expression):
+        return None
+    expression = re.sub(
+        r"defined\s*\(\s*NK_ENABLE_NO_EXCEPTIONS\s*\)", "1", expression
+    )
+    expression = re.sub(r"\bNK_ENABLE_NO_EXCEPTIONS\b", "1", expression)
+    if re.search(r"[A-Za-z_]", expression):
+        return None
+    expression = expression.replace("&&", " and ").replace("||", " or ")
+    expression = re.sub(r"!(?!=)", " not ", expression)
+    expression_without_operators = expression.replace("and", "").replace("or", "").replace(
+        "not", ""
+    )
+    if re.search(r"[^0-9()<>!=+*/%\-\s]", expression_without_operators):
+        return None
+    try:
+        return bool(eval(expression, {"__builtins__": {}}, {}))
+    except (SyntaxError, TypeError, ValueError):
+        return None
+
+
+def mask_disabled_no_exception_branches(source: str) -> str:
+    """Mask branches excluded when NK_ENABLE_NO_EXCEPTIONS is enabled."""
+
+    output: list[str] = []
+    current_active = True
+    stack: list[dict[str, bool | None]] = []
+    for line in source.splitlines(keepends=True):
+        match = PREPROCESSOR_DIRECTIVE.match(line)
+        if not match:
+            output.append(line if current_active else "".join("\n" if c == "\n" else " " for c in line))
+            continue
+
+        directive, expression = match.groups()
+        if directive in {"if", "ifdef", "ifndef"}:
+            condition = evaluate_no_exceptions_condition(expression)
+            if directive == "ifdef" and expression.strip() == "NK_ENABLE_NO_EXCEPTIONS":
+                condition = True
+            elif directive == "ifndef" and expression.strip() == "NK_ENABLE_NO_EXCEPTIONS":
+                condition = False
+            stack.append(
+                {
+                    "parent_active": current_active,
+                    "branch_taken": condition,
+                }
+            )
+            current_active = current_active and condition is not False
+        elif directive == "elif" and stack:
+            frame = stack[-1]
+            condition = evaluate_no_exceptions_condition(expression)
+            parent_active = bool(frame["parent_active"])
+            branch_taken = frame["branch_taken"]
+            if branch_taken is True:
+                current_active = False
+            elif branch_taken is None:
+                current_active = parent_active
+            else:
+                current_active = parent_active and condition is not False
+                frame["branch_taken"] = condition
+        elif directive == "else" and stack:
+            frame = stack[-1]
+            parent_active = bool(frame["parent_active"])
+            branch_taken = frame["branch_taken"]
+            current_active = parent_active and branch_taken is not True
+            frame["branch_taken"] = True
+        elif directive == "endif" and stack:
+            frame = stack.pop()
+            current_active = bool(frame["parent_active"])
+
+        output.append("".join("\n" if c == "\n" else " " for c in line))
+    return "".join(output)
 
 
 def mask_emscripten_body(source: str) -> str:
@@ -140,7 +223,9 @@ def main() -> int:
     violations: list[tuple[Path, int, str]] = []
     for path in production_sources(root):
         source = path.read_text(encoding="utf-8")
-        masked = mask_comments_and_literals(mask_emscripten_body(source))
+        masked = mask_comments_and_literals(
+            mask_disabled_no_exception_branches(mask_emscripten_body(source))
+        )
         for match in TOKEN.finditer(masked):
             line = masked.count("\n", 0, match.start()) + 1
             violations.append((path.relative_to(root), line, match.group()))
