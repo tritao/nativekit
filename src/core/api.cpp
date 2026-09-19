@@ -11,6 +11,7 @@
 #include "core/task.hpp"
 #include "net/net_backend.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <condition_variable>
 #include <cstddef>
@@ -19,6 +20,7 @@
 #include <new>
 #include <thread>
 #include <utility>
+#include <vector>
 
 namespace {
 std::mutex state_mutex;
@@ -31,6 +33,8 @@ std::atomic<std::uint64_t> event_wake_sequence{0};
 std::mutex event_wake_mutex;
 std::condition_variable event_wake_condition;
 constexpr std::uint32_t default_queue_capacity = 1024;
+std::mutex shutdown_hook_mutex;
+std::vector<nk::core::RuntimeShutdownHook> shutdown_hooks;
 
 bool valid_event_struct(const nk_event *event) {
     return event && event->struct_size >= sizeof(nk_event);
@@ -101,6 +105,25 @@ void wake_events() noexcept {
     event_wake_condition.notify_all();
 }
 
+void register_runtime_shutdown_hook(RuntimeShutdownHook hook) noexcept {
+    if (!hook)
+        return;
+    std::lock_guard lock(shutdown_hook_mutex);
+    if (std::find(shutdown_hooks.begin(), shutdown_hooks.end(), hook) == shutdown_hooks.end())
+        shutdown_hooks.push_back(hook);
+}
+
+void run_runtime_shutdown_hooks() noexcept {
+    std::vector<RuntimeShutdownHook> hooks;
+    {
+        std::lock_guard lock(shutdown_hook_mutex);
+        hooks = shutdown_hooks;
+    }
+    for (const auto hook : hooks)
+        if (hook)
+            hook();
+}
+
 } // namespace nk::core
 
 extern "C" {
@@ -165,6 +188,7 @@ void NK_CALL nk_shutdown(void) {
      * cooperative work for this generation. */
     nk::core::task_runtime_shutdown();
     nk::core::stop_render_executor();
+    nk::core::run_runtime_shutdown_hooks();
     /* Close any acquired physical frame before a backend destroys its
        surface/window resources.  This also handles render work discarded
        while the dedicated executor was stopping. */

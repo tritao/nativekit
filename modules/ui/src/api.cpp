@@ -401,6 +401,15 @@ std::uint64_t render_submission_generation = 0;
 
 void NK_CALL run_next_render_submission(void *data);
 bool enqueue_render_submission(RenderSubmission *submission);
+void shutdown_render_scheduler() noexcept;
+
+void ensure_runtime_shutdown_hook() noexcept {
+    static const bool registered = [] {
+        nk::core::register_runtime_shutdown_hook(&shutdown_render_scheduler);
+        return true;
+    }();
+    (void)registered;
+}
 
 void destroy_render_completion(void *data) noexcept {
     auto *completion = static_cast<RenderCompletion *>(data);
@@ -509,6 +518,18 @@ void execute_render_submission(RenderSubmission &submission) {
 void cancel_render_submission_on_platform(RenderSubmission &submission) {
     if (submission.frame != NK_INVALID_HANDLE)
         nk_surface_cancel_frame(submission.frame);
+}
+
+void shutdown_render_scheduler() noexcept {
+    std::unique_ptr<RenderSubmission> pending;
+    {
+        std::lock_guard lock(render_submission_mutex);
+        pending = std::move(pending_render_submission);
+        render_submission_runner_active = false;
+        render_submission_generation = 0;
+    }
+    if (pending)
+        cancel_render_submission_on_platform(*pending);
 }
 
 bool enqueue_render_submission(RenderSubmission *raw_submission) {
@@ -2269,6 +2290,7 @@ extern "C" nkui_result nkui_graphics_surface_create(nk_graphics_image image,
 extern "C" nkui_result nkui_renderer_create(nkui_renderer *out_renderer) {
     if (!out_renderer)
         return NKUI_ERROR_INVALID_ARGUMENT;
+    ensure_runtime_shutdown_hook();
     out_renderer->id = 0;
     std::lock_guard<std::mutex> lock(renderers_mutex);
     {
