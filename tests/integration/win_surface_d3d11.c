@@ -165,7 +165,7 @@ int main(void) {
 
     assert(nk_surface_set_bounds(surface, 12, 16, 200, 100) == NK_OK);
     acquire_frame(window, surface);
-    target = (nk_surface_frame_target){0};
+    target = {};
     target.struct_size = sizeof(target);
     assert(nk_surface_get_frame_target(surface, &target) == NK_OK);
     assert(target.width > 0 && target.height > 0);
