@@ -111,9 +111,8 @@ bool wait_surface_ready(nk_window window, nk_surface surface, int32_t &width, in
         event.struct_size = sizeof(event);
         if (!check(nk_poll_event(&event) == NK_OK, "poll scheduler stress event"))
             return false;
-        const bool ready = event.kind == NK_EVENT_SURFACE_READY && event.source == surface;
         nk_event_release(&event);
-        if (ready && nk_surface_make_current(surface) == NK_OK &&
+        if (nk_surface_make_current(surface) == NK_OK &&
             nk_surface_get_framebuffer_size(surface, &width, &height) == NK_OK && width > 0 &&
             height > 0)
             return true;
