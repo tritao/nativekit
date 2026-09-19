@@ -810,6 +810,19 @@ int main() {
         return 24;
     kept.reset();
 
+    /* Sealing must reject an unowned external render-target dependency rather
+       than allowing a live surface producer to cross the RENDER boundary. */
+    RenderPlan unowned_source;
+    RenderPass unowned_pass;
+    unowned_pass.target = main_target;
+    unowned_source.passes.push_back(unowned_pass);
+    const ResourceId unowned_target = make_resource_id(ResourceKind::RenderTarget, 1, 901);
+    unowned_source.dependencies.push_back({unowned_target, main_target});
+    RenderPlanSealError unowned_error;
+    if (SealedRenderPlan::seal(std::move(unowned_source), OwnedFrameResources{}, &unowned_error) ||
+        !unowned_error.message)
+        return 65;
+
     /*
      * An owned set shares prepared data instead of copying it, so a second
      * sealed plan over the same texture does not duplicate pixels and both
