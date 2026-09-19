@@ -143,6 +143,14 @@ nk_result NK_CALL nk_init(const nk_init_options *options) {
     nk::core::system_initialize(options);
     event_queue = std::make_unique<nk::core::EventQueue>(capacity);
     nk::core::bind_main_thread();
+    const auto render_result = nk::core::start_render_executor();
+    if (render_result != NK_OK) {
+        nk::core::unbind_main_thread();
+        event_queue.reset();
+        nk::core::system_shutdown();
+        nk::core::set_error("could not initialize the render executor");
+        return render_result;
+    }
     auto generation = generation_counter.fetch_add(1, std::memory_order_relaxed) + 1;
     if (generation == 0)
         generation = generation_counter.fetch_add(1, std::memory_order_relaxed) + 1;
@@ -150,6 +158,7 @@ nk_result NK_CALL nk_init(const nk_init_options *options) {
     const auto task_result = nk::core::task_runtime_initialize(generation);
     if (task_result != NK_OK) {
         active_generation.store(0, std::memory_order_release);
+        nk::core::stop_render_executor();
         nk::core::unbind_main_thread();
         event_queue.reset();
         nk::core::system_shutdown();
@@ -164,6 +173,7 @@ void NK_CALL nk_shutdown(void) {
      * callbacks. The task runtime joins native workers and drops queued
      * cooperative work for this generation. */
     nk::core::task_runtime_shutdown();
+    nk::core::stop_render_executor();
     nk::net::shutdown();
     /* Plugins observe a complete teardown before their runtime disappears. */
     nk::core::plugins_shutdown();

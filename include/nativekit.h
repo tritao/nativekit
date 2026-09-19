@@ -347,12 +347,12 @@ enum NK_ENUM(nk_event_kind) {
 /**
  * Logical executor that owns an API contract or callback.
  *
- * Executors name thread-affinity domains rather than threads. One NativeKit
- * runtime currently binds NK_EXECUTOR_PLATFORM, NK_EXECUTOR_APP, and
- * NK_EXECUTOR_RENDER to the thread that called nk_init(), because rendering and
- * event delivery still share that thread. The distinction is part of the
- * contract now so that application or render work can move to another thread
- * later without redesigning the APIs that declared affinity.
+ * Executors name thread-affinity domains rather than threads. PLATFORM and APP
+ * remain bound to the thread that called nk_init(). Backends that support a
+ * physical render executor bind RENDER to a dedicated thread; GTK and default
+ * Web backends continue to alias it to APP until their native context model is
+ * migrated. The distinction is part of the contract so callers do not need to
+ * redesign APIs when a backend changes its physical ownership.
  */
 typedef uint32_t nk_executor;
 
@@ -489,19 +489,20 @@ NK_API void NK_CALL nk_event_release(nk_event *event);
 /* ------------------------------------------------------------------------- */
 
 /**
- * Returns the canonical executor of the calling thread. While the platform,
- * application, and render executors are aliased to one thread, that thread
- * reports NK_EXECUTOR_APP. Threads that are not bound to a runtime, including
- * threads used before nk_init() or after nk_shutdown(), report
- * NK_EXECUTOR_WORKER.
+ * Returns the canonical executor of the calling thread. The nk_init() thread
+ * reports NK_EXECUTOR_APP; a physical render thread reports NK_EXECUTOR_RENDER.
+ * Threads that are not bound to a runtime, including threads used before
+ * nk_init() or after nk_shutdown(), report NK_EXECUTOR_WORKER.
  */
 NK_API nk_executor NK_CALL nk_executor_current(void);
 
 /**
  * Reports whether the calling thread satisfies the affinity of `executor`.
- * While the platform, application, and render executors are aliased, the
- * nk_init() thread satisfies all three. NK_EXECUTOR_WORKER is satisfied by any
- * other thread while a runtime is active, because it never implies affinity.
+ * PLATFORM and APP are satisfied by the nk_init() thread. On a physical render
+ * backend, RENDER is satisfied by the render thread (and remains accepted on
+ * the application thread during the executor migration). GTK and default Web
+ * backends satisfy RENDER on the application thread. NK_EXECUTOR_WORKER is
+ * satisfied by other runtime threads because it never implies affinity.
  */
 NK_API nk_bool NK_CALL nk_executor_is_current(nk_executor executor);
 
