@@ -1,6 +1,7 @@
 #include "core/graphics_image_registry.h"
 
 #include "core/error.hpp"
+#include "core/executor.hpp"
 #include "core/runtime.hpp"
 
 #include <cstdint>
@@ -24,6 +25,13 @@ struct Slot {
 std::mutex registry_mutex;
 std::vector<Slot> registry;
 std::unordered_map<uint32_t, uint32_t> device_references;
+
+nk_result require_graphics_executor() noexcept {
+    if (nk_executor_is_current(NK_EXECUTOR_APP) ||
+        nk_executor_is_current(NK_EXECUTOR_RENDER))
+        return NK_OK;
+    return nk::core::require_ui_thread();
+}
 
 bool retain_device_locked(nk_graphics_device device) {
     if (!device.id)
@@ -108,7 +116,7 @@ extern "C" nk_result NK_CALL nk_graphics_image_retain(nk_graphics_image image) {
 }
 
 extern "C" nk_result NK_CALL nk_graphics_image_release(nk_graphics_image image) {
-    if (const nk_result thread = nk::core::require_ui_thread(); thread != NK_OK)
+    if (const nk_result thread = require_graphics_executor(); thread != NK_OK)
         return thread;
     nk_core_graphics_image_release_fn release = nullptr;
     const void *runtime = nullptr;
@@ -187,7 +195,7 @@ extern "C" nk_result NK_CALL nk_graphics_device_retain(nk_graphics_device device
 }
 
 extern "C" nk_result NK_CALL nk_graphics_device_release(nk_graphics_device device) {
-    if (const nk_result thread = nk::core::require_ui_thread(); thread != NK_OK)
+    if (const nk_result thread = require_graphics_executor(); thread != NK_OK)
         return thread;
     if (!device.id)
         return NK_ERROR_INVALID_ARGUMENT;
