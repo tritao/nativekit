@@ -180,6 +180,7 @@ struct RendererSlot {
     nkui::Compositor compositor;
     std::unordered_map<PathCacheKey, PreparedPathCacheEntry, PathCacheKeyHash> paths;
     std::vector<CustomEffectRegistrationStorage> custom_effects;
+    std::size_t registered_custom_effects = 0;
     nkui::UiGpuStats retired_gpu{};
     nkui_renderer_stats stats{};
     uint16_t generation = 1;
@@ -286,15 +287,19 @@ void discard_stale_renderer(RendererSlot &slot, const nk_surface_frame_target &t
     slot.stats.raster_cache_hits += old_stats.raster_cache_hits;
     slot.stats.raster_cache_misses += old_stats.raster_cache_misses;
     slot.renderer.reset();
+    slot.registered_custom_effects = 0;
 }
 
 bool register_custom_effects(RendererSlot &slot) {
-    for (const auto &stored : slot.custom_effects) {
+    while (slot.registered_custom_effects < slot.custom_effects.size()) {
+        const auto &stored = slot.custom_effects[slot.registered_custom_effects];
         const auto registration = stored.native();
         if (!slot.renderer->registerCustomEffect(registration)) {
             slot.renderer.reset();
+            slot.registered_custom_effects = 0;
             return false;
         }
+        ++slot.registered_custom_effects;
     }
     return true;
 }
@@ -421,7 +426,7 @@ void execute_render_submission(RenderSubmission &submission) {
             if (slot->renderer) {
                 const bool new_backend = !slot->renderer->valid();
                 success = !new_backend || slot->renderer->initialize();
-                if (success && new_backend)
+                if (success)
                     success = register_custom_effects(*slot);
                 for (auto *engine : submission.text_engines)
                     if (success)
@@ -2408,6 +2413,7 @@ extern "C" nkui_result nkui_renderer_create(nkui_renderer *out_renderer) {
                 slot.backend_device = {};
                 slot.backend_surface = 0;
                 slot.custom_effects.clear();
+                slot.registered_custom_effects = 0;
                 slot.active = true;
                 slot.retired_gpu = {};
                 slot.stats = {};
@@ -2421,6 +2427,7 @@ extern "C" nkui_result nkui_renderer_create(nkui_renderer *out_renderer) {
         auto &slot = renderers.back();
         slot.active = true;
         slot.custom_effects.clear();
+        slot.registered_custom_effects = 0;
         slot.retired_gpu = {};
         slot.stats = {};
         out_renderer->id = make_handle(1, static_cast<uint16_t>(renderers.size()));
@@ -2451,6 +2458,7 @@ extern "C" nkui_result nkui_renderer_destroy(nkui_renderer renderer) {
     slot->backend_surface = 0;
     slot->active = false;
     slot->custom_effects.clear();
+    slot->registered_custom_effects = 0;
     clear_path_cache(*slot);
     slot->retired_gpu = {};
     slot->stats = {};
@@ -2498,11 +2506,13 @@ nkui_renderer_register_custom_effect(nkui_renderer renderer,
         std::copy(std::begin(registration->ink_overflow), std::end(registration->ink_overflow),
                   stored.ink_overflow.begin());
         slot->custom_effects.push_back(std::move(stored));
-        if (slot->renderer &&
+        if (!nk::core::render_executor_physical() && slot->renderer &&
             !slot->renderer->registerCustomEffect(slot->custom_effects.back().native())) {
             slot->custom_effects.pop_back();
             return NKUI_ERROR_RENDERING;
         }
+        if (!nk::core::render_executor_physical() && slot->renderer)
+            ++slot->registered_custom_effects;
     }
     return NKUI_OK;
 }
