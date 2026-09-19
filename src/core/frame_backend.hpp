@@ -77,7 +77,7 @@ extern "C" {
 /* Bind/unbind a backend context without rediscovering a surface on RENDER. */
 nk_result NK_CALL nk_graphics_bind_frame_target(const nk_surface_frame_target *target);
 nk_result NK_CALL nk_graphics_unbind_frame_target(const nk_surface_frame_target *target);
-nk_result NK_CALL nk_surface_submit_frame(const nk_surface_frame_target *target);
-nk_result NK_CALL nk_surface_finish_frame(nk_surface surface,
+nk_result NK_CALL nk_frame_backend_submit(const nk_surface_frame_target *target);
+nk_result NK_CALL nk_frame_backend_finish(nk_surface surface,
                                           const nk_surface_frame_target *target);
 }

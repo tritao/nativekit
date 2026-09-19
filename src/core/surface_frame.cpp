@@ -202,7 +202,7 @@ nk_result NK_CALL nk_surface_present_frame(nk_surface_frame frame) {
                 return NK_ERROR_INVALID_HANDLE;
             }
             return ticket.render_submitted
-                       ? nk_surface_finish_frame(ticket.surface, &ticket.target)
+                       ? nk_frame_backend_finish(ticket.surface, &ticket.target)
                        : nk_surface_present(ticket.surface);
         });
 }
