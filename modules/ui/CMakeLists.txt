@@ -629,6 +629,8 @@ if(NK_BUILD_EXAMPLES)
                 _nkui_layout_session_get_resolved_items
                 _nkui_layout_session_render_frame
                 _nkui_layout_session_set_custom_paint
+                _nkui_layout_session_set_custom_paint_cache_policy
+                _nkui_layout_session_set_cache_policy
                 _nkui_layout_session_set_font_collection
                 _nkui_layout_session_set_measure_callback
                 _nkui_layout_session_submit
