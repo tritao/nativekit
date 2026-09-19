@@ -452,6 +452,10 @@ void execute_render_submission(RenderSubmission &submission) {
     const bool context_backend = submission.frame_target.api == NK_GRAPHICS_OPENGL ||
                                  submission.frame_target.api == NK_GRAPHICS_OPENGL_ES;
     const bool bound = !context_backend || nkgpu_bind_frame_target(&submission.frame_target) == NKGPU_OK;
+    if (!bound && context_backend && nk::core::render_executor_physical())
+        /* A failed bind may follow a surface-destroy callback while a prior
+           frame left the context current on this thread. */
+        nk_graphics_unbind_frame_target(&submission.frame_target);
     if (bound) {
         std::shared_lock<std::shared_mutex> renderer_execution_lock(renderer_execution_mutex,
                                                                      std::defer_lock);
