@@ -3174,6 +3174,18 @@ nkgpu_result nkgpu_bind_frame_target(const nk_surface_frame_target *frame_target
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid acquired frame target");
     if (!nk_executor_is_current(NK_EXECUTOR_RENDER))
         return fail(NKGPU_ERROR_WRONG_THREAD, "frame-target binding requires the render executor");
+    bool ticket_bound = false;
+    if (frame_target->frame != NK_INVALID_HANDLE) {
+        nk::core::FrameTicket ticket{};
+        if (!nk::core::lookup_frame_ticket(frame_target->frame, &ticket))
+            return fail(NKGPU_ERROR_INVALID_HANDLE, "render frame ticket is unavailable");
+        if (!ticket.backend.bind)
+            return fail(NKGPU_ERROR_UNKNOWN, "render frame ticket has no bind operation");
+        const nk_result bound = ticket.backend.bind(ticket);
+        if (bound != NK_OK)
+            return fail(NKGPU_ERROR_UNKNOWN, "frame-target binding: %s", nk_last_error());
+        ticket_bound = true;
+    }
     /* Explicit APIs carry all state needed by Sokol in the immutable target.
        Their immediate context/command queue is intentionally render-owned, so
        binding is validation rather than a second surface lookup. */
@@ -3185,18 +3197,8 @@ nkgpu_result nkgpu_bind_frame_target(const nk_surface_frame_target *frame_target
     }
     /* GTK/Web remain aliased during the GL migration. Physical GL/EGL backends
        bind their retained context and drawable without querying the surface. */
-    if (nk::core::render_executor_physical()) {
-        nk_result bound = NK_OK;
-        if (frame_target->frame != NK_INVALID_HANDLE) {
-            nk::core::FrameTicket ticket{};
-            if (!nk::core::lookup_frame_ticket(frame_target->frame, &ticket))
-                return fail(NKGPU_ERROR_INVALID_HANDLE, "render frame ticket is unavailable");
-            if (!ticket.backend.bind)
-                return fail(NKGPU_ERROR_UNKNOWN, "render frame ticket has no bind operation");
-            bound = ticket.backend.bind(ticket);
-        } else {
-            bound = nk_graphics_bind_frame_target(frame_target);
-        }
+    if (nk::core::render_executor_physical() && !ticket_bound) {
+        const nk_result bound = nk_graphics_bind_frame_target(frame_target);
         if (bound != NK_OK)
             return fail(NKGPU_ERROR_UNKNOWN, "frame-target binding: %s", nk_last_error());
     }
