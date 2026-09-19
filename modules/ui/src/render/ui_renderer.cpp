@@ -1606,7 +1606,10 @@ bool UiRendererImpl::beginFrame(bool record, const nk_surface_frame_target *fram
             return false;
         }
         ++state_->stats.recorded_frames;
-    } else if (!gpu_result(*state_, nkgpu_frame_begin(state_->renderer))) {
+    } else if (!gpu_result(
+                   *state_, frame_target ? nkgpu_frame_begin_with_target(state_->renderer,
+                                                                          frame_target)
+                                         : nkgpu_frame_begin(state_->renderer))) {
         state_->recording = false;
         return false;
     }

@@ -2054,6 +2054,14 @@ nkgpu_result nkgpu_frame_begin(nkgpu_renderer h) {
     active_renderer = h;
     return NKGPU_OK;
 }
+
+nkgpu_result nkgpu_frame_begin_with_target(nkgpu_renderer h,
+                                           const nk_surface_frame_target *frame_target) {
+    if (!frame_target)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "frame target is null");
+    return begin_frame_with_target(h, *frame_target);
+}
+
 nkgpu_result nkgpu_begin_window_pass(nkgpu_renderer h, uint32_t width, uint32_t height,
                                      uint32_t clear) {
     auto *s = renderer_pool.get(h);
