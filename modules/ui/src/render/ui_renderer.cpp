@@ -20,6 +20,7 @@ namespace nkui {
 class UiRendererImpl final : public UiRenderer {
   public:
     explicit UiRendererImpl(nk_surface surface);
+    UiRendererImpl(nk_surface surface, const nk_surface_frame_target *frame_target);
     ~UiRendererImpl() override;
     bool initialize() override;
     bool valid() const override;
@@ -1444,13 +1445,21 @@ nkgpu_stencil_face_state stencil_face(nkgpu_compare_func compare, nkgpu_stencil_
 
 } // namespace
 
-UiRendererImpl::UiRendererImpl(nk_surface surface) : state_(new State) {
+UiRendererImpl::UiRendererImpl(nk_surface surface) : UiRendererImpl(surface, nullptr) {}
+
+UiRendererImpl::UiRendererImpl(nk_surface surface,
+                               const nk_surface_frame_target *frame_target)
+    : state_(new State) {
     state_->surface = surface;
     if (!surface) {
         state_->error = "UI renderer requires a NativeKit surface";
         return;
     }
-    if (!gpu_result(*state_, nkgpu_renderer_create(surface, &state_->renderer)))
+    const nkgpu_result created = frame_target
+                                     ? nkgpu_renderer_create_for_frame_target(
+                                           surface, frame_target, &state_->renderer)
+                                     : nkgpu_renderer_create(surface, &state_->renderer);
+    if (!gpu_result(*state_, created))
         return;
     state_->graphics_api = nkgpu_query_graphics_api(state_->renderer);
 }
@@ -2584,6 +2593,13 @@ std::unique_ptr<UiRenderer> create_ui_renderer(nk_surface surface) {
     if (!surface)
         return nullptr;
     return std::make_unique<UiRendererImpl>(surface);
+}
+
+std::unique_ptr<UiRenderer> create_ui_renderer(
+    nk_surface surface, const nk_surface_frame_target *frame_target) {
+    if (!surface)
+        return nullptr;
+    return std::make_unique<UiRendererImpl>(surface, frame_target);
 }
 
 } // namespace nkui

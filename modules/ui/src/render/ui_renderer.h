@@ -206,6 +206,8 @@ class UiRenderer {
 };
 
 std::unique_ptr<UiRenderer> create_ui_renderer(nk_surface surface);
+std::unique_ptr<UiRenderer> create_ui_renderer(nk_surface surface,
+                                               const nk_surface_frame_target *frame_target);
 
 } // namespace nkui
 
