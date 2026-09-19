@@ -129,6 +129,10 @@ nk_result start_render_executor() noexcept {
     render_thread = std::thread(render_loop);
     std::unique_lock lock(render_task_mutex);
     render_started_condition.wait(lock, [] { return render_started; });
+    {
+        std::lock_guard executor_lock(executor_mutex);
+        render_executor_exclusive = true;
+    }
     return NK_OK;
 }
 
