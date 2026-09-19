@@ -726,6 +726,25 @@ int main() {
                        "device-loss accounting") ||
                 !check(recovered_stats.gpu_frames >= before_loss_stats.gpu_frames + 1,
                        "recovery completed frame")) {
+                std::fprintf(stderr,
+                             "backend renderer smoke: loss stats before=(sub=%llu exec=%llu "
+                             "frames=%llu losses=%llu) after=(sub=%llu exec=%llu frames=%llu "
+                             "losses=%llu) recovered=(sub=%llu exec=%llu frames=%llu losses=%llu)\n",
+                             static_cast<unsigned long long>(before_loss_stats.render_submissions),
+                             static_cast<unsigned long long>(
+                                 before_loss_stats.render_submission_executions),
+                             static_cast<unsigned long long>(before_loss_stats.gpu_frames),
+                             static_cast<unsigned long long>(before_loss_stats.device_losses),
+                             static_cast<unsigned long long>(after_loss_stats.render_submissions),
+                             static_cast<unsigned long long>(
+                                 after_loss_stats.render_submission_executions),
+                             static_cast<unsigned long long>(after_loss_stats.gpu_frames),
+                             static_cast<unsigned long long>(after_loss_stats.device_losses),
+                             static_cast<unsigned long long>(recovered_stats.render_submissions),
+                             static_cast<unsigned long long>(
+                                 recovered_stats.render_submission_executions),
+                             static_cast<unsigned long long>(recovered_stats.gpu_frames),
+                             static_cast<unsigned long long>(recovered_stats.device_losses));
                 result = 34;
                 goto cleanup;
             }
