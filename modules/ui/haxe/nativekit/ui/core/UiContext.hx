@@ -315,6 +315,8 @@ class UiContext {
 		var emptyPaintNodes = 0;
 		diagnosticStage = 22;
 		root.walk(function(node) {
+			if (node.resolved != null)
+				session.setCachePolicy(node.id.value, node.cachePolicy);
 			if (!node.hasPaintHandler() || node.resolved == null)
 				return;
 			if (node.resolved.visible &&

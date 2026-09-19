@@ -9,7 +9,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	const NKUI_EFFECT_PROGRAM_MAX_OPS = 8;
 	const NKUI_GRADIENT_MAX_STOPS = 8;
 	const NKUI_LAYER_COMMAND_VERSION = 2;
-	const NKUI_LAYOUT_API_VERSION = 19;
+	const NKUI_LAYOUT_API_VERSION = 20;
 	const NKUI_LAYOUT_MAX_TRANSACTION_BYTES = 16777216;
 	/**
 	 * Per-child cross-axis alignment override; zero inherits the parent.
@@ -647,6 +647,10 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	 * surface contents instead of clearing the frame first.
 	 */
 	extern fn nkui_layout_session_render_frame(renderer: nkui_renderer, session: nkui_layout_session, surface: nk_surface, frame_info: ptr<const<nkui_frame_info>>, load_existing: nk_bool) -> nkui_result;
+	/**
+	 * Selects whether a render-node subtree is rendered normally or cached as a raster.
+	 */
+	extern fn nkui_layout_session_set_cache_policy(session: nkui_layout_session, node_id: u32, policy: nkui_layout_cache_policy) -> nkui_result;
 	/**
 	 * Associates a retained display list with a custom-visual node from the most
 	 * recently submitted tree. The session retains the list until it is replaced,

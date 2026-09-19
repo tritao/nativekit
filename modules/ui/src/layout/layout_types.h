@@ -239,6 +239,7 @@ struct LayoutItem {
     float baseline = 0.0f;
     bool visible = true;
     bool has_baseline = false;
+    uint32_t parent_id = 0;
 };
 
 enum class LayoutPrimitiveKind : uint8_t {

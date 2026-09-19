@@ -761,6 +761,7 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
         }
         LayoutItem item{};
         item.id = node.id;
+        item.parent_id = node.parent >= 0 ? nodes[static_cast<std::size_t>(node.parent)].id : 0;
         item.visual_kind = node.visual_kind;
         item.bounds = node_bounds[index];
         item.clip_bounds = item_clip;

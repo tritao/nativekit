@@ -433,6 +433,46 @@ int main() {
         raster_frame.plan().dependencies.size() != 1)
         return 25;
 
+    // A cache policy on an ordinary layout node captures its native rectangle
+    // and text descendants in local coordinates, so translating the subtree
+    // changes only the main-pass composite transform.
+    LayoutRenderCompiler::RasterPaintNodes subtree_paints{1};
+    LayoutRenderFrame subtree_frame;
+    if (!compiler.compile(snapshot, main_target, 1.5f, subtree_frame, &compile_error, false,
+                          engine.text_adapter(), nullptr, &subtree_paints) ||
+        subtree_frame.plan().passes.size() != 3 ||
+        subtree_frame.plan().passes[1].kind != RenderPassKind::Raster ||
+        subtree_frame.plan().passes[1].commands.size() < 2 ||
+        subtree_frame.plan().passes[1].target_descriptor.logical_width <= 0.0f ||
+        subtree_frame.plan().passes[2].commands.size() != 1 ||
+        subtree_frame.plan().passes[2].commands.front().kind != RenderCommandKind::CompositeTarget)
+        return 26;
+
+    std::vector<LayoutNode> moved_nodes = nodes;
+    moved_nodes[0].style.transform.tx = 48.0f;
+    moved_nodes[0].style.transform.ty = 24.0f;
+    LayoutSnapshot moved_snapshot;
+    if (!engine.layout(moved_nodes, 320.0f, 200.0f, 1.0f / 60.0f, moved_snapshot,
+                       &layout_error))
+        return 27;
+    LayoutRenderFrame moved_subtree_frame;
+    if (!compiler.compile(moved_snapshot, main_target, 1.5f, moved_subtree_frame, &compile_error,
+                          false, engine.text_adapter(), nullptr, &subtree_paints))
+        return 27;
+    RecordingRenderer subtree_backend;
+    nk_surface_frame_target subtree_frame_target{};
+    subtree_frame_target.struct_size = sizeof(subtree_frame_target);
+    subtree_frame_target.width = 480;
+    subtree_frame_target.height = 300;
+    RenderExecutionError subtree_execution_error;
+    if (!execute_render_plan(subtree_backend, subtree_frame.plan(), subtree_frame.resources(),
+                             {main_target, subtree_frame_target}, &subtree_execution_error) ||
+        !execute_render_plan(subtree_backend, moved_subtree_frame.plan(),
+                             moved_subtree_frame.resources(),
+                             {main_target, subtree_frame_target}, &subtree_execution_error) ||
+        subtree_backend.raster_cache_hits != 1)
+        return 27;
+
     RenderPlan bounded_custom_plan;
     bounded_custom_plan.passes.push_back({main_target, {}, false, {}});
     const ResourceId bounded_target = make_resource_id(ResourceKind::RenderTarget, 1, 445);

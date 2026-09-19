@@ -124,6 +124,15 @@ class LayoutSession {
 			nodeId, policy), "layoutSession.setCustomPaintCachePolicy");
 	}
 
+	/** Selects vector or persistent GPU-raster rendering for a render-node subtree. */
+	public function setCachePolicy(nodeId:Int, policy:Int):Void {
+		ensureLive();
+		if (nodeId <= 0 || policy < 0 || policy > 2)
+			throw "Render subtree cache policy is invalid";
+		UiResult.check(NativeKitUI.nkui_layout_session_set_cache_policy(value, nodeId, policy),
+			"layoutSession.setCachePolicy");
+	}
+
 	/** Executes the last submitted tree through the existing renderer backend. */
 	public function render(renderer:Renderer, surface:Surface, frame:FrameInfo):Void {
 		ensureLive();

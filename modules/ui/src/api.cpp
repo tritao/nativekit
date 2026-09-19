@@ -190,7 +190,7 @@ struct LayoutSessionState {
     nkui::LayoutRenderFrame frame;
     nkui::LayoutSnapshot snapshot;
     std::unordered_map<uint32_t, nkui_display_list> custom_paints;
-    std::unordered_map<uint32_t, nkui_layout_cache_policy> custom_paint_cache_policies;
+    std::unordered_map<uint32_t, nkui_layout_cache_policy> cache_policies;
     nkui_nullable_layout_measure_callback measure_callback = nullptr;
     void *measure_user_data = nullptr;
     bool fonts_configured = false;
@@ -1069,7 +1069,7 @@ void release_custom_paints(LayoutSessionState &session) {
             --list->custom_refs;
     }
     session.custom_paints.clear();
-    session.custom_paint_cache_policies.clear();
+    session.cache_policies.clear();
 }
 
 bool collect_display_resources(const uint8_t *data, size_t size,
@@ -1468,24 +1468,34 @@ extern "C" nkui_result nkui_layout_session_set_custom_paint(nkui_layout_session 
     return NKUI_OK;
 }
 
-extern "C" nkui_result nkui_layout_session_set_custom_paint_cache_policy(
-    nkui_layout_session session, uint32_t node_id, nkui_layout_cache_policy policy) {
-    if (active_measure_session)
-        return NKUI_ERROR_INVALID_ARGUMENT;
-    if (!node_id || policy > NKUI_LAYOUT_CACHE_RASTER)
-        return NKUI_ERROR_INVALID_ARGUMENT;
-    std::lock_guard<std::mutex> lock(layout_sessions_mutex);
-    auto *state = resolve(session);
+nkui_result set_cache_policy(LayoutSessionState *state, uint32_t node_id,
+                             nkui_layout_cache_policy policy, bool custom_only) {
     if (!state || !state->submitted)
         return NKUI_ERROR_INVALID_HANDLE;
     const auto *item = state->snapshot.find(node_id);
-    if (!item || item->visual_kind != nkui::LayoutVisualKind::Custom)
+    if (!item || (custom_only && item->visual_kind != nkui::LayoutVisualKind::Custom))
         return NKUI_ERROR_INVALID_ARGUMENT;
     if (policy == NKUI_LAYOUT_CACHE_NONE)
-        state->custom_paint_cache_policies.erase(node_id);
+        state->cache_policies.erase(node_id);
     else
-        state->custom_paint_cache_policies[node_id] = policy;
+        state->cache_policies[node_id] = policy;
     return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_layout_session_set_custom_paint_cache_policy(
+    nkui_layout_session session, uint32_t node_id, nkui_layout_cache_policy policy) {
+    if (active_measure_session || !node_id || policy > NKUI_LAYOUT_CACHE_RASTER)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(layout_sessions_mutex);
+    return set_cache_policy(resolve(session), node_id, policy, true);
+}
+
+extern "C" nkui_result nkui_layout_session_set_cache_policy(
+    nkui_layout_session session, uint32_t node_id, nkui_layout_cache_policy policy) {
+    if (active_measure_session || !node_id || policy > NKUI_LAYOUT_CACHE_RASTER)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(layout_sessions_mutex);
+    return set_cache_policy(resolve(session), node_id, policy, false);
 }
 
 extern "C" nkui_result nkui_layout_session_submit(nkui_layout_session session,
@@ -1534,14 +1544,12 @@ extern "C" nkui_result nkui_layout_session_submit(nkui_layout_session session,
             --list->custom_refs;
         it = state->custom_paints.erase(it);
     }
-    for (auto it = state->custom_paint_cache_policies.begin();
-         it != state->custom_paint_cache_policies.end();) {
+    for (auto it = state->cache_policies.begin(); it != state->cache_policies.end();) {
         const auto *item = state->snapshot.find(it->first);
-        if (item && item->visual_kind == nkui::LayoutVisualKind::Custom &&
-            state->custom_paints.find(it->first) != state->custom_paints.end())
+        if (item)
             ++it;
         else
-            it = state->custom_paint_cache_policies.erase(it);
+            it = state->cache_policies.erase(it);
     }
     return NKUI_OK;
 }
@@ -2709,11 +2717,10 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
         custom_plans.reserve(custom_plan_storage.size());
         for (const auto &[node_id, custom_plan] : custom_plan_storage) {
             custom_plans.emplace(node_id, &custom_plan);
-            const auto policy = session_state->custom_paint_cache_policies.find(node_id);
-            if (policy != session_state->custom_paint_cache_policies.end() &&
-                policy->second >= NKUI_LAYOUT_CACHE_AUTO)
-                raster_paint_nodes.insert(node_id);
         }
+        for (const auto &[node_id, policy] : session_state->cache_policies)
+            if (policy >= NKUI_LAYOUT_CACHE_AUTO)
+                raster_paint_nodes.insert(node_id);
     }
     nkui::LayoutRenderCompileError compile_error{};
     if (!session_state->compiler.compile(session_state->snapshot, compile_target,
