@@ -15,6 +15,7 @@ class EventDispatcher {
 	final pressedIds:Map<Int, WidgetId>;
 	final capturedIds:Map<Int, WidgetId>;
 	final suppressedClicks:Map<Int, Bool>;
+	var hitTestProvider:Null<Float->Float->Array<RenderNode>>;
 	var pointerCaptureHandler:Null<Bool->Void>;
 	var platformPointerCaptured:Bool;
 
@@ -27,9 +28,14 @@ class EventDispatcher {
 		pressedIds = new Map();
 		capturedIds = new Map();
 		suppressedClicks = new Map();
+		hitTestProvider = null;
 		pointerCaptureHandler = null;
 		platformPointerCaptured = false;
 	}
+
+	/** Installs the current resolved-scene geometric picker. */
+	public function setHitTestProvider(provider:Null<Float->Float->Array<RenderNode>>):Void
+		hitTestProvider = provider;
 
 	/** Installs the host bridge for physical window/surface pointer capture. */
 	public function setPointerCaptureHandler(handler:Null<Bool->Void>):Void {
@@ -66,7 +72,7 @@ class EventDispatcher {
 			var y = location.y;
 			var path = capturedPath(pointerId);
 			if (path.length == 0)
-				path = HitTest.path(root, x, y);
+				path = hitPath(x, y);
 			updateHover(pointerId, path, x, y);
 		}
 	}
@@ -74,7 +80,7 @@ class EventDispatcher {
 	public function pointerMove(x:Float, y:Float, modifiers:Int = 0,
 			pointerId:Int = 0, data:Dynamic = null):Void {
 		rememberPointer(pointerId, x, y);
-		var path = HitTest.path(root, x, y);
+		var path = hitPath(x, y);
 		var targetPath = capturedPath(pointerId);
 		if (targetPath.length == 0)
 			targetPath = path;
@@ -93,7 +99,7 @@ class EventDispatcher {
 	public function pointerDown(x:Float, y:Float, button:Int, modifiers:Int = 0,
 			pointerId:Int = 0, data:Dynamic = null, timestamp:Float = -1.0):Void {
 		rememberPointer(pointerId, x, y);
-		var path = HitTest.path(root, x, y);
+		var path = hitPath(x, y);
 		if (root != null)
 			dispatchOutsidePointerDown(path, x, y, button, modifiers, pointerId, data, timestamp);
 		if (path.length == 0)
@@ -142,7 +148,7 @@ class EventDispatcher {
 	public function pointerUp(x:Float, y:Float, button:Int, modifiers:Int = 0,
 			pointerId:Int = 0, data:Dynamic = null):Void {
 		rememberPointer(pointerId, x, y);
-		var releasePath = HitTest.path(root, x, y);
+		var releasePath = hitPath(x, y);
 		var path = capturedPath(pointerId);
 		var pressed = pressedIds.get(pointerId);
 		var clickSuppressed = suppressedClicks.exists(pointerId);
@@ -185,7 +191,7 @@ class EventDispatcher {
 
 	public function scroll(x:Float, y:Float, deltaX:Float, deltaY:Float,
 			modifiers:Int = 0):Void {
-		var path = HitTest.path(root, x, y);
+		var path = hitPath(x, y);
 		if (path.length > 0)
 			dispatchPath(path, new UiEvent(UiEventKind.Scroll, path[path.length - 1].id,
 				x, y, deltaX, deltaY, 0, 0, modifiers));
@@ -328,6 +334,12 @@ class EventDispatcher {
 		if (id == null || root == null)
 			return [];
 		return HitTest.pathTo(root.find(id));
+	}
+
+	function hitPath(x:Float, y:Float):Array<RenderNode> {
+		if (root == null)
+			return [];
+		return hitTestProvider == null ? HitTest.path(root, x, y) : hitTestProvider(x, y);
 	}
 
 	function pressedPath(pointerId:Int):Array<RenderNode> {

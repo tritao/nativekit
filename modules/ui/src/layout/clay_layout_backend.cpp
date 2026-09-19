@@ -953,38 +953,51 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
         }
     }
 
-    // Publish one native paint-order key for every resolved node. Clay emits
-    // flow content in declaration order and floating roots in z-index order;
-    // retain that same stable order for transparent nodes that have no render
-    // primitive of their own, so picking never has to reconstruct it in Haxe.
-    uint64_t next_paint_order = 1;
-    const auto assign_paint_order = [&](auto &&self, std::size_t index) -> void {
-        auto &item = out.items[index];
-        item.paint_order = next_paint_order++;
-        std::vector<std::size_t> ordered_children = state.children[index];
-        std::stable_sort(ordered_children.begin(), ordered_children.end(), [&](std::size_t left,
-                                                                                std::size_t right) {
-            const auto &left_node = nodes[left];
-            const auto &right_node = nodes[right];
-            const int left_layer = left_node.style.positioning == LayoutPositioning::Absolute
-                                       ? left_node.style.z_index
-                                       : 0;
-            const int right_layer = right_node.style.positioning == LayoutPositioning::Absolute
-                                        ? right_node.style.z_index
-                                        : 0;
-            if (left_layer != right_layer)
-                return left_layer < right_layer;
-            const bool left_floating = left_node.style.positioning == LayoutPositioning::Absolute;
-            const bool right_floating =
-                right_node.style.positioning == LayoutPositioning::Absolute;
-            if (left_floating != right_floating)
-                return !left_floating;
-            return left < right;
-        });
-        for (const std::size_t child : ordered_children)
-            self(self, child);
+    // Publish one native paint-order key for every resolved node. A node's
+    // absolute-positioned ancestor is its stacking owner: the entire owned
+    // subtree compares as one layer against ordinary flow content, while
+    // declaration/DFS order remains stable within an equal layer. This is
+    // the same ordering used by geometric picking and by Clay's render roots.
+    struct PaintOrderKey {
+        int32_t layer_z = 0;
+        bool floating = false;
+        uint64_t owner_order = 0;
+        uint64_t traversal_order = 0;
     };
-    assign_paint_order(assign_paint_order, root);
+    std::vector<PaintOrderKey> paint_keys(out.items.size());
+    uint64_t traversal_order = 0;
+    const auto collect_paint_order = [&](auto &&self, std::size_t index, int32_t layer_z,
+                                         bool floating, uint64_t owner_order) -> void {
+        const auto &node = nodes[index];
+        const uint64_t node_order = traversal_order++;
+        if (node.style.positioning == LayoutPositioning::Absolute) {
+            layer_z = node.style.z_index;
+            floating = true;
+            owner_order = node_order;
+        }
+        paint_keys[index] = {layer_z, floating, owner_order, node_order};
+        for (const std::size_t child : state.children[index])
+            self(self, child, layer_z, floating, owner_order);
+    };
+    collect_paint_order(collect_paint_order, root, 0, false, 0);
+
+    std::vector<std::size_t> paint_indices(out.items.size());
+    for (std::size_t index = 0; index < paint_indices.size(); ++index)
+        paint_indices[index] = index;
+    std::stable_sort(paint_indices.begin(), paint_indices.end(), [&](std::size_t left,
+                                                                      std::size_t right) {
+        const auto &left_key = paint_keys[left];
+        const auto &right_key = paint_keys[right];
+        if (left_key.layer_z != right_key.layer_z)
+            return left_key.layer_z < right_key.layer_z;
+        if (left_key.floating != right_key.floating)
+            return !left_key.floating;
+        if (left_key.owner_order != right_key.owner_order)
+            return left_key.owner_order < right_key.owner_order;
+        return left_key.traversal_order < right_key.traversal_order;
+    });
+    for (std::size_t order = 0; order < paint_indices.size(); ++order)
+        out.items[paint_indices[order]].paint_order = order + 1;
 
     return true;
 }

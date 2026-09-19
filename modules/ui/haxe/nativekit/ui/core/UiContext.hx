@@ -228,6 +228,7 @@ class UiContext {
 		var resolved = session.submit(next.layout, frame);
 		diagnosticStage = 6;
 		var byId = new Map<Int, ResolvedLayoutItem>();
+		var nodesById = new Map<Int, RenderNode>();
 		for (item in resolved)
 			byId.set(item.id, item);
 		var resolvedStateRevision = stateStore.revision;
@@ -236,6 +237,7 @@ class UiContext {
 		diagnosticStage = 7;
 		next.walk(function(node) {
 			nodeCount++;
+			nodesById.set(node.id.value, node);
 			// Geometry is keyed by the exact LayoutNode ID serialized to NativeUI.
 			node.setResolved(byId.get(node.layout.id));
 			if (node.resolved == null)
@@ -254,6 +256,17 @@ class UiContext {
 		if (previousFocus != null && (nextFocus == null || !previousFocus.equals(nextFocus)))
 			events.focusEvent(previousFocus, UiEventKind.Blur);
 		root = next;
+		events.setHitTestProvider(function(x:Float, y:Float) {
+			var ids = session.hitTest(x, y);
+			var path:Array<RenderNode> = [];
+			for (id in ids) {
+				var node = nodesById.get(id);
+				if (node == null)
+					return [];
+				path.push(node);
+			}
+			return path;
+		});
 		events.setRoot(next);
 		gestures.setRoot(next);
 		updateCursor();
@@ -661,6 +674,7 @@ class UiContext {
 		customStyles = new Map();
 		customPaintKeys = new Map();
 		customListHasCommands = new Map();
+		events.setHitTestProvider(null);
 		session.dispose();
 		clipboard.dispose();
 		textInput.dispose();
