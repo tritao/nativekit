@@ -53,8 +53,7 @@ static void NK_CALL run_metal_frame_probe(void *data) {
     probe.condition.notify_one();
 }
 
-static void run_metal_frame_ticket(nk_surface surface, int32_t next_width,
-                                   int32_t next_height) {
+static void run_metal_frame_ticket(nk_surface surface, int32_t next_width, int32_t next_height) {
     nk_surface_frame frame = NK_INVALID_HANDLE;
     nk_surface_frame_target target = {};
     target.struct_size = sizeof(target);
@@ -67,8 +66,8 @@ static void run_metal_frame_ticket(nk_surface surface, int32_t next_width,
     MetalFrameProbe probe;
     probe.frame = frame;
     probe.target = target;
-    assert(nk::core::dispatch_to_render(&run_metal_frame_probe, &probe, nullptr,
-                                        sizeof(probe)) == NK_OK);
+    assert(nk::core::dispatch_to_render(&run_metal_frame_probe, &probe, nullptr, sizeof(probe)) ==
+           NK_OK);
     {
         std::unique_lock lock(probe.mutex);
         assert(probe.condition.wait_for(lock, std::chrono::seconds(5),

@@ -161,8 +161,8 @@ bool run_ios_metal_frame_ticket(nk_surface surface) {
     NKIOSMetalFrameProbe probe;
     probe.frame = frame;
     probe.target = target;
-    if (nk::core::dispatch_to_render(&run_ios_metal_frame_probe, &probe, nullptr,
-                                     sizeof(probe)) != NK_OK) {
+    if (nk::core::dispatch_to_render(&run_ios_metal_frame_probe, &probe, nullptr, sizeof(probe)) !=
+        NK_OK) {
         (void)nk_surface_cancel_frame(frame);
         return false;
     }
