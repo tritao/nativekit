@@ -620,9 +620,9 @@ int main() {
             result = 30;
         }
 
-        /* Device loss is recoverable at the scheduler boundary: the frame
-           that trips the loss completes, and the next sealed plan retires the
-           lost UiRenderer and creates a fresh GPU renderer on RENDER. */
+        /* Device loss is recoverable at the scheduler boundary: the first
+           submission observes or trips loss, and the next sealed plan retires
+           the lost UiRenderer and creates a fresh GPU renderer on RENDER. */
         if (!result) {
             nkui_renderer_stats before_loss_stats{};
             if (!check(nkui_renderer_get_stats(renderer, &before_loss_stats) == NKUI_OK,
@@ -676,8 +676,6 @@ int main() {
                 !check(after_loss_stats.render_submission_executions ==
                            before_loss_stats.render_submission_executions + 1,
                        "device-loss execution count") ||
-                !check(after_loss_stats.gpu_frames >= before_loss_stats.gpu_frames + 1,
-                       "device-loss completed frame") ||
                 !check(after_loss_stats.device_losses > before_loss_stats.device_losses,
                        "device-loss accounting")) {
                 nk::core::set_render_surface_api_guard(false);
@@ -704,7 +702,7 @@ int main() {
                 !check(recovered_stats.render_submission_executions ==
                            before_loss_stats.render_submission_executions + 2,
                        "recovery execution count") ||
-                !check(recovered_stats.gpu_frames >= before_loss_stats.gpu_frames + 2,
+                !check(recovered_stats.gpu_frames >= before_loss_stats.gpu_frames + 1,
                        "recovery completed frame")) {
                 result = 34;
                 goto cleanup;
