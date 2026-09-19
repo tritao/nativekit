@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <mutex>
 #include <unordered_map>
+#include <vector>
 
 namespace nk::core {
 namespace {
@@ -100,10 +101,32 @@ bool take_frame_ticket(nk_surface_frame frame, FrameTicket *out_ticket) noexcept
 }
 
 void clear_frame_tickets() noexcept {
-    std::lock_guard lock(frame_mutex);
-    frame_by_surface.clear();
-    surface_by_frame.clear();
-    ticket_by_frame.clear();
+    std::vector<FrameTicket> tickets;
+    {
+        std::lock_guard lock(frame_mutex);
+        tickets.reserve(ticket_by_frame.size());
+        for (const auto &[frame, ticket] : ticket_by_frame) {
+            (void)frame;
+            tickets.push_back(ticket);
+        }
+        frame_by_surface.clear();
+        surface_by_frame.clear();
+        ticket_by_frame.clear();
+    }
+
+    /*
+     * nk_shutdown() calls this after the render executor has joined but
+     * before a platform backend tears down its surfaces.  A render task may
+     * have been discarded by the executor, or its completion may still be
+     * queued on APP, so the normal present/cancel path cannot be relied on to
+     * close the backend frame.  Physical backends use finish for both cases:
+     * it releases the acquired drawable/context and applies deferred resize
+     * work without presenting an incomplete frame.
+     */
+    if (!render_executor_physical() || !executor_satisfies(NK_EXECUTOR_PLATFORM))
+        return;
+    for (const auto &ticket : tickets)
+        (void)nk_frame_backend_finish(ticket.surface, &ticket.target);
 }
 
 } // namespace nk::core

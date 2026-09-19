@@ -165,6 +165,10 @@ void NK_CALL nk_shutdown(void) {
      * cooperative work for this generation. */
     nk::core::task_runtime_shutdown();
     nk::core::stop_render_executor();
+    /* Close any acquired physical frame before a backend destroys its
+       surface/window resources.  This also handles render work discarded
+       while the dedicated executor was stopping. */
+    nk::core::clear_frame_tickets();
     nk::net::shutdown();
     /* Plugins observe a complete teardown before their runtime disappears. */
     nk::core::plugins_shutdown();
@@ -173,7 +177,6 @@ void NK_CALL nk_shutdown(void) {
     nk::core::system_shutdown();
     nk::backend::shutdown();
     nk::core::requests().clear();
-    nk::core::clear_frame_tickets();
     std::lock_guard lock(state_mutex);
     handle_registry.clear();
     event_queue.reset();
