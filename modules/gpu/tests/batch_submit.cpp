@@ -1,6 +1,7 @@
 #include "nativekit.h"
 #include "nativekit_gpu.h"
 #include "nativekit_window.h"
+#include "adapter_internal.h"
 #include "testing.h"
 
 #if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
@@ -297,6 +298,21 @@ int main() {
            submission must use that snapshot without querying the surface. */
         nkgpu_test_forbid_surface_target_queries();
         EXPECT_RESULT(nkgpu_batch_submit(renderer, batch, &frame_target), NKGPU_OK);
+        nkgpu_test_allow_surface_target_queries();
+        EXPECT_RESULT(nk_surface_present_frame(frame), NK_OK);
+    }
+    /* The inline multi-pass path uses the same immutable target contract. */
+    {
+        nk_surface_frame frame = NK_INVALID_HANDLE;
+        nk_surface_frame_target frame_target{};
+        frame_target.struct_size = sizeof(frame_target);
+        EXPECT_RESULT(nk_surface_acquire_frame(surface, &frame, &frame_target), NK_OK);
+        nkgpu_test_forbid_surface_target_queries();
+        EXPECT_RESULT(nkgpu_frame_begin_with_target(renderer, &frame_target), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_begin_window_pass(renderer, window_options.width, window_options.height,
+                                              1),
+                      NKGPU_OK);
+        EXPECT_RESULT(nkgpu_end_frame_deferred_present(renderer), NKGPU_OK);
         nkgpu_test_allow_surface_target_queries();
         EXPECT_RESULT(nk_surface_present_frame(frame), NK_OK);
     }
