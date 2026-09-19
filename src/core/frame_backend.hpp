@@ -51,6 +51,7 @@ struct FrameTicket {
     nk_surface_frame frame = NK_INVALID_HANDLE;
     nk_surface_frame_target target{};
     BackendRenderBinding binding{};
+    bool render_submitted = false;
 };
 
 /** Backend-specific operations used by a physical render executor. */
@@ -65,5 +66,7 @@ struct FrameBackend {
 
 /** Copies an open platform-owned ticket for render-side scheduling. */
 bool lookup_frame_ticket(nk_surface_frame frame, FrameTicket *out_ticket) noexcept;
+bool mark_frame_render_submitted(nk_surface_frame frame) noexcept;
+bool take_frame_ticket(nk_surface_frame frame, FrameTicket *out_ticket) noexcept;
 
 } // namespace nk::core

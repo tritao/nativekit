@@ -4,6 +4,7 @@
 #include "adapter_internal.h"
 #include "core/graphics_image_registry.h"
 #include "core/executor.hpp"
+#include "core/frame_backend.hpp"
 #if defined(NKGPU_TESTING)
 #include "testing.h"
 #endif
@@ -3151,6 +3152,8 @@ static nkgpu_result end_frame(nkgpu_renderer r, bool present_surface) {
     if (rs->value.in_pass)
         sg_end_pass();
     sg_commit();
+    if (!present_surface && rs->value.frame_target.frame != NK_INVALID_HANDLE)
+        nk::core::mark_frame_render_submitted(rs->value.frame_target.frame);
     rs->value.state = RendererState::Ready;
     rs->value.in_pass = false;
     rs->value.active_target = 0;
