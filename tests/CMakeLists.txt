@@ -31,6 +31,7 @@ add_test(NAME plugin COMMAND nativekit_plugin_tests)
 
 add_executable(nativekit_dispatch_tests unit/dispatch_tests.cpp)
 target_compile_features(nativekit_dispatch_tests PRIVATE cxx_std_17)
+target_include_directories(nativekit_dispatch_tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(nativekit_dispatch_tests PRIVATE NativeKit::nativekit)
 add_test(NAME dispatch COMMAND nativekit_dispatch_tests)
 

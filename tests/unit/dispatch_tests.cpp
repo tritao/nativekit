@@ -1,6 +1,9 @@
 #include "nativekit.h"
+#include "core/executor.hpp"
 
+#include <atomic>
 #include <cassert>
+#include <chrono>
 #include <thread>
 #include <vector>
 
@@ -20,6 +23,17 @@ void NK_CALL record_task(void *user_data) {
 }
 
 int nested_runs = 0;
+
+struct RenderRecord {
+    std::atomic<int> runs{0};
+    std::atomic<nk_executor> executor{NK_EXECUTOR_WORKER};
+};
+
+void NK_CALL record_render_task(void *user_data) {
+    auto *record = static_cast<RenderRecord *>(user_data);
+    record->executor.store(nk_executor_current(), std::memory_order_release);
+    record->runs.fetch_add(1, std::memory_order_acq_rel);
+}
 
 void NK_CALL nested_task(void *) {
     nested_runs++;
@@ -63,6 +77,19 @@ int main() {
     assert(nk_executor_is_current(NK_EXECUTOR_WORKER) == 0);
     assert(nk_executor_is_current(static_cast<nk_executor>(42)) == 0);
     assert(nk_dispatch_to_app(nullptr, nullptr) == NK_ERROR_INVALID_ARGUMENT);
+
+    RenderRecord render_record;
+    assert(nk::core::dispatch_to_render(&record_render_task, &render_record, nullptr,
+                                        sizeof(render_record)) == NK_OK);
+    if (nk::core::render_executor_physical()) {
+        for (int attempt = 0; attempt < 1000 && render_record.runs.load() == 0; ++attempt)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    } else {
+        assert(poll_once() == NK_EVENT_NONE);
+    }
+    assert(render_record.runs.load(std::memory_order_acquire) == 1);
+    assert(render_record.executor.load(std::memory_order_acquire) ==
+           (nk::core::render_executor_physical() ? NK_EXECUTOR_RENDER : NK_EXECUTOR_APP));
 
     std::thread worker([&] {
         assert(nk_executor_current() == NK_EXECUTOR_WORKER);
