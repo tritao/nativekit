@@ -76,6 +76,7 @@ struct CApiShowcase {
     std::vector<nkui_resource> resources;
     std::vector<uint8_t> commands;
     bool frame_failed = false;
+    bool smoke_sequence = false;
     int rendered_frames = 0;
     int last_width = 0;
     int last_height = 0;
@@ -83,10 +84,16 @@ struct CApiShowcase {
     static void NK_CALL draw_frame(nk_surface surface, int32_t width, int32_t height,
                                    void *user_data) {
         auto &showcase = *static_cast<CApiShowcase *>(user_data);
-        if (!showcase.render_frame(surface, width, height))
+        const bool rendered = showcase.render_frame(surface, width, height);
+        if (!rendered)
             showcase.frame_failed = true;
-        else
+        else {
             ++showcase.rendered_frames;
+            if (showcase.smoke_sequence && showcase.rendered_frames < 30) {
+                const auto request = nk_surface_request_frame(surface);
+                showcase.frame_failed = request != NK_OK;
+            }
+        }
     }
 
     bool render_frame(nk_surface surface, int32_t framebuffer_width, int32_t framebuffer_height) {
@@ -575,6 +582,7 @@ int main(int argc, char **argv) {
         return 1;
 
     CApiShowcase showcase;
+    showcase.smoke_sequence = smoke;
     bool running = true;
     bool ready = false;
     int framebuffer_width = 0;
@@ -598,7 +606,8 @@ int main(int argc, char **argv) {
                                                     &framebuffer_height) == NK_OK &&
                     showcase.create(framebuffer_width, framebuffer_height) &&
                     nk_surface_set_frame_callback(surface, CApiShowcase::draw_frame, &showcase) ==
-                        NK_OK;
+                        NK_OK &&
+                    nk_surface_request_frame(surface) == NK_OK;
             if (!ready)
                 result = 4;
         } else if (event.kind == NK_EVENT_SURFACE_RESIZE && event.source == surface &&
