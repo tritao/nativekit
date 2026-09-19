@@ -224,6 +224,7 @@ class UiContext {
 			throw "A view must produce one unparented render tree root";
 		diagnosticStage = 5;
 		var styleInvalidation = UiStyleInvalidationMetrics.compare(root, next);
+		next.walk(function(node) node.syncHitTestPolicy());
 		var resolved = session.submit(next.layout, frame);
 		diagnosticStage = 6;
 		var byId = new Map<Int, ResolvedLayoutItem>();

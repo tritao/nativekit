@@ -31,6 +31,21 @@ bool finite_rect(const LayoutRect &rect) {
            std::isfinite(rect.height) && rect.width >= 0.0f && rect.height >= 0.0f;
 }
 
+LayoutRect intersect_rect(LayoutRect left, LayoutRect right) {
+    const float x = std::max(left.x, right.x);
+    const float y = std::max(left.y, right.y);
+    return {x, y, std::max(0.0f, std::min(left.x + left.width, right.x + right.width) - x),
+            std::max(0.0f, std::min(left.y + left.height, right.y + right.height) - y)};
+}
+
+bool contains_rect(const LayoutRect &outer, const LayoutRect &inner) {
+    if (inner.width <= 0.0f || inner.height <= 0.0f)
+        return true;
+    return inner.x + 0.001f >= outer.x && inner.y + 0.001f >= outer.y &&
+           inner.x + inner.width <= outer.x + outer.width + 0.001f &&
+           inner.y + inner.height <= outer.y + outer.height + 0.001f;
+}
+
 bool finite_transform(const LayoutTransform &transform) {
     return std::isfinite(transform.a) && std::isfinite(transform.b) && std::isfinite(transform.c) &&
            std::isfinite(transform.d) && std::isfinite(transform.tx) && std::isfinite(transform.ty);
@@ -156,7 +171,9 @@ bool check_snapshot(const std::vector<LayoutNode> &nodes, const LayoutSnapshot &
             item ? item->transform.a * item->transform.d - item->transform.b * item->transform.c
                  : 0.0f;
         if (!item || !finite_rect(item->bounds) || !finite_rect(item->clip_bounds) ||
-            !finite_rect(item->content_bounds) || !finite_transform(item->transform) ||
+            !finite_rect(item->content_bounds) || !finite_rect(item->local_bounds) ||
+            !finite_rect(item->world_bounds) || !finite_rect(item->subtree_hit_bounds) ||
+            !finite_transform(item->transform) || !finite_transform(item->inverse_transform) ||
             !std::isfinite(determinant) || std::abs(determinant) < 0.000001f ||
             (item->has_baseline && !std::isfinite(item->baseline))) {
             if (item)
@@ -173,6 +190,35 @@ bool check_snapshot(const std::vector<LayoutNode> &nodes, const LayoutSnapshot &
                           << debug_item.bounds.height << "\n";
             std::cerr << "case " << case_index << ": non-finite item geometry\n";
             return false;
+        }
+
+        const float inverse_determinant = item->inverse_transform.a * item->inverse_transform.d -
+                                           item->inverse_transform.b * item->inverse_transform.c;
+        const LayoutRect own_hit_bounds = intersect_rect(item->world_bounds, item->clip_bounds);
+        if (item->index != index ||
+            (item->parent_index == kInvalidLayoutIndex) != (nodes[index].parent < 0) ||
+            (item->parent_index != kInvalidLayoutIndex &&
+             (item->parent_index >= snapshot.items.size() ||
+              snapshot.items[item->parent_index].id != item->parent_id)) ||
+            !close(item->local_bounds.x, 0.0f) || !close(item->local_bounds.y, 0.0f) ||
+            !close(item->local_bounds.width, item->bounds.width) ||
+            !close(item->local_bounds.height, item->bounds.height) ||
+            !std::isfinite(inverse_determinant) || std::abs(inverse_determinant) < 0.000001f ||
+            item->child_offset > snapshot.child_indices.size() ||
+            item->child_count > snapshot.child_indices.size() - item->child_offset ||
+            item->hit_self != nodes[index].hit_self ||
+            item->hit_children != nodes[index].hit_children ||
+            (item->visible && !contains_rect(item->subtree_hit_bounds, own_hit_bounds))) {
+            std::cerr << "case " << case_index << ": invalid resolved scene metadata\n";
+            return false;
+        }
+        for (uint32_t child_offset = 0; child_offset < item->child_count; ++child_offset) {
+            const uint32_t child_index = snapshot.child_indices[item->child_offset + child_offset];
+            if (child_index >= snapshot.items.size() ||
+                snapshot.items[child_index].parent_index != item->index) {
+                std::cerr << "case " << case_index << ": invalid child range\n";
+                return false;
+            }
         }
 
         const LayoutAxis *axes[] = {&nodes[index].style.width, &nodes[index].style.height};
@@ -201,7 +247,7 @@ bool check_snapshot(const std::vector<LayoutNode> &nodes, const LayoutSnapshot &
 
 bool same_geometry(const LayoutSnapshot &left, const LayoutSnapshot &right) {
     if (left.items.size() != right.items.size() ||
-        left.primitives.size() != right.primitives.size())
+        left.child_indices != right.child_indices || left.primitives.size() != right.primitives.size())
         return false;
     for (std::size_t index = 0; index < left.items.size(); ++index) {
         const LayoutItem &a = left.items[index];
@@ -218,6 +264,24 @@ bool same_geometry(const LayoutSnapshot &left, const LayoutSnapshot &right) {
                                   a.content_bounds.y,
                                   a.content_bounds.width,
                                   a.content_bounds.height,
+                                  a.local_bounds.x,
+                                  a.local_bounds.y,
+                                  a.local_bounds.width,
+                                  a.local_bounds.height,
+                                  a.world_bounds.x,
+                                  a.world_bounds.y,
+                                  a.world_bounds.width,
+                                  a.world_bounds.height,
+                                  a.subtree_hit_bounds.x,
+                                  a.subtree_hit_bounds.y,
+                                  a.subtree_hit_bounds.width,
+                                  a.subtree_hit_bounds.height,
+                                  a.inverse_transform.a,
+                                  a.inverse_transform.b,
+                                  a.inverse_transform.c,
+                                  a.inverse_transform.d,
+                                  a.inverse_transform.tx,
+                                  a.inverse_transform.ty,
                                   a.transform.a,
                                   a.transform.b,
                                   a.transform.c,
@@ -237,6 +301,24 @@ bool same_geometry(const LayoutSnapshot &left, const LayoutSnapshot &right) {
                                   b.content_bounds.y,
                                   b.content_bounds.width,
                                   b.content_bounds.height,
+                                  b.local_bounds.x,
+                                  b.local_bounds.y,
+                                  b.local_bounds.width,
+                                  b.local_bounds.height,
+                                  b.world_bounds.x,
+                                  b.world_bounds.y,
+                                  b.world_bounds.width,
+                                  b.world_bounds.height,
+                                  b.subtree_hit_bounds.x,
+                                  b.subtree_hit_bounds.y,
+                                  b.subtree_hit_bounds.width,
+                                  b.subtree_hit_bounds.height,
+                                  b.inverse_transform.a,
+                                  b.inverse_transform.b,
+                                  b.inverse_transform.c,
+                                  b.inverse_transform.d,
+                                  b.inverse_transform.tx,
+                                  b.inverse_transform.ty,
                                   b.transform.a,
                                   b.transform.b,
                                   b.transform.c,
@@ -248,7 +330,11 @@ bool same_geometry(const LayoutSnapshot &left, const LayoutSnapshot &right) {
             if (!close(a_values[value], b_values[value]))
                 return false;
         if (a.id != b.id || a.visual_kind != b.visual_kind || a.visible != b.visible ||
-            a.has_baseline != b.has_baseline)
+            a.has_baseline != b.has_baseline || a.index != b.index ||
+            a.parent_index != b.parent_index || a.child_offset != b.child_offset ||
+            a.child_count != b.child_count || a.paint_order != b.paint_order ||
+            a.z_index != b.z_index || a.positioned_absolute != b.positioned_absolute ||
+            a.hit_self != b.hit_self || a.hit_children != b.hit_children)
             return false;
     }
     for (std::size_t index = 0; index < left.primitives.size(); ++index) {
@@ -271,6 +357,63 @@ uint32_t requested_cases() {
     if (end == value || *end != '\0' || parsed == 0 || parsed > 100000)
         return 2000;
     return static_cast<uint32_t>(parsed);
+}
+
+bool resolved_scene_metadata_case(LayoutEngine &engine) {
+    std::vector<LayoutNode> nodes(4);
+    nodes[0].id = 100;
+    nodes[0].parent = -1;
+    nodes[0].style.width = {LayoutSizing::Fixed, 320.0f};
+    nodes[0].style.height = {LayoutSizing::Fixed, 240.0f};
+    nodes[0].hit_self = false;
+
+    nodes[1].id = 101;
+    nodes[1].parent = 0;
+    nodes[1].style.width = {LayoutSizing::Fixed, 120.0f};
+    nodes[1].style.height = {LayoutSizing::Fixed, 60.0f};
+    nodes[1].style.background.alpha = 1.0f;
+
+    nodes[2].id = 102;
+    nodes[2].parent = 0;
+    nodes[2].style.width = {LayoutSizing::Fixed, 120.0f};
+    nodes[2].style.height = {LayoutSizing::Fixed, 60.0f};
+    nodes[2].style.positioning = LayoutPositioning::Absolute;
+    nodes[2].style.position_x = 10.0f;
+    nodes[2].style.position_y = 10.0f;
+    nodes[2].style.z_index = -1;
+    nodes[2].style.transform.tx = 24.0f;
+    nodes[2].style.transform.ty = 18.0f;
+    nodes[2].style.background.alpha = 1.0f;
+
+    nodes[3].id = 103;
+    nodes[3].parent = 0;
+    nodes[3].style.width = {LayoutSizing::Fixed, 120.0f};
+    nodes[3].style.height = {LayoutSizing::Fixed, 60.0f};
+    nodes[3].style.positioning = LayoutPositioning::Absolute;
+    nodes[3].style.position_x = 10.0f;
+    nodes[3].style.position_y = 10.0f;
+    nodes[3].style.z_index = 0;
+    nodes[3].hit_self = false;
+    nodes[3].hit_children = false;
+
+    LayoutSnapshot snapshot;
+    LayoutError error;
+    if (!engine.layout(nodes, 320.0f, 240.0f, 1.0f / 60.0f, snapshot, &error))
+        return false;
+    const LayoutItem *root = snapshot.find(100);
+    const LayoutItem *flow = snapshot.find(101);
+    const LayoutItem *negative = snapshot.find(102);
+    const LayoutItem *disabled = snapshot.find(103);
+    if (!root || !flow || !negative || !disabled ||
+        !(negative->paint_order < flow->paint_order && flow->paint_order < disabled->paint_order) ||
+        disabled->subtree_hit_bounds.width != 0.0f ||
+        disabled->subtree_hit_bounds.height != 0.0f ||
+        !contains_rect(root->subtree_hit_bounds, flow->world_bounds) ||
+        !contains_rect(root->subtree_hit_bounds, negative->world_bounds) ||
+        negative->world_bounds.x <= negative->bounds.x ||
+        negative->world_bounds.y <= negative->bounds.y)
+        return false;
+    return true;
 }
 
 } // namespace
@@ -305,6 +448,11 @@ int main() {
             std::cerr << "case " << case_index << ": layout is not deterministic\n";
             return 6;
         }
+    }
+
+    if (!resolved_scene_metadata_case(engine)) {
+        std::cerr << "resolved scene metadata case failed\n";
+        return 7;
     }
 
     std::cout << "PASS: " << cases << " randomized Clay layout invariant cases\n";

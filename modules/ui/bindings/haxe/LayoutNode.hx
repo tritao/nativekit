@@ -7,6 +7,10 @@ class LayoutNode {
 	public var textColor:Color;
 	public final textStyle:TextStyle;
 	public final paragraphStyle:ParagraphStyle;
+	/** Whether this node's own resolved bounds participate in geometric picking. */
+	public var hitSelf:Bool;
+	/** Whether descendants participate in geometric picking below this node. */
+	public var hitChildren:Bool;
 	/** Optional external content measured when this node is Custom. */
 	public var intrinsicContent:Null<LayoutContent>;
 	/** Invalidates native intrinsic measurement when no content object is attached. */
@@ -24,6 +28,8 @@ class LayoutNode {
 		textColor = Color.rgba(1.0, 1.0, 1.0, 1.0);
 		textStyle = new TextStyle();
 		paragraphStyle = new ParagraphStyle();
+		hitSelf = true;
+		hitChildren = true;
 		intrinsicContent = null;
 		measureVersion = 0;
 		children = [];

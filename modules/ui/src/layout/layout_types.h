@@ -184,6 +184,9 @@ struct LayoutNode {
     LayoutColor text_color{1.0f, 1.0f, 1.0f, 1.0f};
     TextStyle text_style{};
     ParagraphStyle paragraph_style{};
+    /** Geometric hit policy supplied by the framework layer. */
+    bool hit_self = true;
+    bool hit_children = true;
     // Changes invalidate persistent external intrinsic measurements for this node.
     uint32_t measure_version = 0;
 };
@@ -229,6 +232,8 @@ struct LayoutRect {
     float height = 0.0f;
 };
 
+constexpr uint32_t kInvalidLayoutIndex = UINT32_MAX;
+
 struct LayoutItem {
     uint32_t id = 0;
     LayoutVisualKind visual_kind = LayoutVisualKind::Box;
@@ -240,6 +245,27 @@ struct LayoutItem {
     bool visible = true;
     bool has_baseline = false;
     uint32_t parent_id = 0;
+    /** Submission-order index of this item. */
+    uint32_t index = kInvalidLayoutIndex;
+    /** Parent index in LayoutSnapshot::items, or kInvalidLayoutIndex for the root. */
+    uint32_t parent_index = kInvalidLayoutIndex;
+    /** Range into LayoutSnapshot::child_indices for direct children. */
+    uint32_t child_offset = 0;
+    uint32_t child_count = 0;
+    /** Node-local bounds, always rooted at (0, 0). */
+    LayoutRect local_bounds{};
+    /** Axis-aligned viewport bounds after the cumulative transform. */
+    LayoutRect world_bounds{};
+    /** Viewport bounds covering all hittable content below this item. */
+    LayoutRect subtree_hit_bounds{};
+    /** Inverse of transform, mapping viewport coordinates to layout coordinates. */
+    LayoutTransform inverse_transform{};
+    /** Native paint-order key; larger values are painted later. */
+    uint64_t paint_order = 0;
+    int32_t z_index = 0;
+    bool positioned_absolute = false;
+    bool hit_self = true;
+    bool hit_children = true;
 };
 
 enum class LayoutPrimitiveKind : uint8_t {
@@ -290,6 +316,7 @@ struct LayoutTextLayout {
 
 struct LayoutSnapshot {
     std::vector<LayoutItem> items;
+    std::vector<uint32_t> child_indices;
     std::vector<LayoutPrimitive> primitives;
     std::vector<LayoutTextLayout> text_layouts;
 

@@ -254,6 +254,25 @@ class RenderNode {
 	function hasPaintHandler():Bool
 		return paintHandlers.length > 0 || decorations.length > 0 || hasStyleDecorations();
 
+	/** Copies the framework hit policy into the native transaction payload. */
+	@:allow(nativekit.ui.core.UiContext)
+	function syncHitTestPolicy():Void {
+		switch hitTestBehavior {
+			case HitTestBehavior.None:
+				layout.hitSelf = false;
+				layout.hitChildren = false;
+			case HitTestBehavior.SelfOnly:
+				layout.hitSelf = hitTestSelf;
+				layout.hitChildren = false;
+			case HitTestBehavior.ChildrenOnly:
+				layout.hitSelf = false;
+				layout.hitChildren = true;
+			case HitTestBehavior.Auto:
+				layout.hitSelf = hitTestSelf;
+				layout.hitChildren = true;
+		}
+	}
+
 	/** Returns the complete opt-in fingerprint for safe retained paint reuse. */
 	@:allow(nativekit.ui.core.UiContext)
 	function retainedPaintKey():Null<String> {

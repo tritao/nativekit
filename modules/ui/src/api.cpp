@@ -553,7 +553,9 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                 wrap_mode > NKUI_LAYOUT_WRAP_WRAP ||
                 align_self > NKUI_LAYOUT_SELF_ALIGNMENT_BASELINE ||
                 (node_flags & ~(NKUI_LAYOUT_NODE_VISIBLE | NKUI_LAYOUT_NODE_FLOATING |
-                                NKUI_LAYOUT_NODE_CLIP_TO_PARENT)) != 0 ||
+                                NKUI_LAYOUT_NODE_CLIP_TO_PARENT |
+                                NKUI_LAYOUT_NODE_HIT_SELF_DISABLED |
+                                NKUI_LAYOUT_NODE_HIT_CHILDREN_DISABLED)) != 0 ||
                 (clip_to_parent && !floating) || z_index < std::numeric_limits<int16_t>::min() ||
                 z_index > std::numeric_limits<int16_t>::max() || !std::isfinite(position_x) ||
                 !std::isfinite(position_y) || width_sizing > NKUI_LAYOUT_SIZING_PERCENT)
@@ -579,6 +581,8 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
             node.id = id;
             node.visual_kind = static_cast<nkui::LayoutVisualKind>(visual_kind);
             node.style.visible = (node_flags & NKUI_LAYOUT_NODE_VISIBLE) != 0;
+            node.hit_self = (node_flags & NKUI_LAYOUT_NODE_HIT_SELF_DISABLED) == 0;
+            node.hit_children = (node_flags & NKUI_LAYOUT_NODE_HIT_CHILDREN_DISABLED) == 0;
             node.style.transform = {transform[0], transform[1], transform[2],
                                     transform[3], transform[4], transform[5]};
             node.style.transform_origin_x = transform_origin_x;

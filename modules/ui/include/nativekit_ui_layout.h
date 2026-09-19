@@ -37,7 +37,11 @@ typedef uint32_t nkui_layout_node_flags;
 enum NK_FLAGS(nkui_layout_node_flags) {
     NKUI_LAYOUT_NODE_VISIBLE = 1u << 0,
     NKUI_LAYOUT_NODE_FLOATING = 1u << 1,
-    NKUI_LAYOUT_NODE_CLIP_TO_PARENT = 1u << 2
+    NKUI_LAYOUT_NODE_CLIP_TO_PARENT = 1u << 2,
+    /** Excludes this node's own bounds from geometric hit testing. */
+    NKUI_LAYOUT_NODE_HIT_SELF_DISABLED = 1u << 3,
+    /** Excludes this node's descendants from geometric hit testing. */
+    NKUI_LAYOUT_NODE_HIT_CHILDREN_DISABLED = 1u << 4
 };
 
 /** Persistent rendering policy for a retained custom-paint plane. */

@@ -503,6 +503,21 @@ LayoutRect transform_bounds(LayoutRect rect, LayoutTransform transform) {
     return {left, top, std::max({x0, x1, x2, x3}) - left, std::max({y0, y1, y2, y3}) - top};
 }
 
+bool inverse_transform(LayoutTransform transform, LayoutTransform &out) {
+    const float determinant = transform.a * transform.d - transform.b * transform.c;
+    if (!finite_transform(transform) || !std::isfinite(determinant) ||
+        std::abs(determinant) < 0.000001f)
+        return false;
+    const float reciprocal = 1.0f / determinant;
+    out = {transform.d * reciprocal,
+           -transform.b * reciprocal,
+           -transform.c * reciprocal,
+           transform.a * reciprocal,
+           (transform.c * transform.ty - transform.d * transform.tx) * reciprocal,
+           (transform.b * transform.tx - transform.a * transform.ty) * reciprocal};
+    return finite_transform(out);
+}
+
 LayoutRect intersect_axes(LayoutRect clip, LayoutRect bounds, bool horizontal, bool vertical) {
     if (horizontal) {
         const float right = std::min(clip.x + clip.width, bounds.x + bounds.width);
@@ -515,6 +530,31 @@ LayoutRect intersect_axes(LayoutRect clip, LayoutRect bounds, bool horizontal, b
         clip.height = std::max(0.0f, bottom - clip.y);
     }
     return clip;
+}
+
+LayoutRect intersect_rect(LayoutRect left, LayoutRect right) {
+    return {std::max(left.x, right.x),
+            std::max(left.y, right.y),
+            std::max(0.0f, std::min(left.x + left.width, right.x + right.width) -
+                                std::max(left.x, right.x)),
+            std::max(0.0f, std::min(left.y + left.height, right.y + right.height) -
+                                std::max(left.y, right.y))};
+}
+
+bool has_area(LayoutRect rect) {
+    return rect.width > 0.0f && rect.height > 0.0f;
+}
+
+LayoutRect union_rect(LayoutRect left, LayoutRect right) {
+    if (!has_area(left))
+        return right;
+    if (!has_area(right))
+        return left;
+    const float x = std::min(left.x, right.x);
+    const float y = std::min(left.y, right.y);
+    const float right_edge = std::max(left.x + left.width, right.x + right.width);
+    const float bottom_edge = std::max(left.y + left.height, right.y + right.height);
+    return {x, y, right_edge - x, bottom_edge - y};
 }
 
 LayoutColor color_from(Clay_Color color) {
@@ -736,6 +776,8 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
     }
 
     out.items.resize(nodes.size());
+    out.child_indices.clear();
+    out.child_indices.reserve(nodes.size() > 0 ? nodes.size() - 1 : 0);
     const LayoutRect viewport{0.0f, 0.0f, width, height};
     const auto resolve_geometry = [&](auto &&self, std::size_t index,
                                       LayoutTransform parent_transform, bool parent_visible,
@@ -762,11 +804,24 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
         LayoutItem item{};
         item.id = node.id;
         item.parent_id = node.parent >= 0 ? nodes[static_cast<std::size_t>(node.parent)].id : 0;
+        item.index = static_cast<uint32_t>(index);
+        item.parent_index = node.parent >= 0 ? static_cast<uint32_t>(node.parent)
+                                             : kInvalidLayoutIndex;
+        item.child_offset = static_cast<uint32_t>(out.child_indices.size());
+        item.child_count = static_cast<uint32_t>(state.children[index].size());
+        for (const std::size_t child : state.children[index])
+            out.child_indices.push_back(static_cast<uint32_t>(child));
         item.visual_kind = node.visual_kind;
         item.bounds = node_bounds[index];
         item.clip_bounds = item_clip;
         item.transform = transform;
+        item.local_bounds = {0.0f, 0.0f, node_bounds[index].width, node_bounds[index].height};
+        item.world_bounds = transformed;
+        item.z_index = node.style.z_index;
+        item.positioned_absolute = node.style.positioning == LayoutPositioning::Absolute;
         item.visible = visible;
+        item.hit_self = node.hit_self;
+        item.hit_children = node.hit_children;
         const float determinant = transform.a * transform.d - transform.b * transform.c;
         if (!finite_transform(transform) || !std::isfinite(determinant) ||
             std::abs(determinant) < 0.000001f || !std::isfinite(transformed.x) ||
@@ -775,6 +830,13 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
             if (error) {
                 error->node_index = index;
                 error->message = "layout transform is not finite and invertible";
+            }
+            return false;
+        }
+        if (!inverse_transform(transform, item.inverse_transform)) {
+            if (error) {
+                error->node_index = index;
+                error->message = "layout transform inverse could not be resolved";
             }
             return false;
         }
@@ -839,6 +901,15 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
             if (!self(self, child, transform, visible, child_clip, node_bounds_rect))
                 return false;
         }
+        LayoutRect subtree = item.hit_self && item.visible
+                                 ? intersect_rect(item.world_bounds, item.clip_bounds)
+                                 : LayoutRect{};
+        if (item.hit_children && item.visible) {
+            for (const std::size_t child : state.children[index])
+                subtree = union_rect(subtree, out.items[child].subtree_hit_bounds);
+        }
+        item.subtree_hit_bounds = subtree;
+        out.items[index] = item;
         return true;
     };
     if (!resolve_geometry(resolve_geometry, root, LayoutTransform{}, true, viewport, viewport))
@@ -881,6 +952,39 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
             index = insertion - 1;
         }
     }
+
+    // Publish one native paint-order key for every resolved node. Clay emits
+    // flow content in declaration order and floating roots in z-index order;
+    // retain that same stable order for transparent nodes that have no render
+    // primitive of their own, so picking never has to reconstruct it in Haxe.
+    uint64_t next_paint_order = 1;
+    const auto assign_paint_order = [&](auto &&self, std::size_t index) -> void {
+        auto &item = out.items[index];
+        item.paint_order = next_paint_order++;
+        std::vector<std::size_t> ordered_children = state.children[index];
+        std::stable_sort(ordered_children.begin(), ordered_children.end(), [&](std::size_t left,
+                                                                                std::size_t right) {
+            const auto &left_node = nodes[left];
+            const auto &right_node = nodes[right];
+            const int left_layer = left_node.style.positioning == LayoutPositioning::Absolute
+                                       ? left_node.style.z_index
+                                       : 0;
+            const int right_layer = right_node.style.positioning == LayoutPositioning::Absolute
+                                        ? right_node.style.z_index
+                                        : 0;
+            if (left_layer != right_layer)
+                return left_layer < right_layer;
+            const bool left_floating = left_node.style.positioning == LayoutPositioning::Absolute;
+            const bool right_floating =
+                right_node.style.positioning == LayoutPositioning::Absolute;
+            if (left_floating != right_floating)
+                return !left_floating;
+            return left < right;
+        });
+        for (const std::size_t child : ordered_children)
+            self(self, child);
+    };
+    assign_paint_order(assign_paint_order, root);
 
     return true;
 }

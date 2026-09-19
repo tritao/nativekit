@@ -144,6 +144,10 @@ class LayoutTransaction {
 			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_TRANSFORM_TX_OFFSET, transform.tx);
 			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_TRANSFORM_TY_OFFSET, transform.ty);
 			var nodeFlags = style.visible ? 1 : 0;
+			if (!node.hitSelf)
+				nodeFlags |= 1 << 3;
+			if (!node.hitChildren)
+				nodeFlags |= 1 << 4;
 			if (positioning == LayoutPositioning.Absolute) {
 				nodeFlags |= 1 << 1;
 				if (style.clipToParent)

@@ -335,6 +335,14 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		NKUI_LAYOUT_NODE_VISIBLE = 1;
 		NKUI_LAYOUT_NODE_FLOATING = 2;
 		NKUI_LAYOUT_NODE_CLIP_TO_PARENT = 4;
+		/**
+		 * Excludes this node's own bounds from geometric hit testing.
+		 */
+		NKUI_LAYOUT_NODE_HIT_SELF_DISABLED = 8;
+		/**
+		 * Excludes this node's descendants from geometric hit testing.
+		 */
+		NKUI_LAYOUT_NODE_HIT_CHILDREN_DISABLED = 16;
 	}
 	/**
 	 * Flags returned with each resolved item.
