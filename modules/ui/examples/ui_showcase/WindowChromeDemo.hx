@@ -62,6 +62,7 @@ class WindowChromeDemo {
 	var failure:Null<Dynamic>;
 	var renderedFrames:Int = 0;
 	var closeAfterFrames:Int = 0;
+	var diagnosticComplete:Null<Void->Void>;
 	static inline var WINDOW_POSITION_OFFSET:Int = 40;
 	static inline var MIN_WIDTH:Int = 480;
 	static inline var MIN_HEIGHT:Int = 300;
@@ -129,6 +130,7 @@ class WindowChromeDemo {
 		frameInfo = new FrameInfo(width, height, width, height, scale);
 		input = new NativeInputAdapter(context, new Handle(window.rawValue()));
 		input.attach(events);
+		startFrameLoop();
 	}
 
 	/** Handles window and surface lifecycle events; input is routed by NativeInputAdapter. */
@@ -149,23 +151,12 @@ class WindowChromeDemo {
 			case WindowScaleChanged(source, newScale) if (source.rawValue() == window.rawValue()):
 				scale = newScale > 0.0 ? newScale : 1.0;
 			case SurfaceReady(source) if (source.rawValue() == surface.rawValue()):
-				ready = true;
-				var size = NativeKit.nk_surface_get_framebuffer_size(surface);
-				if (size.status != Result.Ok) {
-					failure = new NativeKitError(size.status, "surface.framebuffer_size", NativeKit.nk_last_error());
+				try
+					startFrameLoop();
+				catch (error:Dynamic) {
+					failure = error;
 					closeRequested = true;
-					return;
 				}
-				frameInfo = new FrameInfo(width, height, size.out_width, size.out_height, scale);
-				if (frameSubscription == null)
-					frameSubscription = nativeSurface.onFrame(function(framebufferWidth, framebufferHeight) {
-						try
-							renderFrame(framebufferWidth, framebufferHeight);
-						catch (error:Dynamic) {
-							failure = error;
-							closeRequested = true;
-						}
-					});
 			case SurfaceResize(source, newWidth, newHeight, framebufferWidth, framebufferHeight)
 				if (source.rawValue() == surface.rawValue()):
 				width = newWidth;
@@ -183,8 +174,10 @@ class WindowChromeDemo {
 	public function renderedFrameCount():Int
 		return renderedFrames;
 
-	public function enableDiagnosticRun(frameCount:Int):Void
+	public function enableDiagnosticRun(frameCount:Int, ?onComplete:Void->Void):Void {
 		closeAfterFrames = frameCount > 0 ? frameCount : 1;
+		diagnosticComplete = onComplete;
+	}
 
 	public function minimumWidth():Int
 		return MIN_WIDTH;
@@ -211,6 +204,31 @@ class WindowChromeDemo {
 		return Std.string(failure);
 	}
 
+	function startFrameLoop():Void {
+		if (disposed || frameSubscription != null)
+			return;
+		var activeSurface = nativeSurface;
+		if (activeSurface == null)
+			throw "window chrome surface is unavailable";
+		var size = NativeKit.nk_surface_get_framebuffer_size(surface);
+		if (size.status != Result.Ok)
+			throw new NativeKitError(size.status, "surface.framebuffer_size", NativeKit.nk_last_error());
+		ready = true;
+		frameInfo = new FrameInfo(width, height, size.out_width, size.out_height, scale);
+		frameSubscription = activeSurface.onFrame(function(framebufferWidth, framebufferHeight) {
+			try {
+				renderFrame(framebufferWidth, framebufferHeight);
+				if (!closeRequested && NativeKit.nk_surface_request_frame(surface) != Result.Ok)
+					throw "surface frame request failed";
+			} catch (error:Dynamic) {
+				failure = error;
+				closeRequested = true;
+			}
+		});
+		if (NativeKit.nk_surface_request_frame(surface) != Result.Ok)
+			throw "initial surface frame request failed";
+	}
+
 	function renderFrame(framebufferWidth:Int, framebufferHeight:Int):Void {
 		if (!ready || disposed || context == null || renderer == null || frame == null ||
 			frameInfo == null || nativeSurface == null || framebufferWidth <= 0 || framebufferHeight <= 0)
@@ -221,8 +239,13 @@ class WindowChromeDemo {
 		context.submit(buildRoot(), frame);
 		context.render(renderer, Surface.fromNativeHandle(surface), frameInfo);
 		renderedFrames++;
-		if (closeAfterFrames > 0 && renderedFrames >= closeAfterFrames)
+		if (closeAfterFrames > 0 && renderedFrames >= closeAfterFrames && !closeRequested) {
 			closeRequested = true;
+			var complete = diagnosticComplete;
+			diagnosticComplete = null;
+			if (complete != null)
+				complete();
+		}
 	}
 
 	function placeNear(owner:WindowHandle):Void {

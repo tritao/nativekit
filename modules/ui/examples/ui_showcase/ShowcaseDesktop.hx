@@ -285,17 +285,41 @@ class ShowcaseDesktop {
                             frameSubscription = frameSurface.onFrame(function(width, height) {
                                 try {
                                     renderFrame(width, height);
+                                    if (frameState.running &&
+                                            NativeKit.nk_surface_request_frame(surface) != Result.Ok)
+                                        throw "surface frame request failed";
                                 } catch (error:Dynamic) {
                                     frameState.callbackFailed = true;
                                     frameState.callbackError = error;
                                     frameState.running = false;
                                 }
                             });
+                        if (NativeKit.nk_surface_request_frame(surface) != Result.Ok)
+                            throw "initial surface frame request failed";
                         if (uiWindowChromeTest && chromeDemo == null && explorer != null) {
                             try {
                                 chromeDemo = WindowChromeDemo.open(activePump, graphicsApi, window,
                                     explorer.currentTheme());
-                                chromeDemo.enableDiagnosticRun(3);
+                                chromeDemo.enableDiagnosticRun(3, function() {
+                                    if (chromeDemo == null)
+                                        return;
+                                    var failureMessage = chromeDemo.failureMessage();
+                                    if (failureMessage != null) {
+                                        Sys.println("nativekit_ui_showcase window_chrome_test: " +
+                                            failureMessage);
+                                        chromeTestResult = 22;
+                                    } else if (chromeDemo.renderedFrameCount() <= 0) {
+                                        Sys.println("nativekit_ui_showcase window_chrome_test: " +
+                                            "no demo frame rendered");
+                                        chromeTestResult = 23;
+                                    } else {
+                                        Sys.println('nativekit_ui_showcase window_chrome_test: ' +
+                                            'PASS frames=${chromeDemo.renderedFrameCount()}');
+                                        chromeTestResult = 0;
+                                    }
+                                    frameState.running = false;
+                                    running = false;
+                                });
                             } catch (error:Dynamic) {
                                 Sys.println("nativekit_ui_showcase window_chrome_test: open failed: "
                                     + Std.string(error));
@@ -345,7 +369,7 @@ class ShowcaseDesktop {
 
 			while (running) {
 				var hadEvent = activePump.poll();
-                if (chromeDemo != null && chromeDemo.isCloseRequested()) {
+                if (chromeDemo != null && chromeDemo.isCloseRequested() && chromeTestResult < 0) {
                     var closingDemo = chromeDemo;
                     chromeDemo = null;
                     var failureMessage = closingDemo.failureMessage();
