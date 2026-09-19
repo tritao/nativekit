@@ -14,6 +14,7 @@
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <new>
 #include <thread>
 #include <unordered_map>
 #include <utility>
@@ -82,6 +83,7 @@ class Task final : public Resource {
 
   private:
     friend class TaskManager;
+    friend void task_run_impl(Task &, TaskManager &, const std::shared_ptr<Task> &);
 
     void emit_progress(std::vector<std::byte> payload, std::uint32_t count) noexcept;
     void emit_terminal(nk_task_state state, nk_result result, std::vector<std::byte> payload,
@@ -151,7 +153,14 @@ class TaskManager final {
     }
 
     nk_result start_task(const nk_task_options &options, nk_task_step_fn step, void *user_data,
-                         nk_task *out_task) noexcept {
+                         nk_task *out_task) {
+        struct HandleGuard {
+            nk_task handle = NK_INVALID_HANDLE;
+            ~HandleGuard() {
+                if (handle != NK_INVALID_HANDLE)
+                    (void)handles().erase(handle, ResourceType::task);
+            }
+        } handle_guard;
         const auto mode = options.execution_mode == NK_TASK_EXECUTION_AUTO ? native_default_mode()
                                                                            : options.execution_mode;
         if (mode != NK_TASK_EXECUTION_BACKGROUND && mode != NK_TASK_EXECUTION_COOPERATIVE) {
@@ -175,6 +184,7 @@ class TaskManager final {
             set_error("could not allocate a native task handle");
             return NK_ERROR_OUT_OF_MEMORY;
         }
+        handle_guard.handle = handle;
         task->set_handle(handle);
         {
             std::lock_guard lock(mutex_);
@@ -185,6 +195,7 @@ class TaskManager final {
             }
             tasks_.emplace(handle, task);
         }
+        handle_guard.handle = NK_INVALID_HANDLE;
         const auto result = enqueue(task);
         if (result != NK_OK) {
             task->mark_destroyed();
@@ -271,6 +282,7 @@ class TaskManager final {
         if (task->queued_.exchange(true, std::memory_order_acq_rel))
             return NK_OK;
         if (task->mode() == NK_TASK_EXECUTION_COOPERATIVE) {
+#if NK_ENABLE_NO_EXCEPTIONS
             {
                 std::lock_guard lock(cooperative_mutex_);
                 if (cooperative_queue_.size() >= cooperative_queue_capacity) {
@@ -279,14 +291,45 @@ class TaskManager final {
                 }
                 cooperative_queue_.push_back(task);
             }
+#else
+            try {
+                std::lock_guard lock(cooperative_mutex_);
+                if (cooperative_queue_.size() >= cooperative_queue_capacity) {
+                    task->queued_.store(false, std::memory_order_release);
+                    return NK_ERROR_QUEUE_FULL;
+                }
+                cooperative_queue_.push_back(task);
+            } catch (const std::bad_alloc &) {
+                task->queued_.store(false, std::memory_order_release);
+                return NK_ERROR_OUT_OF_MEMORY;
+            } catch (...) {
+                task->queued_.store(false, std::memory_order_release);
+                return NK_ERROR_UNKNOWN;
+            }
+#endif
             nk::backend::schedule_cooperative_tasks();
             return NK_OK;
         }
+#if NK_ENABLE_NO_EXCEPTIONS
         const auto result = workers_.submit([this, task] {
             task->queued_.store(false, std::memory_order_release);
             if (!task->is_destroyed())
                 task->run(*this, task);
         });
+#else
+        nk_result result = NK_OK;
+        try {
+            result = workers_.submit([this, task] {
+                task->queued_.store(false, std::memory_order_release);
+                if (!task->is_destroyed())
+                    task->run(*this, task);
+            });
+        } catch (const std::bad_alloc &) {
+            result = NK_ERROR_OUT_OF_MEMORY;
+        } catch (...) {
+            result = NK_ERROR_UNKNOWN;
+        }
+#endif
         if (result != NK_OK)
             task->queued_.store(false, std::memory_order_release);
         return result;
@@ -346,33 +389,33 @@ void Task::emit_terminal(nk_task_state state, nk_result result, std::vector<std:
     (void)push_event(std::move(event));
 }
 
-void Task::run(TaskManager &manager, const std::shared_ptr<Task> &self) noexcept {
-    if (is_destroyed() || terminal_state(state()))
+void task_run_impl(Task &task, TaskManager &manager, const std::shared_ptr<Task> &self) {
+    if (task.is_destroyed() || terminal_state(task.state()))
         return;
-    if (is_cancelled()) {
-        emit_terminal(NK_TASK_STATE_CANCELLED, NK_ERROR_CANCELLED, {}, 0);
+    if (task.is_cancelled()) {
+        task.emit_terminal(NK_TASK_STATE_CANCELLED, NK_ERROR_CANCELLED, {}, 0);
         return;
     }
-    set_state(NK_TASK_STATE_RUNNING);
+    task.set_state(NK_TASK_STATE_RUNNING);
 
     nk_task_step_context context{};
     context.struct_size = sizeof(context);
-    context.state = user_data_;
-    context.cancelled = is_cancelled() ? 1u : 0u;
-    context.budget_ns = budget_ns(step_budget_us_);
-    context.runtime_generation = generation_;
+    context.state = task.user_data_;
+    context.cancelled = task.is_cancelled() ? 1u : 0u;
+    context.budget_ns = budget_ns(task.step_budget_us_);
+    context.runtime_generation = task.generation_;
 
     nk_task_step_output output{};
     output.struct_size = sizeof(output);
     output.result = NK_ERROR_UNKNOWN;
     nk_task_step_result step_result = NK_TASK_STEP_FAILED;
-    step_result = step_(&context, &output);
+    step_result = task.step_(&context, &output);
 
     std::vector<std::byte> progress;
     std::vector<std::byte> result_payload;
     if (!valid_payload(output.progress_data, output.progress_size) ||
         !valid_payload(output.result_data, output.result_size)) {
-        emit_terminal(NK_TASK_STATE_FAILED, NK_ERROR_PAYLOAD_TOO_LARGE, {}, 0);
+        task.emit_terminal(NK_TASK_STATE_FAILED, NK_ERROR_PAYLOAD_TOO_LARGE, {}, 0);
         return;
     }
     if (output.progress_size != 0) {
@@ -385,9 +428,9 @@ void Task::run(TaskManager &manager, const std::shared_ptr<Task> &self) noexcept
     }
 
     if (!progress.empty() || output.progress_count != 0)
-        emit_progress(std::move(progress), output.progress_count);
-    if (is_cancelled()) {
-        emit_terminal(NK_TASK_STATE_CANCELLED, NK_ERROR_CANCELLED, std::move(result_payload),
+        task.emit_progress(std::move(progress), output.progress_count);
+    if (task.is_cancelled()) {
+        task.emit_terminal(NK_TASK_STATE_CANCELLED, NK_ERROR_CANCELLED, std::move(result_payload),
                       output.result_count);
         return;
     }
@@ -395,24 +438,38 @@ void Task::run(TaskManager &manager, const std::shared_ptr<Task> &self) noexcept
         const auto failure = output.result == NK_OK || output.result == NK_PENDING
                                  ? NK_ERROR_UNKNOWN
                                  : output.result;
-        emit_terminal(NK_TASK_STATE_FAILED, failure, std::move(result_payload),
+        task.emit_terminal(NK_TASK_STATE_FAILED, failure, std::move(result_payload),
                       output.result_count);
         return;
     }
     if (step_result == NK_TASK_STEP_COMPLETE) {
-        emit_terminal(NK_TASK_STATE_COMPLETED, NK_OK, std::move(result_payload),
+        task.emit_terminal(NK_TASK_STATE_COMPLETED, NK_OK, std::move(result_payload),
                       output.result_count);
         return;
     }
     if (step_result != NK_TASK_STEP_YIELD) {
-        emit_terminal(NK_TASK_STATE_FAILED, NK_ERROR_INVALID_ARGUMENT, {}, 0);
+        task.emit_terminal(NK_TASK_STATE_FAILED, NK_ERROR_INVALID_ARGUMENT, {}, 0);
         return;
     }
 
-    set_state(NK_TASK_STATE_YIELDED);
+    task.set_state(NK_TASK_STATE_YIELDED);
     const auto result = manager.enqueue(self);
     if (result != NK_OK)
-        emit_terminal(NK_TASK_STATE_FAILED, result, {}, 0);
+        task.emit_terminal(NK_TASK_STATE_FAILED, result, {}, 0);
+}
+
+void Task::run(TaskManager &manager, const std::shared_ptr<Task> &self) noexcept {
+#if NK_ENABLE_NO_EXCEPTIONS
+    task_run_impl(*this, manager, self);
+#else
+    try {
+        task_run_impl(*this, manager, self);
+    } catch (const std::bad_alloc &) {
+        emit_terminal(NK_TASK_STATE_FAILED, NK_ERROR_OUT_OF_MEMORY, {}, 0);
+    } catch (...) {
+        emit_terminal(NK_TASK_STATE_FAILED, NK_ERROR_UNKNOWN, {}, 0);
+    }
+#endif
 }
 
 nk_result task_runtime_initialize(std::uint64_t generation) noexcept {

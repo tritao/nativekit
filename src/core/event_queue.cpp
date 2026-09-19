@@ -12,8 +12,6 @@
 namespace nk::core {
 
 namespace {
-constexpr std::size_t max_pending_readiness = 1024;
-
 bool is_terminal_request_event(const QueuedEvent &event) {
     if (event.kind == NK_EVENT_TASK_COMPLETE || event.kind == NK_EVENT_TASK_FAILED ||
         event.kind == NK_EVENT_TASK_CANCELLED)
@@ -102,12 +100,12 @@ void promote_deferred_readiness(std::deque<QueuedEvent> &queue, std::deque<Queue
     }
 }
 
-void promote_pending_overflow(std::deque<QueuedEvent> &queue, std::optional<QueuedEvent> &pending,
+void promote_pending_overflow(std::deque<QueuedEvent> &queue, std::deque<QueuedEvent> &pending,
                               std::size_t capacity) {
-    if (!pending || (!queue.empty() && queue.size() >= capacity))
+    if (pending.empty() || (!queue.empty() && queue.size() >= capacity))
         return;
-    queue.push_back(std::move(*pending));
-    pending.reset();
+    queue.push_back(std::move(pending.front()));
+    pending.pop_front();
 }
 
 void promote_readiness_for_request(std::deque<QueuedEvent> &queue,
@@ -171,15 +169,17 @@ nk_result EventQueue::push(QueuedEvent event) {
                 queue_.erase(victim);
             } else {
                 /* Do not evict an accepted completion or readiness record.
-                 * Coalesce overflow until polling makes room. */
-                if (pending_file_watch_overflow_) {
-                    queued_bytes_ -= pending_file_watch_overflow_->data.size();
-                    pending_file_watch_overflow_ = std::move(event);
-                    queued_bytes_ += event_bytes;
-                } else {
-                    pending_file_watch_overflow_ = std::move(event);
-                    queued_bytes_ += event_bytes;
+                 * Coalesce overflow per watcher until polling makes room. */
+                for (auto &pending : pending_file_watch_overflows_) {
+                    if (pending.source == event.source) {
+                        queued_bytes_ -= pending.data.size();
+                        pending = std::move(event);
+                        queued_bytes_ += event_bytes;
+                        return NK_OK;
+                    }
                 }
+                pending_file_watch_overflows_.push_back(std::move(event));
+                queued_bytes_ += event_bytes;
                 return NK_OK;
             }
         } else if (!is_persistent_readiness(event.kind)) {
@@ -191,8 +191,6 @@ nk_result EventQueue::push(QueuedEvent event) {
             for (const auto &queued : deferred_readiness_)
                 if (same_readiness_target(queued, event))
                     return NK_OK;
-            if (deferred_readiness_.size() >= max_pending_readiness)
-                return NK_ERROR_QUEUE_FULL;
             deferred_readiness_.push_back(std::move(event));
             queued_bytes_ += event_bytes;
             return NK_OK;
@@ -208,7 +206,7 @@ nk_result EventQueue::push(QueuedEvent event) {
 nk_result EventQueue::poll(nk_event &output) {
     std::lock_guard lock(mutex_);
     promote_deferred_readiness(queue_, deferred_readiness_, capacity_);
-    promote_pending_overflow(queue_, pending_file_watch_overflow_, capacity_);
+    promote_pending_overflow(queue_, pending_file_watch_overflows_, capacity_);
     if (queue_.empty()) {
         output.kind = NK_EVENT_NONE;
         return NK_OK;
@@ -233,13 +231,13 @@ nk_result EventQueue::poll(nk_event &output) {
     queued_bytes_ -= event.data.size();
     queue_.pop_front();
     promote_deferred_readiness(queue_, deferred_readiness_, capacity_);
-    promote_pending_overflow(queue_, pending_file_watch_overflow_, capacity_);
+    promote_pending_overflow(queue_, pending_file_watch_overflows_, capacity_);
     return NK_OK;
 }
 
 bool EventQueue::empty() {
     std::lock_guard lock(mutex_);
-    return queue_.empty() && deferred_readiness_.empty() && !pending_file_watch_overflow_;
+    return queue_.empty() && deferred_readiness_.empty() && pending_file_watch_overflows_.empty();
 }
 
 void EventQueue::clear() {
@@ -247,7 +245,7 @@ void EventQueue::clear() {
     queue_.clear();
     queued_bytes_ = 0;
     deferred_readiness_.clear();
-    pending_file_watch_overflow_.reset();
+    pending_file_watch_overflows_.clear();
 }
 
 } // namespace nk::core

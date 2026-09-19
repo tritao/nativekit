@@ -80,8 +80,11 @@ struct RequestContext final : std::enable_shared_from_this<RequestContext> {
     RequestConfig request;
 
     std::atomic<bool> canceled{false};
+    std::atomic<bool> timed_out{false};
     std::mutex mutex;
     std::condition_variable condition;
+    std::chrono::steady_clock::time_point deadline =
+        std::chrono::steady_clock::time_point::max();
     std::deque<std::vector<std::byte>> chunks;
     uint64_t available = 0;
     uint64_t received = 0;

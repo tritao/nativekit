@@ -37,6 +37,7 @@ class HandleRegistry {
   public:
     nk_handle insert(ResourceType type, std::shared_ptr<Resource> resource);
     std::shared_ptr<Resource> get(nk_handle handle, ResourceType type) const;
+    std::vector<nk_handle> handles_of_type(ResourceType type) const;
     bool erase(nk_handle handle, ResourceType type);
     void clear();
 

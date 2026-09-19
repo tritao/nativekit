@@ -457,32 +457,32 @@ int main() {
     task_progress_other.kind = NK_EVENT_TASK_PROGRESS;
     task_progress_other.source = 78;
     task_progress_other.data = {std::byte{3}};
-    assert(task_progress_queue.push(std::move(task_progress_first)) == NK_OK);
-    assert(task_progress_queue.push(std::move(task_progress_other)) == NK_OK);
-    assert(task_progress_queue.push(std::move(task_progress_latest)) == NK_OK);
+    NK_CHECK(task_progress_queue.push(std::move(task_progress_first)) == NK_OK);
+    NK_CHECK(task_progress_queue.push(std::move(task_progress_other)) == NK_OK);
+    NK_CHECK(task_progress_queue.push(std::move(task_progress_latest)) == NK_OK);
     event = {};
     event.struct_size = sizeof(event);
-    assert(task_progress_queue.poll(event) == NK_OK);
-    assert(event.kind == NK_EVENT_TASK_PROGRESS && event.source == 77);
-    assert(static_cast<const std::byte *>(event.data)[0] == std::byte{2});
+    NK_CHECK(task_progress_queue.poll(event) == NK_OK);
+    NK_CHECK(event.kind == NK_EVENT_TASK_PROGRESS && event.source == 77);
+    NK_CHECK(static_cast<const std::byte *>(event.data)[0] == std::byte{2});
     nk_event_release(&event);
 
     nk::core::EventQueue task_terminal_queue(1);
     nk::core::QueuedEvent task_ordinary;
     task_ordinary.kind = NK_EVENT_TASK_PROGRESS;
     task_ordinary.source = 88;
-    assert(task_terminal_queue.push(std::move(task_ordinary)) == NK_OK);
+    NK_CHECK(task_terminal_queue.push(std::move(task_ordinary)) == NK_OK);
     nk::core::QueuedEvent task_terminal;
     task_terminal.kind = NK_EVENT_TASK_COMPLETE;
     task_terminal.source = 88;
-    assert(task_terminal_queue.push(std::move(task_terminal)) == NK_OK);
+    NK_CHECK(task_terminal_queue.push(std::move(task_terminal)) == NK_OK);
     event = {};
     event.struct_size = sizeof(event);
-    assert(task_terminal_queue.poll(event) == NK_OK);
+    NK_CHECK(task_terminal_queue.poll(event) == NK_OK);
     nk_event_release(&event);
     event.struct_size = sizeof(event);
-    assert(task_terminal_queue.poll(event) == NK_OK);
-    assert(event.kind == NK_EVENT_TASK_COMPLETE);
+    NK_CHECK(task_terminal_queue.poll(event) == NK_OK);
+    NK_CHECK(event.kind == NK_EVENT_TASK_COMPLETE);
     nk_event_release(&event);
 
     nk::core::EventQueue clipboard_queue(1);
@@ -542,5 +542,55 @@ int main() {
     nk::core::QueuedEvent empty_overflow;
     empty_overflow.kind = NK_EVENT_FILE_WATCH_OVERFLOW;
     NK_CHECK(empty_overflow_queue.push(std::move(empty_overflow)) == NK_OK);
+
+    nk::core::EventQueue multi_overflow_queue(1);
+    nk::core::QueuedEvent completion;
+    completion.kind = NK_EVENT_HTTP_COMPLETE;
+    completion.request_id = 1;
+    NK_CHECK(multi_overflow_queue.push(std::move(completion)) == NK_OK);
+    nk::core::QueuedEvent overflow_one;
+    overflow_one.kind = NK_EVENT_FILE_WATCH_OVERFLOW;
+    overflow_one.source = 11;
+    NK_CHECK(multi_overflow_queue.push(std::move(overflow_one)) == NK_OK);
+    nk::core::QueuedEvent overflow_two;
+    overflow_two.kind = NK_EVENT_FILE_WATCH_OVERFLOW;
+    overflow_two.source = 22;
+    NK_CHECK(multi_overflow_queue.push(std::move(overflow_two)) == NK_OK);
+    event = {};
+    event.struct_size = sizeof(event);
+    NK_CHECK(multi_overflow_queue.poll(event) == NK_OK);
+    NK_CHECK(event.kind == NK_EVENT_HTTP_COMPLETE);
+    nk_event_release(&event);
+    event.struct_size = sizeof(event);
+    NK_CHECK(multi_overflow_queue.poll(event) == NK_OK);
+    NK_CHECK(event.kind == NK_EVENT_FILE_WATCH_OVERFLOW && event.source == 11);
+    nk_event_release(&event);
+    event.struct_size = sizeof(event);
+    NK_CHECK(multi_overflow_queue.poll(event) == NK_OK);
+    NK_CHECK(event.kind == NK_EVENT_FILE_WATCH_OVERFLOW && event.source == 22);
+    nk_event_release(&event);
+
+    nk::core::EventQueue readiness_limit_queue(1);
+    nk::core::QueuedEvent readiness_occupied;
+    readiness_occupied.kind = NK_EVENT_WEBVIEW_MESSAGE;
+    NK_CHECK(readiness_limit_queue.push(std::move(readiness_occupied)) == NK_OK);
+    constexpr nk_handle deferred_readiness_count = 1100;
+    for (nk_handle source = 1; source <= deferred_readiness_count; ++source) {
+        nk::core::QueuedEvent readiness;
+        readiness.kind = NK_EVENT_HTTP_DATA_AVAILABLE;
+        readiness.source = source;
+        readiness.request_id = source;
+        NK_CHECK(readiness_limit_queue.push(std::move(readiness)) == NK_OK);
+    }
+    event = {};
+    event.struct_size = sizeof(event);
+    NK_CHECK(readiness_limit_queue.poll(event) == NK_OK);
+    nk_event_release(&event);
+    for (nk_handle source = 1; source <= deferred_readiness_count; ++source) {
+        event.struct_size = sizeof(event);
+        NK_CHECK(readiness_limit_queue.poll(event) == NK_OK);
+        NK_CHECK(event.kind == NK_EVENT_HTTP_DATA_AVAILABLE && event.source == source);
+        nk_event_release(&event);
+    }
     return 0;
 }

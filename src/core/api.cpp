@@ -55,8 +55,19 @@ nk_result push_event(QueuedEvent event) noexcept {
     nk_result result = NK_ERROR_NOT_INITIALIZED;
     {
         std::lock_guard lock(state_mutex);
-        if (event_queue)
+        if (event_queue) {
+#if NK_ENABLE_NO_EXCEPTIONS
             result = event_queue->push(std::move(event));
+#else
+            try {
+                result = event_queue->push(std::move(event));
+            } catch (const std::bad_alloc &) {
+                result = NK_ERROR_OUT_OF_MEMORY;
+            } catch (...) {
+                result = NK_ERROR_UNKNOWN;
+            }
+#endif
+        }
     }
     if (result == NK_OK)
         event_wake_condition.notify_all();
@@ -157,6 +168,11 @@ void NK_CALL nk_shutdown(void) {
     /* Plugins observe a complete teardown before their runtime disappears. */
     nk::core::plugins_shutdown();
     nk::core::clear_app_tasks();
+    /* File-watch workers retain their resource while running. Stop and join
+     * them before clearing the registry so shutdown cannot strand inotify
+     * descriptors across runtime generations. */
+    for (const auto watch : handle_registry.handles_of_type(nk::core::ResourceType::file_watch))
+        (void)nk::backend::file_watch_destroy(watch);
     /* Backend resources are still valid while system leases are released. */
     nk::core::system_shutdown();
     nk::backend::shutdown();

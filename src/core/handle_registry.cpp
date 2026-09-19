@@ -50,6 +50,17 @@ std::shared_ptr<Resource> HandleRegistry::get(nk_handle handle, ResourceType typ
     return slot.resource;
 }
 
+std::vector<nk_handle> HandleRegistry::handles_of_type(ResourceType type) const {
+    std::lock_guard lock(mutex_);
+    std::vector<nk_handle> result;
+    for (std::uint32_t index = 0; index < slots_.size(); ++index) {
+        const auto &slot = slots_[index];
+        if (slot.resource && slot.type == type)
+            result.push_back(encode(index, slot.generation));
+    }
+    return result;
+}
+
 bool HandleRegistry::erase(nk_handle handle, ResourceType type) {
     if (handle == NK_INVALID_HANDLE || (handle & index_mask) == 0)
         return false;

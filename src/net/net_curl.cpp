@@ -211,12 +211,23 @@ std::size_t write_callback_impl(char *data, std::size_t size, std::size_t count,
 
     std::size_t offset = 0;
     while (offset < length) {
-        request.condition.wait(lock, [&] {
+        if (std::chrono::steady_clock::now() >= request.deadline) {
+            request.timed_out.store(true, std::memory_order_release);
+            return 0;
+        }
+        if (!request.condition.wait_until(lock, request.deadline, [&] {
             return request.canceled.load(std::memory_order_acquire) || request.stream_closed ||
                    request.available < request.request.stream_buffer_size;
-        });
+        })) {
+            request.timed_out.store(true, std::memory_order_release);
+            return 0;
+        }
         if (request.canceled.load(std::memory_order_acquire) || request.stream_closed)
             return 0;
+        if (std::chrono::steady_clock::now() >= request.deadline) {
+            request.timed_out.store(true, std::memory_order_release);
+            return 0;
+        }
         const auto remaining_capacity = request.request.stream_buffer_size - request.available;
         const auto amount = std::min<std::size_t>(length - offset, remaining_capacity);
         if (request.received > request.request.max_response_size ||
@@ -316,6 +327,8 @@ int progress_callback(void *user_data, curl_off_t download_total, curl_off_t dow
 nk_result map_curl_error(CURLcode code, const nk::net::RequestContext &request) {
     if (request.canceled.load(std::memory_order_acquire))
         return NK_HTTP_ERROR_CANCELED;
+    if (request.timed_out.load(std::memory_order_acquire))
+        return NK_HTTP_ERROR_TIMEOUT;
     if (request.response_limit)
         return NK_HTTP_ERROR_RESPONSE_LIMIT;
     if (request.upload_result != NK_OK)

@@ -565,14 +565,25 @@ nk_result receive_response_data(const RequestPtr &request, const std::byte *data
 
     std::size_t offset = 0;
     while (offset < size) {
-        request->condition.wait(lock, [&] {
+        if (std::chrono::steady_clock::now() >= request->deadline) {
+            request->timed_out.store(true, std::memory_order_release);
+            return NK_HTTP_ERROR_TIMEOUT;
+        }
+        if (!request->condition.wait_until(lock, request->deadline, [&] {
             return request->canceled.load(std::memory_order_acquire) || request->stream_closed ||
                    request->available < request->request.stream_buffer_size;
-        });
+        })) {
+            request->timed_out.store(true, std::memory_order_release);
+            return NK_HTTP_ERROR_TIMEOUT;
+        }
         if (request->canceled.load(std::memory_order_acquire))
             return NK_HTTP_ERROR_CANCELED;
         if (request->stream_closed)
             return NK_HTTP_ERROR_CANCELED;
+        if (std::chrono::steady_clock::now() >= request->deadline) {
+            request->timed_out.store(true, std::memory_order_release);
+            return NK_HTTP_ERROR_TIMEOUT;
+        }
         const auto remaining_capacity = request->request.stream_buffer_size - request->available;
         const auto amount = std::min<std::size_t>(size - offset, remaining_capacity);
         if (request->received > request->request.max_response_size ||
@@ -725,6 +736,8 @@ nk_result NK_CALL nk_http_request(nk_http_client client_handle,
             nk_result error = NK_OK;
             if (!copy_request_options(*options, *client, request->request, error))
                 return fail(error, "HTTP request options are invalid");
+            request->deadline = std::chrono::steady_clock::now() +
+                               std::chrono::milliseconds(request->request.timeout_ms);
             if (request->request.mode == NK_HTTP_REQUEST_STREAMING &&
                 !(nk::net::capabilities() & NK_CAP_HTTP_STREAMING))
                 return fail(NK_ERROR_UNSUPPORTED, "streaming HTTP is unavailable on this backend");

@@ -16,6 +16,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <cstdint>
+#include <new>
 #include <string>
 #include <utility>
 #include <vector>
@@ -44,7 +45,7 @@ enum class RendererState : uint8_t {
     Lost,
 };
 
-template <class T, Kind K, size_t N> struct Pool {
+template <class T, Kind K, size_t N, bool Expandable = false> struct Pool {
     struct Slot {
         uint16_t generation = 1;
         bool active = false;
@@ -57,9 +58,12 @@ template <class T, Kind K, size_t N> struct Pool {
         bool generation_exhausted = false;
         T value{};
     };
-    std::array<Slot, N> slots{};
+    std::vector<Slot> slots;
+
+    Pool() : slots(N) {}
+
     template <class U> Handle add(U &&value) {
-        for (uint32_t i = 0; i < N; ++i)
+        for (uint32_t i = 0; i < slots.size(); ++i)
             /* A retired slot still holds backend objects awaiting release. */
             if (!slots[i].active && !slots[i].pins && !slots[i].retired &&
                 !slots[i].generation_exhausted) {
@@ -68,18 +72,30 @@ template <class T, Kind K, size_t N> struct Pool {
                 slots[i].retired = false;
                 return (uint32_t(K) << 28) | (uint32_t(slots[i].generation) << 16) | (i + 1);
             }
+        if constexpr (Expandable) {
+            /* Handles have a 16-bit slot field; grow while another
+             * representable slot is available. */
+            if (slots.size() < 0xFFFFu) {
+                slots.emplace_back();
+                auto &slot = slots.back();
+                slot.value = std::forward<U>(value);
+                slot.active = true;
+                return (uint32_t(K) << 28) | (uint32_t(slot.generation) << 16) |
+                       static_cast<uint32_t>(slots.size());
+            }
+        }
         return 0;
     }
     Slot *get(Handle h) {
         uint32_t encoded = h & 0xFFFF, generation = (h >> 16) & 0xFFF;
-        if ((h >> 28) != K || !encoded || encoded > N || !generation)
+        if ((h >> 28) != K || !encoded || encoded > slots.size() || !generation)
             return nullptr;
         Slot &s = slots[encoded - 1];
         return s.active && s.generation == generation ? &s : nullptr;
     }
     Slot *get_retained(Handle h) {
         uint32_t encoded = h & 0xFFFF, generation = (h >> 16) & 0xFFF;
-        if ((h >> 28) != K || !encoded || encoded > N || !generation)
+        if ((h >> 28) != K || !encoded || encoded > slots.size() || !generation)
             return nullptr;
         Slot &s = slots[encoded - 1];
         return (s.active || s.pins) && s.generation == generation ? &s : nullptr;
@@ -245,7 +261,7 @@ static Pool<Pipeline, PipelineKind, 256> pipeline_pool;
 static Pool<BufferBuilder, BufferBuilderKind, 16> buffer_builder_pool;
 static Pool<PipelineBuilder, PipelineBuilderKind, 16> pipeline_builder_pool;
 static Pool<ShaderBuilder, ShaderBuilderKind, 16> shader_builder_pool;
-static Pool<UniformBuilder, UniformBuilderKind, 16> uniform_builder_pool;
+static Pool<UniformBuilder, UniformBuilderKind, 16, true> uniform_builder_pool;
 static Pool<Image, ImageKind, 256> image_pool;
 static Pool<ImageBuilder, ImageBuilderKind, 16> image_builder_pool;
 static Pool<Sampler, SamplerKind, 256> sampler_pool;
@@ -848,7 +864,19 @@ int32_t nkgpu_test_generation_exhaustion(void) {
             return 0;
         pinned.remove(*current_slot);
     }
-    return pinned.add(2) == 0 ? 1 : 0;
+    if (pinned.add(2) != 0)
+        return 0;
+
+    using ExpandablePool = Pool<uint32_t, UniformBuilderKind, 16, true>;
+    ExpandablePool transient;
+    for (uint32_t cycle = 0; cycle != 65520; ++cycle) {
+        const auto current = transient.add(cycle);
+        auto *current_slot = transient.get(current);
+        if (!current || !current_slot)
+            return 0;
+        transient.remove(*current_slot);
+    }
+    return transient.add(65520) != 0 ? 1 : 0;
 }
 
 nkgpu_result nkgpu_test_lose_after_frames(nkgpu_renderer renderer, uint32_t frames) {
@@ -2212,10 +2240,24 @@ nkgpu_result nkgpu_uniforms_begin(nkgpu_renderer r, uint32_t size, nkgpu_uniform
         return live;
     if (!size || !out)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid uniform builder");
+    *out = 0;
     uint8_t *data = (uint8_t *)calloc(1, size);
     if (!data)
         return fail(NKGPU_ERROR_UNKNOWN, "allocation failed");
-    Handle h = uniform_builder_pool.add(UniformBuilder{r, data, size});
+    Handle h = 0;
+#if NK_ENABLE_NO_EXCEPTIONS
+    h = uniform_builder_pool.add(UniformBuilder{r, data, size});
+#else
+    try {
+        h = uniform_builder_pool.add(UniformBuilder{r, data, size});
+    } catch (const std::bad_alloc &) {
+        free(data);
+        return fail(NKGPU_ERROR_UNKNOWN, "uniform builder allocation failed");
+    } catch (...) {
+        free(data);
+        return fail(NKGPU_ERROR_UNKNOWN, "uniform builder allocation failed");
+    }
+#endif
     if (!h) {
         free(data);
         return fail(NKGPU_ERROR_UNKNOWN, "uniform builder pool full");

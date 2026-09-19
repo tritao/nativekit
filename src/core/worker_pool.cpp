@@ -2,6 +2,8 @@
 
 #include "core/boundary.hpp"
 
+#include <new>
+
 namespace nk::core {
 
 WorkerPool::~WorkerPool() {
@@ -16,15 +18,47 @@ nk_result WorkerPool::start(std::size_t worker_count, std::size_t queue_capacity
 #else
     if (worker_count == 0 || queue_capacity == 0)
         return NK_ERROR_INVALID_ARGUMENT;
-    std::lock_guard lock(mutex_);
+    std::unique_lock lock(mutex_);
     if (accepting_ || !workers_.empty())
         return NK_ERROR_ALREADY_INITIALIZED;
     queue_capacity_ = queue_capacity;
     stopping_ = false;
     accepting_ = true;
-    workers_.reserve(worker_count);
-    for (std::size_t index = 0; index < worker_count; ++index)
-        workers_.emplace_back([this] { worker_loop(); });
+#if NK_ENABLE_NO_EXCEPTIONS
+    {
+#else
+    try {
+#endif
+        workers_.reserve(worker_count);
+        for (std::size_t index = 0; index < worker_count; ++index)
+            workers_.emplace_back([this] { worker_loop(); });
+#if !NK_ENABLE_NO_EXCEPTIONS
+    } catch (const std::bad_alloc &) {
+        accepting_ = false;
+        stopping_ = true;
+        lock.unlock();
+        condition_.notify_all();
+        for (auto &worker : workers_)
+            if (worker.joinable())
+                worker.join();
+        workers_.clear();
+        queue_capacity_ = 0;
+        return NK_ERROR_OUT_OF_MEMORY;
+    } catch (...) {
+        accepting_ = false;
+        stopping_ = true;
+        lock.unlock();
+        condition_.notify_all();
+        for (auto &worker : workers_)
+            if (worker.joinable())
+                worker.join();
+        workers_.clear();
+        queue_capacity_ = 0;
+        return NK_ERROR_UNKNOWN;
+    }
+#else
+    }
+#endif
     return NK_OK;
 #endif
 }
