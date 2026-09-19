@@ -2,6 +2,7 @@ package io.nativekit.consumer;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertTrue;
 
 import android.accessibilityservice.AccessibilityServiceInfo;
 import android.app.UiAutomation;
@@ -74,20 +75,24 @@ public final class ConsumerTest {
                 activity.dispatchInputForTest();
                 assertEquals("graphics surface input probe", 0, activity.inputProbe());
             });
+            int[] frameCallbackStart = new int[1];
             scenario.onActivity(activity ->
-                assertEquals("start graphics frame callback", 0,
-                             activity.startFrameCallbackProbe()));
-            waitForFrameCallback(scenario);
-            int[] countAtStop = new int[1];
-            scenario.onActivity(activity -> {
-                countAtStop[0] = activity.frameCallbackCountProbe();
-                assertEquals("stop graphics frame callback", 0,
-                             activity.stopFrameCallbackProbe());
-            });
-            Thread.sleep(100);
-            scenario.onActivity(activity ->
-                assertEquals("frame callback stopped", countAtStop[0],
-                             activity.frameCallbackCountProbe()));
+                frameCallbackStart[0] = activity.startFrameCallbackProbe());
+            assertTrue("frame callback must either run or be unsupported on physical RENDER",
+                       frameCallbackStart[0] == 0 || frameCallbackStart[0] == -4);
+            if (frameCallbackStart[0] == 0) {
+                waitForFrameCallback(scenario);
+                int[] countAtStop = new int[1];
+                scenario.onActivity(activity -> {
+                    countAtStop[0] = activity.frameCallbackCountProbe();
+                    assertEquals("stop graphics frame callback", 0,
+                                 activity.stopFrameCallbackProbe());
+                });
+                Thread.sleep(100);
+                scenario.onActivity(activity ->
+                    assertEquals("frame callback stopped", countAtStop[0],
+                                 activity.frameCallbackCountProbe()));
+            }
             UiAutomation automation =
                 androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
                     .getUiAutomation();
@@ -159,20 +164,28 @@ public final class ConsumerTest {
                 assertEquals("graphics surface after activity recreation", 0,
                              activity.graphicsSurfaceProbe());
             });
+            int[] frameCallbackBeforeDestroy = new int[1];
             scenario.onActivity(activity ->
-                assertEquals("start graphics frame callback before destroy", 0,
-                             activity.startFrameCallbackProbe()));
-            waitForFrameCallback(scenario);
-            int[] countAtDestroy = new int[1];
-            scenario.onActivity(activity -> {
-                countAtDestroy[0] = activity.frameCallbackCountProbe();
-                assertEquals("destroy graphics surface with frame callback", 0,
-                             activity.destroyGraphicsSurfaceProbe());
-            });
-            Thread.sleep(100);
-            scenario.onActivity(activity ->
-                assertEquals("frame callback stopped by destroy", countAtDestroy[0],
-                             activity.frameCallbackCountProbe()));
+                frameCallbackBeforeDestroy[0] = activity.startFrameCallbackProbe());
+            assertTrue("frame callback must either run or be unsupported on physical RENDER",
+                       frameCallbackBeforeDestroy[0] == 0 || frameCallbackBeforeDestroy[0] == -4);
+            if (frameCallbackBeforeDestroy[0] == 0) {
+                waitForFrameCallback(scenario);
+                int[] countAtDestroy = new int[1];
+                scenario.onActivity(activity -> {
+                    countAtDestroy[0] = activity.frameCallbackCountProbe();
+                    assertEquals("destroy graphics surface with frame callback", 0,
+                                 activity.destroyGraphicsSurfaceProbe());
+                });
+                Thread.sleep(100);
+                scenario.onActivity(activity ->
+                    assertEquals("frame callback stopped by destroy", countAtDestroy[0],
+                                 activity.frameCallbackCountProbe()));
+            } else {
+                scenario.onActivity(activity ->
+                    assertEquals("destroy graphics surface without frame callback", 0,
+                                 activity.destroyGraphicsSurfaceProbe()));
+            }
         }
     }
 

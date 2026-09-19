@@ -3507,8 +3507,7 @@ nk_result NK_CALL nk_graphics_unbind_frame_target(const nk_surface_frame_target 
     return NK_OK;
 }
 
-nk_result NK_CALL nk_frame_backend_finish(nk_handle handle,
-                                          const nk_surface_frame_target *) {
+nk_result NK_CALL nk_frame_backend_finish(nk_handle handle, const nk_surface_frame_target *) {
     nk::core::clear_error();
     if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
         return thread;

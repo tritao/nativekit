@@ -3431,8 +3431,7 @@ nk_result NK_CALL nk_frame_backend_submit(const nk_surface_frame_target *) {
     return NK_OK;
 }
 
-nk_result NK_CALL nk_frame_backend_finish(nk_handle handle,
-                                          const nk_surface_frame_target *) {
+nk_result NK_CALL nk_frame_backend_finish(nk_handle handle, const nk_surface_frame_target *) {
     return nk_surface_present(handle);
 }
 

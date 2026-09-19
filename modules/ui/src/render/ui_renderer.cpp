@@ -1368,18 +1368,17 @@ nkgpu_stencil_face_state stencil_face(nkgpu_compare_func compare, nkgpu_stencil_
 
 UiRendererImpl::UiRendererImpl(nk_surface surface) : UiRendererImpl(surface, nullptr) {}
 
-UiRendererImpl::UiRendererImpl(nk_surface surface,
-                               const nk_surface_frame_target *frame_target)
+UiRendererImpl::UiRendererImpl(nk_surface surface, const nk_surface_frame_target *frame_target)
     : state_(new State) {
     state_->surface = surface;
     if (!surface) {
         state_->error = "UI renderer requires a NativeKit surface";
         return;
     }
-    const nkgpu_result created = frame_target
-                                     ? nkgpu_renderer_create_for_frame_target(
-                                           surface, frame_target, &state_->renderer)
-                                     : nkgpu_renderer_create(surface, &state_->renderer);
+    const nkgpu_result created =
+        frame_target
+            ? nkgpu_renderer_create_for_frame_target(surface, frame_target, &state_->renderer)
+            : nkgpu_renderer_create(surface, &state_->renderer);
     if (!gpu_result(*state_, created))
         return;
     state_->graphics_api = nkgpu_query_graphics_api(state_->renderer);
@@ -1606,10 +1605,9 @@ bool UiRendererImpl::beginFrame(bool record, const nk_surface_frame_target *fram
             return false;
         }
         ++state_->stats.recorded_frames;
-    } else if (!gpu_result(
-                   *state_, frame_target ? nkgpu_frame_begin_with_target(state_->renderer,
-                                                                          frame_target)
-                                         : nkgpu_frame_begin(state_->renderer))) {
+    } else if (!gpu_result(*state_, frame_target ? nkgpu_frame_begin_with_target(state_->renderer,
+                                                                                 frame_target)
+                                                 : nkgpu_frame_begin(state_->renderer))) {
         state_->recording = false;
         return false;
     }
@@ -2469,8 +2467,8 @@ std::unique_ptr<UiRenderer> create_ui_renderer(nk_surface surface) {
     return std::make_unique<UiRendererImpl>(surface);
 }
 
-std::unique_ptr<UiRenderer> create_ui_renderer(
-    nk_surface surface, const nk_surface_frame_target *frame_target) {
+std::unique_ptr<UiRenderer> create_ui_renderer(nk_surface surface,
+                                               const nk_surface_frame_target *frame_target) {
     if (!surface)
         return nullptr;
     return std::make_unique<UiRendererImpl>(surface, frame_target);

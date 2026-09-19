@@ -89,9 +89,8 @@ bool take_frame_ticket(nk_surface_frame frame, FrameTicket *out_ticket) noexcept
     *out_ticket = ticket->second;
     ticket_by_frame.erase(ticket);
     const auto surface_entry = surface_by_frame.find(frame);
-    const nk_surface surface = surface_entry == surface_by_frame.end()
-                                   ? ticket->second.surface
-                                   : surface_entry->second;
+    const nk_surface surface =
+        surface_entry == surface_by_frame.end() ? ticket->second.surface : surface_entry->second;
     if (surface_entry != surface_by_frame.end())
         surface_by_frame.erase(surface_entry);
     const auto owner = frame_by_surface.find(surface);
@@ -217,9 +216,8 @@ nk_result NK_CALL nk_surface_present_frame(nk_surface_frame frame) {
                 nk::core::set_error("the frame token is not open on this runtime");
                 return NK_ERROR_INVALID_HANDLE;
             }
-            return ticket.render_submitted
-                       ? nk_frame_backend_finish(ticket.surface, &ticket.target)
-                       : nk_surface_present(ticket.surface);
+            return ticket.render_submitted ? nk_frame_backend_finish(ticket.surface, &ticket.target)
+                                           : nk_surface_present(ticket.surface);
         });
 }
 

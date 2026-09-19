@@ -55,8 +55,8 @@ nk_result dispatch_to_executor(nk_executor executor, nk_task_fn fn, void *user_d
                                void (*cleanup)(void *) noexcept, std::size_t bytes) noexcept;
 
 /** Queues owned work on the physical render executor. */
-nk_result dispatch_to_render(nk_task_fn fn, void *user_data,
-                             void (*cleanup)(void *) noexcept, std::size_t bytes) noexcept;
+nk_result dispatch_to_render(nk_task_fn fn, void *user_data, void (*cleanup)(void *) noexcept,
+                             std::size_t bytes) noexcept;
 
 /** Runs the tasks queued so far on the application executor. */
 void drain_app_tasks() noexcept;

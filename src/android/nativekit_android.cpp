@@ -193,8 +193,8 @@ void NK_CALL run_android_frame_probe(void *data) {
     } else {
         probe->render_result = bound;
     }
-    auto *completion = new (std::nothrow) AndroidFrameCompletion{probe->frame,
-                                                                  probe->render_result};
+    auto *completion =
+        new (std::nothrow) AndroidFrameCompletion{probe->frame, probe->render_result};
     probe->frame = NK_INVALID_HANDLE;
     if (!completion) {
         /* The render task cleanup owns probe after it was queued. */
@@ -3006,12 +3006,14 @@ nk_result NK_CALL nk_graphics_bind_frame_target(const nk_surface_frame_target *t
         nk::core::set_error("Android surface was destroyed before render binding");
         return NK_ERROR_INVALID_REQUEST;
     }
-    const auto display = reinterpret_cast<EGLDisplay>(static_cast<uintptr_t>(target->native_device));
-    const auto context = reinterpret_cast<EGLContext>(static_cast<uintptr_t>(target->native_context));
-    const auto surface = target->native_present_target
-                             ? reinterpret_cast<EGLSurface>(static_cast<uintptr_t>(
-                                   target->native_present_target))
-                             : EGL_NO_SURFACE;
+    const auto display =
+        reinterpret_cast<EGLDisplay>(static_cast<uintptr_t>(target->native_device));
+    const auto context =
+        reinterpret_cast<EGLContext>(static_cast<uintptr_t>(target->native_context));
+    const auto surface =
+        target->native_present_target
+            ? reinterpret_cast<EGLSurface>(static_cast<uintptr_t>(target->native_present_target))
+            : EGL_NO_SURFACE;
     if (!eglMakeCurrent(display, surface, surface, context)) {
         nk::core::set_error("could not bind the Android EGL frame target");
         return NK_ERROR_UNKNOWN;
@@ -3022,7 +3024,8 @@ nk_result NK_CALL nk_graphics_bind_frame_target(const nk_surface_frame_target *t
 nk_result NK_CALL nk_graphics_unbind_frame_target(const nk_surface_frame_target *target) {
     if (!target || target->api != NK_GRAPHICS_OPENGL_ES || !target->native_device)
         return NK_ERROR_INVALID_ARGUMENT;
-    const auto display = reinterpret_cast<EGLDisplay>(static_cast<uintptr_t>(target->native_device));
+    const auto display =
+        reinterpret_cast<EGLDisplay>(static_cast<uintptr_t>(target->native_device));
     if (!eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
         nk::core::set_error("could not release the Android EGL frame target");
         return NK_ERROR_UNKNOWN;
@@ -3039,9 +3042,10 @@ nk_result NK_CALL nk_frame_backend_submit(const nk_surface_frame_target *target)
         nk::core::set_error("Android surface was destroyed before render submit");
         return NK_ERROR_INVALID_REQUEST;
     }
-    const auto display = reinterpret_cast<EGLDisplay>(static_cast<uintptr_t>(target->native_device));
-    const auto surface = reinterpret_cast<EGLSurface>(
-        static_cast<uintptr_t>(target->native_present_target));
+    const auto display =
+        reinterpret_cast<EGLDisplay>(static_cast<uintptr_t>(target->native_device));
+    const auto surface =
+        reinterpret_cast<EGLSurface>(static_cast<uintptr_t>(target->native_present_target));
     if (!eglSwapBuffers(display, surface)) {
         nk::core::set_error("could not present the Android EGL surface");
         return NK_ERROR_UNKNOWN;
@@ -3051,8 +3055,7 @@ nk_result NK_CALL nk_frame_backend_submit(const nk_surface_frame_target *target)
     return NK_OK;
 }
 
-nk_result NK_CALL nk_frame_backend_finish(nk_handle handle,
-                                          const nk_surface_frame_target *) {
+nk_result NK_CALL nk_frame_backend_finish(nk_handle handle, const nk_surface_frame_target *) {
     if (const auto result = require_thread(); result != NK_OK)
         return result;
     auto resource = surface(handle);
@@ -3083,8 +3086,8 @@ nk_result NK_CALL nk_surface_set_frame_callback(nk_handle handle,
     auto resource = surface(handle);
     if (!resource)
         return NK_ERROR_INVALID_HANDLE;
-    if (callback && (resource->api != NK_GRAPHICS_OPENGL_ES ||
-                     nk::core::render_executor_physical())) {
+    if (callback &&
+        (resource->api != NK_GRAPHICS_OPENGL_ES || nk::core::render_executor_physical())) {
         nk::core::set_error("Android frame callbacks require an OpenGL ES surface");
         return NK_ERROR_UNSUPPORTED;
     }
@@ -3909,23 +3912,27 @@ JNIEXPORT jlong JNICALL Java_io_nativekit_NativeKitHost_nativeCreateSurface(JNIE
                : 0;
 }
 
-JNIEXPORT jint JNICALL Java_io_nativekit_NativeKitHost_nativeSetSurfaceBounds(
-    JNIEnv *, jclass, jlong surface_handle, jint width, jint height) {
+JNIEXPORT jint JNICALL Java_io_nativekit_NativeKitHost_nativeSetSurfaceBounds(JNIEnv *, jclass,
+                                                                              jlong surface_handle,
+                                                                              jint width,
+                                                                              jint height) {
     return nk_surface_set_bounds(static_cast<nk_surface>(surface_handle), 0, 0, width, height);
 }
 
-JNIEXPORT jint JNICALL Java_io_nativekit_NativeKitHost_nativeSetSurfaceVisible(
-    JNIEnv *, jclass, jlong surface_handle, jboolean visible) {
+JNIEXPORT jint JNICALL Java_io_nativekit_NativeKitHost_nativeSetSurfaceVisible(JNIEnv *, jclass,
+                                                                               jlong surface_handle,
+                                                                               jboolean visible) {
     return nk_surface_show(static_cast<nk_surface>(surface_handle), visible == JNI_TRUE ? 1 : 0);
 }
 
-JNIEXPORT jint JNICALL Java_io_nativekit_NativeKitHost_nativeProbeSurfaceFrame(
-    JNIEnv *, jclass, jlong surface_handle, jint delay_ms) {
+JNIEXPORT jint JNICALL Java_io_nativekit_NativeKitHost_nativeProbeSurfaceFrame(JNIEnv *, jclass,
+                                                                               jlong surface_handle,
+                                                                               jint delay_ms) {
     nk_surface_frame frame = NK_INVALID_HANDLE;
     nk_surface_frame_target target{};
     target.struct_size = sizeof(target);
-    const auto acquired = nk_surface_acquire_frame(static_cast<nk_surface>(surface_handle), &frame,
-                                                   &target);
+    const auto acquired =
+        nk_surface_acquire_frame(static_cast<nk_surface>(surface_handle), &frame, &target);
     if (acquired != NK_OK)
         return acquired;
     auto *probe = new (std::nothrow) AndroidFrameProbe{};
@@ -3936,9 +3943,8 @@ JNIEXPORT jint JNICALL Java_io_nativekit_NativeKitHost_nativeProbeSurfaceFrame(
     probe->frame = frame;
     probe->target = target;
     probe->delay_ms = delay_ms > 0 ? static_cast<uint32_t>(delay_ms) : 0;
-    const auto queued = nk::core::dispatch_to_render(&run_android_frame_probe, probe,
-                                                     &discard_android_frame_probe,
-                                                     sizeof(AndroidFrameProbe));
+    const auto queued = nk::core::dispatch_to_render(
+        &run_android_frame_probe, probe, &discard_android_frame_probe, sizeof(AndroidFrameProbe));
     if (queued != NK_OK) {
         (void)nk_surface_cancel_frame(frame);
         delete probe;
@@ -3947,8 +3953,8 @@ JNIEXPORT jint JNICALL Java_io_nativekit_NativeKitHost_nativeProbeSurfaceFrame(
     return NK_OK;
 }
 
-JNIEXPORT jint JNICALL Java_io_nativekit_NativeKitHost_nativeDestroySurface(
-    JNIEnv *, jclass, jlong surface_handle) {
+JNIEXPORT jint JNICALL Java_io_nativekit_NativeKitHost_nativeDestroySurface(JNIEnv *, jclass,
+                                                                            jlong surface_handle) {
     return nk_surface_destroy(static_cast<nk_surface>(surface_handle));
 }
 

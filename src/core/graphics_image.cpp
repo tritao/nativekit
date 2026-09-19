@@ -27,8 +27,7 @@ std::vector<Slot> registry;
 std::unordered_map<uint32_t, uint32_t> device_references;
 
 nk_result require_graphics_executor() noexcept {
-    if (nk_executor_is_current(NK_EXECUTOR_APP) ||
-        nk_executor_is_current(NK_EXECUTOR_RENDER))
+    if (nk_executor_is_current(NK_EXECUTOR_APP) || nk_executor_is_current(NK_EXECUTOR_RENDER))
         return NK_OK;
     return nk::core::require_ui_thread();
 }
