@@ -4335,6 +4335,32 @@ nk_result NK_CALL nk_surface_present(nk_handle handle) {
     return NK_OK;
 }
 
+nk_result NK_CALL nk_surface_submit_frame(const nk_surface_frame_target *target) {
+    if (!target || target->api != NK_GRAPHICS_D3D11 || !target->native_present_target)
+        return NK_ERROR_INVALID_ARGUMENT;
+    auto *swapchain = reinterpret_cast<IDXGISwapChain1 *>(
+        static_cast<uintptr_t>(target->native_present_target));
+    const HRESULT result = swapchain->Present(1, 0);
+    if (result == DXGI_STATUS_OCCLUDED)
+        return NK_OK;
+    if (FAILED(result))
+        return NK_ERROR_UNKNOWN;
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_surface_finish_frame(nk_handle handle,
+                                          const nk_surface_frame_target *) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = get_surface(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale graphics surface handle");
+    if (!resource->frame_prepared)
+        return fail(NK_ERROR_INVALID_REQUEST, "Direct3D surface has no prepared frame");
+    resource->frame_prepared = false;
+    return NK_OK;
+}
+
 nk_result NK_CALL nk_surface_set_frame_callback(nk_handle handle,
                                                 nk_surface_frame_callback callback,
                                                 void *user_data) {

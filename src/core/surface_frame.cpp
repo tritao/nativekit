@@ -189,7 +189,9 @@ nk_result NK_CALL nk_surface_present_frame(nk_surface_frame frame) {
                 nk::core::set_error("the frame token is not open on this runtime");
                 return NK_ERROR_INVALID_HANDLE;
             }
-            return nk_surface_present(ticket.surface);
+            return ticket.render_submitted
+                       ? nk_surface_finish_frame(ticket.surface, &ticket.target)
+                       : nk_surface_present(ticket.surface);
         });
 }
 
