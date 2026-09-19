@@ -3,6 +3,7 @@
 #include "core/boundary.hpp"
 #include "core/executor.hpp"
 #include "core/error.hpp"
+#include "core/frame_backend.hpp"
 #include "core/runtime.hpp"
 
 #include <cstddef>
@@ -25,6 +26,7 @@ namespace {
 std::mutex frame_mutex;
 std::unordered_map<nk_surface, nk_surface_frame> frame_by_surface;
 std::unordered_map<nk_surface_frame, nk_surface> surface_by_frame;
+std::unordered_map<nk_surface_frame, nk::core::FrameTicket> ticket_by_frame;
 std::uint32_t next_frame_serial = 0;
 
 constexpr uint32_t surface_frame_target_min_size =
@@ -49,6 +51,7 @@ void prune_dead_surfaces() {
             continue;
         }
         surface_by_frame.erase(entry->second);
+        ticket_by_frame.erase(entry->second);
         entry = frame_by_surface.erase(entry);
     }
 }
@@ -60,6 +63,7 @@ nk_surface_frame close_frame(nk_surface_frame frame) noexcept {
         return NK_INVALID_HANDLE;
     const nk_surface surface = entry->second;
     surface_by_frame.erase(entry);
+    ticket_by_frame.erase(frame);
     const auto owner = frame_by_surface.find(surface);
     if (owner != frame_by_surface.end() && owner->second == frame)
         frame_by_surface.erase(owner);
@@ -67,6 +71,18 @@ nk_surface_frame close_frame(nk_surface_frame frame) noexcept {
 }
 
 } // namespace
+
+bool lookup_frame_ticket(nk_surface_frame frame, FrameTicket *out_ticket) noexcept {
+    if (!out_ticket)
+        return false;
+    std::lock_guard lock(frame_mutex);
+    const auto entry = ticket_by_frame.find(frame);
+    if (entry == ticket_by_frame.end())
+        return false;
+    *out_ticket = entry->second;
+    return true;
+}
+
 } // namespace nk::core
 
 extern "C" {
@@ -113,6 +129,12 @@ nk_result NK_CALL nk_surface_acquire_frame(nk_surface surface, nk_surface_frame 
                 return targeted;
 
             const auto token = nk::core::next_frame_token();
+            out_target->frame = token;
+            nk::core::FrameTicket ticket{};
+            ticket.surface = surface;
+            ticket.frame = token;
+            ticket.target = *out_target;
+            ticket.binding = nk::core::BackendRenderBinding::from_target(*out_target);
             {
                 std::lock_guard lock(nk::core::frame_mutex);
                 const auto inserted = nk::core::frame_by_surface.emplace(surface, token);
@@ -121,8 +143,8 @@ nk_result NK_CALL nk_surface_acquire_frame(nk_surface surface, nk_surface_frame 
                     return NK_ERROR_INVALID_REQUEST;
                 }
                 nk::core::surface_by_frame.emplace(token, surface);
+                nk::core::ticket_by_frame.emplace(token, ticket);
             }
-            out_target->frame = token;
             *out_frame = token;
             return NK_OK;
         });

@@ -1,0 +1,69 @@
+#pragma once
+
+#include "nativekit_graphics.h"
+
+#include <cstdint>
+
+namespace nk::core {
+
+/**
+ * Stable backend binding carried with an acquired frame ticket.
+ *
+ * The values are borrowed from the platform surface and are valid for the
+ * lifetime of the ticket. Keeping them in a separate internal type makes it
+ * explicit that RENDER receives a complete binding and must not rediscover
+ * one through nk_surface_* calls.
+ */
+struct BackendRenderBinding {
+    nk_graphics_api api = 0;
+    nk_graphics_device device{};
+    int32_t width = 0;
+    int32_t height = 0;
+    uint64_t native_target = 0;
+    uint64_t native_device = 0;
+    uint64_t native_context = 0;
+    uint64_t native_depth_stencil_target = 0;
+    uint64_t native_present_target = 0;
+
+    static BackendRenderBinding from_target(const nk_surface_frame_target &target) noexcept {
+        return {target.api,
+                target.device,
+                target.width,
+                target.height,
+                target.native_target,
+                target.native_device,
+                target.native_context,
+                target.native_depth_stencil_target,
+                target.native_present_target};
+    }
+};
+
+/**
+ * The immutable handoff from PLATFORM to RENDER.
+ *
+ * `surface` and `frame` identify the lifecycle token owned by PLATFORM;
+ * `binding` is the complete render-side snapshot. The target is retained as
+ * well so callers that still speak the C ABI can pass it to nkgpu_* without
+ * rebuilding a descriptor.
+ */
+struct FrameTicket {
+    nk_surface surface = NK_INVALID_HANDLE;
+    nk_surface_frame frame = NK_INVALID_HANDLE;
+    nk_surface_frame_target target{};
+    BackendRenderBinding binding{};
+};
+
+/** Backend-specific operations used by a physical render executor. */
+struct FrameBackend {
+    using Operation = nk_result (*)(const FrameTicket &) noexcept;
+
+    Operation bind = nullptr;
+    Operation submit = nullptr;
+    Operation finish = nullptr;
+    Operation cancel = nullptr;
+};
+
+/** Copies an open platform-owned ticket for render-side scheduling. */
+bool lookup_frame_ticket(nk_surface_frame frame, FrameTicket *out_ticket) noexcept;
+
+} // namespace nk::core
