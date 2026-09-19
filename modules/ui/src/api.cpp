@@ -408,6 +408,8 @@ std::mutex render_submission_mutex;
 std::unique_ptr<RenderSubmission> pending_render_submission;
 bool render_submission_runner_active = false;
 std::uint64_t render_submission_generation = 0;
+std::mutex orphan_completion_mutex;
+std::deque<std::unique_ptr<RenderCompletion>> orphan_completions;
 
 void record_render_submission_stat(nkui_renderer renderer,
                                    uint64_t nkui_renderer_stats::*counter) noexcept {
@@ -430,6 +432,24 @@ uint64_t elapsed_ns(uint64_t start, uint64_t end) noexcept {
 void NK_CALL run_next_render_submission(void *data);
 bool enqueue_render_submission(RenderSubmission *submission);
 void shutdown_render_scheduler() noexcept;
+void cancel_render_completion_on_platform(RenderCompletion &completion) noexcept;
+
+void retain_orphan_completion(RenderCompletion *completion) {
+    if (!completion)
+        return;
+    std::lock_guard lock(orphan_completion_mutex);
+    orphan_completions.emplace_back(completion);
+}
+
+void drain_orphan_completions() noexcept {
+    std::deque<std::unique_ptr<RenderCompletion>> completions;
+    {
+        std::lock_guard lock(orphan_completion_mutex);
+        completions.swap(orphan_completions);
+    }
+    for (const auto &completion : completions)
+        cancel_render_completion_on_platform(*completion);
+}
 
 void ensure_runtime_shutdown_hook() noexcept {
     static const bool registered = [] {
@@ -590,19 +610,30 @@ void execute_render_submission(RenderSubmission &submission) {
                                        sizeof(RenderCompletion)) != NK_OK) {
         record_render_submission_stat(submission.renderer,
                                       &nkui_renderer_stats::render_submission_failures);
-        delete completion;
+        /* RENDER cannot cancel the platform-owned ticket directly. Keep the
+           completion until PLATFORM drains it or runtime shutdown closes it. */
+        retain_orphan_completion(completion);
+    }
+}
+
+void cancel_render_completion_on_platform(RenderCompletion &completion) noexcept {
+    if (completion.frame != NK_INVALID_HANDLE) {
+        record_render_submission_stat(completion.renderer,
+                                      &nkui_renderer_stats::render_submission_cancellations);
+        nk_surface_cancel_frame(completion.frame);
+        record_render_submission_value(
+            completion.renderer, &nkui_renderer_stats::render_submission_acquire_to_present_ns,
+            elapsed_ns(completion.acquired_at_ns, nk_time_now_ns()));
+        completion.frame = NK_INVALID_HANDLE;
     }
 }
 
 void cancel_render_submission_on_platform(RenderSubmission &submission) {
     if (submission.frame != NK_INVALID_HANDLE) {
-        record_render_submission_stat(submission.renderer,
-                                      &nkui_renderer_stats::render_submission_cancellations);
-        nk_surface_cancel_frame(submission.frame);
-        record_render_submission_value(
-            submission.renderer, &nkui_renderer_stats::render_submission_acquire_to_present_ns,
-            elapsed_ns(submission.acquired_at_ns, nk_time_now_ns()));
-        submission.frame = NK_INVALID_HANDLE;
+        RenderCompletion completion{submission.renderer, submission.frame, false,
+                                    submission.acquired_at_ns};
+        cancel_render_completion_on_platform(completion);
+        submission.frame = completion.frame;
     }
 }
 
@@ -616,9 +647,11 @@ void shutdown_render_scheduler() noexcept {
     }
     if (pending)
         cancel_render_submission_on_platform(*pending);
+    drain_orphan_completions();
 }
 
 bool enqueue_render_submission(RenderSubmission *raw_submission) {
+    drain_orphan_completions();
     std::unique_ptr<RenderSubmission> submission(raw_submission);
     std::unique_ptr<RenderSubmission> stale_generation;
     std::unique_ptr<RenderSubmission> replaced;
@@ -708,7 +741,7 @@ void NK_CALL run_next_render_submission(void *) {
                 nk::core::dispatch_to_executor(NK_EXECUTOR_PLATFORM, &finish_render_submission,
                                                completion, &destroy_render_completion,
                                                sizeof(RenderCompletion)) != NK_OK)
-                delete completion;
+                retain_orphan_completion(completion);
         }
     }
 }
