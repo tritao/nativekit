@@ -2881,7 +2881,8 @@ nk_result NK_CALL nk_surface_present(nk_handle handle) {
     return NK_OK;
 }
 
-std::shared_ptr<AndroidSurface> frame_target_surface(const nk_surface_frame_target *target) {
+extern "C++" std::shared_ptr<AndroidSurface>
+frame_target_surface(const nk_surface_frame_target *target) {
     if (!target)
         return nullptr;
     if (target->frame != NK_INVALID_HANDLE) {
