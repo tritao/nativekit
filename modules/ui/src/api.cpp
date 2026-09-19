@@ -2852,8 +2852,15 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
     nk_surface_frame_target frame_target{};
     frame_target.struct_size = sizeof(frame_target);
     if (threaded) {
-        if (nk_surface_acquire_frame(surface, &frame, &frame_target) != NK_OK)
-            return NKUI_ERROR_RENDERING;
+        drain_orphan_completions();
+        if (nk_surface_acquire_frame(surface, &frame, &frame_target) != NK_OK) {
+            /* A completion can be retained concurrently after the initial
+               platform turn. Drain once more before declaring the surface
+               unavailable, so an orphaned prior ticket cannot strand it. */
+            drain_orphan_completions();
+            if (nk_surface_acquire_frame(surface, &frame, &frame_target) != NK_OK)
+                return NKUI_ERROR_RENDERING;
+        }
         frame_guard.frame = frame;
         frame_acquired_at_ns = nk_time_now_ns();
     } else {
@@ -3302,8 +3309,12 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
     nk_surface_frame_target frame_target{};
     frame_target.struct_size = sizeof(frame_target);
     if (threaded) {
-        if (nk_surface_acquire_frame(surface, &frame, &frame_target) != NK_OK)
-            return NKUI_ERROR_RENDERING;
+        drain_orphan_completions();
+        if (nk_surface_acquire_frame(surface, &frame, &frame_target) != NK_OK) {
+            drain_orphan_completions();
+            if (nk_surface_acquire_frame(surface, &frame, &frame_target) != NK_OK)
+                return NKUI_ERROR_RENDERING;
+        }
         frame_guard.frame = frame;
         frame_acquired_at_ns = nk_time_now_ns();
     } else {

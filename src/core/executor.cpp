@@ -22,6 +22,7 @@ std::thread::id render_thread_id;
 bool render_executor_exclusive = false;
 std::atomic_bool render_surface_api_guard = false;
 std::atomic<std::uint64_t> render_surface_api_violation_count = 0;
+std::atomic_bool fail_next_platform_dispatch_once = false;
 
 std::mutex render_task_mutex;
 std::condition_variable render_task_condition;
@@ -243,6 +244,11 @@ nk_result dispatch_to_executor(nk_executor executor, nk_task_fn fn, void *user_d
         set_error("the executor task exceeds the byte budget");
         return NK_ERROR_QUEUE_FULL;
     }
+    if (executor == NK_EXECUTOR_PLATFORM && executor_current() == NK_EXECUTOR_RENDER &&
+        fail_next_platform_dispatch_once.exchange(false, std::memory_order_acq_rel)) {
+        set_error("injected platform dispatch failure");
+        return NK_ERROR_QUEUE_FULL;
+    }
     if (executor == NK_EXECUTOR_RENDER && physical_render_backend)
         return dispatch_to_render(fn, user_data, cleanup, bytes);
     {
@@ -315,6 +321,10 @@ nk_result dispatch_to_render(nk_task_fn fn, void *user_data, void (*cleanup)(voi
     }
     render_task_condition.notify_one();
     return NK_OK;
+}
+
+void fail_next_platform_dispatch() noexcept {
+    fail_next_platform_dispatch_once.store(true, std::memory_order_release);
 }
 
 nk_result dispatch_to_app(nk_task_fn fn, void *user_data) noexcept {

@@ -661,6 +661,117 @@ int main() {
             result = 30;
         }
 
+        /* A failed RENDER-to-PLATFORM completion must retain its frame ticket
+           until the next platform turn can cancel it.  Force that dispatch to
+           fail, then submit another frame: enqueue_render_submission() drains
+           the orphan before the second acquire. */
+        if (!result) {
+            BlockingRenderTask orphan_blocker{};
+            if (!start_blocking_render_task(orphan_blocker)) {
+                result = 35;
+                goto cleanup;
+            }
+            nkui_renderer_stats before_orphan_stats{};
+            if (!check(nkui_renderer_get_stats(renderer, &before_orphan_stats) == NKUI_OK,
+                       "read pre-orphan stats")) {
+                {
+                    std::lock_guard lock(orphan_blocker.mutex);
+                    orphan_blocker.release = true;
+                }
+                orphan_blocker.condition.notify_one();
+                result = 35;
+                goto cleanup;
+            }
+            nk::core::reset_render_surface_api_violations();
+            nk::core::set_render_surface_api_guard(true);
+            nkgpu_test_forbid_surface_target_queries();
+            nk::core::fail_next_platform_dispatch();
+            if (!check(nkui_renderer_render_frame(renderer, scheduler_list, scheduler_surfaces[0],
+                                                  &scheduler_frame) == NKUI_OK,
+                       "submit orphan completion frame")) {
+                nk::core::set_render_surface_api_guard(false);
+                nkgpu_test_allow_surface_target_queries();
+                {
+                    std::lock_guard lock(orphan_blocker.mutex);
+                    orphan_blocker.release = true;
+                }
+                orphan_blocker.condition.notify_one();
+                result = 35;
+                goto cleanup;
+            }
+            {
+                std::lock_guard lock(orphan_blocker.mutex);
+                orphan_blocker.release = true;
+            }
+            orphan_blocker.condition.notify_one();
+            RenderTask orphan_barrier{};
+            orphan_barrier.function = [](RenderTask &task) noexcept { task.success = true; };
+            if (!dispatch_render_task(orphan_barrier)) {
+                nk::core::set_render_surface_api_guard(false);
+                nkgpu_test_allow_surface_target_queries();
+                result = 35;
+                goto cleanup;
+            }
+
+            if (!check(nkui_renderer_render_frame(renderer, scheduler_list, scheduler_surfaces[0],
+                                                  &scheduler_frame) == NKUI_OK,
+                       "submit post-orphan frame")) {
+                nk::core::set_render_surface_api_guard(false);
+                nkgpu_test_allow_surface_target_queries();
+                result = 35;
+                goto cleanup;
+            }
+            RenderTask post_orphan_barrier{};
+            post_orphan_barrier.function = [](RenderTask &task) noexcept { task.success = true; };
+            if (!dispatch_render_task(post_orphan_barrier)) {
+                nk::core::set_render_surface_api_guard(false);
+                nkgpu_test_allow_surface_target_queries();
+                result = 35;
+                goto cleanup;
+            }
+            nk_event completion_event{};
+            completion_event.struct_size = sizeof(completion_event);
+            if (!check(nk_poll_event(&completion_event) == NK_OK,
+                       "drain post-orphan completion")) {
+                nk::core::set_render_surface_api_guard(false);
+                nkgpu_test_allow_surface_target_queries();
+                result = 35;
+                goto cleanup;
+            }
+            nk_event_release(&completion_event);
+            const uint64_t orphan_surface_call_violations =
+                nk::core::render_surface_api_violations();
+            nk::core::set_render_surface_api_guard(false);
+            nkgpu_test_allow_surface_target_queries();
+            nkui_renderer_stats orphan_stats{};
+            nk_surface_frame probe_frame = NK_INVALID_HANDLE;
+            nk_surface_frame_target probe_target{};
+            probe_target.struct_size = sizeof(probe_target);
+            if (!check(orphan_surface_call_violations == 0,
+                       "orphan completion render surface API ownership") ||
+                !check(nkui_renderer_get_stats(renderer, &orphan_stats) == NKUI_OK,
+                       "read post-orphan stats") ||
+                !check(orphan_stats.render_submission_failures >=
+                           before_orphan_stats.render_submission_failures + 1,
+                       "orphan completion failure accounting") ||
+                !check(orphan_stats.render_submission_cancellations >=
+                           before_orphan_stats.render_submission_cancellations + 1,
+                       "orphan completion cancellation accounting") ||
+                !check(nk_surface_acquire_frame(scheduler_surfaces[0], &probe_frame,
+                                                 &probe_target) == NK_OK,
+                       "acquire after orphan completion")) {
+                if (probe_frame != NK_INVALID_HANDLE)
+                    (void)nk_surface_cancel_frame(probe_frame);
+                result = 35;
+                goto cleanup;
+            }
+            if (!check(nk_surface_cancel_frame(probe_frame) == NK_OK,
+                       "cancel orphan probe frame")) {
+                result = 35;
+                goto cleanup;
+            }
+        }
+
         /* Device loss is recoverable at the scheduler boundary: the first
            submission observes the invalidated renderer, and the next sealed
            plan retires it and creates a fresh GPU renderer on RENDER. */

@@ -69,6 +69,9 @@ NK_INTERNAL_API nk_result dispatch_to_render(nk_task_fn fn, void *user_data,
                                              void (*cleanup)(void *) noexcept,
                                              std::size_t bytes) noexcept;
 
+/** Test-only one-shot failure for a RENDER-to-PLATFORM dispatch. */
+NK_INTERNAL_API void fail_next_platform_dispatch() noexcept;
+
 /** Runs the tasks queued so far on the application executor. */
 void drain_app_tasks() noexcept;
 
