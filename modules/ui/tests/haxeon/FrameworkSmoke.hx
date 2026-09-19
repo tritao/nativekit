@@ -2139,6 +2139,16 @@ class FrameworkSmoke {
 		if (!context.events.hasPointerCapture(captureDivider.id) || platformCaptureStates.length != 1 ||
 			!platformCaptureStates[0])
 			return 248;
+		// Physical capture is shared by the window, while logical capture stays
+		// independent per pointer. Releasing pointer 1 must not release pointer 0.
+		context.pointerDown(captureDividerX, captureDividerY, 0, 0, 1);
+		if (!context.events.hasPointerCapture(captureDivider.id, 1) ||
+			platformCaptureStates.length != 1)
+			return 253;
+		context.pointerUp(captureDividerX, captureDividerY, 0, 0, 1);
+		if (context.events.hasPointerCapture(captureDivider.id, 1) ||
+			!context.events.hasPointerCapture(captureDivider.id) || platformCaptureStates.length != 1)
+			return 254;
 		context.pointerMove(captureButtonX, captureButtonY);
 		if (captureHoverEnters != 0 || capturePointerDowns != 0 || captureClicks != 0 ||
 			context.events.hoveredId() == null ||
@@ -2162,11 +2172,29 @@ class FrameworkSmoke {
 			context.events.hoveredId() != null ||
 			context.events.cursorShape() != UiCursorShape.Arrow)
 			return 251;
+		// Detaching the host bridge releases the OS capture but preserves the
+		// logical owner; reattaching must immediately restore physical capture.
+		context.pointerMove(captureDividerX, captureDividerY);
+		context.pointerDown(captureDividerX, captureDividerY, 0);
+		if (!context.events.hasPointerCapture(captureDivider.id) || platformCaptureStates.length != 5)
+			return 255;
+		context.setPointerCaptureHandler(null);
+		if (!context.events.hasPointerCapture(captureDivider.id) || platformCaptureStates.length != 6 ||
+			platformCaptureStates[5])
+			return 256;
+		context.setPointerCaptureHandler(function(captured) platformCaptureStates.push(captured));
+		if (!context.events.hasPointerCapture(captureDivider.id) || platformCaptureStates.length != 7 ||
+			!platformCaptureStates[6])
+			return 257;
+		context.windowFocusLost();
+		if (context.events.hasPointerCapture(captureDivider.id) || platformCaptureStates.length != 8 ||
+			platformCaptureStates[7] || context.events.hoveredId() != null)
+			return 258;
 		context.pointerMove(captureDividerX, captureDividerY);
 		context.pointerDown(captureDividerX, captureDividerY, 0);
 		context.submit(new Text("Unmounted capture owner"), new LayoutFrame(320.0, 192.0));
-		if (context.events.hasPointerCapture(captureDivider.id) || platformCaptureStates.length != 6 ||
-			!platformCaptureStates[4] || platformCaptureStates[5])
+		if (context.events.hasPointerCapture(captureDivider.id) || platformCaptureStates.length != 10 ||
+			!platformCaptureStates[8] || platformCaptureStates[9])
 			return 252;
 		context.setPointerCaptureHandler(null);
 		if (!checkSplitKeyboard(context))

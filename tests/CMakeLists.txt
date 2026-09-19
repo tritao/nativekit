@@ -149,6 +149,13 @@ if(NK_BACKEND_GTK_AVAILABLE)
         set_target_properties(nativekit_gtk_native_window PROPERTIES LINKER_LANGUAGE CXX)
         add_test(NAME gtk_native_window
             COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_native_window>)
+        add_executable(nativekit_gtk_pointer_capture integration/pointer_capture.c)
+        target_link_libraries(nativekit_gtk_pointer_capture PRIVATE NativeKit::nativekit)
+        set_target_properties(nativekit_gtk_pointer_capture PROPERTIES LINKER_LANGUAGE CXX)
+        add_test(NAME gtk_pointer_capture
+            COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_pointer_capture>)
+        set_tests_properties(gtk_pointer_capture PROPERTIES
+            LABELS "linux;input" TIMEOUT 30 SKIP_RETURN_CODE 77)
         add_executable(nativekit_gtk_surface_frame integration/gtk_surface_frame.c)
         target_link_libraries(nativekit_gtk_surface_frame PRIVATE NativeKit::nativekit)
         set_target_properties(nativekit_gtk_surface_frame PROPERTIES LINKER_LANGUAGE CXX)
@@ -246,6 +253,12 @@ if(WIN32)
     set_target_properties(nativekit_win_integration PROPERTIES LINKER_LANGUAGE CXX)
     add_test(NAME win_create_destroy COMMAND nativekit_win_integration)
     set_tests_properties(win_create_destroy PROPERTIES LABELS "windows" TIMEOUT 120)
+    add_executable(nativekit_win_pointer_capture integration/pointer_capture.c)
+    target_link_libraries(nativekit_win_pointer_capture PRIVATE NativeKit::nativekit)
+    set_target_properties(nativekit_win_pointer_capture PROPERTIES LINKER_LANGUAGE CXX)
+    add_test(NAME win_pointer_capture COMMAND nativekit_win_pointer_capture)
+    set_tests_properties(win_pointer_capture PROPERTIES
+        LABELS "windows;input" TIMEOUT 120 SKIP_RETURN_CODE 77)
     add_executable(nativekit_win_surface_d3d11 integration/win_surface_d3d11.c)
     target_link_libraries(nativekit_win_surface_d3d11 PRIVATE NativeKit::nativekit)
     set_target_properties(nativekit_win_surface_d3d11 PROPERTIES LINKER_LANGUAGE CXX)
@@ -281,6 +294,12 @@ if(APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     set_target_properties(nativekit_osx_integration PROPERTIES LINKER_LANGUAGE OBJCXX)
     add_test(NAME osx_create_destroy COMMAND nativekit_osx_integration)
     set_tests_properties(osx_create_destroy PROPERTIES LABELS "macos")
+    add_executable(nativekit_osx_pointer_capture integration/pointer_capture.c)
+    target_link_libraries(nativekit_osx_pointer_capture PRIVATE NativeKit::nativekit)
+    set_target_properties(nativekit_osx_pointer_capture PROPERTIES LINKER_LANGUAGE OBJCXX)
+    add_test(NAME osx_pointer_capture COMMAND nativekit_osx_pointer_capture)
+    set_tests_properties(osx_pointer_capture PROPERTIES
+        LABELS "macos;input" TIMEOUT 120 SKIP_RETURN_CODE 77)
     add_executable(nativekit_osx_surface_metal integration/osx_surface_metal.c)
     target_link_libraries(nativekit_osx_surface_metal PRIVATE NativeKit::nativekit)
     set_target_properties(nativekit_osx_surface_metal PROPERTIES LINKER_LANGUAGE OBJCXX)
@@ -298,6 +317,7 @@ endif()
 
 if(MINGW)
     foreach(target nativekit_c_abi nativekit_core_tests nativekit_win_integration
+            nativekit_win_pointer_capture
             nativekit_win_accessibility_uia nativekit_win_text_input
             nativekit_capability_conformance)
         if(TARGET ${target})
