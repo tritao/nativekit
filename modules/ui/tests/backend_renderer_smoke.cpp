@@ -613,9 +613,8 @@ int main() {
               scheduler_stats.resource_creations < before_scheduler_stats.resource_creations) ||
              (shared_native_device &&
               scheduler_stats.surface_recreations != before_scheduler_stats.surface_recreations) ||
-             (!shared_native_device &&
-              scheduler_stats.render_submission_failures <
-                  before_scheduler_stats.render_submission_failures + 1) ||
+             (!shared_native_device && scheduler_stats.render_submission_failures <
+                                           before_scheduler_stats.render_submission_failures + 1) ||
              scheduler_stats.render_submission_build_ns <=
                  before_scheduler_stats.render_submission_build_ns ||
              scheduler_stats.render_submission_queue_latency_ns <=
