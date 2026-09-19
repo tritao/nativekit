@@ -17,6 +17,7 @@
 #include "core/error.hpp"
 #include "core/executor.hpp"
 #include "core/frame_request.hpp"
+#include "core/frame_backend.hpp"
 #include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
 #include "core/gamepad_events.hpp"
@@ -38,6 +39,7 @@
 #include <climits>
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <cmath>
@@ -99,7 +101,8 @@ struct AndroidSurface final : nk::core::Resource {
     int32_t pending_framebuffer_height = 0;
     bool frame_prepared = false;
     bool resize_pending = false;
-    bool surface_destroy_pending = false;
+    std::atomic<bool> surface_destroy_pending{false};
+    jobject pending_surface = nullptr;
     std::unordered_map<nk_accessibility_node_id, nk_accessibility_node_id> semantic_parents;
 };
 
@@ -705,9 +708,37 @@ nk_result destroy_webview(nk_handle handle) {
     return NK_OK;
 }
 
+bool attach_surface_window(AndroidSurface &resource, JNIEnv *env, jobject java_surface) {
+    if (!env || !java_surface)
+        return false;
+    resource.window = ANativeWindow_fromSurface(env, java_surface);
+    if (!resource.window)
+        return false;
+    if (resource.api == NK_GRAPHICS_OPENGL_ES) {
+        EGLint visual_id = 0;
+        eglGetConfigAttrib(resource.display, resource.config, EGL_NATIVE_VISUAL_ID, &visual_id);
+        ANativeWindow_setBuffersGeometry(resource.window, 0, 0, visual_id);
+        resource.surface =
+            eglCreateWindowSurface(resource.display, resource.config, resource.window, nullptr);
+        if (resource.surface == EGL_NO_SURFACE) {
+            ANativeWindow_release(resource.window);
+            resource.window = nullptr;
+            return false;
+        }
+    }
+    return true;
+}
+
+void emit_surface_ready(const AndroidSurface &resource) {
+    nk::core::QueuedEvent ready;
+    ready.kind = NK_EVENT_SURFACE_READY;
+    ready.source = resource.handle;
+    nk::core::push_event(std::move(ready));
+}
+
 void release_surface_window(AndroidSurface &resource) {
     if (resource.frame_prepared) {
-        resource.surface_destroy_pending = true;
+        resource.surface_destroy_pending.store(true, std::memory_order_release);
         return;
     }
     const bool was_ready = resource.window != nullptr;
@@ -726,12 +757,33 @@ void release_surface_window(AndroidSurface &resource) {
     resource.pending_framebuffer_width = 0;
     resource.pending_framebuffer_height = 0;
     resource.resize_pending = false;
-    resource.surface_destroy_pending = false;
+    resource.surface_destroy_pending.store(false, std::memory_order_release);
     if (was_ready && !resource.destroying) {
         nk::core::QueuedEvent lost;
         lost.kind = NK_EVENT_SURFACE_LOST;
         lost.source = resource.handle;
         nk::core::push_event(std::move(lost));
+    }
+
+    JNIEnv *env = environment();
+    jobject pending = resource.pending_surface;
+    resource.pending_surface = nullptr;
+    if (resource.destroying) {
+        if (env && pending)
+            env->DeleteGlobalRef(pending);
+        return;
+    }
+    if (pending) {
+        if (attach_surface_window(resource, env, pending))
+            emit_surface_ready(resource);
+        else {
+            nk::core::QueuedEvent lost;
+            lost.kind = NK_EVENT_SURFACE_LOST;
+            lost.source = resource.handle;
+            nk::core::push_event(std::move(lost));
+        }
+        if (env)
+            env->DeleteGlobalRef(pending);
     }
 }
 
@@ -2824,15 +2876,33 @@ nk_result NK_CALL nk_surface_present(nk_handle handle) {
         return NK_ERROR_UNKNOWN;
     }
     resource->frame_prepared = false;
-    if (resource->surface_destroy_pending)
+    if (resource->surface_destroy_pending.load(std::memory_order_acquire))
         release_surface_window(*resource);
     return NK_OK;
+}
+
+std::shared_ptr<AndroidSurface> frame_target_surface(const nk_surface_frame_target *target) {
+    if (!target)
+        return nullptr;
+    if (target->frame != NK_INVALID_HANDLE) {
+        nk::core::FrameTicket ticket{};
+        if (nk::core::lookup_frame_ticket(target->frame, &ticket))
+            return surface(ticket.surface);
+    }
+    if (target->device.id)
+        return surface(static_cast<nk_handle>(target->device.id));
+    return nullptr;
 }
 
 nk_result NK_CALL nk_graphics_bind_frame_target(const nk_surface_frame_target *target) {
     if (!target || target->api != NK_GRAPHICS_OPENGL_ES || !target->native_device ||
         !target->native_context)
         return NK_ERROR_INVALID_ARGUMENT;
+    if (const auto resource = frame_target_surface(target);
+        resource && resource->surface_destroy_pending.load(std::memory_order_acquire)) {
+        nk::core::set_error("Android surface was destroyed before render binding");
+        return NK_ERROR_INVALID_REQUEST;
+    }
     const auto display = reinterpret_cast<EGLDisplay>(static_cast<uintptr_t>(target->native_device));
     const auto context = reinterpret_cast<EGLContext>(static_cast<uintptr_t>(target->native_context));
     const auto surface = target->native_present_target
@@ -2861,6 +2931,11 @@ nk_result NK_CALL nk_frame_backend_submit(const nk_surface_frame_target *target)
     if (!target || target->api != NK_GRAPHICS_OPENGL_ES || !target->native_device ||
         !target->native_present_target)
         return NK_ERROR_INVALID_ARGUMENT;
+    if (const auto resource = frame_target_surface(target);
+        resource && resource->surface_destroy_pending.load(std::memory_order_acquire)) {
+        nk::core::set_error("Android surface was destroyed before render submit");
+        return NK_ERROR_INVALID_REQUEST;
+    }
     const auto display = reinterpret_cast<EGLDisplay>(static_cast<uintptr_t>(target->native_device));
     const auto surface = reinterpret_cast<EGLSurface>(
         static_cast<uintptr_t>(target->native_present_target));
@@ -2890,7 +2965,7 @@ nk_result NK_CALL nk_frame_backend_finish(nk_handle handle,
         resource->framebuffer_height = resource->pending_framebuffer_height;
         resource->resize_pending = false;
     }
-    if (resource->surface_destroy_pending)
+    if (resource->surface_destroy_pending.load(std::memory_order_acquire))
         release_surface_window(*resource);
     return NK_OK;
 }
@@ -3304,26 +3379,17 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnSurfaceCreated(
     auto resource = surface(static_cast<nk_handle>(handle_value));
     if (!resource || !java_surface)
         return;
-    release_surface_window(*resource);
-    resource->window = ANativeWindow_fromSurface(env, java_surface);
-    if (!resource->window)
+    if (resource->frame_prepared) {
+        if (resource->pending_surface)
+            env->DeleteGlobalRef(resource->pending_surface);
+        resource->pending_surface = env->NewGlobalRef(java_surface);
+        resource->surface_destroy_pending.store(true, std::memory_order_release);
         return;
-    if (resource->api == NK_GRAPHICS_OPENGL_ES) {
-        EGLint visual_id = 0;
-        eglGetConfigAttrib(resource->display, resource->config, EGL_NATIVE_VISUAL_ID, &visual_id);
-        ANativeWindow_setBuffersGeometry(resource->window, 0, 0, visual_id);
-        resource->surface =
-            eglCreateWindowSurface(resource->display, resource->config, resource->window, nullptr);
-        if (resource->surface == EGL_NO_SURFACE) {
-            ANativeWindow_release(resource->window);
-            resource->window = nullptr;
-            return;
-        }
     }
-    nk::core::QueuedEvent ready;
-    ready.kind = NK_EVENT_SURFACE_READY;
-    ready.source = resource->handle;
-    nk::core::push_event(std::move(ready));
+    release_surface_window(*resource);
+    if (!attach_surface_window(*resource, env, java_surface))
+        return;
+    emit_surface_ready(*resource);
 }
 
 JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnSurfaceChanged(
