@@ -395,6 +395,86 @@ int main() {
             }
         }
 
+        /* Exercise the frame-ticket lifecycle at the same platform boundary
+           used by the asynchronous scheduler.  A resize while a frame is
+           open must not mutate the immutable target snapshot; the resize is
+           applied when the ticket is cancelled and the next acquire observes
+           the new dimensions. */
+        {
+            nk_surface_frame lifecycle_frame = NK_INVALID_HANDLE;
+            nk_surface_frame_target lifecycle_target{};
+            lifecycle_target.struct_size = sizeof(lifecycle_target);
+            if (!check(nk_surface_acquire_frame(scheduler_surfaces[1], &lifecycle_frame,
+                                                &lifecycle_target) == NK_OK,
+                       "acquire lifecycle frame") ||
+                !check(lifecycle_target.frame == lifecycle_frame, "lifecycle frame target token")) {
+                result = 26;
+                goto cleanup;
+            }
+            const int32_t previous_width = lifecycle_target.width;
+            const int32_t previous_height = lifecycle_target.height;
+            const int32_t resized_logical_width = scheduler_window_options.width + 32;
+            const int32_t resized_logical_height = scheduler_window_options.height + 16;
+            if (!check(nkgpu_surface_resize(scheduler_surfaces[1], resized_logical_width,
+                                            resized_logical_height) == NKGPU_OK,
+                       "resize open lifecycle frame") ||
+                !check(lifecycle_target.width == previous_width &&
+                           lifecycle_target.height == previous_height,
+                       "immutable lifecycle frame target")) {
+                (void)nk_surface_cancel_frame(lifecycle_frame);
+                result = 26;
+                goto cleanup;
+            }
+            if (!check(nk_surface_cancel_frame(lifecycle_frame) == NK_OK,
+                       "cancel lifecycle frame") ||
+                !check(nk_surface_cancel_frame(lifecycle_frame) == NK_ERROR_INVALID_HANDLE,
+                       "reject repeated lifecycle cancel")) {
+                result = 26;
+                goto cleanup;
+            }
+
+            int32_t resized_width = 0;
+            int32_t resized_height = 0;
+            nk_surface_frame_target resized_target{};
+            if (!wait_surface_ready(scheduler_windows[1], scheduler_surfaces[1], resized_width,
+                                    resized_height, resized_target) ||
+                !check(resized_width > 0 && resized_height > 0 &&
+                           (resized_width != previous_width || resized_height != previous_height),
+                       "observe resized lifecycle surface")) {
+                result = 26;
+                goto cleanup;
+            }
+            nk_surface_frame resized_frame = NK_INVALID_HANDLE;
+            nk_surface_frame_target resized_frame_target{};
+            resized_frame_target.struct_size = sizeof(resized_frame_target);
+            if (!check(nk_surface_acquire_frame(scheduler_surfaces[1], &resized_frame,
+                                                &resized_frame_target) == NK_OK,
+                       "acquire resized lifecycle frame") ||
+                !check(resized_frame_target.width == resized_width &&
+                           resized_frame_target.height == resized_height,
+                       "resized lifecycle frame target")) {
+                (void)nk_surface_cancel_frame(resized_frame);
+                result = 26;
+                goto cleanup;
+            }
+            if (!check(nk_surface_cancel_frame(resized_frame) == NK_OK,
+                       "cancel resized lifecycle frame") ||
+                !check(nkgpu_surface_resize(scheduler_surfaces[1], scheduler_window_options.width,
+                                            scheduler_window_options.height) == NKGPU_OK,
+                       "restore lifecycle surface size")) {
+                result = 26;
+                goto cleanup;
+            }
+            int32_t restored_width = 0;
+            int32_t restored_height = 0;
+            nk_surface_frame_target restored_target{};
+            if (!wait_surface_ready(scheduler_windows[1], scheduler_surfaces[1], restored_width,
+                                    restored_height, restored_target)) {
+                result = 26;
+                goto cleanup;
+            }
+        }
+
         if (!check(nkui_display_list_create(&scheduler_list) == NKUI_OK,
                    "create scheduler display list")) {
             result = 26;
