@@ -1343,7 +1343,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	/**
 	 * Preparation and geometry-cache counters for one renderer.
 	 */
-	struct nkui_renderer_stats @layout(432, 8) {
+	struct nkui_renderer_stats @layout(464, 8) {
 		/**
 		 * Set to sizeof(nkui_renderer_stats) when returned by the API.
 		 */
@@ -1560,6 +1560,22 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		 * Estimated bytes retained by cached effect results.
 		 */
 		effect_cache_bytes: u64 @offset(424);
+		/**
+		 * Sealed render plans accepted by the serialized render scheduler.
+		 */
+		render_submissions: u64 @offset(432);
+		/**
+		 * Pending render plans replaced by a newer plan before execution.
+		 */
+		render_submission_replacements: u64 @offset(440);
+		/**
+		 * Render plans whose frame tickets were cancelled before presentation.
+		 */
+		render_submission_cancellations: u64 @offset(448);
+		/**
+		 * Render plans that failed execution or could not be dispatched.
+		 */
+		render_submission_failures: u64 @offset(456);
 	}
 	/**
 	 * Payload for NKUI_COMMAND_SET_PAINT and resource-only draw commands.

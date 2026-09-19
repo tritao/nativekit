@@ -71,6 +71,58 @@ struct RenderTask {
     nk_graphics_image image{};
 };
 
+struct BlockingRenderTask {
+    std::mutex mutex;
+    std::condition_variable condition;
+    bool entered = false;
+    bool release = false;
+    bool complete = false;
+};
+
+void NK_CALL run_blocking_render_task(void *data) {
+    auto &task = *static_cast<BlockingRenderTask *>(data);
+    std::unique_lock lock(task.mutex);
+    task.entered = true;
+    task.condition.notify_one();
+    task.condition.wait(lock, [&task] { return task.release; });
+    task.complete = true;
+    task.condition.notify_one();
+}
+
+bool start_blocking_render_task(BlockingRenderTask &task) {
+    if (!check(nk::core::dispatch_to_render(&run_blocking_render_task, &task, nullptr,
+                                            sizeof(task)) == NK_OK,
+               "dispatch blocking render task"))
+        return false;
+    std::unique_lock lock(task.mutex);
+    if (!task.condition.wait_for(lock, std::chrono::seconds(5), [&task] { return task.entered; })) {
+        std::fprintf(stderr, "backend renderer smoke: blocking render task did not start\n");
+        return false;
+    }
+    return true;
+}
+
+bool wait_surface_ready(nk_window window, nk_surface surface, int32_t &width, int32_t &height) {
+    if (!check(nk_window_activate(window) == NK_OK, "activate scheduler stress window"))
+        return false;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline) {
+        nk_event event{};
+        event.struct_size = sizeof(event);
+        if (!check(nk_poll_event(&event) == NK_OK, "poll scheduler stress event"))
+            return false;
+        const bool ready = event.kind == NK_EVENT_SURFACE_READY && event.source == surface;
+        nk_event_release(&event);
+        if (ready && nk_surface_make_current(surface) == NK_OK &&
+            nk_surface_get_framebuffer_size(surface, &width, &height) == NK_OK && width > 0 &&
+            height > 0)
+            return true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    std::fprintf(stderr, "backend renderer smoke: scheduler stress surface did not become ready\n");
+    return false;
+}
+
 void NK_CALL run_render_task(void *data) {
     auto &task = *static_cast<RenderTask *>(data);
     if (!nk_executor_is_current(NK_EXECUTOR_RENDER)) {
@@ -145,7 +197,10 @@ int main() {
     nk_graphics_image_info image_info{};
     nkui_resource imported_surface{};
     nkui_display_list list{};
+    nkui_display_list scheduler_list{};
     nkui_renderer renderer{};
+    nk_window scheduler_windows[2]{};
+    nk_surface scheduler_surfaces[2]{};
     nkui_draw_rect_command composite{};
     bool initialized = false;
     int result = 0;
@@ -313,25 +368,151 @@ int main() {
             goto cleanup;
         }
     }
+
+    if (nk::core::render_executor_physical()) {
+        int32_t scheduler_width[2]{};
+        int32_t scheduler_height[2]{};
+        nk_window_options scheduler_window_options = window_options;
+        scheduler_window_options.title = "NativeKit scheduler stress";
+        for (size_t index = 0; index < 2; ++index) {
+            if (!check(nk_window_create(&scheduler_window_options, &scheduler_windows[index]) ==
+                           NK_OK,
+                       "create scheduler stress window") ||
+                !check(nkgpu_surface_create(
+                           scheduler_windows[index], scheduler_window_options.width,
+                           scheduler_window_options.height, &scheduler_surfaces[index]) == NKGPU_OK,
+                       "create scheduler stress surface") ||
+                !wait_surface_ready(scheduler_windows[index], scheduler_surfaces[index],
+                                    scheduler_width[index], scheduler_height[index])) {
+                result = 26;
+                goto cleanup;
+            }
+        }
+
+        if (!check(nkui_display_list_create(&scheduler_list) == NKUI_OK,
+                   "create scheduler display list")) {
+            result = 26;
+            goto cleanup;
+        }
+        const nkui_draw_box_shadow_command scheduler_shadow{{NKUI_COMMAND_DRAW_BOX_SHADOW,
+                                                             NKUI_COMMAND_VERSION,
+                                                             sizeof(nkui_draw_box_shadow_command)},
+                                                            32.0f,
+                                                            28.0f,
+                                                            96.0f,
+                                                            64.0f,
+                                                            2.0f,
+                                                            3.0f,
+                                                            4.0f,
+                                                            4.0f,
+                                                            {8.0f, 8.0f, 8.0f, 8.0f},
+                                                            {0.0f, 0.0f, 0.0f, 0.5f}};
+        if (!check(nkui_display_list_submit(scheduler_list,
+                                            reinterpret_cast<const uint8_t *>(&scheduler_shadow),
+                                            sizeof(scheduler_shadow)) == NKUI_OK,
+                   "submit scheduler display list")) {
+            result = 26;
+            goto cleanup;
+        }
+
+        BlockingRenderTask blocker{};
+        if (!start_blocking_render_task(blocker)) {
+            result = 27;
+            goto cleanup;
+        }
+        nkui_renderer_stats before_scheduler_stats{};
+        if (!check(nkui_renderer_get_stats(renderer, &before_scheduler_stats) == NKUI_OK,
+                   "read pre-scheduler stats")) {
+            result = 27;
+            {
+                std::lock_guard lock(blocker.mutex);
+                blocker.release = true;
+            }
+            blocker.condition.notify_one();
+            goto cleanup;
+        }
+        const nkui_frame_info scheduler_frame{sizeof(scheduler_frame),
+                                              static_cast<float>(scheduler_width[0]),
+                                              static_cast<float>(scheduler_height[0]),
+                                              scheduler_width[0],
+                                              scheduler_height[0],
+                                              1.0f};
+        for (size_t index = 0; index < 2 && !result; ++index) {
+            const nkui_result submitted = nkui_renderer_render_frame(
+                renderer, scheduler_list, scheduler_surfaces[index], &scheduler_frame);
+            if (submitted != NKUI_OK) {
+                std::fprintf(stderr,
+                             "backend renderer smoke: scheduler submission %zu failed: %d\n", index,
+                             submitted);
+                result = 28;
+            }
+        }
+        {
+            std::lock_guard lock(blocker.mutex);
+            blocker.release = true;
+        }
+        blocker.condition.notify_one();
+        RenderTask scheduler_barrier{};
+        scheduler_barrier.function = [](RenderTask &task) noexcept { task.success = true; };
+        if (!result && !dispatch_render_task(scheduler_barrier))
+            result = 29;
+        if (!result) {
+            nk_event completion_event{};
+            completion_event.struct_size = sizeof(completion_event);
+            if (!check(nk_poll_event(&completion_event) == NK_OK, "drain scheduler completion"))
+                result = 29;
+            nk_event_release(&completion_event);
+        }
+        nkui_renderer_stats scheduler_stats{};
+        if (!result &&
+            (!check(nkui_renderer_get_stats(renderer, &scheduler_stats) == NKUI_OK,
+                    "read scheduler stats") ||
+             scheduler_stats.render_submissions < 2 ||
+             scheduler_stats.render_submission_replacements < 1 ||
+             scheduler_stats.render_submission_cancellations < 1 ||
+             scheduler_stats.render_submission_failures != 0 ||
+             scheduler_stats.render_submissions != before_scheduler_stats.render_submissions + 2 ||
+             scheduler_stats.render_submission_replacements !=
+                 before_scheduler_stats.render_submission_replacements + 1 ||
+             scheduler_stats.gpu_frames != before_scheduler_stats.gpu_frames + 1)) {
+            std::fprintf(
+                stderr,
+                "backend renderer smoke: scheduler counters unexpected: submitted=%llu "
+                "replaced=%llu cancelled=%llu failed=%llu\n",
+                static_cast<unsigned long long>(scheduler_stats.render_submissions),
+                static_cast<unsigned long long>(scheduler_stats.render_submission_replacements),
+                static_cast<unsigned long long>(scheduler_stats.render_submission_cancellations),
+                static_cast<unsigned long long>(scheduler_stats.render_submission_failures));
+            result = 30;
+        }
+    }
 cleanup:
     if (renderer.id && nkui_renderer_destroy(renderer) != NKUI_OK)
         result = result ? result : 20;
-    if (list.id && nkui_display_list_destroy(list) != NKUI_OK)
+    if (scheduler_list.id && nkui_display_list_destroy(scheduler_list) != NKUI_OK)
         result = result ? result : 21;
-    if (imported_surface.id && nkui_resource_destroy(imported_surface) != NKUI_OK)
+    if (list.id && nkui_display_list_destroy(list) != NKUI_OK)
         result = result ? result : 22;
+    if (imported_surface.id && nkui_resource_destroy(imported_surface) != NKUI_OK)
+        result = result ? result : 23;
     if (producer.id) {
         destroy_task.surface = surface;
         destroy_task.producer = producer;
         destroy_task.render_target = target;
         destroy_task.function = &destroy_offscreen_resources;
         if (!dispatch_render_task(destroy_task))
-            result = result ? result : 23;
+            result = result ? result : 24;
     }
     if (surface && nk_surface_destroy(surface) != NK_OK)
-        result = result ? result : 24;
-    if (window && nk_window_destroy(window) != NK_OK)
         result = result ? result : 25;
+    if (window && nk_window_destroy(window) != NK_OK)
+        result = result ? result : 26;
+    for (size_t index = 0; index < 2; ++index) {
+        if (scheduler_surfaces[index] && nk_surface_destroy(scheduler_surfaces[index]) != NK_OK)
+            result = result ? result : 27;
+        if (scheduler_windows[index] && nk_window_destroy(scheduler_windows[index]) != NK_OK)
+            result = result ? result : 28;
+    }
     if (initialized)
         nk_shutdown();
     return result;
