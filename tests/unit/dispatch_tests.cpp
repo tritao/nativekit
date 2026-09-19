@@ -80,7 +80,8 @@ int main() {
        RENDER there, while physical backends keep RENDER exclusive. */
     assert(nk_executor_is_current(NK_EXECUTOR_PLATFORM) == 1);
     assert(nk_executor_is_current(NK_EXECUTOR_APP) == 1);
-    assert(nk_executor_is_current(NK_EXECUTOR_RENDER) == 1);
+    assert(nk_executor_is_current(NK_EXECUTOR_RENDER) ==
+           (nk::core::render_executor_physical() ? 0 : 1));
     assert(nk_executor_is_current(NK_EXECUTOR_WORKER) == 0);
     assert(nk_executor_is_current(static_cast<nk_executor>(42)) == 0);
     nk::core::register_runtime_shutdown_hook(&shutdown_hook);
