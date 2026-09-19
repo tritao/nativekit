@@ -215,6 +215,7 @@ int main() {
     RenderTask setup_task{};
     RenderTask destroy_task{};
     bool setup_ok = false;
+    uint64_t setup_surface_call_violations = 0;
 
     nk_init_options init{};
     init.struct_size = sizeof(init);
@@ -269,11 +270,25 @@ int main() {
     setup_task.surface = surface;
     setup_task.target = setup_target;
     setup_task.function = &create_offscreen_resources;
-    if (nk::core::render_executor_physical())
+    if (nk::core::render_executor_physical()) {
+        nk::core::reset_render_surface_api_violations();
+        nk::core::set_render_surface_api_guard(true);
         nkgpu_test_forbid_surface_target_queries();
+    }
     setup_ok = dispatch_render_task(setup_task);
-    if (nk::core::render_executor_physical())
+    setup_surface_call_violations =
+        nk::core::render_executor_physical() ? nk::core::render_surface_api_violations() : 0;
+    if (nk::core::render_executor_physical()) {
+        nk::core::set_render_surface_api_guard(false);
         nkgpu_test_allow_surface_target_queries();
+    }
+    if (setup_surface_call_violations != 0) {
+        std::fprintf(stderr,
+                     "backend renderer smoke: setup touched the surface API on RENDER (%llu)\n",
+                     static_cast<unsigned long long>(setup_surface_call_violations));
+        result = 7;
+        goto cleanup;
+    }
     producer = setup_task.producer;
     target = setup_task.render_target;
     image = setup_task.image;
@@ -340,10 +355,13 @@ int main() {
         frame.framebuffer_width = width;
         frame.framebuffer_height = height;
         frame.pixel_scale = static_cast<float>(width) / window_options.width;
+        nk::core::reset_render_surface_api_violations();
+        nk::core::set_render_surface_api_guard(true);
         nkgpu_test_forbid_surface_target_queries();
         const nkui_result render_result =
             nkui_renderer_render_frame(renderer, list, surface, &frame);
         if (render_result != NKUI_OK) {
+            nk::core::set_render_surface_api_guard(false);
             nkgpu_test_allow_surface_target_queries();
             std::fprintf(stderr,
                          "backend renderer smoke: render imported image failed: result=%d, "
@@ -355,11 +373,18 @@ int main() {
         RenderTask barrier{};
         barrier.function = [](RenderTask &task) noexcept { task.success = true; };
         if (!dispatch_render_task(barrier)) {
+            nk::core::set_render_surface_api_guard(false);
             nkgpu_test_allow_surface_target_queries();
             result = 17;
             goto cleanup;
         }
+        const uint64_t surface_call_violations = nk::core::render_surface_api_violations();
+        nk::core::set_render_surface_api_guard(false);
         nkgpu_test_allow_surface_target_queries();
+        if (!check(surface_call_violations == 0, "render surface API ownership")) {
+            result = 17;
+            goto cleanup;
+        }
         nk_event completion_event{};
         completion_event.struct_size = sizeof(completion_event);
         if (!check(nk_poll_event(&completion_event) == NK_OK, "drain render completion")) {
@@ -486,6 +511,9 @@ int main() {
             result = 27;
             goto cleanup;
         }
+        nk::core::reset_render_surface_api_violations();
+        nk::core::set_render_surface_api_guard(true);
+        nkgpu_test_forbid_surface_target_queries();
         nkui_renderer_stats before_scheduler_stats{};
         if (!check(nkui_renderer_get_stats(renderer, &before_scheduler_stats) == NKUI_OK,
                    "read pre-scheduler stats")) {
@@ -529,6 +557,13 @@ int main() {
                 result = 29;
             nk_event_release(&completion_event);
         }
+        const uint64_t scheduler_surface_call_violations =
+            nk::core::render_surface_api_violations();
+        nk::core::set_render_surface_api_guard(false);
+        nkgpu_test_allow_surface_target_queries();
+        if (!result && !check(scheduler_surface_call_violations == 0,
+                              "scheduler render surface API ownership"))
+            result = 29;
         nkui_renderer_stats scheduler_stats{};
         const bool shared_native_device =
             scheduler_targets[0].native_device != 0 &&
@@ -584,8 +619,100 @@ int main() {
                     before_scheduler_stats.render_submission_executions));
             result = 30;
         }
+
+        /* Device loss is recoverable at the scheduler boundary: the frame
+           that trips the loss completes, and the next sealed plan retires the
+           lost UiRenderer and creates a fresh GPU renderer on RENDER. */
+        if (!result) {
+            nkui_renderer_stats before_loss_stats{};
+            if (!check(nkui_renderer_get_stats(renderer, &before_loss_stats) == NKUI_OK,
+                       "read pre-loss stats")) {
+                result = 31;
+                goto cleanup;
+            }
+            nkgpu_test_lose_all_after_frames(1);
+            nk::core::reset_render_surface_api_violations();
+            nk::core::set_render_surface_api_guard(true);
+            nkgpu_test_forbid_surface_target_queries();
+            const nkui_frame_info recovery_frame{
+                sizeof(recovery_frame),
+                static_cast<float>(scheduler_window_options.width),
+                static_cast<float>(scheduler_window_options.height),
+                scheduler_width[1],
+                scheduler_height[1],
+                1.0f};
+            auto submit_and_drain = [&](const char *operation) {
+                if (nkui_renderer_render_frame(renderer, scheduler_list, scheduler_surfaces[1],
+                                               &recovery_frame) != NKUI_OK) {
+                    std::fprintf(stderr, "backend renderer smoke: %s submission failed\n",
+                                 operation);
+                    return false;
+                }
+                RenderTask barrier{};
+                barrier.function = [](RenderTask &task) noexcept { task.success = true; };
+                if (!dispatch_render_task(barrier))
+                    return false;
+                nk_event completion_event{};
+                completion_event.struct_size = sizeof(completion_event);
+                if (nk_poll_event(&completion_event) != NK_OK)
+                    return false;
+                nk_event_release(&completion_event);
+                return true;
+            };
+            if (!submit_and_drain("device-loss") ||
+                !check(nk::core::render_surface_api_violations() == 0,
+                       "device-loss render surface API ownership")) {
+                nk::core::set_render_surface_api_guard(false);
+                nkgpu_test_allow_surface_target_queries();
+                result = 31;
+                goto cleanup;
+            }
+            nkui_renderer_stats after_loss_stats{};
+            if (!check(nkui_renderer_get_stats(renderer, &after_loss_stats) == NKUI_OK,
+                       "read post-loss stats") ||
+                !check(after_loss_stats.render_submissions ==
+                           before_loss_stats.render_submissions + 1,
+                       "device-loss submission count") ||
+                !check(after_loss_stats.render_submission_executions ==
+                           before_loss_stats.render_submission_executions + 1,
+                       "device-loss execution count") ||
+                !check(after_loss_stats.gpu_frames >= before_loss_stats.gpu_frames + 1,
+                       "device-loss completed frame") ||
+                !check(after_loss_stats.device_losses > before_loss_stats.device_losses,
+                       "device-loss accounting")) {
+                nk::core::set_render_surface_api_guard(false);
+                nkgpu_test_allow_surface_target_queries();
+                result = 32;
+                goto cleanup;
+            }
+            if (!submit_and_drain("device-loss recovery") ||
+                !check(nk::core::render_surface_api_violations() == 0,
+                       "recovery render surface API ownership")) {
+                nk::core::set_render_surface_api_guard(false);
+                nkgpu_test_allow_surface_target_queries();
+                result = 33;
+                goto cleanup;
+            }
+            nkui_renderer_stats recovered_stats{};
+            nk::core::set_render_surface_api_guard(false);
+            nkgpu_test_allow_surface_target_queries();
+            if (!check(nkui_renderer_get_stats(renderer, &recovered_stats) == NKUI_OK,
+                       "read recovered stats") ||
+                !check(recovered_stats.render_submissions ==
+                           before_loss_stats.render_submissions + 2,
+                       "recovery submission count") ||
+                !check(recovered_stats.render_submission_executions ==
+                           before_loss_stats.render_submission_executions + 2,
+                       "recovery execution count") ||
+                !check(recovered_stats.gpu_frames >= before_loss_stats.gpu_frames + 2,
+                       "recovery completed frame")) {
+                result = 34;
+                goto cleanup;
+            }
+        }
     }
 cleanup:
+    nk::core::set_render_surface_api_guard(false);
     if (renderer.id && nkui_renderer_destroy(renderer) != NKUI_OK)
         result = result ? result : 20;
     if (scheduler_list.id && nkui_display_list_destroy(scheduler_list) != NKUI_OK)
