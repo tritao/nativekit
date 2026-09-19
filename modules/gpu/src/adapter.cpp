@@ -613,6 +613,7 @@ static int release_graphics_image(nk_graphics_api graphics_api, const void *runt
     if (!api || !api->external_image_release || !device.id || !backend_image)
         return 0;
     if ((graphics_api == NK_GRAPHICS_OPENGL || graphics_api == NK_GRAPHICS_OPENGL_ES) &&
+        !nk_executor_is_current(NK_EXECUTOR_RENDER) &&
         nk_surface_make_current(device.id) != NK_OK)
         return 0;
     api->external_image_release(static_cast<uint32_t>(backend_image));
