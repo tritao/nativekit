@@ -5157,6 +5157,14 @@ nk_result NK_CALL nk_surface_present(nk_handle handle) {
     return NK_OK;
 }
 
+nk_result NK_CALL nk_graphics_bind_frame_target(const nk_surface_frame_target *) {
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_graphics_unbind_frame_target(const nk_surface_frame_target *) {
+    return NK_OK;
+}
+
 nk_result NK_CALL nk_surface_submit_frame(const nk_surface_frame_target *) {
     /* GTK owns the GtkGLArea callback/context, so PLATFORM remains the
        submitter while this backend is not physically split. */

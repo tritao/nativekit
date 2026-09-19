@@ -157,6 +157,11 @@ nk_result NK_CALL nk_surface_acquire_frame(nk_surface surface, nk_surface_frame 
             const nk_result targeted = nk_surface_get_frame_target(surface, out_target);
             if (targeted != NK_OK)
                 return targeted;
+            if (nk::core::render_executor_physical()) {
+                const nk_result unbound = nk_graphics_unbind_frame_target(out_target);
+                if (unbound != NK_OK)
+                    return unbound;
+            }
 
             const auto token = nk::core::next_frame_token();
             out_target->frame = token;
