@@ -109,6 +109,7 @@ struct Renderer {
     const nk_sokol_api *api = nullptr;
     nk_graphics_api graphics_api = 0;
     nk_graphics_device device{};
+    uint64_t native_device = 0;
     nk_surface_frame_target context_target{};
     bool has_context_target = false;
     sg_bindings bindings{};
@@ -263,6 +264,15 @@ static bool renderer_is_active(const Renderer &renderer) {
            renderer.state == RendererState::RenderTargetActive;
 }
 
+static bool target_matches_renderer(const Renderer &renderer,
+                                    const nk_surface_frame_target &target) {
+    if (target.api != renderer.graphics_api)
+        return false;
+    if (target.native_device && renderer.native_device)
+        return target.native_device == renderer.native_device;
+    return target.device.id == renderer.device.id;
+}
+
 static void mark_renderer_lost(Handle handle, Renderer &renderer) {
     if (renderer.state == RendererState::Lost)
         return;
@@ -382,8 +392,7 @@ static nkgpu_result activate_renderer(Handle handle,
     const bool target_available =
         provided_target || slot->value.has_frame_target ||
         (!render_owned_context && get_surface_frame_target(slot->value.surface, &target) == NK_OK);
-    if (target_available && target.device.id &&
-        (target.api != slot->value.graphics_api || target.device.id != slot->value.device.id)) {
+    if (target_available && target.device.id && !target_matches_renderer(slot->value, target)) {
         ++slot->value.surface_recreations;
         mark_renderer_lost(handle, slot->value);
         return fail(NKGPU_ERROR_DEVICE_LOST,
@@ -402,8 +411,7 @@ static nkgpu_result begin_frame_with_target(Handle handle, const nk_surface_fram
         return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
     if (slot->value.state != RendererState::Ready || active_renderer)
         return fail(NKGPU_ERROR_WRONG_STATE, "a renderer frame is already active");
-    if (target.width <= 0 || target.height <= 0 || target.api != slot->value.graphics_api ||
-        target.device.id != slot->value.device.id)
+    if (target.width <= 0 || target.height <= 0 || !target_matches_renderer(slot->value, target))
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "frame target does not belong to the renderer");
     const bool context_backend =
         target.api == NK_GRAPHICS_OPENGL || target.api == NK_GRAPHICS_OPENGL_ES;
@@ -958,6 +966,7 @@ static nkgpu_result create_renderer_from_target(nk_surface surface,
     renderer_state.api = api;
     renderer_state.graphics_api = target.api;
     renderer_state.device = target.device;
+    renderer_state.native_device = target.native_device;
     renderer_state.context_target = target;
     renderer_state.context_target.native_target = 0;
     renderer_state.context_target.native_depth_stencil_target = 0;
@@ -2082,7 +2091,7 @@ nkgpu_result nkgpu_begin_window_pass(nkgpu_renderer h, uint32_t width, uint32_t 
     }
     if (target.width <= 0 || target.height <= 0)
         return fail(NKGPU_ERROR_UNKNOWN, "surface framebuffer is unavailable");
-    if (target.api != s->value.graphics_api || target.device.id != s->value.device.id) {
+    if (!target_matches_renderer(s->value, target)) {
         ++s->value.surface_recreations;
         mark_renderer_lost(h, s->value);
         return fail(NKGPU_ERROR_DEVICE_LOST,

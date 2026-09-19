@@ -470,6 +470,10 @@ int main() {
                                           before_scheduler_stats.render_submission_failures) ||
              (shared_native_device &&
               scheduler_stats.gpu_frames != before_scheduler_stats.gpu_frames + 1) ||
+             (shared_native_device &&
+              scheduler_stats.resource_creations != before_scheduler_stats.resource_creations) ||
+             (shared_native_device &&
+              scheduler_stats.surface_recreations != before_scheduler_stats.surface_recreations) ||
              scheduler_stats.render_submission_executions !=
                  before_scheduler_stats.render_submission_executions + 1)) {
             std::fprintf(
