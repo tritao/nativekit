@@ -39,6 +39,18 @@ struct BackendRenderBinding {
     }
 };
 
+struct FrameTicket;
+
+/** Backend-specific operations used by a physical render executor. */
+struct FrameBackend {
+    using Operation = nk_result (*)(const FrameTicket &) noexcept;
+
+    Operation bind = nullptr;
+    Operation submit = nullptr;
+    Operation finish = nullptr;
+    Operation cancel = nullptr;
+};
+
 /**
  * The immutable handoff from PLATFORM to RENDER.
  *
@@ -52,21 +64,14 @@ struct FrameTicket {
     nk_surface_frame frame = NK_INVALID_HANDLE;
     nk_surface_frame_target target{};
     BackendRenderBinding binding{};
+    FrameBackend backend{};
     bool render_submitted = false;
-};
-
-/** Backend-specific operations used by a physical render executor. */
-struct FrameBackend {
-    using Operation = nk_result (*)(const FrameTicket &) noexcept;
-
-    Operation bind = nullptr;
-    Operation submit = nullptr;
-    Operation finish = nullptr;
-    Operation cancel = nullptr;
 };
 
 /** Copies an open platform-owned ticket for render-side scheduling. */
 NK_INTERNAL_API bool lookup_frame_ticket(nk_surface_frame frame, FrameTicket *out_ticket) noexcept;
+NK_INTERNAL_API FrameBackend
+frame_backend_for_target(const nk_surface_frame_target &target) noexcept;
 NK_INTERNAL_API bool mark_frame_render_submitted(nk_surface_frame frame) noexcept;
 NK_INTERNAL_API bool take_frame_ticket(nk_surface_frame frame, FrameTicket *out_ticket) noexcept;
 NK_INTERNAL_API void clear_frame_tickets() noexcept;

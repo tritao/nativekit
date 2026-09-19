@@ -57,7 +57,27 @@ void prune_dead_surfaces() {
     }
 }
 
+nk_result bind_frame_ticket(const FrameTicket &ticket) noexcept {
+    return nk_graphics_bind_frame_target(&ticket.target);
+}
+
+nk_result submit_frame_ticket(const FrameTicket &ticket) noexcept {
+    return nk_frame_backend_submit(&ticket.target);
+}
+
+nk_result finish_frame_ticket(const FrameTicket &ticket) noexcept {
+    return nk_frame_backend_finish(ticket.surface, &ticket.target);
+}
+
+nk_result cancel_frame_ticket(const FrameTicket &ticket) noexcept {
+    return nk_frame_backend_finish(ticket.surface, &ticket.target);
+}
+
 } // namespace
+
+FrameBackend frame_backend_for_target(const nk_surface_frame_target &) noexcept {
+    return {&bind_frame_ticket, &submit_frame_ticket, &finish_frame_ticket, &cancel_frame_ticket};
+}
 
 bool lookup_frame_ticket(nk_surface_frame frame, FrameTicket *out_ticket) noexcept {
     if (!out_ticket)
@@ -124,8 +144,12 @@ void clear_frame_tickets() noexcept {
      */
     if (!render_executor_physical() || !executor_satisfies(NK_EXECUTOR_PLATFORM))
         return;
-    for (const auto &ticket : tickets)
-        (void)nk_frame_backend_finish(ticket.surface, &ticket.target);
+    for (const auto &ticket : tickets) {
+        if (ticket.backend.finish)
+            (void)ticket.backend.finish(ticket);
+        else
+            (void)nk_frame_backend_finish(ticket.surface, &ticket.target);
+    }
 }
 
 } // namespace nk::core
@@ -185,6 +209,7 @@ nk_result NK_CALL nk_surface_acquire_frame(nk_surface surface, nk_surface_frame 
             ticket.frame = token;
             ticket.target = *out_target;
             ticket.binding = nk::core::BackendRenderBinding::from_target(*out_target);
+            ticket.backend = nk::core::frame_backend_for_target(*out_target);
             {
                 std::lock_guard lock(nk::core::frame_mutex);
                 const auto inserted = nk::core::frame_by_surface.emplace(surface, token);
@@ -216,8 +241,14 @@ nk_result NK_CALL nk_surface_present_frame(nk_surface_frame frame) {
                 nk::core::set_error("the frame token is not open on this runtime");
                 return NK_ERROR_INVALID_HANDLE;
             }
-            return ticket.render_submitted ? nk_frame_backend_finish(ticket.surface, &ticket.target)
-                                           : nk_surface_present(ticket.surface);
+            if (ticket.render_submitted) {
+                if (!ticket.backend.finish) {
+                    nk::core::set_error("the frame ticket has no finish operation");
+                    return NK_ERROR_UNKNOWN;
+                }
+                return ticket.backend.finish(ticket);
+            }
+            return nk_surface_present(ticket.surface);
         });
 }
 
@@ -237,8 +268,8 @@ nk_result NK_CALL nk_surface_cancel_frame(nk_surface_frame frame) {
                 nk::core::set_error("the frame token is not open on this runtime");
                 return NK_ERROR_INVALID_HANDLE;
             }
-            if (nk::core::render_executor_physical())
-                return nk_frame_backend_finish(ticket.surface, &ticket.target);
+            if (nk::core::render_executor_physical() && ticket.backend.cancel)
+                return ticket.backend.cancel(ticket);
             return NK_OK;
         });
 }
