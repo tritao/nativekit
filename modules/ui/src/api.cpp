@@ -366,6 +366,10 @@ struct RenderCompletion {
     bool success = false;
 };
 
+struct DeferredRendererDestroy {
+    std::unique_ptr<nkui::UiRenderer> renderer;
+};
+
 std::mutex render_submission_mutex;
 std::unique_ptr<RenderSubmission> pending_render_submission;
 bool render_submission_runner_active = false;
@@ -375,6 +379,15 @@ bool enqueue_render_submission(RenderSubmission *submission);
 
 void destroy_render_completion(void *data) noexcept {
     delete static_cast<RenderCompletion *>(data);
+}
+
+void destroy_deferred_renderer(void *data) noexcept {
+    delete static_cast<DeferredRendererDestroy *>(data);
+}
+
+void NK_CALL run_deferred_renderer_destroy(void *data) {
+    auto *destroy = static_cast<DeferredRendererDestroy *>(data);
+    destroy->renderer.reset();
 }
 
 void NK_CALL finish_render_submission(void *data) {
@@ -2216,7 +2229,19 @@ extern "C" nkui_result nkui_renderer_destroy(nkui_renderer renderer) {
     auto *slot = resolve(renderer);
     if (!slot)
         return NKUI_ERROR_INVALID_HANDLE;
-    slot->renderer.reset();
+    if (nk::core::render_executor_physical() && slot->renderer) {
+        auto *destroy = new DeferredRendererDestroy{std::move(slot->renderer)};
+        if (nk::core::dispatch_to_render(&run_deferred_renderer_destroy, destroy,
+                                         &destroy_deferred_renderer,
+                                         sizeof(DeferredRendererDestroy)) != NK_OK) {
+            /* Keep destruction on the owning thread if the runtime is already
+               shutting down and cannot accept another render task. */
+            destroy->renderer.reset();
+            delete destroy;
+        }
+    } else {
+        slot->renderer.reset();
+    }
     slot->backend_api = 0;
     slot->backend_device = {};
     slot->backend_surface = 0;
