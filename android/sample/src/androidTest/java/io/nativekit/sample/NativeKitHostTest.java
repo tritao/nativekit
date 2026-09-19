@@ -42,6 +42,61 @@ public final class NativeKitHostTest {
     private static final int EVENT_NOTIFICATION_DISMISSED = 502;
     private static final int EVENT_DISPLAY_ORIENTATION_CHANGED = 23;
     private static final int EVENT_HOST_GEOMETRY_CHANGED = 600;
+    private static final int EVENT_SURFACE_READY = 700;
+    private static final int EVENT_SURFACE_RESIZE = 701;
+    private static final int EVENT_SURFACE_LOST = 702;
+
+    @Test
+    public void graphicsSurfaceFrameRecoversAcrossResizeAndLoss() throws Exception {
+        try (ActivityScenario<NativeKitTestActivity> scenario =
+                 ActivityScenario.launch(NativeKitTestActivity.class)) {
+            long[] surface = new long[1];
+            scenario.onActivity(activity -> surface[0] = activity.host.createGraphicsSurface(128, 96));
+            assertNotEquals(0, surface[0]);
+            assertEquals(surface[0],
+                         awaitEventForSource(scenario, EVENT_SURFACE_READY, surface[0]).source);
+
+            /* Keep the EGL ticket in flight while Android delivers a resize. */
+            scenario.onActivity(activity -> {
+                assertEquals(0, activity.host.probeGraphicsSurfaceFrame(surface[0], 800));
+                assertEquals(0, activity.host.setGraphicsSurfaceBounds(surface[0], 320, 240));
+            });
+            NativeKitEvent resize = awaitEventForSource(scenario, EVENT_SURFACE_RESIZE, surface[0]);
+            assertNotNull(resize.data);
+            assertTrue(resize.data.length >= 16);
+
+            /* Surface destruction is deferred until the RENDER ticket is closed. */
+            scenario.onActivity(activity ->
+                assertEquals(0, activity.host.setGraphicsSurfaceVisible(surface[0], false)));
+            assertEquals(surface[0],
+                         awaitEventForSource(scenario, EVENT_SURFACE_LOST, surface[0]).source);
+
+            /* The same native surface handle can recover when SurfaceView is recreated. */
+            scenario.onActivity(activity ->
+                assertEquals(0, activity.host.setGraphicsSurfaceVisible(surface[0], true)));
+            assertEquals(surface[0],
+                         awaitEventForSource(scenario, EVENT_SURFACE_READY, surface[0]).source);
+
+            scenario.onActivity(activity ->
+                assertEquals(0, activity.host.probeGraphicsSurfaceFrame(surface[0], 0)));
+            scenario.onActivity(activity ->
+                assertEquals(0, activity.host.setGraphicsSurfaceBounds(surface[0], 321, 241)));
+            NativeKitEvent finalResize = awaitEventForSource(scenario, EVENT_SURFACE_RESIZE,
+                                                              surface[0]);
+            assertNotNull(finalResize.data);
+            /* Drain the platform queue until the RENDER completion has run. */
+            for (int attempt = 0; attempt < 10; ++attempt) {
+                scenario.onActivity(activity -> {
+                    while (activity.host.pollEvent() != null) {
+                        // Drain completion and lifecycle events.
+                    }
+                });
+                Thread.sleep(50);
+            }
+            scenario.onActivity(activity ->
+                assertEquals(0, activity.host.destroyGraphicsSurface(surface[0])));
+        }
+    }
 
     @Test
     public void hostWebViewLifecycleAndEventsWorkEndToEnd() throws Exception {
