@@ -133,7 +133,8 @@ if(NK_BUILD_TESTS)
             add_executable(nativekit_gpu_batch_submit_test tests/batch_submit.cpp)
             target_compile_features(nativekit_gpu_batch_submit_test PRIVATE cxx_std_17)
             target_compile_definitions(nativekit_gpu_batch_submit_test PRIVATE NKGPU_TESTING=1)
-            target_include_directories(nativekit_gpu_batch_submit_test PRIVATE src)
+            target_include_directories(nativekit_gpu_batch_submit_test PRIVATE src
+                "${PROJECT_SOURCE_DIR}/src")
             target_link_libraries(nativekit_gpu_batch_submit_test PRIVATE NativeKit::gpu
                 NativeKit::nativekit)
             if(NOT EMSCRIPTEN AND NOT ANDROID)

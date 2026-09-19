@@ -3186,7 +3186,17 @@ nkgpu_result nkgpu_bind_frame_target(const nk_surface_frame_target *frame_target
     /* GTK/Web remain aliased during the GL migration. Physical GL/EGL backends
        bind their retained context and drawable without querying the surface. */
     if (nk::core::render_executor_physical()) {
-        const nk_result bound = nk_graphics_bind_frame_target(frame_target);
+        nk_result bound = NK_OK;
+        if (frame_target->frame != NK_INVALID_HANDLE) {
+            nk::core::FrameTicket ticket{};
+            if (!nk::core::lookup_frame_ticket(frame_target->frame, &ticket))
+                return fail(NKGPU_ERROR_INVALID_HANDLE, "render frame ticket is unavailable");
+            if (!ticket.backend.bind)
+                return fail(NKGPU_ERROR_UNKNOWN, "render frame ticket has no bind operation");
+            bound = ticket.backend.bind(ticket);
+        } else {
+            bound = nk_graphics_bind_frame_target(frame_target);
+        }
         if (bound != NK_OK)
             return fail(NKGPU_ERROR_UNKNOWN, "frame-target binding: %s", nk_last_error());
     }
@@ -3218,7 +3228,13 @@ static nkgpu_result end_frame(nkgpu_renderer r, bool present_surface) {
         sg_end_pass();
     sg_commit();
     if (!present_surface && rs->value.frame_target.frame != NK_INVALID_HANDLE) {
-        const nk_result submitted = nk_frame_backend_submit(&rs->value.frame_target);
+        nk_result submitted = NK_OK;
+        nk::core::FrameTicket ticket{};
+        if (!nk::core::lookup_frame_ticket(rs->value.frame_target.frame, &ticket))
+            return fail(NKGPU_ERROR_INVALID_HANDLE, "render frame ticket is unavailable");
+        if (!ticket.backend.submit)
+            return fail(NKGPU_ERROR_UNKNOWN, "render frame ticket has no submit operation");
+        submitted = ticket.backend.submit(ticket);
         if (submitted != NK_OK)
             return fail(NKGPU_ERROR_UNKNOWN, "render submit: %s", nk_last_error());
         nk::core::mark_frame_render_submitted(rs->value.frame_target.frame);

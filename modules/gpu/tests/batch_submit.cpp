@@ -2,6 +2,7 @@
 #include "nativekit_gpu.h"
 #include "nativekit_window.h"
 #include "adapter_internal.h"
+#include "core/frame_backend.hpp"
 #include "testing.h"
 
 #if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
@@ -291,6 +292,13 @@ int main() {
         EXPECT_RESULT(nk_surface_acquire_frame(surface, &frame, &frame_target), NK_OK);
         if (frame_target.frame != frame) {
             std::fprintf(stderr, "acquired frame target did not carry its frame token\n");
+            result = __LINE__;
+            goto cleanup;
+        }
+        nk::core::FrameTicket ticket{};
+        if (!nk::core::lookup_frame_ticket(frame, &ticket) || !ticket.backend.bind ||
+            !ticket.backend.submit || !ticket.backend.finish || !ticket.backend.cancel) {
+            std::fprintf(stderr, "acquired frame ticket did not carry backend operations\n");
             result = __LINE__;
             goto cleanup;
         }
