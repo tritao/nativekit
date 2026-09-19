@@ -1033,8 +1033,8 @@ NKGPU_API nkgpu_result nkgpu_batch_seal(nkgpu_batch batch);
  *
  * This must be called on the render executor. Explicit APIs validate the
  * device/context binding carried by the target without consulting a surface.
- * Physical GL/EGL backends must implement context binding before opting into
- * the split executor; aliased GTK/Web backends retain their current context.
+ * Physical GL/EGL backends bind their retained context without consulting a
+ * surface; aliased GTK/Web backends retain their current context.
  */
 NKGPU_API nkgpu_result nkgpu_bind_frame_target(const nk_surface_frame_target *frame_target);
 
