@@ -28,8 +28,10 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <deque>
 #include <memory>
 #include <mutex>
+#include <shared_mutex>
 #include <limits>
 #include <string>
 #include <unordered_map>
@@ -92,7 +94,7 @@ struct ResourceSlot {
     std::vector<FontEntry> fonts;
     std::shared_ptr<nkui::SkribidiFontCollection> font_collection;
     bool system_fallbacks = false;
-    std::unique_ptr<nkui::SkribidiAdapter> text;
+    std::shared_ptr<nkui::SkribidiAdapter> text;
     std::unique_ptr<nkui::SurfaceProducer> surface;
     nk_graphics_image graphics_image{};
     nkui::PreparedGlyphs text_glyphs;
@@ -189,7 +191,7 @@ struct RendererSlot {
     uint16_t generation = 1;
 };
 
-struct LayoutSessionState {
+struct LayoutSessionState : std::enable_shared_from_this<LayoutSessionState> {
     std::mutex mutex;
     std::unique_ptr<nkui::LayoutEngine> engine;
     nkui::LayoutRenderCompiler compiler;
@@ -308,9 +310,11 @@ std::vector<DisplayListSlot> lists;
 std::mutex resources_mutex;
 std::vector<ResourceSlot> resources;
 std::mutex renderers_mutex;
-std::vector<RendererSlot> renderers;
+std::deque<RendererSlot> renderers;
 std::mutex layout_sessions_mutex;
 std::vector<LayoutSessionSlot> layout_sessions;
+std::shared_mutex renderer_execution_mutex;
+std::mutex renderer_cpu_mutex;
 
 uint32_t make_handle(uint16_t generation, uint16_t slot) {
     return (static_cast<uint32_t>(generation) << 16) | slot;
@@ -367,12 +371,24 @@ struct RenderSubmission {
     nk_surface_frame_target frame_target{};
     std::shared_ptr<const nkui::SealedRenderPlan> plan;
     std::vector<nkui::SkribidiAdapter *> text_adapters;
+    std::vector<std::shared_ptr<nkui::SkribidiAdapter>> text_adapter_owners;
+    std::shared_ptr<LayoutSessionState> session_owner;
 };
 
 struct RenderCompletion {
     nk_surface_frame frame = NK_INVALID_HANDLE;
     bool success = false;
 };
+
+void retain_text_adapter(
+    const std::shared_ptr<nkui::SkribidiAdapter> &adapter,
+    std::vector<nkui::SkribidiAdapter *> &adapters,
+    std::vector<std::shared_ptr<nkui::SkribidiAdapter>> &owners) {
+    if (!adapter || std::find(adapters.begin(), adapters.end(), adapter.get()) != adapters.end())
+        return;
+    adapters.push_back(adapter.get());
+    owners.push_back(adapter);
+}
 
 struct DeferredRendererDestroy {
     std::unique_ptr<nkui::UiRenderer> renderer;
@@ -413,46 +429,66 @@ void execute_render_submission(RenderSubmission &submission) {
     bool success = false;
     const bool context_backend = submission.frame_target.api == NK_GRAPHICS_OPENGL ||
                                  submission.frame_target.api == NK_GRAPHICS_OPENGL_ES;
-    if (context_backend && nkgpu_bind_frame_target(&submission.frame_target) != NKGPU_OK)
-        goto complete;
-    {
-        std::scoped_lock lock(renderers_mutex, resources_mutex);
-        auto *slot = resolve(submission.renderer);
-        if (slot) {
-            discard_stale_renderer(*slot, submission.frame_target, submission.surface);
-            if (!slot->renderer) {
-                slot->renderer =
-                    nkui::create_ui_renderer(submission.surface, &submission.frame_target);
-                slot->backend_api = submission.frame_target.api;
-                slot->backend_device = submission.frame_target.device;
-                slot->backend_surface = submission.surface;
+    const bool bound = !context_backend || nkgpu_bind_frame_target(&submission.frame_target) == NKGPU_OK;
+    if (bound) {
+        std::shared_lock<std::shared_mutex> renderer_execution_lock(renderer_execution_mutex,
+                                                                     std::defer_lock);
+        nkui::UiRenderer *renderer_impl = nullptr;
+        bool new_backend = false;
+        {
+            std::lock_guard<std::mutex> lock(renderers_mutex);
+            renderer_execution_lock.lock();
+            auto *slot = resolve(submission.renderer);
+            if (slot) {
+                {
+                    std::lock_guard<std::mutex> cpu_lock(renderer_cpu_mutex);
+                    discard_stale_renderer(*slot, submission.frame_target, submission.surface);
+                }
+                if (!slot->renderer) {
+                    slot->renderer =
+                        nkui::create_ui_renderer(submission.surface, &submission.frame_target);
+                    slot->backend_api = submission.frame_target.api;
+                    slot->backend_device = submission.frame_target.device;
+                    slot->backend_surface = submission.surface;
+                }
+                if (slot->renderer) {
+                    new_backend = !slot->renderer->valid();
+                    success = !new_backend || slot->renderer->initialize();
+                    if (success)
+                        success = register_custom_effects(*slot);
+                    if (success)
+                        renderer_impl = slot->renderer.get();
+                }
             }
-            if (slot->renderer) {
-                const bool new_backend = !slot->renderer->valid();
-                success = !new_backend || slot->renderer->initialize();
-                if (success)
-                    success = register_custom_effects(*slot);
+        }
+
+        if (renderer_impl && success) {
+            if (submission.session_owner) {
+                std::scoped_lock upload_lock(resources_mutex, submission.session_owner->mutex);
                 for (auto *adapter : submission.text_adapters)
                     if (success)
-                        success = slot->renderer->uploadAtlases(*adapter, new_backend);
-                if (success)
-                    success = nkui::execute_render_plan(
-                        *slot->renderer, *submission.plan,
-                        {nkui::make_resource_id(nkui::ResourceKind::RenderTarget, 1, 1),
-                         submission.frame_target});
+                        success = renderer_impl->uploadAtlases(*adapter, new_backend);
+            } else {
+                std::lock_guard<std::mutex> upload_lock(resources_mutex);
+                for (auto *adapter : submission.text_adapters)
+                    if (success)
+                        success = renderer_impl->uploadAtlases(*adapter, new_backend);
             }
+            if (success)
+                success = nkui::execute_render_plan(
+                    *renderer_impl, *submission.plan,
+                    {nkui::make_resource_id(nkui::ResourceKind::RenderTarget, 1, 1),
+                     submission.frame_target});
         }
     }
 
     /* GL/EGL retains a thread-local context through submit so sealed-plan
        resource destructors can release external images on RENDER. */
-    if (nk::core::render_executor_physical() &&
-        context_backend) {
+    if (bound && nk::core::render_executor_physical() && context_backend) {
         submission.plan.reset();
         nk_graphics_unbind_frame_target(&submission.frame_target);
     }
 
-complete:
     auto *completion = new RenderCompletion{submission.frame, success};
     if (nk::core::dispatch_to_executor(NK_EXECUTOR_PLATFORM, &finish_render_submission,
                                        completion, &destroy_render_completion,
@@ -906,7 +942,7 @@ nkui_result create_text_layout_locked(nkui_resource fonts, const char *text, flo
         allocate_resource(nkui::ResourceKind::TextLayout, out_layout, &layout_slot);
     if (allocated != NKUI_OK)
         return allocated;
-    layout_slot->text = std::make_unique<nkui::SkribidiAdapter>(shared_fonts);
+    layout_slot->text = std::make_shared<nkui::SkribidiAdapter>(shared_fonts);
     bool valid = layout_slot->text->valid() &&
                  layout_slot->text->set_atlas_namespace(static_cast<uint16_t>(out_layout->id));
     valid = valid && layout_slot->text->layout_utf8(text, width, options);
@@ -2261,6 +2297,9 @@ extern "C" nkui_result nkui_renderer_destroy(nkui_renderer renderer) {
     auto *slot = resolve(renderer);
     if (!slot)
         return NKUI_ERROR_INVALID_HANDLE;
+    std::unique_lock<std::shared_mutex> execution_lock;
+    if (nk::core::render_executor_physical())
+        execution_lock = std::unique_lock<std::shared_mutex>(renderer_execution_mutex);
     if (nk::core::render_executor_physical() && slot->renderer) {
         auto *destroy = new DeferredRendererDestroy{std::move(slot->renderer)};
         if (nk::core::dispatch_to_render(&run_deferred_renderer_destroy, destroy,
@@ -2343,6 +2382,10 @@ extern "C" nkui_result nkui_renderer_get_stats(nkui_renderer renderer,
     if (!out_stats)
         return NKUI_ERROR_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(renderers_mutex);
+    std::unique_lock<std::shared_mutex> execution_lock;
+    if (nk::core::render_executor_physical())
+        execution_lock = std::unique_lock<std::shared_mutex>(renderer_execution_mutex);
+    std::unique_lock<std::mutex> cpu_lock(renderer_cpu_mutex);
     auto *slot = resolve(renderer);
     if (!slot)
         return NKUI_ERROR_INVALID_HANDLE;
@@ -2441,7 +2484,11 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
             nk_surface_get_frame_target(surface, &frame_target) != NK_OK)
             return NKUI_ERROR_RENDERING;
     }
-    std::scoped_lock lock(renderers_mutex, lists_mutex, resources_mutex);
+    std::unique_lock<std::mutex> renderer_lock(renderers_mutex, std::defer_lock);
+    std::unique_lock<std::mutex> lists_lock(lists_mutex, std::defer_lock);
+    std::unique_lock<std::mutex> resources_lock(resources_mutex, std::defer_lock);
+    std::lock(renderer_lock, lists_lock, resources_lock);
+    std::unique_lock<std::mutex> cpu_lock(renderer_cpu_mutex);
     auto *renderer_slot = resolve(renderer);
     auto *list_slot = resolve(list);
     if (!renderer_slot || !list_slot)
@@ -2499,6 +2546,7 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
     std::vector<std::shared_ptr<nkui::PreparedPath>> prepared_paths;
     std::vector<std::shared_ptr<nkui::PreparedTexture>> prepared_images;
     std::vector<nkui::SkribidiAdapter *> text_adapters;
+    std::vector<std::shared_ptr<nkui::SkribidiAdapter>> text_adapter_owners;
     std::vector<std::pair<nkui::SkribidiAdapter *, nkui::PreparedGlyphs *>> prepared_texts;
     struct OwnedTextBind {
         nkui::ResourceId id{};
@@ -2708,9 +2756,7 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
                 // baking raster_scale into x/y or replacing the transform with
                 // a correction scales positions but leaves glyph geometry small.
                 command.transform = transform;
-                if (std::find(text_adapters.begin(), text_adapters.end(), layout->text.get()) ==
-                    text_adapters.end())
-                    text_adapters.push_back(layout->text.get());
+                retain_text_adapter(layout->text, text_adapters, text_adapter_owners);
             } else if (command.kind == nkui::RenderCommandKind::CompositeTarget &&
                        command.resource.value < (UINT32_C(4) << 28)) {
                 valid = false;
@@ -2799,8 +2845,18 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
         if (!sealed)
             return NKUI_ERROR_OUT_OF_MEMORY;
         if (threaded) {
-            auto *submission = new RenderSubmission{renderer, surface, frame, frame_target,
-                                                    std::move(sealed), std::move(text_adapters)};
+            auto *submission = new RenderSubmission{renderer,
+                                                    surface,
+                                                    frame,
+                                                    frame_target,
+                                                    std::move(sealed),
+                                                    std::move(text_adapters),
+                                                    std::move(text_adapter_owners),
+                                                    {}};
+            renderer_lock.unlock();
+            lists_lock.unlock();
+            resources_lock.unlock();
+            cpu_lock.unlock();
             if (!enqueue_render_submission(submission)) {
                 return NKUI_ERROR_RENDERING;
             }
@@ -2864,7 +2920,12 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
             nk_surface_get_frame_target(surface, &frame_target) != NK_OK)
             return NKUI_ERROR_RENDERING;
     }
-    std::scoped_lock lock(renderers_mutex, lists_mutex, resources_mutex, layout_sessions_mutex);
+    std::unique_lock<std::mutex> renderer_lock(renderers_mutex, std::defer_lock);
+    std::unique_lock<std::mutex> lists_lock(lists_mutex, std::defer_lock);
+    std::unique_lock<std::mutex> resources_lock(resources_mutex, std::defer_lock);
+    std::unique_lock<std::mutex> sessions_lock(layout_sessions_mutex, std::defer_lock);
+    std::lock(renderer_lock, lists_lock, resources_lock, sessions_lock);
+    std::unique_lock<std::mutex> cpu_lock(renderer_cpu_mutex);
     auto *renderer_slot = resolve(renderer);
     auto *session_state = resolve(session);
     if (!renderer_slot || !session_state || !session_state->submitted)
@@ -2941,6 +3002,7 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
     std::vector<std::shared_ptr<nkui::PreparedPath>> custom_paths;
     std::vector<std::shared_ptr<nkui::PreparedTexture>> custom_images;
     std::vector<nkui::SkribidiAdapter *> text_adapters;
+    std::vector<std::shared_ptr<nkui::SkribidiAdapter>> text_adapter_owners;
     std::vector<std::pair<nkui::SkribidiAdapter *, nkui::PreparedGlyphs *>> prepared_texts;
     uint32_t prepared_slot = 1;
     bool valid = true;
@@ -3127,9 +3189,7 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                         sealable = false;
                 }
                 command.resource = prepared_id;
-                if (std::find(text_adapters.begin(), text_adapters.end(), layout->text.get()) ==
-                    text_adapters.end())
-                    text_adapters.push_back(layout->text.get());
+                retain_text_adapter(layout->text, text_adapters, text_adapter_owners);
             } else if (command.kind == nkui::RenderCommandKind::CompositeTarget) {
                 if (!nkui::is_resource_id(command.resource, nkui::ResourceKind::RenderTarget)) {
                     valid = false;
@@ -3196,8 +3256,19 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
         if (threaded) {
             if (session_text_adapter)
                 text_adapters.push_back(session_text_adapter);
-            auto *submission = new RenderSubmission{renderer, surface, frame, frame_target,
-                                                    std::move(sealed), std::move(text_adapters)};
+            auto *submission = new RenderSubmission{renderer,
+                                                    surface,
+                                                    frame,
+                                                    frame_target,
+                                                    std::move(sealed),
+                                                    std::move(text_adapters),
+                                                    std::move(text_adapter_owners),
+                                                    session_state->shared_from_this()};
+            renderer_lock.unlock();
+            lists_lock.unlock();
+            resources_lock.unlock();
+            sessions_lock.unlock();
+            cpu_lock.unlock();
             if (!enqueue_render_submission(submission))
                 return NKUI_ERROR_RENDERING;
             frame_guard.handed_off = true;
