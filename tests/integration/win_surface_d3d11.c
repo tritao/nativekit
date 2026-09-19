@@ -1,9 +1,111 @@
 #include "nativekit_graphics.h"
 #include "nativekit_time.h"
 #include "nativekit_window.h"
+#include "core/executor.hpp"
+#include "core/frame_backend.hpp"
 
 #include <assert.h>
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
 #include <stdint.h>
+
+struct D3D11FrameProbe {
+    std::mutex mutex;
+    std::condition_variable condition;
+    nk_surface_frame frame = NK_INVALID_HANDLE;
+    nk_surface_frame_target target = {};
+    bool entered = false;
+    bool release = false;
+    bool complete = false;
+    bool render_executor = false;
+    nk_result render_result = NK_ERROR_UNKNOWN;
+    uint64_t surface_api_violations = 0;
+};
+
+static void NK_CALL run_d3d11_frame_probe(void *data) {
+    auto &probe = *static_cast<D3D11FrameProbe *>(data);
+    {
+        std::unique_lock lock(probe.mutex);
+        probe.entered = true;
+        probe.condition.notify_one();
+        probe.condition.wait(lock, [&probe] { return probe.release; });
+    }
+
+    probe.render_executor = nk::core::executor_current() == NK_EXECUTOR_RENDER;
+    nk::core::reset_render_surface_api_violations();
+    nk::core::set_render_surface_api_guard(true);
+    const nk_result bound = nk_graphics_bind_frame_target(&probe.target);
+    if (bound == NK_OK) {
+        probe.render_result = nk_frame_backend_submit(&probe.target);
+        if (probe.render_result == NK_OK)
+            assert(nk::core::mark_frame_render_submitted(probe.frame));
+        assert(nk_graphics_unbind_frame_target(&probe.target) == NK_OK);
+    } else {
+        probe.render_result = bound;
+    }
+    nk::core::set_render_surface_api_guard(false);
+    probe.surface_api_violations = nk::core::render_surface_api_violations();
+
+    {
+        std::lock_guard lock(probe.mutex);
+        probe.complete = true;
+    }
+    probe.condition.notify_one();
+}
+
+static void run_d3d11_frame_ticket(nk_surface surface, int32_t next_width, int32_t next_height) {
+    nk_surface_frame frame = NK_INVALID_HANDLE;
+    nk_surface_frame_target target = {};
+    target.struct_size = sizeof(target);
+    assert(nk_surface_acquire_frame(surface, &frame, &target) == NK_OK);
+    assert(frame != NK_INVALID_HANDLE);
+    assert(target.api == NK_GRAPHICS_D3D11);
+    assert(target.width > 0 && target.height > 0);
+    assert(target.native_present_target != 0);
+
+    D3D11FrameProbe probe;
+    probe.frame = frame;
+    probe.target = target;
+    assert(nk::core::dispatch_to_render(&run_d3d11_frame_probe, &probe, nullptr, sizeof(probe)) ==
+           NK_OK);
+    {
+        std::unique_lock lock(probe.mutex);
+        assert(probe.condition.wait_for(lock, std::chrono::seconds(5),
+                                        [&probe] { return probe.entered; }));
+    }
+
+    /* The swapchain stays prepared while RENDER owns the immutable ticket. */
+    assert(nk_surface_set_bounds(surface, 12, 16, next_width, next_height) == NK_OK);
+    nk_surface_frame_target pending_target = {};
+    pending_target.struct_size = sizeof(pending_target);
+    assert(nk_surface_get_frame_target(surface, &pending_target) == NK_OK);
+    assert(pending_target.width == target.width);
+    assert(pending_target.height == target.height);
+
+    {
+        std::lock_guard lock(probe.mutex);
+        probe.release = true;
+    }
+    probe.condition.notify_one();
+    {
+        std::unique_lock lock(probe.mutex);
+        assert(probe.condition.wait_for(lock, std::chrono::seconds(5),
+                                        [&probe] { return probe.complete; }));
+    }
+    assert(probe.render_executor);
+    assert(probe.render_result == NK_OK);
+    assert(probe.surface_api_violations == 0);
+    assert(nk_surface_present_frame(frame) == NK_OK);
+
+    nk_surface_frame next_frame = NK_INVALID_HANDLE;
+    nk_surface_frame_target resized_target = {};
+    resized_target.struct_size = sizeof(resized_target);
+    assert(nk_surface_acquire_frame(surface, &next_frame, &resized_target) == NK_OK);
+    assert(resized_target.width > 0 && resized_target.height > 0);
+    assert(resized_target.width != target.width || resized_target.height != target.height);
+    assert(nk_surface_cancel_frame(next_frame) == NK_OK);
+}
 
 static void acquire_frame(nk_window window, nk_surface surface) {
     assert(nk_window_activate(window) == NK_OK);
@@ -58,6 +160,8 @@ int main(void) {
     assert(target.native_depth_stencil_target != 0);
     assert(target.native_present_target != 0);
     assert(nk_surface_present(surface) == NK_OK);
+
+    run_d3d11_frame_ticket(surface, 240, 140);
 
     assert(nk_surface_set_bounds(surface, 12, 16, 200, 100) == NK_OK);
     acquire_frame(window, surface);
