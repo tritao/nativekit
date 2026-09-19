@@ -469,10 +469,13 @@ int main() {
              scheduler_stats.render_submissions < 2 ||
              scheduler_stats.render_submission_replacements < 1 ||
              scheduler_stats.render_submission_cancellations < 1 ||
-             scheduler_stats.render_submission_failures != 0 ||
              scheduler_stats.render_submissions != before_scheduler_stats.render_submissions + 2 ||
              scheduler_stats.render_submission_replacements !=
                  before_scheduler_stats.render_submission_replacements + 1 ||
+             scheduler_stats.render_submission_cancellations !=
+                 before_scheduler_stats.render_submission_cancellations + 1 ||
+             scheduler_stats.render_submission_failures !=
+                 before_scheduler_stats.render_submission_failures ||
              scheduler_stats.gpu_frames != before_scheduler_stats.gpu_frames + 1)) {
             std::fprintf(
                 stderr,
