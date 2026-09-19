@@ -6,6 +6,7 @@ import LayoutStyle;
 import LayoutVisualKind;
 import ResolvedLayoutItem;
 import nativekit.ui.core.BuildContext;
+import nativekit.ui.core.CachePolicy;
 import nativekit.ui.core.Key;
 import nativekit.ui.core.RenderNode;
 import nativekit.ui.core.UiEvent;
@@ -20,19 +21,38 @@ class CanvasView implements View {
 	public final label:Null<String>;
 	public final style:LayoutStyle;
 	public final hitTestSelf:Bool;
+	/** Native raster reuse policy for this retained paint plane. */
+	public final cachePolicy:CachePolicy;
+	/** Optional fingerprint for retaining the encoded display list across builds. */
+	public final cacheKey:Null<String>;
 	final painter:Canvas->ResolvedLayoutItem->Void;
 	final handlers:Map<String, Array<UiEvent->Void>>;
 
 	public function new(key:String, painter:Canvas->ResolvedLayoutItem->Void,
-			?style:LayoutStyle, ?label:String, hitTestSelf:Bool = true) {
+			?style:LayoutStyle, ?label:String, hitTestSelf:Bool = true,
+			cachePolicy:CachePolicy = CachePolicy.None, ?cacheKey:String) {
 		if (key == null || key.length == 0 || painter == null)
 			throw "Canvas views require a stable key and painter";
+		if (cacheKey != null && cacheKey.length == 0)
+			throw "Canvas view cache keys cannot be empty";
 		this.key = key;
 		this.label = label;
 		this.hitTestSelf = hitTestSelf;
+		this.cachePolicy = cachePolicy;
+		this.cacheKey = cacheKey;
 		this.painter = painter;
 		this.style = style == null ? defaultStyle() : style.copy();
 		handlers = new Map();
+	}
+
+	/** Creates a canvas view whose painter does not need resolved geometry. */
+	public static function simple(key:String, painter:Canvas->Void,
+			?style:LayoutStyle, ?label:String, hitTestSelf:Bool = true,
+			cachePolicy:CachePolicy = CachePolicy.None, ?cacheKey:String):CanvasView {
+		if (painter == null)
+			throw "Simple canvas views require a painter";
+		return new CanvasView(key, function(canvas, _) painter(canvas), style, label,
+			hitTestSelf, cachePolicy, cacheKey);
 	}
 
 	public function on(kind:String, handler:UiEvent->Void):CanvasView {
@@ -57,9 +77,10 @@ class CanvasView implements View {
 			node.states = context.interactionStates.get(nodeId);
 			node.computedStyle = computed;
 			node.hitTestSelf = hitTestSelf;
+			node.cachePolicy = cachePolicy;
 			if (label != null)
 				node.semantics = new Semantics(AccessibilityRole.Group, label);
-			node.onPaint(painter);
+			node.onPaint(painter, cacheKey);
 			for (kind in handlers.keys())
 				for (handler in handlers.get(kind))
 					node.on(kind, handler);

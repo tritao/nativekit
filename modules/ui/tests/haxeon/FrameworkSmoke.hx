@@ -8,6 +8,8 @@ import Image;
 import ImageFormat;
 import ImageFilter;
 import Insets;
+import Path;
+import SolidPaint;
 import nativekit.ui.icons.IconName;
 import LayoutAlignmentX;
 import LayoutAlignmentY;
@@ -44,6 +46,7 @@ import NativeKitRuntime;
 import NativeKitEventDecoderTests;
 import nativekit.ui.core.NativeInputAdapter;
 import nativekit.ui.core.CursorShape as UiCursorShape;
+import nativekit.ui.core.CachePolicy;
 import nativekit.ui.core.EventDispatcher;
 import nativekit.ui.core.FocusManager;
 import nativekit.ui.core.HitTest;
@@ -70,6 +73,7 @@ import nativekit.ui.widgets.Column;
 import nativekit.ui.widgets.Align;
 import nativekit.ui.widgets.AppShell;
 import nativekit.ui.widgets.CanvasView;
+import nativekit.ui.widgets.Shape;
 import nativekit.ui.widgets.Checkbox;
 import nativekit.ui.widgets.ImageView;
 import nativekit.ui.widgets.LayeredImageView;
@@ -791,14 +795,32 @@ class FrameworkSmoke {
 		var canvasView = new CanvasView("canvas-smoke", function(canvas, geometry) {
 			canvas.fillRect(new Rect(0.0, 0.0, geometry.width, geometry.height),
 				Color.rgba(0.3, 0.4, 0.5, 1.0));
-		}, null, "Drawing region");
+		}, null, "Drawing region", true, CachePolicy.Raster, "canvas-static");
 		canvasView.on(UiEventKind.PointerDown, function(_) { canvasEvents++; });
 		var canvasRoot = context.submit(canvasView, new LayoutFrame(256.0, 192.0));
 		var canvasGeometry:ResolvedLayoutItem = cast canvasRoot.resolved;
 		var canvasSemantics:Semantics = cast canvasRoot.semantics;
 		context.pointerDown(canvasGeometry.x + 10.0, canvasGeometry.y + 10.0, 0);
-		if (canvasEvents != 1 || canvasSemantics.role != AccessibilityRole.Group)
+		if (canvasEvents != 1 || canvasSemantics.role != AccessibilityRole.Group ||
+			canvasRoot.cachePolicy != CachePolicy.Raster)
 			return 66;
+		var simpleCanvas = CanvasView.simple("simple-canvas", function(canvas) {
+			canvas.fillRect(new Rect(0.0, 0.0, 12.0, 12.0), Color.rgba(0.8, 0.2, 0.2, 1.0));
+		}, null, "Simple drawing", true, CachePolicy.Raster, "simple-static");
+		var simpleCanvasRoot = context.submit(simpleCanvas, new LayoutFrame(64.0, 64.0));
+		if (simpleCanvasRoot.cachePolicy != CachePolicy.Raster)
+			return 241;
+		var shapePath = new PathBuilder().roundRect(0.0, 0.0, 32.0, 20.0, 4.0).build();
+		var shapePaint = SolidPaint.create(Color.rgba(0.2, 0.7, 0.4, 1.0));
+		var shape = Shape.fill("shape-smoke", shapePath, shapePaint, null, "Filled shape",
+			true, CachePolicy.Raster, "shape-static");
+		var shapeRoot = context.submit(shape, new LayoutFrame(64.0, 64.0));
+		var shapeSemantics:Semantics = cast shapeRoot.semantics;
+		if (shapeSemantics == null || shapeSemantics.role != AccessibilityRole.Group ||
+			shapeSemantics.label != "Filled shape" || shapeRoot.cachePolicy != CachePolicy.Raster)
+			return 242;
+		shapePath.dispose();
+		shapePaint.dispose();
 		var responsiveCanvasStyle = new LayoutStyle();
 		responsiveCanvasStyle.width = LayoutAxis.stretch();
 		responsiveCanvasStyle.height = LayoutAxis.fixed(48.0);
