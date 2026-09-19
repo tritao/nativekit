@@ -106,6 +106,13 @@ bool take_frame_ticket(nk_surface_frame frame, FrameTicket *out_ticket) noexcept
     return true;
 }
 
+void clear_frame_tickets() noexcept {
+    std::lock_guard lock(frame_mutex);
+    frame_by_surface.clear();
+    surface_by_frame.clear();
+    ticket_by_frame.clear();
+}
+
 } // namespace nk::core
 
 extern "C" {

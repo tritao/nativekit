@@ -68,6 +68,7 @@ struct FrameBackend {
 bool lookup_frame_ticket(nk_surface_frame frame, FrameTicket *out_ticket) noexcept;
 bool mark_frame_render_submitted(nk_surface_frame frame) noexcept;
 bool take_frame_ticket(nk_surface_frame frame, FrameTicket *out_ticket) noexcept;
+void clear_frame_tickets() noexcept;
 
 } // namespace nk::core
 
