@@ -1343,7 +1343,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	/**
 	 * Preparation and geometry-cache counters for one renderer.
 	 */
-	struct nkui_renderer_stats @layout(472, 8) {
+	struct nkui_renderer_stats @layout(504, 8) {
 		/**
 		 * Set to sizeof(nkui_renderer_stats) when returned by the API.
 		 */
@@ -1580,6 +1580,22 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 		 * Render plans removed from the pending slot and attempted on RENDER.
 		 */
 		render_submission_executions: u64 @offset(464);
+		/**
+		 * Cumulative time spent preparing sealed render plans, in nanoseconds.
+		 */
+		render_submission_build_ns: u64 @offset(472);
+		/**
+		 * Cumulative time sealed plans waited in the pending scheduler slot, in nanoseconds.
+		 */
+		render_submission_queue_latency_ns: u64 @offset(480);
+		/**
+		 * Cumulative time spent executing sealed plans on RENDER, in nanoseconds.
+		 */
+		render_submission_execution_ns: u64 @offset(488);
+		/**
+		 * Cumulative time from frame acquisition until platform frame close, in nanoseconds.
+		 */
+		render_submission_acquire_to_present_ns: u64 @offset(496);
 	}
 	/**
 	 * Payload for NKUI_COMMAND_SET_PAINT and resource-only draw commands.

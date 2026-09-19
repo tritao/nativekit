@@ -3,6 +3,7 @@
 
 #include "nativekit_graphics.h"
 #include "nativekit_gpu.h"
+#include "nativekit_time.h"
 #include "image_decode.h"
 
 #include "core/executor.hpp"
@@ -374,12 +375,16 @@ struct RenderSubmission {
     std::vector<nkui::SkribidiAdapter *> text_adapters;
     std::vector<std::shared_ptr<nkui::SkribidiAdapter>> text_adapter_owners;
     std::shared_ptr<LayoutSessionState> session_owner;
+    uint64_t acquired_at_ns = 0;
+    uint64_t enqueued_at_ns = 0;
+    uint64_t build_time_ns = 0;
 };
 
 struct RenderCompletion {
     nkui_renderer renderer{};
     nk_surface_frame frame = NK_INVALID_HANDLE;
     bool success = false;
+    uint64_t acquired_at_ns = 0;
 };
 
 void retain_text_adapter(const std::shared_ptr<nkui::SkribidiAdapter> &adapter,
@@ -407,6 +412,17 @@ void record_render_submission_stat(nkui_renderer renderer,
         ++(slot->stats.*counter);
 }
 
+void record_render_submission_value(nkui_renderer renderer, uint64_t nkui_renderer_stats::*counter,
+                                    uint64_t value) noexcept {
+    std::lock_guard lock(renderers_mutex);
+    if (auto *slot = resolve(renderer))
+        slot->stats.*counter += value;
+}
+
+uint64_t elapsed_ns(uint64_t start, uint64_t end) noexcept {
+    return end >= start ? end - start : 0;
+}
+
 void NK_CALL run_next_render_submission(void *data);
 bool enqueue_render_submission(RenderSubmission *submission);
 void shutdown_render_scheduler() noexcept;
@@ -429,6 +445,9 @@ void destroy_render_completion(void *data) noexcept {
                                       &nkui_renderer_stats::render_submission_cancellations);
         (void)nk_surface_cancel_frame(completion->frame);
         completion->frame = NK_INVALID_HANDLE;
+        record_render_submission_value(
+            completion->renderer, &nkui_renderer_stats::render_submission_acquire_to_present_ns,
+            elapsed_ns(completion->acquired_at_ns, nk_time_now_ns()));
     }
     delete completion;
 }
@@ -455,9 +474,17 @@ void NK_CALL finish_render_submission(void *data) {
         /* The token was consumed even when the backend reports an error. */
         completion->frame = NK_INVALID_HANDLE;
     }
+    const uint64_t finished_at_ns = nk_time_now_ns();
+    record_render_submission_value(completion->renderer,
+                                   &nkui_renderer_stats::render_submission_acquire_to_present_ns,
+                                   elapsed_ns(completion->acquired_at_ns, finished_at_ns));
 }
 
 void execute_render_submission(RenderSubmission &submission) {
+    const uint64_t execution_started_at_ns = nk_time_now_ns();
+    record_render_submission_value(submission.renderer,
+                                   &nkui_renderer_stats::render_submission_queue_latency_ns,
+                                   elapsed_ns(submission.enqueued_at_ns, execution_started_at_ns));
     record_render_submission_stat(submission.renderer,
                                   &nkui_renderer_stats::render_submission_executions);
     bool success = false;
@@ -545,10 +572,15 @@ void execute_render_submission(RenderSubmission &submission) {
         nk_graphics_unbind_frame_target(&submission.frame_target);
     }
 
+    const uint64_t execution_finished_at_ns = nk_time_now_ns();
+    record_render_submission_value(submission.renderer,
+                                   &nkui_renderer_stats::render_submission_execution_ns,
+                                   elapsed_ns(execution_started_at_ns, execution_finished_at_ns));
     if (!success)
         record_render_submission_stat(submission.renderer,
                                       &nkui_renderer_stats::render_submission_failures);
-    auto *completion = new RenderCompletion{submission.renderer, submission.frame, success};
+    auto *completion = new RenderCompletion{submission.renderer, submission.frame, success,
+                                            submission.acquired_at_ns};
     if (nk::core::dispatch_to_executor(NK_EXECUTOR_PLATFORM, &finish_render_submission, completion,
                                        &destroy_render_completion,
                                        sizeof(RenderCompletion)) != NK_OK) {
@@ -563,6 +595,10 @@ void cancel_render_submission_on_platform(RenderSubmission &submission) {
         record_render_submission_stat(submission.renderer,
                                       &nkui_renderer_stats::render_submission_cancellations);
         nk_surface_cancel_frame(submission.frame);
+        record_render_submission_value(
+            submission.renderer, &nkui_renderer_stats::render_submission_acquire_to_present_ns,
+            elapsed_ns(submission.acquired_at_ns, nk_time_now_ns()));
+        submission.frame = NK_INVALID_HANDLE;
     }
 }
 
@@ -585,6 +621,8 @@ bool enqueue_render_submission(RenderSubmission *raw_submission) {
     bool start_runner = false;
     const auto generation = nk::core::runtime_generation();
     const auto renderer = submission->renderer;
+    const uint64_t build_time_ns = submission->build_time_ns;
+    submission->enqueued_at_ns = nk_time_now_ns();
     {
         std::lock_guard lock(render_submission_mutex);
         /* A discarded render task does not run after nk_shutdown(). Drop its
@@ -602,6 +640,8 @@ bool enqueue_render_submission(RenderSubmission *raw_submission) {
         }
     }
     record_render_submission_stat(renderer, &nkui_renderer_stats::render_submissions);
+    record_render_submission_value(renderer, &nkui_renderer_stats::render_submission_build_ns,
+                                   build_time_ns);
     if (stale_generation)
         cancel_render_submission_on_platform(*stale_generation);
     if (replaced) {
@@ -659,7 +699,8 @@ void NK_CALL run_next_render_submission(void *) {
             /* The callback is already on RENDER, so hand cancellation back to PLATFORM. */
             record_render_submission_stat(failed->renderer,
                                           &nkui_renderer_stats::render_submission_failures);
-            if (auto *completion = new RenderCompletion{failed->renderer, failed->frame, false};
+            if (auto *completion = new RenderCompletion{failed->renderer, failed->frame, false,
+                                                        failed->acquired_at_ns};
                 nk::core::dispatch_to_executor(NK_EXECUTOR_PLATFORM, &finish_render_submission,
                                                completion, &destroy_render_completion,
                                                sizeof(RenderCompletion)) != NK_OK)
@@ -2557,6 +2598,7 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
     if (!surface || nk_surface_set_frame_mode(surface, NK_SURFACE_FRAME_ON_DEMAND) != NK_OK)
         return NKUI_ERROR_INVALID_ARGUMENT;
     nk_surface_frame frame = NK_INVALID_HANDLE;
+    uint64_t frame_acquired_at_ns = 0;
     struct AcquiredFrameGuard {
         nk_surface_frame frame = NK_INVALID_HANDLE;
         bool handed_off = false;
@@ -2571,11 +2613,13 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
         if (nk_surface_acquire_frame(surface, &frame, &frame_target) != NK_OK)
             return NKUI_ERROR_RENDERING;
         frame_guard.frame = frame;
+        frame_acquired_at_ns = nk_time_now_ns();
     } else {
         if (nk_surface_make_current(surface) != NK_OK ||
             nk_surface_get_frame_target(surface, &frame_target) != NK_OK)
             return NKUI_ERROR_RENDERING;
     }
+    const uint64_t build_started_at_ns = nk_time_now_ns();
     std::unique_lock<std::mutex> renderer_lock(renderers_mutex, std::defer_lock);
     std::unique_lock<std::mutex> lists_lock(lists_mutex, std::defer_lock);
     std::unique_lock<std::mutex> resources_lock(resources_mutex, std::defer_lock);
@@ -2957,6 +3001,8 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
                                                     std::move(text_adapters),
                                                     std::move(text_adapter_owners),
                                                     {}};
+            submission->acquired_at_ns = frame_acquired_at_ns;
+            submission->build_time_ns = elapsed_ns(build_started_at_ns, nk_time_now_ns());
             renderer_lock.unlock();
             lists_lock.unlock();
             resources_lock.unlock();
@@ -3005,6 +3051,7 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
     if (!surface || nk_surface_set_frame_mode(surface, NK_SURFACE_FRAME_ON_DEMAND) != NK_OK)
         return NKUI_ERROR_INVALID_ARGUMENT;
     nk_surface_frame frame = NK_INVALID_HANDLE;
+    uint64_t frame_acquired_at_ns = 0;
     struct AcquiredFrameGuard {
         nk_surface_frame frame = NK_INVALID_HANDLE;
         bool handed_off = false;
@@ -3019,11 +3066,13 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
         if (nk_surface_acquire_frame(surface, &frame, &frame_target) != NK_OK)
             return NKUI_ERROR_RENDERING;
         frame_guard.frame = frame;
+        frame_acquired_at_ns = nk_time_now_ns();
     } else {
         if (nk_surface_make_current(surface) != NK_OK ||
             nk_surface_get_frame_target(surface, &frame_target) != NK_OK)
             return NKUI_ERROR_RENDERING;
     }
+    const uint64_t build_started_at_ns = nk_time_now_ns();
     std::unique_lock<std::mutex> renderer_lock(renderers_mutex, std::defer_lock);
     std::unique_lock<std::mutex> lists_lock(lists_mutex, std::defer_lock);
     std::unique_lock<std::mutex> resources_lock(resources_mutex, std::defer_lock);
@@ -3378,6 +3427,8 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                                                     std::move(text_adapters),
                                                     std::move(text_adapter_owners),
                                                     session_state->shared_from_this()};
+            submission->acquired_at_ns = frame_acquired_at_ns;
+            submission->build_time_ns = elapsed_ns(build_started_at_ns, nk_time_now_ns());
             renderer_lock.unlock();
             lists_lock.unlock();
             resources_lock.unlock();

@@ -236,6 +236,14 @@ typedef struct nkui_renderer_stats {
     uint64_t render_submission_failures;
     /** Render plans removed from the pending slot and attempted on RENDER. */
     uint64_t render_submission_executions;
+    /** Cumulative time spent preparing sealed render plans, in nanoseconds. */
+    uint64_t render_submission_build_ns;
+    /** Cumulative time sealed plans waited in the pending scheduler slot, in nanoseconds. */
+    uint64_t render_submission_queue_latency_ns;
+    /** Cumulative time spent executing sealed plans on RENDER, in nanoseconds. */
+    uint64_t render_submission_execution_ns;
+    /** Cumulative time from frame acquisition until platform frame close, in nanoseconds. */
+    uint64_t render_submission_acquire_to_present_ns;
 } nkui_renderer_stats;
 
 /** 16-bit opcode identifying one display-list command record. */
