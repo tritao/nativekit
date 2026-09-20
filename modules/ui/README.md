@@ -316,6 +316,14 @@ detached or the context is disposed. On platforms without
 ## Web / WASM
 
 The browser backend uses Emscripten and WebGL2 through NativeKit core and GPU.
+The sealed-plan boundary is backend-independent, but executor placement is not
+yet identical on every platform. Windows, Metal, and Android bind their native
+frame target on a dedicated `RENDER` executor. GTK keeps `GtkGLArea` lifecycle
+and composition on its main loop, and the default Web build keeps its WebGL2
+context on the browser thread. Their offscreen/shared-context handoffs are
+specified in [ADR 0020](../../docs/decisions/0020-backend-render-thread-readiness.md)
+and are the prerequisite for moving live producer callbacks off those threads.
+
 Set up Emscripten, then build and test with:
 
 ```sh
