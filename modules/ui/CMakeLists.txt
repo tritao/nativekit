@@ -261,7 +261,7 @@ if(NK_BUILD_TESTS)
         target_compile_definitions(nativekit_ui_public_renderer_smoke_test PRIVATE
             NKGPU_TESTING=1)
         target_include_directories(nativekit_ui_public_renderer_smoke_test PRIVATE
-            "${CMAKE_SOURCE_DIR}/modules/gpu/src")
+            "${CMAKE_SOURCE_DIR}/src" "${CMAKE_SOURCE_DIR}/modules/gpu/src")
         target_compile_definitions(nativekit_ui_public_renderer_smoke_test PRIVATE
             NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
         target_link_libraries(nativekit_ui_public_renderer_smoke_test PRIVATE
@@ -278,7 +278,7 @@ if(NK_BUILD_TESTS)
         target_compile_definitions(nativekit_ui_session_render_smoke_test PRIVATE
             NKGPU_TESTING=1)
         target_include_directories(nativekit_ui_session_render_smoke_test PRIVATE
-            "${CMAKE_SOURCE_DIR}/modules/gpu/src")
+            "${CMAKE_SOURCE_DIR}/src" "${CMAKE_SOURCE_DIR}/modules/gpu/src")
         target_compile_definitions(nativekit_ui_session_render_smoke_test PRIVATE
             NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
         target_link_libraries(nativekit_ui_session_render_smoke_test PRIVATE

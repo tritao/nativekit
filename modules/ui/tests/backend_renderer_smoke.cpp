@@ -152,6 +152,41 @@ bool wait_surface_ready(nk_window window, nk_surface surface, int32_t &width, in
     return false;
 }
 
+bool wait_surface_frame_state(nk_surface surface, bool open) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (nk::core::surface_frame_open(surface) == open)
+            return true;
+        nk_event event{};
+        event.struct_size = sizeof(event);
+        if (nk_poll_event(&event) != NK_OK)
+            return false;
+        nk_event_release(&event);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return nk::core::surface_frame_open(surface) == open;
+}
+
+bool wait_render_submission_executions(nkui_renderer renderer, uint64_t expected) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline) {
+        nkui_renderer_stats stats{};
+        if (nkui_renderer_get_stats(renderer, &stats) != NKUI_OK)
+            return false;
+        if (stats.render_submission_executions >= expected)
+            return true;
+        nk_event event{};
+        event.struct_size = sizeof(event);
+        if (nk_poll_event(&event) != NK_OK)
+            return false;
+        nk_event_release(&event);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    nkui_renderer_stats stats{};
+    return nkui_renderer_get_stats(renderer, &stats) == NKUI_OK &&
+           stats.render_submission_executions >= expected;
+}
+
 void NK_CALL run_render_task(void *data) {
     auto &task = *static_cast<RenderTask *>(data);
     if (!nk_executor_is_current(NK_EXECUTOR_RENDER)) {
@@ -608,11 +643,34 @@ int main() {
         for (size_t index = 0; index < 2; ++index) {
             if (!check(nk_window_create(&scheduler_window_options, &scheduler_windows[index]) ==
                            NK_OK,
-                       "create scheduler stress window") ||
-                !check(nkgpu_surface_create(
-                           scheduler_windows[index], scheduler_window_options.width,
-                           scheduler_window_options.height, &scheduler_surfaces[index]) == NKGPU_OK,
-                       "create scheduler stress surface") ||
+                       "create scheduler stress window")) {
+                result = 26;
+                goto cleanup;
+            }
+            bool surface_created = false;
+            if (index == 0) {
+                surface_created = nkgpu_surface_create(
+                                      scheduler_windows[index], scheduler_window_options.width,
+                                      scheduler_window_options.height, &scheduler_surfaces[index]) ==
+                                  NKGPU_OK;
+            } else {
+                /* Keep the stress test within the two Sokol GL runtimes
+                   provisioned by this build: the second GTK surface uses a
+                   distinct offscreen target but shares surface zero's GL
+                   context/share group. */
+                nk_surface_options shared_options{};
+                shared_options.struct_size = sizeof(shared_options);
+                shared_options.flags = NK_SURFACE_FORWARD_COMPATIBLE;
+                shared_options.api = NK_GRAPHICS_OPENGL;
+                shared_options.major_version = 3;
+                shared_options.minor_version = 3;
+                shared_options.width = scheduler_window_options.width;
+                shared_options.height = scheduler_window_options.height;
+                shared_options.share_surface = scheduler_surfaces[0];
+                surface_created = nk_surface_create(scheduler_windows[index], &shared_options,
+                                                     &scheduler_surfaces[index]) == NK_OK;
+            }
+            if (!check(surface_created, "create scheduler stress surface") ||
                 !wait_surface_ready(scheduler_windows[index], scheduler_surfaces[index],
                                     scheduler_width[index], scheduler_height[index],
                                     scheduler_targets[index])) {
@@ -754,9 +812,14 @@ int main() {
                                               scheduler_width[0],
                                               scheduler_height[0],
                                               1.0f};
-        for (size_t index = 0; index < 2 && !result; ++index) {
+        /* Keep one render active and replace the single pending slot once.
+           The third submission is deliberately newer than the second; only
+           the first and third plans should execute. */
+        const nk_surface scheduler_submission_surfaces[] = {
+            scheduler_surfaces[0], scheduler_surfaces[1], scheduler_surfaces[1]};
+        for (size_t index = 0; index < 3 && !result; ++index) {
             const nkui_result submitted = nkui_renderer_render_frame(
-                renderer, scheduler_list, scheduler_surfaces[index], &scheduler_frame);
+                renderer, scheduler_list, scheduler_submission_surfaces[index], &scheduler_frame);
             if (submitted != NKUI_OK) {
                 std::fprintf(stderr,
                              "backend renderer smoke: scheduler submission %zu failed: %d\n", index,
@@ -780,6 +843,12 @@ int main() {
                 result = 29;
             nk_event_release(&completion_event);
         }
+        if (!result &&
+            (!wait_render_submission_executions(
+                 renderer, before_scheduler_stats.render_submission_executions + 2) ||
+             !wait_surface_frame_state(scheduler_surfaces[0], false) ||
+             !wait_surface_frame_state(scheduler_surfaces[1], false)))
+            result = 29;
         const uint64_t scheduler_surface_call_violations =
             nk::core::render_surface_api_violations();
         nk::core::set_render_surface_api_guard(false);
@@ -805,26 +874,24 @@ int main() {
                     "read scheduler stats") ||
              scheduler_stats.render_submissions < 2 ||
              scheduler_stats.render_submission_replacements < 1 ||
-             scheduler_stats.render_submission_cancellations < 1 ||
-             scheduler_stats.render_submissions != before_scheduler_stats.render_submissions + 2 ||
+             scheduler_stats.render_submissions != before_scheduler_stats.render_submissions + 3 ||
              scheduler_stats.render_submission_replacements !=
                  before_scheduler_stats.render_submission_replacements + 1 ||
-             scheduler_stats.render_submission_cancellations <
-                 before_scheduler_stats.render_submission_cancellations + 1 ||
-             scheduler_stats.render_submission_cancellations >
-                 before_scheduler_stats.render_submission_cancellations + 2 ||
+             scheduler_stats.render_submission_cancellations !=
+                 before_scheduler_stats.render_submission_cancellations ||
              (shared_gpu_runtime && scheduler_stats.render_submission_failures !=
                                         before_scheduler_stats.render_submission_failures) ||
              (shared_gpu_runtime &&
-              scheduler_stats.gpu_frames != before_scheduler_stats.gpu_frames + 1) ||
+              scheduler_stats.gpu_frames != before_scheduler_stats.gpu_frames + 2) ||
              (shared_gpu_runtime &&
               scheduler_stats.resource_creations < before_scheduler_stats.resource_creations) ||
              (shared_gpu_runtime &&
-              scheduler_stats.surface_recreations != before_scheduler_stats.surface_recreations) ||
+              scheduler_stats.surface_recreations <
+                  before_scheduler_stats.surface_recreations + 1) ||
              (supports_target_switch && scheduler_stats.render_submission_failures !=
                                             before_scheduler_stats.render_submission_failures) ||
              (supports_target_switch &&
-              scheduler_stats.gpu_frames != before_scheduler_stats.gpu_frames + 1) ||
+              scheduler_stats.gpu_frames != before_scheduler_stats.gpu_frames + 2) ||
              (supports_target_switch &&
               scheduler_stats.resource_creations <= before_scheduler_stats.resource_creations) ||
              (independent_gl_contexts && scheduler_stats.surface_recreations <
@@ -842,8 +909,8 @@ int main() {
                  before_scheduler_stats.render_submission_execution_ns ||
              scheduler_stats.render_submission_acquire_to_present_ns <=
                  before_scheduler_stats.render_submission_acquire_to_present_ns ||
-             scheduler_stats.render_submission_executions !=
-                 before_scheduler_stats.render_submission_executions + 1)) {
+            scheduler_stats.render_submission_executions !=
+                 before_scheduler_stats.render_submission_executions + 2)) {
             std::fprintf(
                 stderr,
                 "backend renderer smoke: scheduler counters unexpected: submitted=%llu "
@@ -889,6 +956,15 @@ int main() {
                 result = 36;
                 goto cleanup;
             }
+            if (!wait_surface_frame_state(scheduler_surfaces[0], false)) {
+                result = 36;
+                {
+                    std::lock_guard lock(resize_blocker.mutex);
+                    resize_blocker.release = true;
+                }
+                resize_blocker.condition.notify_one();
+                goto cleanup;
+            }
             nk::core::reset_render_surface_api_violations();
             nk::core::set_render_surface_api_guard(true);
             nkgpu_test_forbid_surface_target_queries();
@@ -899,6 +975,7 @@ int main() {
             if (!check(nkui_renderer_render_frame(renderer, scheduler_list, scheduler_surfaces[0],
                                                   &scheduler_frame) == NKUI_OK,
                        "submit resize-boundary frame") ||
+                !wait_surface_frame_state(scheduler_surfaces[0], true) ||
                 !check(nkgpu_surface_resize(scheduler_surfaces[0], resized_logical_width,
                                             resized_logical_height) == NKGPU_OK,
                        "resize render-owned surface")) {
@@ -1137,7 +1214,12 @@ int main() {
                 if (nk_poll_event(&completion_event) != NK_OK)
                     return false;
                 nk_event_release(&completion_event);
-                return true;
+                /* Completion is delivered on PLATFORM after RENDER has
+                   finished.  Pump until the ticket is closed before the
+                   next submission; otherwise the deferred scheduler task
+                   can remain queued behind this test's next barrier. */
+                const bool closed = wait_surface_frame_state(recovery_surface, false);
+                return closed;
             };
             if (!submit_and_drain(recovery_renderer, "recovery warmup") ||
                 !check(nk::core::render_surface_api_violations() == 0,
@@ -1260,9 +1342,13 @@ cleanup:
         result = result ? result : 25;
     if (window && nk_window_destroy(window) != NK_OK)
         result = result ? result : 26;
-    for (size_t index = 0; index < 2; ++index) {
+    /* Surface one shares surface zero's GL context, so release the dependent
+       before destroying its shared parent. */
+    for (size_t index = 2; index-- > 0;) {
         if (scheduler_surfaces[index] && nk_surface_destroy(scheduler_surfaces[index]) != NK_OK)
             result = result ? result : 27;
+    }
+    for (size_t index = 0; index < 2; ++index) {
         if (scheduler_windows[index] && nk_window_destroy(scheduler_windows[index]) != NK_OK)
             result = result ? result : 28;
     }

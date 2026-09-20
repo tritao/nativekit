@@ -185,6 +185,7 @@ struct RendererSlot {
     uint64_t backend_native_device = 0;
     uint64_t backend_native_context = 0;
     bool active = false;
+    bool destroying = false;
     nkui::Compositor compositor;
     std::unordered_map<PathCacheKey, PreparedPathCacheEntry, PathCacheKeyHash> paths;
     std::vector<CustomEffectRegistrationStorage> custom_effects;
@@ -474,6 +475,11 @@ struct DeferredRendererDestroy {
 
 std::mutex render_submission_mutex;
 std::unique_ptr<RenderSubmission> pending_render_submission;
+/* Once a pending plan has acquired its platform frame, keep it separate from
+   the replaceable pending slot until RENDER consumes it.  Otherwise a second
+   APP submission could cancel the ticket that the already queued RENDER task
+   is about to execute. */
+std::unique_ptr<RenderSubmission> active_render_submission;
 bool render_submission_runner_active = false;
 std::uint64_t render_submission_generation = 0;
 std::mutex orphan_completion_mutex;
@@ -499,6 +505,8 @@ uint64_t elapsed_ns(uint64_t start, uint64_t end) noexcept {
 
 void NK_CALL run_next_render_submission(void *data);
 bool enqueue_render_submission(RenderSubmission *submission);
+bool start_next_render_submission_on_platform() noexcept;
+void NK_CALL start_next_render_submission_task(void *) noexcept;
 void shutdown_render_scheduler() noexcept;
 void cancel_render_completion_on_platform(RenderCompletion &completion) noexcept;
 
@@ -553,6 +561,11 @@ void NK_CALL run_deferred_renderer_destroy(void *data) {
     destroy->renderer.reset();
 }
 
+void NK_CALL render_destroy_barrier(void *data) {
+    if (data)
+        *static_cast<bool *>(data) = true;
+}
+
 void NK_CALL finish_render_submission(void *data) {
     auto *completion = static_cast<RenderCompletion *>(data);
     if (completion->frame != NK_INVALID_HANDLE) {
@@ -570,6 +583,14 @@ void NK_CALL finish_render_submission(void *data) {
     record_render_submission_value(completion->renderer,
                                    &nkui_renderer_stats::render_submission_acquire_to_present_ns,
                                    elapsed_ns(completion->acquired_at_ns, finished_at_ns));
+    /* Let the platform pump deliver GTK's queued render callback before the
+       next frame acquisition moves any GL context again.  The extra platform
+       turn is also harmless for backends whose present operation is already
+       synchronous. */
+    if (nk::core::dispatch_to_executor(NK_EXECUTOR_PLATFORM,
+                                        &start_next_render_submission_task, nullptr, nullptr, 0) !=
+        NK_OK)
+        (void)start_next_render_submission_on_platform();
 }
 
 void execute_render_submission(RenderSubmission &submission) {
@@ -682,6 +703,13 @@ void execute_render_submission(RenderSubmission &submission) {
         /* RENDER cannot cancel the platform-owned ticket directly. Keep the
            completion until PLATFORM drains it or runtime shutdown closes it. */
         retain_orphan_completion(completion);
+        /* There is no PLATFORM completion callback left to advance the
+           serialized scheduler.  The next APP submission will drain the
+           orphan and restart the pending slot. */
+        {
+            std::lock_guard lock(render_submission_mutex);
+            render_submission_runner_active = false;
+        }
     }
 }
 
@@ -706,16 +734,80 @@ void cancel_render_submission_on_platform(RenderSubmission &submission) {
     }
 }
 
+bool start_next_render_submission_on_platform() noexcept {
+    std::unique_ptr<RenderSubmission> submission;
+    {
+        std::lock_guard lock(render_submission_mutex);
+        if (!render_submission_runner_active)
+            return true;
+        if (!pending_render_submission) {
+            render_submission_runner_active = false;
+            return true;
+        }
+        submission = std::move(pending_render_submission);
+    }
+
+    nk_surface_frame_target target{};
+    target.struct_size = sizeof(target);
+    nk_surface_frame frame = NK_INVALID_HANDLE;
+    if (nk_surface_acquire_frame(submission->surface, &frame, &target) != NK_OK) {
+        record_render_submission_stat(submission->renderer,
+                                      &nkui_renderer_stats::render_submission_failures);
+        {
+            std::lock_guard lock(render_submission_mutex);
+            render_submission_runner_active = false;
+        }
+        return false;
+    }
+    submission->frame = frame;
+    submission->frame_target = target;
+    submission->acquired_at_ns = nk_time_now_ns();
+    {
+        std::lock_guard lock(render_submission_mutex);
+        active_render_submission = std::move(submission);
+    }
+    if (nk::core::dispatch_to_render(&run_next_render_submission, nullptr, nullptr, 0) == NK_OK) {
+        return true;
+    }
+
+    /* Restore the submission only long enough to cancel its platform ticket. */
+    std::unique_ptr<RenderSubmission> failed;
+    {
+        std::lock_guard lock(render_submission_mutex);
+        failed = std::move(active_render_submission);
+    }
+    if (!failed)
+        return false;
+    RenderCompletion completion{failed->renderer, failed->frame, false,
+                                failed->acquired_at_ns};
+    cancel_render_completion_on_platform(completion);
+    record_render_submission_stat(failed->renderer,
+                                  &nkui_renderer_stats::render_submission_failures);
+    {
+        std::lock_guard lock(render_submission_mutex);
+        render_submission_runner_active = false;
+    }
+    return false;
+}
+
+void NK_CALL start_next_render_submission_task(void *) noexcept {
+    (void)start_next_render_submission_on_platform();
+}
+
 void shutdown_render_scheduler() noexcept {
     std::unique_ptr<RenderSubmission> pending;
+    std::unique_ptr<RenderSubmission> active;
     {
         std::lock_guard lock(render_submission_mutex);
         pending = std::move(pending_render_submission);
+        active = std::move(active_render_submission);
         render_submission_runner_active = false;
         render_submission_generation = 0;
     }
     if (pending)
         cancel_render_submission_on_platform(*pending);
+    if (active)
+        cancel_render_submission_on_platform(*active);
     drain_orphan_completions();
 }
 
@@ -757,62 +849,20 @@ bool enqueue_render_submission(RenderSubmission *raw_submission) {
     }
     if (!start_runner)
         return true;
-    if (nk::core::dispatch_to_render(&run_next_render_submission, nullptr, nullptr, 0) == NK_OK)
-        return true;
-
-    std::unique_ptr<RenderSubmission> failed;
-    {
-        std::lock_guard lock(render_submission_mutex);
-        failed = std::move(pending_render_submission);
-        render_submission_runner_active = false;
-    }
-    if (failed)
-        record_render_submission_stat(failed->renderer,
-                                      &nkui_renderer_stats::render_submission_failures);
-    if (failed)
-        cancel_render_submission_on_platform(*failed);
-    return false;
+    return start_next_render_submission_on_platform();
 }
 
 void NK_CALL run_next_render_submission(void *) {
     std::unique_ptr<RenderSubmission> submission;
     {
         std::lock_guard lock(render_submission_mutex);
-        submission = std::move(pending_render_submission);
+        submission = std::move(active_render_submission);
         if (!submission) {
             render_submission_runner_active = false;
             return;
         }
     }
     execute_render_submission(*submission);
-
-    bool schedule_next = false;
-    {
-        std::lock_guard lock(render_submission_mutex);
-        schedule_next = pending_render_submission != nullptr;
-        if (!schedule_next)
-            render_submission_runner_active = false;
-    }
-    if (schedule_next &&
-        nk::core::dispatch_to_render(&run_next_render_submission, nullptr, nullptr, 0) != NK_OK) {
-        std::unique_ptr<RenderSubmission> failed;
-        {
-            std::lock_guard lock(render_submission_mutex);
-            failed = std::move(pending_render_submission);
-            render_submission_runner_active = false;
-        }
-        if (failed) {
-            /* The callback is already on RENDER, so hand cancellation back to PLATFORM. */
-            record_render_submission_stat(failed->renderer,
-                                          &nkui_renderer_stats::render_submission_failures);
-            if (auto *completion = new RenderCompletion{failed->renderer, failed->frame, false,
-                                                        failed->acquired_at_ns};
-                nk::core::dispatch_to_executor(NK_EXECUTOR_PLATFORM, &finish_render_submission,
-                                               completion, &destroy_render_completion,
-                                               sizeof(RenderCompletion)) != NK_OK)
-                retain_orphan_completion(completion);
-        }
-    }
 }
 
 LayoutSessionState *resolve(nkui_layout_session handle) {
@@ -2874,7 +2924,7 @@ extern "C" nkui_result nkui_renderer_create(nkui_renderer *out_renderer) {
     {
         for (uint32_t index = 0; index < renderers.size(); ++index) {
             auto &slot = renderers[index];
-            if (!slot.active) {
+            if (!slot.active && !slot.destroying) {
                 slot.renderer.reset();
                 slot.backend_api = 0;
                 slot.backend_device = {};
@@ -2904,23 +2954,52 @@ extern "C" nkui_result nkui_renderer_create(nkui_renderer *out_renderer) {
 }
 
 extern "C" nkui_result nkui_renderer_destroy(nkui_renderer renderer) {
-    std::lock_guard<std::mutex> lock(renderers_mutex);
+    std::unique_lock<std::mutex> lock(renderers_mutex);
     auto *slot = resolve(renderer);
     if (!slot)
         return NKUI_ERROR_INVALID_HANDLE;
     std::unique_lock<std::shared_mutex> execution_lock;
-    if (nk::core::render_executor_physical())
+    if (nk::core::render_executor_physical()) {
+        /* PLATFORM may have just run a GtkGLArea compositor callback.  Clear
+           any backend current context before the deferred RENDER destructor
+           binds the renderer's retained context. */
+        (void)nk_graphics_unbind_frame_target(nullptr);
         execution_lock = std::unique_lock<std::shared_mutex>(renderer_execution_mutex);
+    }
     if (nk::core::render_executor_physical() && slot->renderer) {
         auto *destroy = new DeferredRendererDestroy{std::move(slot->renderer)};
-        if (nk::core::dispatch_to_render(&run_deferred_renderer_destroy, destroy,
-                                         &destroy_deferred_renderer,
-                                         sizeof(DeferredRendererDestroy)) != NK_OK) {
+        /* Invalidate the public handle before releasing renderers_mutex.  The
+           RENDER destructor and its barrier must be able to update stats and
+           acquire other renderer slots without deadlocking this caller, while
+           a concurrent APP submission must already reject this slot. */
+        slot->active = false;
+        slot->destroying = true;
+        /* The exclusive lock only protects moving the renderer out from under
+           an in-flight execute_render_submission.  Once that handoff is
+           complete, leave it unlocked while the queued destructor/barrier
+           drain the RENDER queue; otherwise the barrier would wait behind a
+           render task that is itself waiting for this lock. */
+        execution_lock.unlock();
+        lock.unlock();
+        const nk_result queued = nk::core::dispatch_to_render(
+            &run_deferred_renderer_destroy, destroy, &destroy_deferred_renderer,
+            sizeof(DeferredRendererDestroy));
+        if (queued != NK_OK) {
             /* Keep destruction on the owning thread if the runtime is already
                shutting down and cannot accept another render task. */
             destroy->renderer.reset();
             delete destroy;
+        } else {
+            bool completed = false;
+            if (nk::core::dispatch_to_render_sync(&render_destroy_barrier, &completed,
+                                                  sizeof(completed)) != NK_OK ||
+                !completed) {
+                /* The runtime is shutting down; its executor join will finish
+                   the queued destructor before backend teardown. */
+            }
         }
+        lock.lock();
+        slot->destroying = false;
     } else {
         slot->renderer.reset();
     }
@@ -3081,30 +3160,10 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
     const bool threaded = nk::core::render_executor_physical();
     if (!surface || nk_surface_set_frame_mode(surface, NK_SURFACE_FRAME_ON_DEMAND) != NK_OK)
         return NKUI_ERROR_INVALID_ARGUMENT;
-    nk_surface_frame frame = NK_INVALID_HANDLE;
-    uint64_t frame_acquired_at_ns = 0;
-    struct AcquiredFrameGuard {
-        nk_surface_frame frame = NK_INVALID_HANDLE;
-        bool handed_off = false;
-        ~AcquiredFrameGuard() {
-            if (frame != NK_INVALID_HANDLE && !handed_off)
-                nk_surface_cancel_frame(frame);
-        }
-    } frame_guard;
     nk_surface_frame_target frame_target{};
     frame_target.struct_size = sizeof(frame_target);
     if (threaded) {
         drain_orphan_completions();
-        if (nk_surface_acquire_frame(surface, &frame, &frame_target) != NK_OK) {
-            /* A completion can be retained concurrently after the initial
-               platform turn. Drain once more before declaring the surface
-               unavailable, so an orphaned prior ticket cannot strand it. */
-            drain_orphan_completions();
-            if (nk_surface_acquire_frame(surface, &frame, &frame_target) != NK_OK)
-                return NKUI_ERROR_RENDERING;
-        }
-        frame_guard.frame = frame;
-        frame_acquired_at_ns = nk_time_now_ns();
     } else {
         if (nk_surface_make_current(surface) != NK_OK ||
             nk_surface_get_frame_target(surface, &frame_target) != NK_OK)
@@ -3479,13 +3538,12 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
         if (threaded) {
             auto *submission = new RenderSubmission{renderer,
                                                     surface,
-                                                    frame,
-                                                    frame_target,
+                                                    NK_INVALID_HANDLE,
+                                                    {},
                                                     std::move(sealed),
                                                     std::move(text_engines),
                                                     std::move(text_engine_owners),
                                                     {}};
-            submission->acquired_at_ns = frame_acquired_at_ns;
             submission->build_time_ns = elapsed_ns(build_started_at_ns, nk_time_now_ns());
             renderer_lock.unlock();
             lists_lock.unlock();
@@ -3494,7 +3552,6 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
             if (!enqueue_render_submission(submission)) {
                 return NKUI_ERROR_RENDERING;
             }
-            frame_guard.handed_off = true;
             return NKUI_OK;
         }
         const bool sealed_executed = nkui::execute_render_plan(*renderer_slot->renderer, *sealed,
@@ -3534,27 +3591,10 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
     const bool threaded = nk::core::render_executor_physical();
     if (!surface || nk_surface_set_frame_mode(surface, NK_SURFACE_FRAME_ON_DEMAND) != NK_OK)
         return NKUI_ERROR_INVALID_ARGUMENT;
-    nk_surface_frame frame = NK_INVALID_HANDLE;
-    uint64_t frame_acquired_at_ns = 0;
-    struct AcquiredFrameGuard {
-        nk_surface_frame frame = NK_INVALID_HANDLE;
-        bool handed_off = false;
-        ~AcquiredFrameGuard() {
-            if (frame != NK_INVALID_HANDLE && !handed_off)
-                nk_surface_cancel_frame(frame);
-        }
-    } frame_guard;
     nk_surface_frame_target frame_target{};
     frame_target.struct_size = sizeof(frame_target);
     if (threaded) {
         drain_orphan_completions();
-        if (nk_surface_acquire_frame(surface, &frame, &frame_target) != NK_OK) {
-            drain_orphan_completions();
-            if (nk_surface_acquire_frame(surface, &frame, &frame_target) != NK_OK)
-                return NKUI_ERROR_RENDERING;
-        }
-        frame_guard.frame = frame;
-        frame_acquired_at_ns = nk_time_now_ns();
     } else {
         if (nk_surface_make_current(surface) != NK_OK ||
             nk_surface_get_frame_target(surface, &frame_target) != NK_OK)
@@ -3951,13 +3991,12 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                 text_engines.push_back(session_text_engine);
             auto *submission = new RenderSubmission{renderer,
                                                     surface,
-                                                    frame,
-                                                    frame_target,
+                                                    NK_INVALID_HANDLE,
+                                                    {},
                                                     std::move(sealed),
                                                     std::move(text_engines),
                                                     std::move(text_engine_owners),
                                                     session_state->shared_from_this()};
-            submission->acquired_at_ns = frame_acquired_at_ns;
             submission->build_time_ns = elapsed_ns(build_started_at_ns, nk_time_now_ns());
             renderer_lock.unlock();
             lists_lock.unlock();
@@ -3966,7 +4005,6 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
             cpu_lock.unlock();
             if (!enqueue_render_submission(submission))
                 return NKUI_ERROR_RENDERING;
-            frame_guard.handed_off = true;
             return NKUI_OK;
         }
         const bool sealed_executed = nkui::execute_render_plan(*renderer_slot->renderer, *sealed,
@@ -3983,7 +4021,7 @@ extern "C" nkui_result nkui_renderer_render(nkui_renderer renderer, nkui_display
                                             nk_surface surface) {
     int32_t width = 0;
     int32_t height = 0;
-    if (!surface || nk_surface_make_current(surface) != NK_OK ||
+    if (!surface || (!nk::core::render_executor_physical() && nk_surface_make_current(surface) != NK_OK) ||
         nk_surface_get_framebuffer_size(surface, &width, &height) != NK_OK)
         return NKUI_ERROR_INVALID_ARGUMENT;
     const nkui_frame_info frame_info{sizeof(nkui_frame_info),

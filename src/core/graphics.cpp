@@ -65,5 +65,8 @@ nk_result NK_CALL nk_frame_backend_submit(const nk_surface_frame_target *) {
 nk_result NK_CALL nk_frame_backend_finish(nk_handle, const nk_surface_frame_target *) {
     return unsupported_graphics();
 }
+nk_result NK_CALL nk_frame_backend_cancel(nk_handle, const nk_surface_frame_target *) {
+    return unsupported_graphics();
+}
 }
 #endif

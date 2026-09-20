@@ -3540,6 +3540,11 @@ nk_result NK_CALL nk_frame_backend_finish(nk_handle handle, const nk_surface_fra
     return nk_surface_present(handle);
 }
 
+nk_result NK_CALL nk_frame_backend_cancel(nk_handle handle,
+                                          const nk_surface_frame_target *) {
+    return nk_surface_present(handle);
+}
+
 nk_result NK_CALL nk_key_get_state(nk_handle handle, nk_key key, nk_input_action *out_action) {
     if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
         return result;

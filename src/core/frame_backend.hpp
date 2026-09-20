@@ -92,4 +92,6 @@ nk_graphics_unbind_frame_target(const nk_surface_frame_target *target);
 NK_INTERNAL_API nk_result NK_CALL nk_frame_backend_submit(const nk_surface_frame_target *target);
 NK_INTERNAL_API nk_result NK_CALL nk_frame_backend_finish(nk_surface surface,
                                                           const nk_surface_frame_target *target);
+NK_INTERNAL_API nk_result NK_CALL nk_frame_backend_cancel(nk_surface surface,
+                                                           const nk_surface_frame_target *target);
 }

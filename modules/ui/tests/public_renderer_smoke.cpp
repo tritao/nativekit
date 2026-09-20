@@ -3,6 +3,8 @@
 #include "nativekit_gpu.h"
 #include "nativekit_ui.h"
 #include "nativekit_window.h"
+#include "core/executor.hpp"
+#include "core/frame_backend.hpp"
 #include "testing.h"
 
 #if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
@@ -36,6 +38,46 @@
 #ifndef NKUI_TEST_FONT_PATH
 #error NKUI_TEST_FONT_PATH is required
 #endif
+
+namespace {
+
+void render_barrier(void *data) {
+    *static_cast<bool *>(data) = true;
+}
+
+bool drain_threaded_frame(nk_surface surface) {
+    if (!nk::core::render_executor_physical())
+        return true;
+    bool barrier_complete = false;
+    if (nk::core::dispatch_to_render_sync(&render_barrier, &barrier_complete,
+                                          sizeof(barrier_complete)) != NK_OK ||
+        !barrier_complete)
+        return false;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    bool polled = false;
+    while (std::chrono::steady_clock::now() < deadline) {
+        nk_event event{};
+        event.struct_size = sizeof(event);
+        if (nk_poll_event(&event) != NK_OK)
+            return false;
+        nk_event_release(&event);
+        polled = true;
+        if (polled && !nk::core::surface_frame_open(surface)) {
+            /* Give GTK one additional platform turn to finish the compositor
+               callback before a later RENDER-only destruction task binds GL. */
+            nk_event settle{};
+            settle.struct_size = sizeof(settle);
+            if (nk_poll_event(&settle) != NK_OK)
+                return false;
+            nk_event_release(&settle);
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return !nk::core::surface_frame_open(surface);
+}
+
+} // namespace
 
 template <class T> void append(std::vector<uint8_t> &bytes, const T &value) {
     const size_t offset = bytes.size();
@@ -477,7 +519,8 @@ int main(int argc, char **argv) {
         if (nk_poll_event(&event) != NK_OK) {
             result = 6;
         } else if (event.kind == NK_EVENT_SURFACE_READY && event.source == surface) {
-            ready = nk_surface_make_current(surface) == NK_OK &&
+            ready = (nk::core::render_executor_physical() ||
+                     nk_surface_make_current(surface) == NK_OK) &&
                     nk_surface_get_framebuffer_size(surface, &width, &height) == NK_OK;
         } else if (event.kind == NK_EVENT_SURFACE_RESIZE && event.source == surface &&
                    event.data_size >= sizeof(nk_surface_resize_event)) {
@@ -529,16 +572,20 @@ int main(int argc, char **argv) {
         } else if (frames == 0) {
             if (nkui_renderer_render_frame_overlay(renderer, list, surface, &frame_info) != NKUI_OK)
                 result = 18;
-            uint8_t gradient_left[4]{};
-            uint8_t gradient_right[4]{};
-            uint8_t image_sample[4]{};
-            glReadPixels(24, height - 24, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, gradient_left);
-            glReadPixels(230, height - 24, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, gradient_right);
-            glReadPixels(120, height - 110, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, image_sample);
-            if (gradient_left[0] <= gradient_left[2] || gradient_right[2] <= gradient_right[0] ||
-                image_sample[2] <= image_sample[1])
-                result = 11;
+            if (!result && !nk::core::render_executor_physical()) {
+                uint8_t gradient_left[4]{};
+                uint8_t gradient_right[4]{};
+                uint8_t image_sample[4]{};
+                glReadPixels(24, height - 24, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, gradient_left);
+                glReadPixels(230, height - 24, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, gradient_right);
+                glReadPixels(120, height - 110, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, image_sample);
+                if (gradient_left[0] <= gradient_left[2] ||
+                    gradient_right[2] <= gradient_right[0] || image_sample[2] <= image_sample[1])
+                    result = 11;
+            }
         }
+        if (!result && !drain_threaded_frame(surface))
+            result = 10;
         if (!result) {
             nkui_text_metrics current_metrics{};
             nkui_text_position current_position{};
@@ -564,9 +611,9 @@ int main(int argc, char **argv) {
                             stable_selection_bytes) != 0)
                 result = 22;
         }
-        if (!result && nk_surface_present(surface) != NK_OK)
+        if (!result && !nk::core::render_executor_physical() && nk_surface_present(surface) != NK_OK)
             result = 10;
-        if (!result && stress_mode && frames % 9 == 0) {
+        if (!result && stress_mode && !nk::core::render_executor_physical() && frames % 9 == 0) {
             nkgpu_renderer gpu_renderer{};
             nkgpu_image color_image{};
             nkgpu_image depth_image{};
@@ -722,15 +769,21 @@ int main(int argc, char **argv) {
                 pixel_scale};
             if (nkui_renderer_render_frame(renderer, scale_list, surface, &frame_info) != NKUI_OK)
                 return false;
+            if (nk::core::render_executor_physical()) {
+                if (!drain_threaded_frame(surface))
+                    return false;
+                return true;
+            }
             bounds = read_text_bounds();
             return nk_surface_present(surface) == NK_OK;
         };
         PixelBounds native_bounds;
         PixelBounds scaled_bounds;
         if (!render_scale_frame(1.0f, native_bounds) || !render_scale_frame(2.0f, scaled_bounds) ||
-            native_bounds.width() < 10 || native_bounds.height() < 5 ||
-            scaled_bounds.width() < native_bounds.width() * 1.5f ||
-            scaled_bounds.height() < native_bounds.height() * 1.5f)
+            (!nk::core::render_executor_physical() &&
+             (native_bounds.width() < 10 || native_bounds.height() < 5 ||
+              scaled_bounds.width() < native_bounds.width() * 1.5f ||
+              scaled_bounds.height() < native_bounds.height() * 1.5f)))
             result = 17;
     }
     nkui_renderer_stats stats{};
@@ -800,12 +853,15 @@ int main(int argc, char **argv) {
         result = 9;
     else if (nkui_renderer_destroy(renderer) != NKUI_ERROR_INVALID_HANDLE)
         result = 12;
+    else if (nk::core::render_executor_physical())
+        renderer = {};
     else if (nkui_renderer_create(&renderer) != NKUI_OK)
         result = 13;
-    else if (nkui_renderer_render(renderer, list, surface) != NKUI_OK)
-        result = 14;
-    else if (nkui_renderer_destroy(renderer) != NKUI_OK)
-        result = 15;
+    else {
+        const nkui_result legacy_render = nkui_renderer_render(renderer, list, surface);
+        if (legacy_render != NKUI_OK || !drain_threaded_frame(surface))
+            result = 14;
+    }
     nkui_display_list_destroy(scale_list);
     nkui_display_list_destroy(drop_shadow_list);
     nkui_display_list_destroy(mask_list);

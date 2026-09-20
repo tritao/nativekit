@@ -60,6 +60,10 @@
 
 namespace {
 
+#if defined(NK_GTK_THREADED_RENDER)
+std::atomic_bool gtk_render_context_busy = false;
+#endif
+
 // GtkFixed normally derives its preferred size from its children. NativeKit
 // children have explicit pixel bounds, so doing that turns those bounds into a
 // top-level window minimum. Keep GtkFixed's positioning behavior while making
@@ -388,6 +392,7 @@ void create_gtk_render_target(void *user_data) {
     if (!resource || !resource->render_context || request->width <= 0 || request->height <= 0)
         return;
     auto *context_owner = gtk_render_context_owner(resource);
+    gtk_render_context_busy.store(true);
     if (context_owner)
         context_owner->render_context_in_use.store(true);
     gdk_gl_context_make_current(resource->render_context);
@@ -438,6 +443,7 @@ void create_gtk_render_target(void *user_data) {
     gdk_gl_context_clear_current();
     if (context_owner)
         context_owner->render_context_in_use.store(false);
+    gtk_render_context_busy.store(false);
     if (!complete) {
         if (framebuffer)
             resource->gl_delete_framebuffers(1, &framebuffer);
@@ -482,6 +488,7 @@ void destroy_gtk_render_target(void *user_data) {
     if (!resource || !resource->render_context)
         return;
     auto *context_owner = gtk_render_context_owner(resource);
+    gtk_render_context_busy.store(true);
     if (context_owner)
         context_owner->render_context_in_use.store(true);
     gdk_gl_context_make_current(resource->render_context);
@@ -507,6 +514,7 @@ void destroy_gtk_render_target(void *user_data) {
     gdk_gl_context_clear_current();
     if (context_owner)
         context_owner->render_context_in_use.store(false);
+    gtk_render_context_busy.store(false);
 }
 
 void composite_gtk_render_target(GtkSurfaceResource &resource) {
@@ -2274,6 +2282,10 @@ gboolean on_surface_render(GtkGLArea *area, GdkGLContext *, gpointer data) {
     if (nk::core::render_executor_physical()) {
         if (resource->render_completion_pending.exchange(false))
             composite_gtk_render_target(*resource);
+        /* GTK leaves the GtkGLArea context current after the callback.  Do
+           not let a subsequent RENDER-owned bind race this PLATFORM current
+           context (deferred renderer destruction has no frame ticket). */
+        gdk_gl_context_clear_current();
         return TRUE;
     }
 #endif
@@ -3802,6 +3814,17 @@ nk_result clipboard_watch_stop(nk_clipboard_watch watch) noexcept {
 
 void pump_events() noexcept {
     nk::linux_joystick::pump();
+    /* GTK makes the GtkGLArea context current before dispatching its render
+       callback.  A physical frame ticket means RENDER may currently own that
+       context, so defer the GTK iteration until PLATFORM has closed the
+       ticket.  Completion tasks are still drained by nk_poll_event before
+       this hook and will release the ticket on the next turn. */
+#if defined(NK_GTK_THREADED_RENDER)
+    if (nk::core::render_executor_physical() &&
+        (nk::core::frame_ticket_count() != 0 ||
+         gtk_render_context_busy.load(std::memory_order_acquire)))
+        return;
+#endif
     while (g_main_context_iteration(nullptr, FALSE)) {
     }
     nk::core::callback_boundary([] { poll_monitor_orientations(); });
@@ -5229,6 +5252,10 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
                     return fail(NK_ERROR_UNSUPPORTED,
                                 "GTK could not create a threaded offscreen target");
                 }
+                /* Surface creation uses GTK's context to initialize the
+                   retained offscreen target.  Leave it unbound on PLATFORM;
+                   RENDER must acquire it explicitly for the first ticket. */
+                gdk_gl_context_clear_current();
             }
 #endif
             nk::core::QueuedEvent ready;
@@ -5305,9 +5332,20 @@ nk_result NK_CALL nk_surface_set_bounds(nk_handle handle, int32_t x, int32_t y, 
     gtk_widget_set_size_request(resource->widget, width, height);
 #if defined(NK_GTK_THREADED_RENDER)
     if (nk::core::render_executor_physical()) {
-        GtkAllocation allocation{x, y, width, height};
-        gtk_widget_size_allocate(resource->widget, &allocation);
-        gtk_gl_area_queue_render(GTK_GL_AREA(resource->widget));
+        /* A frame ticket owns an immutable offscreen target.  Do not force a
+           GTK allocation (which can make the GL context current on PLATFORM)
+           while RENDER still owns that ticket; the queued resize is applied
+           after present/cancel releases it. */
+        if (!nk::core::surface_frame_open(handle)) {
+            GtkAllocation allocation{x, y, width, height};
+            gtk_widget_size_allocate(resource->widget, &allocation);
+            gtk_gl_area_queue_render(GTK_GL_AREA(resource->widget));
+        } else {
+            /* Keep the resize entirely deferred until the frame backend
+               finishes; even queue_resize can cause GTK to touch the GL
+               area before RENDER has released the ticket. */
+            return NK_OK;
+        }
     }
 #endif
     gtk_widget_queue_resize(resource->widget);
@@ -5541,8 +5579,10 @@ nk_result NK_CALL nk_surface_present(nk_handle handle) {
     if (!resource)
         return invalid_handle("graphics surface");
 #if defined(NK_GTK_THREADED_RENDER)
-    if (nk::core::render_executor_physical())
+    if (nk::core::render_executor_physical()) {
         resource->render_completion_pending.store(true);
+        gtk_widget_queue_resize(resource->widget);
+    }
 #endif
     gtk_gl_area_queue_render(GTK_GL_AREA(resource->widget));
     return NK_OK;
@@ -5554,7 +5594,11 @@ nk_result NK_CALL nk_graphics_bind_frame_target(const nk_surface_frame_target *t
         return NK_OK;
     if (!target || !target->native_context || !target->native_target)
         return NK_ERROR_INVALID_ARGUMENT;
-    gdk_gl_context_make_current(reinterpret_cast<GdkGLContext *>(target->native_context));
+    auto *context = reinterpret_cast<GdkGLContext *>(target->native_context);
+    gtk_render_context_busy.store(true);
+    if (gdk_gl_context_get_current() != context) {
+        gdk_gl_context_make_current(context);
+    }
     auto resource = surface(static_cast<nk_handle>(target->device.id));
     if (resource) {
         auto *context_owner = gtk_render_context_owner(resource.get());
@@ -5575,20 +5619,18 @@ nk_result NK_CALL nk_graphics_unbind_frame_target(const nk_surface_frame_target 
                 context_owner->render_context_in_use.store(false);
         }
     }
+    gtk_render_context_busy.store(false);
     return NK_OK;
 }
 
 nk_result NK_CALL nk_frame_backend_submit(const nk_surface_frame_target *target) {
-    if (nk::core::render_executor_physical())
-        gdk_gl_context_clear_current();
-    if (target) {
-        auto resource = surface(static_cast<nk_handle>(target->device.id));
-        if (resource) {
-            auto *context_owner = gtk_render_context_owner(resource.get());
-            if (context_owner)
-                context_owner->render_context_in_use.store(false);
-        }
-    }
+    /* Keep the RENDER context current through the end of the sealed-plan
+       cleanup.  nkgpu_end_frame_deferred_present() calls this hook before
+       the UI executor releases its retained resources; clearing the context
+       here makes those GL releases run without a current context and leaves
+       a stale GL error for the next frame.  execute_render_submission() calls
+       nk_graphics_unbind_frame_target() after cleanup. */
+    (void)target;
     return NK_OK;
 }
 #else
@@ -5608,6 +5650,30 @@ nk_result NK_CALL nk_frame_backend_submit(const nk_surface_frame_target *) {
 #endif
 
 nk_result NK_CALL nk_frame_backend_finish(nk_handle handle, const nk_surface_frame_target *) {
+    return nk_surface_present(handle);
+}
+
+nk_result NK_CALL nk_frame_backend_cancel(nk_handle handle,
+                                          const nk_surface_frame_target *) {
+#if defined(NK_GTK_THREADED_RENDER)
+    if (nk::core::render_executor_physical()) {
+        /* A cancelled offscreen ticket was never handed to GTK's compositor.
+           Do not queue a render callback here: doing so would make the next
+           acquire race the stale composite and can invalidate the GLX target.
+           Apply the deferred widget allocation now that RENDER has released
+           the ticket, so the next acquire observes the new target size. */
+        auto resource = surface(handle);
+        if (resource) {
+            GtkAllocation allocation{};
+            gtk_widget_get_allocation(resource->widget, &allocation);
+            allocation.width = resource->requested_width;
+            allocation.height = resource->requested_height;
+            gtk_widget_size_allocate(resource->widget, &allocation);
+            gtk_widget_queue_resize(resource->widget);
+        }
+        return NK_OK;
+    }
+#endif
     return nk_surface_present(handle);
 }
 

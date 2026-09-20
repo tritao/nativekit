@@ -70,7 +70,7 @@ nk_result finish_frame_ticket(const FrameTicket &ticket) noexcept {
 }
 
 nk_result cancel_frame_ticket(const FrameTicket &ticket) noexcept {
-    return nk_frame_backend_finish(ticket.surface, &ticket.target);
+    return nk_frame_backend_cancel(ticket.surface, &ticket.target);
 }
 
 } // namespace

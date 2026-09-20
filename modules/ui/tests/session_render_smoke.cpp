@@ -4,6 +4,8 @@
 #include "nativekit_ui.h"
 #include "nativekit_ui_layout.h"
 #include "nativekit_window.h"
+#include "core/executor.hpp"
+#include "core/frame_backend.hpp"
 
 #if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
 #include <GLES3/gl3.h>
@@ -35,6 +37,38 @@
 #endif
 
 namespace {
+
+void render_barrier(void *data) {
+    *static_cast<bool *>(data) = true;
+}
+
+bool drain_threaded_frame(nk_surface surface) {
+    if (!nk::core::render_executor_physical())
+        return true;
+    bool barrier_complete = false;
+    if (nk::core::dispatch_to_render_sync(&render_barrier, &barrier_complete,
+                                          sizeof(barrier_complete)) != NK_OK ||
+        !barrier_complete)
+        return false;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline) {
+        nk_event event{};
+        event.struct_size = sizeof(event);
+        if (nk_poll_event(&event) != NK_OK)
+            return false;
+        nk_event_release(&event);
+        if (!nk::core::surface_frame_open(surface)) {
+            nk_event settle{};
+            settle.struct_size = sizeof(settle);
+            if (nk_poll_event(&settle) != NK_OK)
+                return false;
+            nk_event_release(&settle);
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return !nk::core::surface_frame_open(surface);
+}
 
 void write_u32(std::vector<uint8_t> &bytes, std::size_t offset, uint32_t value) {
     std::memcpy(bytes.data() + offset, &value, sizeof(value));
@@ -200,7 +234,8 @@ int main() {
         event.struct_size = sizeof(event);
         if (nk_poll_event(&event) == NK_OK && event.kind == NK_EVENT_SURFACE_READY &&
             event.source == surface) {
-            ready = nk_surface_make_current(surface) == NK_OK &&
+            ready = (nk::core::render_executor_physical() ||
+                     nk_surface_make_current(surface) == NK_OK) &&
                     nk_surface_get_framebuffer_size(surface, &framebuffer_width,
                                                     &framebuffer_height) == NK_OK;
         }
@@ -353,6 +388,12 @@ int main() {
                 result = 14;
                 break;
             }
+            if (!drain_threaded_frame(surface)) {
+                result = 14;
+                break;
+            }
+            if (nk::core::render_executor_physical())
+                continue;
             uint8_t corner[4]{};
             glReadPixels(4, 4, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, corner);
             if (corner[0] != corner[1] || corner[1] != corner[2] || corner[3] != 255 ||
@@ -372,6 +413,8 @@ int main() {
      * branch and must still succeed. */
     if (!result &&
         nkui_layout_session_render_frame(renderer, session, surface, &frame_info, 1) != NKUI_OK)
+        result = 22;
+    if (!result && !drain_threaded_frame(surface))
         result = 22;
 
     /*
@@ -449,7 +492,9 @@ int main() {
             std::fprintf(stderr, "custom paint did not compile and populate the raster cache\n");
             result = 25;
         }
-        if (!result) {
+        if (!result && !drain_threaded_frame(surface))
+            result = 18;
+        if (!result && !nk::core::render_executor_physical()) {
             /*
              * Node 2 sits at (12, 20) with a 160x64 box, so its custom paint
              * covers framebuffer x 12..172, y (bottom-up) 108..172.
@@ -581,6 +626,8 @@ int main() {
     if (nkui_layout_session_destroy(session) != NKUI_OK ||
         nkui_layout_session_destroy(session) != NKUI_ERROR_INVALID_HANDLE)
         result = 17;
+    if (nk::core::render_executor_physical())
+        (void)nk_surface_make_current(surface);
     nkui_display_list_destroy(list);
     nkui_renderer_destroy(renderer);
     nkui_resource_destroy(fonts);

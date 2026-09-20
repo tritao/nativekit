@@ -495,7 +495,7 @@ static nkgpu_result begin_frame_with_target(Handle handle, const nk_surface_fram
     const nkgpu_result activated = activate_renderer(handle, &target);
     if (activated != NKGPU_OK)
         return activated;
-    slot->value.api->gfx->reset_state_cache();
+    runtime_gfx()->reset_state_cache();
     slot->value.frame_target = target;
     slot->value.has_frame_target = true;
     slot->value.context_target = target;
@@ -1987,7 +1987,13 @@ nkgpu_result nkgpu_renderer_destroy(nkgpu_renderer h) {
     }
     const nk_sokol_api *api = s->value.api;
     const nk_graphics_device device = s->value.device;
+    const bool unbind_context = nk::core::render_executor_physical() &&
+                                nk_executor_is_current(NK_EXECUTOR_RENDER) &&
+                                (s->value.graphics_api == NK_GRAPHICS_OPENGL ||
+                                 s->value.graphics_api == NK_GRAPHICS_OPENGL_ES);
     destroy_owned(h, backend_available);
+    if (unbind_context)
+        nk_graphics_unbind_frame_target(&s->value.context_target);
     renderer_pool.remove(*s);
     api->runtime_release();
     nk_graphics_device_release(device);

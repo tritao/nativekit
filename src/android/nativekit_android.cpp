@@ -3096,6 +3096,11 @@ nk_result NK_CALL nk_frame_backend_finish(nk_handle handle, const nk_surface_fra
     return NK_OK;
 }
 
+nk_result NK_CALL nk_frame_backend_cancel(nk_handle handle,
+                                          const nk_surface_frame_target *target) {
+    return nk_frame_backend_finish(handle, target);
+}
+
 nk_result NK_CALL nk_surface_set_frame_callback(nk_handle handle,
                                                 nk_surface_frame_callback callback,
                                                 void *user_data) {
