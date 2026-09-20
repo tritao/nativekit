@@ -4,12 +4,14 @@
 
 #include <cassert>
 #include <memory>
+#include <vector>
 
 namespace {
 
 using nkscene::ChangeSet;
 using nkscene::Scene;
 using nkscene::SceneInteraction;
+using nkscene::SceneView;
 using nkscene::SelectionMode;
 using nkscene::Transaction;
 
@@ -132,10 +134,63 @@ void c_selection_state() {
            NKS_ERROR_INVALID_HANDLE);
 }
 
+void selection_presentation_50k() {
+    constexpr std::size_t count = 50000;
+    auto scene = std::make_shared<Scene>();
+    const auto geometry = scene->reserve_geometry_id();
+    scene->geometry_store().create(geometry);
+    const auto base_material = scene->reserve_material_id();
+    scene->material_store().create(base_material);
+    const auto highlight_material = scene->reserve_material_id();
+    scene->material_store().create(highlight_material);
+
+    std::vector<nkscene::OccurrenceId> occurrences;
+    occurrences.reserve(count);
+    Transaction create(scene);
+    for (std::size_t index = 0; index < count; ++index) {
+        const auto occurrence = scene->reserve_occurrence_id();
+        occurrences.push_back(occurrence);
+        create.add_create(occurrence);
+    }
+    ChangeSet changes;
+    assert(scene->commit(create, changes) == NKS_OK);
+    create.close();
+
+    Transaction configure(scene);
+    for (const auto occurrence : occurrences) {
+        configure.add_geometry(occurrence, geometry);
+        configure.add_material(occurrence, base_material);
+    }
+    assert(scene->commit(configure, changes) == NKS_OK);
+    configure.close();
+
+    const auto snapshot = scene->snapshot();
+    SceneView view;
+    auto plan = nkscene::compile(snapshot, view);
+    const auto compile_count = plan.compile_count();
+
+    SceneInteraction interaction;
+    interaction.select(occurrences[12345], SelectionMode::Replace);
+    auto selected_view = view;
+    for (const auto occurrence : interaction.selected())
+        selected_view.material_overrides.push_back({occurrence, highlight_material});
+    const auto update = nkscene::update(plan, snapshot, changes, selected_view);
+
+    assert(!update.plan_rebuilt);
+    assert(plan.compile_count() == compile_count);
+    assert(update.patched_instances == 0);
+    assert(update.patched_visibility == 0);
+    assert(update.patched_materials == 1);
+    assert(update.updated_geometry_resources == 0);
+    assert(update.updated_material_resources == 0);
+    assert(update.rebuilt_batches != 0);
+}
+
 } // namespace
 
 int main() {
     cpp_selection_state();
     c_selection_state();
+    selection_presentation_50k();
     return 0;
 }

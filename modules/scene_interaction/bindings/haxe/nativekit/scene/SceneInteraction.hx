@@ -97,6 +97,18 @@ class SceneInteraction {
 		return result;
 	}
 
+	/** Converts the current native selection into the existing view presentation set. */
+	public function selectionSet():SelectionSet {
+		var result = new SelectionSet();
+		for (occurrence in selected())
+			result.add(occurrence);
+		return result;
+	}
+
+	/** Applies the current selection as material overrides on a view builder. */
+	public function applySelection(view:SceneView, highlight:Material):SceneView
+		return view.applySelection(selectionSet(), highlight);
+
 	public function isSelected(occurrence:Occurrence):Bool {
 		ensureLive();
 		var result = NativeKitSceneInteraction.nkscene_interaction_is_selected(

@@ -115,6 +115,12 @@ class Main {
 		if (interaction.isSelected(first) || !interaction.isSelected(second))
 			return 26;
 		interaction.clearSelection();
+		interaction.select(second, SelectionMode.Replace);
+		var interactionView = new SceneView().setRoot(group);
+		interaction.applySelection(interactionView, highlight);
+		if (interaction.selectionSet().count() != 1
+			|| interactionView.materialOverrideCount() != 1)
+			return 27;
 		interaction.dispose();
 		var spatialIndex = SpatialIndex.create(snapshot),
 			spatialBounds = spatialIndex.queryBounds(-2.0, -1.0, -1.0, 0.0, 1.0, 1.0),
