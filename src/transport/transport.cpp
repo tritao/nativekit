@@ -280,20 +280,40 @@ int wait_socket(socket_type socket, bool readable, bool writable, uint32_t timeo
     if (socket == invalid_socket)
         return -1;
 #if defined(_WIN32)
-    WSAPOLLFD descriptor{};
+    fd_set read_set{};
+    fd_set write_set{};
+    fd_set error_set{};
+    if (readable) {
+        FD_ZERO(&read_set);
+        FD_SET(socket, &read_set);
+    }
+    if (writable) {
+        FD_ZERO(&write_set);
+        FD_SET(socket, &write_set);
+    }
+    FD_ZERO(&error_set);
+    FD_SET(socket, &error_set);
+    timeval timeout{};
+    timeout.tv_sec = static_cast<long>(timeout_ms / 1000u);
+    timeout.tv_usec = static_cast<long>((timeout_ms % 1000u) * 1000u);
+    const int result = ::select(0, readable ? &read_set : nullptr, writable ? &write_set : nullptr,
+                                &error_set, &timeout);
+    if (result <= 0)
+        return result;
+    int ready = 0;
+    if ((readable && FD_ISSET(socket, &read_set)) || FD_ISSET(socket, &error_set))
+        ready |= 1;
+    if ((writable && FD_ISSET(socket, &write_set)) || FD_ISSET(socket, &error_set))
+        ready |= 2;
+    return ready;
 #else
     pollfd descriptor{};
-#endif
     descriptor.fd = socket;
     descriptor.events = static_cast<short>((readable ? POLLIN : 0) | (writable ? POLLOUT : 0));
     const auto timeout = timeout_ms > static_cast<uint32_t>(std::numeric_limits<int>::max())
                              ? std::numeric_limits<int>::max()
                              : static_cast<int>(timeout_ms);
-#if defined(_WIN32)
-    const int result = WSAPoll(&descriptor, 1, timeout);
-#else
     const int result = poll(&descriptor, 1, timeout);
-#endif
     if (result <= 0)
         return result;
     int ready = 0;
@@ -302,6 +322,7 @@ int wait_socket(socket_type socket, bool readable, bool writable, uint32_t timeo
     if ((descriptor.revents & (POLLOUT | POLLERR)) != 0)
         ready |= 2;
     return ready;
+#endif
 }
 
 nk_result map_connect_error(int error) noexcept {
