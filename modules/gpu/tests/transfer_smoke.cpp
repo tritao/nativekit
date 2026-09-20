@@ -272,6 +272,23 @@ bool offscreen_format(nkgpu_renderer renderer, const nkgpu_features &features,
                                   "nkgpu_end_frame(offscreen)");
     }
 
+    auto check_readback = [&](nkgpu_image image, const char *stage) {
+        uint8_t readback_bytes[32]{};
+        if (readback(renderer, image, 0, 0, width, height, readback_bytes,
+                     width * height * bytes) &&
+            std::memcmp(readback_bytes, expected_bytes, width * height * bytes) == 0)
+            return true;
+        uint32_t actual_bits = 0;
+        uint32_t expected_bits = 0;
+        std::memcpy(&actual_bits, readback_bytes, sizeof(actual_bits));
+        std::memcpy(&expected_bits, expected_bytes, sizeof(expected_bits));
+        std::fprintf(stderr, "offscreen format %s %s readback mismatch: %08x != %08x\n",
+                     format_name(format), stage, actual_bits, expected_bits);
+        return false;
+    };
+    if (success && can_render && can_sample && features.image_readback)
+        success = check_readback(source, "source");
+
     if (success && features.image_copy) {
         nkgpu_image_desc destination_desc = desc;
         if (can_render) {
@@ -296,18 +313,8 @@ bool offscreen_format(nkgpu_renderer renderer, const nkgpu_features &features,
     }
 
     if (success && can_sample && features.image_readback) {
-        uint8_t readback_bytes[32]{};
-        if (!readback(renderer, destination.id ? destination : source, 0, 0, width, height,
-                      readback_bytes, width * height * bytes) ||
-            std::memcmp(readback_bytes, expected_bytes, width * height * bytes) != 0) {
-            uint32_t actual_bits = 0;
-            uint32_t expected_bits = 0;
-            std::memcpy(&actual_bits, readback_bytes, sizeof(actual_bits));
-            std::memcpy(&expected_bits, expected_bytes, sizeof(expected_bits));
-            std::fprintf(stderr, "offscreen format %s readback mismatch: %08x != %08x\n",
-                         format_name(format), actual_bits, expected_bits);
+        if (!check_readback(destination.id ? destination : source, "destination"))
             success = false;
-        }
     }
     if (destination.id)
         expect_result(nkgpu_image_destroy(renderer, destination), NKGPU_OK,
