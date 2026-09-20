@@ -45,8 +45,24 @@ void build_items(RenderPlan &plan, const SceneSnapshot &snapshot, const SceneVie
 std::unordered_map<OccurrenceId, std::size_t> item_indices(const RenderPlan &plan);
 } // namespace render_internal
 
+struct VisibilityOverride {
+    OccurrenceId occurrence;
+    bool visible = true;
+};
+
+struct MaterialOverride {
+    OccurrenceId occurrence;
+    MaterialId material;
+};
+
 struct SceneView {
+    /** Invalid means that the view contains every occurrence. */
+    OccurrenceId root;
+    /** Include scene-hidden occurrences as visible for inspection views. */
     bool include_invisible = false;
+    /** Later entries replace earlier entries for the same occurrence. */
+    std::vector<VisibilityOverride> visibility_overrides;
+    std::vector<MaterialOverride> material_overrides;
 };
 
 enum class RenderFlags : std::uint32_t {
@@ -141,6 +157,7 @@ public:
 
 private:
     std::uint64_t source_revision_ = 0;
+    std::uint64_t view_signature_ = 0;
     std::vector<RenderItem> items_;
     std::vector<WorldTransform> transforms_;
     std::vector<InstanceBatch> batches_;

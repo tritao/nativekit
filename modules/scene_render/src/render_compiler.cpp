@@ -10,6 +10,7 @@ RenderPlan compile(const SceneSnapshot &snapshot, const SceneView &view) {
     render_internal::build_items(plan, snapshot, view);
     render_internal::rebuild_batches(plan);
     plan.source_revision_ = snapshot.revision();
+    plan.view_signature_ = render_internal::view_signature(view);
     plan.compile_count_ = 1;
     return plan;
 }
@@ -22,13 +23,27 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot,
             return has_domain(change.domains, ChangeDomain::Created) ||
                 has_domain(change.domains, ChangeDomain::Destroyed);
         });
-    if (topology_changed || plan.source_revision() > snapshot.revision()) {
+    if (topology_changed || plan.source_revision() > snapshot.revision() ||
+        plan.view_signature_ != render_internal::view_signature(view) ||
+        (view.root.valid() && std::any_of(
+             changes.changes.begin(), changes.changes.end(), [](const SceneChange &change) {
+                 return has_domain(change.domains, ChangeDomain::Hierarchy);
+             }))) {
         plan = compile(snapshot, view);
         result.plan_rebuilt = true;
         return result;
     }
 
     const auto indices = render_internal::item_indices(plan);
+    const bool effective_state_dirty = std::any_of(
+        changes.changes.begin(), changes.changes.end(), [](const SceneChange &change) {
+            return has_domain(change.domains, ChangeDomain::Hierarchy) ||
+                has_domain(change.domains, ChangeDomain::Visibility) ||
+                has_domain(change.domains, ChangeDomain::Material);
+        });
+    const auto effective = effective_state_dirty
+        ? render_internal::effective_state(snapshot, view)
+        : render_internal::EffectiveState{};
     bool batches_dirty = false;
     for (const auto &change : changes.changes) {
         const auto item_found = indices.find(change.occurrence);
@@ -42,7 +57,7 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot,
             ++result.patched_instances;
         }
         if (has_domain(change.domains, ChangeDomain::Visibility)) {
-            if (snapshot_occurrence->visible)
+            if (effective.visible.at(change.occurrence))
                 item.flags = static_cast<RenderFlags>(
                     static_cast<std::uint32_t>(item.flags) &
                     ~static_cast<std::uint32_t>(RenderFlags::Hidden));
@@ -51,7 +66,7 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot,
             ++result.patched_visibility;
         }
         if (has_domain(change.domains, ChangeDomain::Material)) {
-            item.material = snapshot_occurrence->material;
+            item.material = effective.material.at(change.occurrence);
             ++result.patched_materials;
             batches_dirty = true;
         }
@@ -76,11 +91,27 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot,
             }
         }
     }
+    if (effective_state_dirty) {
+        for (auto &item : plan.items_) {
+            const auto visible = effective.visible.at(item.occurrence);
+            const auto was_visible = !has_render_flag(item.flags, RenderFlags::Hidden);
+            if (visible == was_visible)
+                continue;
+            if (visible)
+                item.flags = static_cast<RenderFlags>(
+                    static_cast<std::uint32_t>(item.flags) &
+                    ~static_cast<std::uint32_t>(RenderFlags::Hidden));
+            else
+                item.flags |= RenderFlags::Hidden;
+            ++result.patched_visibility;
+        }
+    }
     if (batches_dirty) {
         render_internal::rebuild_batches(plan);
         result.rebuilt_batches = plan.batches_.size();
     }
     plan.source_revision_ = snapshot.revision();
+    plan.view_signature_ = render_internal::view_signature(view);
     return result;
 }
 
