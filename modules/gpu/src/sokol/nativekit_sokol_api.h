@@ -21,6 +21,7 @@ typedef struct nk_sokol_api {
     const sg_api *gfx;
     sg_features (*query_features)(void);
     sg_limits (*query_limits)(void);
+    int (*query_max_samples)(void);
     void (*update_buffer)(sg_buffer buffer, const sg_range *data);
     void (*apply_viewport)(int x, int y, int width, int height, bool origin_top_left);
     void (*dispatch)(int num_groups_x, int num_groups_y, int num_groups_z);

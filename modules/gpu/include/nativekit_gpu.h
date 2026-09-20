@@ -619,6 +619,39 @@ enum NK_ENUM(nkgpu_shader_stage) {
     NKGPU_SHADERSTAGE_COMPUTE = 3,
 };
 
+/** Kind of resource described by nkgpu_shader_binding(). */
+typedef uint32_t nkgpu_shader_binding_kind;
+enum NK_ENUM(nkgpu_shader_binding_kind) {
+    /** A sampled image and its paired sampler. */
+    NKGPU_SHADERBINDING_SAMPLED_IMAGE = 1,
+    /** A uniform/constant block. */
+    NKGPU_SHADERBINDING_UNIFORM_BLOCK = 2,
+    /** A read-only or read-write storage buffer. */
+    NKGPU_SHADERBINDING_STORAGE_BUFFER = 3,
+    /** A compute storage image. */
+    NKGPU_SHADERBINDING_STORAGE_IMAGE = 4,
+};
+
+/** General shader resource metadata retained by the shader builder. */
+typedef struct nkgpu_shader_binding_desc {
+    uint32_t struct_size NK_STRUCT_SIZE;
+    nkgpu_shader_binding_kind kind;
+    nkgpu_shader_stage stage;
+    uint32_t slot;
+    /** Sampler slot for NKGPU_SHADERBINDING_SAMPLED_IMAGE. */
+    uint32_t secondary_slot;
+    /** Byte size for NKGPU_SHADERBINDING_UNIFORM_BLOCK. */
+    uint32_t size;
+    /** Access format for NKGPU_SHADERBINDING_STORAGE_IMAGE. */
+    nkgpu_image_format format;
+    /** Non-zero for read-only storage-buffer metadata. */
+    uint32_t readonly;
+    /** Non-zero for write-only storage-image metadata. */
+    uint32_t writeonly;
+    /** GLSL combined image/sampler name for sampled-image metadata. */
+    const char *name NKGPU_UTF8;
+} nkgpu_shader_binding_desc;
+
 /** Source language accepted by the shader creation functions. */
 typedef uint32_t nkgpu_shader_language;
 
@@ -1073,6 +1106,10 @@ NKGPU_API nkgpu_result nkgpu_shader_storage_buffer(nkgpu_shader_builder builder,
 NKGPU_API nkgpu_result nkgpu_shader_storage_image(nkgpu_shader_builder builder, uint32_t view_slot,
                                                   nkgpu_image_format format, uint32_t writeonly);
 
+/** Adds generalized resource metadata to a shader builder. */
+NKGPU_API nkgpu_result nkgpu_shader_binding(nkgpu_shader_builder builder,
+                                            const nkgpu_shader_binding_desc *desc);
+
 /**
  * Creates a shader from a shader builder and consumes the builder.
  *
@@ -1441,6 +1478,8 @@ enum NK_ENUM(nkgpu_batch_pass_kind) {
     NKGPU_BATCH_PASS_COMPUTE = 3,
     /** A transfer pass with no render target. */
     NKGPU_BATCH_PASS_COPY = 4,
+    /** A general attachment-based render pass. */
+    NKGPU_BATCH_PASS_RENDER = 5,
 };
 
 /** One render pass recorded into a submission batch. */
@@ -1457,6 +1496,8 @@ typedef struct nkgpu_batch_pass {
     uint32_t width;
     /** Framebuffer height for NKGPU_BATCH_PASS_WINDOW; ignored for target/compute passes. */
     uint32_t height;
+    /** General attachments for NKGPU_BATCH_PASS_RENDER. */
+    nkgpu_render_pass_desc render_pass;
 } nkgpu_batch_pass;
 
 /**

@@ -454,6 +454,11 @@ extern "C" const nk_sokol_transfer_api *nk_sokol_metal_transfer_get_api(void) {
     return &transfer_api;
 }
 
+extern "C" int nk_sokol_metal_query_max_samples(void) {
+    id<MTLDevice> native_device = device();
+    return native_device ? static_cast<int>(native_device.maxSupportedSampleCount) : 1;
+}
+
 extern "C" void nk_sokol_metal_transfer_shutdown(void) {
     if (transfer_blit) {
         [transfer_blit endEncoding];
