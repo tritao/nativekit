@@ -79,6 +79,7 @@ class LayoutRenderFrame {
 class LayoutRenderCompiler {
   public:
     using CustomPaintPlans = std::unordered_map<uint32_t, const RenderPlan *>;
+    using CustomPaintComposites = std::unordered_map<uint32_t, const DisplayList *>;
     using RasterPaintNodes = std::unordered_set<uint32_t>;
 
     LayoutRenderCompiler();
@@ -92,7 +93,8 @@ class LayoutRenderCompiler {
                  LayoutRenderFrame &out, LayoutRenderCompileError *error = nullptr,
                  bool load_existing = false, TextEngine *text_engine_source = nullptr,
                  const CustomPaintPlans *custom_paints = nullptr,
-                 const RasterPaintNodes *raster_paint_nodes = nullptr) const;
+                 const RasterPaintNodes *raster_paint_nodes = nullptr,
+                 const CustomPaintComposites *custom_composites = nullptr) const;
 
   private:
     std::shared_ptr<FontCollection> fonts_;

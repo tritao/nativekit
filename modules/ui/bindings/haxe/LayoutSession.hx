@@ -159,6 +159,15 @@ class LayoutSession {
 			displayList.nativeHandle()), "layoutSession.setCustomPaint");
 	}
 
+	/** Attaches framework-owned composite metadata around retained custom pixels. */
+	public function setCustomPaintComposite(nodeId:Int, displayList:DisplayList):Void {
+		ensureLive();
+		if (nodeId <= 0 || displayList == null || displayList.isDisposed())
+			throw "Custom paint composite requires a live display list and node ID";
+		UiResult.check(NativeKitUI.nkui_layout_session_set_custom_paint_composite(value, nodeId,
+			displayList.nativeHandle()), "layoutSession.setCustomPaintComposite");
+	}
+
 	/** Selects vector or persistent GPU-raster rendering for a custom paint plane. */
 	public function setCustomPaintCachePolicy(nodeId:Int, policy:Int):Void {
 		ensureLive();
