@@ -32,9 +32,7 @@
 extern "C" {
 #endif
 
-typedef struct nkscene_render_plan {
-    uint64_t value;
-} nkscene_render_plan NK_HANDLE NK_HANDLE_DESTROY(nkscene_render_plan_destroy);
+typedef uint32_t nkscene_render_plan NK_HANDLE NK_HANDLE_DESTROY(nkscene_render_plan_destroy);
 
 typedef struct nkscene_render_visibility_override {
     nkscene_occurrence_id occurrence;

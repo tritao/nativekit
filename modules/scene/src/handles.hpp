@@ -15,18 +15,22 @@ struct RuntimeHandle {
     friend constexpr bool operator==(RuntimeHandle, RuntimeHandle) noexcept = default;
 };
 
-inline std::uint64_t pack_handle(RuntimeHandle handle) noexcept {
-    if (!handle.valid())
+constexpr std::uint32_t handle_index_bits = 20;
+constexpr std::uint32_t handle_index_mask = (1u << handle_index_bits) - 1u;
+constexpr std::uint32_t handle_max_generation = (1u << (32 - handle_index_bits)) - 1u;
+
+inline std::uint32_t pack_handle(RuntimeHandle handle) noexcept {
+    if (!handle.valid() || handle.slot >= handle_index_mask ||
+        handle.generation > handle_max_generation)
         return 0;
-    return (static_cast<std::uint64_t>(handle.generation) << 32) |
-        static_cast<std::uint64_t>(handle.slot + 1);
+    return (handle.generation << handle_index_bits) | (handle.slot + 1);
 }
 
-inline RuntimeHandle unpack_handle(std::uint64_t value) noexcept {
-    if (value == 0)
+inline RuntimeHandle unpack_handle(std::uint32_t value) noexcept {
+    if (value == 0 || (value & handle_index_mask) == 0)
         return {};
-    return {static_cast<std::uint32_t>((value & 0xffffffffu) - 1),
-            static_cast<std::uint32_t>(value >> 32)};
+    return {static_cast<std::uint32_t>((value & handle_index_mask) - 1),
+            static_cast<std::uint32_t>(value >> handle_index_bits)};
 }
 
 template<class T>
@@ -34,14 +38,15 @@ class HandleTable {
 public:
     RuntimeHandle create(std::shared_ptr<T> value) {
         if (free_slots.empty()) {
+            if (slots.size() >= handle_index_mask)
+                return {};
             slots.push_back({std::move(value), 1});
             return {static_cast<std::uint32_t>(slots.size() - 1), 1};
         }
         const auto slot = free_slots.back();
         free_slots.pop_back();
         auto &entry = slots[slot];
-        if (++entry.generation == 0)
-            ++entry.generation;
+        ++entry.generation;
         entry.value = std::move(value);
         return {slot, entry.generation};
     }
@@ -57,7 +62,8 @@ public:
             return {};
         auto &entry = slots[handle.slot];
         auto result = std::move(entry.value);
-        free_slots.push_back(handle.slot);
+        if (entry.generation < handle_max_generation)
+            free_slots.push_back(handle.slot);
         return result;
     }
 

@@ -37,21 +37,13 @@ extern "C" {
 
 /* Runtime handles are generation-checked tokens. They are intentionally
  * separate from stable scene identifiers, which identify scene data. */
-typedef struct nkscene_scene {
-    uint64_t value;
-} nkscene_scene NK_HANDLE NK_HANDLE_DESTROY(nkscene_scene_destroy);
+typedef uint32_t nkscene_scene NK_HANDLE NK_HANDLE_DESTROY(nkscene_scene_destroy);
 
-typedef struct nkscene_transaction {
-    uint64_t value;
-} nkscene_transaction NK_HANDLE NK_HANDLE_DESTROY(nkscene_transaction_cancel);
+typedef uint32_t nkscene_transaction NK_HANDLE NK_HANDLE_DESTROY(nkscene_transaction_cancel);
 
-typedef struct nkscene_snapshot {
-    uint64_t value;
-} nkscene_snapshot NK_HANDLE NK_HANDLE_DESTROY(nkscene_snapshot_destroy);
+typedef uint32_t nkscene_snapshot NK_HANDLE NK_HANDLE_DESTROY(nkscene_snapshot_destroy);
 
-typedef struct nkscene_change_set {
-    uint64_t value;
-} nkscene_change_set NK_HANDLE NK_HANDLE_DESTROY(nkscene_change_set_destroy);
+typedef uint32_t nkscene_change_set NK_HANDLE NK_HANDLE_DESTROY(nkscene_change_set_destroy);
 
 typedef struct nkscene_occurrence_id {
     uint64_t value;

@@ -78,7 +78,7 @@ int main(void) {
         2.0f, 0.0f, 0.0f, 1.0f,
     }};
     assert(nkscene_tx_set_transform(transaction, occurrence, &transform) == NKS_OK);
-    changes.value = 0;
+    changes = 0;
     assert(nkscene_transaction_commit_with_changes(transaction, &changes) == NKS_OK);
     assert(nkscene_scene_snapshot(scene, &snapshot) == NKS_OK);
 

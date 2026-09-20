@@ -54,7 +54,7 @@ nkscene_result NKS_CALL nkscene_render_plan_compile(
     nkscene_render_plan *out_plan) {
     if (!out_plan)
         return NKS_ERROR_INVALID_ARGUMENT;
-    out_plan->value = 0;
+    *out_plan = 0;
     nkscene::SceneView view;
     const auto view_result = copy_view(view_input, view);
     if (view_result != NKS_OK)
@@ -67,14 +67,14 @@ nkscene_result NKS_CALL nkscene_render_plan_compile(
     auto &state = registry();
     std::lock_guard lock(state.mutex);
     const auto handle = state.plans.create(std::move(plan));
-    out_plan->value = nkscene::pack_handle(handle);
+    *out_plan = nkscene::pack_handle(handle);
     return NKS_OK;
 }
 
 void NKS_CALL nkscene_render_plan_destroy(nkscene_render_plan plan) {
     auto &state = registry();
     std::lock_guard lock(state.mutex);
-    state.plans.remove(nkscene::unpack_handle(plan.value));
+    state.plans.remove(nkscene::unpack_handle(plan));
 }
 
 nkscene_result NKS_CALL nkscene_render_plan_get_item_count(
@@ -83,7 +83,7 @@ nkscene_result NKS_CALL nkscene_render_plan_get_item_count(
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = registry();
     std::lock_guard lock(state.mutex);
-    const auto plan = state.plans.get(nkscene::unpack_handle(plan_handle.value));
+    const auto plan = state.plans.get(nkscene::unpack_handle(plan_handle));
     if (!plan)
         return NKS_ERROR_INVALID_HANDLE;
     *out_count = plan->items().size();
@@ -109,7 +109,7 @@ nkscene_result NKS_CALL nkscene_render_plan_update(
 
     auto &state = registry();
     std::lock_guard lock(state.mutex);
-    const auto plan = state.plans.get(nkscene::unpack_handle(plan_handle.value));
+    const auto plan = state.plans.get(nkscene::unpack_handle(plan_handle));
     if (!plan)
         return NKS_ERROR_INVALID_HANDLE;
     const auto update = nkscene::update(*plan, *snapshot, *changes, view);
@@ -139,7 +139,7 @@ nkscene_result NKS_CALL nkscene_render_plan_pick(
     {
         auto &state = registry();
         std::lock_guard lock(state.mutex);
-        plan = state.plans.get(nkscene::unpack_handle(plan_handle.value));
+        plan = state.plans.get(nkscene::unpack_handle(plan_handle));
         if (!plan)
             return NKS_ERROR_INVALID_HANDLE;
     }

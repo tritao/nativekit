@@ -488,11 +488,11 @@ RuntimeRegistry &registry() {
 }
 
 std::shared_ptr<Scene> resolve_scene(nkscene_scene handle) {
-    return registry().scenes.get(unpack_handle(handle.value));
+    return registry().scenes.get(unpack_handle(handle));
 }
 
 std::shared_ptr<Transaction> resolve_transaction(nkscene_transaction handle) {
-    return registry().transactions.get(unpack_handle(handle.value));
+    return registry().transactions.get(unpack_handle(handle));
 }
 
 nkscene_result require_transaction(nkscene_transaction handle,
@@ -511,10 +511,10 @@ LocalTransform from_public_transform(const nkscene_transform &transform) {
     return result;
 }
 
-nkscene_result commit_transaction(nkscene_transaction transaction_handle,
-                                  nkscene_change_set *out_changes) {
+    nkscene_result commit_transaction(nkscene_transaction transaction_handle,
+                                      nkscene_change_set *out_changes) {
     if (out_changes)
-        out_changes->value = 0;
+        *out_changes = 0;
     auto &state = registry();
     std::lock_guard lock(state.mutex);
     std::shared_ptr<Transaction> transaction;
@@ -530,10 +530,10 @@ nkscene_result commit_transaction(nkscene_transaction transaction_handle,
     if (out_changes) {
         auto change_set = std::make_shared<ChangeSet>(std::move(changes));
         const auto handle = state.change_sets.create(std::move(change_set));
-        out_changes->value = pack_handle(handle);
+        *out_changes = pack_handle(handle);
     }
     transaction->close();
-    state.transactions.remove(unpack_handle(transaction_handle.value));
+    state.transactions.remove(unpack_handle(transaction_handle));
     return NKS_OK;
 }
 
@@ -543,14 +543,14 @@ NKS_API std::shared_ptr<const SceneSnapshot> resolve_snapshot_handle(
     nkscene_snapshot snapshot) noexcept {
     auto &state = registry();
     std::lock_guard lock(state.mutex);
-    return state.snapshots.get(unpack_handle(snapshot.value));
+    return state.snapshots.get(unpack_handle(snapshot));
 }
 
 NKS_API std::shared_ptr<const ChangeSet> resolve_change_set_handle(
     nkscene_change_set changes) noexcept {
     auto &state = registry();
     std::lock_guard lock(state.mutex);
-    return state.change_sets.get(unpack_handle(changes.value));
+    return state.change_sets.get(unpack_handle(changes));
 }
 
 } // namespace nkscene
@@ -564,14 +564,14 @@ nkscene_result NKS_CALL nkscene_scene_create(nkscene_scene *out_scene) {
     std::lock_guard lock(state.mutex);
     auto scene = std::make_shared<nkscene::Scene>();
     const auto handle = state.scenes.create(std::move(scene));
-    out_scene->value = nkscene::pack_handle(handle);
+    *out_scene = nkscene::pack_handle(handle);
     return NKS_OK;
 }
 
 void NKS_CALL nkscene_scene_destroy(nkscene_scene scene) {
     auto &state = nkscene::registry();
     std::lock_guard lock(state.mutex);
-    const auto scene_handle = nkscene::unpack_handle(scene.value);
+    const auto scene_handle = nkscene::unpack_handle(scene);
     auto owner = state.scenes.get(scene_handle);
     if (!owner)
         return;
@@ -592,19 +592,19 @@ nkscene_result NKS_CALL nkscene_transaction_begin(
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = nkscene::registry();
     std::lock_guard lock(state.mutex);
-    auto owner = state.scenes.get(nkscene::unpack_handle(scene.value));
+    auto owner = state.scenes.get(nkscene::unpack_handle(scene));
     if (!owner)
         return NKS_ERROR_INVALID_HANDLE;
     auto transaction = std::make_shared<nkscene::Transaction>(std::move(owner));
     const auto handle = state.transactions.create(std::move(transaction));
-    out_transaction->value = nkscene::pack_handle(handle);
+    *out_transaction = nkscene::pack_handle(handle);
     return NKS_OK;
 }
 
 void NKS_CALL nkscene_transaction_cancel(nkscene_transaction transaction) {
     auto &state = nkscene::registry();
     std::lock_guard lock(state.mutex);
-    state.transactions.remove(nkscene::unpack_handle(transaction.value));
+    state.transactions.remove(nkscene::unpack_handle(transaction));
 }
 
 nkscene_result NKS_CALL nkscene_transaction_commit(nkscene_transaction transaction_handle) {
@@ -716,22 +716,22 @@ nkscene_result NKS_CALL nkscene_scene_snapshot(
     nkscene_scene scene, nkscene_snapshot *out_snapshot) {
     if (!out_snapshot)
         return NKS_ERROR_INVALID_ARGUMENT;
-    out_snapshot->value = 0;
+    *out_snapshot = 0;
     auto &state = nkscene::registry();
     std::lock_guard lock(state.mutex);
-    auto owner = state.scenes.get(nkscene::unpack_handle(scene.value));
+    auto owner = state.scenes.get(nkscene::unpack_handle(scene));
     if (!owner)
         return NKS_ERROR_INVALID_HANDLE;
     auto snapshot = std::make_shared<nkscene::SceneSnapshot>(owner->snapshot());
     const auto handle = state.snapshots.create(std::move(snapshot));
-    out_snapshot->value = nkscene::pack_handle(handle);
+    *out_snapshot = nkscene::pack_handle(handle);
     return NKS_OK;
 }
 
 void NKS_CALL nkscene_snapshot_destroy(nkscene_snapshot snapshot) {
     auto &state = nkscene::registry();
     std::lock_guard lock(state.mutex);
-    state.snapshots.remove(nkscene::unpack_handle(snapshot.value));
+    state.snapshots.remove(nkscene::unpack_handle(snapshot));
 }
 
 nkscene_result NKS_CALL nkscene_snapshot_get_revision(
@@ -740,7 +740,7 @@ nkscene_result NKS_CALL nkscene_snapshot_get_revision(
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = nkscene::registry();
     std::lock_guard lock(state.mutex);
-    const auto value = state.snapshots.get(nkscene::unpack_handle(snapshot.value));
+    const auto value = state.snapshots.get(nkscene::unpack_handle(snapshot));
     if (!value)
         return NKS_ERROR_INVALID_HANDLE;
     *out_revision = value->revision();
@@ -750,7 +750,7 @@ nkscene_result NKS_CALL nkscene_snapshot_get_revision(
 void NKS_CALL nkscene_change_set_destroy(nkscene_change_set changes) {
     auto &state = nkscene::registry();
     std::lock_guard lock(state.mutex);
-    state.change_sets.remove(nkscene::unpack_handle(changes.value));
+    state.change_sets.remove(nkscene::unpack_handle(changes));
 }
 
 nkscene_result NKS_CALL nkscene_change_set_get_revision(
@@ -759,7 +759,7 @@ nkscene_result NKS_CALL nkscene_change_set_get_revision(
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = nkscene::registry();
     std::lock_guard lock(state.mutex);
-    const auto value = state.change_sets.get(nkscene::unpack_handle(changes.value));
+    const auto value = state.change_sets.get(nkscene::unpack_handle(changes));
     if (!value)
         return NKS_ERROR_INVALID_HANDLE;
     *out_revision = value->scene_revision;
@@ -772,7 +772,7 @@ nkscene_result NKS_CALL nkscene_geometry_create(
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = nkscene::registry();
     std::lock_guard lock(state.mutex);
-    auto owner = state.scenes.get(nkscene::unpack_handle(scene.value));
+    auto owner = state.scenes.get(nkscene::unpack_handle(scene));
     if (!owner)
         return NKS_ERROR_INVALID_HANDLE;
     out_geometry->value = owner->create_geometry().value;
@@ -782,7 +782,7 @@ nkscene_result NKS_CALL nkscene_geometry_create(
 void NKS_CALL nkscene_geometry_destroy(nkscene_scene scene, nkscene_geometry_id geometry) {
     auto &state = nkscene::registry();
     std::lock_guard lock(state.mutex);
-    auto owner = state.scenes.get(nkscene::unpack_handle(scene.value));
+    auto owner = state.scenes.get(nkscene::unpack_handle(scene));
     if (owner)
         owner->destroy_geometry({geometry.value});
 }
@@ -793,7 +793,7 @@ nkscene_result NKS_CALL nkscene_material_create(
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = nkscene::registry();
     std::lock_guard lock(state.mutex);
-    auto owner = state.scenes.get(nkscene::unpack_handle(scene.value));
+    auto owner = state.scenes.get(nkscene::unpack_handle(scene));
     if (!owner)
         return NKS_ERROR_INVALID_HANDLE;
     out_material->value = owner->create_material().value;
@@ -803,7 +803,7 @@ nkscene_result NKS_CALL nkscene_material_create(
 void NKS_CALL nkscene_material_destroy(nkscene_scene scene, nkscene_material_id material) {
     auto &state = nkscene::registry();
     std::lock_guard lock(state.mutex);
-    auto owner = state.scenes.get(nkscene::unpack_handle(scene.value));
+    auto owner = state.scenes.get(nkscene::unpack_handle(scene));
     if (owner)
         owner->destroy_material({material.value});
 }
@@ -834,7 +834,7 @@ nkscene_result NKS_CALL nkscene_geometry_set_data(
 
     auto &state = nkscene::registry();
     std::lock_guard lock(state.mutex);
-    auto owner = state.scenes.get(nkscene::unpack_handle(scene.value));
+    auto owner = state.scenes.get(nkscene::unpack_handle(scene));
     if (!owner)
         return NKS_ERROR_INVALID_HANDLE;
     if (!owner->geometry_store().find({geometry.value}))
@@ -871,7 +871,7 @@ nkscene_result NKS_CALL nkscene_material_set_data(
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = nkscene::registry();
     std::lock_guard lock(state.mutex);
-    auto owner = state.scenes.get(nkscene::unpack_handle(scene.value));
+    auto owner = state.scenes.get(nkscene::unpack_handle(scene));
     if (!owner)
         return NKS_ERROR_INVALID_HANDLE;
     if (!owner->material_store().find({material.value}))
