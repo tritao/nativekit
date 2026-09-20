@@ -3,6 +3,7 @@ package nativekit.scene;
 import NativeKitGpu;
 import NativeKitScene;
 import NativeKitSceneRender;
+import NativeKitSceneRenderConstants;
 import nativekit.gpu.GpuResult;
 import nativekit.gpu.Renderer;
 
@@ -85,6 +86,33 @@ class SceneRenderer {
 			throw "sceneRenderer.pickPixel failed";
 		}
 		return new PickResult(picked.out_result);
+	}
+
+	/** Starts a non-blocking GPU ID pass and pixel readback. */
+	public function pickPixelAsync(snapshot:Snapshot, width:Int, height:Int, x:Int, y:Int):PickRequest {
+		ensureLive();
+		if (planOwner == null)
+			throw "sceneRenderer.pickPixelAsync requires a compiled render plan";
+		var started = NativeKitSceneRender.nkscene_render_executor_pick_pixel_begin(
+			executor.borrow(), planOwner.borrow(), snapshot.nativeHandle(), width, height, x, y);
+		checkScene(started.status, "sceneRenderer.pickPixelAsync");
+		return new PickRequest(this, started.out_request);
+	}
+
+	@:allow(PickRequest)
+	function pollPick(request:PickRequest, snapshot:Snapshot):PickPollResult {
+		ensureLive();
+		if (planOwner == null)
+			throw "sceneRenderer.pollPick requires a compiled render plan";
+		var polled = NativeKitSceneRender.nkscene_render_executor_pick_pixel_poll(
+			executor.borrow(), request.nativeHandle(), planOwner.borrow(), snapshot.nativeHandle());
+		checkScene(polled.status, "sceneRenderer.pollPick");
+		return switch (polled.out_state) {
+			case NativeKitSceneRenderConstants.NKS_RENDER_PICK_PENDING: Pending;
+			case NativeKitSceneRenderConstants.NKS_RENDER_PICK_READY: Ready(new PickResult(polled.out_result));
+			case NativeKitSceneRenderConstants.NKS_RENDER_PICK_STALE: Stale;
+			default: Failed(polled.out_error);
+		};
 	}
 
 	public function dispose():Void {

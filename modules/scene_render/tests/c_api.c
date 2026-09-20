@@ -69,6 +69,11 @@ int main(void) {
     nkgpu_renderer renderer = {0};
     nkscene_render_executor executor = 0;
     assert(nkscene_render_executor_create(renderer, &executor) == NKS_OK);
+    nkscene_render_pick_request pick_request = 0;
+    assert(nkscene_render_executor_pick_pixel_begin(
+               executor, plan, snapshot, 1, 1, 0, 0, &pick_request) == NKS_ERROR_INVALID_STATE);
+    assert(pick_request == 0);
+    nkscene_render_pick_request_destroy(pick_request);
     nkscene_render_execution_stats execution = {0};
     execution.struct_size = sizeof(execution);
     assert(nkscene_render_executor_execute(executor, plan, snapshot, &execution) == NKS_OK);

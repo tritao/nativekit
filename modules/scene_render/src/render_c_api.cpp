@@ -14,6 +14,7 @@ struct RenderRegistry {
     nkscene::HandleTable<nkscene::RenderPlan> plans;
     nkscene::HandleTable<nkscene::NativeKitGpuExecutor> executors;
     nkscene::HandleTable<nkscene::SceneSpatialIndex> spatial_indices;
+    nkscene::HandleTable<nkscene::GpuPickRequest> pick_requests;
 };
 
 RenderRegistry &registry() {
@@ -429,6 +430,75 @@ nkscene_result NKS_CALL nkscene_render_executor_pick_pixel(nkscene_render_execut
     out_result->world_position[2] = result.worldPosition.z;
     out_result->depth = result.depth;
     return gpu_result == NKGPU_OK ? NKS_OK : NKS_ERROR_INVALID_STATE;
+}
+
+nkscene_result NKS_CALL nkscene_render_executor_pick_pixel_begin(
+    nkscene_render_executor executor_handle, nkscene_render_plan plan_handle,
+    nkscene_snapshot snapshot_handle, uint32_t width, uint32_t height, uint32_t x, uint32_t y,
+    nkscene_render_pick_request *out_request) {
+    if (!out_request)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    *out_request = 0;
+    const auto snapshot = nkscene::resolve_snapshot_handle(snapshot_handle);
+    if (!snapshot)
+        return NKS_ERROR_INVALID_HANDLE;
+
+    auto &state = registry();
+    std::lock_guard lock(state.mutex);
+    const auto executor = state.executors.get(nkscene::unpack_handle(executor_handle));
+    const auto plan = state.plans.get(nkscene::unpack_handle(plan_handle));
+    if (!executor || !plan)
+        return NKS_ERROR_INVALID_HANDLE;
+
+    std::shared_ptr<nkscene::GpuPickRequest> request;
+    const auto gpu_result = executor->begin_pick_pixel(
+        *plan, *snapshot, width, height, x, y, request);
+    if (gpu_result != NKGPU_OK)
+        return NKS_ERROR_INVALID_STATE;
+    const auto handle = state.pick_requests.create(std::move(request));
+    if (!handle.valid())
+        return NKS_ERROR_OUT_OF_MEMORY;
+    *out_request = nkscene::pack_handle(handle);
+    return NKS_OK;
+}
+
+void NKS_CALL nkscene_render_pick_request_destroy(nkscene_render_pick_request request) {
+    auto &state = registry();
+    std::lock_guard lock(state.mutex);
+    state.pick_requests.remove(nkscene::unpack_handle(request));
+}
+
+nkscene_result NKS_CALL nkscene_render_executor_pick_pixel_poll(
+    nkscene_render_executor executor_handle, nkscene_render_pick_request request_handle,
+    nkscene_render_plan plan_handle, nkscene_snapshot snapshot_handle, uint32_t *out_state,
+    nkgpu_result *out_error, nkscene_render_pick_result *out_result) {
+    if (!out_state || !out_error || !out_result)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    *out_state = NKS_RENDER_PICK_FAILED;
+    *out_error = NKGPU_ERROR_INVALID_HANDLE;
+    *out_result = {};
+    const auto snapshot = nkscene::resolve_snapshot_handle(snapshot_handle);
+    if (!snapshot)
+        return NKS_ERROR_INVALID_HANDLE;
+
+    auto &state = registry();
+    std::lock_guard lock(state.mutex);
+    const auto executor = state.executors.get(nkscene::unpack_handle(executor_handle));
+    const auto request = state.pick_requests.get(nkscene::unpack_handle(request_handle));
+    const auto plan = state.plans.get(nkscene::unpack_handle(plan_handle));
+    if (!executor || !request || !plan)
+        return NKS_ERROR_INVALID_HANDLE;
+
+    nkscene::PickResult result;
+    *out_state = executor->poll_pick_pixel(*request, *plan, *snapshot, &result, out_error);
+    out_result->occurrence.value = result.occurrence.value;
+    out_result->source.value = result.source.value;
+    out_result->subelement = result.subelement.value;
+    out_result->world_position[0] = result.worldPosition.x;
+    out_result->world_position[1] = result.worldPosition.y;
+    out_result->world_position[2] = result.worldPosition.z;
+    out_result->depth = result.depth;
+    return NKS_OK;
 }
 
 } // extern "C"

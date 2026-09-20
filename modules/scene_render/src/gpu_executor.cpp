@@ -209,6 +209,31 @@ struct NativeKitGpuExecutor::State {
     }
 };
 
+struct GpuPickRequest::State {
+    nkgpu_renderer renderer{};
+    nkgpu_readback color_readback{};
+    nkgpu_readback subelement_readback{};
+    std::uint64_t snapshot_revision = 0;
+    std::uint64_t plan_source_revision = 0;
+    std::uint64_t plan_view_signature = 0;
+    std::uint32_t state = NKS_RENDER_PICK_PENDING;
+    nkgpu_result error = NKGPU_OK;
+    PickResult result;
+
+    ~State() {
+        if (!renderer.id)
+            return;
+        if (color_readback.id)
+            (void)nkgpu_readback_destroy(renderer, color_readback);
+        if (subelement_readback.id)
+            (void)nkgpu_readback_destroy(renderer, subelement_readback);
+    }
+};
+
+GpuPickRequest::~GpuPickRequest() = default;
+GpuPickRequest::GpuPickRequest(GpuPickRequest &&) noexcept = default;
+GpuPickRequest &GpuPickRequest::operator=(GpuPickRequest &&) noexcept = default;
+
 namespace {
 
 bool valid_geometry_payload(const GeometryResource &resource) {
@@ -682,8 +707,8 @@ bool prepare_resources(StateT &state, const RenderPlan &plan, const SceneSnapsho
 }
 
 template<class StateT>
-nkgpu_result read_pick_pixel(StateT &state, nkgpu_image image, std::uint32_t x,
-                             std::uint32_t y, std::array<std::uint8_t, 4> &pixel) {
+nkgpu_result begin_pick_readback(StateT &state, nkgpu_image image, std::uint32_t x,
+                                 std::uint32_t y, nkgpu_readback &out_readback) {
     nkgpu_image_readback_desc readback_desc{};
     readback_desc.struct_size = sizeof(readback_desc);
     readback_desc.image = image;
@@ -691,33 +716,25 @@ nkgpu_result read_pick_pixel(StateT &state, nkgpu_image image, std::uint32_t x,
     readback_desc.height = 1;
     readback_desc.x = x;
     readback_desc.y = y;
-    nkgpu_readback readback{};
-    auto result = nkgpu_readback_begin_image(state.renderer, &readback_desc, &readback);
-    if (result != NKGPU_OK)
-        return result;
+    return nkgpu_readback_begin_image(state.renderer, &readback_desc, &out_readback);
+}
 
-    nkgpu_readback_info info{};
-    info.struct_size = sizeof(info);
-    for (int attempt = 0; attempt < 100; ++attempt) {
-        result = nkgpu_readback_query(state.renderer, readback, &info);
-        if (result != NKGPU_OK) {
-            (void)nkgpu_readback_destroy(state.renderer, readback);
-            return result;
-        }
-        if (info.state != NKGPU_READBACK_PENDING)
-            break;
-        std::this_thread::yield();
+void resolve_pick_result(const RenderPlan &plan, const SceneSnapshot &snapshot,
+                         std::uint32_t pick_id, std::uint32_t subelement_id,
+                         PickResult &out_result) {
+    out_result = {};
+    if (pick_id == 0 || pick_id > plan.items().size())
+        return;
+    out_result = nkscene::pick(plan, snapshot, pick_id - 1, {}, 0.0f);
+    if (subelement_id == 0)
+        return;
+    const auto &item = plan.items()[pick_id - 1];
+    if (const auto *geometry = snapshot.find_geometry(item.geometry)) {
+        const auto element_count = geometry->payload.element_count();
+        const auto primitive = static_cast<std::size_t>(subelement_id - 1);
+        if (primitive < element_count / 3)
+            out_result.subelement = {geometry->subelements.id_for_primitive(primitive)};
     }
-    if (info.state != NKGPU_READBACK_READY || info.size < pixel.size()) {
-        (void)nkgpu_readback_destroy(state.renderer, readback);
-        return info.state == NKGPU_READBACK_FAILED ? NKGPU_ERROR_UNKNOWN
-                                                   : NKGPU_ERROR_WRONG_STATE;
-    }
-    std::uint32_t read_size = 0;
-    result = nkgpu_readback_read(state.renderer, readback, pixel.data(), pixel.size(), &read_size);
-    (void)nkgpu_readback_destroy(state.renderer, readback);
-    return result != NKGPU_OK ? result
-        : read_size < pixel.size() ? NKGPU_ERROR_UNKNOWN : NKGPU_OK;
 }
 
 } // namespace
@@ -834,16 +851,143 @@ GpuExecutionStats NativeKitGpuExecutor::execute(const RenderPlan &plan,
     return stats;
 }
 
+std::uint32_t NativeKitGpuExecutor::poll_pick_pixel(
+    GpuPickRequest &request, const RenderPlan &current_plan,
+    const SceneSnapshot &current_snapshot, PickResult *out_result, nkgpu_result *out_error) {
+    if (!out_result || !out_error || !request.state_) {
+        if (out_error)
+            *out_error = NKGPU_ERROR_INVALID_ARGUMENT;
+        return NKS_RENDER_PICK_FAILED;
+    }
+    *out_result = {};
+    *out_error = NKGPU_OK;
+    auto &request_state = *request.state_;
+    if (request_state.state != NKS_RENDER_PICK_PENDING) {
+        *out_result = request_state.result;
+        *out_error = request_state.error;
+        return request_state.state;
+    }
+    if (!state_->renderer.id || request_state.renderer.id != state_->renderer.id) {
+        request_state.state = NKS_RENDER_PICK_FAILED;
+        request_state.error = NKGPU_ERROR_INVALID_HANDLE;
+        *out_error = request_state.error;
+        return request_state.state;
+    }
+    if (request_state.snapshot_revision != current_snapshot.revision() ||
+        request_state.plan_source_revision != current_plan.source_revision() ||
+        request_state.plan_view_signature != current_plan.view_signature()) {
+        request_state.state = NKS_RENDER_PICK_STALE;
+        if (request_state.color_readback.id) {
+            (void)nkgpu_readback_destroy(request_state.renderer, request_state.color_readback);
+            request_state.color_readback = {};
+        }
+        if (request_state.subelement_readback.id) {
+            (void)nkgpu_readback_destroy(request_state.renderer,
+                                         request_state.subelement_readback);
+            request_state.subelement_readback = {};
+        }
+        return request_state.state;
+    }
+
+    nkgpu_readback_info color_info{};
+    color_info.struct_size = sizeof(color_info);
+    auto result = nkgpu_readback_query(request_state.renderer, request_state.color_readback,
+                                       &color_info);
+    if (result != NKGPU_OK) {
+        request_state.state = NKS_RENDER_PICK_FAILED;
+        request_state.error = result;
+        *out_error = result;
+        return request_state.state;
+    }
+    nkgpu_readback_info subelement_info{};
+    subelement_info.struct_size = sizeof(subelement_info);
+    result = nkgpu_readback_query(request_state.renderer, request_state.subelement_readback,
+                                  &subelement_info);
+    if (result != NKGPU_OK) {
+        request_state.state = NKS_RENDER_PICK_FAILED;
+        request_state.error = result;
+        *out_error = result;
+        return request_state.state;
+    }
+    if (color_info.state == NKGPU_READBACK_PENDING ||
+        subelement_info.state == NKGPU_READBACK_PENDING)
+        return NKS_RENDER_PICK_PENDING;
+    if (color_info.state != NKGPU_READBACK_READY ||
+        subelement_info.state != NKGPU_READBACK_READY) {
+        request_state.state = NKS_RENDER_PICK_FAILED;
+        request_state.error = NKGPU_ERROR_UNKNOWN;
+        *out_error = request_state.error;
+        return request_state.state;
+    }
+
+    std::array<std::uint8_t, 4> pixel{};
+    std::uint32_t read_size = 0;
+    result = nkgpu_readback_read(request_state.renderer, request_state.color_readback,
+                                 pixel.data(), pixel.size(), &read_size);
+    if (result != NKGPU_OK || read_size < pixel.size()) {
+        request_state.state = NKS_RENDER_PICK_FAILED;
+        request_state.error = result != NKGPU_OK ? result : NKGPU_ERROR_UNKNOWN;
+        *out_error = request_state.error;
+        return request_state.state;
+    }
+    std::array<std::uint8_t, 4> subelement_pixel{};
+    read_size = 0;
+    result = nkgpu_readback_read(request_state.renderer, request_state.subelement_readback,
+                                 subelement_pixel.data(), subelement_pixel.size(), &read_size);
+    if (result != NKGPU_OK || read_size < subelement_pixel.size()) {
+        request_state.state = NKS_RENDER_PICK_FAILED;
+        request_state.error = result != NKGPU_OK ? result : NKGPU_ERROR_UNKNOWN;
+        *out_error = request_state.error;
+        return request_state.state;
+    }
+    (void)nkgpu_readback_destroy(request_state.renderer, request_state.color_readback);
+    (void)nkgpu_readback_destroy(request_state.renderer, request_state.subelement_readback);
+    request_state.color_readback = {};
+    request_state.subelement_readback = {};
+    resolve_pick_result(current_plan, current_snapshot, decode_pick_id(pixel),
+                        decode_pick_id(subelement_pixel), request_state.result);
+    request_state.state = NKS_RENDER_PICK_READY;
+    *out_result = request_state.result;
+    return request_state.state;
+}
+
 nkgpu_result NativeKitGpuExecutor::pick_pixel(const RenderPlan &plan,
                                               const SceneSnapshot &snapshot,
                                               std::uint32_t width, std::uint32_t height,
                                               std::uint32_t x, std::uint32_t y,
                                               PickResult *out_result) {
-    if (!out_result || !width || !height || x >= width || y >= height) {
+    if (!out_result) {
         state_->last_result = NKGPU_ERROR_INVALID_ARGUMENT;
         return state_->last_result;
     }
     *out_result = {};
+    std::shared_ptr<GpuPickRequest> request;
+    auto result = begin_pick_pixel(plan, snapshot, width, height, x, y, request);
+    if (result != NKGPU_OK)
+        return result;
+    for (int attempt = 0; attempt < 100; ++attempt) {
+        nkgpu_result error = NKGPU_OK;
+        const auto state = poll_pick_pixel(*request, plan, snapshot, out_result, &error);
+        if (state == NKS_RENDER_PICK_READY)
+            return NKGPU_OK;
+        if (state == NKS_RENDER_PICK_FAILED || state == NKS_RENDER_PICK_STALE)
+            return state == NKS_RENDER_PICK_FAILED ? error : NKGPU_ERROR_WRONG_STATE;
+        std::this_thread::yield();
+    }
+    state_->last_result = NKGPU_ERROR_WRONG_STATE;
+    return state_->last_result;
+}
+
+nkgpu_result NativeKitGpuExecutor::begin_pick_pixel(const RenderPlan &plan,
+                                                    const SceneSnapshot &snapshot,
+                                                    std::uint32_t width, std::uint32_t height,
+                                                    std::uint32_t x, std::uint32_t y,
+                                                    std::shared_ptr<GpuPickRequest> &out_request) {
+    if (!width || !height || x >= width || y >= height) {
+        state_->last_result = NKGPU_ERROR_INVALID_ARGUMENT;
+        return state_->last_result;
+    }
+    out_request.reset();
     if (!state_->renderer.id) {
         state_->last_result = NKGPU_ERROR_INVALID_HANDLE;
         return state_->last_result;
@@ -942,34 +1086,25 @@ nkgpu_result NativeKitGpuExecutor::pick_pixel(const RenderPlan &plan,
         return result;
     }
 
-    std::array<std::uint8_t, 4> pixel{};
-    if ((result = read_pick_pixel(*state_, state_->pick_color, x, y, pixel)) != NKGPU_OK) {
+    auto request = std::make_shared<GpuPickRequest>();
+    request->state_ = std::make_unique<GpuPickRequest::State>();
+    request->state_->renderer = state_->renderer;
+    request->state_->snapshot_revision = snapshot.revision();
+    request->state_->plan_source_revision = plan.source_revision();
+    request->state_->plan_view_signature = plan.view_signature();
+    if ((result = begin_pick_readback(*state_, state_->pick_color, x, y,
+                                      request->state_->color_readback)) != NKGPU_OK) {
         state_->last_result = result;
         return result;
     }
-
-    std::array<std::uint8_t, 4> subelement_pixel{};
-    if ((result = read_pick_pixel(*state_, state_->pick_subelement, x, y,
-                                  subelement_pixel)) != NKGPU_OK) {
+    if ((result = begin_pick_readback(*state_, state_->pick_subelement, x, y,
+                                      request->state_->subelement_readback)) != NKGPU_OK) {
+        (void)nkgpu_readback_destroy(state_->renderer, request->state_->color_readback);
+        request->state_->color_readback = {};
         state_->last_result = result;
-        return state_->last_result;
+        return result;
     }
-
-    const auto pick_id = decode_pick_id(pixel);
-    const auto subelement_id = decode_pick_id(subelement_pixel);
-    if (pick_id != 0 && pick_id <= plan.items().size()) {
-        *out_result = nkscene::pick(plan, snapshot, pick_id - 1, {}, 0.0f);
-        if (subelement_id != 0) {
-            const auto &item = plan.items()[pick_id - 1];
-            if (const auto *geometry = snapshot.find_geometry(item.geometry)) {
-                const auto element_count = geometry->payload.element_count();
-                const auto primitive = static_cast<std::size_t>(subelement_id - 1);
-                if (primitive < element_count / 3)
-                    out_result->subelement = {
-                        geometry->subelements.id_for_primitive(primitive)};
-            }
-        }
-    }
+    out_request = std::move(request);
     state_->last_result = NKGPU_OK;
     return NKGPU_OK;
 }

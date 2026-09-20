@@ -37,6 +37,8 @@ typedef uint32_t
     nkscene_render_executor NK_HANDLE NK_HANDLE_DESTROY(nkscene_render_executor_destroy);
 typedef uint32_t nkscene_render_spatial_index NK_HANDLE
     NK_HANDLE_DESTROY(nkscene_render_spatial_index_destroy);
+typedef uint32_t nkscene_render_pick_request NK_HANDLE
+    NK_HANDLE_DESTROY(nkscene_render_pick_request_destroy);
 
 typedef struct nkscene_render_visibility_override {
     nkscene_occurrence_id occurrence;
@@ -107,6 +109,13 @@ typedef struct nkscene_render_spatial_occurrence {
     nkscene_occurrence_id occurrence;
 } nkscene_render_spatial_occurrence;
 
+enum {
+    NKS_RENDER_PICK_PENDING = 1,
+    NKS_RENDER_PICK_READY = 2,
+    NKS_RENDER_PICK_STALE = 3,
+    NKS_RENDER_PICK_FAILED = 4
+};
+
 typedef struct nkscene_render_execution_stats {
     uint32_t struct_size NK_STRUCT_SIZE;
     nkgpu_result result;
@@ -173,6 +182,20 @@ NKSRENDER_API nkscene_result NKS_CALL nkscene_render_executor_get_last_result(
 NKSRENDER_API nkscene_result NKS_CALL nkscene_render_executor_pick_pixel(
     nkscene_render_executor executor, nkscene_render_plan plan, nkscene_snapshot snapshot,
     uint32_t width, uint32_t height, uint32_t x, uint32_t y,
+    nkscene_render_pick_result *out_result NK_OUT);
+/** Starts an asynchronous GPU ID pass and pixel readback. */
+NKSRENDER_API nkscene_result NKS_CALL nkscene_render_executor_pick_pixel_begin(
+    nkscene_render_executor executor, nkscene_render_plan plan, nkscene_snapshot snapshot,
+    uint32_t width, uint32_t height, uint32_t x, uint32_t y,
+    nkscene_render_pick_request *out_request NK_OUT NK_OWNED);
+NKSRENDER_API void NKS_CALL nkscene_render_pick_request_destroy(
+    nkscene_render_pick_request request);
+/** Polls an asynchronous pick without blocking. A ready result is valid only for the
+ * supplied current plan and snapshot; otherwise the state is stale. */
+NKSRENDER_API nkscene_result NKS_CALL nkscene_render_executor_pick_pixel_poll(
+    nkscene_render_executor executor, nkscene_render_pick_request request,
+    nkscene_render_plan current_plan, nkscene_snapshot current_snapshot,
+    uint32_t *out_state NK_OUT, nkgpu_result *out_error NK_OUT,
     nkscene_render_pick_result *out_result NK_OUT);
 
 #ifdef __cplusplus
@@ -310,6 +333,21 @@ struct PickResult {
     float depth = 0.0f;
 };
 
+class NKSRENDER_API GpuPickRequest {
+public:
+    GpuPickRequest() = default;
+    ~GpuPickRequest();
+    GpuPickRequest(GpuPickRequest &&) noexcept;
+    GpuPickRequest &operator=(GpuPickRequest &&) noexcept;
+    GpuPickRequest(const GpuPickRequest &) = delete;
+    GpuPickRequest &operator=(const GpuPickRequest &) = delete;
+
+private:
+    friend class NativeKitGpuExecutor;
+    struct State;
+    std::unique_ptr<State> state_;
+};
+
 struct Ray {
     Vec3 origin;
     Vec3 direction;
@@ -360,6 +398,7 @@ public:
     static constexpr std::size_t max_clip_planes = 32;
 
     std::uint64_t source_revision() const noexcept { return source_revision_; }
+    std::uint64_t view_signature() const noexcept { return view_signature_; }
     std::span<const RenderItem> items() const noexcept { return items_; }
     std::span<const WorldTransform> transforms() const noexcept { return transforms_; }
     std::span<const InstanceBatch> batches() const noexcept { return batches_; }
@@ -441,6 +480,12 @@ class NKSRENDER_API NativeKitGpuExecutor {
     nkgpu_result pick_pixel(const RenderPlan &, const SceneSnapshot &, std::uint32_t width,
                             std::uint32_t height, std::uint32_t x, std::uint32_t y,
                             PickResult *out_result);
+    nkgpu_result begin_pick_pixel(const RenderPlan &, const SceneSnapshot &, std::uint32_t width,
+                                  std::uint32_t height, std::uint32_t x, std::uint32_t y,
+                                  std::shared_ptr<GpuPickRequest> &out_request);
+    std::uint32_t poll_pick_pixel(GpuPickRequest &, const RenderPlan &current_plan,
+                                   const SceneSnapshot &current_snapshot, PickResult *out_result,
+                                   nkgpu_result *out_error);
     std::span<const GpuCommand> commands() const noexcept;
 
   private:

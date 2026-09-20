@@ -131,6 +131,38 @@ int main() {
                                   &miss) == NKGPU_OK);
         assert(!miss.occurrence.valid());
 
+        std::shared_ptr<nkscene::GpuPickRequest> stale_request;
+        assert(executor.begin_pick_pixel(plan, scene->snapshot(), options.width, options.height,
+                                         16, options.height / 2, stale_request) == NKGPU_OK);
+        nkscene::SceneView changed_view;
+        changed_view.include_invisible = true;
+        const auto changed_plan = nkscene::compile(scene->snapshot(), changed_view);
+        nkscene::PickResult stale_result;
+        nkgpu_result stale_error = NKGPU_OK;
+        const auto stale_state = executor.poll_pick_pixel(
+            *stale_request, changed_plan, scene->snapshot(), &stale_result, &stale_error);
+        assert(stale_state == NKS_RENDER_PICK_STALE);
+        assert(stale_error == NKGPU_OK);
+
+        std::shared_ptr<nkscene::GpuPickRequest> async_request;
+        assert(executor.begin_pick_pixel(plan, scene->snapshot(), options.width, options.height,
+                                         16, options.height / 2, async_request) == NKGPU_OK);
+        nkscene::PickResult async_picked;
+        nkgpu_result async_error = NKGPU_OK;
+        std::uint32_t async_state = NKS_RENDER_PICK_PENDING;
+        for (int attempt = 0; attempt < 100 && async_state == NKS_RENDER_PICK_PENDING;
+             ++attempt) {
+            async_state = executor.poll_pick_pixel(
+                *async_request, plan, scene->snapshot(), &async_picked, &async_error);
+            if (async_state == NKS_RENDER_PICK_PENDING)
+                std::this_thread::yield();
+        }
+        assert(async_state == NKS_RENDER_PICK_READY);
+        assert(async_error == NKGPU_OK);
+        assert(async_picked.occurrence == occurrence);
+        assert(async_picked.source == nkscene::EntityId{42});
+        assert(async_picked.subelement.value == 42);
+
         nkscene::LocalTransform transform;
         transform.matrix[12] = 0.25f;
         Transaction move(scene);
