@@ -30,3 +30,30 @@ jobs:
         run: >-
           ctest --test-dir build --output-on-failure --timeout 120
           -L 'gpu|transfer'
+
+  linux-backend-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - name: Install GPU matrix dependencies
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          libgl1-mesa-dev libgles2-mesa-dev libgtk-3-dev
+          libwebkit2gtk-4.1-dev ninja-build xvfb dbus-x11
+      - name: Configure GLCore/GLES3 matrix
+        run: >-
+          cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=Debug
+          -DNK_BUILD_SHARED=OFF -DNK_BUILD_EXAMPLES=OFF
+          -DNK_BUILD_TESTS=ON -DNK_BUILD_GPU=ON -DNK_BUILD_UI=OFF
+          -DNK_BUILD_GPU_BACKEND_MATRIX=ON
+      - name: Build backend matrix tests
+        run: >-
+          cmake --build build --target nativekit_sokol_runtime_matrix_test
+          nativekit_gpu_contract_smoke_test nativekit_gpu_batch_submit_test
+      - name: Run backend matrix and GPU tests
+        run: >-
+          ctest --test-dir build --output-on-failure --timeout 120
+          -R '^(nativekit_sokol_runtime_matrix|nativekit_gpu_(contract_smoke|batch_submit))$'

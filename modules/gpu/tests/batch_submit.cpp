@@ -166,6 +166,7 @@ int main() {
     nkgpu_pipeline textured_pipeline{};
     nkgpu_buffer textured_buffer{};
     nkgpu_sampler sampler{};
+    nkgpu_image composite_depth{};
     bool compute_supported = false;
 
     if (nk_window_create(&window_options, &window) != NK_OK) {
@@ -680,6 +681,14 @@ int main() {
         composite_desc.usage = NKGPU_IMAGE_SAMPLED | NKGPU_IMAGE_RENDER_TARGET;
         EXPECT_RESULT(nkgpu_image_create_desc(renderer, &composite_desc, &composite_gpu_image),
                       NKGPU_OK);
+        nkgpu_image_desc composite_depth_desc{};
+        composite_depth_desc.struct_size = sizeof(composite_depth_desc);
+        composite_depth_desc.width = composite_desc.width;
+        composite_depth_desc.height = composite_desc.height;
+        composite_depth_desc.format = NKGPU_IMAGEFORMAT_DEPTH24_STENCIL8;
+        composite_depth_desc.usage = NKGPU_IMAGE_DEPTH_STENCIL;
+        EXPECT_RESULT(nkgpu_image_create_desc(renderer, &composite_depth_desc, &composite_depth),
+                      NKGPU_OK);
         nkgpu_render_pass_desc composite_render_pass{};
         composite_render_pass.struct_size = sizeof(composite_render_pass);
         composite_render_pass.color_count = 1;
@@ -687,6 +696,10 @@ int main() {
         composite_render_pass.colors[0].action.load_action = NKGPU_LOADACTION_CLEAR;
         composite_render_pass.colors[0].action.store_action = NKGPU_STOREACTION_STORE;
         composite_render_pass.colors[0].action.clear_color = {1.0f, 0.0f, 0.0f, 1.0f};
+        composite_render_pass.depth_stencil = composite_depth;
+        composite_render_pass.depth_stencil_action.load_action = NKGPU_LOADACTION_CLEAR;
+        composite_render_pass.depth_stencil_action.store_action = NKGPU_STOREACTION_STORE;
+        composite_render_pass.depth_stencil_action.clear_depth = 1.0f;
         /* Fill the target with the solid color pipeline. */
         EXPECT_RESULT(nkgpu_batch_begin(renderer, &image_batch), NKGPU_OK);
         {
@@ -908,6 +921,8 @@ cleanup:
         nkgpu_image_destroy(renderer, general_depth);
     if (general_color.id && renderer.id)
         nkgpu_image_destroy(renderer, general_color);
+    if (composite_depth.id && renderer.id)
+        nkgpu_image_destroy(renderer, composite_depth);
     if (renderer.id)
         nkgpu_renderer_destroy(renderer);
     if (surface_created)
