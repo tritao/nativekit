@@ -26,7 +26,7 @@ static int runtime_sample_count;
 static uint64_t runtime_device;
 static nk_sokol_external_image_slot external_images[NK_SOKOL_EXTERNAL_IMAGE_CAPACITY];
 
-#if defined(_SOKOL_ANY_GL)
+#if defined(_SOKOL_ANY_GL) && !defined(__EMSCRIPTEN__)
 enum { NK_SOKOL_READBACK_CAPACITY = 128 };
 
 typedef struct nk_sokol_readback_slot {
@@ -708,7 +708,7 @@ void nk_sokol_runtime_release(void) {
         return;
     --runtime_references;
     if (!runtime_references) {
-#if defined(_SOKOL_ANY_GL)
+#if defined(_SOKOL_ANY_GL) && !defined(__EMSCRIPTEN__)
         for (uint32_t i = 0; i < NK_SOKOL_READBACK_CAPACITY; ++i)
             if (readbacks[i].active)
                 readback_release(&readbacks[i]);
