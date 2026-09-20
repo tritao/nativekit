@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <cstdio>
 #include <thread>
 
 namespace {
@@ -89,8 +90,12 @@ std::uint16_t listen_port(nk_listener *out_listener, nk_transport_kind kind,
         options.host = "127.0.0.1";
         options.port = port;
         options.path = path;
-        if (nk_transport_listen(&options, out_listener) == NK_OK)
+        const auto result = nk_transport_listen(&options, out_listener);
+        if (result == NK_OK)
             return port;
+        if (port == 39000 || port == 39299)
+            std::fprintf(stderr, "transport listen failed on %u: %d (%s)\n", port, result,
+                         nk_last_error());
     }
     return 0;
 }
