@@ -38,8 +38,7 @@ struct ReadbackSlot {
 ReadbackSlot readbacks[kReadbackCapacity];
 
 ID3D11Device *device() {
-    return const_cast<ID3D11Device *>(
-        static_cast<const ID3D11Device *>(sg_d3d11_device()));
+    return const_cast<ID3D11Device *>(static_cast<const ID3D11Device *>(sg_d3d11_device()));
 }
 
 ID3D11DeviceContext *context() {
@@ -110,8 +109,8 @@ bool image_info(sg_image image, uint32_t mip_level, uint32_t layer, uint32_t x, 
     uint32_t bytes = 0;
     if (!format_info(sg_query_image_pixelformat(image), expected_format, bytes))
         return false;
-    auto *texture = const_cast<ID3D11Texture2D *>(
-        static_cast<const ID3D11Texture2D *>(native.tex2d));
+    auto *texture =
+        const_cast<ID3D11Texture2D *>(static_cast<const ID3D11Texture2D *>(native.tex2d));
     texture->GetDesc(&out.desc);
     if (out.desc.Format != expected_format || out.desc.SampleDesc.Count != 1 ||
         out.desc.ArraySize <= layer)
@@ -180,8 +179,7 @@ bool copy_buffer_region(ID3D11Buffer *source, uint32_t source_offset, ID3D11Buff
     box.bottom = 1;
     box.front = 0;
     box.back = 1;
-    context()->CopySubresourceRegion(destination, 0, destination_offset, 0, 0, source, 0,
-                                     &box);
+    context()->CopySubresourceRegion(destination, 0, destination_offset, 0, 0, source, 0, &box);
     return true;
 }
 
@@ -231,10 +229,10 @@ uint32_t d3d11_buffer_copy(sg_buffer source, uint32_t source_offset, sg_buffer d
 }
 
 uint32_t d3d11_image_copy(sg_image source, uint32_t source_mip, uint32_t source_layer,
-                           uint32_t source_x, uint32_t source_y, sg_image destination,
-                           uint32_t destination_mip, uint32_t destination_layer,
-                           uint32_t destination_x, uint32_t destination_y, uint32_t width,
-                           uint32_t height) {
+                          uint32_t source_x, uint32_t source_y, sg_image destination,
+                          uint32_t destination_mip, uint32_t destination_layer,
+                          uint32_t destination_x, uint32_t destination_y, uint32_t width,
+                          uint32_t height) {
     ImageInfo source_info;
     ImageInfo destination_info;
     if (!image_info(source, source_mip, source_layer, source_x, source_y, width, height,
@@ -258,16 +256,15 @@ uint32_t d3d11_image_copy(sg_image source, uint32_t source_mip, uint32_t source_
 }
 
 uint32_t d3d11_buffer_to_image(sg_buffer source, uint32_t source_offset, uint32_t row_pitch,
-                               sg_image destination, uint32_t mip_level, uint32_t layer,
-                               uint32_t x, uint32_t y, uint32_t width, uint32_t height) {
+                               sg_image destination, uint32_t mip_level, uint32_t layer, uint32_t x,
+                               uint32_t y, uint32_t width, uint32_t height) {
     ImageInfo destination_info;
     ID3D11Buffer *source_buffer = nullptr;
     uint32_t source_size = 0;
     if (!image_info(destination, mip_level, layer, x, y, width, height, destination_info) ||
-        !buffer_info(source, source_buffer, source_size) ||
-        !context() ||
-        width > UINT32_MAX / destination_info.bytes ||
-        row_pitch < width * destination_info.bytes || row_pitch % destination_info.bytes != 0)
+        !buffer_info(source, source_buffer, source_size) || !context() ||
+        width > UINT32_MAX / destination_info.bytes || row_pitch < width * destination_info.bytes ||
+        row_pitch % destination_info.bytes != 0)
         return 0;
     const uint64_t transfer_size = static_cast<uint64_t>(row_pitch) * height;
     if (!transfer_size || transfer_size > UINT32_MAX || source_offset > source_size ||
@@ -312,8 +309,7 @@ uint32_t d3d11_image_to_buffer(sg_image source, uint32_t mip_level, uint32_t lay
     ID3D11Buffer *destination_buffer = nullptr;
     uint32_t destination_size = 0;
     if (!image_info(source, mip_level, layer, x, y, width, height, source_info) ||
-        !buffer_info(destination, destination_buffer, destination_size) ||
-        !context() ||
+        !buffer_info(destination, destination_buffer, destination_size) || !context() ||
         width > UINT32_MAX / source_info.bytes || row_pitch < width * source_info.bytes ||
         row_pitch % source_info.bytes != 0)
         return 0;
@@ -355,8 +351,8 @@ uint32_t d3d11_image_to_buffer(sg_image source, uint32_t mip_level, uint32_t lay
     }
     const uint32_t tight_pitch = width * source_info.bytes;
     for (uint32_t row = 0; row < height; ++row) {
-        auto *destination_row = static_cast<uint8_t *>(mapped_buffer.pData) +
-                                static_cast<size_t>(row) * row_pitch;
+        auto *destination_row =
+            static_cast<uint8_t *>(mapped_buffer.pData) + static_cast<size_t>(row) * row_pitch;
         const auto *source_row = static_cast<const uint8_t *>(mapped_texture.pData) +
                                  static_cast<size_t>(row) * mapped_texture.RowPitch;
         std::memcpy(destination_row, source_row, tight_pitch);
@@ -377,8 +373,7 @@ uint32_t d3d11_readback_begin(sg_image source, uint32_t mip_level, uint32_t laye
                               uint32_t y, uint32_t width, uint32_t height) {
     ImageInfo source_info;
     if (!image_info(source, mip_level, layer, x, y, width, height, source_info) || !context() ||
-        width > UINT32_MAX / source_info.bytes ||
-        height > UINT32_MAX / (width * source_info.bytes))
+        width > UINT32_MAX / source_info.bytes || height > UINT32_MAX / (width * source_info.bytes))
         return 0;
     uint32_t index = kReadbackCapacity;
     for (uint32_t i = 0; i < kReadbackCapacity; ++i) {
@@ -427,8 +422,8 @@ uint32_t d3d11_readback_status(uint32_t token) {
     ReadbackSlot *slot = readback_slot(token);
     if (!slot || !slot->query || !context())
         return kReadbackFailed;
-    const HRESULT result = context()->GetData(slot->query, nullptr, 0,
-                                               D3D11_ASYNC_GETDATA_DONOTFLUSH);
+    const HRESULT result =
+        context()->GetData(slot->query, nullptr, 0, D3D11_ASYNC_GETDATA_DONOTFLUSH);
     if (result == S_OK)
         return kReadbackReady;
     if (result == S_FALSE)
@@ -481,18 +476,9 @@ int d3d11_end_pass() {
 }
 
 const nk_sokol_transfer_api transfer_api = {
-    d3d11_buffer_copy,
-    d3d11_image_copy,
-    d3d11_buffer_to_image,
-    d3d11_image_to_buffer,
-    d3d11_readback_begin,
-    d3d11_readback_status,
-    d3d11_readback_size,
-    d3d11_readback_row_pitch,
-    d3d11_readback_read,
-    d3d11_readback_destroy,
-    d3d11_begin_pass,
-    d3d11_end_pass,
+    d3d11_buffer_copy,    d3d11_image_copy,       d3d11_buffer_to_image, d3d11_image_to_buffer,
+    d3d11_readback_begin, d3d11_readback_status,  d3d11_readback_size,   d3d11_readback_row_pitch,
+    d3d11_readback_read,  d3d11_readback_destroy, d3d11_begin_pass,      d3d11_end_pass,
 };
 
 } // namespace

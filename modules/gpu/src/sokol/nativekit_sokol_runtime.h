@@ -17,8 +17,7 @@
     NK_SOKOL_RUNTIME_CAT(NK_SOKOL_RUNTIME_PREFIX, external_image_release)
 #define nk_sokol_external_image_resolve                                                            \
     NK_SOKOL_RUNTIME_CAT(NK_SOKOL_RUNTIME_PREFIX, external_image_resolve)
-#define nk_sokol_transfer_get_api                                                                  \
-    NK_SOKOL_RUNTIME_CAT(NK_SOKOL_RUNTIME_PREFIX, transfer_get_api)
+#define nk_sokol_transfer_get_api NK_SOKOL_RUNTIME_CAT(NK_SOKOL_RUNTIME_PREFIX, transfer_get_api)
 #endif
 
 #ifdef __cplusplus
@@ -59,10 +58,9 @@ struct nk_sokol_transfer_api {
     uint32_t (*buffer_to_image)(sg_buffer source, uint32_t source_offset, uint32_t row_pitch,
                                 sg_image destination, uint32_t mip_level, uint32_t layer,
                                 uint32_t x, uint32_t y, uint32_t width, uint32_t height);
-    uint32_t (*image_to_buffer)(sg_image source, uint32_t mip_level, uint32_t layer,
-                                uint32_t x, uint32_t y, uint32_t width, uint32_t height,
-                                sg_buffer destination, uint32_t destination_offset,
-                                uint32_t row_pitch);
+    uint32_t (*image_to_buffer)(sg_image source, uint32_t mip_level, uint32_t layer, uint32_t x,
+                                uint32_t y, uint32_t width, uint32_t height, sg_buffer destination,
+                                uint32_t destination_offset, uint32_t row_pitch);
     uint32_t (*readback_begin)(sg_image source, uint32_t mip_level, uint32_t layer, uint32_t x,
                                uint32_t y, uint32_t width, uint32_t height);
     uint32_t (*readback_status)(uint32_t readback);

@@ -239,10 +239,7 @@ int main() {
         }
 
         const uint8_t transfer_pixels[] = {
-            1, 0, 0, 0,
-            2, 0, 0, 0,
-            3, 0, 0, 0,
-            4, 0, 0, 0,
+            1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0,
         };
         nkgpu_buffer_desc transfer_buffer_desc{};
         transfer_buffer_desc.struct_size = sizeof(transfer_buffer_desc);
@@ -271,8 +268,7 @@ int main() {
         transfer_image_desc.usage = NKGPU_IMAGE_SAMPLED | NKGPU_IMAGE_RENDER_TARGET;
         EXPECT_RESULT(nkgpu_image_create_desc(first, &transfer_image_desc, &transfer_image),
                       NKGPU_OK);
-        EXPECT_RESULT(nkgpu_image_create_desc(first, &transfer_image_desc,
-                                               &transfer_image_second),
+        EXPECT_RESULT(nkgpu_image_create_desc(first, &transfer_image_desc, &transfer_image_second),
                       NKGPU_OK);
         nkgpu_buffer_image_copy_desc buffer_to_image{};
         buffer_to_image.struct_size = sizeof(buffer_to_image);
@@ -306,8 +302,7 @@ int main() {
         nkgpu_readback_info readback_info{};
         readback_info.struct_size = sizeof(readback_info);
         for (int attempt = 0; attempt < 100; ++attempt) {
-            EXPECT_RESULT(nkgpu_readback_query(first, transfer_readback, &readback_info),
-                          NKGPU_OK);
+            EXPECT_RESULT(nkgpu_readback_query(first, transfer_readback, &readback_info), NKGPU_OK);
             if (readback_info.state != NKGPU_READBACK_PENDING)
                 break;
             std::this_thread::yield();
@@ -348,9 +343,9 @@ int main() {
         buffer_desc.dynamic_update = 1;
         EXPECT_RESULT(nkgpu_buffer_create_desc(first, &buffer_desc, &descriptor_buffer), NKGPU_OK);
         const uint8_t replacement[] = {9, 10, 11, 12};
-        EXPECT_RESULT(nkgpu_buffer_update(first, descriptor_buffer, 2, replacement,
-                                          sizeof(replacement)),
-                      NKGPU_OK);
+        EXPECT_RESULT(
+            nkgpu_buffer_update(first, descriptor_buffer, 2, replacement, sizeof(replacement)),
+            NKGPU_OK);
         EXPECT_RESULT(nkgpu_buffer_destroy(first, descriptor_buffer), NKGPU_OK);
         descriptor_buffer = {};
 
@@ -436,12 +431,14 @@ int main() {
                                                      compute_source, &compute_shader_builder),
                           NKGPU_OK);
             EXPECT_RESULT(nkgpu_shader_storage_buffer(compute_shader_builder, 0,
-                                                      NKGPU_SHADERSTAGE_COMPUTE, 0), NKGPU_OK);
+                                                      NKGPU_SHADERSTAGE_COMPUTE, 0),
+                          NKGPU_OK);
             EXPECT_RESULT(nkgpu_shader_end(compute_shader_builder, &compute_shader), NKGPU_OK);
             compute_shader_builder = {};
 
-            EXPECT_RESULT(nkgpu_pipeline_begin_compute(first, compute_shader,
-                                                       &compute_pipeline_builder), NKGPU_OK);
+            EXPECT_RESULT(
+                nkgpu_pipeline_begin_compute(first, compute_shader, &compute_pipeline_builder),
+                NKGPU_OK);
             EXPECT_RESULT(nkgpu_pipeline_end(compute_pipeline_builder, &compute_pipeline),
                           NKGPU_OK);
             compute_pipeline_builder = {};
@@ -453,7 +450,8 @@ int main() {
             compute_desc.usage = NKGPU_BUFFER_STORAGE;
             compute_desc.data = reinterpret_cast<const uint8_t *>(&compute_value);
             compute_desc.data_size = sizeof(compute_value);
-            EXPECT_RESULT(nkgpu_buffer_create_desc(first, &compute_desc, &compute_buffer), NKGPU_OK);
+            EXPECT_RESULT(nkgpu_buffer_create_desc(first, &compute_desc, &compute_buffer),
+                          NKGPU_OK);
 
             EXPECT_RESULT(nkgpu_frame_begin(first), NKGPU_OK);
             EXPECT_RESULT(nkgpu_begin_compute_pass(first), NKGPU_OK);
@@ -461,9 +459,9 @@ int main() {
             EXPECT_RESULT(nkgpu_apply_storage_buffer(first, 0, compute_buffer), NKGPU_OK);
             EXPECT_RESULT(nkgpu_dispatch(first, 1, 1, 1), NKGPU_OK);
             EXPECT_RESULT(nkgpu_end_pass(first), NKGPU_OK);
-            EXPECT_RESULT(nkgpu_begin_window_pass(first, window_options.width, window_options.height,
-                                                  0),
-                          NKGPU_OK);
+            EXPECT_RESULT(
+                nkgpu_begin_window_pass(first, window_options.width, window_options.height, 0),
+                NKGPU_OK);
             EXPECT_RESULT(nkgpu_end_frame(first), NKGPU_OK);
 
             EXPECT_RESULT(nkgpu_buffer_destroy(first, compute_buffer), NKGPU_OK);
@@ -582,18 +580,17 @@ int main() {
         stencil_state.read_mask = 0xff;
         stencil_state.write_mask = 0xff;
         stencil_state.reference = 1;
-        stencil_state.front = {NKGPU_COMPAREFUNC_ALWAYS, NKGPU_STENCILOP_KEEP,
-                               NKGPU_STENCILOP_KEEP, NKGPU_STENCILOP_KEEP};
+        stencil_state.front = {NKGPU_COMPAREFUNC_ALWAYS, NKGPU_STENCILOP_KEEP, NKGPU_STENCILOP_KEEP,
+                               NKGPU_STENCILOP_KEEP};
         stencil_state.back = stencil_state.front;
         EXPECT_RESULT(nkgpu_pipeline_begin(first, shader, 4, &expanded_pipeline), NKGPU_OK);
-        EXPECT_RESULT(nkgpu_pipeline_vertex_buffer(expanded_pipeline, 0, 4,
-                                                   NKGPU_VERTEXSTEP_PER_INSTANCE, 1),
-                      NKGPU_OK);
-        EXPECT_RESULT(nkgpu_pipeline_attribute(expanded_pipeline, 0, 0, 0,
-                                               NKGPU_VERTEXFORMAT_FLOAT),
-                      NKGPU_OK);
-        EXPECT_RESULT(nkgpu_pipeline_primitive_type(expanded_pipeline,
-                                                    NKGPU_PRIMITIVETYPE_POINTS),
+        EXPECT_RESULT(
+            nkgpu_pipeline_vertex_buffer(expanded_pipeline, 0, 4, NKGPU_VERTEXSTEP_PER_INSTANCE, 1),
+            NKGPU_OK);
+        EXPECT_RESULT(
+            nkgpu_pipeline_attribute(expanded_pipeline, 0, 0, 0, NKGPU_VERTEXFORMAT_FLOAT),
+            NKGPU_OK);
+        EXPECT_RESULT(nkgpu_pipeline_primitive_type(expanded_pipeline, NKGPU_PRIMITIVETYPE_POINTS),
                       NKGPU_OK);
         EXPECT_RESULT(nkgpu_pipeline_depth(expanded_pipeline, &depth_state), NKGPU_OK);
         EXPECT_RESULT(nkgpu_pipeline_blend(expanded_pipeline, &blend_state), NKGPU_OK);
