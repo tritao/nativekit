@@ -60,6 +60,7 @@ enum NK_FLAGS(nk_menu_modifiers) {
 };
 
 typedef struct nk_menu_shortcut {
+    /** Printable, navigation, function, or keypad key; unknown clears it. */
     nk_key key;
     nk_menu_modifiers modifiers;
 } nk_menu_shortcut;
@@ -67,7 +68,7 @@ typedef struct nk_menu_shortcut {
 /** Options used to create an application menu root. */
 typedef struct nk_menu_options {
     uint32_t struct_size NK_STRUCT_SIZE;
-    /** Optional native application-menu title. */
+    /** Optional macOS application-menu title; empty leaves the root unwrapped. */
     const char *title NK_NULLABLE_UTF8;
     uint64_t reserved[2];
 } nk_menu_options;

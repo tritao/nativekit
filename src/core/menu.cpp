@@ -28,12 +28,49 @@ bool valid_role(nk_menu_item_role role) {
     return role <= NK_MENU_ROLE_BRING_ALL_TO_FRONT;
 }
 
+bool valid_shortcut_key(nk_key key) {
+    if ((key >= NK_KEY_0 && key <= NK_KEY_9) || (key >= NK_KEY_A && key <= NK_KEY_Z) ||
+        (key >= NK_KEY_F1 && key <= NK_KEY_F24) || (key >= NK_KEY_KP_0 && key <= NK_KEY_KP_EQUAL))
+        return true;
+    switch (key) {
+    case NK_KEY_SPACE:
+    case NK_KEY_APOSTROPHE:
+    case NK_KEY_COMMA:
+    case NK_KEY_MINUS:
+    case NK_KEY_PERIOD:
+    case NK_KEY_SLASH:
+    case NK_KEY_SEMICOLON:
+    case NK_KEY_EQUAL:
+    case NK_KEY_LEFT_BRACKET:
+    case NK_KEY_BACKSLASH:
+    case NK_KEY_RIGHT_BRACKET:
+    case NK_KEY_GRAVE_ACCENT:
+    case NK_KEY_ESCAPE:
+    case NK_KEY_ENTER:
+    case NK_KEY_TAB:
+    case NK_KEY_BACKSPACE:
+    case NK_KEY_INSERT:
+    case NK_KEY_DELETE:
+    case NK_KEY_RIGHT:
+    case NK_KEY_LEFT:
+    case NK_KEY_DOWN:
+    case NK_KEY_UP:
+    case NK_KEY_PAGE_UP:
+    case NK_KEY_PAGE_DOWN:
+    case NK_KEY_HOME:
+    case NK_KEY_END:
+        return true;
+    default:
+        return false;
+    }
+}
+
 bool valid_shortcut(const nk_menu_shortcut &shortcut) {
     constexpr nk_menu_modifiers known =
         NK_MENU_MOD_PRIMARY | NK_MENU_MOD_SHIFT | NK_MENU_MOD_ALT | NK_MENU_MOD_CONTROL;
     if (shortcut.key == NK_KEY_UNKNOWN)
         return shortcut.modifiers == 0;
-    return (shortcut.modifiers & ~known) == 0;
+    return valid_shortcut_key(shortcut.key) && (shortcut.modifiers & ~known) == 0;
 }
 
 bool valid_menu_options(const nk_menu_options *options) {
@@ -77,6 +114,24 @@ void erase_item_tree(nk_menu_item handle, const std::shared_ptr<nk::core::MenuRe
     nk::core::handles().erase(handle, nk::core::ResourceType::menu_item);
 }
 
+void uncheck_radio_siblings(const std::shared_ptr<nk::core::MenuItemResource> &selected,
+                            const std::shared_ptr<nk::core::MenuResource> &owner) {
+    if (!selected || !owner)
+        return;
+    const auto parent = selected->parent ? item(selected->parent) : nullptr;
+    const auto &siblings = parent ? parent->children : owner->children;
+    for (const auto sibling_handle : siblings) {
+        if (sibling_handle == selected->handle)
+            continue;
+        const auto sibling = item(sibling_handle);
+        if (!sibling || sibling->kind != NK_MENU_ITEM_RADIO ||
+            !(sibling->flags & NK_MENU_ITEM_CHECKED))
+            continue;
+        sibling->flags &= ~NK_MENU_ITEM_CHECKED;
+        (void)nk::backend::menu_item_changed(owner, sibling);
+    }
+}
+
 } // namespace
 
 namespace nk::core {
@@ -95,9 +150,14 @@ void menu_item_activated(nk_menu_item handle) noexcept {
             resource->kind == NK_MENU_ITEM_SUBMENU)
             return;
         if (resource->kind == NK_MENU_ITEM_CHECKBOX || resource->kind == NK_MENU_ITEM_RADIO) {
-            resource->flags ^= NK_MENU_ITEM_CHECKED;
             const auto owner = std::static_pointer_cast<MenuResource>(
                 handles().get(resource->menu, ResourceType::menu));
+            if (resource->kind == NK_MENU_ITEM_RADIO) {
+                resource->flags |= NK_MENU_ITEM_CHECKED;
+                uncheck_radio_siblings(resource, owner);
+            } else {
+                resource->flags ^= NK_MENU_ITEM_CHECKED;
+            }
             if (owner)
                 (void)backend::menu_item_changed(owner, resource);
         }
@@ -299,10 +359,14 @@ nk_result NK_CALL nk_menu_item_set_checked(nk_menu_item handle, nk_bool checked)
             if (resource->kind != NK_MENU_ITEM_CHECKBOX && resource->kind != NK_MENU_ITEM_RADIO)
                 return nk::core::fail(NK_ERROR_INVALID_ARGUMENT,
                                       "only checkable menu items have a state");
-            if (checked)
+            if (resource->kind == NK_MENU_ITEM_RADIO && checked) {
                 resource->flags |= NK_MENU_ITEM_CHECKED;
-            else
+                uncheck_radio_siblings(resource, owner);
+            } else if (checked) {
+                resource->flags |= NK_MENU_ITEM_CHECKED;
+            } else {
                 resource->flags &= ~NK_MENU_ITEM_CHECKED;
+            }
             return nk::backend::menu_item_changed(owner, resource);
         });
 }

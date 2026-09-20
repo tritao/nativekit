@@ -511,6 +511,10 @@ int main(void) {
     command_options.shortcut.modifiers = NK_MENU_MOD_PRIMARY;
     nk_menu_item command_item = NK_INVALID_HANDLE;
     assert(nk_menu_add_item(menu, file_item, &command_options, &command_item) == NK_OK);
+    command_options.shortcut.key = NK_KEY_LEFT_SHIFT;
+    nk_menu_item invalid_shortcut_item = NK_INVALID_HANDLE;
+    assert(nk_menu_add_item(menu, file_item, &command_options, &invalid_shortcut_item) ==
+           NK_ERROR_INVALID_ARGUMENT);
     assert(nk_menu_item_set_enabled(command_item, 0) == NK_OK);
     assert(nk_menu_item_set_enabled(command_item, 1) == NK_OK);
     assert(nk_menu_item_set_label(command_item, "Close Window") == NK_OK);

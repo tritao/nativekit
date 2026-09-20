@@ -178,10 +178,22 @@ be checked before installation. Other backends currently retain and validate
 the model but return `NK_ERROR_UNSUPPORTED` when native installation is
 requested.
 
+On macOS, a non-empty menu title creates the first application menu in the
+menubar. Root-level items with a standard role are placed in that application
+menu; other root-level items remain top-level menus such as File and Edit.
+Standard roles invoke their Cocoa convention and still produce the corresponding
+NativeKit activation event. A Quit-role item produces a quit-request event
+without terminating the process, so the application can decide whether and how
+to shut down.
+
 Shortcut modifiers are portable: `NK_MENU_MOD_PRIMARY` maps to Command on
 macOS and Control on other desktop backends. Standard roles let a backend use
 platform conventions for About, Preferences, editing commands, window
 commands, and Quit without exposing native selectors in the public ABI.
+
+Radio items are exclusive among sibling radio items. A shortcut must use a
+printable, navigation, function, or keypad key; modifier-only and lock keys are
+rejected as invalid menu shortcuts.
 
 ## Events and payloads
 
