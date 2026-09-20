@@ -25,6 +25,10 @@
 #define NK_WEB_CANVAS_SELECTOR "#canvas"
 #endif
 
+#if defined(NK_WEB_THREADED_RENDER)
+extern "C" int nk_web_set_offscreen_canvas_size(int width, int height);
+#endif
+
 namespace {
 
 #if defined(NK_WEB_THREADED_RENDER)
@@ -38,9 +42,8 @@ void resize_canvas_on_render(void *data) {
     auto *request = static_cast<CanvasResizeRequest *>(data);
     if (!request)
         return;
-    request->success = emscripten_set_canvas_element_size(
-                           request->selector.c_str(), request->size.framebuffer_width,
-                           request->size.framebuffer_height) == EMSCRIPTEN_RESULT_SUCCESS;
+    request->success = nk_web_set_offscreen_canvas_size(request->size.framebuffer_width,
+                                                        request->size.framebuffer_height) != 0;
 }
 #endif
 
@@ -298,6 +301,19 @@ EM_JS(void, nk_web_set_canvas_css_size, (const char *selector, int width, int he
     if (canvas) {
         canvas.style.width = width + "px";
         canvas.style.height = height + "px";
+    }
+});
+
+EM_JS(int, nk_web_set_offscreen_canvas_size, (int width, int height), {
+    const canvas = typeof Module !== "undefined" ? Module.canvas : null;
+    if (!canvas || width <= 0 || height <= 0)
+        return 0;
+    try {
+        canvas.width = width;
+        canvas.height = height;
+        return canvas.width === width && canvas.height === height ? 1 : 0;
+    } catch (error) {
+        return 0;
     }
 });
 
