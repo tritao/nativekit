@@ -6233,10 +6233,14 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 */
 	handle nk_surface_frame : u32;
 	/**
-	 * Callback invoked while a surface framebuffer is current and ready to draw.
+	 * Callback invoked when a surface frame is ready to build. On aliased
+	 * backends the surface framebuffer is current while the callback runs. On a
+	 * physical render executor, acquire a frame ticket and use its immutable
+	 * target; the platform compositor owns its context and framebuffer.
 	 *
 	 * The callback runs on the UI thread. The backend presents the frame after the
-	 * callback returns. `user_data` is the nullable value supplied to
+	 * callback returns (or after the render executor completes an acquired
+	 * ticket). `user_data` is the nullable value supplied to
 	 * nk_surface_set_frame_callback().
 	 */
 	callback nk_surface_frame_callback = fn(arg0: nk_surface, arg1: i32, arg2: i32, arg3: nullable<ptr<void>>) -> void;
