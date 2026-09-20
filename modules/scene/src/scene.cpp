@@ -819,9 +819,10 @@ nkscene_result NKS_CALL nkscene_geometry_set_data(
     const auto element_count = data->index_count != 0 ? data->index_count : data->vertex_count;
     if (element_count % 3 != 0)
         return NKS_ERROR_INVALID_ARGUMENT;
+    const auto *indices = static_cast<const uint32_t *>(data->indices);
     if (data->index_count != 0) {
         for (uint32_t index = 0; index < data->index_count; ++index)
-            if (data->indices[index] >= data->vertex_count)
+            if (indices[index] >= data->vertex_count)
                 return NKS_ERROR_INVALID_ARGUMENT;
     }
     const auto primitive_count = element_count / 3;
@@ -847,7 +848,7 @@ nkscene_result NKS_CALL nkscene_geometry_set_data(
                   resource.payload.vertices[index].position.begin());
     resource.payload.indices.clear();
     if (data->index_count != 0)
-        resource.payload.indices.assign(data->indices, data->indices + data->index_count);
+        resource.payload.indices.assign(indices, indices + data->index_count);
     resource.bounds.valid = data->bounds.valid != 0;
     std::copy(std::begin(data->bounds.minimum), std::end(data->bounds.minimum),
               resource.bounds.minimum.begin());

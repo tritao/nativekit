@@ -85,7 +85,8 @@ typedef struct nkscene_geometry_data {
     uint32_t struct_size NK_STRUCT_SIZE;
     const nkscene_geometry_vertex *vertices NK_BORROWED_ARRAY(vertex_count);
     uint32_t vertex_count;
-    const uint32_t *indices NK_BORROWED_ARRAY(index_count);
+    /** Packed uint32 triangle indices when index_count is non-zero. */
+    const void *indices NK_BORROWED_ARRAY(index_count);
     uint32_t index_count;
     nkscene_bounds bounds;
     const nkscene_subelement_range *subelements NK_BORROWED_ARRAY(subelement_count);
