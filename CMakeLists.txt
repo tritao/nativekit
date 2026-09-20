@@ -27,6 +27,7 @@ option(NK_BUILD_GPU_BACKEND_MATRIX
     "Enable runtime GLCore/GLES3 Sokol dispatch (desktop Linux only)" OFF)
 option(NK_BUILD_UI "Build the experimental retained UI module" OFF)
 option(NK_BUILD_SCENE "Build the experimental retained scene module" OFF)
+option(NK_BUILD_SCENE_RENDER "Build the headless retained scene renderer" OFF)
 option(NK_USE_SYSTEM_CURL "Use the system libcurl for the Linux networking backend" OFF)
 set(NK_NET_BACKEND_CURL OFF)
 # STL containers remain in use while this migration is staged. With this option
@@ -460,6 +461,12 @@ if(NK_BUILD_UI)
 endif()
 if(NK_BUILD_SCENE)
     add_subdirectory(modules/scene)
+endif()
+if(NK_BUILD_SCENE_RENDER)
+    if(NOT NK_BUILD_SCENE)
+        add_subdirectory(modules/scene)
+    endif()
+    add_subdirectory(modules/scene_render)
 endif()
 install(TARGETS nativekit EXPORT NativeKitTargets
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}

@@ -5,6 +5,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <span>
 #include <vector>
@@ -166,3 +167,14 @@ private:
 };
 
 } // namespace nkscene
+
+namespace std {
+
+template<class Tag>
+struct hash<nkscene::Id<Tag>> {
+    std::size_t operator()(nkscene::Id<Tag> id) const noexcept {
+        return static_cast<std::size_t>(id.value ^ (id.value >> 32));
+    }
+};
+
+} // namespace std

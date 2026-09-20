@@ -8,6 +8,7 @@ dependencies and independently consumable CMake targets.
 | [`gpu`](gpu/) | `NK_BUILD_GPU` | `NativeKit::gpu` | Low-level GPU API backed by Sokol for Haxeon and C callers |
 | [`ui`](ui/) | `NK_BUILD_UI` | `NativeKit::ui` | UI layout/rendering boundary with private Clay/Skribidi adapters |
 | [`scene`](scene/) | `NK_BUILD_SCENE` | `NativeKit::scene` | Transactional retained scene database and stable occurrence IDs |
+| [`scene_render`](scene_render/) | `NK_BUILD_SCENE_RENDER` | `NativeKit::scene_render` | Headless render-plan compiler over immutable scene snapshots |
 Both modules are disabled by default. Third-party implementation types must not
 cross their public C ABIs.
 
