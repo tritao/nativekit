@@ -989,8 +989,7 @@ int main() {
             }
             nk_event completion_event{};
             completion_event.struct_size = sizeof(completion_event);
-            if (!check(nk_poll_event(&completion_event) == NK_OK,
-                       "drain post-orphan completion")) {
+            if (!check(nk_poll_event(&completion_event) == NK_OK, "drain post-orphan completion")) {
                 nk::core::set_render_surface_api_guard(false);
                 nkgpu_test_allow_surface_target_queries();
                 result = 35;
@@ -1016,7 +1015,7 @@ int main() {
                            before_orphan_stats.render_submission_cancellations + 1,
                        "orphan completion cancellation accounting") ||
                 !check(nk_surface_acquire_frame(scheduler_surfaces[0], &probe_frame,
-                                                 &probe_target) == NK_OK,
+                                                &probe_target) == NK_OK,
                        "acquire after orphan completion")) {
                 if (probe_frame != NK_INVALID_HANDLE)
                     (void)nk_surface_cancel_frame(probe_frame);

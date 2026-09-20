@@ -251,8 +251,8 @@ static int image_region_valid(sg_image image, uint32_t mip_level, uint32_t layer
     uint32_t mip_height = 0;
     uint32_t bytes = 0;
     if (!width || !height ||
-        !image_transfer_info(image, mip_level, layer, &texture, &target, &mip_width,
-                             &mip_height, &format, &type, &bytes) ||
+        !image_transfer_info(image, mip_level, layer, &texture, &target, &mip_width, &mip_height,
+                             &format, &type, &bytes) ||
         x > mip_width || y > mip_height || width > mip_width - x || height > mip_height - y)
         return 0;
     if (out_bytes)
@@ -287,8 +287,8 @@ static uint32_t nk_sokol_buffer_copy(sg_buffer source, uint32_t source_offset,
 static uint32_t nk_sokol_image_copy(sg_image source, uint32_t source_mip, uint32_t source_layer,
                                     uint32_t source_x, uint32_t source_y, sg_image destination,
                                     uint32_t destination_mip, uint32_t destination_layer,
-                                    uint32_t destination_x, uint32_t destination_y,
-                                    uint32_t width, uint32_t height) {
+                                    uint32_t destination_x, uint32_t destination_y, uint32_t width,
+                                    uint32_t height) {
     uint32_t source_texture = 0;
     uint32_t destination_texture = 0;
     GLenum source_target = 0;
@@ -447,8 +447,8 @@ static uint32_t nk_sokol_image_to_buffer(sg_image source, uint32_t mip_level, ui
                              &image_height, &format, &type, &bytes) ||
         !buffer_transfer_info(destination, &destination_buffer) || !width || !height ||
         x > image_width || y > image_height || width > image_width - x ||
-        height > image_height - y || width > UINT32_MAX / bytes ||
-        row_pitch < width * bytes || row_pitch % bytes != 0)
+        height > image_height - y || width > UINT32_MAX / bytes || row_pitch < width * bytes ||
+        row_pitch % bytes != 0)
         return 0;
     const size_t temporary_size = (size_t)width * height * bytes;
     uint8_t *temporary = (uint8_t *)malloc(temporary_size);
@@ -500,8 +500,8 @@ static uint32_t nk_sokol_readback_begin(sg_image source, uint32_t mip_level, uin
     GLenum type = 0;
     uint32_t bytes = 0;
     if (!image_transfer_info(source, mip_level, layer, &texture, &target, &image_width,
-                             &image_height, &format, &type, &bytes) || !width || !height ||
-        x > image_width || y > image_height || width > image_width - x ||
+                             &image_height, &format, &type, &bytes) ||
+        !width || !height || x > image_width || y > image_height || width > image_width - x ||
         height > image_height - y)
         return 0;
     uint32_t index = NK_SOKOL_READBACK_CAPACITY;
@@ -589,9 +589,8 @@ static int nk_sokol_readback_read(uint32_t token, void *destination, uint32_t si
     GLint old_pack_buffer = 0;
     glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &old_pack_buffer);
     glBindBuffer(GL_PIXEL_PACK_BUFFER, slot->pbo);
-    const uint8_t *mapped = (const uint8_t *)glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0,
-                                                               (GLsizeiptr)slot->size,
-                                                               GL_MAP_READ_BIT);
+    const uint8_t *mapped = (const uint8_t *)glMapBufferRange(
+        GL_PIXEL_PACK_BUFFER, 0, (GLsizeiptr)slot->size, GL_MAP_READ_BIT);
     if (!mapped) {
         glBindBuffer(GL_PIXEL_PACK_BUFFER, (GLuint)old_pack_buffer);
         return 0;

@@ -344,9 +344,9 @@ int main() {
         EXPECT_RESULT(nk_surface_acquire_frame(surface, &frame, &frame_target), NK_OK);
         nkgpu_test_forbid_surface_target_queries();
         EXPECT_RESULT(nkgpu_frame_begin_with_target(renderer, &frame_target), NKGPU_OK);
-        EXPECT_RESULT(nkgpu_begin_window_pass(renderer, window_options.width, window_options.height,
-                                              1),
-                      NKGPU_OK);
+        EXPECT_RESULT(
+            nkgpu_begin_window_pass(renderer, window_options.width, window_options.height, 1),
+            NKGPU_OK);
         EXPECT_RESULT(nkgpu_end_frame_deferred_present(renderer), NKGPU_OK);
         nkgpu_test_allow_surface_target_queries();
         EXPECT_RESULT(nk_surface_present_frame(frame), NK_OK);

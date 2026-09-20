@@ -88,13 +88,13 @@ bool image_info(sg_image image, uint32_t mip_level, uint32_t layer, uint32_t x, 
         return false;
     const sg_mtl_image_info native = sg_mtl_query_image_info(image);
     if (native.active_slot < 0 || native.active_slot >= SG_NUM_INFLIGHT_FRAMES ||
-        !native.tex[native.active_slot] || !format_bytes(sg_query_image_pixelformat(image), out.bytes))
+        !native.tex[native.active_slot] ||
+        !format_bytes(sg_query_image_pixelformat(image), out.bytes))
         return false;
     out.texture = (__bridge id<MTLTexture>)native.tex[native.active_slot];
     out.width = std::max(1u, static_cast<uint32_t>(sg_query_image_width(image)) >> mip_level);
     out.height = std::max(1u, static_cast<uint32_t>(sg_query_image_height(image)) >> mip_level);
-    return x <= out.width && y <= out.height && width <= out.width - x &&
-           height <= out.height - y;
+    return x <= out.width && y <= out.height && width <= out.width - x && height <= out.height - y;
 }
 
 id<MTLBuffer> buffer_object(sg_buffer buffer, uint32_t &out_size) {
@@ -226,15 +226,15 @@ uint32_t metal_image_copy(sg_image source, uint32_t source_mip, uint32_t source_
 }
 
 uint32_t metal_buffer_to_image(sg_buffer source, uint32_t source_offset, uint32_t row_pitch,
-                               sg_image destination, uint32_t mip_level, uint32_t layer,
-                               uint32_t x, uint32_t y, uint32_t width, uint32_t height) {
+                               sg_image destination, uint32_t mip_level, uint32_t layer, uint32_t x,
+                               uint32_t y, uint32_t width, uint32_t height) {
     ImageInfo destination_info;
     uint32_t source_size = 0;
     id<MTLBuffer> source_buffer = buffer_object(source, source_size);
     if (!source_buffer ||
         !image_info(destination, mip_level, layer, x, y, width, height, destination_info) ||
-        width > UINT32_MAX / destination_info.bytes ||
-        row_pitch < width * destination_info.bytes || row_pitch % destination_info.bytes != 0)
+        width > UINT32_MAX / destination_info.bytes || row_pitch < width * destination_info.bytes ||
+        row_pitch % destination_info.bytes != 0)
         return 0;
     const uint64_t transfer_size = static_cast<uint64_t>(row_pitch) * height;
     if (!transfer_size || transfer_size > UINT32_MAX || source_offset > source_size ||
@@ -297,10 +297,10 @@ uint32_t metal_image_to_buffer(sg_image source, uint32_t mip_level, uint32_t lay
                        sourceLevel:mip_level
                       sourceOrigin:MTLOriginMake(x, y, 0)
                         sourceSize:MTLSizeMake(width, height, 1)
-                         toBuffer:staging
-                  destinationOffset:0
-             destinationBytesPerRow:row_pitch
-           destinationBytesPerImage:0];
+                          toBuffer:staging
+                 destinationOffset:0
+            destinationBytesPerRow:row_pitch
+          destinationBytesPerImage:0];
     [transfer_blit copyFromBuffer:staging
                      sourceOffset:0
                          toBuffer:destination_buffer
@@ -315,8 +315,7 @@ uint32_t metal_readback_begin(sg_image source, uint32_t mip_level, uint32_t laye
                               uint32_t y, uint32_t width, uint32_t height) {
     ImageInfo source_info;
     if (!image_info(source, mip_level, layer, x, y, width, height, source_info) ||
-        width > UINT32_MAX / source_info.bytes ||
-        height > UINT32_MAX / (width * source_info.bytes))
+        width > UINT32_MAX / source_info.bytes || height > UINT32_MAX / (width * source_info.bytes))
         return 0;
     uint32_t index = kReadbackCapacity;
     for (uint32_t i = 0; i < kReadbackCapacity; ++i) {
@@ -343,10 +342,10 @@ uint32_t metal_readback_begin(sg_image source, uint32_t mip_level, uint32_t laye
                        sourceLevel:mip_level
                       sourceOrigin:MTLOriginMake(x, y, 0)
                         sourceSize:MTLSizeMake(width, height, 1)
-                         toBuffer:staging
-                  destinationOffset:0
-             destinationBytesPerRow:row_pitch
-           destinationBytesPerImage:0];
+                          toBuffer:staging
+                 destinationOffset:0
+            destinationBytesPerRow:row_pitch
+          destinationBytesPerImage:0];
     ReadbackSlot &slot = readbacks[index];
     if (!slot.generation)
         slot.generation = 1;
@@ -397,7 +396,7 @@ int metal_readback_read(uint32_t token, void *destination, uint32_t size) {
     if (!slot || !destination || size < slot->size ||
         metal_readback_status(token) != kReadbackReady)
         return 0;
-    std::memcpy(destination, [slot->buffer contents], slot->size);
+    std::memcpy(destination, [slot->buffer contents], slot -> size);
     return 1;
 }
 
@@ -430,18 +429,9 @@ int metal_end_pass() {
 }
 
 const nk_sokol_transfer_api transfer_api = {
-    metal_buffer_copy,
-    metal_image_copy,
-    metal_buffer_to_image,
-    metal_image_to_buffer,
-    metal_readback_begin,
-    metal_readback_status,
-    metal_readback_size,
-    metal_readback_row_pitch,
-    metal_readback_read,
-    metal_readback_destroy,
-    metal_begin_pass,
-    metal_end_pass,
+    metal_buffer_copy,    metal_image_copy,       metal_buffer_to_image, metal_image_to_buffer,
+    metal_readback_begin, metal_readback_status,  metal_readback_size,   metal_readback_row_pitch,
+    metal_readback_read,  metal_readback_destroy, metal_begin_pass,      metal_end_pass,
 };
 
 } // namespace

@@ -705,13 +705,16 @@ enum NK_ENUM(nkgpu_command) {
     NKGPU_COMMAND_APPLY_STORAGE_IMAGE = 12,
     /** Dispatch compute workgroups; payload: x, y, and z group counts. */
     NKGPU_COMMAND_DISPATCH = 13,
-    /** Copy a byte range between buffers; payload: source, source offset, destination, destination offset, size. */
+    /** Copy a byte range between buffers; payload: source, source offset, destination, destination
+       offset, size. */
     NKGPU_COMMAND_COPY_BUFFER = 14,
     /** Copy a 2D image region; payload matches nkgpu_image_copy_desc without struct_size. */
     NKGPU_COMMAND_COPY_IMAGE = 15,
-    /** Upload a buffer region into an image; payload matches nkgpu_buffer_image_copy_desc without struct_size. */
+    /** Upload a buffer region into an image; payload matches nkgpu_buffer_image_copy_desc without
+       struct_size. */
     NKGPU_COMMAND_COPY_BUFFER_TO_IMAGE = 16,
-    /** Download an image region into a buffer; payload matches nkgpu_buffer_image_copy_desc without struct_size. */
+    /** Download an image region into a buffer; payload matches nkgpu_buffer_image_copy_desc without
+       struct_size. */
     NKGPU_COMMAND_COPY_IMAGE_TO_BUFFER = 17,
 };
 
@@ -873,32 +876,30 @@ NKGPU_API nkgpu_result nkgpu_begin_render_pass(nkgpu_renderer renderer,
                                                const nkgpu_render_pass_desc *desc);
 
 /** Creates a sampled RGBA8 offscreen target, optionally with depth/stencil storage. */
-NKGPU_API NKGPU_DEPRECATED("use nkgpu_image_create_desc and nkgpu_begin_render_pass")
-nkgpu_result nkgpu_render_target_create(nkgpu_renderer renderer, uint32_t width,
-                                        uint32_t height, uint32_t depth_stencil,
-                                        nkgpu_render_target *out_target NKGPU_OUT);
+NKGPU_API NKGPU_DEPRECATED("use nkgpu_image_create_desc and nkgpu_begin_render_pass") nkgpu_result
+    nkgpu_render_target_create(nkgpu_renderer renderer, uint32_t width, uint32_t height,
+                               uint32_t depth_stencil, nkgpu_render_target *out_target NKGPU_OUT);
 
 /** Returns a borrowed generic image handle for the target's sampled color attachment. */
-NKGPU_API NKGPU_DEPRECATED("use the image handle returned by nkgpu_image_create_desc")
-nkgpu_result nkgpu_render_target_get_image(nkgpu_renderer renderer, nkgpu_render_target target,
-                                           nk_graphics_image *out_image NKGPU_OUT);
+NKGPU_API NKGPU_DEPRECATED("use the image handle returned by nkgpu_image_create_desc") nkgpu_result
+    nkgpu_render_target_get_image(nkgpu_renderer renderer, nkgpu_render_target target,
+                                  nk_graphics_image *out_image NKGPU_OUT);
 
 /** Destroys a render target; imported image references remain valid until released. */
-NKGPU_API NKGPU_DEPRECATED("use nkgpu_image_destroy")
-nkgpu_result nkgpu_render_target_destroy(nkgpu_renderer renderer, nkgpu_render_target target);
+NKGPU_API NKGPU_DEPRECATED("use nkgpu_image_destroy") nkgpu_result
+    nkgpu_render_target_destroy(nkgpu_renderer renderer, nkgpu_render_target target);
 
 /**
  * Begins drawing to an offscreen target without presenting the window surface.
  * `clear` must be zero or one; one clears the color attachment. The renderer
  * must be idle. Pair with nkgpu_end_render_target() before any other pass.
  */
-NKGPU_API NKGPU_DEPRECATED("use nkgpu_begin_render_pass")
-nkgpu_result nkgpu_begin_render_target(nkgpu_renderer renderer, nkgpu_render_target target,
-                                       uint32_t clear);
+NKGPU_API NKGPU_DEPRECATED("use nkgpu_begin_render_pass") nkgpu_result
+    nkgpu_begin_render_target(nkgpu_renderer renderer, nkgpu_render_target target, uint32_t clear);
 
 /** Ends and commits the active offscreen target pass without presenting. */
-NKGPU_API NKGPU_DEPRECATED("use nkgpu_end_pass")
-nkgpu_result nkgpu_end_render_target(nkgpu_renderer renderer);
+NKGPU_API NKGPU_DEPRECATED("use nkgpu_end_pass") nkgpu_result
+    nkgpu_end_render_target(nkgpu_renderer renderer);
 
 /* ------------------------------------------------------------------------- */
 /* Buffer APIs                                                               */
@@ -1162,8 +1163,7 @@ NKGPU_API nkgpu_result nkgpu_pipeline_color_write_mask(nkgpu_pipeline_builder bu
 
 /** Sets the color format and write state for one MRT pipeline slot. */
 NKGPU_API nkgpu_result nkgpu_pipeline_color_target(nkgpu_pipeline_builder builder,
-                                                   uint32_t color_index,
-                                                   nkgpu_image_format format,
+                                                   uint32_t color_index, nkgpu_image_format format,
                                                    nkgpu_color_write_mask write_mask,
                                                    const nkgpu_blend_state *blend);
 
@@ -1231,9 +1231,8 @@ NKGPU_API nkgpu_result nkgpu_begin_window_pass(nkgpu_renderer renderer, uint32_t
                                                uint32_t height, uint32_t clear);
 
 /** Begins an offscreen target pass inside a frame. */
-NKGPU_API NKGPU_DEPRECATED("use nkgpu_begin_render_pass")
-nkgpu_result nkgpu_begin_target_pass(nkgpu_renderer renderer, nkgpu_render_target target,
-                                     uint32_t clear);
+NKGPU_API NKGPU_DEPRECATED("use nkgpu_begin_render_pass") nkgpu_result
+    nkgpu_begin_target_pass(nkgpu_renderer renderer, nkgpu_render_target target, uint32_t clear);
 
 /** Ends the active pass while keeping the frame open. */
 NKGPU_API nkgpu_result nkgpu_end_pass(nkgpu_renderer renderer);
@@ -1341,35 +1340,32 @@ NKGPU_API nkgpu_result nkgpu_buffer_copy(nkgpu_renderer renderer,
                                          const nkgpu_buffer_copy_desc *desc);
 
 /** Copies a 2D region between compatible images. */
-NKGPU_API nkgpu_result nkgpu_image_copy(nkgpu_renderer renderer,
-                                        const nkgpu_image_copy_desc *desc);
+NKGPU_API nkgpu_result nkgpu_image_copy(nkgpu_renderer renderer, const nkgpu_image_copy_desc *desc);
 
 /** Uploads a buffer region into an image. */
-NKGPU_API nkgpu_result nkgpu_buffer_to_image(
-    nkgpu_renderer renderer, const nkgpu_buffer_image_copy_desc *desc);
+NKGPU_API nkgpu_result nkgpu_buffer_to_image(nkgpu_renderer renderer,
+                                             const nkgpu_buffer_image_copy_desc *desc);
 
 /** Downloads an image region into a buffer in top-to-bottom row order. */
-NKGPU_API nkgpu_result nkgpu_image_to_buffer(
-    nkgpu_renderer renderer, const nkgpu_buffer_image_copy_desc *desc);
+NKGPU_API nkgpu_result nkgpu_image_to_buffer(nkgpu_renderer renderer,
+                                             const nkgpu_buffer_image_copy_desc *desc);
 
 /** Begins an asynchronous readback of an image rectangle. */
-NKGPU_API nkgpu_result nkgpu_readback_begin_image(
-    nkgpu_renderer renderer, const nkgpu_image_readback_desc *desc,
-    nkgpu_readback *out_readback NKGPU_OUT);
+NKGPU_API nkgpu_result nkgpu_readback_begin_image(nkgpu_renderer renderer,
+                                                  const nkgpu_image_readback_desc *desc,
+                                                  nkgpu_readback *out_readback NKGPU_OUT);
 
 /** Polls a readback without exposing backend synchronization objects. */
-NKGPU_API nkgpu_result nkgpu_readback_query(nkgpu_renderer renderer,
-                                             nkgpu_readback readback,
-                                             nkgpu_readback_info *out_info NKGPU_OUT);
+NKGPU_API nkgpu_result nkgpu_readback_query(nkgpu_renderer renderer, nkgpu_readback readback,
+                                            nkgpu_readback_info *out_info NKGPU_OUT);
 
 /** Copies ready readback bytes into caller-owned memory. */
 NKGPU_API nkgpu_result nkgpu_readback_read(nkgpu_renderer renderer, nkgpu_readback readback,
-                                            uint8_t *data, uint32_t size,
-                                            uint32_t *out_size NKGPU_OUT);
+                                           uint8_t *data, uint32_t size,
+                                           uint32_t *out_size NKGPU_OUT);
 
 /** Destroys a readback object, whether pending or ready. */
-NKGPU_API nkgpu_result nkgpu_readback_destroy(nkgpu_renderer renderer,
-                                               nkgpu_readback readback);
+NKGPU_API nkgpu_result nkgpu_readback_destroy(nkgpu_renderer renderer, nkgpu_readback readback);
 
 /**
  * Creates a texture sampler with independent minification and magnification
@@ -1416,8 +1412,7 @@ NKGPU_API nkgpu_result nkgpu_draw(nkgpu_renderer renderer, uint32_t base_element
                                   uint32_t element_count, uint32_t instance_count);
 
 /** Dispatches compute workgroups in the active compute pass. */
-NKGPU_API nkgpu_result nkgpu_dispatch(nkgpu_renderer renderer, uint32_t x, uint32_t y,
-                                      uint32_t z);
+NKGPU_API nkgpu_result nkgpu_dispatch(nkgpu_renderer renderer, uint32_t x, uint32_t y, uint32_t z);
 
 /**
  * Submits a packed little-endian command stream in the active frame.
@@ -1499,8 +1494,8 @@ NKGPU_API nkgpu_result nkgpu_batch_append_command(nkgpu_batch batch, const uint8
                                                   uint32_t size);
 
 /** Appends a command stream after checking its explicit ABI version. */
-NKGPU_API nkgpu_result nkgpu_batch_append_command_stream(
-    nkgpu_batch batch, const nkgpu_command_stream_desc *desc);
+NKGPU_API nkgpu_result nkgpu_batch_append_command_stream(nkgpu_batch batch,
+                                                         const nkgpu_command_stream_desc *desc);
 
 /**
  * Freezes a batch.

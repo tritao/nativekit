@@ -16,7 +16,7 @@ extern "C" {
 NKGPU_BENCH_API uint32_t nkgpu_benchmark_call(uint32_t value);
 NKGPU_BENCH_API uint32_t nkgpu_benchmark_batch(uint32_t iterations, uint32_t value);
 NKGPU_BENCH_API uint32_t nkgpu_benchmark_commands(const uint8_t *commands, uint32_t size,
-                                              uint32_t value);
+                                                  uint32_t value);
 
 #ifdef __cplusplus
 }

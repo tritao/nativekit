@@ -171,10 +171,10 @@ struct CApiShowcase {
         append(commands,
                nkui_rect_command{header(NKUI_COMMAND_CLIP_RECT, sizeof(nkui_rect_command)), 480.0f,
                                  238.0f, 300.0f, 220.0f});
-        append(commands,
-               nkui_layer_command{{NKUI_COMMAND_BEGIN_LAYER, NKUI_LAYER_COMMAND_VERSION,
-                                   sizeof(nkui_layer_command)},
-                                  0.72f, NKUI_COMPOSITE_SOURCE_OVER});
+        append(commands, nkui_layer_command{{NKUI_COMMAND_BEGIN_LAYER, NKUI_LAYER_COMMAND_VERSION,
+                                             sizeof(nkui_layer_command)},
+                                            0.72f,
+                                            NKUI_COMPOSITE_SOURCE_OVER});
         set_paint(commands, cyan);
         draw_path(commands, badge);
         append(commands, nkui_draw_rect_command{
@@ -262,8 +262,8 @@ struct WebShowcase {
         }
         if (!app.ready)
             return;
-        const bool input_checks_complete = app.text_edit_seen && app.pointer_seen &&
-                                           app.touch_seen && app.resize_seen;
+        const bool input_checks_complete =
+            app.text_edit_seen && app.pointer_seen && app.touch_seen && app.resize_seen;
         if (app.smoke && !input_checks_complete)
             return;
         if (!app.showcase.render_frame(surface, width, height)) {
