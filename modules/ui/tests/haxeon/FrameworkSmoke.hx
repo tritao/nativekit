@@ -113,6 +113,7 @@ import nativekit.ui.widgets.SplitViewOptions;
 import nativekit.ui.widgets.Toggle;
 import nativekit.ui.widgets.Tooltip;
 import nativekit.ui.widgets.Utf8Text;
+import nativekit.ui.widgets.VirtualGrid;
 import nativekit.ui.widgets.VirtualList;
 import nativekit.ui.widgets.VirtualViewport;
 import nativekit.ui.widgets.WindowChrome;
@@ -1230,6 +1231,28 @@ class FrameworkSmoke {
 			bottomViewport.first != 99988 || bottomViewport.last != 100000 ||
 			!bottomViewport.contains(99999) || bottomViewport.contains(99987))
 			return 247;
+		var gridController = new ScrollController();
+		var gridStyle = new LayoutStyle();
+		gridStyle.width = LayoutAxis.fixed(240.0);
+		gridStyle.height = LayoutAxis.fixed(160.0);
+		var builtCells:Array<String> = [];
+		var virtualGrid = new VirtualGrid("grid-smoke", 1000, 100, 24.0, 80.0,
+			function(row, column) {
+				builtCells.push('$row:$column');
+				return new Text('Cell $row,$column');
+			}, gridStyle, null, gridController, 240.0, 160.0);
+		var gridRoot = context.submit(virtualGrid, new LayoutFrame(240.0, 160.0));
+		var gridSemantics:Semantics = cast gridRoot.semantics;
+		if (gridSemantics.role != AccessibilityRole.Grid || gridSemantics.rowCount != 1000 ||
+			gridSemantics.columnCount != 100 || builtCells.length == 0 || builtCells.length > 64)
+			return 248;
+		gridController.jumpTo(40.0 * 80.0, 500.0 * 24.0);
+		builtCells.resize(0);
+		gridRoot = context.submit(virtualGrid, new LayoutFrame(240.0, 160.0));
+		if (builtCells.length == 0 || builtCells.length > 64)
+			return 249;
+		if (builtCells[0] != "499:39")
+			return 250;
 		var builtRows:Array<Int> = [];
 		var listController = new ScrollController();
 		var virtualStyle = new LayoutStyle();

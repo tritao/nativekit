@@ -118,8 +118,8 @@ and submit time, and fails if the logical item count increases the materialized
 viewport beyond its overscan bound.
 
 `VirtualViewport` contains the fixed-extent range math used by `VirtualList`;
-future table, tree, and grid widgets can compose the same one-dimensional
-windowing primitive without duplicating scroll-boundary behavior.
+`VirtualGrid` composes it on both axes, so table and grid widgets can reuse the
+same windowing primitive without duplicating scroll-boundary behavior.
 
 For a static or mostly static Haxe tree, `UiContext.submitCached(build, frame,
 cacheKey)` can reuse the previously submitted tree and layout. Reuse is
