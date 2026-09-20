@@ -231,6 +231,7 @@ if(NK_BUILD_TESTS)
     src/render/frame_resources.cpp
     src/render/render_plan_executor.cpp
     src/render/sealed_render_plan.cpp
+    src/compositor/compositor.cpp
     src/compositor/render_plan.cpp)
     target_include_directories(nativekit_ui_layout_render_compiler_test PRIVATE
         src "${PROJECT_SOURCE_DIR}/include" "${NK_VENDOR_DIR}/clay")

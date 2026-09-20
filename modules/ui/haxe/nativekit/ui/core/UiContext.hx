@@ -62,8 +62,11 @@ class UiContext {
 	var customGeometries:Map<Int, ResolvedLayoutItem>;
 	var customPaintKeys:Map<Int, String>;
 	var customContentRevisions:Map<Int, Int>;
-	var customCompositeRevisions:Map<Int, Int>;
 	var customListHasCommands:Map<Int, Bool>;
+	var customCompositeCanvases:Map<Int, Canvas>;
+	var customCompositeLists:Map<Int, DisplayList>;
+	var customCompositeRevisions:Map<Int, Int>;
+	var customCompositeGeometries:Map<Int, ResolvedLayoutItem>;
 	var accessibilityBridge:Null<AccessibilityBridge>;
 	var accessibilitySurface:Null<NativeKitSurface>;
 	var decorationWindow:Null<WindowHandle>;
@@ -109,8 +112,11 @@ class UiContext {
 		customGeometries = new Map();
 		customPaintKeys = new Map();
 		customContentRevisions = new Map();
-		customCompositeRevisions = new Map();
 		customListHasCommands = new Map();
+		customCompositeCanvases = new Map();
+		customCompositeLists = new Map();
+		customCompositeRevisions = new Map();
+		customCompositeGeometries = new Map();
 		accessibilityBridge = null;
 		accessibilitySurface = null;
 		decorationWindow = null;
@@ -390,53 +396,84 @@ class UiContext {
 				return;
 			var nodeId = node.id.value;
 			var displayList = customLists.get(nodeId);
-			if (displayList != null && canReuseCustomPaint(node)) {
+			var contentReused = displayList != null && canReuseCustomPaint(node);
+			if (contentReused) {
 				if (customListHasCommands.get(nodeId) == true) {
 					session.setCustomPaint(nodeId, displayList);
 					if (node.cachePolicy != CachePolicy.None)
 						session.setCustomPaintCachePolicy(nodeId, node.cachePolicy);
 				}
+			} else {
+				var canvas = customCanvases.get(nodeId);
+				if (canvas == null) {
+					canvas = new Canvas();
+					customCanvases.set(nodeId, canvas);
+				}
+				canvas.reset();
+				var geometry:ResolvedLayoutItem = cast node.resolved;
+				canvas.withState(function(target) {
+					target.resetTransform();
+					target.clip(geometry.clipBounds);
+					target.setTransform(geometry.transform);
+					target.translate(geometry.x, geometry.y);
+					node.paintContent(target);
+				});
+				if (displayList == null) {
+					displayList = DisplayList.create();
+					customLists.set(nodeId, displayList);
+				}
+				canvas.update(displayList);
+				var hasCommands = displayList.info().commandCount > 0;
+				customListHasCommands.set(nodeId, hasCommands);
+				if (hasCommands)
+					session.setCustomPaint(nodeId, displayList);
+				if (hasCommands && node.cachePolicy != CachePolicy.None)
+					session.setCustomPaintCachePolicy(nodeId, node.cachePolicy);
+				customGeometries.set(nodeId, geometry);
+				customPaintKeys.set(nodeId, node.retainedPaintKey());
+				customContentRevisions.set(nodeId, node.contentRevision);
+				paintedNodes++;
+			}
+
+			var compositeList = customCompositeLists.get(nodeId);
+			if (node.hasCompositePaint()) {
+				if (compositeList == null || !canReuseCustomComposite(node)) {
+					var compositeCanvas = customCompositeCanvases.get(nodeId);
+					if (compositeCanvas == null) {
+						compositeCanvas = new Canvas();
+						customCompositeCanvases.set(nodeId, compositeCanvas);
+					}
+					compositeCanvas.reset();
+					node.paintComposite(compositeCanvas);
+					if (compositeList == null) {
+						compositeList = DisplayList.create();
+						customCompositeLists.set(nodeId, compositeList);
+					}
+					compositeCanvas.update(compositeList);
+					customCompositeRevisions.set(nodeId, node.compositeRevision);
+					customCompositeGeometries.set(nodeId, cast node.resolved);
+				}
+				if (compositeList != null && compositeList.info().commandCount > 0 &&
+					customListHasCommands.get(nodeId) == true)
+					session.setCustomPaintComposite(nodeId, compositeList);
+			}
+			if (contentReused)
 				paintSkippedNodes++;
-				painted.set(nodeId, true);
-				return;
-			}
-			var canvas = customCanvases.get(nodeId);
-			if (canvas == null) {
-				canvas = new Canvas();
-				customCanvases.set(nodeId, canvas);
-			}
-			canvas.reset();
-			var geometry:ResolvedLayoutItem = cast node.resolved;
-			canvas.withState(function(target) {
-				target.resetTransform();
-				target.clip(geometry.clipBounds);
-				target.setTransform(geometry.transform);
-				target.translate(geometry.x, geometry.y);
-				node.paint(target);
-			});
-			if (displayList == null) {
-				displayList = DisplayList.create();
-				customLists.set(nodeId, displayList);
-			}
-			canvas.update(displayList);
-			var hasCommands = displayList.info().commandCount > 0;
-			customListHasCommands.set(nodeId, hasCommands);
-			if (hasCommands)
-				session.setCustomPaint(nodeId, displayList);
-			if (hasCommands && node.cachePolicy != CachePolicy.None)
-				session.setCustomPaintCachePolicy(nodeId, node.cachePolicy);
-			customGeometries.set(nodeId, geometry);
-			customPaintKeys.set(nodeId, node.retainedPaintKey());
-			customContentRevisions.set(nodeId, node.contentRevision);
-			customCompositeRevisions.set(nodeId, node.compositeRevision);
-			paintedNodes++;
 			painted.set(nodeId, true);
 		});
 		diagnosticStage = 23;
 		var stale:Array<Int> = [];
+		var staleSeen = new Map<Int, Bool>();
 		for (nodeId in customLists.keys())
-			if (!painted.exists(nodeId))
+			if (!painted.exists(nodeId) && !staleSeen.exists(nodeId)) {
 				stale.push(nodeId);
+				staleSeen.set(nodeId, true);
+			}
+		for (nodeId in customCompositeLists.keys())
+			if (!painted.exists(nodeId) && !staleSeen.exists(nodeId)) {
+				stale.push(nodeId);
+				staleSeen.set(nodeId, true);
+			}
 		for (nodeId in stale) {
 			var canvas = customCanvases.get(nodeId);
 			if (canvas != null)
@@ -449,7 +486,16 @@ class UiContext {
 			customGeometries.remove(nodeId);
 			customPaintKeys.remove(nodeId);
 			customContentRevisions.remove(nodeId);
+			var compositeCanvas = customCompositeCanvases.get(nodeId);
+			if (compositeCanvas != null)
+				compositeCanvas.reset();
+			var compositeList = customCompositeLists.get(nodeId);
+			if (compositeList != null)
+				compositeList.dispose();
+			customCompositeCanvases.remove(nodeId);
+			customCompositeLists.remove(nodeId);
 			customCompositeRevisions.remove(nodeId);
+			customCompositeGeometries.remove(nodeId);
 			customListHasCommands.remove(nodeId);
 		}
 		diagnosticStage = 24;
@@ -637,14 +683,23 @@ class UiContext {
 		if (key == null || !customPaintKeys.exists(nodeId) ||
 			!customListHasCommands.exists(nodeId) || customPaintKeys.get(nodeId) != key)
 			return false;
-		if (customContentRevisions.get(nodeId) != node.contentRevision ||
-			customCompositeRevisions.get(nodeId) != node.compositeRevision)
+		if (customContentRevisions.get(nodeId) != node.contentRevision)
 			return false;
 		var previousGeometry = customGeometries.get(nodeId);
 		if (previousGeometry == null || node.resolved == null ||
 			!sameGeometry(previousGeometry, node.resolved))
 			return false;
 		return true;
+	}
+
+	function canReuseCustomComposite(node:RenderNode):Bool {
+		var nodeId = node.id.value;
+		if (!customCompositeLists.exists(nodeId) ||
+			customCompositeRevisions.get(nodeId) != node.compositeRevision)
+			return false;
+		var previousGeometry = customCompositeGeometries.get(nodeId);
+		return previousGeometry != null && node.resolved != null &&
+			sameGeometry(previousGeometry, node.resolved);
 	}
 
 	static function sameGeometry(left:ResolvedLayoutItem, right:ResolvedLayoutItem):Bool {
@@ -727,13 +782,21 @@ class UiContext {
 			if (displayList != null)
 				displayList.dispose();
 		}
+		for (nodeId in customCompositeLists.keys()) {
+			var displayList = customCompositeLists.get(nodeId);
+			if (displayList != null)
+				displayList.dispose();
+		}
 		customCanvases = new Map();
 		customLists = new Map();
 		customGeometries = new Map();
 		customPaintKeys = new Map();
 		customContentRevisions = new Map();
-		customCompositeRevisions = new Map();
 		customListHasCommands = new Map();
+		customCompositeCanvases = new Map();
+		customCompositeLists = new Map();
+		customCompositeRevisions = new Map();
+		customCompositeGeometries = new Map();
 		events.setHitTestProvider(null);
 		session.dispose();
 		clipboard.dispose();

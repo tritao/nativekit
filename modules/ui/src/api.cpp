@@ -205,6 +205,7 @@ struct LayoutSessionState : std::enable_shared_from_this<LayoutSessionState> {
     nkui::LayoutRenderFrame frame;
     nkui::LayoutSnapshot snapshot;
     std::unordered_map<uint32_t, nkui_display_list> custom_paints;
+    std::unordered_map<uint32_t, nkui_display_list> custom_paint_composites;
     std::unordered_map<uint32_t, nkui_layout_cache_policy> cache_policies;
     std::vector<uint32_t> hit_test_traversal_path;
     std::vector<uint32_t> hit_test_candidate_path;
@@ -1485,7 +1486,14 @@ void release_custom_paints(LayoutSessionState &session) {
         if (list && list->custom_refs)
             --list->custom_refs;
     }
+    for (const auto &[node_id, handle] : session.custom_paint_composites) {
+        (void)node_id;
+        auto *list = resolve(handle);
+        if (list && list->custom_refs)
+            --list->custom_refs;
+    }
     session.custom_paints.clear();
+    session.custom_paint_composites.clear();
     session.cache_policies.clear();
 }
 
@@ -1518,6 +1526,14 @@ bool collect_display_resources(const uint8_t *data, size_t size,
             append(
                 reinterpret_cast<const nkui::DrawRectResourceCommand *>(data + offset)->resource);
             break;
+        case nkui::CommandOpcode::BeginLayer: {
+            const auto *layer = reinterpret_cast<const nkui::BeginLayerCommand *>(data + offset);
+            if (header.version == nkui::kLayerCommandVersion &&
+                header.size >= sizeof(nkui::BeginLayerCommand) &&
+                layer->mask.kind == nkui::MaskKind::Image)
+                append(layer->mask.image);
+            break;
+        }
         default:
             break;
         }
@@ -1900,6 +1916,41 @@ extern "C" nkui_result nkui_layout_session_set_custom_paint(nkui_layout_session 
     return NKUI_OK;
 }
 
+extern "C" nkui_result nkui_layout_session_set_custom_paint_composite(
+    nkui_layout_session session, uint32_t node_id, nkui_display_list display_list) {
+    if (active_measure_session)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    if (!node_id || !display_list.id)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::scoped_lock lock(layout_sessions_mutex, lists_mutex);
+    auto *state = resolve(session);
+    auto *list = resolve(display_list);
+    if (!state || !list)
+        return NKUI_ERROR_INVALID_HANDLE;
+    const auto *item = state->submitted ? state->snapshot.find(node_id) : nullptr;
+    if (!item || item->visual_kind != nkui::LayoutVisualKind::Custom)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    const auto existing = state->custom_paint_composites.find(node_id);
+    if (existing != state->custom_paint_composites.end() && existing->second.id == display_list.id)
+        return NKUI_OK;
+    const bool replacing = existing != state->custom_paint_composites.end();
+    const nkui_display_list previous_handle =
+        replacing ? existing->second : nkui_display_list{};
+    if (list->custom_refs == std::numeric_limits<uint32_t>::max())
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    if (!replacing)
+        state->custom_paint_composites.emplace(node_id, display_list);
+    else
+        state->custom_paint_composites.find(node_id)->second = display_list;
+    ++list->custom_refs;
+    if (replacing) {
+        auto *previous = resolve(previous_handle);
+        if (previous && previous->custom_refs)
+            --previous->custom_refs;
+    }
+    return NKUI_OK;
+}
+
 nkui_result set_cache_policy(LayoutSessionState *state, uint32_t node_id,
                              nkui_layout_cache_policy policy, bool custom_only) {
     if (!state || !state->submitted)
@@ -2070,6 +2121,18 @@ extern "C" nkui_result nkui_layout_session_submit(nkui_layout_session session,
         if (list && list->custom_refs)
             --list->custom_refs;
         it = state->custom_paints.erase(it);
+    }
+    for (auto it = state->custom_paint_composites.begin();
+         it != state->custom_paint_composites.end();) {
+        const auto *item = state->snapshot.find(it->first);
+        if (item && item->visual_kind == nkui::LayoutVisualKind::Custom) {
+            ++it;
+            continue;
+        }
+        auto *list = resolve(it->second);
+        if (list && list->custom_refs)
+            --list->custom_refs;
+        it = state->custom_paint_composites.erase(it);
     }
     for (auto it = state->cache_policies.begin(); it != state->cache_policies.end();) {
         const auto *item = state->snapshot.find(it->first);
@@ -3434,12 +3497,20 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
         if (list_slot && list_slot->list)
             has_backdrop = has_backdrop || list_slot->list->has_backdrop_effects();
     }
+    for (const auto &[node_id, list_handle] : session_state->custom_paint_composites) {
+        (void)node_id;
+        auto *list_slot = resolve(list_handle);
+        if (list_slot && list_slot->list)
+            has_backdrop = has_backdrop || list_slot->list->has_backdrop_effects();
+    }
     const nkui::ResourceId compile_target = has_backdrop ? backdrop_root_target() : main_target;
     std::vector<std::pair<uint32_t, nkui::RenderPlan>> custom_plan_storage;
     nkui::LayoutRenderCompiler::CustomPaintPlans custom_plans;
+    nkui::LayoutRenderCompiler::CustomPaintComposites custom_composites;
     nkui::LayoutRenderCompiler::RasterPaintNodes raster_paint_nodes;
     {
         custom_plan_storage.reserve(session_state->custom_paints.size());
+        custom_composites.reserve(session_state->custom_paint_composites.size());
         for (const auto &[node_id, list_handle] : session_state->custom_paints) {
             const auto *item = session_state->snapshot.find(node_id);
             auto *list_slot = resolve(list_handle);
@@ -3457,6 +3528,12 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
         for (const auto &[node_id, custom_plan] : custom_plan_storage) {
             custom_plans.emplace(node_id, &custom_plan);
         }
+        for (const auto &[node_id, list_handle] : session_state->custom_paint_composites) {
+            auto *list_slot = resolve(list_handle);
+            if (!list_slot || !list_slot->list)
+                return NKUI_ERROR_INVALID_HANDLE;
+            custom_composites.emplace(node_id, list_slot->list.get());
+        }
         for (const auto &[node_id, policy] : session_state->cache_policies)
             if (policy >= NKUI_LAYOUT_CACHE_AUTO)
                 raster_paint_nodes.insert(node_id);
@@ -3465,7 +3542,7 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
     if (!session_state->compiler.compile(
             session_state->snapshot, compile_target, frame_info->pixel_scale, session_state->frame,
             &compile_error, load_existing != 0, session_state->engine->text_engine(), &custom_plans,
-            &raster_paint_nodes))
+            &raster_paint_nodes, &custom_composites))
         return NKUI_ERROR_INVALID_TRANSACTION;
 
     if (has_backdrop)

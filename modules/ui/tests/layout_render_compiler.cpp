@@ -424,6 +424,81 @@ int main() {
         custom_position->scissor_width != 4.5f || custom_position->scissor_height != 6.0f)
         return 22;
 
+    // Framework-owned layer metadata wraps retained custom pixels in a
+    // separate target. The draw plan remains free of the outer layer, so a
+    // composite-only revision can reuse its content target.
+    DisplayList composite_metadata;
+    EffectDescriptor composite_blur;
+    composite_blur.kind = EffectKind::Blur;
+    composite_blur.color_matrix[0] = 2.0f;
+    MaskDescriptor composite_mask;
+    composite_mask.kind = MaskKind::RoundedRect;
+    composite_mask.values[0] = 3.0f;
+    const LayerBounds composite_bounds{button_item->bounds.x, button_item->bounds.y,
+                                       button_item->bounds.width, button_item->bounds.height};
+    if (!composite_metadata.begin_layer(0.5f, composite_bounds, composite_blur, composite_mask) ||
+        !composite_metadata.end_layer())
+        return 220;
+    LayoutRenderCompiler::CustomPaintComposites composite_paints{{2, &composite_metadata}};
+    LayoutRenderFrame split_frame;
+    if (!compiler.compile(ordered_snapshot, main_target, 1.5f, split_frame, &compile_error, false,
+                          engine.text_engine(), &custom_paints, nullptr, &composite_paints)) {
+        std::cerr << "split compile failed: "
+                  << (compile_error.message ? compile_error.message : "unknown") << "\n";
+        return 221;
+    }
+    const auto content_pass = std::find_if(
+        split_frame.plan().passes.begin(), split_frame.plan().passes.end(),
+        [custom_path, main_target](const RenderPass &pass) {
+            return pass.target.value != main_target.value &&
+                   std::any_of(pass.commands.begin(), pass.commands.end(),
+                               [custom_path](const RenderCommand &command) {
+                                   return command.kind == RenderCommandKind::Path &&
+                                          command.resource.value == custom_path.value &&
+                                          command.custom_payload;
+                               });
+        });
+    if (content_pass == split_frame.plan().passes.end() ||
+        split_frame.plan().isolated_layers == 0 || split_frame.plan().dependencies.size() < 2 ||
+        std::none_of(split_frame.plan().passes.begin(), split_frame.plan().passes.end(),
+                     [](const RenderPass &pass) { return pass.kind == RenderPassKind::Effect; }) ||
+        std::none_of(split_frame.plan().passes.begin(), split_frame.plan().passes.end(),
+                     [](const RenderPass &pass) { return pass.kind == RenderPassKind::Mask; }))
+        return 222;
+    const auto wrapped_content = std::find_if(
+        split_frame.plan().passes.begin(), split_frame.plan().passes.end(),
+        [content_target = content_pass->target](const RenderPass &pass) {
+            return std::any_of(pass.commands.begin(), pass.commands.end(),
+                               [content_target](const RenderCommand &command) {
+                                   return command.kind == RenderCommandKind::CompositeTarget &&
+                                          command.resource.value == content_target.value &&
+                                          command.custom_payload;
+                               });
+        });
+    const auto final_composite = std::find_if(
+        split_frame.plan().passes.front().commands.begin(),
+        split_frame.plan().passes.front().commands.end(), [](const RenderCommand &command) {
+            return command.kind == RenderCommandKind::CompositeTarget && command.custom_payload;
+        });
+    if (wrapped_content == split_frame.plan().passes.end() ||
+        final_composite == split_frame.plan().passes.front().commands.end())
+        return 223;
+    LayoutRenderCompiler::RasterPaintNodes split_raster_paints{2};
+    LayoutRenderFrame split_raster_frame;
+    if (!compiler.compile(ordered_snapshot, main_target, 1.5f, split_raster_frame, &compile_error,
+                          false, engine.text_engine(), &custom_paints, &split_raster_paints,
+                          &composite_paints))
+        return 224;
+    if (std::none_of(split_raster_frame.plan().passes.begin(),
+                     split_raster_frame.plan().passes.end(), [](const RenderPass &pass) {
+                         return pass.kind == RenderPassKind::Raster &&
+                                std::any_of(pass.commands.begin(), pass.commands.end(),
+                                            [](const RenderCommand &command) {
+                                                return command.custom_payload;
+                                            });
+                     }))
+        return 225;
+
     // A style decoration may target an ordinary box without changing its
     // native layout visual kind. Its retained paint joins immediately after
     // that box's own primitive instead of being silently dropped.

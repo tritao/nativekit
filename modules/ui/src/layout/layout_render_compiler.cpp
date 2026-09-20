@@ -1,5 +1,6 @@
 #include "layout/layout_render_compiler.h"
 
+#include "compositor/compositor.h"
 #include "prepare/nanovg_path.h"
 #include "prepare/text_engine.h"
 
@@ -250,6 +251,37 @@ LayoutRect union_bounds(LayoutRect left, const LayoutRect &right) {
     return {x, y, right_edge - x, bottom_edge - y};
 }
 
+bool insert_content_target(const DisplayList &metadata, ResourceId content_target,
+                           DisplayList &out) {
+    if (metadata.command_count() != 2 || metadata.size() < sizeof(CommandHeader) * 2)
+        return false;
+    CommandHeader begin_header{};
+    std::memcpy(&begin_header, metadata.data(), sizeof(begin_header));
+    if (begin_header.opcode != CommandOpcode::BeginLayer || begin_header.size < sizeof(CommandHeader) ||
+        begin_header.size > metadata.size())
+        return false;
+    CommandHeader end_header{};
+    const std::size_t end_offset = begin_header.size;
+    std::memcpy(&end_header, metadata.data() + end_offset, sizeof(end_header));
+    if (end_header.opcode != CommandOpcode::EndLayer ||
+        end_header.size != metadata.size() - end_offset)
+        return false;
+
+    DrawRectResourceCommand draw{};
+    draw.header.opcode = CommandOpcode::DrawRenderTarget;
+    draw.header.version = 1;
+    draw.header.size = sizeof(draw);
+    draw.resource = content_target;
+
+    std::vector<uint8_t> bytes;
+    bytes.reserve(metadata.size() + sizeof(draw));
+    bytes.insert(bytes.end(), metadata.data(), metadata.data() + end_offset);
+    const auto *draw_bytes = reinterpret_cast<const uint8_t *>(&draw);
+    bytes.insert(bytes.end(), draw_bytes, draw_bytes + sizeof(draw));
+    bytes.insert(bytes.end(), metadata.data() + end_offset, metadata.data() + metadata.size());
+    return out.assign_validated(bytes.data(), bytes.size());
+}
+
 } // namespace
 
 void LayoutRenderFrame::reset() {
@@ -290,7 +322,8 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                                    LayoutRenderCompileError *error, bool load_existing,
                                    TextEngine *text_engine_source,
                                    const CustomPaintPlans *custom_paints,
-                                   const RasterPaintNodes *raster_paint_nodes) const {
+                                   const RasterPaintNodes *raster_paint_nodes,
+                                   const CustomPaintComposites *custom_composites) const {
     if (error)
         *error = {};
     if (!is_resource_id(main_target, ResourceKind::RenderTarget) || !std::isfinite(pixel_scale) ||
@@ -325,6 +358,10 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
         uint32_t transient_slot = 1;
         uint32_t transient_target_slot =
             (static_cast<uint16_t>(main_target.value) == 0x8000u) ? 0x8001 : 0x8000;
+        // Composite wrappers are compiled by Compositor, whose first private
+        // target is 0x8000. Keep the retained-content target in the adjacent
+        // reserved range so the wrapper cannot sample its own layer target.
+        uint32_t composite_content_slot = 0x7FFF;
         std::size_t current_main_pass = 0;
 
         struct RasterRoot {
@@ -422,6 +459,48 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
         std::size_t active_raster_root = no_raster_root;
         ResourceId active_raster_target{};
         std::unordered_set<uint32_t> appended_custom_nodes;
+        std::vector<DisplayList> composite_display_lists;
+        std::vector<RenderPlan> composite_plan_storage;
+        std::unordered_map<uint32_t, const RenderPlan *> composite_plans;
+        if (custom_composites) {
+            composite_display_lists.reserve(custom_composites->size());
+            composite_plan_storage.reserve(custom_composites->size());
+            composite_plans.reserve(custom_composites->size());
+        }
+        const auto composite_plan_for = [&](uint32_t node_id, ResourceId content_target,
+                                            std::size_t primitive_index) -> const RenderPlan * {
+            if (!custom_composites)
+                return nullptr;
+            const auto found = custom_composites->find(node_id);
+            if (found == custom_composites->end() || !found->second)
+                return nullptr;
+            const auto existing = composite_plans.find(node_id);
+            if (existing != composite_plans.end())
+                return existing->second;
+
+            composite_display_lists.emplace_back();
+            auto &wrapped_list = composite_display_lists.back();
+            if (!insert_content_target(*found->second, content_target, wrapped_list)) {
+                fail(error, primitive_index, "invalid custom-paint composite metadata");
+                composite_display_lists.pop_back();
+                return nullptr;
+            }
+            composite_plan_storage.emplace_back();
+            auto &wrapped_plan = composite_plan_storage.back();
+            Compositor compositor;
+            CompositorError compositor_error{};
+            if (!compositor.compile(wrapped_list, main_target, wrapped_plan, &compositor_error)) {
+                fail(error, primitive_index,
+                     compositor_error.message ? compositor_error.message
+                                               : "invalid custom-paint composite metadata");
+                composite_plan_storage.pop_back();
+                composite_display_lists.pop_back();
+                return nullptr;
+            }
+            const auto *result = &wrapped_plan;
+            composite_plans.emplace(node_id, result);
+            return result;
+        };
         const auto append_custom_plan =
             [&](const RenderPlan &custom_plan, std::size_t primitive_index,
                 ResourceId destination_target, std::size_t destination_pass,
@@ -470,6 +549,53 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                                                 : "custom render-plan embedding failed");
             return true;
         };
+        const auto append_custom_with_composite =
+            [&](const RenderPlan &content_plan, uint32_t node_id, std::size_t primitive_index,
+                ResourceId destination_target, std::size_t destination_pass, bool raster,
+                const std::array<float, 6> *command_transform = nullptr,
+                const LayoutRect *clip_override = nullptr) -> bool {
+            if (!composite_content_slot)
+                return fail(error, primitive_index, "custom render-target limit exceeded");
+            const auto &primitive = snapshot.primitives[primitive_index];
+            const ResourceId content_target = make_resource_id(
+                ResourceKind::RenderTarget, 1, static_cast<uint16_t>(composite_content_slot--));
+            RenderPass content_pass;
+            content_pass.target = content_target;
+            content_pass.kind = raster ? RenderPassKind::Raster : RenderPassKind::Draw;
+            std::array<float, 6> content_transform{};
+            const std::array<float, 6> *content_command_transform = command_transform;
+            if (!command_transform && finite_rect(primitive.bounds)) {
+                content_pass.target_descriptor.logical_width = primitive.bounds.width;
+                content_pass.target_descriptor.logical_height = primitive.bounds.height;
+                content_pass.target_descriptor.origin_x = primitive.bounds.x;
+                content_pass.target_descriptor.origin_y = primitive.bounds.y;
+                content_transform = {1.0f, 0.0f, 0.0f, 1.0f, -primitive.bounds.x,
+                                     -primitive.bounds.y};
+                content_command_transform = &content_transform;
+            }
+            out.plan_.passes.push_back(std::move(content_pass));
+            const std::size_t content_pass_index = out.plan_.passes.size() - 1;
+            if (!append_custom_plan(content_plan, primitive_index, content_target,
+                                    content_pass_index, content_command_transform, clip_override))
+                return false;
+
+            const RenderPlan *composite_plan =
+                composite_plan_for(node_id, content_target, primitive_index);
+            if (!composite_plan)
+                return false;
+            if (raster) {
+                out.plan_.dependencies.push_back({content_target, main_target});
+                RenderPass continuation;
+                continuation.target = main_target;
+                continuation.load_existing = true;
+                out.plan_.passes.push_back(std::move(continuation));
+                current_main_pass = out.plan_.passes.size() - 1;
+                destination_target = main_target;
+                destination_pass = current_main_pass;
+            }
+            return append_custom_plan(*composite_plan, primitive_index, destination_target,
+                                      destination_pass, command_transform, clip_override);
+        };
         const auto append_custom_for_primitive = [&](std::size_t primitive_index) -> bool {
             if (!custom_paints)
                 return true;
@@ -479,18 +605,29 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
             const auto found = custom_paints->find(primitive.node_id);
             if (found == custom_paints->end() || !found->second)
                 return true;
+            const bool has_composite =
+                custom_composites && custom_composites->contains(primitive.node_id);
             if (active_raster_root != no_raster_root) {
                 const auto &root = raster_roots[active_raster_root];
                 const LayoutRect local_clip =
                     clips.empty()
                         ? LayoutRect{}
                         : transform_bounds(clips.back(), transform_layout(root.world_to_cache));
+                if (has_composite)
+                    return append_custom_with_composite(
+                        *found->second, primitive.node_id, primitive_index, active_raster_target,
+                        current_main_pass, false, &root.world_to_cache,
+                        clips.empty() ? nullptr : &local_clip);
                 return append_custom_plan(*found->second, primitive_index, active_raster_target,
                                           current_main_pass, &root.world_to_cache,
                                           clips.empty() ? nullptr : &local_clip);
             }
             const bool raster =
                 raster_paint_nodes && raster_paint_nodes->contains(primitive.node_id);
+            if (has_composite)
+                return append_custom_with_composite(*found->second, primitive.node_id,
+                                                    primitive_index, main_target, current_main_pass,
+                                                    raster);
             if (!raster)
                 return append_custom_plan(*found->second, primitive_index, main_target,
                                           current_main_pass);

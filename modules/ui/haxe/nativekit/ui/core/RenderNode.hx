@@ -330,31 +330,71 @@ class RenderNode {
 	}
 
 	@:allow(nativekit.ui.core.UiContext)
-	function paint(canvas:Canvas):Bool {
+	function paintContent(canvas:Canvas):Bool {
 		if (resolved == null || !resolved.visible || !hasPaintHandler())
 			return false;
 		var style = computedStyle == null ? new ComputedStyle() : computedStyle;
 		var styleDecorations = style.get(StyleProperty.Decorations);
-		var paintContent:Canvas->Void = function(target:Canvas) {
-			if (styleDecorations != null)
-				for (decoration in styleDecorations.decorations)
-					decoration.paint(target, resolved, style);
-			for (decoration in decorations)
-				decoration.paint(target, resolved, style);
-			for (handler in paintHandlers)
-				handler(target, resolved);
-		};
+		if (styleDecorations != null)
+			for (decoration in styleDecorations.decorations)
+				decoration.paint(canvas, resolved, style);
+		for (decoration in decorations)
+			decoration.paint(canvas, resolved, style);
+		for (handler in paintHandlers)
+			handler(canvas, resolved);
+		return true;
+	}
+
+	@:allow(nativekit.ui.core.UiContext)
+	function hasCompositePaint():Bool {
+		if (resolved == null || !resolved.visible || !hasPaintHandler())
+			return false;
+		var style = computedStyle == null ? new ComputedStyle() : computedStyle;
 		var opacity = style.get(StyleProperty.Opacity);
 		var effects = style.get(StyleProperty.Effects);
 		var hasEffects = effects != null && effects.effects.length > 0;
 		var backdropEffects = style.get(StyleProperty.BackdropEffects);
 		var hasBackdropEffects = backdropEffects != null && backdropEffects.effects.length > 0;
 		var mask = style.get(StyleProperty.Mask);
-		if (opacity < 1.0 || hasEffects || hasBackdropEffects || mask != null)
-			canvas.withLayer(opacity, paintContent, CompositeMode.SourceOver, resolved.bounds(),
-				hasEffects ? effects : null, mask, hasBackdropEffects ? backdropEffects : null);
-		else
+		return opacity < 1.0 || hasEffects || hasBackdropEffects || mask != null;
+	}
+
+	/** Emits only the framework-owned layer metadata; it has no draw commands. */
+	@:allow(nativekit.ui.core.UiContext)
+	function paintComposite(canvas:Canvas):Bool {
+		if (!hasCompositePaint())
+			return false;
+		var style = computedStyle == null ? new ComputedStyle() : computedStyle;
+		var opacity = style.get(StyleProperty.Opacity);
+		var effects = style.get(StyleProperty.Effects);
+		var hasEffects = effects != null && effects.effects.length > 0;
+		var backdropEffects = style.get(StyleProperty.BackdropEffects);
+		var hasBackdropEffects = backdropEffects != null && backdropEffects.effects.length > 0;
+		var mask = style.get(StyleProperty.Mask);
+		canvas.beginLayer(opacity, CompositeMode.SourceOver, resolved.bounds(),
+			hasEffects ? effects : null, mask, hasBackdropEffects ? backdropEffects : null);
+		canvas.endLayer();
+		return true;
+	}
+
+	@:allow(nativekit.ui.core.UiContext)
+	function paint(canvas:Canvas):Bool {
+		if (!hasPaintHandler() || resolved == null || !resolved.visible)
+			return false;
+		if (hasCompositePaint()) {
+			var content:Canvas->Void = function(target:Canvas) {
+				paintContent(target);
+			};
+			var style = computedStyle == null ? new ComputedStyle() : computedStyle;
+			var effects = style.get(StyleProperty.Effects);
+			var backdropEffects = style.get(StyleProperty.BackdropEffects);
+			var mask = style.get(StyleProperty.Mask);
+			canvas.withLayer(style.get(StyleProperty.Opacity), content, CompositeMode.SourceOver,
+				resolved.bounds(), effects != null && effects.effects.length > 0 ? effects : null,
+				mask, backdropEffects != null && backdropEffects.effects.length > 0 ? backdropEffects : null);
+		} else {
 			paintContent(canvas);
+		}
 		return true;
 	}
 
