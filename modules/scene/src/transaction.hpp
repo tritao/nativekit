@@ -20,6 +20,11 @@ struct LocalTransform {
         0.0f, 0.0f, 0.0f, 1.0f};
 };
 
+struct WorldTransform {
+    LocalTransform transform;
+    std::uint64_t revision = 0;
+};
+
 struct SourceEntity {
     EntityId id;
 };

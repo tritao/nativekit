@@ -39,6 +39,15 @@ struct MaterialResource {
 
 class GeometryStore {
 public:
+    GeometryResource &create(GeometryId id) {
+        auto [found, inserted] = resources.emplace(id, GeometryResource{id});
+        if (!inserted)
+            ++found->second.revision;
+        return found->second;
+    }
+
+    bool destroy(GeometryId id) noexcept { return resources.erase(id) != 0; }
+
     const GeometryResource *find(GeometryId id) const noexcept {
         const auto found = resources.find(id);
         return found == resources.end() ? nullptr : &found->second;
@@ -49,12 +58,23 @@ public:
         return found == resources.end() ? nullptr : &found->second;
     }
 
+    std::size_t size() const noexcept { return resources.size(); }
+
 private:
     std::unordered_map<GeometryId, GeometryResource> resources;
 };
 
 class MaterialStore {
 public:
+    MaterialResource &create(MaterialId id) {
+        auto [found, inserted] = resources.emplace(id, MaterialResource{id});
+        if (!inserted)
+            ++found->second.revision;
+        return found->second;
+    }
+
+    bool destroy(MaterialId id) noexcept { return resources.erase(id) != 0; }
+
     const MaterialResource *find(MaterialId id) const noexcept {
         const auto found = resources.find(id);
         return found == resources.end() ? nullptr : &found->second;
@@ -64,6 +84,8 @@ public:
         const auto found = resources.find(id);
         return found == resources.end() ? nullptr : &found->second;
     }
+
+    std::size_t size() const noexcept { return resources.size(); }
 
 private:
     std::unordered_map<MaterialId, MaterialResource> resources;

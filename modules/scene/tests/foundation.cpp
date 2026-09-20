@@ -50,7 +50,7 @@ void create_destroy_stress(nkscene_scene scene) {
 
         assert(nkscene_transaction_begin(scene, &transaction) == NKS_OK);
         assert(nkscene_tx_set_transform(transaction, stale.front(), &transform) == NKS_OK);
-        assert(nkscene_transaction_commit(transaction) == NKS_ERROR_INVALID_ARGUMENT);
+        assert(nkscene_transaction_commit(transaction) == NKS_ERROR_STALE_ID);
         nkscene_transaction_cancel(transaction);
     }
 }

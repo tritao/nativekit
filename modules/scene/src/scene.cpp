@@ -7,6 +7,7 @@
 #include <array>
 #include <cstddef>
 #include <cstring>
+#include <limits>
 #include <mutex>
 #include <type_traits>
 #include <unordered_set>
@@ -21,7 +22,125 @@ bool transform_equal(const LocalTransform &lhs, const LocalTransform &rhs) noexc
     return lhs.matrix == rhs.matrix;
 }
 
+LocalTransform multiply(const LocalTransform &lhs, const LocalTransform &rhs) noexcept {
+    LocalTransform result{};
+    for (std::size_t column = 0; column < 4; ++column) {
+        for (std::size_t row = 0; row < 4; ++row) {
+            result.matrix[column * 4 + row] =
+                lhs.matrix[row] * rhs.matrix[column * 4] +
+                lhs.matrix[4 + row] * rhs.matrix[column * 4 + 1] +
+                lhs.matrix[8 + row] * rhs.matrix[column * 4 + 2] +
+                lhs.matrix[12 + row] * rhs.matrix[column * 4 + 3];
+        }
+    }
+    return result;
+}
+
+std::array<float, 3> transform_point(const LocalTransform &transform,
+                                      const std::array<float, 3> &point) noexcept {
+    return {
+        transform.matrix[0] * point[0] + transform.matrix[4] * point[1] +
+            transform.matrix[8] * point[2] + transform.matrix[12],
+        transform.matrix[1] * point[0] + transform.matrix[5] * point[1] +
+            transform.matrix[9] * point[2] + transform.matrix[13],
+        transform.matrix[2] * point[0] + transform.matrix[6] * point[1] +
+            transform.matrix[10] * point[2] + transform.matrix[14]};
+}
+
+Bounds transformed_bounds(const Bounds &local, const LocalTransform &transform) noexcept {
+    Bounds result;
+    result.valid = local.valid;
+    if (!local.valid)
+        return result;
+    result.minimum.fill(std::numeric_limits<float>::infinity());
+    result.maximum.fill(-std::numeric_limits<float>::infinity());
+    for (int x = 0; x < 2; ++x) {
+        for (int y = 0; y < 2; ++y) {
+            for (int z = 0; z < 2; ++z) {
+                const std::array<float, 3> point{
+                    x ? local.maximum[0] : local.minimum[0],
+                    y ? local.maximum[1] : local.minimum[1],
+                    z ? local.maximum[2] : local.minimum[2]};
+                const auto transformed = transform_point(transform, point);
+                for (int axis = 0; axis < 3; ++axis) {
+                    result.minimum[axis] = std::min(result.minimum[axis], transformed[axis]);
+                    result.maximum[axis] = std::max(result.maximum[axis], transformed[axis]);
+                }
+            }
+        }
+    }
+    return result;
+}
+
 } // namespace
+
+void Scene::recompute_world_transforms(ChangeSet &changes) {
+    std::unordered_set<OccurrenceId> dirty;
+    std::vector<OccurrenceId> pending;
+    for (const auto &change : changes.changes) {
+        if (has_domain(change.domains, ChangeDomain::Destroyed)) {
+            world_transforms_.erase(change.occurrence);
+            bounds.erase(change.occurrence);
+            continue;
+        }
+        if (has_domain(change.domains, ChangeDomain::Created) ||
+            has_domain(change.domains, ChangeDomain::Transform) ||
+            has_domain(change.domains, ChangeDomain::Hierarchy) ||
+            has_domain(change.domains, ChangeDomain::Geometry))
+            pending.push_back(change.occurrence);
+    }
+    while (!pending.empty()) {
+        const auto current = pending.back();
+        pending.pop_back();
+        if (!dirty.insert(current).second)
+            continue;
+        for (const auto child : hierarchy.children(current))
+            pending.push_back(child);
+    }
+
+    std::vector<OccurrenceId> roots;
+    roots.reserve(dirty.size());
+    for (const auto id : dirty) {
+        const auto parent = hierarchy.parent(id);
+        if (!parent.valid() || !dirty.contains(parent))
+            roots.push_back(id);
+    }
+    std::vector<OccurrenceId> stack;
+    for (const auto root : roots) {
+        stack.push_back(root);
+        while (!stack.empty()) {
+            const auto current = stack.back();
+            stack.pop_back();
+            const auto *local = local_transforms.find(current);
+            if (!local)
+                continue;
+            LocalTransform world = *local;
+            const auto parent = hierarchy.parent(current);
+            if (parent.valid()) {
+                if (const auto *parent_world = world_transforms_.find(parent))
+                    world = multiply(parent_world->transform, *local);
+            }
+            world_transforms_.insert_or_assign(current,
+                                               WorldTransform{world, revisions.scene + 1});
+            ++changes.stats.dirty_world_transforms;
+            if (const auto *geometry = geometry_refs.find(current)) {
+                const auto *resource = geometries.find(geometry->id);
+                if (resource && resource->bounds.valid) {
+                    bounds.insert_or_assign(current,
+                                            transformed_bounds(resource->bounds, world));
+                    ++changes.stats.dirty_bounds;
+                } else {
+                    bounds.erase(current);
+                }
+            } else {
+                bounds.erase(current);
+            }
+            for (const auto child : hierarchy.children(current))
+                if (dirty.contains(child))
+                    stack.push_back(child);
+        }
+    }
+}
 
 bool Scene::exists_after(const std::unordered_map<OccurrenceId, bool> &live,
                          OccurrenceId id) const noexcept {
@@ -29,46 +148,61 @@ bool Scene::exists_after(const std::unordered_map<OccurrenceId, bool> &live,
     return found == live.end() ? occurrences.contains(id) : found->second;
 }
 
-bool Scene::validate(const Transaction &transaction) const noexcept {
+nkscene_result Scene::validate(const Transaction &transaction) const noexcept {
     std::unordered_map<OccurrenceId, bool> live;
     std::unordered_map<OccurrenceId, OccurrenceId> final_parents;
 
     for (const auto &mutation : transaction.mutations()) {
-        bool valid = true;
+        nkscene_result result = NKS_OK;
         std::visit(
             [&](const auto &value) {
                 using T = std::decay_t<decltype(value)>;
                 if constexpr (std::is_same_v<T, CreateOccurrence>) {
-                    valid = value.occurrence.valid() && !occurrences.contains(value.occurrence) &&
-                        !live.contains(value.occurrence);
+                    const bool valid = value.occurrence.valid() &&
+                        !occurrences.contains(value.occurrence) && !live.contains(value.occurrence);
                     if (valid) {
                         live.emplace(value.occurrence, true);
                         final_parents.emplace(value.occurrence, invalid_occurrence);
+                    } else {
+                        result = NKS_ERROR_INVALID_ARGUMENT;
                     }
                 } else if constexpr (std::is_same_v<T, DestroyOccurrence>) {
-                    valid = value.occurrence.valid() && exists_after(live, value.occurrence);
-                    if (valid)
+                    const bool valid = value.occurrence.valid() &&
+                        exists_after(live, value.occurrence);
+                    if (valid) {
                         live[value.occurrence] = false;
+                    } else {
+                        result = NKS_ERROR_STALE_ID;
+                    }
                 } else if constexpr (std::is_same_v<T, SetParent>) {
-                    valid = value.occurrence.valid() && exists_after(live, value.occurrence) &&
-                        (value.parent == invalid_occurrence ||
-                         exists_after(live, value.parent)) &&
-                        value.occurrence != value.parent;
-                    if (valid)
+                    const bool valid_target = value.occurrence.valid() &&
+                        exists_after(live, value.occurrence);
+                    const bool valid_parent = value.parent == invalid_occurrence ||
+                        exists_after(live, value.parent);
+                    if (!valid_target || !valid_parent) {
+                        result = NKS_ERROR_STALE_ID;
+                    } else if (value.occurrence == value.parent) {
+                        result = NKS_ERROR_HIERARCHY_CYCLE;
+                    } else {
                         final_parents[value.occurrence] = value.parent;
+                    }
                 } else if constexpr (std::is_same_v<T, SetTransform>) {
-                    valid = value.occurrence.valid() && exists_after(live, value.occurrence);
+                    if (!value.occurrence.valid() || !exists_after(live, value.occurrence))
+                        result = NKS_ERROR_STALE_ID;
                 } else if constexpr (std::is_same_v<T, SetGeometry>) {
-                    valid = value.occurrence.valid() && exists_after(live, value.occurrence);
+                    if (!value.occurrence.valid() || !exists_after(live, value.occurrence))
+                        result = NKS_ERROR_STALE_ID;
                 } else if constexpr (std::is_same_v<T, SetMaterial>) {
-                    valid = value.occurrence.valid() && exists_after(live, value.occurrence);
+                    if (!value.occurrence.valid() || !exists_after(live, value.occurrence))
+                        result = NKS_ERROR_STALE_ID;
                 } else if constexpr (std::is_same_v<T, SetVisibility>) {
-                    valid = value.occurrence.valid() && exists_after(live, value.occurrence);
+                    if (!value.occurrence.valid() || !exists_after(live, value.occurrence))
+                        result = NKS_ERROR_STALE_ID;
                 }
             },
             mutation);
-        if (!valid)
-            return false;
+        if (result != NKS_OK)
+            return result;
     }
 
     for (const auto &[id, is_live] : live) {
@@ -77,7 +211,7 @@ bool Scene::validate(const Transaction &transaction) const noexcept {
         for (const auto child : hierarchy.children(id)) {
             if (exists_after(live, child) &&
                 (!final_parents.contains(child) || final_parents.at(child) == id))
-                return false;
+                return NKS_ERROR_INVALID_ARGUMENT;
         }
     }
 
@@ -98,12 +232,12 @@ bool Scene::validate(const Transaction &transaction) const noexcept {
         std::unordered_set<OccurrenceId> visited;
         for (auto current = start; current.valid(); current = parent_of(current)) {
             if (!exists_after(live, current))
-                return false;
+                return NKS_ERROR_STALE_ID;
             if (!visited.insert(current).second)
-                return false;
+                return NKS_ERROR_HIERARCHY_CYCLE;
         }
     }
-    return true;
+    return NKS_OK;
 }
 
 void Scene::record_change(ChangeSet &changes,
@@ -121,8 +255,9 @@ void Scene::record_change(ChangeSet &changes,
 nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes) {
     if (!transaction.active() || transaction.scene().get() != this)
         return NKS_ERROR_INVALID_STATE;
-    if (!validate(transaction))
-        return NKS_ERROR_INVALID_ARGUMENT;
+    const auto validation = validate(transaction);
+    if (validation != NKS_OK)
+        return validation;
 
     changes = {};
     std::unordered_map<OccurrenceId, std::size_t> change_indices;
@@ -142,6 +277,7 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
                     source_entities.erase(value.occurrence);
                     parent_components.erase(value.occurrence);
                     local_transforms.erase(value.occurrence);
+                    world_transforms_.erase(value.occurrence);
                     geometry_refs.erase(value.occurrence);
                     material_refs.erase(value.occurrence);
                     visibilities_.erase(value.occurrence);
@@ -194,9 +330,44 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
             },
             mutation);
     }
-    if (!changes.changes.empty())
-        ++scene_revision;
-    changes.scene_revision = scene_revision;
+    changes.stats.changed_occurrences = changes.changes.size();
+    recompute_world_transforms(changes);
+    if (!changes.changes.empty()) {
+        auto &revision = revisions;
+        ++revision.scene;
+        bool hierarchy_changed = false;
+        bool transform_changed = false;
+        bool geometry_changed = false;
+        bool material_changed = false;
+        bool visibility_changed = false;
+        bool bounds_changed = false;
+        for (const auto &change : changes.changes) {
+            hierarchy_changed = hierarchy_changed || has_domain(change.domains, ChangeDomain::Created) ||
+                has_domain(change.domains, ChangeDomain::Destroyed) ||
+                has_domain(change.domains, ChangeDomain::Hierarchy);
+            transform_changed = transform_changed ||
+                has_domain(change.domains, ChangeDomain::Transform);
+            geometry_changed = geometry_changed || has_domain(change.domains, ChangeDomain::Geometry);
+            material_changed = material_changed || has_domain(change.domains, ChangeDomain::Material);
+            visibility_changed = visibility_changed ||
+                has_domain(change.domains, ChangeDomain::Visibility);
+            bounds_changed = bounds_changed || has_domain(change.domains, ChangeDomain::Bounds);
+        }
+        if (hierarchy_changed)
+            ++revision.hierarchy;
+        if (transform_changed)
+            ++revision.transform;
+        if (geometry_changed)
+            ++revision.geometry;
+        if (material_changed)
+            ++revision.material;
+        if (visibility_changed)
+            ++revision.visibility;
+        if (bounds_changed)
+            ++revision.bounds;
+    }
+    changes.scene_revision = revisions.scene;
+    changes.revisions = revisions;
     return NKS_OK;
 }
 

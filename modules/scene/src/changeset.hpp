@@ -2,6 +2,7 @@
 
 #include "ids.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -38,8 +39,28 @@ struct SceneChange {
     ChangeDomain domains = ChangeDomain::None;
 };
 
+struct RevisionCounters {
+    std::uint64_t scene = 0;
+    std::uint64_t hierarchy = 0;
+    std::uint64_t transform = 0;
+    std::uint64_t geometry = 0;
+    std::uint64_t material = 0;
+    std::uint64_t visibility = 0;
+    std::uint64_t bounds = 0;
+};
+
+struct ChangeStats {
+    std::size_t changed_occurrences = 0;
+    std::size_t changed_resources = 0;
+    std::size_t dirty_world_transforms = 0;
+    std::size_t dirty_bounds = 0;
+    std::size_t full_rebuilds = 0;
+};
+
 struct ChangeSet {
     std::uint64_t scene_revision = 0;
+    RevisionCounters revisions;
+    ChangeStats stats;
     std::vector<SceneChange> changes;
 };
 
