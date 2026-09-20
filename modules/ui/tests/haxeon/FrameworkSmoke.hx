@@ -110,6 +110,8 @@ import nativekit.ui.widgets.SplitOrientation;
 import nativekit.ui.widgets.SplitSide;
 import nativekit.ui.widgets.SplitView;
 import nativekit.ui.widgets.SplitViewOptions;
+import nativekit.ui.widgets.TableColumn;
+import nativekit.ui.widgets.TableView;
 import nativekit.ui.widgets.Toggle;
 import nativekit.ui.widgets.Tooltip;
 import nativekit.ui.widgets.Utf8Text;
@@ -1253,6 +1255,36 @@ class FrameworkSmoke {
 			return 249;
 		if (builtCells[0] != "499:39")
 			return 250;
+		var tableColumns:Array<TableColumn> = [
+			new TableColumn("id", "ID", 80.0),
+			new TableColumn("name", "Name", 80.0),
+			new TableColumn("state", "State", 80.0)
+		];
+		var tableStyle = new LayoutStyle();
+		tableStyle.width = LayoutAxis.fixed(240.0);
+		tableStyle.height = LayoutAxis.fixed(184.0);
+		var tableBuiltCells:Array<String> = [];
+		var tableSelection = -1;
+		var table = new TableView("table-smoke", 100000, tableColumns, 24.0, function(row, column) {
+			tableBuiltCells.push('$row:${column.key}');
+			return new Text('$row ${column.label}');
+		}, tableStyle, null, null, 240.0, 184.0, 24.0, 2, function(row) {
+			tableSelection = row;
+		});
+		var tableRoot = context.submit(table, new LayoutFrame(240.0, 184.0));
+		var tableSemantics:Semantics = cast tableRoot.semantics;
+		var headerViewport = tableRoot.children[0];
+		var headerContent = headerViewport.children[0];
+		var firstHeaderSemantics:Null<Semantics> = headerContent.children[0].semantics;
+		if (tableSemantics.role != AccessibilityRole.Grid || tableSemantics.rowCount != 100000 ||
+			tableSemantics.columnCount != 3 || table.selectedRow != 2 || tableBuiltCells.length == 0 ||
+			tableBuiltCells.length > 64 || firstHeaderSemantics == null ||
+			firstHeaderSemantics.role != AccessibilityRole.ColumnHeader)
+			return 251;
+		context.pointerDown(12.0, 24.0 + 3.0 * 24.0 + 12.0, 0);
+		context.pointerUp(12.0, 24.0 + 3.0 * 24.0 + 12.0, 0);
+		if (table.selectedRow != 3 || tableSelection != 3)
+			return 252;
 		var builtRows:Array<Int> = [];
 		var listController = new ScrollController();
 		var virtualStyle = new LayoutStyle();

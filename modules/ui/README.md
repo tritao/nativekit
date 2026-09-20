@@ -120,6 +120,8 @@ viewport beyond its overscan bound.
 `VirtualViewport` contains the fixed-extent range math used by `VirtualList`;
 `VirtualGrid` composes it on both axes, so table and grid widgets can reuse the
 same windowing primitive without duplicating scroll-boundary behavior.
+`TableView` adds fixed-width `TableColumn` metadata, sticky headers, row
+selection, and accessible grid/row/cell semantics on top of that body.
 
 For a static or mostly static Haxe tree, `UiContext.submitCached(build, frame,
 cacheKey)` can reuse the previously submitted tree and layout. Reuse is
