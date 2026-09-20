@@ -50,6 +50,12 @@ jobs:
       - name: Build WebGL2 showcase
         run: ./tools/build-web.sh
 
+      - name: Build opt-in OffscreenCanvas render executor
+        env:
+          NATIVEKIT_WEB_THREADED_RENDER: ON
+          NATIVEKIT_WEB_BUILD_DIR: build-web-threaded
+        run: ./tools/build-web.sh
+
       - name: Upload Web build
         uses: actions/upload-artifact@v7
         with:

@@ -77,6 +77,7 @@ NK_INTERNAL_API bool mark_frame_render_submitted(nk_surface_frame frame) noexcep
 NK_INTERNAL_API bool take_frame_ticket(nk_surface_frame frame, FrameTicket *out_ticket) noexcept;
 /** Returns the number of open frame tickets in the current runtime. */
 NK_INTERNAL_API std::size_t frame_ticket_count() noexcept;
+NK_INTERNAL_API bool surface_frame_open(nk_surface surface) noexcept;
 NK_INTERNAL_API void clear_frame_tickets() noexcept;
 
 } // namespace nk::core

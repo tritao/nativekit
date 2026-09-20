@@ -46,6 +46,9 @@ option(NK_ENABLE_WEBVIEW2 "Enable the Windows WebView2 backend" ON)
 option(NK_WEB_THREADED_RENDER
     "Enable the experimental Web OffscreenCanvas render executor (requires pthread-capable hosting)"
     OFF)
+option(NK_GTK_THREADED_RENDER
+    "Enable the experimental GTK offscreen render executor (requires a shared GL context)"
+    OFF)
 
 if(WIN32)
     set(_nk_default_sokol_backend d3d11)
@@ -331,6 +334,9 @@ elseif(TARGET PkgConfig::GTK3)
         src/linux/nativekit_linux_joystick.cpp)
     target_link_libraries(nativekit PRIVATE PkgConfig::GTK3 ${CMAKE_DL_LIBS})
     target_compile_definitions(nativekit PRIVATE NK_BACKEND_GTK=1)
+    if(NK_GTK_THREADED_RENDER)
+        target_compile_definitions(nativekit PRIVATE NK_GTK_THREADED_RENDER=1)
+    endif()
     if(TARGET PkgConfig::WEBKITGTK)
         target_link_libraries(nativekit PRIVATE PkgConfig::WEBKITGTK)
         target_compile_definitions(nativekit PRIVATE NK_HAS_WEBKITGTK=1)

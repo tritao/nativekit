@@ -3,12 +3,15 @@
 ## Status
 
 Accepted as an implementation boundary. The desktop explicit backends already
-run GPU submission on `RENDER`. GTK and the default Web backend intentionally
-keep `PLATFORM = APP = RENDER` until their native surface handoff is complete.
+run GPU submission on `RENDER`. GTK and the default Web backend keep
+`PLATFORM = APP = RENDER`; their physical render executors are opt-in because
+they require native/browser capability checks.
 
 This is a backend limitation at the surface boundary, not a limitation of the
 sealed render-plan or GPU-batch contracts. Those contracts are ready to cross a
-thread; these two backends still need a native context/framebuffer handoff.
+thread. The opt-in GTK and Web bridges below now provide the native
+context/framebuffer handoff; default builds remain conservative for hosts that
+cannot guarantee the required context and browser capabilities.
 
 ## GTK
 
@@ -35,7 +38,16 @@ destruction with the GTK main loop. The existing `share_surface` context path
 is useful groundwork, but it is not this bridge: a shared `GtkGLArea` still
 owns a widget callback and does not provide an independent offscreen target.
 
-Until the bridge exists, GTK remains an aliased executor and live
+`NK_GTK_THREADED_RENDER=ON` enables the first bridge implementation. NativeKit
+keeps the `GtkGLArea` on the GTK thread, creates a color-only offscreen FBO and
+texture on `RENDER`, and lets the GTK render signal blit the completed texture
+into the widget's framebuffer. The frame callback is scheduled from the GTK
+tick callback rather than the GL render signal, so RENDER can bind the retained
+context without racing GTK's compositor. The first bridge is deliberately
+desktop-OpenGL/color-only; depth/stencil and GLES surfaces remain on the
+default build until equivalent offscreen bindings are added.
+
+Until that option is enabled, GTK remains an aliased executor and live
 `SurfaceProducer` callbacks are allowed on the normal inline path.
 
 ## Web
@@ -52,29 +64,31 @@ The real split therefore needs an opt-in pthread build:
 2. Transfer the canvas to the render pthread with
    `emscripten_pthread_attr_settransferredcanvases()` before any WebGL context
    is created.
-3. Create the WebGL context on `RENDER` with
-   `proxyContextToMainThread = EMSCRIPTEN_WEBGL_CONTEXT_PROXY_DISALLOW`.
-   Offscreen-canvas contexts are pinned to the creating pthread.
+3. Create the WebGL context on `RENDER` with explicit swap control. NativeKit
+   requests the no-proxy path and permits Emscripten's compatibility fallback
+   when the browser cannot bind the context directly. Offscreen-canvas contexts
+   are pinned to the creating pthread.
 4. Keep DOM/input/resize and `requestAnimationFrame` on `PLATFORM`; pass only
    immutable size/context-loss snapshots to `RENDER`.
 5. Commit the frame from `RENDER` with explicit swap control. Context loss and
    teardown must be acknowledged by the render pthread before the canvas or
    context is destroyed on the browser thread.
 
-The current `std::thread` executor cannot transfer a canvas because pthread
-attributes are required at creation time. Web needs a small Emscripten-specific
-thread-start path, plus asynchronous startup/fallback when SharedArrayBuffer or
-OffscreenCanvas is unavailable. The normal Web build therefore remains aliased
-and keeps its current browser compatibility.
+The Web bridge is enabled with `NK_WEB_THREADED_RENDER=ON`. It starts the
+executor as an Emscripten pthread, transfers the pre-existing `#canvas` (or the
+configured selector) before context creation, creates the WebGL context on
+RENDER, and commits explicit-swap frames there. The default Web build remains
+aliased and keeps its current browser compatibility; hosts must provide a
+pthread-capable, cross-origin-isolated page for the opt-in mode.
 
 ## Implementation order
 
-1. Add a Web threaded-capability build and browser smoke target. It should
-   exercise canvas transfer, render-thread context creation, explicit frame
-   commit, resize, and context-loss fallback while leaving the default build
-   unchanged.
-2. Add the GTK offscreen/shared-context bridge and a GTK/Xvfb integration test
-   that proves the GTK callback only composites the retained image.
+1. Add a Web threaded-capability browser smoke target. It should exercise
+   canvas transfer, render-thread context creation, explicit frame commit,
+   resize, and context-loss fallback while leaving the default build unchanged.
+2. Keep the GTK offscreen bridge covered by the GTK/Xvfb target and lifecycle
+   tests; add a visual compositor assertion when the UI test harness can run
+   against an accelerated X server.
 3. Enable the shared sealed-plan path for those physical modes. A live
    `SurfaceProducer` remains an explicit fallback until it publishes a retained
    `nk_graphics_image`.

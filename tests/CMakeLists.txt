@@ -200,6 +200,13 @@ if(NK_BACKEND_GTK_AVAILABLE)
             PROPERTIES LINKER_LANGUAGE CXX)
         add_test(NAME gtk_surface_frame_transaction
             COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_surface_frame_transaction>)
+        if(NK_GTK_THREADED_RENDER)
+            add_executable(nativekit_gtk_threaded_target integration/gtk_threaded_target.c)
+            target_link_libraries(nativekit_gtk_threaded_target PRIVATE NativeKit::nativekit)
+            set_target_properties(nativekit_gtk_threaded_target PROPERTIES LINKER_LANGUAGE CXX)
+            add_test(NAME gtk_threaded_target
+                COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_threaded_target>)
+        endif()
         add_executable(nativekit_gtk_accessibility integration/gtk_accessibility.c)
         target_link_libraries(nativekit_gtk_accessibility PRIVATE NativeKit::nativekit)
         set_target_properties(nativekit_gtk_accessibility PROPERTIES LINKER_LANGUAGE CXX)

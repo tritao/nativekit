@@ -53,7 +53,8 @@ constexpr std::size_t app_task_byte_capacity = 4u * 1024u * 1024u;
 std::size_t pending_task_bytes = 0;
 
 constexpr bool physical_render_backend =
-#if defined(NK_BACKEND_GTK) || (defined(NK_BACKEND_WEB) && !defined(NK_WEB_THREADED_RENDER))
+#if (defined(NK_BACKEND_GTK) && !defined(NK_GTK_THREADED_RENDER)) ||                               \
+    (defined(NK_BACKEND_WEB) && !defined(NK_WEB_THREADED_RENDER))
     false;
 #else
     true;
@@ -151,8 +152,7 @@ nk_result start_render_executor() noexcept {
     /* The canvas must be transferred before the worker creates its WebGL
        context.  The selector string is held by the generated configuration
        header for the lifetime of the process. */
-    if (emscripten_pthread_attr_settransferredcanvases(
-            &attributes, NK_WEB_CANVAS_SELECTOR) != 0) {
+    if (emscripten_pthread_attr_settransferredcanvases(&attributes, NK_WEB_CANVAS_SELECTOR) != 0) {
         pthread_attr_destroy(&attributes);
         std::lock_guard lock(render_task_mutex);
         render_accepting = false;

@@ -124,6 +124,11 @@ std::size_t frame_ticket_count() noexcept {
     return ticket_by_frame.size();
 }
 
+bool surface_frame_open(nk_surface surface) noexcept {
+    std::lock_guard lock(frame_mutex);
+    return frame_by_surface.find(surface) != frame_by_surface.end();
+}
+
 void clear_frame_tickets() noexcept {
     std::vector<FrameTicket> tickets;
     {

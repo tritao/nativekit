@@ -116,10 +116,14 @@ typedef struct nk_surface_options {
 typedef void(NK_CALL *nk_graphics_proc)(void);
 
 /**
- * Callback invoked while a surface framebuffer is current and ready to draw.
+ * Callback invoked when a surface frame is ready to build. On aliased
+ * backends the surface framebuffer is current while the callback runs. On a
+ * physical render executor, acquire a frame ticket and use its immutable
+ * target; the platform compositor owns its context and framebuffer.
  *
  * The callback runs on the UI thread. The backend presents the frame after the
- * callback returns. `user_data` is the nullable value supplied to
+ * callback returns (or after the render executor completes an acquired
+ * ticket). `user_data` is the nullable value supplied to
  * nk_surface_set_frame_callback().
  */
 typedef void(NK_CALL *nk_surface_frame_callback)(nk_surface surface, int32_t framebuffer_width,
