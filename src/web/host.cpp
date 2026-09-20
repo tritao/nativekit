@@ -1,6 +1,7 @@
 #include "web/host.h"
 
 #include "core/event_queue.hpp"
+#include "core/executor.hpp"
 #include "core/runtime.hpp"
 #include "core/resource_events.hpp"
 #include "nativekit_web_config.h"
@@ -15,6 +16,7 @@
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <new>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -47,6 +49,26 @@ bool frame_loop_active = false;
 bool device_orientation_callback_installed = false;
 bool orientation_callback_installed = false;
 bool resize_callback_installed = false;
+
+#if defined(NK_WEB_THREADED_RENDER)
+struct CanvasResizeRequest {
+    std::string selector;
+    nk::web::CanvasSize size{};
+};
+
+void resize_canvas_on_render(void *data) noexcept {
+    auto *request = static_cast<CanvasResizeRequest *>(data);
+    if (!request)
+        return;
+    (void)(emscripten_set_canvas_element_size(
+               request->selector.c_str(), request->size.framebuffer_width,
+               request->size.framebuffer_height) == EMSCRIPTEN_RESULT_SUCCESS);
+}
+
+void destroy_canvas_resize_request(void *data) noexcept {
+    delete static_cast<CanvasResizeRequest *>(data);
+}
+#endif
 
 constexpr int k_appearance_supported = 1;
 constexpr int k_appearance_dark = 1 << 1;
@@ -2190,11 +2212,28 @@ void set_canvas_mouse_passthrough(const char *selector, bool enabled) noexcept {
 }
 
 bool set_canvas_framebuffer_size(const char *selector, const CanvasSize &size) noexcept {
+#if defined(NK_WEB_THREADED_RENDER)
+    if (nk::core::render_executor_physical() &&
+        nk::core::executor_current() != NK_EXECUTOR_RENDER) {
+        auto *request = new (std::nothrow) CanvasResizeRequest;
+        if (!request)
+            return false;
+        request->selector = selector ? selector : "";
+        request->size = size;
+        const auto queued = nk::core::dispatch_to_render(&resize_canvas_on_render, request,
+                                                         &destroy_canvas_resize_request,
+                                                         sizeof(CanvasResizeRequest));
+        if (queued != NK_OK) {
+            delete request;
+            return false;
+        }
+        return true;
+    }
+#endif
     const auto result = emscripten_set_canvas_element_size(selector, size.framebuffer_width,
                                                            size.framebuffer_height);
-    /* A transferred OffscreenCanvas queues the pixel-size update on RENDER and
-       reports EMSCRIPTEN_RESULT_DEFERRED to PLATFORM. That is a successful
-       handoff; treating it as failure prevents threaded Web window creation. */
+    /* A transferred OffscreenCanvas may report a deferred update when this is
+       called from RENDER. The serialized queue has already accepted it. */
     return result == EMSCRIPTEN_RESULT_SUCCESS || result == EMSCRIPTEN_RESULT_DEFERRED;
 }
 
