@@ -1595,8 +1595,21 @@ nk_result NK_CALL nk_transport_listen(const nk_transport_options *options,
             return fail(NK_ERROR_INVALID_ARGUMENT, "listener output is null");
         *out_listener = NK_INVALID_HANDLE;
         TransportOptions copied;
-        if (!copy_options(options, copied, true))
+        if (!copy_options(options, copied, true)) {
+#if defined(_WIN32)
+            if (options) {
+                std::fprintf(stderr,
+                             "nativekit transport: invalid listener options size=%u/%zu "
+                             "kind=%u flags=%u reserved0=%u reserved=%llu,%llu\n",
+                             options->struct_size, sizeof(*options), options->kind, options->flags,
+                             options->reserved0,
+                             static_cast<unsigned long long>(options->reserved[0]),
+                             static_cast<unsigned long long>(options->reserved[1]));
+                std::fflush(stderr);
+            }
+#endif
             return fail(NK_ERROR_INVALID_ARGUMENT, "listener options are invalid");
+        }
         auto listener = std::make_shared<ListenerResource>();
         listener->options = std::move(copied);
         listener->generation = nk::core::runtime_generation();
