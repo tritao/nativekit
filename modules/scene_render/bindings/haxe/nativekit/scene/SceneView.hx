@@ -8,6 +8,7 @@ class SceneView {
 	final value:nkscene_render_view;
 	var visibilityOverrides:Array<nkscene_render_visibility_override> = [];
 	var materialOverrides:Array<nkscene_render_material_override> = [];
+	var clipPlanes:Array<nkscene_render_clip_plane> = [];
 
 	public function new() {
 		value = new nkscene_render_view();
@@ -41,6 +42,26 @@ class SceneView {
 	/** Disables bounds culling and restores the default identity projection. */
 	public function clearViewProjection():SceneView {
 		value.set_camera(new nkscene_render_camera());
+		return this;
+	}
+
+	/** Adds a conservative occurrence-level section plane. Kept side is normal * p + distance >= 0. */
+	public function addClipPlane(normalX:Float, normalY:Float, normalZ:Float,
+			distance:Float, enabled:Bool = true):SceneView {
+		var plane = new nkscene_render_clip_plane();
+		plane.set_normal(0, normalX);
+		plane.set_normal(1, normalY);
+		plane.set_normal(2, normalZ);
+		plane.set_distance(distance);
+		plane.set_enabled(enabled ? 1 : 0);
+		clipPlanes.push(plane);
+		value.set_clip_planes(clipPlanes);
+		return this;
+	}
+
+	public function clearClipPlanes():SceneView {
+		clipPlanes.resize(0);
+		value.set_clip_planes(clipPlanes);
 		return this;
 	}
 
@@ -91,6 +112,9 @@ class SceneView {
 
 	public function materialOverrideCount():Int
 		return materialOverrides.length;
+
+	public function clipPlaneCount():Int
+		return clipPlanes.length;
 
 	@:allow(SceneRenderer)
 	function nativeValue():nkscene_render_view

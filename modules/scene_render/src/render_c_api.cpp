@@ -26,7 +26,8 @@ nkscene_result copy_view(const nkscene_render_view *input, nkscene::SceneView &o
     if (input->struct_size < sizeof(nkscene_render_view))
         return NKS_ERROR_INVALID_ARGUMENT;
     if ((input->visibility_override_count != 0 && !input->visibility_overrides) ||
-        (input->material_override_count != 0 && !input->material_overrides))
+        (input->material_override_count != 0 && !input->material_overrides) ||
+        (input->clip_plane_count != 0 && !input->clip_planes))
         return NKS_ERROR_INVALID_ARGUMENT;
 
     output.root = {input->root.value};
@@ -40,6 +41,16 @@ nkscene_result copy_view(const nkscene_render_view *input, nkscene::SceneView &o
     for (uint32_t index = 0; index < input->material_override_count; ++index) {
         const auto &value = input->material_overrides[index];
         output.material_overrides.push_back({{value.occurrence.value}, {value.material.value}});
+    }
+    output.clip_planes.reserve(input->clip_plane_count);
+    for (uint32_t index = 0; index < input->clip_plane_count; ++index) {
+        const auto &value = input->clip_planes[index];
+        nkscene::ClipPlane plane;
+        for (uint32_t axis = 0; axis < 3; ++axis)
+            plane.normal[axis] = value.normal[axis];
+        plane.distance = value.distance;
+        plane.enabled = value.enabled != 0;
+        output.clip_planes.push_back(plane);
     }
     output.camera.enabled = input->camera.enabled != 0;
     for (uint32_t index = 0; index < 16; ++index)

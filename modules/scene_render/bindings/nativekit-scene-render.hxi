@@ -28,6 +28,11 @@ interface NativeKitSceneRender @target("portable-abi64") @library("nativekit_sce
 		enabled: u32 @offset(0);
 		view_projection: nkscene_transform @offset(4);
 	}
+	struct nkscene_render_clip_plane @layout(20, 4) {
+		normal: array<f32, 3> @offset(0);
+		distance: f32 @offset(12);
+		enabled: u32 @offset(16);
+	}
 	struct nkscene_render_execution_stats @layout(72, 8) {
 		struct_size: u32 @offset(0) @struct_size;
 		result: nkgpu_result @offset(4);
@@ -66,7 +71,7 @@ interface NativeKitSceneRender @target("portable-abi64") @library("nativekit_sce
 		visible_items: u64 @offset(80);
 		culled_items: u64 @offset(88);
 	}
-	struct nkscene_render_view @layout(120, 8) {
+	struct nkscene_render_view @layout(136, 8) {
 		struct_size: u32 @offset(0) @struct_size;
 		root: nkscene_occurrence_id @offset(8);
 		include_invisible: u32 @offset(16);
@@ -75,6 +80,8 @@ interface NativeKitSceneRender @target("portable-abi64") @library("nativekit_sce
 		material_overrides: ptr<const<nkscene_render_material_override>> @offset(40) @borrowed @length_field("material_override_count");
 		material_override_count: u32 @offset(48);
 		camera: nkscene_render_camera @offset(52);
+		clip_planes: ptr<const<nkscene_render_clip_plane>> @offset(120) @borrowed @length_field("clip_plane_count");
+		clip_plane_count: u32 @offset(128);
 	}
 	struct nkscene_render_visibility_override @layout(16, 8) {
 		occurrence: nkscene_occurrence_id @offset(0);

@@ -46,6 +46,12 @@ typedef struct nkscene_render_material_override {
     nkscene_material_id material;
 } nkscene_render_material_override;
 
+typedef struct nkscene_render_clip_plane {
+    float normal[3];
+    float distance;
+    uint32_t enabled NK_BOOL32;
+} nkscene_render_clip_plane;
+
 typedef struct nkscene_render_camera {
     uint32_t enabled NK_BOOL32;
     nkscene_transform view_projection;
@@ -62,6 +68,8 @@ typedef struct nkscene_render_view {
         material_overrides NK_BORROWED_ARRAY(material_override_count);
     uint32_t material_override_count;
     nkscene_render_camera camera;
+    const nkscene_render_clip_plane *clip_planes NK_BORROWED_ARRAY(clip_plane_count);
+    uint32_t clip_plane_count;
 } nkscene_render_view;
 
 typedef struct nkscene_render_update {
@@ -171,6 +179,12 @@ struct MaterialOverride {
     MaterialId material;
 };
 
+struct ClipPlane {
+    std::array<float, 3> normal{0.0f, 0.0f, 1.0f};
+    float distance = 0.0f;
+    bool enabled = true;
+};
+
 struct SceneCamera {
     bool enabled = false;
     std::array<float, 16> view_projection{
@@ -190,6 +204,8 @@ struct SceneView {
     std::vector<MaterialOverride> material_overrides;
     /** Optional world-to-clip transform used for bounds culling and rendering. */
     SceneCamera camera;
+    /** Conservative occurrence-level sectioning planes. */
+    std::vector<ClipPlane> clip_planes;
 };
 
 enum class RenderFlags : std::uint32_t {
@@ -302,6 +318,7 @@ class RenderPlan {
     std::vector<InstanceBatch> batches_;
     std::unordered_map<GeometryId, std::uint64_t> geometry_revisions_;
     std::unordered_map<MaterialId, std::uint64_t> material_revisions_;
+    OccurrenceId view_root_;
     std::array<float, 16> view_projection_ = {
         1.0f, 0.0f, 0.0f, 0.0f,
         0.0f, 1.0f, 0.0f, 0.0f,
@@ -310,6 +327,7 @@ class RenderPlan {
     std::size_t visible_items_ = 0;
     std::size_t culled_items_ = 0;
     std::size_t compile_count_ = 0;
+    std::uint64_t culling_signature_ = 0;
 
     friend NKSRENDER_API RenderPlan compile(const SceneSnapshot &, const SceneView &);
     friend NKSRENDER_API RenderUpdate update(RenderPlan &, const SceneSnapshot &, const ChangeSet &,

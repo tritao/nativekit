@@ -344,6 +344,59 @@ void scene_view_camera_culling_is_incremental() {
                                      nkscene::RenderFlags::Culled));
 }
 
+void scene_view_clip_planes_are_incremental() {
+    auto scene = std::make_shared<Scene>();
+    const auto geometry = scene->reserve_geometry_id();
+    auto &geometry_resource = scene->geometry_store().create(geometry);
+    geometry_resource.bounds.valid = true;
+    geometry_resource.bounds.minimum = {-0.25f, -0.25f, -0.25f};
+    geometry_resource.bounds.maximum = {0.25f, 0.25f, 0.25f};
+    const auto material = scene->reserve_material_id();
+    scene->material_store().create(material);
+    const auto inside = scene->reserve_occurrence_id();
+    const auto outside = scene->reserve_occurrence_id();
+
+    Transaction create(scene);
+    create.add_create(inside);
+    create.add_create(outside);
+    ChangeSet changes;
+    assert(scene->commit(create, changes) == NKS_OK);
+    create.close();
+
+    Transaction configure(scene);
+    configure.add_geometry(inside, geometry);
+    configure.add_material(inside, material);
+    configure.add_geometry(outside, geometry);
+    configure.add_material(outside, material);
+    configure.add_transform(outside, translated(2.0f));
+    assert(scene->commit(configure, changes) == NKS_OK);
+    configure.close();
+
+    nkscene::SceneView clipped_view;
+    clipped_view.clip_planes.push_back({{-1.0f, 0.0f, 0.0f}, 0.0f, true});
+    const auto snapshot = scene->snapshot();
+    auto plan = nkscene::compile(snapshot, clipped_view);
+    assert(plan.items().size() == 2);
+    assert(plan.visible_items() == 1);
+    assert(plan.culled_items() == 1);
+    const auto compile_count = plan.compile_count();
+
+    auto relaxed_view = clipped_view;
+    relaxed_view.clip_planes.front().distance = 2.0f;
+    const auto update = nkscene::refresh(plan, snapshot, relaxed_view);
+    assert(!update.plan_rebuilt);
+    assert(update.patched_culling == 1);
+    assert(update.visible_items == 2);
+    assert(update.culled_items == 0);
+    assert(plan.compile_count() == compile_count);
+
+    relaxed_view.clip_planes.clear();
+    const auto cleared = nkscene::refresh(plan, snapshot, relaxed_view);
+    assert(!cleared.plan_rebuilt);
+    assert(cleared.patched_culling == 0);
+    assert(cleared.visible_items == 2);
+}
+
 } // namespace
 
 int main() {
@@ -351,6 +404,7 @@ int main() {
     resource_lifecycle_is_cache_safe();
     scene_views_are_hierarchy_aware();
     scene_view_camera_culling_is_incremental();
+    scene_view_clip_planes_are_incremental();
     constexpr std::size_t count = 50000;
     auto scene = std::make_shared<Scene>();
     const auto geometry = scene->reserve_geometry_id();
@@ -424,12 +478,33 @@ int main() {
     assert(update.patched_visibility == 1000);
     assert(plan.items().size() == count);
 
+    const auto hidden_snapshot = scene->snapshot();
+    const auto scene_revision = scene->revision();
+    nkscene::SceneView filtered_view;
+    for (std::size_t index = 1000; index < 2000; ++index)
+        filtered_view.visibility_overrides.push_back({occurrences[index], false});
+    nkscene::ChangeSet no_changes;
+    update = nkscene::update(plan, hidden_snapshot, no_changes, filtered_view);
+    assert(!update.plan_rebuilt);
+    assert(update.patched_visibility == 1000);
+    assert(update.visible_items == count - 2000);
+    assert(plan.items().size() == count);
+    assert(scene->revision() == scene_revision);
+
+    auto selected_view = filtered_view;
+    selected_view.material_overrides.push_back({occurrences[2000], materials[3]});
+    update = nkscene::update(plan, hidden_snapshot, no_changes, selected_view);
+    assert(!update.plan_rebuilt);
+    assert(update.patched_materials == 1);
+    assert(update.rebuilt_batches != 0);
+    assert(scene->revision() == scene_revision);
+
     nkscene::NativeKitGpuExecutor executor;
     auto gpu_stats = executor.execute(plan, scene->snapshot());
     assert(gpu_stats.geometry_resources_created == 1);
     assert(gpu_stats.material_resources_created == materials.size());
-    assert(gpu_stats.commands == count - 1000);
-    assert(executor.commands().size() == count - 1000);
+    assert(gpu_stats.commands == count - 2000);
+    assert(executor.commands().size() == count - 2000);
     gpu_stats = executor.execute(plan, scene->snapshot());
     assert(gpu_stats.geometry_resources_created == 0);
     assert(gpu_stats.material_resources_created == 0);

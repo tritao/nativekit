@@ -34,6 +34,23 @@ bool culled_by_camera(const Bounds &bounds, const SceneCamera &camera) noexcept 
     return false;
 }
 
+bool culled_by_clip_planes(const Bounds &bounds,
+                           std::span<const ClipPlane> planes) noexcept {
+    if (!bounds.valid)
+        return false;
+    for (const auto &plane : planes) {
+        if (!plane.enabled)
+            continue;
+        const auto x = plane.normal[0] >= 0.0f ? bounds.maximum[0] : bounds.minimum[0];
+        const auto y = plane.normal[1] >= 0.0f ? bounds.maximum[1] : bounds.minimum[1];
+        const auto z = plane.normal[2] >= 0.0f ? bounds.maximum[2] : bounds.minimum[2];
+        if (plane.normal[0] * x + plane.normal[1] * y + plane.normal[2] * z +
+                plane.distance < 0.0f)
+            return true;
+    }
+    return false;
+}
+
 EffectiveState effective_state(const SceneSnapshot &snapshot, const SceneView &view) {
     EffectiveState result;
     const auto occurrences = snapshot.occurrences();
@@ -122,6 +139,32 @@ std::uint64_t view_signature(const SceneView &view) noexcept {
     add(view.camera.enabled ? 1 : 0);
     for (const auto value : view.camera.view_projection)
         add(std::hash<float>{}(value));
+    add(view.clip_planes.size());
+    for (const auto &plane : view.clip_planes) {
+        for (const auto value : plane.normal)
+            add(std::hash<float>{}(value));
+        add(std::hash<float>{}(plane.distance));
+        add(plane.enabled ? 1 : 0);
+    }
+    return hash;
+}
+
+std::uint64_t culling_signature(const SceneView &view) noexcept {
+    std::uint64_t hash = 1469598103934665603ull;
+    const auto add = [&hash](std::uint64_t value) {
+        hash ^= value;
+        hash *= 1099511628211ull;
+    };
+    add(view.camera.enabled ? 1 : 0);
+    for (const auto value : view.camera.view_projection)
+        add(std::hash<float>{}(value));
+    add(view.clip_planes.size());
+    for (const auto &plane : view.clip_planes) {
+        for (const auto value : plane.normal)
+            add(std::hash<float>{}(value));
+        add(std::hash<float>{}(plane.distance));
+        add(plane.enabled ? 1 : 0);
+    }
     return hash;
 }
 
@@ -153,7 +196,8 @@ void build_items(RenderPlan &plan, const SceneSnapshot &snapshot, const SceneVie
         item.flags = RenderFlags::Opaque;
         if (!state.visible.at(occurrence.occurrence))
             item.flags |= RenderFlags::Hidden;
-        if (culled_by_camera(occurrence.bounds, view.camera)) {
+        if (culled_by_camera(occurrence.bounds, view.camera) ||
+            culled_by_clip_planes(occurrence.bounds, view.clip_planes)) {
             item.flags |= RenderFlags::Culled;
             ++plan.culled_items_;
         } else if (state.visible.at(occurrence.occurrence)) {

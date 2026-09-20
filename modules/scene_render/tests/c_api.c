@@ -84,7 +84,8 @@ int main(void) {
     refresh.struct_size = sizeof(refresh);
     view.include_invisible = 1;
     assert(nkscene_render_plan_refresh(plan, snapshot, &view, &refresh) == NKS_OK);
-    assert(refresh.plan_rebuilt == 1);
+    assert(refresh.plan_rebuilt == 0);
+    assert(refresh.patched_visibility == 0);
     refresh.struct_size = sizeof(refresh);
     assert(nkscene_render_plan_refresh(plan, snapshot, &view, &refresh) == NKS_OK);
     assert(refresh.plan_rebuilt == 0);
