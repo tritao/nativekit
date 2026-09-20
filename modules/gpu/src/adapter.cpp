@@ -1082,6 +1082,8 @@ nkgpu_result nkgpu_query_features(nkgpu_renderer renderer, nkgpu_features *out_f
     if (!slot || !out_features)
         return fail(!out_features ? NKGPU_ERROR_INVALID_ARGUMENT : NKGPU_ERROR_INVALID_HANDLE,
                     "invalid GPU feature query");
+    if (out_features->struct_size < sizeof(nkgpu_features))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "feature query output is too small");
     if (slot->value.state == RendererState::Lost)
         return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
     const nkgpu_result activated = activate_renderer(renderer);
@@ -1091,7 +1093,8 @@ nkgpu_result nkgpu_query_features(nkgpu_renderer renderer, nkgpu_features *out_f
     nkgpu_features features{};
     features.struct_size = sizeof(features);
     const sg_limits native_limits = selected_api->query_limits();
-    features.mrt_count = static_cast<uint32_t>(native_limits.max_color_attachments);
+    features.mrt_count = static_cast<uint32_t>(std::min(
+        native_limits.max_color_attachments, static_cast<int>(NKGPU_MAX_COLOR_ATTACHMENTS)));
     features.max_samples =
         selected_api->query_max_samples
             ? static_cast<uint32_t>(std::max(1, selected_api->query_max_samples()))
@@ -1117,6 +1120,8 @@ nkgpu_result nkgpu_query_limits(nkgpu_renderer renderer, nkgpu_limits *out_limit
     if (!slot || !out_limits)
         return fail(!out_limits ? NKGPU_ERROR_INVALID_ARGUMENT : NKGPU_ERROR_INVALID_HANDLE,
                     "invalid GPU limit query");
+    if (out_limits->struct_size < sizeof(nkgpu_limits))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "limit query output is too small");
     if (slot->value.state == RendererState::Lost)
         return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
     const nkgpu_result activated = activate_renderer(renderer);
@@ -1128,7 +1133,8 @@ nkgpu_result nkgpu_query_limits(nkgpu_renderer renderer, nkgpu_limits *out_limit
     limits.max_texture_size = static_cast<uint32_t>(std::max(0, native.max_image_size_2d));
     limits.max_array_layers = static_cast<uint32_t>(std::max(0, native.max_image_array_layers));
     limits.max_vertex_attributes = static_cast<uint32_t>(std::max(0, native.max_vertex_attrs));
-    limits.max_color_attachments = static_cast<uint32_t>(std::max(0, native.max_color_attachments));
+    limits.max_color_attachments = static_cast<uint32_t>(std::min(
+        std::max(0, native.max_color_attachments), static_cast<int>(NKGPU_MAX_COLOR_ATTACHMENTS)));
     limits.max_texture_bindings =
         static_cast<uint32_t>(std::max(0, native.max_texture_bindings_per_stage));
     limits.max_storage_buffer_bindings =
@@ -1814,6 +1820,12 @@ nkgpu_result nkgpu_buffer_create_stream(nkgpu_renderer r, uint32_t capacity,
     const nkgpu_result activated = activate_renderer(r);
     if (activated != NKGPU_OK)
         return activated;
+    if (usage & NKGPU_BUFFER_STORAGE) {
+        const sg_features features = selected_api->query_features();
+        const sg_limits limits = selected_api->query_limits();
+        if (!features.compute || limits.max_storage_buffer_bindings_per_stage <= 0)
+            return fail(NKGPU_ERROR_UNSUPPORTED, "storage buffers are unavailable");
+    }
     if (consume_buffer_creation_failure(r))
         return fail(NKGPU_ERROR_OUT_OF_MEMORY, "injected buffer allocation failure");
     sg_buffer_desc desc{};
@@ -1891,6 +1903,12 @@ nkgpu_result nkgpu_buffer_create_desc(nkgpu_renderer r, const nkgpu_buffer_desc 
     const nkgpu_result activated = activate_renderer(r);
     if (activated != NKGPU_OK)
         return activated;
+    if (desc.usage & NKGPU_BUFFER_STORAGE) {
+        const sg_features features = selected_api->query_features();
+        const sg_limits limits = selected_api->query_limits();
+        if (!features.compute || limits.max_storage_buffer_bindings_per_stage <= 0)
+            return fail(NKGPU_ERROR_UNSUPPORTED, "storage buffers are unavailable");
+    }
     if (consume_buffer_creation_failure(r))
         return fail(NKGPU_ERROR_OUT_OF_MEMORY, "injected buffer allocation failure");
     sg_buffer_desc native_desc{};
@@ -3166,6 +3184,21 @@ nkgpu_result nkgpu_image_create_desc(nkgpu_renderer r, const nkgpu_image_desc *i
     const nkgpu_result activated = activate_renderer(r);
     if (activated != NKGPU_OK)
         return activated;
+    const sg_features features = selected_api->query_features();
+    const sg_limits limits = selected_api->query_limits();
+    if (usage & NKGPU_IMAGE_STORAGE) {
+        if (!features.compute || limits.max_storage_image_bindings_per_stage <= 0)
+            return fail(NKGPU_ERROR_UNSUPPORTED, "storage images are unavailable");
+    }
+    const uint32_t max_texture_size = static_cast<uint32_t>(std::max(0, limits.max_image_size_2d));
+    const uint32_t max_array_layers =
+        static_cast<uint32_t>(std::max(0, limits.max_image_array_layers));
+    const uint32_t max_samples = selected_api->query_max_samples
+                                     ? static_cast<uint32_t>(std::max(1, selected_api->query_max_samples()))
+                                     : 1u;
+    if (desc.width > max_texture_size || desc.height > max_texture_size ||
+        layer_count > max_array_layers || sample_count > max_samples)
+        return fail(NKGPU_ERROR_UNSUPPORTED, "image descriptor exceeds backend limits");
     if (consume_image_creation_failure(r))
         return fail(NKGPU_ERROR_OUT_OF_MEMORY, "injected image allocation failure");
 

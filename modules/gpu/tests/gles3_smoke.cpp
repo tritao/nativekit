@@ -98,6 +98,41 @@ int main() {
         return 3;
     }
 
+    nkgpu_features features{};
+    features.struct_size = sizeof(features);
+    nkgpu_limits limits{};
+    limits.struct_size = sizeof(limits);
+    if (!expect(nkgpu_query_features(resources.renderer, &features), NKGPU_OK,
+                 "nkgpu_query_features") ||
+        !expect(nkgpu_query_limits(resources.renderer, &limits), NKGPU_OK,
+                 "nkgpu_query_limits") ||
+        !features.mrt_count || features.mrt_count != limits.max_color_attachments ||
+        features.mrt_count > NKGPU_MAX_COLOR_ATTACHMENTS || !features.max_samples ||
+        !limits.max_texture_size || !limits.max_array_layers || !limits.max_vertex_attributes ||
+        !limits.max_texture_bindings || features.storage_buffer > 1 ||
+        features.storage_image > 1 || features.compute > 1) {
+        std::fprintf(stderr, "GLES3 capability envelope is inconsistent\n");
+        return 4;
+    }
+    nkgpu_buffer storage_buffer{};
+    nkgpu_buffer_desc storage_buffer_desc{};
+    storage_buffer_desc.struct_size = sizeof(storage_buffer_desc);
+    storage_buffer_desc.size = 16;
+    storage_buffer_desc.usage = NKGPU_BUFFER_STORAGE;
+    const nkgpu_result storage_buffer_result =
+        nkgpu_buffer_create_desc(resources.renderer, &storage_buffer_desc, &storage_buffer);
+    if (features.storage_buffer) {
+        if (!expect(storage_buffer_result, NKGPU_OK, "nkgpu_buffer_create_desc(storage)"))
+            return 5;
+        if (!expect(nkgpu_buffer_destroy(resources.renderer, storage_buffer), NKGPU_OK,
+                     "nkgpu_buffer_destroy(storage)"))
+            return 6;
+    } else if (storage_buffer_result != NKGPU_ERROR_UNSUPPORTED) {
+        std::fprintf(stderr, "GLES3 storage-buffer request returned %d\n",
+                     storage_buffer_result);
+        return 7;
+    }
+
     const char *vertex_source =
         "#version 300 es\n"
         "layout(location=0) in vec2 position;\n"
@@ -110,7 +145,7 @@ int main() {
     if (!expect(nkgpu_shader_create(resources.renderer, NKGPU_SHADERLANGUAGE_GLSL,
                                     vertex_source, fragment_source, &resources.shader),
                 NKGPU_OK, "nkgpu_shader_create"))
-        return 4;
+        return 8;
 
     nkgpu_pipeline_builder pipeline_builder{};
     if (!expect(nkgpu_pipeline_begin(resources.renderer, resources.shader, 2 * sizeof(float),
@@ -120,14 +155,14 @@ int main() {
                 NKGPU_OK, "nkgpu_pipeline_attribute") ||
         !expect(nkgpu_pipeline_end(pipeline_builder, &resources.pipeline), NKGPU_OK,
                 "nkgpu_pipeline_end"))
-        return 5;
+        return 9;
 
     const float vertices[] = {-1.0f, -1.0f, 3.0f, -1.0f, -1.0f, 3.0f};
     if (!expect(nkgpu_buffer_create(resources.renderer,
                                     reinterpret_cast<const uint8_t *>(vertices), sizeof(vertices),
                                     &resources.buffer),
                 NKGPU_OK, "nkgpu_buffer_create"))
-        return 6;
+        return 10;
 
     if (!expect(nkgpu_begin_frame(resources.renderer), NKGPU_OK, "nkgpu_begin_frame") ||
         !expect(nkgpu_apply_pipeline(resources.renderer, resources.pipeline), NKGPU_OK,
@@ -136,7 +171,7 @@ int main() {
                 "nkgpu_apply_vertex_buffer") ||
         !expect(nkgpu_draw(resources.renderer, 0, 3, 1), NKGPU_OK, "nkgpu_draw") ||
         !expect(nkgpu_end_pass(resources.renderer), NKGPU_OK, "nkgpu_end_pass"))
-        return 7;
+        return 11;
 
     uint8_t pixel[4]{};
     glReadPixels(window_options.width / 2, window_options.height / 2, 1, 1, GL_RGBA,
@@ -144,9 +179,9 @@ int main() {
     if (pixel[0] < 180 || pixel[1] > 60 || pixel[2] > 40 || pixel[3] < 240) {
         std::fprintf(stderr, "GLES3 render pixel was (%u,%u,%u,%u)\n", pixel[0], pixel[1],
                      pixel[2], pixel[3]);
-        return 8;
+        return 12;
     }
     if (!expect(nkgpu_end_frame(resources.renderer), NKGPU_OK, "nkgpu_end_frame"))
-        return 9;
+        return 13;
     return 0;
 }

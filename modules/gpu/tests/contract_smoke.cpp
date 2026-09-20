@@ -206,6 +206,14 @@ int main() {
         nkgpu_limits limits{};
         features.struct_size = sizeof(features);
         limits.struct_size = sizeof(limits);
+        nkgpu_features short_features{};
+        short_features.struct_size = sizeof(short_features) - 1;
+        EXPECT_RESULT(nkgpu_query_features(first, &short_features), NKGPU_ERROR_INVALID_ARGUMENT);
+        nkgpu_limits short_limits{};
+        short_limits.struct_size = sizeof(short_limits) - 1;
+        EXPECT_RESULT(nkgpu_query_limits(first, &short_limits), NKGPU_ERROR_INVALID_ARGUMENT);
+        EXPECT_RESULT(nkgpu_query_features(first, nullptr), NKGPU_ERROR_INVALID_ARGUMENT);
+        EXPECT_RESULT(nkgpu_query_limits(first, nullptr), NKGPU_ERROR_INVALID_ARGUMENT);
         EXPECT_RESULT(nkgpu_query_features(first, &features), NKGPU_OK);
         EXPECT_RESULT(nkgpu_query_limits(first, &limits), NKGPU_OK);
         nkgpu_native_context native_context{};
@@ -221,9 +229,13 @@ int main() {
         EXPECT_RESULT(nkgpu_submit_command_stream(first, &unsupported_stream),
                       NKGPU_ERROR_INVALID_ARGUMENT);
         if (!features.mrt_count || !features.max_samples || !features.instancing ||
-            !features.buffer_copy ||
-            !features.image_copy || !features.image_readback || !limits.max_texture_size ||
-            !limits.max_color_attachments) {
+            features.mrt_count != limits.max_color_attachments ||
+            features.mrt_count > NKGPU_MAX_COLOR_ATTACHMENTS || !limits.max_texture_size ||
+            !limits.max_array_layers || !limits.max_vertex_attributes ||
+            !limits.max_texture_bindings || !limits.max_color_attachments ||
+            features.storage_buffer > 1 || features.storage_image > 1 || features.compute > 1 ||
+            features.instancing > 1 || features.buffer_copy > 1 || features.image_copy > 1 ||
+            features.image_readback > 1) {
             result = __LINE__;
             goto cleanup;
         }
@@ -236,6 +248,93 @@ int main() {
             std::fprintf(stderr, "storage capability flags do not match reported limits\n");
             result = __LINE__;
             goto cleanup;
+        }
+
+        nkgpu_buffer storage_probe{};
+        nkgpu_buffer_desc storage_probe_desc{};
+        storage_probe_desc.struct_size = sizeof(storage_probe_desc);
+        storage_probe_desc.size = 16;
+        storage_probe_desc.usage = NKGPU_BUFFER_STORAGE;
+        const nkgpu_result storage_buffer_result =
+            nkgpu_buffer_create_desc(first, &storage_probe_desc, &storage_probe);
+        if (features.storage_buffer) {
+            if (storage_buffer_result != NKGPU_OK) {
+                std::fprintf(stderr, "reported storage buffers failed to create: %s\n",
+                             nkgpu_last_error());
+                result = __LINE__;
+                goto cleanup;
+            }
+            EXPECT_RESULT(nkgpu_buffer_destroy(first, storage_probe), NKGPU_OK);
+            storage_probe = {};
+        } else if (storage_buffer_result != NKGPU_ERROR_UNSUPPORTED) {
+            std::fprintf(stderr, "unsupported storage buffers returned %d\n",
+                         storage_buffer_result);
+            result = __LINE__;
+            goto cleanup;
+        }
+
+        nkgpu_image storage_image_probe{};
+        nkgpu_image_desc storage_image_probe_desc{};
+        storage_image_probe_desc.struct_size = sizeof(storage_image_probe_desc);
+        storage_image_probe_desc.width = 1;
+        storage_image_probe_desc.height = 1;
+        storage_image_probe_desc.format = NKGPU_IMAGEFORMAT_R32F;
+        storage_image_probe_desc.usage = NKGPU_IMAGE_STORAGE;
+        const nkgpu_result storage_image_result =
+            nkgpu_image_create_desc(first, &storage_image_probe_desc, &storage_image_probe);
+        if (features.storage_image) {
+            if (storage_image_result != NKGPU_OK) {
+                std::fprintf(stderr, "reported storage images failed to create: %s\n",
+                             nkgpu_last_error());
+                result = __LINE__;
+                goto cleanup;
+            }
+            EXPECT_RESULT(nkgpu_image_destroy(first, storage_image_probe), NKGPU_OK);
+            storage_image_probe = {};
+        } else if (storage_image_result != NKGPU_ERROR_UNSUPPORTED) {
+            std::fprintf(stderr, "unsupported storage images returned %d\n",
+                         storage_image_result);
+            result = __LINE__;
+            goto cleanup;
+        }
+
+        if (features.max_samples < UINT32_MAX) {
+            nkgpu_image oversized_sample_image{};
+            nkgpu_image_desc oversized_sample_desc{};
+            oversized_sample_desc.struct_size = sizeof(oversized_sample_desc);
+            oversized_sample_desc.width = 1;
+            oversized_sample_desc.height = 1;
+            oversized_sample_desc.format = NKGPU_IMAGEFORMAT_RGBA8;
+            oversized_sample_desc.usage = NKGPU_IMAGE_RENDER_TARGET;
+            oversized_sample_desc.sample_count = features.max_samples + 1;
+            const nkgpu_result oversized_sample_result = nkgpu_image_create_desc(
+                first, &oversized_sample_desc, &oversized_sample_image);
+            if (oversized_sample_result != NKGPU_ERROR_UNSUPPORTED) {
+                if (oversized_sample_image.id)
+                    nkgpu_image_destroy(first, oversized_sample_image);
+                std::fprintf(stderr, "oversized sample count returned %d\n",
+                             oversized_sample_result);
+                result = __LINE__;
+                goto cleanup;
+            }
+        }
+        if (limits.max_texture_size < UINT32_MAX) {
+            nkgpu_image oversized_image{};
+            nkgpu_image_desc oversized_desc{};
+            oversized_desc.struct_size = sizeof(oversized_desc);
+            oversized_desc.width = limits.max_texture_size + 1;
+            oversized_desc.height = 1;
+            oversized_desc.format = NKGPU_IMAGEFORMAT_RGBA8;
+            oversized_desc.usage = NKGPU_IMAGE_RENDER_TARGET;
+            const nkgpu_result oversized_result =
+                nkgpu_image_create_desc(first, &oversized_desc, &oversized_image);
+            if (oversized_result != NKGPU_ERROR_UNSUPPORTED) {
+                if (oversized_image.id)
+                    nkgpu_image_destroy(first, oversized_image);
+                std::fprintf(stderr, "oversized texture returned %d\n", oversized_result);
+                result = __LINE__;
+                goto cleanup;
+            }
         }
 
         const uint8_t transfer_pixels[] = {
