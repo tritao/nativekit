@@ -1499,13 +1499,11 @@ NKGPU_API nkgpu_result nkgpu_timestamp_query(nkgpu_renderer renderer, nkgpu_time
 
 /** Queries multiple timestamp intervals in one backend access operation. */
 NKGPU_API nkgpu_result nkgpu_timestamp_collect(nkgpu_renderer renderer,
-                                               const nkgpu_timestamp *timestamps,
-                                               uint32_t count,
+                                               const nkgpu_timestamp *timestamps, uint32_t count,
                                                nkgpu_timestamp_result *out_results NKGPU_OUT);
 
 /** Returns a borrowed label copied from a timestamp descriptor. */
-NKGPU_API const char *nkgpu_timestamp_get_label(nkgpu_renderer renderer,
-                                                nkgpu_timestamp timestamp)
+NKGPU_API const char *nkgpu_timestamp_get_label(nkgpu_renderer renderer, nkgpu_timestamp timestamp)
     NKGPU_RETURNS_BORROWED_UTF8;
 
 /** Destroys a timestamp query. */

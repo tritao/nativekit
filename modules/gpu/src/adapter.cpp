@@ -4139,7 +4139,8 @@ nkgpu_result nkgpu_readback_destroy(nkgpu_renderer r, nkgpu_readback h) {
     return NKGPU_OK;
 }
 
-static nkgpu_result query_timestamp_backend(Renderer &renderer, Timestamp &timestamp,
+static nkgpu_result query_timestamp_backend(Renderer &renderer,
+                                             Timestamp &timestamp,
                                              nkgpu_timestamp_info &out_info) {
     const nk_sokol_transfer_api *transfer = renderer.api->transfer;
     if (!transfer || !transfer->timestamp_supported || !transfer->timestamp_supported() ||
@@ -4175,8 +4176,8 @@ nkgpu_result nkgpu_timestamp_begin_desc(nkgpu_renderer r, const nkgpu_timestamp_
     const uint32_t native = transfer->timestamp_begin();
     if (!native)
         return fail(NKGPU_ERROR_UNSUPPORTED, "GPU timestamps are unavailable");
-    const Handle handle = timestamp_pool.add(Timestamp{r, native, false,
-                                                       desc->label ? desc->label : ""});
+    const Handle handle =
+        timestamp_pool.add(Timestamp{r, native, false, desc->label ? desc->label : ""});
     if (!handle) {
         if (transfer->timestamp_destroy)
             transfer->timestamp_destroy(native);
