@@ -616,7 +616,11 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	 */
 	extern fn nkui_graphics_surface_create(image: nk_graphics_image, out_surface: ptr<nkui_resource> @out) -> nkui_result;
 	/**
-	 * Publishes a retained graphics image to an existing compositable surface.
+	 * Publishes a new retained graphics image to an existing graphics surface.
+	 * The surface handle remains stable, and NativeKit retains the image until a
+	 * later publication or surface destruction. This is the handoff path for
+	 * camera, video, and other native producers; callers retain ownership of
+	 * their input image.
 	 */
 	extern fn nkui_graphics_surface_publish_image(surface: nkui_resource, image: nk_graphics_image) -> nkui_result;
 	/**
