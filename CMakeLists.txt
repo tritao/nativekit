@@ -186,7 +186,11 @@ endif()
 if(EMSCRIPTEN)
     if(NK_WEB_THREADED_RENDER)
         target_compile_definitions(nativekit PRIVATE NK_WEB_THREADED_RENDER=1)
-        target_compile_options(nativekit PRIVATE -pthread)
+        # Every static-library consumer must be compiled with atomics and
+        # bulk-memory enabled as well as the core NativeKit sources.  Without
+        # a transitive compile option, Emscripten accepts the link flags but
+        # rejects consumer objects when shared memory is enabled.
+        target_compile_options(nativekit PUBLIC -pthread)
         target_link_options(nativekit INTERFACE
             "-pthread"
             "-sOFFSCREENCANVAS_SUPPORT=1"
