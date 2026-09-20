@@ -58,6 +58,80 @@ void geometry_payload_contract_is_validated() {
     assert(stats.result == NKGPU_ERROR_INVALID_ARGUMENT);
 }
 
+void resource_lifecycle_is_cache_safe() {
+    auto scene = std::make_shared<Scene>();
+    const auto geometry = scene->reserve_geometry_id();
+    auto &geometry_resource = scene->geometry_store().create(geometry);
+    geometry_resource.payload.vertices = {
+        nkscene::GeometryVertex{{-1.0f, -1.0f, 0.0f}},
+        nkscene::GeometryVertex{{1.0f, -1.0f, 0.0f}},
+        nkscene::GeometryVertex{{0.0f, 1.0f, 0.0f}}};
+    geometry_resource.payload.indices = {0, 1, 2};
+
+    const auto material = scene->reserve_material_id();
+    scene->material_store().create(material);
+    const auto occurrence = scene->reserve_occurrence_id();
+    Transaction create(scene);
+    create.add_create(occurrence);
+    ChangeSet changes;
+    assert(scene->commit(create, changes) == NKS_OK);
+    create.close();
+    Transaction configure(scene);
+    configure.add_geometry(occurrence, geometry);
+    configure.add_material(occurrence, material);
+    assert(scene->commit(configure, changes) == NKS_OK);
+    configure.close();
+
+    const auto view = nkscene::SceneView{};
+    const auto plan = nkscene::compile(scene->snapshot(), view);
+    nkscene::NativeKitGpuExecutor executor;
+    auto stats = executor.execute(plan, scene->snapshot());
+    assert(stats.result == NKGPU_OK);
+    assert(stats.geometry_resources_created == 1);
+    assert(stats.material_resources_created == 1);
+
+    auto &non_indexed = scene->geometry_store().create(geometry);
+    non_indexed.payload.indices.clear();
+    stats = executor.execute(plan, scene->snapshot());
+    assert(stats.result == NKGPU_OK);
+    assert(stats.geometry_resources_created == 0);
+    assert(stats.geometry_resources_updated == 1);
+
+    auto &indexed = scene->geometry_store().create(geometry);
+    indexed.payload.indices = {0, 1, 2};
+    stats = executor.execute(plan, scene->snapshot());
+    assert(stats.result == NKGPU_OK);
+    assert(stats.geometry_resources_created == 0);
+    assert(stats.geometry_resources_updated == 1);
+
+    const auto vertices = indexed.payload.vertices;
+    assert(scene->geometry_store().destroy(geometry));
+    stats = executor.execute(plan, scene->snapshot());
+    assert(stats.result == NKGPU_OK);
+    assert(stats.geometry_resources_created == 0);
+    assert(stats.geometry_resources_updated == 0);
+
+    auto &restored_geometry = scene->geometry_store().create(geometry);
+    restored_geometry.payload.vertices = vertices;
+    restored_geometry.payload.indices.clear();
+    stats = executor.execute(plan, scene->snapshot());
+    assert(stats.result == NKGPU_OK);
+    assert(stats.geometry_resources_created == 1);
+    assert(stats.geometry_resources_updated == 0);
+
+    assert(scene->material_store().destroy(material));
+    stats = executor.execute(plan, scene->snapshot());
+    assert(stats.result == NKGPU_OK);
+    assert(stats.material_resources_created == 0);
+    assert(stats.material_resources_updated == 0);
+
+    scene->material_store().create(material);
+    stats = executor.execute(plan, scene->snapshot());
+    assert(stats.result == NKGPU_OK);
+    assert(stats.material_resources_created == 1);
+    assert(stats.material_resources_updated == 0);
+}
+
 void scene_views_are_hierarchy_aware() {
     auto scene = std::make_shared<Scene>();
     const auto geometry = scene->reserve_geometry_id();
@@ -154,6 +228,7 @@ void scene_views_are_hierarchy_aware() {
 
 int main() {
     geometry_payload_contract_is_validated();
+    resource_lifecycle_is_cache_safe();
     scene_views_are_hierarchy_aware();
     constexpr std::size_t count = 50000;
     auto scene = std::make_shared<Scene>();

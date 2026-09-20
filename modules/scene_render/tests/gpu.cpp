@@ -149,6 +149,49 @@ int main() {
         stats = executor.execute(plan, scene->snapshot());
         assert(stats.result == NKGPU_OK);
         assert(stats.material_resources_updated == 1);
+
+        auto &non_indexed_geometry = scene->geometry_store().create(geometry);
+        non_indexed_geometry.payload.indices.clear();
+        stats = executor.execute(plan, scene->snapshot());
+        assert(stats.result == NKGPU_OK);
+        assert(stats.geometry_resources_created == 0);
+        assert(stats.geometry_resources_updated == 1);
+        assert(stats.draw_calls == 1);
+
+        auto &indexed_geometry = scene->geometry_store().create(geometry);
+        indexed_geometry.payload.indices = {0, 1, 2};
+        stats = executor.execute(plan, scene->snapshot());
+        assert(stats.result == NKGPU_OK);
+        assert(stats.geometry_resources_created == 0);
+        assert(stats.geometry_resources_updated == 1);
+        assert(stats.draw_calls == 1);
+
+        const auto vertices = indexed_geometry.payload.vertices;
+        const auto unused_geometry = scene->reserve_geometry_id();
+        auto &unused_resource = scene->geometry_store().create(unused_geometry);
+        unused_resource.payload.vertices = vertices;
+        unused_resource.payload.indices = {0, 1, 2};
+        stats = executor.execute(plan, scene->snapshot());
+        assert(stats.result == NKGPU_OK);
+        assert(stats.geometry_resources_created == 1);
+        assert(stats.geometry_resources_updated == 0);
+        assert(stats.draw_calls == 1);
+
+        assert(scene->geometry_store().destroy(unused_geometry));
+        stats = executor.execute(plan, scene->snapshot());
+        assert(stats.result == NKGPU_OK);
+        assert(stats.geometry_resources_created == 0);
+        assert(stats.geometry_resources_updated == 0);
+        assert(stats.draw_calls == 1);
+
+        auto &recreated_geometry = scene->geometry_store().create(unused_geometry);
+        recreated_geometry.payload.vertices = vertices;
+        recreated_geometry.payload.indices.clear();
+        stats = executor.execute(plan, scene->snapshot());
+        assert(stats.result == NKGPU_OK);
+        assert(stats.geometry_resources_created == 1);
+        assert(stats.geometry_resources_updated == 0);
+        assert(stats.draw_calls == 1);
     }
 
 cleanup:
