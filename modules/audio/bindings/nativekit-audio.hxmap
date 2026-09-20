@@ -8,7 +8,16 @@
     "nk_audio_device_state": "DeviceState",
     "nk_audio_attenuation_model": "AttenuationModel",
     "nk_audio_positioning": "Positioning",
-    "nk_audio_effect_type": "EffectType"
+    "nk_audio_effect_type": "EffectType",
+    "nk_audio_dsp_capabilities": "DspCapabilities",
+    "nk_audio_dsp_event_kind": "DspEventKind",
+    "nk_audio_dsp_filter_type": "DspFilterType",
+    "nk_audio_dsp_lfo_mode": "DspLfoMode",
+    "nk_audio_dsp_modulation_destination": "DspModulationDestination",
+    "nk_audio_dsp_modulation_polarity": "DspModulationPolarity",
+    "nk_audio_dsp_modulation_source": "DspModulationSource",
+    "nk_audio_dsp_parameter": "DspParameter",
+    "nk_audio_dsp_waveform": "DspWaveform"
   },
   "enumValuePrefixes": ["NK_AUDIO_VOICE_"],
   "typeNames": {
@@ -19,10 +28,24 @@
     "nk_audio_mix_snapshot": "MixSnapshotHandle",
     "nk_audio_bus_effect": "BusEffectHandle",
     "nk_audio_voice": "VoiceHandle",
+    "nk_audio_dsp_engine": "DspEngineHandle",
+    "nk_audio_dsp_patch": "DspPatchHandle",
+    "nk_audio_dsp_instrument": "DspInstrumentHandle",
     "nk_audio_bus_options": "NativeBusOptions",
     "nk_audio_device_options": "NativeDeviceOptions",
     "nk_audio_voice_options": "NativeVoiceOptions",
     "nk_audio_bus_concurrency_options": "NativeBusConcurrencyOptions",
-    "nk_audio_vec3": "AudioVector3Value"
+    "nk_audio_vec3": "AudioVector3Value",
+    "nk_audio_dsp_engine_options": "NativeDspEngineOptions",
+    "nk_audio_dsp_instrument_options": "NativeDspInstrumentOptions",
+    "nk_audio_dsp_oscillator_options": "NativeDspOscillatorOptions",
+    "nk_audio_dsp_noise_options": "NativeDspNoiseOptions",
+    "nk_audio_dsp_envelope_options": "NativeDspEnvelopeOptions",
+    "nk_audio_dsp_filter_options": "NativeDspFilterOptions",
+    "nk_audio_dsp_lfo_options": "NativeDspLfoOptions",
+    "nk_audio_dsp_modulation_route_options": "NativeDspModulationRouteOptions",
+    "nk_audio_dsp_patch_options": "NativeDspPatchOptions",
+    "nk_audio_dsp_render_target": "NativeDspRenderTarget",
+    "nk_audio_dsp_event": "NativeDspEvent"
   }
 }

@@ -65,6 +65,7 @@ class AudioSmoke {
 		var init = new InitOptions();
 		init.set_api_version(NativeKit.nk_api_version());
 		var runtime = NativeKitRuntime.start(init);
+		DspSmoke.run();
 		var bus:Bus = null;
 		var lowPass:BusEffect = null;
 		var highPass:BusEffect = null;

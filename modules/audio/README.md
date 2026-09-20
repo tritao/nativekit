@@ -207,6 +207,16 @@ their pools when the caller polls `NativeKitRuntime.events`; load and stream
 failures discard the affected pooled voice. These gameplay objects borrow their
 clips, bus, and event pump rather than owning them.
 
+The Haxe facade also exposes the standalone DSP renderer through `DspEngine`,
+`DspPatchBuilder`, `DspInstrument`, `DspEvent`, and `DspRenderTarget`. Build an
+immutable patch from typed oscillator, noise, envelope, filter, LFO, and
+modulation-route options, create independent instruments from it, then render
+interleaved float blocks into a managed `haxe.io.Bytes` buffer. `DspEvent`
+provides note-on, note-off, and parameter automation constructors; events are
+validated for frame ordering in Haxe and applied natively at their exact sample
+offsets. Patches are copied into instruments, so a patch can be disposed after
+instrument creation and reused to create additional instruments.
+
 `AudioTrack` is a borrowed long-running source descriptor. `AudioTrackPlayer`
 coordinates one current track and one queued track, and uses the shared PCM
 clock to schedule independent fade-in and fade-out operations. It supports

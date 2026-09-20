@@ -1402,7 +1402,7 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		/**
 		 * Interleaved destination samples, with frame_count * channels elements.
 		 */
-		samples: ptr<f32> @offset(8);
+		samples: ptr<f32> @offset(8) @borrowed @length_field("sample_count");
 		/**
 		 * Number of PCM frames to render. Must not exceed the engine block size.
 		 */

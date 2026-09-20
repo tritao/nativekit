@@ -40,6 +40,7 @@ fi
     --ffi-interface="$module_dir/bindings/nativekit-audio.hxi" \
     --ffi-projection="$module_dir/bindings/nativekit-audio.hxmap" \
     "$module_dir/tests/haxeon/AudioSmoke.hx" \
+    "$module_dir/tests/haxeon/DspSmoke.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/AudioResult.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/AudioBank.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/AudioBankEntry.hx" \
@@ -51,6 +52,20 @@ fi
     "$module_dir/bindings/haxe/nativekit/audio/AudioTrackOptions.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/AudioTrackPlayer.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/AudioTransitionOptions.hx" \
+    "$module_dir/bindings/haxe/nativekit/audio/DspEnums.hx" \
+    "$module_dir/bindings/haxe/nativekit/audio/DspEvent.hx" \
+    "$module_dir/bindings/haxe/nativekit/audio/DspRenderTarget.hx" \
+    "$module_dir/bindings/haxe/nativekit/audio/DspOscillatorOptions.hx" \
+    "$module_dir/bindings/haxe/nativekit/audio/DspNoiseOptions.hx" \
+    "$module_dir/bindings/haxe/nativekit/audio/DspEnvelopeOptions.hx" \
+    "$module_dir/bindings/haxe/nativekit/audio/DspFilterOptions.hx" \
+    "$module_dir/bindings/haxe/nativekit/audio/DspLfoOptions.hx" \
+    "$module_dir/bindings/haxe/nativekit/audio/DspModulationRoute.hx" \
+    "$module_dir/bindings/haxe/nativekit/audio/DspPatchBuilder.hx" \
+    "$module_dir/bindings/haxe/nativekit/audio/DspPatch.hx" \
+    "$module_dir/bindings/haxe/nativekit/audio/DspEngineOptions.hx" \
+    "$module_dir/bindings/haxe/nativekit/audio/DspEngine.hx" \
+    "$module_dir/bindings/haxe/nativekit/audio/DspInstrument.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/Bus.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/BusConcurrencyOptions.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/BusEffect.hx" \

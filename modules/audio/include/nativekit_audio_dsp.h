@@ -300,7 +300,7 @@ typedef struct nk_audio_dsp_render_target {
     /** Set to sizeof(nk_audio_dsp_render_target) before passing the structure. */
     uint32_t struct_size NK_STRUCT_SIZE;
     /** Interleaved destination samples, with frame_count * channels elements. */
-    float *samples;
+    float *samples NK_BORROWED_BUFFER(sample_count);
     /** Number of PCM frames to render. Must not exceed the engine block size. */
     uint32_t frame_count;
     /** Number of interleaved channels; must match the engine configuration. */
