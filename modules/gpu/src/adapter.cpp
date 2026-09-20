@@ -1209,11 +1209,10 @@ nkgpu_result nkgpu_query_features(nkgpu_renderer renderer, nkgpu_features *out_f
         slot->value.api->transfer && slot->value.api->transfer->readback_begin_buffer ? 1u : 0u;
     features.timestamps =
         slot->value.api->transfer && slot->value.api->transfer->timestamp_supported &&
-                slot->value.api->transfer->timestamp_supported() &&
-                slot->value.api->transfer->timestamp_begin &&
-                slot->value.api->transfer->timestamp_end &&
-                slot->value.api->transfer->timestamp_status &&
-                slot->value.api->transfer->timestamp_elapsed_ns
+        slot->value.api->transfer->timestamp_supported() &&
+        slot->value.api->transfer->timestamp_begin && slot->value.api->transfer->timestamp_end &&
+        slot->value.api->transfer->timestamp_status &&
+        slot->value.api->transfer->timestamp_elapsed_ns
             ? 1u
             : 0u;
     *out_features = features;
@@ -4138,18 +4137,17 @@ nkgpu_result nkgpu_timestamp_begin(nkgpu_renderer r, nkgpu_timestamp *out) {
     const nkgpu_result pass = require_active_pass(r);
     if (pass != NKGPU_OK)
         return pass;
-    if (!renderer || !renderer->api->transfer ||
-        !renderer->api->transfer->timestamp_supported ||
-        !renderer->api->transfer->timestamp_supported() ||
-        !renderer->api->transfer->timestamp_begin)
+    const nk_sokol_transfer_api *transfer = renderer ? renderer->api->transfer : nullptr;
+    if (!renderer || !transfer || !transfer->timestamp_supported ||
+        !transfer->timestamp_supported() || !transfer->timestamp_begin)
         return fail(NKGPU_ERROR_UNSUPPORTED, "GPU timestamps are unavailable");
-    const uint32_t native = renderer->api->transfer->timestamp_begin();
+    const uint32_t native = transfer->timestamp_begin();
     if (!native)
         return fail(NKGPU_ERROR_UNSUPPORTED, "GPU timestamps are unavailable");
     const Handle handle = timestamp_pool.add(Timestamp{r, native, false});
     if (!handle) {
-        if (renderer->api->transfer->timestamp_destroy)
-            renderer->api->transfer->timestamp_destroy(native);
+        if (transfer->timestamp_destroy)
+            transfer->timestamp_destroy(native);
         return fail(NKGPU_ERROR_OUT_OF_MEMORY, "timestamp pool full");
     }
     *out = handle;
