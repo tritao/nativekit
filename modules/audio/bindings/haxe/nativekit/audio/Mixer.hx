@@ -66,6 +66,13 @@ class Mixer {
 		return result.out_sample_rate;
 	}
 
+	/** Returns the process-wide audio engine interleaved output channel count. */
+	public static function channels():Int {
+		var result = NativeKitAudio.nk_audio_get_channels();
+		AudioResult.check(result.status, "audio.mixer.channels");
+		return result.out_channels;
+	}
+
 	public static function setMasterVolume(volume:Float):Void
 		AudioResult.check(NativeKitAudio.nk_audio_set_master_volume(volume),
 			"audio.mixer.setMasterVolume");

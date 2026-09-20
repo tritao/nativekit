@@ -419,6 +419,8 @@ nk_audio_voice_get_directional_attenuation_factor(nk_audio_voice voice, float *o
 NKAUDIO_API nk_result NK_CALL nk_audio_get_time_pcm_frames(uint64_t *out_time_pcm_frames NK_OUT);
 /** Returns the process-wide audio engine sample rate in frames per second. */
 NKAUDIO_API nk_result NK_CALL nk_audio_get_sample_rate(uint32_t *out_sample_rate NK_OUT);
+/** Returns the process-wide audio engine interleaved output channel count. */
+NKAUDIO_API nk_result NK_CALL nk_audio_get_channels(uint32_t *out_channels NK_OUT);
 
 #ifdef __cplusplus
 }

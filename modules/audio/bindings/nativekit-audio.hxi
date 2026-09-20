@@ -640,6 +640,14 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 */
 	extern fn nk_audio_device_stop() -> nk_result;
 	/**
+	 * Routes one DSP renderer into the process-wide playback device output.
+	 */
+	extern fn nk_audio_dsp_engine_attach_device(engine: nk_audio_dsp_engine) -> nk_result;
+	/**
+	 * Discards queued events and requests a voice reset at the next audio block.
+	 */
+	extern fn nk_audio_dsp_engine_clear_schedule(engine: nk_audio_dsp_engine) -> nk_result;
+	/**
 	 * Creates a standalone DSP renderer; no playback device is required.
 	 */
 	extern fn nk_audio_dsp_engine_create(options: ptr<const<nk_audio_dsp_engine_options>>, out_engine: ptr<nk_audio_dsp_engine> @out @owned) -> nk_result;
@@ -647,6 +655,10 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 * Stops all voices and destroys a DSP renderer.
 	 */
 	extern fn nk_audio_dsp_engine_destroy(engine: nk_audio_dsp_engine) -> nk_result;
+	/**
+	 * Stops routing a DSP renderer into the process-wide playback device output.
+	 */
+	extern fn nk_audio_dsp_engine_detach_device(engine: nk_audio_dsp_engine) -> nk_result;
 	/**
 	 * Returns the capabilities of the renderer's private backend.
 	 */
@@ -666,6 +678,12 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 * Restores instruments and voices to their creation state.
 	 */
 	extern fn nk_audio_dsp_engine_reset(engine: nk_audio_dsp_engine) -> nk_result;
+	/**
+	 * Queues sorted events against the playback device's PCM-frame clock. The
+	 * block-local frame offsets in events are added to start_frame. Events are
+	 * copied and may be released after this call.
+	 */
+	extern fn nk_audio_dsp_engine_schedule(engine: nk_audio_dsp_engine, start_frame: u64, events: ptr<const<nk_audio_dsp_event>> @in_array("event_count"), event_count: u32) -> nk_result;
 	/**
 	 * Creates an instrument from the legacy flat options. Prefer patch_create().
 	 */
@@ -712,6 +730,10 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 * Destroys a wavetable handle; patches retain tables they reference.
 	 */
 	extern fn nk_audio_dsp_wavetable_destroy(wavetable: nk_audio_dsp_wavetable) -> nk_result;
+	/**
+	 * Returns the process-wide audio engine interleaved output channel count.
+	 */
+	extern fn nk_audio_get_channels(out_channels: ptr<u32> @out) -> nk_result;
 	/**
 	 * Returns linear gain for the process-wide NativeKit audio mixer.
 	 */

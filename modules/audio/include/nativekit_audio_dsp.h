@@ -399,6 +399,20 @@ NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_get_capabilities(
     nk_audio_dsp_engine engine, nk_audio_dsp_capabilities *out_capabilities NK_OUT);
 /** Restores instruments and voices to their creation state. */
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_reset(nk_audio_dsp_engine engine);
+/** Routes one DSP renderer into the process-wide playback device output. */
+NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_attach_device(nk_audio_dsp_engine engine);
+/** Stops routing a DSP renderer into the process-wide playback device output. */
+NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_detach_device(nk_audio_dsp_engine engine);
+/**
+ * Queues sorted events against the playback device's PCM-frame clock. The
+ * block-local frame offsets in events are added to start_frame. Events are
+ * copied and may be released after this call.
+ */
+NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_schedule(
+    nk_audio_dsp_engine engine, uint64_t start_frame,
+    const nk_audio_dsp_event *events NK_IN_ARRAY(event_count), uint32_t event_count);
+/** Discards queued events and requests a voice reset at the next audio block. */
+NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_clear_schedule(nk_audio_dsp_engine engine);
 
 /** Creates an immutable, renderer-independent patch definition. */
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_patch_create(

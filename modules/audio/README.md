@@ -13,10 +13,12 @@ buses, effects, snapshots, concurrency, virtualization, and global mix policy.
 Both targets currently link the same NativeKit runtime and miniaudio backend.
 
 The standalone DSP API is exposed by `nativekit_audio_dsp.h` and the
-`NativeKit::audio_dsp` target. It is intentionally separate from the playback
-device and mixer graph: create a `nk_audio_dsp_engine`, create one or more
-instruments, submit frame-sorted note and parameter events, and render
-interleaved float blocks into caller-owned memory. The initial backend provides
+`NativeKit::audio_dsp` target. Create a device-independent `nk_audio_dsp_engine`,
+create one or more instruments, submit frame-sorted note and parameter events,
+and render interleaved float blocks into caller-owned memory. When live output
+is needed, attach the renderer to the process-wide playback device with
+`nk_audio_dsp_engine_attach_device()` and queue events against the shared PCM
+clock with `nk_audio_dsp_engine_schedule()`. The initial backend provides
 pitched sine, triangle, saw, and square oscillators, additive white noise, ADSR
 envelopes, and an optional state-variable low-pass filter. Noise level, filter
 cutoff, and filter resonance are sample-accurate instrument parameters; a zero
@@ -237,7 +239,8 @@ interleaved float blocks into a managed `haxe.io.Bytes` buffer. Use
 FM/PM routes. `DspEvent` provides note-on, note-off, global parameter, and
 oscillator-specific parameter automation and block-bounded linear ramp
 constructors; events are validated for frame ordering in Haxe and applied
-natively at their exact sample offsets.
+natively at their exact sample offsets. `DspEngine.attachToDevice()`,
+`schedule()`, and `clearSchedule()` expose the live device path.
 Use
 `DspInstrument.setOscillatorParameter()` and `oscillatorParameter()` for
 between-block source edits. Patches are copied into instruments, so a patch can

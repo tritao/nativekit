@@ -1,16 +1,20 @@
 #include "nativekit_audio_dsp.h"
 
 #include "audio_dsp_backend.hpp"
+#include "audio_dsp_internal.hpp"
 #include "core/boundary.hpp"
 #include "core/error.hpp"
 #include "core/handle_registry.hpp"
 #include "core/runtime.hpp"
 
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <mutex>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -36,6 +40,17 @@ using DspParameters = nk::audio_dsp::PatchParameters;
 struct DspEngineResource;
 struct DspPatchResource;
 struct DspWavetableResource;
+struct DspInstrumentResource;
+constexpr uint32_t scheduled_event_capacity = 8192;
+constexpr uint32_t scheduled_event_mask = scheduled_event_capacity - 1;
+constexpr uint32_t max_attached_parameter_ramps = 128;
+
+struct ScheduledDspEvent {
+    uint64_t frame = 0;
+    uint64_t generation = 0;
+    nk_audio_dsp_event event{};
+    std::shared_ptr<DspInstrumentResource> instrument;
+};
 
 struct DspPatchResource final : nk::core::Resource {
     DspParameters parameters;
@@ -73,23 +88,38 @@ struct DspVoice {
     }
 };
 
-struct DspEngineResource final : nk::core::Resource {
-    nk_audio_dsp_engine_options options{};
-    std::mutex mutex;
-    std::vector<DspVoice> voices;
-    std::vector<std::weak_ptr<DspInstrumentResource>> instruments;
-    bool alive = true;
-};
-
 struct ActiveParameterRamp {
     std::shared_ptr<DspInstrumentResource> instrument;
     nk_audio_dsp_parameter parameter;
     uint32_t oscillator_index;
     float start_value;
     float end_value;
-    uint32_t start_frame;
-    uint32_t end_frame;
+    uint64_t start_frame;
+    uint64_t end_frame;
 };
+
+struct DspEngineResource final : nk::core::Resource {
+    nk_audio_dsp_engine_options options{};
+    std::mutex mutex;
+    std::vector<DspVoice> voices;
+    std::vector<std::weak_ptr<DspInstrumentResource>> instruments;
+    std::array<ScheduledDspEvent, scheduled_event_capacity> scheduled_events{};
+    std::atomic<uint32_t> scheduled_write{0};
+    std::atomic<uint32_t> scheduled_read{0};
+    std::atomic<uint64_t> scheduled_generation{1};
+    std::atomic<bool> reset_requested{false};
+    std::atomic<bool> attached{false};
+    uint64_t output_frame = 0;
+    uint32_t output_sample_rate = 0;
+    uint32_t output_channels = 0;
+    std::vector<float> output_scratch;
+    std::array<ActiveParameterRamp, max_attached_parameter_ramps> output_ramps{};
+    uint32_t output_ramp_count = 0;
+    bool alive = true;
+};
+
+std::atomic<DspEngineResource *> active_output{nullptr};
+std::atomic<uint32_t> active_output_readers{0};
 
 nk_result invalid_argument(const char *message) {
     nk::core::set_error(message);
@@ -800,7 +830,205 @@ void reset_voices(DspEngineResource &engine) {
         voice.clear();
 }
 
+nk_result apply_scheduled_event(DspEngineResource &engine,
+                                const ScheduledDspEvent &scheduled) {
+    const auto &event = scheduled.event;
+    switch (event.kind) {
+    case NK_AUDIO_DSP_EVENT_NOTE_ON: {
+        auto instrument = scheduled.instrument;
+        if (!instrument || !instrument_belongs_to(instrument, engine))
+            return NK_ERROR_INVALID_HANDLE;
+        auto *voice = find_voice(engine, event.voice_id);
+        if (!voice)
+            voice = find_free_voice(engine);
+        if (!voice) {
+            nk::core::set_error("audio DSP voice limit reached");
+            return NK_ERROR_QUEUE_FULL;
+        }
+        const auto instrument_changed = voice->instrument.get() != instrument.get();
+        if (!voice->active)
+            voice->clear();
+        voice->instrument = std::move(instrument);
+        voice->voice_id = event.voice_id;
+        voice->note = event.note;
+        voice->velocity = event.velocity;
+        voice->active = true;
+        if (instrument_changed)
+            voice->parameters_version = 0;
+        sync_voice_parameters(*voice);
+        voice->backend.note_on(event.note, event.velocity);
+        return NK_OK;
+    }
+    case NK_AUDIO_DSP_EVENT_NOTE_OFF: {
+        auto *voice = find_voice(engine, event.voice_id);
+        if (voice)
+            voice->backend.note_off();
+        return NK_OK;
+    }
+    case NK_AUDIO_DSP_EVENT_PARAMETER:
+        return apply_parameter_value(engine, scheduled.instrument, event.parameter,
+                                     event.oscillator_index, event.value);
+    default:
+        return invalid_argument("audio DSP scheduled event kind is invalid");
+    }
+}
+
+nk_result begin_attached_parameter_ramp(DspEngineResource &engine,
+                                        const ScheduledDspEvent &scheduled,
+                                        uint64_t frame) {
+    const auto &event = scheduled.event;
+    if (engine.output_ramp_count >= max_attached_parameter_ramps)
+        return NK_ERROR_QUEUE_FULL;
+    auto instrument = scheduled.instrument;
+    const auto result = apply_parameter_value(engine, instrument, event.parameter,
+                                               event.oscillator_index, event.value);
+    if (result != NK_OK)
+        return result;
+    engine.output_ramps[engine.output_ramp_count++] = ActiveParameterRamp{
+        std::move(instrument), event.parameter, event.oscillator_index, event.value,
+        event.end_value, frame, frame + event.duration_frames};
+    return NK_OK;
+}
+
+void consume_attached_events(DspEngineResource &engine, uint64_t frame) noexcept {
+    auto read = engine.scheduled_read.load(std::memory_order_relaxed);
+    for (;;) {
+        const auto write = engine.scheduled_write.load(std::memory_order_acquire);
+        if (read == write)
+            break;
+        auto &scheduled = engine.scheduled_events[read & scheduled_event_mask];
+        const auto generation = engine.scheduled_generation.load(std::memory_order_acquire);
+        if (scheduled.generation != generation) {
+            ++read;
+            continue;
+        }
+        if (scheduled.frame > frame)
+            break;
+        if (scheduled.event.kind == NK_AUDIO_DSP_EVENT_PARAMETER_RAMP)
+            (void)begin_attached_parameter_ramp(engine, scheduled, frame);
+        else
+            (void)apply_scheduled_event(engine, scheduled);
+        ++read;
+    }
+    engine.scheduled_read.store(read, std::memory_order_release);
+}
+
+void render_attached_block(DspEngineResource &engine, uint64_t start_frame,
+                           uint32_t frame_count) noexcept {
+    const auto sample_count = static_cast<uint64_t>(frame_count) * engine.options.channels;
+    std::fill(engine.output_scratch.begin(), engine.output_scratch.begin() + sample_count, 0.0f);
+    for (uint32_t frame = 0; frame < frame_count; ++frame) {
+        const auto absolute_frame = start_frame + frame;
+        for (uint32_t index = 0; index < engine.output_ramp_count;) {
+            auto &ramp = engine.output_ramps[index];
+            if (absolute_frame >= ramp.end_frame) {
+                (void)apply_parameter_value(engine, ramp.instrument, ramp.parameter,
+                                             ramp.oscillator_index, ramp.end_value);
+                ramp = std::move(engine.output_ramps[--engine.output_ramp_count]);
+                continue;
+            }
+            const auto progress = static_cast<float>(absolute_frame - ramp.start_frame) /
+                                  static_cast<float>(ramp.end_frame - ramp.start_frame);
+            (void)apply_parameter_value(
+                engine, ramp.instrument, ramp.parameter, ramp.oscillator_index,
+                ramp.start_value + (ramp.end_value - ramp.start_value) * progress);
+            ++index;
+        }
+        consume_attached_events(engine, absolute_frame);
+        float mixed = 0.0f;
+        for (auto &voice : engine.voices)
+            mixed += voice_sample(voice);
+        for (uint32_t channel = 0; channel < engine.options.channels; ++channel)
+            engine.output_scratch[static_cast<uint64_t>(frame) * engine.options.channels +
+                                  channel] = mixed;
+    }
+    consume_attached_events(engine, start_frame + frame_count);
+}
+
 } // namespace
+
+namespace nk::audio_dsp {
+
+nk_result attach_device(nk_audio_dsp_engine engine_handle, uint64_t device_frame,
+                        uint32_t sample_rate, uint32_t channels) {
+    auto engine = get_engine(engine_handle);
+    if (!engine)
+        return NK_ERROR_INVALID_HANDLE;
+    std::lock_guard lock(engine->mutex);
+    if (!engine->alive)
+        return invalid_request("audio DSP engine is no longer alive");
+    if (engine->options.sample_rate != sample_rate || engine->options.channels != channels)
+        return invalid_request("audio DSP engine format does not match the playback device");
+    auto *active = active_output.load(std::memory_order_acquire);
+    if (active && active != engine.get())
+        return invalid_request("another audio DSP engine is already attached to the playback device");
+    const auto write = engine->scheduled_write.load(std::memory_order_acquire);
+    engine->scheduled_read.store(write, std::memory_order_release);
+    engine->scheduled_generation.fetch_add(1, std::memory_order_acq_rel);
+    engine->reset_requested.store(true, std::memory_order_release);
+    engine->output_frame = device_frame;
+    engine->output_sample_rate = sample_rate;
+    engine->output_channels = channels;
+    engine->output_ramp_count = 0;
+    engine->attached.store(true, std::memory_order_release);
+    active_output.store(engine.get(), std::memory_order_release);
+    return NK_OK;
+}
+
+nk_result detach_device(nk_audio_dsp_engine engine_handle) {
+    auto engine = get_engine(engine_handle);
+    if (!engine)
+        return NK_ERROR_INVALID_HANDLE;
+    auto *expected = engine.get();
+    if (!active_output.compare_exchange_strong(expected, nullptr, std::memory_order_acq_rel))
+        return invalid_request("audio DSP engine is not attached to the playback device");
+    engine->attached.store(false, std::memory_order_release);
+    while (active_output_readers.load(std::memory_order_acquire) != 0)
+        std::this_thread::yield();
+    engine->output_ramp_count = 0;
+    engine->scheduled_read.store(engine->scheduled_write.load(std::memory_order_acquire),
+                                 std::memory_order_release);
+    return NK_OK;
+}
+
+void detach_device() noexcept {
+    auto *engine = active_output.exchange(nullptr, std::memory_order_acq_rel);
+    if (!engine)
+        return;
+    engine->attached.store(false, std::memory_order_release);
+    while (active_output_readers.load(std::memory_order_acquire) != 0)
+        std::this_thread::yield();
+    engine->output_ramp_count = 0;
+}
+
+void process_device_output(float *frames_out, uint64_t frame_count, uint32_t sample_rate,
+                           uint32_t channels) noexcept {
+    active_output_readers.fetch_add(1, std::memory_order_acq_rel);
+    auto *engine = active_output.load(std::memory_order_acquire);
+    if (!engine || !engine->attached.load(std::memory_order_acquire) ||
+        engine->output_sample_rate != sample_rate || engine->output_channels != channels) {
+        active_output_readers.fetch_sub(1, std::memory_order_acq_rel);
+        return;
+    }
+    if (engine->reset_requested.exchange(false, std::memory_order_acq_rel))
+        reset_voices(*engine);
+    uint64_t output_offset = 0;
+    while (output_offset < frame_count) {
+        const auto remaining = frame_count - output_offset;
+        const auto block = static_cast<uint32_t>(std::min<uint64_t>(
+            remaining, static_cast<uint64_t>(engine->options.block_size)));
+        render_attached_block(*engine, engine->output_frame, block);
+        const auto sample_count = static_cast<uint64_t>(block) * channels;
+        auto *destination = frames_out + output_offset * channels;
+        for (uint64_t sample = 0; sample < sample_count; ++sample)
+            destination[sample] += engine->output_scratch[sample];
+        engine->output_frame += block;
+        output_offset += block;
+    }
+    active_output_readers.fetch_sub(1, std::memory_order_acq_rel);
+}
+
+} // namespace nk::audio_dsp
 
 extern "C" {
 
@@ -819,6 +1047,8 @@ nk_result NK_CALL nk_audio_dsp_engine_create(const nk_audio_dsp_engine_options *
             auto engine = std::make_shared<DspEngineResource>();
             engine->options = normalized;
             engine->voices.resize(normalized.max_voices);
+            engine->output_scratch.resize(static_cast<uint64_t>(normalized.block_size) *
+                                          normalized.channels);
             for (auto &voice : engine->voices)
                 voice.backend.init(normalized.sample_rate);
             const auto handle =
@@ -840,6 +1070,8 @@ nk_result NK_CALL nk_audio_dsp_engine_destroy(nk_audio_dsp_engine engine_handle)
             auto engine = get_engine(engine_handle);
             if (!engine)
                 return NK_ERROR_INVALID_HANDLE;
+            if (engine->attached.load(std::memory_order_acquire))
+                (void)nk::audio_dsp::detach_device(engine_handle);
             {
                 std::lock_guard lock(engine->mutex);
                 engine->alive = false;
@@ -913,6 +1145,79 @@ nk_result NK_CALL nk_audio_dsp_engine_reset(nk_audio_dsp_engine engine_handle) {
                     iterator = engine->instruments.erase(iterator);
                 }
             }
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_audio_dsp_engine_schedule(nk_audio_dsp_engine engine_handle,
+                                                uint64_t start_frame,
+                                                const nk_audio_dsp_event *events,
+                                                uint32_t event_count) {
+    return nk::core::result_boundary(
+        "unexpected error while scheduling audio DSP events", [&]() -> nk_result {
+            if (const auto result = enter_dsp(); result != NK_OK)
+                return result;
+            if (event_count != 0 && !events)
+                return invalid_argument("audio DSP schedule event array is missing");
+            auto engine = get_engine(engine_handle);
+            if (!engine)
+                return NK_ERROR_INVALID_HANDLE;
+            std::vector<std::shared_ptr<DspInstrumentResource>> instruments;
+            instruments.reserve(event_count);
+            uint32_t previous_frame = 0;
+            for (uint32_t index = 0; index < event_count; ++index) {
+                const auto &event = events[index];
+                if (event.frame_offset < previous_frame)
+                    return invalid_argument("audio DSP scheduled events must be frame sorted");
+                if (const auto result =
+                        validate_event(*engine, event, std::numeric_limits<uint32_t>::max(),
+                                       previous_frame);
+                    result != NK_OK)
+                    return result;
+                if (event.kind == NK_AUDIO_DSP_EVENT_NOTE_ON ||
+                    event.kind == NK_AUDIO_DSP_EVENT_PARAMETER ||
+                    event.kind == NK_AUDIO_DSP_EVENT_PARAMETER_RAMP) {
+                    auto instrument = get_instrument(event.instrument);
+                    if (!instrument)
+                        return NK_ERROR_INVALID_HANDLE;
+                    if (!instrument_belongs_to(instrument, *engine))
+                        return invalid_request("audio DSP instrument belongs to another engine");
+                    instruments.push_back(std::move(instrument));
+                } else {
+                    instruments.emplace_back();
+                }
+                previous_frame = event.frame_offset;
+            }
+            const auto generation = engine->scheduled_generation.load(std::memory_order_acquire);
+            auto write = engine->scheduled_write.load(std::memory_order_relaxed);
+            const auto read = engine->scheduled_read.load(std::memory_order_acquire);
+            if (event_count > scheduled_event_capacity - (write - read))
+                return invalid_request("audio DSP schedule queue is full");
+            for (uint32_t index = 0; index < event_count; ++index) {
+                auto &scheduled = engine->scheduled_events[write & scheduled_event_mask];
+                scheduled.frame = start_frame + events[index].frame_offset;
+                scheduled.generation = generation;
+                scheduled.event = events[index];
+                scheduled.instrument = std::move(instruments[index]);
+                ++write;
+            }
+            engine->scheduled_write.store(write, std::memory_order_release);
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_audio_dsp_engine_clear_schedule(nk_audio_dsp_engine engine_handle) {
+    return nk::core::result_boundary(
+        "unexpected error while clearing audio DSP events", [&]() -> nk_result {
+            if (const auto result = enter_dsp(); result != NK_OK)
+                return result;
+            auto engine = get_engine(engine_handle);
+            if (!engine)
+                return NK_ERROR_INVALID_HANDLE;
+            engine->scheduled_generation.fetch_add(1, std::memory_order_acq_rel);
+            engine->scheduled_read.store(engine->scheduled_write.load(std::memory_order_acquire),
+                                         std::memory_order_release);
+            engine->reset_requested.store(true, std::memory_order_release);
             return NK_OK;
         });
 }

@@ -11,6 +11,7 @@ class DspEngine {
 	final owned:NativeKitAudio.OwnedDspEngineHandle;
 	final instruments:Array<DspInstrument> = [];
 	var disposed:Bool = false;
+	var deviceAttached:Bool = false;
 
 	private function new(owned:NativeKitAudio.OwnedDspEngineHandle) {
 		this.owned = owned;
@@ -47,6 +48,52 @@ class DspEngine {
 		AudioResult.check(NativeKitAudio.nk_audio_dsp_engine_reset(value), "audio.dsp.engine.reset");
 	}
 
+	/** Routes this renderer into the process-wide NativeKit playback device. */
+	public function attachToDevice():Void {
+		ensureLive();
+		if (deviceAttached)
+			return;
+		AudioResult.check(NativeKitAudio.nk_audio_dsp_engine_attach_device(value),
+			"audio.dsp.engine.attachDevice");
+		deviceAttached = true;
+	}
+
+	/** Stops routing this renderer into the process-wide NativeKit playback device. */
+	public function detachFromDevice():Void {
+		ensureLive();
+		if (!deviceAttached)
+			return;
+		AudioResult.check(NativeKitAudio.nk_audio_dsp_engine_detach_device(value),
+			"audio.dsp.engine.detachDevice");
+		deviceAttached = false;
+	}
+
+	/** Queues block-local events against an absolute playback-device frame. */
+	public function schedule(startFrame:haxe.Int64, ?events:Array<DspEvent>):Void {
+		ensureLive();
+		var nativeEvents:Array<NativeKitAudio.NativeDspEvent> = [];
+		if (events != null) {
+			var previousFrame = 0;
+			for (event in events) {
+				if (event == null)
+					throw "DSP scheduled event must not be null";
+				if (event.frameOffset < previousFrame)
+					throw "DSP scheduled events must be sorted by frame offset";
+				previousFrame = event.frameOffset;
+				nativeEvents.push(event.nativeValue());
+			}
+		}
+		AudioResult.check(NativeKitAudio.nk_audio_dsp_engine_schedule(value, startFrame,
+			nativeEvents), "audio.dsp.engine.schedule");
+	}
+
+	/** Drops queued events and resets active voices at the next audio block. */
+	public function clearSchedule():Void {
+		ensureLive();
+		AudioResult.check(NativeKitAudio.nk_audio_dsp_engine_clear_schedule(value),
+			"audio.dsp.engine.clearSchedule");
+	}
+
 	public function capabilities():NativeKitAudio.DspCapabilities {
 		ensureLive();
 		var result = NativeKitAudio.nk_audio_dsp_engine_get_capabilities(value);
@@ -81,6 +128,17 @@ class DspEngine {
 		if (disposed)
 			return;
 		var failure:Dynamic = null;
+		if (deviceAttached) {
+			try {
+				AudioResult.check(NativeKitAudio.nk_audio_dsp_engine_detach_device(value),
+					"audio.dsp.engine.detachDevice");
+				deviceAttached = false;
+			} catch (error:Dynamic) {
+				failure = error;
+			}
+		}
+		if (failure != null)
+			throw failure;
 		for (index in 0...instruments.length) {
 			var instrument = instruments[instruments.length - 1 - index];
 			try {

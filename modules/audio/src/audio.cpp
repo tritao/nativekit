@@ -1,5 +1,7 @@
 #include "nativekit_audio_graph.h"
 
+#include "audio_dsp_internal.hpp"
+
 #include "core/boundary.hpp"
 #include "core/error.hpp"
 #include "core/event_queue.hpp"
@@ -47,6 +49,8 @@ struct PendingAudioDeviceConfig {
 PendingAudioDeviceConfig pending_device_config;
 
 void audio_device_notification_callback(const ma_device_notification *notification) noexcept;
+void audio_engine_process_callback(void *user_data, float *frames_out,
+                                   ma_uint64 frame_count) noexcept;
 
 struct AudioEngineResource final : nk::core::Resource {
     ma_engine engine{};
@@ -55,6 +59,7 @@ struct AudioEngineResource final : nk::core::Resource {
     std::vector<std::weak_ptr<nk::core::Resource>> voices;
 
     ~AudioEngineResource() override {
+        nk::audio_dsp::detach_device();
         auto *expected = this;
         active_engine_resource.compare_exchange_strong(expected, nullptr,
                                                        std::memory_order_acq_rel);
@@ -62,6 +67,16 @@ struct AudioEngineResource final : nk::core::Resource {
             ma_engine_uninit(&engine);
     }
 };
+
+void audio_engine_process_callback(void *user_data, float *frames_out,
+                                   ma_uint64 frame_count) noexcept {
+    auto *engine = static_cast<AudioEngineResource *>(user_data);
+    if (!engine || !frames_out || frame_count == 0)
+        return;
+    nk::audio_dsp::process_device_output(frames_out, frame_count,
+                                         ma_engine_get_sample_rate(&engine->engine),
+                                         ma_engine_get_channels(&engine->engine));
+}
 
 struct AudioBusResource;
 struct AudioEffectResource;
@@ -1051,6 +1066,8 @@ std::shared_ptr<AudioEngineResource> ensure_engine(nk_result &out_result) {
     config.periodSizeInMilliseconds = device_config.period_size_in_milliseconds;
     config.noAutoStart = device_config.no_auto_start ? MA_TRUE : MA_FALSE;
     config.notificationCallback = audio_device_notification_callback;
+    config.onProcess = audio_engine_process_callback;
+    config.pProcessUserData = next.get();
 
     active_engine_resource.store(next.get(), std::memory_order_release);
     const auto result = ma_engine_init(&config, &next->engine);
@@ -2170,6 +2187,31 @@ nk_result NK_CALL nk_audio_device_get_state(nk_audio_device_state *out_state) {
                 return NK_OK;
             }
             return audio_device_state(*engine, *out_state);
+        });
+}
+
+nk_result NK_CALL nk_audio_dsp_engine_attach_device(nk_audio_dsp_engine engine_handle) {
+    return nk::core::result_boundary(
+        "unexpected error while attaching an audio DSP engine to the playback device",
+        [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            auto engine = current_engine();
+            if (!engine)
+                return invalid_request("the audio device has not been initialized");
+            return nk::audio_dsp::attach_device(
+                engine_handle, ma_engine_get_time_in_pcm_frames(&engine->engine),
+                ma_engine_get_sample_rate(&engine->engine), ma_engine_get_channels(&engine->engine));
+        });
+}
+
+nk_result NK_CALL nk_audio_dsp_engine_detach_device(nk_audio_dsp_engine engine_handle) {
+    return nk::core::result_boundary(
+        "unexpected error while detaching an audio DSP engine from the playback device",
+        [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            return nk::audio_dsp::detach_device(engine_handle);
         });
 }
 
@@ -4259,6 +4301,22 @@ nk_result NK_CALL nk_audio_get_sample_rate(uint32_t *out_sample_rate) {
             if (!engine)
                 return engine_result;
             *out_sample_rate = ma_engine_get_sample_rate(&engine->engine);
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_audio_get_channels(uint32_t *out_channels) {
+    return nk::core::result_boundary(
+        "unexpected error while getting the audio engine channel count", [&]() -> nk_result {
+            if (const auto result = enter_audio_ui(); result != NK_OK)
+                return result;
+            if (!out_channels)
+                return invalid_argument("audio engine channel count output is missing");
+            nk_result engine_result = NK_OK;
+            auto engine = ensure_engine(engine_result);
+            if (!engine)
+                return engine_result;
+            *out_channels = ma_engine_get_channels(&engine->engine);
             return NK_OK;
         });
 }

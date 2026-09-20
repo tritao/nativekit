@@ -331,6 +331,8 @@ int main() {
     phase_automation.oscillator_index = 1;
     phase_automation.value = 0.25f;
     nk_audio_dsp_event note_on_events[] = {note_on, phase_automation};
+    assert(nk_audio_dsp_engine_schedule(engine, 48000, note_on_events, 2) == NK_OK);
+    assert(nk_audio_dsp_engine_clear_schedule(engine) == NK_OK);
     assert(nk_audio_dsp_engine_render(engine, &target, note_on_events, 2) == NK_OK);
     assert(contains_signal(samples, 64));
 
