@@ -58,6 +58,7 @@ import nativekit.scene.Occurrence;
 import nativekit.scene.VisibilityFilter;
 import nativekit.scene.SelectionSet;
 import nativekit.scene.SceneInteraction;
+import nativekit.scene.ScenePresentation;
 import nativekit.scene.SelectionMode;
 import nativekit.gpu.Renderer;
 import nativekit.gpu.Surface;
@@ -79,6 +80,8 @@ class Main {
 		scene.setMaterialData(material, MaterialData.opaque(0.2, 0.7, 1.0));
 		var highlight = scene.createMaterial();
 		scene.setMaterialData(highlight, MaterialData.opaque(1.0, 0.8, 0.1));
+		var hoverHighlight = scene.createMaterial();
+		scene.setMaterialData(hoverHighlight, MaterialData.opaque(1.0, 0.2, 0.1));
 
 		var transaction = scene.beginTransaction(),
 			group = transaction.createOccurrence(),
@@ -352,6 +355,35 @@ class Main {
 			return 22;
 		}
 		asyncPickRequest.dispose();
+		var presentation = ScenePresentation.create(view, highlight, hoverHighlight);
+		presentation.select(second, SelectionMode.Replace);
+		presentation.requestHover(realSceneRenderer, movedSnapshot, 64, 64, 16, 32);
+		var presentationExecution = presentation.render(realSceneRenderer, movedSnapshot),
+			hoverReady = presentation.interaction.hovered() != null;
+		for (attempt in 0...100) {
+			if (hoverReady)
+				break;
+			Sys.sleep(0.001);
+			presentationExecution = presentation.render(realSceneRenderer, movedSnapshot);
+			hoverReady = presentation.interaction.hovered() != null;
+		}
+		var presentationUpdate = realSceneRenderer.lastUpdate();
+		var presentationPatchedMaterials = presentationUpdate == null
+			? -1 : haxe.Int64.toInt(presentationUpdate.get_patched_materials());
+		if (!hoverReady
+			|| presentation.view.selectionOverrideCount() != 1
+			|| presentation.view.hoverOverrideCount() != 1
+			|| presentation.view.materialOverrideCount() != 2
+			|| presentationUpdate == null
+			|| presentationUpdate.get_plan_rebuilt() != 0
+			|| presentationPatchedMaterials < 1
+			|| presentationPatchedMaterials > 2
+			|| presentationExecution.get_result() != NativeKitGpu.GpuStatus.Ok
+			|| haxe.Int64.toInt(presentationExecution.get_draw_calls()) != 2) {
+			presentation.dispose();
+			return 28;
+		}
+		presentation.dispose();
 		var gpuClippedView = new SceneView().setRoot(group).setViewProjection(Transform.identity())
 			.addClipPlane(1.0, 0.0, 0.0, 0.6),
 			gpuClippedExecution = realSceneRenderer.render(movedSnapshot, gpuClippedView),
