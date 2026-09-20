@@ -51,15 +51,15 @@ class Scene {
 		return new Material(this, made.out_material);
 	}
 
-	public function setGeometryData(geometry:Geometry, data:nkscene_geometry_data):Void {
+	public function setGeometryData(geometry:Geometry, data:GeometryData):Void {
 		ensureLive();
-		check(NativeKitScene.nkscene_geometry_set_data(owner.borrow(), geometry.id(), data),
+		check(NativeKitScene.nkscene_geometry_set_data(owner.borrow(), geometry.id(), data.nativeValue()),
 			"scene.setGeometryData");
 	}
 
-	public function setMaterialData(material:Material, data:nkscene_material_data):Void {
+	public function setMaterialData(material:Material, data:MaterialData):Void {
 		ensureLive();
-		check(NativeKitScene.nkscene_material_set_data(owner.borrow(), material.id(), data),
+		check(NativeKitScene.nkscene_material_set_data(owner.borrow(), material.id(), data.nativeValue()),
 			"scene.setMaterialData");
 	}
 

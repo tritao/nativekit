@@ -14,49 +14,50 @@ class Transaction {
 		this.owner = owner;
 	}
 
-	public function createOccurrence():nkscene_occurrence_id {
+	public function createOccurrence():Occurrence {
 		ensureOpen();
 		var occurrence = new nkscene_occurrence_id();
 		check(NativeKitScene.nkscene_tx_create_occurrence(owner.borrow(), occurrence),
 			"transaction.createOccurrence");
-		return occurrence;
+		return new Occurrence(occurrence);
 	}
 
-	public function destroyOccurrence(occurrence:nkscene_occurrence_id):Void {
+	public function destroyOccurrence(occurrence:Occurrence):Void {
 		ensureOpen();
-		check(NativeKitScene.nkscene_tx_destroy_occurrence(owner.borrow(), occurrence),
+		check(NativeKitScene.nkscene_tx_destroy_occurrence(owner.borrow(), occurrence.nativeValue()),
 			"transaction.destroyOccurrence");
 	}
 
-	public function setParent(occurrence:nkscene_occurrence_id,
-			parent:nkscene_occurrence_id):Void {
+	public function setParent(occurrence:Occurrence, parent:Null<Occurrence>):Void {
 		ensureOpen();
-		check(NativeKitScene.nkscene_tx_set_parent(owner.borrow(), occurrence, parent),
+		var parentValue = parent == null ? new nkscene_occurrence_id() : parent.nativeValue();
+		check(NativeKitScene.nkscene_tx_set_parent(owner.borrow(), occurrence.nativeValue(), parentValue),
 			"transaction.setParent");
 	}
 
-	public function setTransform(occurrence:nkscene_occurrence_id,
-			transform:nkscene_transform):Void {
+	public function setTransform(occurrence:Occurrence, transform:Transform):Void {
 		ensureOpen();
-		check(NativeKitScene.nkscene_tx_set_transform(owner.borrow(), occurrence, transform),
+		check(NativeKitScene.nkscene_tx_set_transform(owner.borrow(), occurrence.nativeValue(),
+			transform.nativeValue()),
 			"transaction.setTransform");
 	}
 
-	public function setGeometry(occurrence:nkscene_occurrence_id, geometry:Geometry):Void {
+	public function setGeometry(occurrence:Occurrence, geometry:Geometry):Void {
 		ensureOpen();
-		check(NativeKitScene.nkscene_tx_set_geometry(owner.borrow(), occurrence, geometry.id()),
+		check(NativeKitScene.nkscene_tx_set_geometry(owner.borrow(), occurrence.nativeValue(), geometry.id()),
 			"transaction.setGeometry");
 	}
 
-	public function setMaterial(occurrence:nkscene_occurrence_id, material:Material):Void {
+	public function setMaterial(occurrence:Occurrence, material:Material):Void {
 		ensureOpen();
-		check(NativeKitScene.nkscene_tx_set_material(owner.borrow(), occurrence, material.id()),
+		check(NativeKitScene.nkscene_tx_set_material(owner.borrow(), occurrence.nativeValue(), material.id()),
 			"transaction.setMaterial");
 	}
 
-	public function setVisibility(occurrence:nkscene_occurrence_id, visible:Bool):Void {
+	public function setVisibility(occurrence:Occurrence, visible:Bool):Void {
 		ensureOpen();
-		check(NativeKitScene.nkscene_tx_set_visibility(owner.borrow(), occurrence, visible ? 1 : 0),
+		check(NativeKitScene.nkscene_tx_set_visibility(owner.borrow(), occurrence.nativeValue(),
+			visible ? 1 : 0),
 			"transaction.setVisibility");
 	}
 

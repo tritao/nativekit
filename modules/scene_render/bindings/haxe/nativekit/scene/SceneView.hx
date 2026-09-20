@@ -14,8 +14,8 @@ class SceneView {
 		value.set_struct_size(nkscene_render_view.size());
 	}
 
-	public function setRoot(root:nkscene_occurrence_id):SceneView {
-		value.set_root(root);
+	public function setRoot(root:Occurrence):SceneView {
+		value.set_root(root.nativeValue());
 		return this;
 	}
 
@@ -29,18 +29,18 @@ class SceneView {
 		return this;
 	}
 
-	public function setVisibility(occurrence:nkscene_occurrence_id, visible:Bool):SceneView {
+	public function setVisibility(occurrence:Occurrence, visible:Bool):SceneView {
 		var override = new nkscene_render_visibility_override();
-		override.set_occurrence(occurrence);
+		override.set_occurrence(occurrence.nativeValue());
 		override.set_visible(visible ? 1 : 0);
 		visibilityOverrides.push(override);
 		value.set_visibility_overrides(visibilityOverrides);
 		return this;
 	}
 
-	public function setMaterial(occurrence:nkscene_occurrence_id, material:Material):SceneView {
+	public function setMaterial(occurrence:Occurrence, material:Material):SceneView {
 		var override = new nkscene_render_material_override();
-		override.set_occurrence(occurrence);
+		override.set_occurrence(occurrence.nativeValue());
 		override.set_material(material.id());
 		materialOverrides.push(override);
 		value.set_material_overrides(materialOverrides);
@@ -52,6 +52,16 @@ class SceneView {
 		materialOverrides.resize(0);
 		value.set_visibility_overrides(visibilityOverrides);
 		value.set_material_overrides(materialOverrides);
+		return this;
+	}
+
+	public function applyVisibilityFilter(filter:VisibilityFilter):SceneView {
+		filter.apply(this);
+		return this;
+	}
+
+	public function applySelection(selection:SelectionSet, highlight:Material):SceneView {
+		selection.apply(this, highlight);
 		return this;
 	}
 

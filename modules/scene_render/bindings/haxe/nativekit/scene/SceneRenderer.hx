@@ -72,7 +72,7 @@ class SceneRenderer {
 		return lastUpdateValue;
 
 	/** Performs a GPU ID pass and resolves one pixel to scene ownership. */
-	public function pickPixel(snapshot:Snapshot, width:Int, height:Int, x:Int, y:Int):nkscene_render_pick_result {
+	public function pickPixel(snapshot:Snapshot, width:Int, height:Int, x:Int, y:Int):PickResult {
 		ensureLive();
 		if (planOwner == null)
 			throw "sceneRenderer.pickPixel requires a compiled render plan";
@@ -84,7 +84,7 @@ class SceneRenderer {
 			GpuResult.check(last.out_result, "sceneRenderer.pickPixel");
 			throw "sceneRenderer.pickPixel failed";
 		}
-		return picked.out_result;
+		return new PickResult(picked.out_result);
 	}
 
 	public function dispose():Void {
