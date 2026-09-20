@@ -28,8 +28,8 @@
 
 #if defined(_MSC_VER)
 #define NKGPU_DEPRECATED(message) __declspec(deprecated(message))
-#elif defined(__cplusplus) && defined(__clang__)
-#define NKGPU_DEPRECATED(message) [[deprecated(message)]]
+#elif defined(__clang__)
+#define NKGPU_DEPRECATED(message) __attribute__((deprecated(message)))
 #elif defined(__GNUC__) || defined(__clang__)
 #define NKGPU_DEPRECATED(message) __attribute__((deprecated(message)))
 #else

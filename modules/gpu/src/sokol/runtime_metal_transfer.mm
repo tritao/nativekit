@@ -1,5 +1,7 @@
 #include "nativekit_sokol_runtime.h"
 
+#import <Metal/Metal.h>
+
 #if !defined(SOKOL_METAL)
 #error "runtime_metal_transfer.mm requires the Sokol Metal backend"
 #endif
