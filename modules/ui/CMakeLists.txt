@@ -76,6 +76,7 @@ set_target_properties(nativekit_ui PROPERTIES
     VISIBILITY_INLINES_HIDDEN YES
     VERSION ${PROJECT_VERSION}
     SOVERSION 0)
+nk_haxeon_native_target(nativekit_ui)
 
 if(NKUI_ENABLE_SECTION_GC AND
    CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang" AND

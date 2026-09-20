@@ -104,6 +104,7 @@ set_target_properties(nativekit_gpu PROPERTIES
     VISIBILITY_INLINES_HIDDEN YES
     VERSION ${PROJECT_VERSION}
     SOVERSION 0)
+nk_haxeon_native_target(nativekit_gpu)
 
 if(NK_BUILD_TESTS)
     target_compile_definitions(nativekit_gpu PRIVATE NKGPU_TESTING=1)

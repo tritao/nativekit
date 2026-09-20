@@ -109,6 +109,18 @@ if(NK_BUILD_UI AND NOT EMSCRIPTEN AND NK_LIBRARY_TYPE STREQUAL "STATIC")
 endif()
 set(NKUI_HAS_FONTCONFIG OFF)
 
+# Haxeon can delegate a package's CMake build while keeping its outputs in the
+# package runtime directory. The package decides whether those outputs are
+# HashLink extensions or ordinary platform libraries.
+function(nk_haxeon_native_target target)
+    if(HAXEON_NATIVE_OUTPUT_DIR)
+        set_target_properties(${target} PROPERTIES
+            ARCHIVE_OUTPUT_DIRECTORY "${HAXEON_NATIVE_OUTPUT_DIR}"
+            LIBRARY_OUTPUT_DIRECTORY "${HAXEON_NATIVE_OUTPUT_DIR}"
+            RUNTIME_OUTPUT_DIRECTORY "${HAXEON_NATIVE_OUTPUT_DIR}")
+    endif()
+endfunction()
+
 add_library(nativekit ${NK_LIBRARY_TYPE}
     src/core/accessibility.cpp
     src/core/api.cpp
@@ -148,6 +160,7 @@ add_library(nativekit ${NK_LIBRARY_TYPE}
     src/net/net.cpp
 )
 add_library(NativeKit::nativekit ALIAS nativekit)
+nk_haxeon_native_target(nativekit)
 
 if(NOT ANDROID AND NOT EMSCRIPTEN)
     target_sources(nativekit PRIVATE src/core/resource_io.cpp)
@@ -477,6 +490,15 @@ if(NK_BUILD_AUDIO)
 endif()
 if(NK_BUILD_UI)
     add_subdirectory(modules/ui)
+endif()
+if(HAXEON_NATIVE_OUTPUT_DIR)
+    add_custom_target(nativekit_haxeon DEPENDS nativekit)
+    if(NK_BUILD_GPU)
+        add_dependencies(nativekit_haxeon nativekit_gpu)
+    endif()
+    if(NK_BUILD_UI)
+        add_dependencies(nativekit_haxeon nativekit_ui)
+    endif()
 endif()
 install(TARGETS nativekit EXPORT NativeKitTargets
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}

@@ -1,0 +1,51 @@
+{
+	"version": 1,
+	"package": {
+		"name": "nativekit"
+	},
+	"sourceRoots": [
+		"bindings/haxe",
+		"modules/audio/bindings/haxe",
+		"modules/gpu/bindings/haxe",
+		"modules/ui/bindings/haxe",
+		"modules/ui/haxe"
+	],
+	"ffi": {
+		"interfaces": [
+			"bindings/haxe/nativekit.hxi",
+			"modules/audio/bindings/nativekit-audio.hxi",
+			"modules/gpu/bindings/nativekit-gpu.hxi",
+			"modules/ui/bindings/nativekit-ui.hxi"
+		],
+		"projections": [
+			"bindings/haxe/nativekit.hxmap",
+			"modules/audio/bindings/nativekit-audio.hxmap",
+			"modules/gpu/bindings/nativekit-gpu.hxmap",
+			"modules/ui/bindings/nativekit-ui.hxmap"
+		]
+	},
+	"native": {
+		"targets": ["host"],
+		"cmake": {
+			"source": ".",
+			"target": "nativekit_haxeon",
+			"library": "nativekit",
+			"inputs": [
+				"CMakeLists.txt",
+				"cmake",
+				"modules/audio/CMakeLists.txt",
+				"modules/gpu/CMakeLists.txt",
+				"modules/ui/CMakeLists.txt",
+				"modules/ui/cmake"
+			],
+			"options": {
+				"NK_BUILD_AUDIO": "ON",
+				"NK_BUILD_EXAMPLES": "OFF",
+				"NK_BUILD_GPU": "ON",
+				"NK_BUILD_SHARED": "ON",
+				"NK_BUILD_TESTS": "OFF",
+				"NK_BUILD_UI": "ON"
+			}
+		}
+	}
+}
