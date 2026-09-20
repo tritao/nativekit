@@ -6,6 +6,7 @@
 /* ------------------------------------------------------------------------- */
 
 #include "nativekit_scene.hpp"
+#include "nativekit_gpu.h"
 
 /* ------------------------------------------------------------------------- */
 /* Export visibility                                                         */
@@ -118,10 +119,13 @@ struct GpuCommand {
 };
 
 struct GpuExecutionStats {
+    nkgpu_result result = NKGPU_OK;
     std::size_t geometry_resources_created = 0;
     std::size_t geometry_resources_updated = 0;
     std::size_t material_resources_created = 0;
     std::size_t material_resources_updated = 0;
+    std::size_t instance_buffers_created = 0;
+    std::size_t instance_records_updated = 0;
     std::size_t commands = 0;
     std::size_t draw_calls = 0;
 };
@@ -158,14 +162,26 @@ NKSRENDER_API RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapsho
 NKSRENDER_API PickResult pick(const RenderPlan &, const SceneSnapshot &,
                               std::uint32_t primitive, Vec3 world_position, float depth);
 
+/**
+ * Executes the opaque triangle subset of a RenderPlan through NativeKit GPU.
+ * Geometry payloads for this first executor are tightly packed float3 vertex
+ * positions; the scene core keeps that payload opaque. Constructing the
+ * executor without a renderer retains the headless resource/command path.
+ * A renderer must outlive the executor while GPU resources are cached.
+ */
 class NKSRENDER_API NativeKitGpuExecutor {
 public:
     NativeKitGpuExecutor();
+    explicit NativeKitGpuExecutor(nkgpu_renderer renderer);
     ~NativeKitGpuExecutor();
     NativeKitGpuExecutor(NativeKitGpuExecutor &&) noexcept;
     NativeKitGpuExecutor &operator=(NativeKitGpuExecutor &&) noexcept;
     NativeKitGpuExecutor(const NativeKitGpuExecutor &) = delete;
     NativeKitGpuExecutor &operator=(const NativeKitGpuExecutor &) = delete;
+
+    void set_renderer(nkgpu_renderer renderer) noexcept;
+    nkgpu_renderer renderer() const noexcept;
+    nkgpu_result last_result() const noexcept;
 
     GpuExecutionStats execute(const RenderPlan &, const SceneSnapshot &);
     std::span<const GpuCommand> commands() const noexcept;

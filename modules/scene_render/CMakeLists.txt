@@ -15,7 +15,7 @@ target_include_directories(nativekit_scene_render
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/modules/scene/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     PRIVATE src)
-target_link_libraries(nativekit_scene_render PUBLIC NativeKit::scene)
+target_link_libraries(nativekit_scene_render PUBLIC NativeKit::scene NativeKit::gpu)
 set_target_properties(nativekit_scene_render PROPERTIES
     EXPORT_NAME scene_render
     CXX_VISIBILITY_PRESET hidden
@@ -32,6 +32,24 @@ if(NK_BUILD_TESTS)
         NativeKit::scene)
     add_test(NAME scene_render_compiler COMMAND nativekit_scene_render_tests)
     set_tests_properties(scene_render_compiler PROPERTIES LABELS "scene;render" TIMEOUT 30)
+
+    if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN AND NK_BACKEND_GTK_AVAILABLE)
+        find_program(NKSRENDER_XVFB_RUN xvfb-run)
+        if(NKSRENDER_XVFB_RUN)
+            add_executable(nativekit_scene_render_gpu_tests tests/gpu.cpp)
+            target_compile_features(nativekit_scene_render_gpu_tests PRIVATE cxx_std_20)
+            target_include_directories(nativekit_scene_render_gpu_tests PRIVATE
+                src "${PROJECT_SOURCE_DIR}/modules/scene/src")
+            target_link_libraries(nativekit_scene_render_gpu_tests PRIVATE NativeKit::scene_render
+                NativeKit::scene NativeKit::gpu NativeKit::nativekit)
+            add_test(NAME scene_render_gpu
+                COMMAND ${NKSRENDER_XVFB_RUN} -a $<TARGET_FILE:nativekit_scene_render_gpu_tests>)
+            set_tests_properties(scene_render_gpu PROPERTIES
+                LABELS "scene;render;graphics;gpu"
+                TIMEOUT 30
+                ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
+        endif()
+    endif()
 endif()
 
 install(TARGETS nativekit_scene_render EXPORT NativeKitTargets
