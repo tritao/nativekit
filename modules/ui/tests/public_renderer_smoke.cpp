@@ -568,27 +568,71 @@ int main(int argc, char **argv) {
             result = 10;
         if (!result && stress_mode && frames % 9 == 0) {
             nkgpu_renderer gpu_renderer{};
-            nkgpu_render_target target{};
+            nkgpu_image color_image{};
+            nkgpu_image depth_image{};
             nk_graphics_image sampled{};
             nk_graphics_image_info info{};
             info.struct_size = sizeof(info);
             const uint32_t size = 8u + (next_stress_random() & 0x0Fu);
             bool retained = false;
             bool cycle_ok = nkgpu_renderer_create(surface, &gpu_renderer) == NKGPU_OK;
+            nkgpu_image_desc color_desc{};
+            color_desc.struct_size = sizeof(color_desc);
+            color_desc.width = size;
+            color_desc.height = size;
+            color_desc.format = NKGPU_IMAGEFORMAT_RGBA8;
+            color_desc.usage = NKGPU_IMAGE_SAMPLED | NKGPU_IMAGE_RENDER_TARGET;
             if (cycle_ok)
-                cycle_ok = nkgpu_render_target_create(gpu_renderer, size, size, frames & 1u,
-                                                      &target) == NKGPU_OK;
+                cycle_ok = nkgpu_image_create_desc(gpu_renderer, &color_desc, &color_image) ==
+                           NKGPU_OK;
+            if (cycle_ok && (frames & 1u)) {
+                nkgpu_image_desc depth_desc{};
+                depth_desc.struct_size = sizeof(depth_desc);
+                depth_desc.width = size;
+                depth_desc.height = size;
+                depth_desc.format = NKGPU_IMAGEFORMAT_DEPTH24_STENCIL8;
+                depth_desc.usage = NKGPU_IMAGE_DEPTH_STENCIL;
+                cycle_ok = nkgpu_image_create_desc(gpu_renderer, &depth_desc, &depth_image) ==
+                           NKGPU_OK;
+            }
+            if (cycle_ok) {
+                cycle_ok = nkgpu_frame_begin(gpu_renderer) == NKGPU_OK;
+                nkgpu_render_pass_desc pass{};
+                pass.struct_size = sizeof(pass);
+                pass.color_count = 1;
+                pass.colors[0].image = color_image;
+                pass.colors[0].action.load_action = NKGPU_LOADACTION_CLEAR;
+                pass.colors[0].action.store_action = NKGPU_STOREACTION_STORE;
+                pass.colors[0].action.clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
+                if (depth_image.id) {
+                    pass.depth_stencil = depth_image;
+                    pass.depth_stencil_action.load_action = NKGPU_LOADACTION_CLEAR;
+                    pass.depth_stencil_action.store_action = NKGPU_STOREACTION_STORE;
+                    pass.depth_stencil_action.clear_depth = 1.0f;
+                }
+                if (cycle_ok)
+                    cycle_ok = nkgpu_begin_render_pass(gpu_renderer, &pass) == NKGPU_OK;
+                if (cycle_ok)
+                    cycle_ok = nkgpu_end_pass(gpu_renderer) == NKGPU_OK;
+                if (cycle_ok)
+                    cycle_ok = nkgpu_end_frame(gpu_renderer) == NKGPU_OK;
+            }
             if (cycle_ok)
-                cycle_ok =
-                    nkgpu_render_target_get_image(gpu_renderer, target, &sampled) == NKGPU_OK;
+                cycle_ok = nkgpu_image_get_graphics_image(gpu_renderer, color_image, &sampled) ==
+                           NKGPU_OK;
             if (cycle_ok) {
                 cycle_ok = nk_graphics_image_retain(sampled) == NK_OK;
                 retained = cycle_ok;
             }
             if (cycle_ok) {
-                cycle_ok = nkgpu_render_target_destroy(gpu_renderer, target) == NKGPU_OK;
+                cycle_ok = nkgpu_image_destroy(gpu_renderer, color_image) == NKGPU_OK;
                 if (cycle_ok)
-                    target = {};
+                    color_image = {};
+            }
+            if (cycle_ok && depth_image.id) {
+                cycle_ok = nkgpu_image_destroy(gpu_renderer, depth_image) == NKGPU_OK;
+                if (cycle_ok)
+                    depth_image = {};
             }
             if (cycle_ok)
                 cycle_ok = nk_graphics_image_get_info(sampled, &info) == NK_OK &&
@@ -606,10 +650,15 @@ int main(int argc, char **argv) {
             if (!cycle_ok) {
                 if (retained)
                     nk_graphics_image_release(sampled);
-                if (target.id && gpu_renderer.id)
-                    nkgpu_render_target_destroy(gpu_renderer, target);
-                if (gpu_renderer.id)
+                if (color_image.id && gpu_renderer.id)
+                    nkgpu_image_destroy(gpu_renderer, color_image);
+                if (depth_image.id && gpu_renderer.id)
+                    nkgpu_image_destroy(gpu_renderer, depth_image);
+                if (gpu_renderer.id) {
+                    nkgpu_end_pass(gpu_renderer);
+                    nkgpu_end_frame(gpu_renderer);
                     nkgpu_renderer_destroy(gpu_renderer);
+                }
                 result = 19;
             }
         }

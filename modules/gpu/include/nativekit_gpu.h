@@ -88,9 +88,9 @@ extern "C" {
  * NKGPU_ERROR_INVALID_HANDLE.
  *
  * The public renderer lifecycle is Ready -> FrameActive -> Ready for window
- * frames and Ready -> RenderTargetActive -> Ready for standalone render-target
- * passes. A fatal backend/device failure moves the renderer to Lost. Lost
- * renderers reject rendering and resource creation with
+ * frames and explicit render, compute, or copy passes. A fatal backend/device
+ * failure moves the renderer to Lost. Lost renderers reject rendering and
+ * resource creation with
  * NKGPU_ERROR_DEVICE_LOST; destroying them remains safe. Surface resize and
  * framebuffer/DPR changes do not imply device loss.
  *
@@ -158,8 +158,6 @@ NKGPU_HANDLE(nkgpu_image);
 NKGPU_HANDLE(nkgpu_image_builder);
 /** Sampler handle returned by nkgpu_sampler_create(). */
 NKGPU_HANDLE(nkgpu_sampler);
-/** Offscreen render target owned by a renderer. */
-NKGPU_HANDLE(nkgpu_render_target);
 /** Sealed-submission batch handle returned by nkgpu_batch_begin(). */
 NKGPU_HANDLE(nkgpu_batch);
 /** Asynchronous readback handle returned by nkgpu_readback_begin_image(). */
@@ -203,12 +201,10 @@ enum NK_ENUM(nkgpu_readback_state) {
 /** Observable renderer lifecycle state. */
 typedef uint32_t nkgpu_renderer_state;
 enum NK_ENUM(nkgpu_renderer_state) {
-    /** The renderer is ready to begin a frame or standalone target pass. */
+    /** The renderer is ready to begin a frame. */
     NKGPU_RENDERER_READY = 0,
-    /** A window frame is active, including frames between render passes. */
+    /** A frame is active, including frames between render passes. */
     NKGPU_RENDERER_FRAME_ACTIVE = 1,
-    /** A standalone offscreen target pass is active. */
-    NKGPU_RENDERER_RENDER_TARGET_ACTIVE = 2,
     /** The backend/device is unusable; only diagnostics and destruction remain. */
     NKGPU_RENDERER_LOST = 3,
 };
@@ -910,32 +906,6 @@ NKGPU_API nkgpu_result nkgpu_renderer_destroy(nkgpu_renderer renderer);
 NKGPU_API nkgpu_result nkgpu_begin_render_pass(nkgpu_renderer renderer,
                                                const nkgpu_render_pass_desc *desc);
 
-/** Creates a sampled RGBA8 offscreen target, optionally with depth/stencil storage. */
-NKGPU_API NKGPU_DEPRECATED("use nkgpu_image_create_desc and nkgpu_begin_render_pass") nkgpu_result
-    nkgpu_render_target_create(nkgpu_renderer renderer, uint32_t width, uint32_t height,
-                               uint32_t depth_stencil, nkgpu_render_target *out_target NKGPU_OUT);
-
-/** Returns a borrowed generic image handle for the target's sampled color attachment. */
-NKGPU_API NKGPU_DEPRECATED("use the image handle returned by nkgpu_image_create_desc") nkgpu_result
-    nkgpu_render_target_get_image(nkgpu_renderer renderer, nkgpu_render_target target,
-                                  nk_graphics_image *out_image NKGPU_OUT);
-
-/** Destroys a render target; imported image references remain valid until released. */
-NKGPU_API NKGPU_DEPRECATED("use nkgpu_image_destroy") nkgpu_result
-    nkgpu_render_target_destroy(nkgpu_renderer renderer, nkgpu_render_target target);
-
-/**
- * Begins drawing to an offscreen target without presenting the window surface.
- * `clear` must be zero or one; one clears the color attachment. The renderer
- * must be idle. Pair with nkgpu_end_render_target() before any other pass.
- */
-NKGPU_API NKGPU_DEPRECATED("use nkgpu_begin_render_pass") nkgpu_result
-    nkgpu_begin_render_target(nkgpu_renderer renderer, nkgpu_render_target target, uint32_t clear);
-
-/** Ends and commits the active offscreen target pass without presenting. */
-NKGPU_API NKGPU_DEPRECATED("use nkgpu_end_pass") nkgpu_result
-    nkgpu_end_render_target(nkgpu_renderer renderer);
-
 /* ------------------------------------------------------------------------- */
 /* Buffer APIs                                                               */
 /* ------------------------------------------------------------------------- */
@@ -1269,10 +1239,6 @@ NKGPU_API nkgpu_result nkgpu_begin_copy_pass(nkgpu_renderer renderer);
 NKGPU_API nkgpu_result nkgpu_begin_window_pass(nkgpu_renderer renderer, uint32_t width,
                                                uint32_t height, uint32_t clear);
 
-/** Begins an offscreen target pass inside a frame. */
-NKGPU_API NKGPU_DEPRECATED("use nkgpu_begin_render_pass") nkgpu_result
-    nkgpu_begin_target_pass(nkgpu_renderer renderer, nkgpu_render_target target, uint32_t clear);
-
 /** Ends the active pass while keeping the frame open. */
 NKGPU_API nkgpu_result nkgpu_end_pass(nkgpu_renderer renderer);
 
@@ -1484,8 +1450,6 @@ typedef uint32_t nkgpu_batch_pass_kind;
 enum NK_ENUM(nkgpu_batch_pass_kind) {
     /** The pass targets the renderer's window surface framebuffer. */
     NKGPU_BATCH_PASS_WINDOW = 1,
-    /** The pass targets an offscreen render target. */
-    NKGPU_BATCH_PASS_TARGET = 2,
     /** A compute pass with no render target. */
     NKGPU_BATCH_PASS_COMPUTE = 3,
     /** A transfer pass with no render target. */
@@ -1498,15 +1462,13 @@ enum NK_ENUM(nkgpu_batch_pass_kind) {
 typedef struct nkgpu_batch_pass {
     /** Set to sizeof(nkgpu_batch_pass) or a larger compatible size. */
     uint32_t struct_size NK_STRUCT_SIZE;
-    /** Selects how the pass target fields below are interpreted. */
+    /** Selects how the pass fields below are interpreted. */
     nkgpu_batch_pass_kind kind;
-    /** Offscreen target for NKGPU_BATCH_PASS_TARGET; ignored for other pass kinds. */
-    nkgpu_render_target target;
     /** Non-zero to clear the target at the start of the pass, zero to load it. */
     uint32_t clear;
-    /** Framebuffer width for NKGPU_BATCH_PASS_WINDOW; ignored for target/compute passes. */
+    /** Framebuffer width for NKGPU_BATCH_PASS_WINDOW; ignored for other pass kinds. */
     uint32_t width;
-    /** Framebuffer height for NKGPU_BATCH_PASS_WINDOW; ignored for target/compute passes. */
+    /** Framebuffer height for NKGPU_BATCH_PASS_WINDOW; ignored for other pass kinds. */
     uint32_t height;
     /** General attachments for NKGPU_BATCH_PASS_RENDER; copied when appended. */
     const nkgpu_render_pass_desc *render_pass;
@@ -1530,9 +1492,9 @@ NKGPU_API nkgpu_result nkgpu_batch_begin(nkgpu_renderer renderer, nkgpu_batch *o
  * Appends one pass to a batch.
  *
  * Passes are replayed in append order. A window pass requires positive
- * `width`/`height`; a target pass requires a render target owned by the batch's
- * renderer; a render pass requires `render_pass`; compute and copy passes have
- * no target fields. Referenced resources are retained by the batch.
+ * `width`/`height`; a render pass requires `render_pass`; compute and copy
+ * passes have no attachment fields. Referenced resources are retained by the
+ * batch.
  */
 NKGPU_API nkgpu_result nkgpu_batch_append_pass(nkgpu_batch batch, const nkgpu_batch_pass *pass);
 

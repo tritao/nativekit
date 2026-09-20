@@ -24,8 +24,8 @@ Lab pass their native end-to-end checks.
 
 The public shader API requires an explicit `ShaderLanguage`: GLSL for GL,
 HLSL5 for D3D11, and MSL for Metal. The C renderer exposes
-`Ready`, `FrameActive`, `RenderTargetActive`, and `Lost` states. A window frame
-uses `nkgpu_begin_frame()` / `nkgpu_end_frame()`; general offscreen work uses
+`Ready`, `FrameActive`, and `Lost` states. A window frame uses
+`nkgpu_begin_frame()` / `nkgpu_end_frame()`; general offscreen work uses
 `nkgpu_frame_begin()` / `nkgpu_begin_render_pass()` / `nkgpu_end_pass()` /
 `nkgpu_end_frame()`. UI render-plan passes use the same general attachment
 path, including when a sealed batch is being recorded. Resource creation and

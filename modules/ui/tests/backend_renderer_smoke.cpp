@@ -68,7 +68,7 @@ struct RenderTask {
     nk_surface surface = NK_INVALID_HANDLE;
     nk_surface_frame_target target{};
     nkgpu_renderer producer{};
-    nkgpu_render_target render_target{};
+    nkgpu_image image_resource{};
     nk_graphics_image image{};
 };
 
@@ -169,23 +169,46 @@ void create_offscreen_resources(RenderTask &task) noexcept {
             : nkgpu_renderer_create(task.surface, &task.producer);
     if (created != NKGPU_OK)
         return;
-    if (nkgpu_render_target_create(task.producer, 32, 32, 0, &task.render_target) != NKGPU_OK)
+    nkgpu_image_desc image_desc{};
+    image_desc.struct_size = sizeof(image_desc);
+    image_desc.width = 32;
+    image_desc.height = 32;
+    image_desc.format = NKGPU_IMAGEFORMAT_RGBA8;
+    image_desc.usage = NKGPU_IMAGE_SAMPLED | NKGPU_IMAGE_RENDER_TARGET;
+    if (nkgpu_image_create_desc(task.producer, &image_desc, &task.image_resource) != NKGPU_OK)
         return;
-    if (nkgpu_begin_render_target(task.producer, task.render_target, 1) != NKGPU_OK)
+    const nkgpu_result frame = nk::core::render_executor_physical()
+                                   ? nkgpu_frame_begin_with_target(task.producer, &task.target)
+                                   : nkgpu_frame_begin(task.producer);
+    if (frame != NKGPU_OK)
         return;
-    if (nkgpu_end_render_target(task.producer) != NKGPU_OK)
+    nkgpu_render_pass_desc pass{};
+    pass.struct_size = sizeof(pass);
+    pass.color_count = 1;
+    pass.colors[0].image = task.image_resource;
+    pass.colors[0].action.load_action = NKGPU_LOADACTION_CLEAR;
+    pass.colors[0].action.store_action = NKGPU_STOREACTION_STORE;
+    pass.colors[0].action.clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
+    if (nkgpu_begin_render_pass(task.producer, &pass) != NKGPU_OK)
         return;
-    if (nkgpu_render_target_get_image(task.producer, task.render_target, &task.image) != NKGPU_OK)
+    if (nkgpu_end_pass(task.producer) != NKGPU_OK)
+        return;
+    if (nkgpu_end_frame_deferred_present(task.producer) != NKGPU_OK)
+        return;
+    if (nkgpu_image_get_graphics_image(task.producer, task.image_resource, &task.image) !=
+        NKGPU_OK)
         return;
     task.success = true;
 }
 
 void destroy_offscreen_resources(RenderTask &task) noexcept {
-    if (task.render_target.id)
-        (void)nkgpu_render_target_destroy(task.producer, task.render_target);
+    (void)nkgpu_end_pass(task.producer);
+    (void)nkgpu_end_frame_deferred_present(task.producer);
+    if (task.image_resource.id)
+        (void)nkgpu_image_destroy(task.producer, task.image_resource);
     if (task.producer.id)
         (void)nkgpu_renderer_destroy(task.producer);
-    task.render_target = {};
+    task.image_resource = {};
     task.producer = {};
     task.image = {};
     task.success = true;
@@ -347,7 +370,7 @@ int main() {
     nk_window window{};
     nk_surface surface{};
     nkgpu_renderer producer{};
-    nkgpu_render_target target{};
+    nkgpu_image image_resource{};
     nk_graphics_image image{};
     nk_graphics_image_info image_info{};
     nkui_resource imported_surface{};
@@ -443,7 +466,7 @@ int main() {
         goto cleanup;
     }
     producer = setup_task.producer;
-    target = setup_task.render_target;
+    image_resource = setup_task.image_resource;
     image = setup_task.image;
     if (!setup_ok) {
         std::fprintf(stderr, "backend renderer smoke: offscreen setup failed: %s\n",
@@ -1183,7 +1206,7 @@ cleanup:
     if (producer.id) {
         destroy_task.surface = surface;
         destroy_task.producer = producer;
-        destroy_task.render_target = target;
+        destroy_task.image_resource = image_resource;
         destroy_task.function = &destroy_offscreen_resources;
         if (!dispatch_render_task(destroy_task))
             result = result ? result : 24;
