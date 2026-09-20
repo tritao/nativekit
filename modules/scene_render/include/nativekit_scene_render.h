@@ -182,9 +182,9 @@ NKSRENDER_API PickResult pick(const RenderPlan &, const SceneSnapshot &,
 
 /**
  * Executes the opaque triangle subset of a RenderPlan through NativeKit GPU.
- * Geometry payloads for this first executor are tightly packed float3 vertex
- * positions; the scene core keeps that payload opaque. Constructing the
- * executor without a renderer retains the headless resource/command path.
+ * Geometry payloads use GeometryPayload's object-local float3 vertices and
+ * optional uint32 triangle indices. Constructing the executor without a
+ * renderer retains the headless resource/command path.
  * A renderer must outlive the executor while GPU resources are cached.
  */
 class NKSRENDER_API NativeKitGpuExecutor {

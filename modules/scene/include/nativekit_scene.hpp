@@ -54,12 +54,42 @@ struct Bounds {
     bool valid = false;
 };
 
+struct GeometryVertex {
+    std::array<float, 3> position{};
+};
+
 struct GeometryPayload {
-    std::vector<std::byte> bytes;
+    /** Positions are object-local and use a tightly packed float3 layout. */
+    std::vector<GeometryVertex> vertices;
+    /** Optional uint32 triangle indices. Empty means sequential triangles. */
+    std::vector<std::uint32_t> indices;
+
+    std::size_t element_count() const noexcept {
+        return indices.empty() ? vertices.size() : indices.size();
+    }
+
+    bool indexed() const noexcept { return !indices.empty(); }
+};
+
+struct SubelementRange {
+    std::uint32_t first_primitive = 0;
+    std::uint32_t primitive_count = 0;
+    std::uint32_t subelement = 0;
 };
 
 struct SubelementTable {
-    std::vector<std::uint32_t> offsets;
+    std::vector<SubelementRange> ranges;
+
+    std::uint32_t id_for_primitive(std::size_t primitive) const noexcept {
+        for (const auto &range : ranges) {
+            const auto first = static_cast<std::size_t>(range.first_primitive);
+            const auto count = static_cast<std::size_t>(range.primitive_count);
+            if (primitive >= first &&
+                primitive - first < count)
+                return range.subelement;
+        }
+        return static_cast<std::uint32_t>(primitive + 1);
+    }
 };
 
 struct GeometryResource {
@@ -70,9 +100,21 @@ struct GeometryResource {
     SubelementTable subelements;
 };
 
+enum class MaterialFlags : std::uint32_t {
+    Opaque = 1u << 0,
+    DoubleSided = 1u << 1
+};
+
+constexpr bool has_material_flag(std::uint32_t value, MaterialFlags flag) noexcept {
+    return (value & static_cast<std::uint32_t>(flag)) != 0;
+}
+
 struct MaterialResource {
     MaterialId id;
     std::uint64_t revision = 1;
+    std::array<float, 4> base_color{1.0f, 1.0f, 1.0f, 1.0f};
+    float opacity = 1.0f;
+    std::uint32_t flags = static_cast<std::uint32_t>(MaterialFlags::Opaque);
 };
 
 enum class ChangeDomain : std::uint32_t {

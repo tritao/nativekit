@@ -19,6 +19,45 @@ nkscene::LocalTransform translated(float x) {
     return transform;
 }
 
+void geometry_payload_contract_is_validated() {
+    auto scene = std::make_shared<Scene>();
+    const auto valid_geometry = scene->reserve_geometry_id();
+    auto &valid = scene->geometry_store().create(valid_geometry);
+    valid.payload.vertices = {
+        nkscene::GeometryVertex{{-1.0f, 0.0f, 0.0f}},
+        nkscene::GeometryVertex{{1.0f, 0.0f, 0.0f}},
+        nkscene::GeometryVertex{{0.0f, 1.0f, 0.0f}}};
+    valid.payload.indices = {0, 1, 2};
+    valid.subelements.ranges.push_back({0, 1, 7});
+    assert(valid.payload.element_count() == 3);
+    assert(valid.payload.indexed());
+    assert(valid.subelements.id_for_primitive(0) == 7);
+
+    const auto invalid_geometry = scene->reserve_geometry_id();
+    auto &invalid = scene->geometry_store().create(invalid_geometry);
+    invalid.payload.vertices = valid.payload.vertices;
+    invalid.payload.indices = {0, 1, 3};
+
+    const auto material = scene->reserve_material_id();
+    scene->material_store().create(material);
+    const auto occurrence = scene->reserve_occurrence_id();
+    Transaction create(scene);
+    create.add_create(occurrence);
+    ChangeSet changes;
+    assert(scene->commit(create, changes) == NKS_OK);
+    create.close();
+    Transaction configure(scene);
+    configure.add_geometry(occurrence, invalid_geometry);
+    configure.add_material(occurrence, material);
+    assert(scene->commit(configure, changes) == NKS_OK);
+    configure.close();
+
+    const auto plan = nkscene::compile(scene->snapshot(), {});
+    nkscene::NativeKitGpuExecutor executor;
+    const auto stats = executor.execute(plan, scene->snapshot());
+    assert(stats.result == NKGPU_ERROR_INVALID_ARGUMENT);
+}
+
 void scene_views_are_hierarchy_aware() {
     auto scene = std::make_shared<Scene>();
     const auto geometry = scene->reserve_geometry_id();
@@ -114,6 +153,7 @@ void scene_views_are_hierarchy_aware() {
 } // namespace
 
 int main() {
+    geometry_payload_contract_is_validated();
     scene_views_are_hierarchy_aware();
     constexpr std::size_t count = 50000;
     auto scene = std::make_shared<Scene>();

@@ -7,7 +7,6 @@
 #include <array>
 #include <cassert>
 #include <chrono>
-#include <cstring>
 #include <memory>
 #include <thread>
 
@@ -73,12 +72,15 @@ int main() {
         auto scene = std::make_shared<Scene>();
         const auto geometry = scene->reserve_geometry_id();
         auto &geometry_resource = scene->geometry_store().create(geometry);
-        constexpr std::array<float, 9> triangle{-0.6f, -0.6f, 0.0f, 0.6f, -0.6f, 0.0f,
-                                                0.0f, 0.6f, 0.0f};
-        geometry_resource.payload.bytes.resize(sizeof(triangle));
-        std::memcpy(geometry_resource.payload.bytes.data(), triangle.data(), sizeof(triangle));
+        geometry_resource.payload.vertices = {
+            {{{-0.6f, -0.6f, 0.0f}}},
+            {{{0.6f, -0.6f, 0.0f}}},
+            {{{0.0f, 0.6f, 0.0f}}}};
+        geometry_resource.payload.indices = {0, 1, 2};
+        geometry_resource.subelements.ranges.push_back({0, 1, 42});
         const auto material = scene->reserve_material_id();
-        scene->material_store().create(material);
+        auto &material_resource = scene->material_store().create(material);
+        material_resource.base_color = {0.2f, 0.7f, 1.0f, 1.0f};
 
         Transaction create(scene);
         const auto occurrence = scene->reserve_occurrence_id();
@@ -116,10 +118,11 @@ int main() {
                                   16, options.height / 2, &picked) == NKGPU_OK);
         assert(picked.occurrence == occurrence);
         assert(picked.source == nkscene::EntityId{});
-        assert(picked.subelement.valid());
+        assert(picked.subelement.value == 42);
         assert(executor.pick_pixel(plan, scene->snapshot(), options.width, options.height,
                                   112, options.height / 2, &picked) == NKGPU_OK);
         assert(picked.occurrence == second_occurrence);
+        assert(picked.subelement.value == 42);
         nkscene::PickResult miss;
         assert(executor.pick_pixel(plan, scene->snapshot(), options.width, options.height, 0, 0,
                                   &miss) == NKGPU_OK);
@@ -134,12 +137,18 @@ int main() {
         const auto moved_snapshot = scene->snapshot();
         const auto update = nkscene::update(plan, moved_snapshot, changes, view);
         assert(!update.plan_rebuilt);
-        stats = executor.execute(plan, moved_snapshot);
+        stats = executor.execute(plan, scene->snapshot());
         assert(stats.result == NKGPU_OK);
         assert(stats.geometry_resources_created == 0);
         assert(stats.geometry_resources_updated == 0);
         assert(stats.instance_records_updated == 1);
         assert(stats.draw_calls == 1);
+
+        auto &updated_material = scene->material_store().create(material);
+        updated_material.base_color = {1.0f, 0.3f, 0.2f, 1.0f};
+        stats = executor.execute(plan, scene->snapshot());
+        assert(stats.result == NKGPU_OK);
+        assert(stats.material_resources_updated == 1);
     }
 
 cleanup:
