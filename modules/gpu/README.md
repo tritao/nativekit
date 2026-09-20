@@ -17,8 +17,12 @@ GLCore and GLES3 runtimes in the same binary. `nkgpu_surface_create_for_api()`
 then selects a runtime from each surface's actual graphics API, so both kinds
 of renderer may coexist. Renderer calls are graphics-thread serialized and
 only one pass may be active at a time; resources remain owned by the renderer
-that created them. The backend-matrix test alternates frame submission between
-both runtime variants. Vulkan still requires its own Sokol runtime and adapter.
+that created them. In a physical split build, NativeKit UI creates, updates,
+and destroys these pools only from `NK_EXECUTOR_RENDER`; APP/PLATFORM only
+build immutable plans and query synchronized statistics. Direct immediate GPU
+calls remain available for legacy single-executor clients. The backend-matrix
+test alternates frame submission between both runtime variants. Vulkan still
+requires its own Sokol runtime and adapter.
 Windows D3D11 and macOS Metal are experimental until the Explorer and Graphics
 Lab pass their native end-to-end checks.
 
@@ -135,8 +139,8 @@ Recording does not touch GPU state, so a batch can be built while another frame
 is active, and a sealed batch can be submitted more than once. Retained handles
 stay valid after the caller destroys its own references, and deferred backend destruction runs
 when the last batch holding them is destroyed. Submission ends the frame with
-deferred presentation, leaving presentation to the surface owner, and is the
-seam that later moves onto the render executor (ADR 0017).
+deferred presentation, leaving presentation to the surface owner, and runs on
+the render executor in physical split builds (ADR 0017).
 
 Renderer, resource, and builder handles are distinct one-word value types in
 the public C ABI. Their IDs encode a resource kind, generation, and pool slot;
