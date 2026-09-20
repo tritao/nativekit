@@ -70,12 +70,28 @@ void append_apply_vertex_buffer(std::vector<uint8_t> &bytes, uint32_t slot, nkgp
     append_record(bytes, NKGPU_COMMAND_APPLY_VERTEX_BUFFER, payload);
 }
 
+void append_apply_storage_buffer(std::vector<uint8_t> &bytes, uint32_t slot,
+                                 nkgpu_buffer buffer) {
+    std::vector<uint8_t> payload;
+    append_u32(payload, slot);
+    append_u32(payload, buffer.id);
+    append_record(bytes, NKGPU_COMMAND_APPLY_STORAGE_BUFFER, payload);
+}
+
 void append_draw(std::vector<uint8_t> &bytes, uint32_t base, uint32_t count, uint32_t instances) {
     std::vector<uint8_t> payload;
     append_u32(payload, base);
     append_u32(payload, count);
     append_u32(payload, instances);
     append_record(bytes, NKGPU_COMMAND_DRAW, payload);
+}
+
+void append_dispatch(std::vector<uint8_t> &bytes, uint32_t x, uint32_t y, uint32_t z) {
+    std::vector<uint8_t> payload;
+    append_u32(payload, x);
+    append_u32(payload, y);
+    append_u32(payload, z);
+    append_record(bytes, NKGPU_COMMAND_DISPATCH, payload);
 }
 
 void append_copy_buffer(std::vector<uint8_t> &bytes, nkgpu_buffer source, uint32_t source_offset,
@@ -135,9 +151,13 @@ int main() {
     nk_window window = 0;
     nk_surface surface = 0;
     nkgpu_renderer renderer{};
+    nkgpu_features features{};
     nkgpu_shader shader{};
     nkgpu_pipeline pipeline{};
     nkgpu_buffer buffer{};
+    nkgpu_shader compute_shader{};
+    nkgpu_pipeline compute_pipeline{};
+    nkgpu_buffer compute_buffer{};
     nkgpu_render_target target{};
     nkgpu_image general_color{};
     nkgpu_image general_depth{};
@@ -148,6 +168,7 @@ int main() {
     nkgpu_buffer textured_buffer{};
     nkgpu_sampler sampler{};
     nk_graphics_image retained_image{};
+    bool compute_supported = false;
 
     if (nk_window_create(&window_options, &window) != NK_OK) {
         result = 2;
@@ -184,6 +205,9 @@ int main() {
     }
 
     EXPECT_RESULT(nkgpu_renderer_create(surface, &renderer), NKGPU_OK);
+    features.struct_size = sizeof(features);
+    EXPECT_RESULT(nkgpu_query_features(renderer, &features), NKGPU_OK);
+    compute_supported = features.compute && features.storage_buffer;
 
     {
         const bool gles = nkgpu_query_graphics_api(renderer) == NK_GRAPHICS_OPENGL_ES;
@@ -216,6 +240,47 @@ int main() {
         const float vertices[] = {-1.0f, -1.0f, 3.0f, -1.0f, -1.0f, 3.0f};
         EXPECT_RESULT(nkgpu_buffer_create(renderer, reinterpret_cast<const uint8_t *>(vertices),
                                           sizeof(vertices), &buffer),
+                      NKGPU_OK);
+    }
+
+    if (compute_supported) {
+        const char *compute_source =
+            nkgpu_query_graphics_api(renderer) == NK_GRAPHICS_OPENGL_ES
+                ? "#version 310 es\n"
+                  "layout(local_size_x=1, local_size_y=1, local_size_z=1) in;\n"
+                  "layout(std430, binding=0) buffer Data { uint value[]; };\n"
+                  "void main(){ value[0] = value[0] + 1u; }\n"
+                : "#version 430\n"
+                  "layout(local_size_x=1, local_size_y=1, local_size_z=1) in;\n"
+                  "layout(std430, binding=0) buffer Data { uint value[]; };\n"
+                  "void main(){ value[0] = value[0] + 1u; }\n";
+        nkgpu_shader_builder compute_shader_builder{};
+        EXPECT_RESULT(nkgpu_shader_begin_compute(renderer, NKGPU_SHADERLANGUAGE_GLSL,
+                                                 compute_source, &compute_shader_builder),
+                      NKGPU_OK);
+        nkgpu_shader_binding_desc storage_binding{};
+        storage_binding.struct_size = sizeof(storage_binding);
+        storage_binding.kind = NKGPU_SHADERBINDING_STORAGE_BUFFER;
+        storage_binding.stage = NKGPU_SHADERSTAGE_COMPUTE;
+        storage_binding.slot = 0;
+        EXPECT_RESULT(nkgpu_shader_binding(compute_shader_builder, &storage_binding), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_shader_end(compute_shader_builder, &compute_shader), NKGPU_OK);
+
+        nkgpu_pipeline_builder compute_pipeline_builder{};
+        EXPECT_RESULT(nkgpu_pipeline_begin_compute(renderer, compute_shader,
+                                                   &compute_pipeline_builder),
+                      NKGPU_OK);
+        EXPECT_RESULT(nkgpu_pipeline_end(compute_pipeline_builder, &compute_pipeline),
+                      NKGPU_OK);
+
+        const uint32_t compute_value = 7;
+        nkgpu_buffer_desc compute_buffer_desc{};
+        compute_buffer_desc.struct_size = sizeof(compute_buffer_desc);
+        compute_buffer_desc.size = sizeof(compute_value);
+        compute_buffer_desc.usage = NKGPU_BUFFER_STORAGE;
+        compute_buffer_desc.data = reinterpret_cast<const uint8_t *>(&compute_value);
+        compute_buffer_desc.data_size = sizeof(compute_value);
+        EXPECT_RESULT(nkgpu_buffer_create_desc(renderer, &compute_buffer_desc, &compute_buffer),
                       NKGPU_OK);
     }
 
@@ -275,6 +340,21 @@ int main() {
                                                  static_cast<uint32_t>(overlay_commands.size())),
                       NKGPU_OK);
 
+        if (compute_supported) {
+            nkgpu_batch_pass compute_pass{};
+            compute_pass.struct_size = sizeof(compute_pass);
+            compute_pass.kind = NKGPU_BATCH_PASS_COMPUTE;
+            EXPECT_RESULT(nkgpu_batch_append_pass(batch, &compute_pass), NKGPU_OK);
+
+            std::vector<uint8_t> compute_commands;
+            append_apply_pipeline(compute_commands, compute_pipeline);
+            append_apply_storage_buffer(compute_commands, 0, compute_buffer);
+            append_dispatch(compute_commands, 1, 1, 1);
+            EXPECT_RESULT(nkgpu_batch_append_command(batch, compute_commands.data(),
+                                                     static_cast<uint32_t>(compute_commands.size())),
+                          NKGPU_OK);
+        }
+
         nkgpu_batch_pass copy_pass{};
         copy_pass.struct_size = sizeof(copy_pass);
         copy_pass.kind = NKGPU_BATCH_PASS_COPY;
@@ -313,6 +393,17 @@ int main() {
             result = __LINE__;
             goto cleanup;
         }
+    }
+
+    /* Resource retention must keep a sealed batch replayable after its compute resources are
+       released by the caller. */
+    if (compute_supported) {
+        EXPECT_RESULT(nkgpu_buffer_destroy(renderer, compute_buffer), NKGPU_OK);
+        compute_buffer = {};
+        EXPECT_RESULT(nkgpu_pipeline_destroy(renderer, compute_pipeline), NKGPU_OK);
+        compute_pipeline = {};
+        EXPECT_RESULT(nkgpu_shader_destroy(renderer, compute_shader), NKGPU_OK);
+        compute_shader = {};
     }
     /* The platform can hand an acquired immutable target to render submission. */
     {
@@ -816,6 +907,12 @@ cleanup:
         nkgpu_pipeline_destroy(renderer, pipeline);
     if (buffer.id && renderer.id)
         nkgpu_buffer_destroy(renderer, buffer);
+    if (compute_buffer.id && renderer.id)
+        nkgpu_buffer_destroy(renderer, compute_buffer);
+    if (compute_pipeline.id && renderer.id)
+        nkgpu_pipeline_destroy(renderer, compute_pipeline);
+    if (compute_shader.id && renderer.id)
+        nkgpu_shader_destroy(renderer, compute_shader);
     if (shader.id && renderer.id)
         nkgpu_shader_destroy(renderer, shader);
     if (textured_pipeline.id && renderer.id)
