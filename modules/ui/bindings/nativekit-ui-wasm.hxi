@@ -34,10 +34,22 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	 * Horizontal gap between wrapped columns.
 	 */
 	const NKUI_LAYOUT_NODE_COLUMN_GAP_OFFSET = 224;
+	/**
+	 * Haxe-owned compositing revision for shared scene metadata.
+	 */
+	const NKUI_LAYOUT_NODE_COMPOSITE_REVISION_OFFSET = 256;
+	/**
+	 * Haxe-owned paint/content revision used by native raster caches.
+	 */
+	const NKUI_LAYOUT_NODE_CONTENT_REVISION_OFFSET = 248;
 	const NKUI_LAYOUT_NODE_DIRECTION_OFFSET = 28;
 	const NKUI_LAYOUT_NODE_FLAGS_OFFSET = 168;
 	const NKUI_LAYOUT_NODE_FONT_FAMILY_OFFSET = 112;
 	const NKUI_LAYOUT_NODE_FONT_SIZE_OFFSET = 116;
+	/**
+	 * Haxe-owned resolved geometry revision for shared scene metadata.
+	 */
+	const NKUI_LAYOUT_NODE_GEOMETRY_REVISION_OFFSET = 252;
 	/**
 	 * Relative share of extra height for GROW sizing; must be positive and finite.
 	 */
@@ -76,7 +88,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	const NKUI_LAYOUT_NODE_RADIUS_BOTTOM_RIGHT_OFFSET = 80;
 	const NKUI_LAYOUT_NODE_RADIUS_TOP_LEFT_OFFSET = 68;
 	const NKUI_LAYOUT_NODE_RADIUS_TOP_RIGHT_OFFSET = 72;
-	const NKUI_LAYOUT_NODE_RECORD_BYTES = 248;
+	const NKUI_LAYOUT_NODE_RECORD_BYTES = 260;
 	/**
 	 * Vertical gap between wrapped rows.
 	 */
@@ -127,7 +139,7 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	const NKUI_LAYOUT_NODE_Z_INDEX_OFFSET = 184;
 	const NKUI_LAYOUT_RESOLVED_ITEM_BYTES = 96;
 	const NKUI_LAYOUT_TRANSACTION_HEADER_BYTES = 16;
-	const NKUI_LAYOUT_TRANSACTION_VERSION = 15;
+	const NKUI_LAYOUT_TRANSACTION_VERSION = 16;
 	/**
 	 * 16-bit opcode identifying one display-list command record.
 	 */

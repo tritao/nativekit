@@ -189,6 +189,12 @@ struct LayoutNode {
     bool hit_children = true;
     // Changes invalidate persistent external intrinsic measurements for this node.
     uint32_t measure_version = 0;
+    /** Paint/text revision supplied by the retained scene owner. */
+    uint32_t content_revision = 0;
+    /** Resolved bounds/transform/clip revision supplied by the retained scene owner. */
+    uint32_t geometry_revision = 0;
+    /** Opacity/effects revision supplied by the retained scene owner. */
+    uint32_t composite_revision = 0;
 };
 
 /** NativeKit-owned constraints for opaque external content measurement. */
@@ -266,6 +272,9 @@ struct LayoutItem {
     bool positioned_absolute = false;
     bool hit_self = true;
     bool hit_children = true;
+    uint32_t content_revision = 0;
+    uint32_t geometry_revision = 0;
+    uint32_t composite_revision = 0;
 };
 
 enum class LayoutPrimitiveKind : uint8_t {
@@ -293,6 +302,9 @@ struct LayoutPrimitive {
     ParagraphStyle paragraph_style{};
     TextLayoutId text_layout_id = 0;
     uint32_t text_line_index = 0;
+    uint32_t content_revision = 0;
+    uint32_t geometry_revision = 0;
+    uint32_t composite_revision = 0;
 };
 
 struct LayoutTextLine {

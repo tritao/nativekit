@@ -562,8 +562,13 @@ LayoutColor color_from(Clay_Color color) {
 
 void append_primitive(LayoutSnapshot &snapshot, const Clay_RenderCommand &command) {
     LayoutPrimitive primitive{};
-    primitive.node_id =
-        command.userData ? static_cast<const LayoutNode *>(command.userData)->id : command.id;
+    const auto *node = command.userData ? static_cast<const LayoutNode *>(command.userData) : nullptr;
+    primitive.node_id = node ? node->id : command.id;
+    if (node) {
+        primitive.content_revision = node->content_revision;
+        primitive.geometry_revision = node->geometry_revision;
+        primitive.composite_revision = node->composite_revision;
+    }
     primitive.bounds = rect_from(command.boundingBox);
 
     switch (command.commandType) {
@@ -586,7 +591,6 @@ void append_primitive(LayoutSnapshot &snapshot, const Clay_RenderCommand &comman
             primitive.text.assign(
                 command.renderData.text.stringContents.chars,
                 static_cast<std::size_t>(command.renderData.text.stringContents.length));
-        const auto *node = static_cast<const LayoutNode *>(command.userData);
         if (node) {
             primitive.text_style = node->text_style;
             primitive.paragraph_style = node->paragraph_style;
@@ -821,6 +825,9 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
         item.visible = visible;
         item.hit_self = node.hit_self;
         item.hit_children = node.hit_children;
+        item.content_revision = node.content_revision;
+        item.geometry_revision = node.geometry_revision;
+        item.composite_revision = node.composite_revision;
         const float determinant = transform.a * transform.d - transform.b * transform.c;
         if (!finite_transform(transform) || !std::isfinite(determinant) ||
             std::abs(determinant) < 0.000001f || !std::isfinite(transformed.x) ||

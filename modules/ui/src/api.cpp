@@ -860,6 +860,9 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
             float transform_origin_y = 0.5f;
             uint32_t wrap_mode = 0;
             uint32_t align_self = 0;
+            uint32_t content_revision = 0;
+            uint32_t geometry_revision = 0;
+            uint32_t composite_revision = 0;
             if (!read_node_u32(record, NKUI_LAYOUT_NODE_ID_OFFSET, id) ||
                 !read_node_i32(record, NKUI_LAYOUT_NODE_PARENT_OFFSET, node.parent) ||
                 !read_node_u32(record, NKUI_LAYOUT_NODE_VISUAL_KIND_OFFSET, visual_kind) ||
@@ -939,7 +942,13 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                 !read_node_float(record, NKUI_LAYOUT_NODE_TRANSFORM_ORIGIN_X_OFFSET,
                                  transform_origin_x) ||
                 !read_node_float(record, NKUI_LAYOUT_NODE_TRANSFORM_ORIGIN_Y_OFFSET,
-                                 transform_origin_y))
+                                 transform_origin_y) ||
+                !read_node_u32(record, NKUI_LAYOUT_NODE_CONTENT_REVISION_OFFSET,
+                               content_revision) ||
+                !read_node_u32(record, NKUI_LAYOUT_NODE_GEOMETRY_REVISION_OFFSET,
+                               geometry_revision) ||
+                !read_node_u32(record, NKUI_LAYOUT_NODE_COMPOSITE_REVISION_OFFSET,
+                               composite_revision))
                 return false;
             const uint32_t child_align_x = child_alignment & 0xffu;
             const uint32_t child_align_y = (child_alignment >> 8u) & 0xffu;
@@ -987,6 +996,9 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
                                     transform[3], transform[4], transform[5]};
             node.style.transform_origin_x = transform_origin_x;
             node.style.transform_origin_y = transform_origin_y;
+            node.content_revision = content_revision;
+            node.geometry_revision = geometry_revision;
+            node.composite_revision = composite_revision;
             node.style.width.sizing = static_cast<nkui::LayoutSizing>(width_sizing);
             node.style.height.sizing = static_cast<nkui::LayoutSizing>(height_sizing);
             node.style.width.min = width_min;
