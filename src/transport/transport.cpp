@@ -14,6 +14,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cctype>
+#include <cstdio>
 #include <cstring>
 #include <deque>
 #include <limits>
@@ -214,6 +215,14 @@ void initialize_sockets() {
 }
 #else
 void initialize_sockets() {}
+#endif
+
+#if defined(_WIN32)
+void transport_debug(const char *message, int value = 0) noexcept {
+    std::fprintf(stderr, "nativekit transport: %s (%d, wsa=%d)\n", message, value,
+                 WSAGetLastError());
+    std::fflush(stderr);
+}
 #endif
 
 int socket_error() noexcept {
@@ -591,13 +600,22 @@ nk_result connect_socket(const TransportOptions &options, socket_type &out_socke
         const int connected = ::connect(socket, address->ai_addr,
                                         static_cast<socket_length_type>(address->ai_addrlen));
         if (connected == 0) {
+#if defined(_WIN32)
+            transport_debug("connect immediate");
+#endif
             out_socket = socket;
             result = NK_OK;
             break;
         }
         const auto error = socket_error();
+#if defined(_WIN32)
+        transport_debug("connect pending/error", error);
+#endif
         if (socket_would_block(error)) {
             const auto ready = wait_socket(socket, false, true, options.timeout_ms);
+#if defined(_WIN32)
+            transport_debug("connect wait", ready);
+#endif
             if (ready < 0) {
                 result = map_connect_error(socket_error());
             } else if (ready == 0) {
@@ -608,10 +626,16 @@ nk_result connect_socket(const TransportOptions &options, socket_type &out_socke
                 if (getsockopt(socket, SOL_SOCKET, SO_ERROR,
                                reinterpret_cast<char *>(&socket_result), &length) == 0 &&
                     socket_result == 0) {
+#if defined(_WIN32)
+                    transport_debug("connect completed");
+#endif
                     out_socket = socket;
                     result = NK_OK;
                     break;
                 }
+#if defined(_WIN32)
+                transport_debug("connect SO_ERROR", socket_result);
+#endif
                 result = map_connect_error(socket_result);
             }
         } else {
@@ -693,6 +717,9 @@ nk_result create_listener_socket(const TransportOptions &options, socket_type &o
             continue;
         }
         out_socket = socket;
+#if defined(_WIN32)
+        transport_debug("listener created");
+#endif
         result = NK_OK;
         break;
     }
@@ -1370,6 +1397,9 @@ void TransportResource::run() noexcept {
         result = websocket_handshake();
     }
     if (result != NK_OK) {
+#if defined(_WIN32)
+        transport_debug(server_side ? "server worker failed" : "client worker failed", result);
+#endif
         finish(result);
         return;
     }
@@ -1377,6 +1407,9 @@ void TransportResource::run() noexcept {
         std::lock_guard lock(mutex);
         state = State::open;
     }
+#if defined(_WIN32)
+    transport_debug(server_side ? "server connected" : "client connected");
+#endif
     emit_connected();
     emit_writable();
 
@@ -1476,6 +1509,9 @@ void ListenerResource::run() noexcept {
         }
         if (ready == 0)
             continue;
+#if defined(_WIN32)
+        transport_debug("listener ready", ready);
+#endif
         sockaddr_storage address{};
         socket_length_type address_size = sizeof(address);
         const auto accepted_socket =
@@ -1486,6 +1522,9 @@ void ListenerResource::run() noexcept {
             emit_failure(NK_TRANSPORT_ERROR_CONNECTION);
             return;
         }
+#if defined(_WIN32)
+        transport_debug("listener accepted");
+#endif
         if (!set_nonblocking(accepted_socket)) {
             close_socket(accepted_socket);
             continue;
