@@ -50,6 +50,8 @@ enum NativeKitEventValue {
 	ResourceDrop(source:NativeKit.Handle, x:Float, y:Float, text:Null<String>, items:Array<NativeKitResource>);
 	ResourceAssetReady(source:NativeKit.Handle, request:haxe.Int64);
 	ResourceAssetLoadFailed(source:NativeKit.Handle, request:haxe.Int64, result:NativeKit.Result);
+	AudioClipReady(source:NativeKit.Handle, request:haxe.Int64);
+	AudioClipLoadFailed(source:NativeKit.Handle, request:haxe.Int64, result:NativeKit.Result);
 	AudioVoiceReady(source:NativeKit.Handle);
 	AudioVoiceLoadFailed(source:NativeKit.Handle, result:NativeKit.Result);
 	AudioVoiceComplete(source:NativeKit.Handle);

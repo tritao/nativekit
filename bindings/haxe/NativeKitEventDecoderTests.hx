@@ -151,6 +151,20 @@ class NativeKitEventDecoderTests {
 				source.rawValue() == 18 && result == NativeKit.Result.ErrorUnknown;
 			case _: false;
 		};
+		var audioClipReadyContext = new NativeKitEventContext(EventKind.AudioClipReady,
+			handle(19), haxe.Int64.ofInt(19), NativeKit.Result.Ok, 0, 0, empty);
+		var audioClipReadyOk = switch NativeKitEvent.decodeContext(audioClipReadyContext) {
+			case AudioClipReady(source, request):
+				source.rawValue() == 19 && Std.string(request) == "19";
+			case _: false;
+		};
+		var audioClipFailedContext = new NativeKitEventContext(EventKind.AudioClipLoadFailed,
+			handle(20), haxe.Int64.ofInt(20), NativeKit.Result.ErrorUnknown, 0, 0, empty);
+		var audioClipFailedOk = switch NativeKitEvent.decodeContext(audioClipFailedContext) {
+			case AudioClipLoadFailed(source, request, result):
+				source.rawValue() == 20 && Std.string(request) == "20" && result == NativeKit.Result.ErrorUnknown;
+			case _: false;
+		};
 		var audioStreamFailedContext = new NativeKitEventContext(EventKind.AudioVoiceStreamFailed,
 			handle(24), zero, NativeKit.Result.ErrorUnknown, 0, 0, empty);
 		var audioStreamFailedOk = switch NativeKitEvent.decodeContext(audioStreamFailedContext) {

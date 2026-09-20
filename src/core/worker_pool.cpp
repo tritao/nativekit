@@ -135,6 +135,8 @@ void WorkerPool::worker_loop() noexcept {
 #endif
 }
 
+} // namespace nk::core
+
 namespace {
 
 constexpr std::uint8_t worker_task_idle = 0;
@@ -155,7 +157,11 @@ class SignalWorkerPool final {
     nk_result submit(nk::core::WorkerTask run, nk::core::WorkerTask cleanup) noexcept {
         if (!run)
             return NK_ERROR_INVALID_ARGUMENT;
+#if NK_ENABLE_NO_EXCEPTIONS
+        {
+#else
         try {
+#endif
             std::unique_lock lock(mutex_);
             if (stopping_.load(std::memory_order_acquire))
                 return NK_ERROR_INVALID_REQUEST;
@@ -165,9 +171,13 @@ class SignalWorkerPool final {
             queued_.push_back({std::move(run), std::move(cleanup)});
             condition_.notify_one();
             return NK_OK;
+#if !NK_ENABLE_NO_EXCEPTIONS
         } catch (...) {
             return NK_ERROR_OUT_OF_MEMORY;
         }
+#else
+        }
+#endif
     }
 
     nk_result initialize(nk::core::WorkerTaskState &task, nk::core::WorkerTask run,
@@ -176,15 +186,23 @@ class SignalWorkerPool final {
             return NK_ERROR_INVALID_ARGUMENT;
         if (task.state.load(std::memory_order_acquire) != worker_task_idle)
             return NK_ERROR_INVALID_REQUEST;
+#if NK_ENABLE_NO_EXCEPTIONS
+        {
+#else
         try {
+#endif
             task.run = std::move(run);
             task.cleanup = std::move(cleanup);
             task.next.store(nullptr, std::memory_order_release);
             task.reschedule.store(false, std::memory_order_release);
             return NK_OK;
+#if !NK_ENABLE_NO_EXCEPTIONS
         } catch (...) {
             return NK_ERROR_OUT_OF_MEMORY;
         }
+#else
+        }
+#endif
     }
 
     nk_result schedule(nk::core::WorkerTaskState &task) noexcept {
@@ -280,10 +298,14 @@ class SignalWorkerPool final {
     static void run_cleanup(nk::core::WorkerTask &cleanup) noexcept {
         if (!cleanup)
             return;
+#if NK_ENABLE_NO_EXCEPTIONS
+        cleanup();
+#else
         try {
             cleanup();
         } catch (...) {
         }
+#endif
     }
 
     static void cancel_signal_tasks(nk::core::WorkerTaskState *task) noexcept {
@@ -300,13 +322,21 @@ class SignalWorkerPool final {
     nk_result start_workers(std::unique_lock<std::mutex> &lock) noexcept {
         if (!workers_.empty())
             return NK_OK;
+#if NK_ENABLE_NO_EXCEPTIONS
+        (void)lock;
+#endif
         const auto hardware_threads = std::thread::hardware_concurrency();
         const auto available_threads = hardware_threads > 1 ? hardware_threads - 1 : 1;
         const auto worker_count = std::min<unsigned>(available_threads, 4);
+#if NK_ENABLE_NO_EXCEPTIONS
+        {
+#else
         try {
+#endif
             workers_.reserve(worker_count);
             for (unsigned index = 0; index < worker_count; ++index)
                 workers_.emplace_back([this] { run_worker(); });
+#if !NK_ENABLE_NO_EXCEPTIONS
         } catch (...) {
             workers_started_.store(false, std::memory_order_release);
             stopping_.store(true, std::memory_order_release);
@@ -321,6 +351,9 @@ class SignalWorkerPool final {
             stopping_.store(false, std::memory_order_release);
             return NK_ERROR_OUT_OF_MEMORY;
         }
+#else
+        }
+#endif
         workers_started_.store(true, std::memory_order_release);
         return NK_OK;
     }
@@ -335,10 +368,14 @@ class SignalWorkerPool final {
                                                   std::memory_order_acq_rel))
             return;
 
+#if NK_ENABLE_NO_EXCEPTIONS
+        task->run();
+#else
         try {
             task->run();
         } catch (...) {
         }
+#endif
         task->state.store(worker_task_idle, std::memory_order_release);
         if (task->reschedule.exchange(false, std::memory_order_acq_rel) &&
             schedule(*task) != NK_OK)
@@ -372,10 +409,14 @@ class SignalWorkerPool final {
                 queued_.pop_front();
             }
 
+#if NK_ENABLE_NO_EXCEPTIONS
+            task.run();
+#else
             try {
                 task.run();
             } catch (...) {
             }
+#endif
             run_cleanup(task.cleanup);
         }
     }

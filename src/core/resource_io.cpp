@@ -131,13 +131,21 @@ void complete_async_file_load(nk_request_id request,
                               const std::shared_ptr<AsyncFileLoad> &load) noexcept {
     std::vector<std::byte> data;
     nk_result result = NK_ERROR_UNKNOWN;
+#if NK_ENABLE_NO_EXCEPTIONS
+    {
+#else
     try {
+#endif
         result = read_file(*load, data);
+#if !NK_ENABLE_NO_EXCEPTIONS
     } catch (const std::bad_alloc &) {
         result = NK_ERROR_OUT_OF_MEMORY;
     } catch (...) {
         result = NK_ERROR_UNKNOWN;
     }
+#else
+    }
+#endif
 
     std::lock_guard lock(async_loads_mutex);
     const auto found = async_loads.find(request);
@@ -346,7 +354,11 @@ nk_result NK_CALL nk_resource_close(nk_handle handle) {
 namespace nk::backend {
 
 nk_result load_resource_async(const struct nk_resource *resource, nk_request_id request) noexcept {
+#if NK_ENABLE_NO_EXCEPTIONS
+    {
+#else
     try {
+#endif
         std::string path;
         if (!resource || !file_uri_path(resource->uri, path)) {
             nk::core::set_error("desktop asynchronous resource loads require a local file URI");
@@ -369,6 +381,7 @@ nk_result load_resource_async(const struct nk_resource *resource, nk_request_id 
             return submitted;
         }
         return NK_OK;
+#if !NK_ENABLE_NO_EXCEPTIONS
     } catch (const std::bad_alloc &) {
         nk::core::set_error("could not allocate asynchronous resource load");
         return NK_ERROR_OUT_OF_MEMORY;
@@ -376,6 +389,9 @@ nk_result load_resource_async(const struct nk_resource *resource, nk_request_id 
         nk::core::set_error("could not start asynchronous resource load");
         return NK_ERROR_UNKNOWN;
     }
+#else
+    }
+#endif
 }
 
 nk_result cancel_resource_load(nk_request_id request) noexcept {

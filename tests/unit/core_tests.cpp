@@ -278,9 +278,9 @@ int main() {
     nk_event event{};
 
     nk::core::EventQueue readiness_queue(1);
-    nk::core::QueuedEvent occupied;
-    occupied.kind = NK_EVENT_WEBVIEW_MESSAGE;
-    NK_CHECK(readiness_queue.push(std::move(occupied)) == NK_OK);
+    nk::core::QueuedEvent readiness_occupied;
+    readiness_occupied.kind = NK_EVENT_WEBVIEW_MESSAGE;
+    NK_CHECK(readiness_queue.push(std::move(readiness_occupied)) == NK_OK);
     nk::core::QueuedEvent readiness;
     readiness.kind = NK_EVENT_HTTP_DATA_AVAILABLE;
     readiness.source = first;
@@ -617,9 +617,9 @@ int main() {
     nk_event_release(&event);
 
     nk::core::EventQueue readiness_limit_queue(1);
-    nk::core::QueuedEvent readiness_occupied;
-    readiness_occupied.kind = NK_EVENT_WEBVIEW_MESSAGE;
-    NK_CHECK(readiness_limit_queue.push(std::move(readiness_occupied)) == NK_OK);
+    nk::core::QueuedEvent deferred_occupied;
+    deferred_occupied.kind = NK_EVENT_WEBVIEW_MESSAGE;
+    NK_CHECK(readiness_limit_queue.push(std::move(deferred_occupied)) == NK_OK);
     constexpr nk_handle deferred_readiness_count = 1100;
     for (nk_handle source = 1; source <= deferred_readiness_count; ++source) {
         nk::core::QueuedEvent readiness;

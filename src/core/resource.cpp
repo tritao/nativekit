@@ -46,15 +46,23 @@ nk_result register_resource_load(nk_request_id request, ResourceDataHandler hand
                                   ResourceDataHandlerCleanup cleanup) noexcept {
     if (request == NK_INVALID_REQUEST_ID || (handler == nullptr) != (cleanup == nullptr))
         return NK_ERROR_INVALID_ARGUMENT;
+#if NK_ENABLE_NO_EXCEPTIONS
+    {
+#else
     try {
+#endif
         std::lock_guard lock(resource_loads_mutex);
         if (!resource_loads.emplace(request, ResourceLoadEntry{handler, user_data, cleanup, false})
                  .second)
             return NK_ERROR_ALREADY_INITIALIZED;
         return NK_OK;
+#if !NK_ENABLE_NO_EXCEPTIONS
     } catch (...) {
         return NK_ERROR_OUT_OF_MEMORY;
     }
+#else
+    }
+#endif
 }
 
 void unregister_resource_load(nk_request_id request) noexcept {

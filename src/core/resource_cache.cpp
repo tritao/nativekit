@@ -168,7 +168,11 @@ nk_result acquire_asset(const std::shared_ptr<ResourceCacheEntry> &entry,
                         nk_resource_asset *out_asset) {
     std::shared_ptr<ResourceAssetResource> asset;
     nk_resource_asset handle = NK_INVALID_HANDLE;
+#if NK_ENABLE_NO_EXCEPTIONS
+    {
+#else
     try {
+#endif
         asset = std::make_shared<ResourceAssetResource>();
         asset->entry = entry;
         handle = nk::core::handles().insert(nk::core::ResourceType::resource_asset, asset);
@@ -182,6 +186,7 @@ nk_result acquire_asset(const std::shared_ptr<ResourceCacheEntry> &entry,
         *out_asset = handle;
         publish_asset_load_event(*asset);
         return NK_OK;
+#if !NK_ENABLE_NO_EXCEPTIONS
     } catch (const std::bad_alloc &) {
         if (handle != NK_INVALID_HANDLE) {
             asset->handle.store(NK_INVALID_HANDLE, std::memory_order_release);
@@ -197,6 +202,9 @@ nk_result acquire_asset(const std::shared_ptr<ResourceCacheEntry> &entry,
         nk::core::set_error("could not retain resource asset view");
         return NK_ERROR_UNKNOWN;
     }
+#else
+    }
+#endif
 }
 
 struct ResourceStreamGuard {
@@ -303,7 +311,11 @@ void resource_cache_load_callback(nk_request_id request, nk_result result, const
         return;
 
     auto load_result = result;
+#if NK_ENABLE_NO_EXCEPTIONS
+    {
+#else
     try {
+#endif
         if (load_result == NK_OK) {
             if (data_size > static_cast<uint64_t>(std::numeric_limits<std::size_t>::max()))
                 load_result = NK_ERROR_OUT_OF_MEMORY;
@@ -318,11 +330,15 @@ void resource_cache_load_callback(nk_request_id request, nk_result result, const
                 entry.data = std::move(bytes);
             }
         }
+#if !NK_ENABLE_NO_EXCEPTIONS
     } catch (const std::bad_alloc &) {
         load_result = NK_ERROR_OUT_OF_MEMORY;
     } catch (...) {
         load_result = NK_ERROR_UNKNOWN;
     }
+#else
+    }
+#endif
     entry.load_request.store(request, std::memory_order_release);
     entry.load_result.store(load_result, std::memory_order_release);
     entry.load_state.store(load_result == NK_OK ? NK_RESOURCE_ASSET_READY
@@ -474,8 +490,13 @@ nk_result NK_CALL nk_resource_cache_load_async(nk_resource_cache cache,
             }
 
             std::unique_ptr<ResourceCacheLoadContext> context;
+#if NK_ENABLE_NO_EXCEPTIONS
+            {
+#else
             try {
+#endif
                 context = std::make_unique<ResourceCacheLoadContext>();
+#if !NK_ENABLE_NO_EXCEPTIONS
             } catch (const std::bad_alloc &) {
                 value->entries.erase(entry->uri);
                 discard_asset(*out_asset);
@@ -483,6 +504,9 @@ nk_result NK_CALL nk_resource_cache_load_async(nk_resource_cache cache,
                 nk::core::set_error("could not allocate resource cache load context");
                 return NK_ERROR_OUT_OF_MEMORY;
             }
+#else
+            }
+#endif
             context->entry = entry;
             nk_request_id request = NK_INVALID_REQUEST_ID;
             const auto load_result = nk::core::start_resource_load(
