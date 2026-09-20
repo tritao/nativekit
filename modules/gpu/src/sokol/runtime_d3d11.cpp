@@ -32,6 +32,7 @@ struct ImageInfo {
 struct ReadbackSlot {
     uint32_t generation = 0;
     ID3D11Texture2D *texture = nullptr;
+    ID3D11Buffer *buffer = nullptr;
     ID3D11Query *query = nullptr;
     uint32_t size = 0;
     uint32_t row_pitch = 0;
@@ -204,9 +205,12 @@ ReadbackSlot *readback_slot(uint32_t token) {
 void release_readback(ReadbackSlot &slot) {
     if (slot.texture)
         slot.texture->Release();
+    if (slot.buffer)
+        slot.buffer->Release();
     if (slot.query)
         slot.query->Release();
     slot.texture = nullptr;
+    slot.buffer = nullptr;
     slot.query = nullptr;
     slot.size = 0;
     slot.row_pitch = 0;
@@ -423,6 +427,54 @@ uint32_t d3d11_readback_begin(sg_image source, uint32_t mip_level, uint32_t laye
     return readback_token(index, slot.generation);
 }
 
+uint32_t d3d11_readback_begin_buffer(sg_buffer source, uint32_t offset, uint32_t size) {
+    ID3D11Buffer *source_buffer = nullptr;
+    uint32_t source_size = 0;
+    if (!buffer_info(source, source_buffer, source_size) || !context() || !size ||
+        offset > source_size || size > source_size - offset)
+        return 0;
+    uint32_t index = kReadbackCapacity;
+    for (uint32_t i = 0; i < kReadbackCapacity; ++i) {
+        if (!readbacks[i].active) {
+            index = i;
+            break;
+        }
+    }
+    if (index == kReadbackCapacity)
+        return 0;
+    ID3D11Buffer *staging_buffer = nullptr;
+    if (!create_staging_buffer(size, D3D11_CPU_ACCESS_READ, &staging_buffer))
+        return 0;
+    D3D11_BOX source_box{};
+    source_box.left = offset;
+    source_box.right = offset + size;
+    source_box.top = 0;
+    source_box.bottom = 1;
+    source_box.front = 0;
+    source_box.back = 1;
+    context()->CopySubresourceRegion(staging_buffer, 0, 0, 0, 0, source_buffer, 0, &source_box);
+    D3D11_QUERY_DESC query_desc{};
+    query_desc.Query = D3D11_QUERY_EVENT;
+    ID3D11Query *query = nullptr;
+    if (!device() || FAILED(device()->CreateQuery(&query_desc, &query))) {
+        staging_buffer->Release();
+        return 0;
+    }
+    context()->End(query);
+    context()->Flush();
+    ReadbackSlot &slot = readbacks[index];
+    if (!slot.generation)
+        slot.generation = 1;
+    slot.buffer = staging_buffer;
+    slot.query = query;
+    slot.size = size;
+    slot.row_pitch = size;
+    slot.width = size;
+    slot.height = 1;
+    slot.active = true;
+    return readback_token(index, slot.generation);
+}
+
 uint32_t d3d11_readback_status(uint32_t token) {
     ReadbackSlot *slot = readback_slot(token);
     if (!slot || !slot->query || !context())
@@ -451,6 +503,14 @@ int d3d11_readback_read(uint32_t token, void *destination, uint32_t size) {
     if (!slot || !destination || size < slot->size ||
         d3d11_readback_status(token) != kReadbackReady)
         return 0;
+    if (slot->buffer) {
+        D3D11_MAPPED_SUBRESOURCE mapped{};
+        if (FAILED(context()->Map(slot->buffer, 0, D3D11_MAP_READ, 0, &mapped)))
+            return 0;
+        std::memcpy(destination, mapped.pData, slot->size);
+        context()->Unmap(slot->buffer, 0);
+        return 1;
+    }
     D3D11_MAPPED_SUBRESOURCE mapped{};
     if (FAILED(context()->Map(slot->texture, 0, D3D11_MAP_READ, 0, &mapped)))
         return 0;
@@ -482,8 +542,9 @@ int d3d11_end_pass() {
 
 const nk_sokol_transfer_api transfer_api = {
     d3d11_buffer_copy,    d3d11_image_copy,       d3d11_buffer_to_image, d3d11_image_to_buffer,
-    d3d11_readback_begin, d3d11_readback_status,  d3d11_readback_size,   d3d11_readback_row_pitch,
-    d3d11_readback_read,  d3d11_readback_destroy, d3d11_begin_pass,      d3d11_end_pass,
+    d3d11_readback_begin, d3d11_readback_begin_buffer, d3d11_readback_status,
+    d3d11_readback_size,  d3d11_readback_row_pitch, d3d11_readback_read,
+    d3d11_readback_destroy, d3d11_begin_pass, d3d11_end_pass,
 };
 
 } // namespace

@@ -2,6 +2,7 @@ package nativekit.gpu;
 
 import NativeKitGpu;
 import nativekit.gpu.Enums.ImageFormat;
+import nativekit.gpu.Enums.ImageType;
 import nativekit.gpu.Enums.ImageUsage;
 
 /** Portable descriptor for a NativeKit GPU image. */
@@ -15,6 +16,7 @@ class ImageDesc {
 	public var layerCount:Int;
 	public var rowPitch:Int;
 	public var dynamicUpdate:Bool;
+	public var type:ImageType;
 
 	public function new(width:Int, height:Int, format:ImageFormat = ImageFormat.Rgba8,
 		usage:ImageUsage = ImageUsage.Sampled) {
@@ -27,6 +29,7 @@ class ImageDesc {
 		layerCount = 1;
 		rowPitch = 0;
 		dynamicUpdate = false;
+		type = ImageType.Auto;
 	}
 
 	@:allow(Image)
@@ -43,6 +46,7 @@ class ImageDesc {
 		value.set_data_size(0);
 		value.set_row_pitch(rowPitch);
 		value.set_dynamic_update(dynamicUpdate ? 1 : 0);
+		value.set_type(type);
 		return value;
 	}
 }

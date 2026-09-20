@@ -65,6 +65,7 @@ struct nk_sokol_transfer_api {
                                 uint32_t destination_offset, uint32_t row_pitch);
     uint32_t (*readback_begin)(sg_image source, uint32_t mip_level, uint32_t layer, uint32_t x,
                                uint32_t y, uint32_t width, uint32_t height);
+    uint32_t (*readback_begin_buffer)(sg_buffer source, uint32_t offset, uint32_t size);
     uint32_t (*readback_status)(uint32_t readback);
     uint32_t (*readback_size)(uint32_t readback);
     uint32_t (*readback_row_pitch)(uint32_t readback);
@@ -72,6 +73,11 @@ struct nk_sokol_transfer_api {
     void (*readback_destroy)(uint32_t readback);
     int (*begin_pass)(void);
     int (*end_pass)(void);
+    uint32_t (*timestamp_begin)(void);
+    int (*timestamp_end)(uint32_t timestamp);
+    uint32_t (*timestamp_status)(uint32_t timestamp);
+    uint64_t (*timestamp_elapsed_ns)(uint32_t timestamp);
+    void (*timestamp_destroy)(uint32_t timestamp);
 };
 
 const nk_sokol_transfer_api *nk_sokol_transfer_get_api(void);

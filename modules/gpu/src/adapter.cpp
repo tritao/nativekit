@@ -39,7 +39,8 @@ enum Kind : uint32_t {
     ImageBuilderKind,
     SamplerKind,
     BatchKind,
-    ReadbackKind
+    ReadbackKind,
+    TimestampKind
 };
 using Handle = uint32_t;
 
@@ -229,6 +230,7 @@ struct Image {
     uint32_t height = 0;
     nkgpu_image_format format = NKGPU_IMAGEFORMAT_RGBA8;
     nkgpu_image_usage usage = NKGPU_IMAGE_SAMPLED;
+    nkgpu_image_type type = NKGPU_IMAGETYPE_2D;
     uint32_t mip_count = 1;
     uint32_t sample_count = 1;
     uint32_t layer_count = 1;
@@ -254,6 +256,12 @@ struct Readback {
     uint32_t row_pitch = 0;
     uint32_t width = 0;
     uint32_t height = 0;
+    bool buffer = false;
+};
+struct Timestamp {
+    Handle owner = 0;
+    uint32_t native = 0;
+    bool ended = false;
 };
 struct Sampler {
     Handle owner = 0;
@@ -295,6 +303,7 @@ static Pool<ImageBuilder, ImageBuilderKind, 16> image_builder_pool;
 static Pool<Sampler, SamplerKind, 256> sampler_pool;
 static Pool<Batch, BatchKind, 64> batch_pool;
 static Pool<Readback, ReadbackKind, 128> readback_pool;
+static Pool<Timestamp, TimestampKind, 128> timestamp_pool;
 static Handle active_renderer = 0;
 static Handle selected_renderer = 0;
 static const nk_sokol_api *selected_api = nullptr;
@@ -788,6 +797,24 @@ static sg_pixel_format convert_image_format(nkgpu_image_format format) {
     }
 }
 
+static bool convert_image_type(nkgpu_image_type type, sg_image_type &out) {
+    switch (type) {
+    case 0:
+    case NKGPU_IMAGETYPE_2D:
+        out = SG_IMAGETYPE_2D;
+        return true;
+    case NKGPU_IMAGETYPE_ARRAY:
+    case NKGPU_IMAGETYPE_CUBE_ARRAY:
+        out = SG_IMAGETYPE_ARRAY;
+        return true;
+    case NKGPU_IMAGETYPE_CUBE:
+        out = SG_IMAGETYPE_CUBE;
+        return true;
+    default:
+        return false;
+    }
+}
+
 static bool convert_shader_stage(nkgpu_shader_stage stage, sg_shader_stage &out) {
     switch (stage) {
     case NKGPU_SHADERSTAGE_VERTEX:
@@ -1178,6 +1205,15 @@ nkgpu_result nkgpu_query_features(nkgpu_renderer renderer, nkgpu_features *out_f
         slot->value.api->transfer && slot->value.api->transfer->image_copy ? 1u : 0u;
     features.image_readback =
         slot->value.api->transfer && slot->value.api->transfer->readback_begin ? 1u : 0u;
+    features.buffer_readback =
+        slot->value.api->transfer && slot->value.api->transfer->readback_begin_buffer ? 1u : 0u;
+    features.timestamps =
+        slot->value.api->transfer && slot->value.api->transfer->timestamp_begin &&
+                slot->value.api->transfer->timestamp_end &&
+                slot->value.api->transfer->timestamp_status &&
+                slot->value.api->transfer->timestamp_elapsed_ns
+            ? 1u
+            : 0u;
     *out_features = features;
     return NKGPU_OK;
 }
@@ -1208,6 +1244,7 @@ nkgpu_result nkgpu_query_limits(nkgpu_renderer renderer, nkgpu_limits *out_limit
         static_cast<uint32_t>(std::max(0, native.max_storage_buffer_bindings_per_stage));
     limits.max_storage_image_bindings =
         static_cast<uint32_t>(std::max(0, native.max_storage_image_bindings_per_stage));
+    limits.max_cube_size = static_cast<uint32_t>(std::max(0, native.max_image_size_cube));
     *out_limits = limits;
     return NKGPU_OK;
 }
@@ -1779,6 +1816,13 @@ static void destroy_owned(Handle owner, bool backend_available) {
                 selected_api->transfer->readback_destroy)
                 selected_api->transfer->readback_destroy(s.value.native);
             readback_pool.remove(s);
+        }
+    for (auto &s : timestamp_pool.slots)
+        if (s.active && s.value.owner == owner) {
+            if (backend_available && selected_api && selected_api->transfer &&
+                selected_api->transfer->timestamp_destroy)
+                selected_api->transfer->timestamp_destroy(s.value.native);
+            timestamp_pool.remove(s);
         }
     for (auto &s : sampler_pool.slots)
         if ((s.active || s.retired || s.pins) && s.value.owner == owner) {
@@ -2395,17 +2439,24 @@ nkgpu_result nkgpu_shader_uniform(nkgpu_shader_builder h, uint32_t block, uint32
 }
 nkgpu_result nkgpu_shader_texture(nkgpu_shader_builder h, uint32_t view_slot, uint32_t sampler_slot,
                                   nkgpu_shader_stage stage, const char *name) {
+    return nkgpu_shader_texture_type(h, view_slot, sampler_slot, stage, NKGPU_IMAGETYPE_2D, name);
+}
+
+nkgpu_result nkgpu_shader_texture_type(nkgpu_shader_builder h, uint32_t view_slot,
+                                       uint32_t sampler_slot, nkgpu_shader_stage stage,
+                                       nkgpu_image_type image_type, const char *name) {
     sg_shader_stage converted{};
+    sg_image_type converted_image_type{};
     auto *s = shader_builder_pool.get(h);
     if (!s || view_slot >= SG_MAX_VIEW_BINDSLOTS || sampler_slot >= SG_MAX_SAMPLER_BINDSLOTS ||
         view_slot >= SG_MAX_TEXTURE_SAMPLER_PAIRS || !name ||
-        !convert_shader_stage(stage, converted))
+        !convert_shader_stage(stage, converted) || !convert_image_type(image_type, converted_image_type))
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid shader texture binding");
     const nkgpu_result idle = require_idle_renderer(s->value.owner);
     if (idle != NKGPU_OK)
         return idle;
     s->value.desc.views[view_slot].texture.stage = converted;
-    s->value.desc.views[view_slot].texture.image_type = SG_IMAGETYPE_2D;
+    s->value.desc.views[view_slot].texture.image_type = converted_image_type;
     s->value.desc.views[view_slot].texture.sample_type = SG_IMAGESAMPLETYPE_FLOAT;
     s->value.desc.views[view_slot].texture.hlsl_register_t_n = static_cast<uint8_t>(view_slot);
     s->value.desc.views[view_slot].texture.msl_texture_n = static_cast<uint8_t>(view_slot);
@@ -2472,7 +2523,8 @@ nkgpu_result nkgpu_shader_binding(nkgpu_shader_builder h, const nkgpu_shader_bin
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid shader binding descriptor");
     switch (desc->kind) {
     case NKGPU_SHADERBINDING_SAMPLED_IMAGE:
-        return nkgpu_shader_texture(h, desc->slot, desc->secondary_slot, desc->stage, desc->name);
+        return nkgpu_shader_texture_type(h, desc->slot, desc->secondary_slot, desc->stage,
+                                         desc->image_type, desc->name);
     case NKGPU_SHADERBINDING_UNIFORM_BLOCK:
         return nkgpu_shader_uniform_block(h, desc->slot, desc->stage, desc->size);
     case NKGPU_SHADERBINDING_STORAGE_BUFFER:
@@ -3270,11 +3322,31 @@ nkgpu_result nkgpu_image_create_desc(nkgpu_renderer r, const nkgpu_image_desc *i
     const uint32_t known_usage = NKGPU_IMAGE_SAMPLED | NKGPU_IMAGE_RENDER_TARGET |
                                  NKGPU_IMAGE_DEPTH_STENCIL | NKGPU_IMAGE_STORAGE;
     const sg_pixel_format native_format = convert_image_format(desc.format);
+    sg_image_type native_type{};
+    if (!convert_image_type(desc.type, native_type))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid image type");
     const uint32_t bytes_per_pixel = image_format_bytes(desc.format);
     nkgpu_image_usage usage = desc.usage ? desc.usage : NKGPU_IMAGE_SAMPLED;
     const uint32_t mip_count = desc.mip_count ? desc.mip_count : 1;
     const uint32_t sample_count = desc.sample_count ? desc.sample_count : 1;
-    const uint32_t layer_count = desc.layer_count ? desc.layer_count : 1;
+    nkgpu_image_type image_type = desc.type;
+    uint32_t layer_count = desc.layer_count ? desc.layer_count : 1;
+    if (!image_type)
+        image_type = layer_count > 1 ? NKGPU_IMAGETYPE_ARRAY : NKGPU_IMAGETYPE_2D;
+    if (image_type == NKGPU_IMAGETYPE_CUBE) {
+        if (desc.layer_count && desc.layer_count != 6)
+            return fail(NKGPU_ERROR_INVALID_ARGUMENT, "cube images require six layers");
+        layer_count = 6;
+    } else if (image_type == NKGPU_IMAGETYPE_CUBE_ARRAY) {
+        if (desc.layer_count && (desc.layer_count < 6 || desc.layer_count % 6))
+            return fail(NKGPU_ERROR_INVALID_ARGUMENT,
+                        "cube-array images require a multiple of six layers");
+        layer_count = desc.layer_count ? desc.layer_count : 6;
+    } else if (image_type == NKGPU_IMAGETYPE_2D && layer_count != 1) {
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "2D images require one layer");
+    }
+    if (!convert_image_type(image_type, native_type))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid image type");
     if (!desc.width || !desc.height || desc.width > static_cast<uint32_t>(INT32_MAX) ||
         desc.height > static_cast<uint32_t>(INT32_MAX) || !bytes_per_pixel ||
         native_format == SG_PIXELFORMAT_NONE || (usage & ~known_usage) || !mip_count ||
@@ -3289,9 +3361,15 @@ nkgpu_result nkgpu_image_create_desc(nkgpu_renderer r, const nkgpu_image_desc *i
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "depth image format and usage do not match");
     if ((usage & NKGPU_IMAGE_DEPTH_STENCIL) && (usage & NKGPU_IMAGE_STORAGE))
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "depth-storage images are not portable");
+    if ((image_type == NKGPU_IMAGETYPE_CUBE || image_type == NKGPU_IMAGETYPE_CUBE_ARRAY) &&
+        (usage & (NKGPU_IMAGE_RENDER_TARGET | NKGPU_IMAGE_DEPTH_STENCIL | NKGPU_IMAGE_STORAGE)))
+        return fail(NKGPU_ERROR_UNSUPPORTED,
+                    "cube images currently support sampled usage only");
     if (desc.dynamic_update &&
         (usage & (NKGPU_IMAGE_RENDER_TARGET | NKGPU_IMAGE_DEPTH_STENCIL | NKGPU_IMAGE_STORAGE)))
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "dynamic images must be sampled images");
+    if (desc.dynamic_update && image_type != NKGPU_IMAGETYPE_2D)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "dynamic images must be 2D images");
 
     uint64_t total_tight_size = 0;
     uint64_t total_source_size = 0;
@@ -3336,7 +3414,13 @@ nkgpu_result nkgpu_image_create_desc(nkgpu_renderer r, const nkgpu_image_desc *i
         return fail(NKGPU_ERROR_UNSUPPORTED, "image format cannot be a storage image");
     if (sample_count > 1 && !format_support.multisample)
         return fail(NKGPU_ERROR_UNSUPPORTED, "image format does not support multisampling");
-    const uint32_t max_texture_size = static_cast<uint32_t>(std::max(0, limits.max_image_size_2d));
+    const int native_max_texture_size =
+        image_type == NKGPU_IMAGETYPE_CUBE ? limits.max_image_size_cube
+                                           : (image_type == NKGPU_IMAGETYPE_CUBE_ARRAY
+                                                  ? limits.max_image_size_array
+                                                  : limits.max_image_size_2d);
+    const uint32_t max_texture_size =
+        static_cast<uint32_t>(std::max(0, native_max_texture_size));
     const uint32_t max_array_layers =
         static_cast<uint32_t>(std::max(0, limits.max_image_array_layers));
     const uint32_t max_samples =
@@ -3382,7 +3466,7 @@ nkgpu_result nkgpu_image_create_desc(nkgpu_renderer r, const nkgpu_image_desc *i
     sg_image_desc native_desc{};
     native_desc.width = static_cast<int>(desc.width);
     native_desc.height = static_cast<int>(desc.height);
-    native_desc.type = layer_count > 1 ? SG_IMAGETYPE_ARRAY : SG_IMAGETYPE_2D;
+    native_desc.type = native_type;
     native_desc.num_slices = static_cast<int>(layer_count);
     native_desc.num_mipmaps = static_cast<int>(mip_count);
     native_desc.sample_count = static_cast<int>(sample_count);
@@ -3419,6 +3503,7 @@ nkgpu_result nkgpu_image_create_desc(nkgpu_renderer r, const nkgpu_image_desc *i
     image_value.height = desc.height;
     image_value.format = desc.format;
     image_value.usage = usage;
+    image_value.type = image_type;
     image_value.mip_count = mip_count;
     image_value.sample_count = sample_count;
     image_value.layer_count = layer_count;
@@ -3919,6 +4004,46 @@ nkgpu_result nkgpu_readback_begin_image(nkgpu_renderer r, const nkgpu_image_read
     value.row_pitch = row_pitch;
     value.width = desc->width;
     value.height = desc->height;
+    value.buffer = false;
+    const Handle handle = readback_pool.add(value);
+    if (!handle) {
+        renderer->api->transfer->readback_destroy(native);
+        return fail(NKGPU_ERROR_OUT_OF_MEMORY, "readback pool full");
+    }
+    *out = handle;
+    return NKGPU_OK;
+}
+
+nkgpu_result nkgpu_readback_begin_buffer(nkgpu_renderer r,
+                                        const nkgpu_buffer_readback_desc *desc,
+                                        nkgpu_readback *out) {
+    if (!desc || desc->struct_size < sizeof(nkgpu_buffer_readback_desc) || !out)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid buffer readback descriptor");
+    *out = 0;
+    auto *buffer = buffer_pool.get(desc->buffer);
+    if (!buffer || buffer->value.owner != r)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign readback buffer");
+    if (!desc->size || desc->offset > buffer->value.size ||
+        desc->size > buffer->value.size - desc->offset)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "buffer readback range is invalid");
+    Renderer *renderer = nullptr;
+    const nkgpu_result access = require_transfer_access(r, &renderer);
+    if (access != NKGPU_OK)
+        return access;
+    if (!renderer->api->transfer->readback_begin_buffer)
+        return fail(NKGPU_ERROR_UNSUPPORTED, "buffer readback is unavailable");
+    const uint32_t native = renderer->api->transfer->readback_begin_buffer(
+        buffer->value.object, desc->offset, desc->size);
+    if (!native)
+        return fail(NKGPU_ERROR_UNKNOWN, "buffer readback allocation failed");
+    Readback value{};
+    value.owner = r;
+    value.native = native;
+    value.size = desc->size;
+    value.row_pitch = desc->size;
+    value.width = desc->size;
+    value.height = 1;
+    value.buffer = true;
     const Handle handle = readback_pool.add(value);
     if (!handle) {
         renderer->api->transfer->readback_destroy(native);
@@ -3992,6 +4117,90 @@ nkgpu_result nkgpu_readback_destroy(nkgpu_renderer r, nkgpu_readback h) {
         selected_api->transfer->readback_destroy)
         selected_api->transfer->readback_destroy(readback->value.native);
     readback_pool.remove(*readback);
+    return NKGPU_OK;
+}
+
+nkgpu_result nkgpu_timestamp_begin(nkgpu_renderer r, nkgpu_timestamp *out) {
+    if (!out)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "timestamp output is null");
+    *out = 0;
+    Renderer *renderer = renderer_pool.get(r) ? &renderer_pool.get(r)->value : nullptr;
+    const nkgpu_result pass = require_active_pass(r);
+    if (pass != NKGPU_OK)
+        return pass;
+    if (!renderer || !renderer->api->transfer || !renderer->api->transfer->timestamp_begin)
+        return fail(NKGPU_ERROR_UNSUPPORTED, "GPU timestamps are unavailable");
+    const uint32_t native = renderer->api->transfer->timestamp_begin();
+    if (!native)
+        return fail(NKGPU_ERROR_UNSUPPORTED, "GPU timestamps are unavailable");
+    const Handle handle = timestamp_pool.add(Timestamp{r, native, false});
+    if (!handle) {
+        if (renderer->api->transfer->timestamp_destroy)
+            renderer->api->transfer->timestamp_destroy(native);
+        return fail(NKGPU_ERROR_OUT_OF_MEMORY, "timestamp pool full");
+    }
+    *out = handle;
+    return NKGPU_OK;
+}
+
+nkgpu_result nkgpu_timestamp_end(nkgpu_renderer r, nkgpu_timestamp h) {
+    auto *timestamp = timestamp_pool.get(h);
+    if (!timestamp || timestamp->value.owner != r)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign timestamp");
+    if (timestamp->value.ended)
+        return fail(NKGPU_ERROR_WRONG_STATE, "timestamp has already ended");
+    const nkgpu_result pass = require_active_pass(r);
+    if (pass != NKGPU_OK)
+        return pass;
+    auto *renderer = renderer_pool.get(r);
+    if (!renderer || !renderer->value.api->transfer ||
+        !renderer->value.api->transfer->timestamp_end)
+        return fail(NKGPU_ERROR_UNSUPPORTED, "GPU timestamps are unavailable");
+    if (!renderer->value.api->transfer->timestamp_end(timestamp->value.native))
+        return fail(NKGPU_ERROR_UNKNOWN, "GPU timestamp end failed");
+    timestamp->value.ended = true;
+    return NKGPU_OK;
+}
+
+nkgpu_result nkgpu_timestamp_query(nkgpu_renderer r, nkgpu_timestamp h,
+                                   nkgpu_timestamp_info *out_info) {
+    auto *timestamp = timestamp_pool.get(h);
+    if (!out_info)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "timestamp output is null");
+    if (out_info->struct_size < sizeof(nkgpu_timestamp_info))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "timestamp output is too small");
+    if (!timestamp || timestamp->value.owner != r)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign timestamp");
+    if (!timestamp->value.ended)
+        return fail(NKGPU_ERROR_WRONG_STATE, "timestamp has not ended");
+    Renderer *renderer = nullptr;
+    const nkgpu_result access = require_transfer_access(r, &renderer);
+    if (access != NKGPU_OK)
+        return access;
+    const nk_sokol_transfer_api *transfer = renderer->api->transfer;
+    if (!transfer || !transfer->timestamp_status || !transfer->timestamp_elapsed_ns)
+        return fail(NKGPU_ERROR_UNSUPPORTED, "GPU timestamps are unavailable");
+    nkgpu_timestamp_info info{};
+    info.struct_size = sizeof(info);
+    info.state = transfer->timestamp_status(timestamp->value.native);
+    if (info.state == NKGPU_TIMESTAMP_READY)
+        info.nanoseconds = transfer->timestamp_elapsed_ns(timestamp->value.native);
+    *out_info = info;
+    return NKGPU_OK;
+}
+
+nkgpu_result nkgpu_timestamp_destroy(nkgpu_renderer r, nkgpu_timestamp h) {
+    auto *timestamp = timestamp_pool.get(h);
+    if (!renderer_pool.get(r) || !timestamp || timestamp->value.owner != r)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign timestamp");
+    bool backend_available = false;
+    const nkgpu_result ready = prepare_resource_destroy(r, backend_available);
+    if (ready != NKGPU_OK)
+        return ready;
+    if (backend_available && selected_api && selected_api->transfer &&
+        selected_api->transfer->timestamp_destroy)
+        selected_api->transfer->timestamp_destroy(timestamp->value.native);
+    timestamp_pool.remove(*timestamp);
     return NKGPU_OK;
 }
 

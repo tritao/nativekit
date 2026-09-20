@@ -381,6 +381,55 @@ uint32_t metal_readback_begin(sg_image source, uint32_t mip_level, uint32_t laye
     return readback_token(index, slot.generation);
 }
 
+uint32_t metal_readback_begin_buffer(sg_buffer source, uint32_t offset, uint32_t size) {
+    uint32_t source_size = 0;
+    id<MTLBuffer> source_buffer = buffer_object(source, source_size);
+    if (!source_buffer || !size || offset > source_size || size > source_size - offset)
+        return 0;
+    uint32_t index = kReadbackCapacity;
+    for (uint32_t i = 0; i < kReadbackCapacity; ++i) {
+        if (!readbacks[i].active) {
+            index = i;
+            break;
+        }
+    }
+    if (index == kReadbackCapacity)
+        return 0;
+    id<MTLBuffer> staging = [device() newBufferWithLength:size
+                                                  options:MTLResourceStorageModeShared];
+    if (!staging)
+        return 0;
+    bool temporary = false;
+    if (!ensure_blit(temporary)) {
+        NK_MTL_RELEASE(staging);
+        return 0;
+    }
+    [transfer_blit copyFromBuffer:source_buffer
+                     sourceOffset:offset
+                         toBuffer:staging
+                destinationOffset:0
+                             size:size];
+    ReadbackSlot &slot = readbacks[index];
+    if (!slot.generation)
+        slot.generation = 1;
+    slot.buffer = staging;
+    NK_MTL_RETAIN(slot.buffer);
+    slot.command = transfer_command;
+    NK_MTL_RETAIN(slot.command);
+    slot.size = size;
+    slot.row_pitch = size;
+    slot.width = size;
+    slot.height = 1;
+    slot.active = true;
+    if (temporary && !finish_temporary(true, false)) {
+        release_readback(slot);
+        NK_MTL_RELEASE(staging);
+        return 0;
+    }
+    NK_MTL_RELEASE(staging);
+    return readback_token(index, slot.generation);
+}
+
 uint32_t metal_readback_status(uint32_t token) {
     ReadbackSlot *slot = readback_slot(token);
     if (!slot || !slot->command)
@@ -444,7 +493,8 @@ int metal_end_pass() {
 
 const nk_sokol_transfer_api transfer_api = {
     metal_buffer_copy,    metal_image_copy,       metal_buffer_to_image, metal_image_to_buffer,
-    metal_readback_begin, metal_readback_status,  metal_readback_size,   metal_readback_row_pitch,
+    metal_readback_begin, metal_readback_begin_buffer, metal_readback_status,
+    metal_readback_size,  metal_readback_row_pitch,
     metal_readback_read,  metal_readback_destroy, metal_begin_pass,      metal_end_pass,
 };
 

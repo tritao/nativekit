@@ -53,12 +53,19 @@ typedef struct nk_sokol_readback_slot {
 } nk_sokol_readback_slot;
 
 static nk_sokol_readback_slot readbacks[NK_SOKOL_READBACK_CAPACITY];
+enum { NK_SOKOL_TIMESTAMP_PENDING = 1, NK_SOKOL_TIMESTAMP_READY = 2, NK_SOKOL_TIMESTAMP_FAILED = 3 };
 
 #ifndef GL_COPY_READ_BUFFER
 #define GL_COPY_READ_BUFFER 0x8F36
 #endif
 #ifndef GL_COPY_WRITE_BUFFER
 #define GL_COPY_WRITE_BUFFER 0x8F37
+#endif
+#ifndef GL_COPY_READ_BUFFER_BINDING
+#define GL_COPY_READ_BUFFER_BINDING 0x8F36
+#endif
+#ifndef GL_COPY_WRITE_BUFFER_BINDING
+#define GL_COPY_WRITE_BUFFER_BINDING 0x8F37
 #endif
 #ifndef GL_PIXEL_PACK_BUFFER
 #define GL_PIXEL_PACK_BUFFER 0x88EB
@@ -104,6 +111,18 @@ static nk_sokol_readback_slot readbacks[NK_SOKOL_READBACK_CAPACITY];
 #endif
 #ifndef GL_NO_ERROR
 #define GL_NO_ERROR 0
+#endif
+#ifndef GL_UNSIGNED_INT_24_8
+#define GL_UNSIGNED_INT_24_8 0x84FA
+#endif
+#ifndef GL_TIME_ELAPSED
+#define GL_TIME_ELAPSED 0x88BF
+#endif
+#ifndef GL_QUERY_RESULT
+#define GL_QUERY_RESULT 0x8866
+#endif
+#ifndef GL_QUERY_RESULT_AVAILABLE
+#define GL_QUERY_RESULT_AVAILABLE 0x8867
 #endif
 
 static uint32_t readback_token(uint32_t index, uint32_t generation) {
@@ -203,9 +222,26 @@ static int image_format_io(sg_pixel_format format, GLenum *out_format, GLenum *o
         *out_type = GL_UNSIGNED_INT;
         *out_bytes = 4;
         return 1;
+    case SG_PIXELFORMAT_DEPTH:
+        *out_format = GL_DEPTH_COMPONENT;
+        *out_type = GL_FLOAT;
+        *out_bytes = 4;
+        return 1;
+    case SG_PIXELFORMAT_DEPTH_STENCIL:
+        *out_format = GL_DEPTH_STENCIL;
+        *out_type = GL_UNSIGNED_INT_24_8;
+        *out_bytes = 4;
+        return 1;
     default:
         return 0;
     }
+}
+
+static GLenum image_attachment(sg_pixel_format format) {
+    return format == SG_PIXELFORMAT_DEPTH
+               ? GL_DEPTH_ATTACHMENT
+               : (format == SG_PIXELFORMAT_DEPTH_STENCIL ? GL_DEPTH_STENCIL_ATTACHMENT
+                                                          : GL_COLOR_ATTACHMENT0);
 }
 
 static int image_transfer_info(sg_image image, uint32_t mip_level, uint32_t layer,
@@ -352,8 +388,8 @@ static uint32_t nk_sokol_image_copy(sg_image source, uint32_t source_mip, uint32
     glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &old_unpack_buffer);
     glGenFramebuffers(1, &framebuffer);
     glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
-    glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, source_target, source_texture,
-                           (GLint)source_mip);
+    glFramebufferTexture2D(GL_READ_FRAMEBUFFER, image_attachment(sg_query_image_pixelformat(source)),
+                           source_target, source_texture, (GLint)source_mip);
     const GLenum read_status = glCheckFramebufferStatus(GL_READ_FRAMEBUFFER);
     if (read_status == GL_FRAMEBUFFER_COMPLETE) {
         const GLint source_gl_y = (GLint)source_height - (GLint)source_y - (GLint)height;
@@ -494,7 +530,8 @@ static uint32_t nk_sokol_image_to_buffer(sg_image source, uint32_t mip_level, ui
     glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &old_read_framebuffer);
     glGenFramebuffers(1, &framebuffer);
     glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
-    glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, target, texture,
+    glFramebufferTexture2D(GL_READ_FRAMEBUFFER,
+                           image_attachment(sg_query_image_pixelformat(source)), target, texture,
                            (GLint)mip_level);
     const GLenum status = glCheckFramebufferStatus(GL_READ_FRAMEBUFFER);
     if (status == GL_FRAMEBUFFER_COMPLETE) {
@@ -566,7 +603,8 @@ static uint32_t nk_sokol_readback_begin(sg_image source, uint32_t mip_level, uin
     glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &old_read_framebuffer);
     glGenFramebuffers(1, &framebuffer);
     glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
-    glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, target, texture,
+    glFramebufferTexture2D(GL_READ_FRAMEBUFFER,
+                           image_attachment(sg_query_image_pixelformat(source)), target, texture,
                            (GLint)mip_level);
     const GLenum status = glCheckFramebufferStatus(GL_READ_FRAMEBUFFER);
     if (status == GL_FRAMEBUFFER_COMPLETE) {
@@ -603,7 +641,8 @@ static uint32_t nk_sokol_readback_begin(sg_image source, uint32_t mip_level, uin
     glBufferData(GL_PIXEL_PACK_BUFFER, (GLsizeiptr)size, 0, GL_STREAM_READ);
     glGenFramebuffers(1, &framebuffer);
     glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
-    glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, target, texture,
+    glFramebufferTexture2D(GL_READ_FRAMEBUFFER,
+                           image_attachment(sg_query_image_pixelformat(source)), target, texture,
                            (GLint)mip_level);
     const GLenum status = glCheckFramebufferStatus(GL_READ_FRAMEBUFFER);
     if (status == GL_FRAMEBUFFER_COMPLETE) {
@@ -626,6 +665,71 @@ static uint32_t nk_sokol_readback_begin(sg_image source, uint32_t mip_level, uin
     slot->row_pitch = row_pitch;
     slot->width = width;
     slot->height = height;
+    slot->active = 1;
+    sg_reset_state_cache();
+    return readback_token(index, slot->generation);
+}
+
+static uint32_t nk_sokol_readback_begin_buffer(sg_buffer source, uint32_t offset,
+                                               uint32_t size) {
+    uint32_t source_buffer = 0;
+    if (!size || !buffer_transfer_info(source, &source_buffer) ||
+        offset > sg_query_buffer_size(source) ||
+        size > sg_query_buffer_size(source) - offset)
+        return 0;
+    uint32_t index = NK_SOKOL_READBACK_CAPACITY;
+    for (uint32_t i = 0; i < NK_SOKOL_READBACK_CAPACITY; ++i) {
+        if (!readbacks[i].active) {
+            index = i;
+            break;
+        }
+    }
+    if (index == NK_SOKOL_READBACK_CAPACITY)
+        return 0;
+    nk_sokol_readback_slot *slot = &readbacks[index];
+    if (!slot->generation)
+        slot->generation = 1;
+#if defined(__EMSCRIPTEN__)
+    slot->data = (uint8_t *)malloc(size);
+    if (!slot->data)
+        return 0;
+    clear_gl_errors();
+    GLint old_read_buffer = 0;
+    glGetIntegerv(GL_COPY_READ_BUFFER_BINDING, &old_read_buffer);
+    glBindBuffer(GL_COPY_READ_BUFFER, source_buffer);
+    glGetBufferSubData(GL_COPY_READ_BUFFER, (GLintptr)offset, (GLsizeiptr)size, slot->data);
+    glBindBuffer(GL_COPY_READ_BUFFER, (GLuint)old_read_buffer);
+    if (glGetError() != GL_NO_ERROR) {
+        readback_release(slot);
+        sg_reset_state_cache();
+        return 0;
+    }
+#else
+    clear_gl_errors();
+    GLint old_read_buffer = 0;
+    GLint old_write_buffer = 0;
+    glGetIntegerv(GL_COPY_READ_BUFFER_BINDING, &old_read_buffer);
+    glGetIntegerv(GL_COPY_WRITE_BUFFER_BINDING, &old_write_buffer);
+    glGenBuffers(1, &slot->pbo);
+    glBindBuffer(GL_COPY_WRITE_BUFFER, slot->pbo);
+    glBufferData(GL_COPY_WRITE_BUFFER, (GLsizeiptr)size, 0, GL_STREAM_READ);
+    glBindBuffer(GL_COPY_READ_BUFFER, source_buffer);
+    glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, (GLintptr)offset, 0,
+                        (GLsizeiptr)size);
+    slot->fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+    glFlush();
+    glBindBuffer(GL_COPY_READ_BUFFER, (GLuint)old_read_buffer);
+    glBindBuffer(GL_COPY_WRITE_BUFFER, (GLuint)old_write_buffer);
+    if (!slot->fence || glGetError() != GL_NO_ERROR) {
+        readback_release(slot);
+        sg_reset_state_cache();
+        return 0;
+    }
+#endif
+    slot->size = size;
+    slot->row_pitch = size;
+    slot->width = size;
+    slot->height = 1;
     slot->active = 1;
     sg_reset_state_cache();
     return readback_token(index, slot->generation);
@@ -691,12 +795,85 @@ static void nk_sokol_readback_destroy(uint32_t token) {
         readback_release(slot);
 }
 
+static uint32_t nk_sokol_timestamp_begin(void) {
+#if !defined(NK_SOKOL_BACKEND_GLCORE)
+    return 0;
+#else
+    GLuint query = 0;
+    clear_gl_errors();
+    glGenQueries(1, &query);
+    if (!query)
+        return 0;
+    glBeginQuery(GL_TIME_ELAPSED, query);
+    if (glGetError() != GL_NO_ERROR) {
+        glDeleteQueries(1, &query);
+        return 0;
+    }
+    return query;
+#endif
+}
+
+static int nk_sokol_timestamp_end(uint32_t timestamp) {
+#if !defined(NK_SOKOL_BACKEND_GLCORE)
+    (void)timestamp;
+    return 0;
+#else
+    if (!timestamp)
+        return 0;
+    clear_gl_errors();
+    glEndQuery(GL_TIME_ELAPSED);
+    glFlush();
+    return glGetError() == GL_NO_ERROR;
+#endif
+}
+
+static uint32_t nk_sokol_timestamp_status(uint32_t timestamp) {
+#if !defined(NK_SOKOL_BACKEND_GLCORE)
+    (void)timestamp;
+    return NK_SOKOL_TIMESTAMP_FAILED;
+#else
+    if (!timestamp)
+        return NK_SOKOL_TIMESTAMP_FAILED;
+    GLuint available = 0;
+    clear_gl_errors();
+    glGetQueryObjectuiv(timestamp, GL_QUERY_RESULT_AVAILABLE, &available);
+    if (glGetError() != GL_NO_ERROR)
+        return NK_SOKOL_TIMESTAMP_FAILED;
+    return available ? NK_SOKOL_TIMESTAMP_READY : NK_SOKOL_TIMESTAMP_PENDING;
+#endif
+}
+
+static uint64_t nk_sokol_timestamp_elapsed_ns(uint32_t timestamp) {
+#if !defined(NK_SOKOL_BACKEND_GLCORE)
+    (void)timestamp;
+    return 0;
+#else
+    if (!timestamp)
+        return 0;
+    GLuint64 elapsed = 0;
+    glGetQueryObjectui64v(timestamp, GL_QUERY_RESULT, &elapsed);
+    return (uint64_t)elapsed;
+#endif
+}
+
+static void nk_sokol_timestamp_destroy(uint32_t timestamp) {
+#if !defined(NK_SOKOL_BACKEND_GLCORE)
+    (void)timestamp;
+#else
+    if (timestamp) {
+        GLuint query = timestamp;
+        glDeleteQueries(1, &query);
+    }
+#endif
+}
+
 static const nk_sokol_transfer_api transfer_api = {
     nk_sokol_buffer_copy,
     nk_sokol_image_copy,
     nk_sokol_buffer_to_image,
     nk_sokol_image_to_buffer,
     nk_sokol_readback_begin,
+    nk_sokol_readback_begin_buffer,
     nk_sokol_readback_status,
     nk_sokol_readback_size,
     nk_sokol_readback_row_pitch,
@@ -704,6 +881,19 @@ static const nk_sokol_transfer_api transfer_api = {
     nk_sokol_readback_destroy,
     0,
     0,
+#if defined(NK_SOKOL_BACKEND_GLCORE)
+    nk_sokol_timestamp_begin,
+    nk_sokol_timestamp_end,
+    nk_sokol_timestamp_status,
+    nk_sokol_timestamp_elapsed_ns,
+    nk_sokol_timestamp_destroy,
+#else
+    0,
+    0,
+    0,
+    0,
+    0,
+#endif
 };
 #elif defined(SOKOL_D3D11) || defined(SOKOL_METAL)
 /* Native transfer callbacks live in the backend-specific translation unit. */

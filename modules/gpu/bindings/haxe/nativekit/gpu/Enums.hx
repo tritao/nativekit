@@ -32,6 +32,14 @@ enum abstract ImageUsage(Int) to Int {
 	var Storage = 8;
 }
 
+enum abstract ImageType(Int) to Int {
+	var Auto = 0;
+	var TwoD = 1;
+	var Array = 2;
+	var Cube = 3;
+	var CubeArray = 4;
+}
+
 enum abstract LoadAction(Int) to Int {
 	var Load = 1;
 	var Clear = 2;
@@ -44,6 +52,12 @@ enum abstract StoreAction(Int) to Int {
 }
 
 enum abstract ReadbackState(Int) to Int {
+	var Pending = 1;
+	var Ready = 2;
+	var Failed = 3;
+}
+
+enum abstract TimestampState(Int) to Int {
 	var Pending = 1;
 	var Ready = 2;
 	var Failed = 3;

@@ -11,6 +11,7 @@ class Limits {
 	public final maxTextureBindings:Int;
 	public final maxStorageBufferBindings:Int;
 	public final maxStorageImageBindings:Int;
+	public final maxCubeSize:Int;
 
 	private function new(value:nkgpu_limits) {
 		maxTextureSize = value.get_max_texture_size();
@@ -20,6 +21,7 @@ class Limits {
 		maxTextureBindings = value.get_max_texture_bindings();
 		maxStorageBufferBindings = value.get_max_storage_buffer_bindings();
 		maxStorageImageBindings = value.get_max_storage_image_bindings();
+		maxCubeSize = value.get_max_cube_size();
 	}
 
 	@:allow(Renderer)

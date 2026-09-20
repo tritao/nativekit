@@ -122,6 +122,187 @@ bool readback(nkgpu_renderer renderer, nkgpu_image image, uint32_t x, uint32_t y
     return success;
 }
 
+bool buffer_readback(nkgpu_renderer renderer, nkgpu_buffer buffer, uint32_t offset, uint32_t size,
+                     uint8_t *destination, uint32_t destination_size) {
+    nkgpu_buffer_readback_desc desc{};
+    desc.struct_size = sizeof(desc);
+    desc.buffer = buffer;
+    desc.offset = offset;
+    desc.size = size;
+    nkgpu_readback request{};
+    if (!expect_result(nkgpu_readback_begin_buffer(renderer, &desc, &request), NKGPU_OK,
+                       "nkgpu_readback_begin_buffer"))
+        return false;
+    nkgpu_readback_info info{};
+    info.struct_size = sizeof(info);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (!expect_result(nkgpu_readback_query(renderer, request, &info), NKGPU_OK,
+                           "nkgpu_readback_query(buffer)")) {
+            nkgpu_readback_destroy(renderer, request);
+            return false;
+        }
+        if (info.state != NKGPU_READBACK_PENDING)
+            break;
+        std::this_thread::yield();
+    }
+    bool success = info.state == NKGPU_READBACK_READY && info.size == size &&
+                   info.row_pitch == size && size <= destination_size;
+    uint32_t actual_size = 0;
+    if (success && !expect_result(nkgpu_readback_read(renderer, request, destination,
+                                                      destination_size, &actual_size),
+                                  NKGPU_OK, "nkgpu_readback_read(buffer)"))
+        success = false;
+    if (success && actual_size != size)
+        success = false;
+    if (!expect_result(nkgpu_readback_destroy(renderer, request), NKGPU_OK,
+                       "nkgpu_readback_destroy(buffer)"))
+        success = false;
+    return success;
+}
+
+uint32_t format_bytes(nkgpu_image_format format) {
+    switch (format) {
+    case NKGPU_IMAGEFORMAT_RGBA8:
+    case NKGPU_IMAGEFORMAT_R32F:
+    case NKGPU_IMAGEFORMAT_R32_UINT:
+    case NKGPU_IMAGEFORMAT_DEPTH32F:
+        return 4;
+    case NKGPU_IMAGEFORMAT_RGBA16F:
+        return 8;
+    default:
+        return 0;
+    }
+}
+
+bool is_depth_format(nkgpu_image_format format) {
+    return format == NKGPU_IMAGEFORMAT_DEPTH32F;
+}
+
+const char *format_name(nkgpu_image_format format) {
+    switch (format) {
+    case NKGPU_IMAGEFORMAT_RGBA8:
+        return "RGBA8";
+    case NKGPU_IMAGEFORMAT_RGBA16F:
+        return "RGBA16F";
+    case NKGPU_IMAGEFORMAT_R32F:
+        return "R32F";
+    case NKGPU_IMAGEFORMAT_R32_UINT:
+        return "R32_UINT";
+    case NKGPU_IMAGEFORMAT_DEPTH32F:
+        return "DEPTH32F";
+    default:
+        return "unknown";
+    }
+}
+
+bool offscreen_format(nkgpu_renderer renderer, const nkgpu_features &features,
+                      nkgpu_image_format format) {
+    nkgpu_image_format_support support{};
+    support.struct_size = sizeof(support);
+    if (!expect_result(nkgpu_query_image_format_support(renderer, format, &support), NKGPU_OK,
+                       "nkgpu_query_image_format_support(offscreen)"))
+        return false;
+    const bool depth = is_depth_format(format);
+    const bool can_render = depth ? support.depth_stencil != 0 : support.render_target != 0;
+    const bool can_sample = support.sampled != 0;
+    if (!can_render && !can_sample)
+        return true;
+
+    const uint32_t width = 2;
+    const uint32_t height = 2;
+    const uint32_t bytes = format_bytes(format);
+    uint8_t initial_data[32]{};
+    for (uint32_t index = 0; index < width * height * bytes; ++index)
+        initial_data[index] = static_cast<uint8_t>(0x20u + index);
+
+    nkgpu_image_usage usage = 0;
+    if (can_sample)
+        usage |= NKGPU_IMAGE_SAMPLED;
+    if (can_render)
+        usage |= depth ? NKGPU_IMAGE_DEPTH_STENCIL : NKGPU_IMAGE_RENDER_TARGET;
+    nkgpu_image_desc desc{};
+    desc.struct_size = sizeof(desc);
+    desc.width = width;
+    desc.height = height;
+    desc.format = format;
+    desc.usage = usage;
+    if (!can_render) {
+        desc.data = initial_data;
+        desc.data_size = width * height * bytes;
+    }
+
+    nkgpu_image source{};
+    nkgpu_image destination{};
+    if (!expect_result(nkgpu_image_create_desc(renderer, &desc, &source), NKGPU_OK,
+                       "nkgpu_image_create_desc(offscreen source)"))
+        return false;
+
+    bool success = true;
+    if (can_render) {
+        nkgpu_render_pass_desc pass{};
+        pass.struct_size = sizeof(pass);
+        if (depth) {
+            pass.depth_stencil = source;
+            pass.depth_stencil_action.load_action = NKGPU_LOADACTION_CLEAR;
+            pass.depth_stencil_action.store_action = NKGPU_STOREACTION_STORE;
+            pass.depth_stencil_action.clear_depth = 1.0f;
+        } else {
+            pass.color_count = 1;
+            pass.colors[0].image = source;
+            pass.colors[0].action.load_action = NKGPU_LOADACTION_CLEAR;
+            pass.colors[0].action.store_action = NKGPU_STOREACTION_STORE;
+            pass.colors[0].action.clear_color = {0.0f, 0.0f, 0.0f, 0.0f};
+        }
+        success = expect_result(nkgpu_frame_begin(renderer), NKGPU_OK,
+                                "nkgpu_frame_begin(offscreen)") &&
+                   expect_result(nkgpu_begin_render_pass(renderer, &pass), NKGPU_OK,
+                                  "nkgpu_begin_render_pass(offscreen)") &&
+                   expect_result(nkgpu_end_pass(renderer), NKGPU_OK,
+                                  "nkgpu_end_pass(offscreen)") &&
+                   expect_result(nkgpu_end_frame(renderer), NKGPU_OK,
+                                  "nkgpu_end_frame(offscreen)");
+    }
+
+    if (success && features.image_copy) {
+        nkgpu_image_desc destination_desc = desc;
+        if (can_render) {
+            destination_desc.data = nullptr;
+            destination_desc.data_size = 0;
+        } else {
+            destination_desc.data = initial_data;
+            destination_desc.data_size = width * height * bytes;
+        }
+        if (!expect_result(nkgpu_image_create_desc(renderer, &destination_desc, &destination),
+                           NKGPU_OK, "nkgpu_image_create_desc(offscreen destination)"))
+            success = false;
+        nkgpu_image_copy_desc copy{};
+        copy.struct_size = sizeof(copy);
+        copy.source = source;
+        copy.destination = destination;
+        copy.width = width;
+        copy.height = height;
+        if (success && !expect_result(nkgpu_image_copy(renderer, &copy), NKGPU_OK,
+                                       "nkgpu_image_copy(offscreen)"))
+            success = false;
+    }
+
+    if (success && can_sample && features.image_readback) {
+        uint8_t readback_bytes[32]{};
+        if (!readback(renderer, destination.id ? destination : source, 0, 0, width, height,
+                      readback_bytes, width * height * bytes))
+            success = false;
+    }
+    if (destination.id)
+        expect_result(nkgpu_image_destroy(renderer, destination), NKGPU_OK,
+                      "nkgpu_image_destroy(offscreen destination)");
+    expect_result(nkgpu_image_destroy(renderer, source), NKGPU_OK,
+                  "nkgpu_image_destroy(offscreen source)");
+    if (!success)
+        std::fprintf(stderr, "offscreen format %s failed\n", format_name(format));
+    return success;
+}
+
 } // namespace
 
 int main() {
@@ -151,9 +332,52 @@ int main() {
     features.struct_size = sizeof(features);
     if (!expect_result(nkgpu_query_features(resources.renderer, &features), NKGPU_OK,
                        "nkgpu_query_features") ||
-        !features.buffer_copy || !features.image_copy || !features.image_readback) {
+        !features.buffer_copy || !features.image_copy || !features.image_readback ||
+        !features.buffer_readback) {
         std::fprintf(stderr, "the selected GPU backend does not expose transfer operations\n");
         return 1;
+    }
+
+    if (features.timestamps) {
+        nkgpu_timestamp timestamp{};
+        if (!expect_result(nkgpu_frame_begin(resources.renderer), NKGPU_OK,
+                           "nkgpu_frame_begin(timestamp)"))
+            return 1;
+        if (!expect_result(nkgpu_begin_window_pass(resources.renderer, window_options.width,
+                                                   window_options.height, 0),
+                           NKGPU_OK, "nkgpu_begin_window_pass(timestamp)"))
+            return 1;
+        if (!expect_result(nkgpu_timestamp_begin(resources.renderer, &timestamp), NKGPU_OK,
+                           "nkgpu_timestamp_begin"))
+            return 1;
+        if (!expect_result(nkgpu_timestamp_end(resources.renderer, timestamp), NKGPU_OK,
+                           "nkgpu_timestamp_end"))
+            return 1;
+        if (!expect_result(nkgpu_end_pass(resources.renderer), NKGPU_OK,
+                           "nkgpu_end_pass(timestamp)"))
+            return 1;
+        if (!expect_result(nkgpu_end_frame(resources.renderer), NKGPU_OK,
+                           "nkgpu_end_frame(timestamp)"))
+            return 1;
+        nkgpu_timestamp_info timestamp_info{};
+        timestamp_info.struct_size = sizeof(timestamp_info);
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (std::chrono::steady_clock::now() < deadline) {
+            if (!expect_result(nkgpu_timestamp_query(resources.renderer, timestamp,
+                                                     &timestamp_info), NKGPU_OK,
+                               "nkgpu_timestamp_query"))
+                return 1;
+            if (timestamp_info.state != NKGPU_TIMESTAMP_PENDING)
+                break;
+            std::this_thread::yield();
+        }
+        if (timestamp_info.state != NKGPU_TIMESTAMP_READY) {
+            std::fprintf(stderr, "GPU timestamp did not become ready\n");
+            return 1;
+        }
+        if (!expect_result(nkgpu_timestamp_destroy(resources.renderer, timestamp), NKGPU_OK,
+                           "nkgpu_timestamp_destroy"))
+            return 1;
     }
 
     const uint32_t pixels[] = {1u, 2u, 3u, 4u};
@@ -200,6 +424,24 @@ int main() {
     invalid_buffer_copy.size = sizeof(source_data);
     if (!expect_result(nkgpu_buffer_copy(resources.renderer, &invalid_buffer_copy),
                        NKGPU_ERROR_INVALID_ARGUMENT, "nkgpu_buffer_copy(out of range)"))
+        return 1;
+    uint8_t buffer_readback_bytes[sizeof(pixels)]{};
+    if (!buffer_readback(resources.renderer, resources.source_buffer, 8, sizeof(pixels),
+                         buffer_readback_bytes, sizeof(buffer_readback_bytes)) ||
+        std::memcmp(buffer_readback_bytes, pixels, sizeof(pixels)) != 0) {
+        std::fprintf(stderr, "buffer readback did not match source bytes\n");
+        return 1;
+    }
+    nkgpu_buffer_readback_desc invalid_buffer_readback{};
+    invalid_buffer_readback.struct_size = sizeof(invalid_buffer_readback);
+    invalid_buffer_readback.buffer = resources.source_buffer;
+    invalid_buffer_readback.offset = sizeof(source_data);
+    invalid_buffer_readback.size = 1;
+    nkgpu_readback invalid_buffer_readback_handle{};
+    if (!expect_result(nkgpu_readback_begin_buffer(resources.renderer, &invalid_buffer_readback,
+                                                   &invalid_buffer_readback_handle),
+                       NKGPU_ERROR_INVALID_ARGUMENT,
+                       "nkgpu_readback_begin_buffer(out of range)"))
         return 1;
 
     nkgpu_image_desc image_desc{};
@@ -412,6 +654,18 @@ int main() {
                            "nkgpu_readback_destroy(array layer)"))
             return 1;
         resources.readback = {};
+    }
+
+    const nkgpu_image_format offscreen_formats[] = {
+        NKGPU_IMAGEFORMAT_RGBA8,
+        NKGPU_IMAGEFORMAT_RGBA16F,
+        NKGPU_IMAGEFORMAT_R32F,
+        NKGPU_IMAGEFORMAT_R32_UINT,
+        NKGPU_IMAGEFORMAT_DEPTH32F,
+    };
+    for (const nkgpu_image_format format : offscreen_formats) {
+        if (!offscreen_format(resources.renderer, features, format))
+            return 1;
     }
 
     return 0;

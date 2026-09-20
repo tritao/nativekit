@@ -56,6 +56,7 @@ fi
     "$module_dir/bindings/haxe/nativekit/gpu/Shader.hx" \
     "$module_dir/bindings/haxe/nativekit/gpu/Surface.hx" \
     "$module_dir/bindings/haxe/nativekit/gpu/SurfaceFrame.hx" \
+    "$module_dir/bindings/haxe/nativekit/gpu/Timestamp.hx" \
     "$module_dir/bindings/haxe/nativekit/gpu/Uniforms.hx" \
     "$module_dir/bindings/haxe/nativekit/gpu/GpuResult.hx" \
     "$module_dir/bindings/haxe/nativekit/gpu/ImageDesc.hx" \

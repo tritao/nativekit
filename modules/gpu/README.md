@@ -182,13 +182,16 @@ stream envelopes, and an opaque native device/context escape hatch.
 
 NativeKit now layers a private `nk_sokol_transfer_api` beside Sokol's regular
 dispatch table. GLCore and GLES3 expose real buffer/image transfers plus
-fence-backed asynchronous image readback, including tightly packed `R32_UINT`
-rectangles suitable for CAD picking. D3D11 uses staging resources and event
+fence-backed asynchronous image and buffer readback, including tightly packed
+`R32_UINT` rectangles suitable for CAD picking and arbitrary storage-buffer
+ranges suitable for sensor results. D3D11 uses staging resources and event
 queries, while Metal uses blit encoders and shared readback buffers. The
 portable surface does not expose backend fences or native resource structs. The
 WebGL build uses WebGL2 staging and synchronous readback, so it exposes the
 same transfer/readback operations but does not promise native asynchronous
-completion semantics.
+completion semantics. Desktop GLCore also exposes opaque timestamp queries for
+GPU duration measurements; unsupported backends report that capability as
+unavailable.
 
 ## Current GPU API
 
@@ -209,7 +212,15 @@ The Haxe binding exposes the same flow as `Surface.acquireFrame()`,
 render passes use `Batch.renderPass()` without requiring callers to construct
 pointer-bearing native batch records.
 
+Use `nkgpu_image_desc.type` for 2D, array, cube, and cube-array image shapes,
+and retain the image shape in shader binding metadata with
+`nkgpu_shader_texture_type()`. Cube-array resources use six-layer groups in
+the portable descriptor while preserving the array-layer data layout.
+
 Query `nkgpu_features` and `nkgpu_limits` before optional compute, storage,
-transfer, or readback work. Unsupported operations return
+transfer, readback, or timestamp work. `nkgpu_readback_begin_buffer()` is the
+portable path for asynchronous storage-buffer results, and
+`nkgpu_timestamp_begin()` / `nkgpu_timestamp_end()` provide backend-hidden GPU
+timing where timer queries are available. Unsupported operations return
 `NKGPU_ERROR_UNSUPPORTED`, so callers do not need to identify the selected
 backend.

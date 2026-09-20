@@ -13,6 +13,8 @@ class Features {
 	public final bufferCopy:Bool;
 	public final imageCopy:Bool;
 	public final imageReadback:Bool;
+	public final bufferReadback:Bool;
+	public final timestamps:Bool;
 
 	private function new(value:nkgpu_features) {
 		mrtCount = value.get_mrt_count();
@@ -24,6 +26,8 @@ class Features {
 		bufferCopy = value.get_buffer_copy() != 0;
 		imageCopy = value.get_image_copy() != 0;
 		imageReadback = value.get_image_readback() != 0;
+		bufferReadback = value.get_buffer_readback() != 0;
+		timestamps = value.get_timestamps() != 0;
 	}
 
 	@:allow(Renderer)

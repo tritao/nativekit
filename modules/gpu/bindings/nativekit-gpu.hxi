@@ -247,6 +247,18 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		NKGPU_IMAGEFORMAT_DEPTH32F = 13;
 	}
 	/**
+	 * Basic image shape used by nkgpu_image_desc. A zero descriptor value keeps the 2D default.
+	 */
+	enum nkgpu_image_type : u32 {
+		NKGPU_IMAGETYPE_2D = 1;
+		NKGPU_IMAGETYPE_ARRAY = 2;
+		NKGPU_IMAGETYPE_CUBE = 3;
+		/**
+		 * Cube arrays are represented as groups of six array layers.
+		 */
+		NKGPU_IMAGETYPE_CUBE_ARRAY = 4;
+	}
+	/**
 	 * Intended uses of an image. Values may be combined.
 	 */
 	flags nkgpu_image_usage : u32 {
@@ -425,6 +437,14 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	enum nkgpu_store_action : u32 {
 		NKGPU_STOREACTION_STORE = 1;
 		NKGPU_STOREACTION_DISCARD = 2;
+	}
+	/**
+	 * State of an asynchronous GPU timestamp query.
+	 */
+	enum nkgpu_timestamp_state : u32 {
+		NKGPU_TIMESTAMP_PENDING = 1;
+		NKGPU_TIMESTAMP_READY = 2;
+		NKGPU_TIMESTAMP_FAILED = 3;
 	}
 	/**
 	 * Data type used to describe a shader uniform member.
@@ -1027,6 +1047,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	extern fn nkgpu_query_image_format_support(renderer: nkgpu_renderer, format: nkgpu_image_format, out_support: ptr<nkgpu_image_format_support> @out) -> nkgpu_result;
 	extern fn nkgpu_query_limits(renderer: nkgpu_renderer, out_limits: ptr<nkgpu_limits> @out) -> nkgpu_result;
 	/**
+	 * Begins an asynchronous readback of an arbitrary buffer range.
+	 */
+	extern fn nkgpu_readback_begin_buffer(renderer: nkgpu_renderer, desc: ptr<const<nkgpu_buffer_readback_desc>>, out_readback: ptr<nkgpu_readback> @out) -> nkgpu_result;
+	/**
 	 * Begins an asynchronous readback of an image rectangle.
 	 */
 	extern fn nkgpu_readback_begin_image(renderer: nkgpu_renderer, desc: ptr<const<nkgpu_image_readback_desc>>, out_readback: ptr<nkgpu_readback> @out) -> nkgpu_result;
@@ -1145,6 +1169,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_shader_texture(builder: nkgpu_shader_builder, view_slot: u32, sampler_slot: u32, stage: nkgpu_shader_stage, name: utf8) -> nkgpu_result;
 	/**
+	 * Describes a filtering texture binding with an explicit image shape.
+	 */
+	extern fn nkgpu_shader_texture_type(builder: nkgpu_shader_builder, view_slot: u32, sampler_slot: u32, stage: nkgpu_shader_stage, image_type: nkgpu_image_type, name: utf8) -> nkgpu_result;
+	/**
 	 * Describes one member of a shader uniform block.
 	 *
 	 * `name` is the UTF-8 GLSL uniform member name. HLSL5 and MSL use the block
@@ -1206,6 +1234,22 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * with nkgpu_begin_frame() so the adapter can query the current framebuffer.
 	 */
 	extern fn nkgpu_surface_resize(surface: nk_surface, width: i32, height: i32) -> nkgpu_result;
+	/**
+	 * Begins a GPU timestamp interval inside the active frame/pass.
+	 */
+	extern fn nkgpu_timestamp_begin(renderer: nkgpu_renderer, out_timestamp: ptr<nkgpu_timestamp> @out) -> nkgpu_result;
+	/**
+	 * Destroys a timestamp query.
+	 */
+	extern fn nkgpu_timestamp_destroy(renderer: nkgpu_renderer, timestamp: nkgpu_timestamp) -> nkgpu_result;
+	/**
+	 * Ends a GPU timestamp interval.
+	 */
+	extern fn nkgpu_timestamp_end(renderer: nkgpu_renderer, timestamp: nkgpu_timestamp) -> nkgpu_result;
+	/**
+	 * Polls a timestamp without exposing backend query objects.
+	 */
+	extern fn nkgpu_timestamp_query(renderer: nkgpu_renderer, timestamp: nkgpu_timestamp, out_info: ptr<nkgpu_timestamp_info> @out) -> nkgpu_result;
 	/**
 	 * Starts a zero-initialized uniform byte block of `size` bytes.
 	 *
@@ -1309,6 +1353,15 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		height: u32 @offset(40);
 	}
 	/**
+	 * Describes one asynchronous buffer readback request.
+	 */
+	struct nkgpu_buffer_readback_desc @layout(16, 4) {
+		struct_size: u32 @offset(0) @struct_size;
+		buffer: nkgpu_buffer @offset(4);
+		offset: u32 @offset(8);
+		size: u32 @offset(12);
+	}
+	/**
 	 * An RGBA clear color used by render-pass actions.
 	 */
 	struct nkgpu_color @layout(16, 4) {
@@ -1348,7 +1401,7 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	/**
 	 * Reports optional backend features through a backend-agnostic envelope.
 	 */
-	struct nkgpu_features @layout(40, 4) {
+	struct nkgpu_features @layout(48, 4) {
 		struct_size: u32 @offset(0) @struct_size;
 		mrt_count: u32 @offset(4);
 		max_samples: u32 @offset(8);
@@ -1359,6 +1412,8 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		buffer_copy: u32 @offset(28);
 		image_copy: u32 @offset(32);
 		image_readback: u32 @offset(36);
+		buffer_readback: u32 @offset(40);
+		timestamps: u32 @offset(44);
 	}
 	/**
 	 * Describes a 2D image-region transfer. Coordinates use NativeKit's top-left origin.
@@ -1379,7 +1434,7 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		height: u32 @offset(48);
 	}
 	/**
-	 * Descriptor for a general 2D image or image array.
+	 * Descriptor for a 2D, array, cube, or cube-array image.
 	 */
 	struct nkgpu_image_desc @layout(56, 8) {
 		struct_size: u32 @offset(0) @struct_size;
@@ -1394,6 +1449,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		data_size: u32 @offset(40);
 		row_pitch: u32 @offset(44);
 		dynamic_update: u32 @offset(48);
+		/**
+		 * Zero selects the legacy 2D/array behavior.
+		 */
+		type: nkgpu_image_type @offset(52);
 	}
 	/**
 	 * Reports the portable operations supported by one image format.
@@ -1424,7 +1483,7 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	/**
 	 * Reports portable resource and binding limits for one renderer.
 	 */
-	struct nkgpu_limits @layout(32, 4) {
+	struct nkgpu_limits @layout(36, 4) {
 		struct_size: u32 @offset(0) @struct_size;
 		max_texture_size: u32 @offset(4);
 		max_array_layers: u32 @offset(8);
@@ -1433,6 +1492,7 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		max_texture_bindings: u32 @offset(20);
 		max_storage_buffer_bindings: u32 @offset(24);
 		max_storage_image_bindings: u32 @offset(28);
+		max_cube_size: u32 @offset(32);
 	}
 	/**
 	 * Opaque backend tokens for advanced native integration.
@@ -1492,7 +1552,7 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	/**
 	 * General shader resource metadata retained by the shader builder.
 	 */
-	struct nkgpu_shader_binding_desc @layout(48, 8) {
+	struct nkgpu_shader_binding_desc @layout(56, 8) {
 		struct_size: u32 @offset(0) @struct_size;
 		kind: nkgpu_shader_binding_kind @offset(4);
 		stage: nkgpu_shader_stage @offset(8);
@@ -1521,6 +1581,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		 * GLSL combined image/sampler name for sampled-image metadata.
 		 */
 		name: utf8 @offset(40);
+		/**
+		 * Image shape for NKGPU_SHADERBINDING_SAMPLED_IMAGE; zero means 2D.
+		 */
+		image_type: nkgpu_image_type @offset(48);
 	}
 	/**
 	 * Operations applied to one stencil face.
@@ -1542,6 +1606,14 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		reserved: u8 @offset(7);
 		front: nkgpu_stencil_face_state @offset(8);
 		back: nkgpu_stencil_face_state @offset(24);
+	}
+	/**
+	 * Reports a GPU timestamp duration in nanoseconds.
+	 */
+	struct nkgpu_timestamp_info @layout(16, 8) {
+		struct_size: u32 @offset(0) @struct_size;
+		state: nkgpu_timestamp_state @offset(4);
+		nanoseconds: u64 @offset(8);
 	}
 	/**
 	 * Sealed-submission batch handle returned by nkgpu_batch_begin().
@@ -1597,6 +1669,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * Temporary builder handle returned by nkgpu_shader_begin().
 	 */
 	handle nkgpu_shader_builder : u32;
+	/**
+	 * GPU timestamp query handle returned by nkgpu_timestamp_begin().
+	 */
+	handle nkgpu_timestamp : u32;
 	/**
 	 * Temporary builder handle returned by nkgpu_uniforms_begin().
 	 */

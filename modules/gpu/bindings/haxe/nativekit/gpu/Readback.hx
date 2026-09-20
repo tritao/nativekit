@@ -4,7 +4,7 @@ import NativeKitGpu;
 import haxe.io.Bytes;
 import nativekit.gpu.Enums.ReadbackState;
 
-/** Owns one asynchronous image readback request. */
+/** Owns one asynchronous image or buffer readback request. */
 class Readback {
 	final renderer:Renderer;
 	final value:nkgpu_readback;
@@ -35,6 +35,22 @@ class Readback {
 		desc.set_height(height);
 		var made = NativeKitGpu.nkgpu_readback_begin_image(renderer.nativeHandle(), desc);
 		GpuResult.check(made.status, "readback.begin");
+		return new Readback(renderer, made.out_readback);
+	}
+
+	/** Starts a tightly packed readback of an arbitrary buffer range. */
+	public static function beginBuffer(buffer:Buffer, offset:Int, size:Int):Readback {
+		if (buffer == null || offset < 0 || size <= 0)
+			throw "GPU buffer readback range is invalid";
+		var renderer = buffer.rendererOwner();
+		renderer.ensureResourceOperation();
+		var desc = new nkgpu_buffer_readback_desc();
+		desc.set_struct_size(16);
+		desc.set_buffer(buffer.nativeHandle());
+		desc.set_offset(offset);
+		desc.set_size(size);
+		var made = NativeKitGpu.nkgpu_readback_begin_buffer(renderer.nativeHandle(), desc);
+		GpuResult.check(made.status, "readback.beginBuffer");
 		return new Readback(renderer, made.out_readback);
 	}
 

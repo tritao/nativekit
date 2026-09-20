@@ -59,6 +59,7 @@ int main() {
     nkgpu_image descriptor_color_second{};
     nkgpu_image descriptor_depth{};
     nkgpu_image descriptor_mipped{};
+    nkgpu_image cube_image{};
     nkgpu_image dynamic_image{};
     nkgpu_image published_image{};
     nkgpu_image retained_gpu_image{};
@@ -244,7 +245,8 @@ int main() {
             !limits.max_texture_bindings || !limits.max_color_attachments ||
             features.storage_buffer > 1 || features.storage_image > 1 || features.compute > 1 ||
             features.instancing > 1 || features.buffer_copy > 1 || features.image_copy > 1 ||
-            features.image_readback > 1) {
+            features.image_readback > 1 || features.buffer_readback > 1 ||
+            features.timestamps > 1) {
             result = __LINE__;
             goto cleanup;
         }
@@ -321,6 +323,40 @@ int main() {
                              probe_result);
                 result = __LINE__;
                 goto cleanup;
+            }
+        }
+
+        nkgpu_image_format_support cube_support{};
+        cube_support.struct_size = sizeof(cube_support);
+        EXPECT_RESULT(nkgpu_query_image_format_support(first, NKGPU_IMAGEFORMAT_RGBA8,
+                                                        &cube_support),
+                      NKGPU_OK);
+        if (limits.max_cube_size && cube_support.sampled) {
+            const uint32_t cube_pixels[6] = {0xff0000ffu, 0xff00ff00u, 0xffff0000u,
+                                             0xffffffffu, 0xff00ffffu, 0xffff00ffu};
+            nkgpu_image_desc cube_desc{};
+            cube_desc.struct_size = sizeof(cube_desc);
+            cube_desc.width = 1;
+            cube_desc.height = 1;
+            cube_desc.format = NKGPU_IMAGEFORMAT_RGBA8;
+            cube_desc.usage = NKGPU_IMAGE_SAMPLED;
+            cube_desc.layer_count = 6;
+            cube_desc.data = reinterpret_cast<const uint8_t *>(cube_pixels);
+            cube_desc.data_size = sizeof(cube_pixels);
+            cube_desc.type = NKGPU_IMAGETYPE_CUBE;
+            EXPECT_RESULT(nkgpu_image_create_desc(first, &cube_desc, &cube_image), NKGPU_OK);
+            EXPECT_RESULT(nkgpu_image_destroy(first, cube_image), NKGPU_OK);
+            cube_image = {};
+
+            if (limits.max_array_layers >= 12) {
+                cube_desc.type = NKGPU_IMAGETYPE_CUBE_ARRAY;
+                cube_desc.layer_count = 12;
+                const uint32_t cube_array_pixels[12] = {};
+                cube_desc.data = reinterpret_cast<const uint8_t *>(cube_array_pixels);
+                cube_desc.data_size = sizeof(cube_array_pixels);
+                EXPECT_RESULT(nkgpu_image_create_desc(first, &cube_desc, &cube_image), NKGPU_OK);
+                EXPECT_RESULT(nkgpu_image_destroy(first, cube_image), NKGPU_OK);
+                cube_image = {};
             }
         }
 
@@ -1070,6 +1106,8 @@ cleanup:
         nkgpu_image_destroy(first, published_image);
     if (descriptor_mipped.id)
         nkgpu_image_destroy(first, descriptor_mipped);
+    if (cube_image.id)
+        nkgpu_image_destroy(first, cube_image);
     if (transfer_image_second.id)
         nkgpu_image_destroy(first, transfer_image_second);
     if (transfer_image.id)

@@ -3,6 +3,7 @@ package nativekit.gpu;
 import nativekit.gpu.Enums.ShaderStage;
 import nativekit.gpu.Enums.ShaderLanguage;
 import nativekit.gpu.Enums.ImageFormat;
+import nativekit.gpu.Enums.ImageType;
 import nativekit.gpu.Enums.UniformType;
 
 /** Renderer-owned shader resource. */
@@ -120,6 +121,17 @@ class ShaderBuilder {
 		if (viewSlot < 0 || samplerSlot < 0)
 			throw "GPU texture slots must be non-negative";
 		GpuResult.check(NativeKitGpu.nkgpu_shader_texture(value, viewSlot, samplerSlot, stage, name), "shader.texture");
+		return this;
+	}
+
+	/** Describes a filtering texture binding with an explicit image shape. */
+	public function textureType(viewSlot:Int, samplerSlot:Int, stage:ShaderStage,
+		imageType:ImageType, name:String):ShaderBuilder {
+		ensureLive();
+		if (viewSlot < 0 || samplerSlot < 0)
+			throw "GPU texture slots must be non-negative";
+		GpuResult.check(NativeKitGpu.nkgpu_shader_texture_type(value, viewSlot, samplerSlot, stage,
+			imageType, name), "shader.textureType");
 		return this;
 	}
 

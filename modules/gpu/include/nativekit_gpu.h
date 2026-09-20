@@ -162,6 +162,8 @@ NKGPU_HANDLE(nkgpu_sampler);
 NKGPU_HANDLE(nkgpu_batch);
 /** Asynchronous readback handle returned by nkgpu_readback_begin_image(). */
 NKGPU_HANDLE(nkgpu_readback);
+/** GPU timestamp query handle returned by nkgpu_timestamp_begin(). */
+NKGPU_HANDLE(nkgpu_timestamp);
 #undef NKGPU_HANDLE
 #undef NKGPU_HANDLE_ANNOTATION
 
@@ -196,6 +198,14 @@ enum NK_ENUM(nkgpu_readback_state) {
     NKGPU_READBACK_PENDING = 1,
     NKGPU_READBACK_READY = 2,
     NKGPU_READBACK_FAILED = 3,
+};
+
+/** State of an asynchronous GPU timestamp query. */
+typedef uint32_t nkgpu_timestamp_state;
+enum NK_ENUM(nkgpu_timestamp_state) {
+    NKGPU_TIMESTAMP_PENDING = 1,
+    NKGPU_TIMESTAMP_READY = 2,
+    NKGPU_TIMESTAMP_FAILED = 3,
 };
 
 /** Observable renderer lifecycle state. */
@@ -477,7 +487,17 @@ enum NK_FLAGS(nkgpu_image_usage) {
     NKGPU_IMAGE_STORAGE = 1u << 3,
 };
 
-/** Descriptor for a general 2D image or image array. */
+/** Basic image shape used by nkgpu_image_desc. A zero descriptor value keeps the 2D default. */
+typedef uint32_t nkgpu_image_type;
+enum NK_ENUM(nkgpu_image_type) {
+    NKGPU_IMAGETYPE_2D = 1,
+    NKGPU_IMAGETYPE_ARRAY = 2,
+    NKGPU_IMAGETYPE_CUBE = 3,
+    /** Cube arrays are represented as groups of six array layers. */
+    NKGPU_IMAGETYPE_CUBE_ARRAY = 4,
+};
+
+/** Descriptor for a 2D, array, cube, or cube-array image. */
 typedef struct nkgpu_image_desc {
     uint32_t struct_size NK_STRUCT_SIZE;
     uint32_t width;
@@ -491,6 +511,8 @@ typedef struct nkgpu_image_desc {
     uint32_t data_size;
     uint32_t row_pitch;
     uint32_t dynamic_update;
+    /** Zero selects the legacy 2D/array behavior. */
+    nkgpu_image_type type;
 } nkgpu_image_desc;
 
 /** Reports the portable operations supported by one image format. */
@@ -559,6 +581,14 @@ typedef struct nkgpu_image_readback_desc {
     uint32_t height;
 } nkgpu_image_readback_desc;
 
+/** Describes one asynchronous buffer readback request. */
+typedef struct nkgpu_buffer_readback_desc {
+    uint32_t struct_size NK_STRUCT_SIZE;
+    nkgpu_buffer buffer;
+    uint32_t offset;
+    uint32_t size;
+} nkgpu_buffer_readback_desc;
+
 /** Reports readback state and the tightly packed result layout. */
 typedef struct nkgpu_readback_info {
     uint32_t struct_size NK_STRUCT_SIZE;
@@ -568,6 +598,13 @@ typedef struct nkgpu_readback_info {
     uint32_t width;
     uint32_t height;
 } nkgpu_readback_info;
+
+/** Reports a GPU timestamp duration in nanoseconds. */
+typedef struct nkgpu_timestamp_info {
+    uint32_t struct_size NK_STRUCT_SIZE;
+    nkgpu_timestamp_state state;
+    uint64_t nanoseconds;
+} nkgpu_timestamp_info;
 
 /** An RGBA clear color used by render-pass actions. */
 typedef struct nkgpu_color {
@@ -660,6 +697,8 @@ typedef struct nkgpu_shader_binding_desc {
     uint32_t writeonly;
     /** GLSL combined image/sampler name for sampled-image metadata. */
     const char *name NKGPU_UTF8;
+    /** Image shape for NKGPU_SHADERBINDING_SAMPLED_IMAGE; zero means 2D. */
+    nkgpu_image_type image_type;
 } nkgpu_shader_binding_desc;
 
 /** Source language accepted by the shader creation functions. */
@@ -814,6 +853,8 @@ typedef struct nkgpu_features {
     uint32_t buffer_copy;
     uint32_t image_copy;
     uint32_t image_readback;
+    uint32_t buffer_readback;
+    uint32_t timestamps;
 } nkgpu_features;
 
 /** Reports portable resource and binding limits for one renderer. */
@@ -826,6 +867,7 @@ typedef struct nkgpu_limits {
     uint32_t max_texture_bindings;
     uint32_t max_storage_buffer_bindings;
     uint32_t max_storage_image_bindings;
+    uint32_t max_cube_size;
 } nkgpu_limits;
 
 /** Opaque backend tokens for advanced native integration. */
@@ -1086,6 +1128,12 @@ NKGPU_API nkgpu_result nkgpu_shader_uniform(nkgpu_shader_builder builder, uint32
 NKGPU_API nkgpu_result nkgpu_shader_texture(nkgpu_shader_builder builder, uint32_t view_slot,
                                             uint32_t sampler_slot, nkgpu_shader_stage stage,
                                             const char *name NKGPU_UTF8);
+
+/** Describes a filtering texture binding with an explicit image shape. */
+NKGPU_API nkgpu_result nkgpu_shader_texture_type(nkgpu_shader_builder builder, uint32_t view_slot,
+                                                 uint32_t sampler_slot, nkgpu_shader_stage stage,
+                                                 nkgpu_image_type image_type,
+                                                 const char *name NKGPU_UTF8);
 
 /** Describes a storage-buffer binding with explicit read-only metadata. */
 NKGPU_API nkgpu_result nkgpu_shader_storage_buffer(nkgpu_shader_builder builder, uint32_t view_slot,
@@ -1387,6 +1435,11 @@ NKGPU_API nkgpu_result nkgpu_readback_begin_image(nkgpu_renderer renderer,
                                                   const nkgpu_image_readback_desc *desc,
                                                   nkgpu_readback *out_readback NKGPU_OUT);
 
+/** Begins an asynchronous readback of an arbitrary buffer range. */
+NKGPU_API nkgpu_result nkgpu_readback_begin_buffer(nkgpu_renderer renderer,
+                                                   const nkgpu_buffer_readback_desc *desc,
+                                                   nkgpu_readback *out_readback NKGPU_OUT);
+
 /** Polls a readback without exposing backend synchronization objects. */
 NKGPU_API nkgpu_result nkgpu_readback_query(nkgpu_renderer renderer, nkgpu_readback readback,
                                             nkgpu_readback_info *out_info NKGPU_OUT);
@@ -1398,6 +1451,22 @@ NKGPU_API nkgpu_result nkgpu_readback_read(nkgpu_renderer renderer, nkgpu_readba
 
 /** Destroys a readback object, whether pending or ready. */
 NKGPU_API nkgpu_result nkgpu_readback_destroy(nkgpu_renderer renderer, nkgpu_readback readback);
+
+/** Begins a GPU timestamp interval inside the active frame/pass. */
+NKGPU_API nkgpu_result nkgpu_timestamp_begin(nkgpu_renderer renderer,
+                                             nkgpu_timestamp *out_timestamp NKGPU_OUT);
+
+/** Ends a GPU timestamp interval. */
+NKGPU_API nkgpu_result nkgpu_timestamp_end(nkgpu_renderer renderer, nkgpu_timestamp timestamp);
+
+/** Polls a timestamp without exposing backend query objects. */
+NKGPU_API nkgpu_result nkgpu_timestamp_query(nkgpu_renderer renderer,
+                                             nkgpu_timestamp timestamp,
+                                             nkgpu_timestamp_info *out_info NKGPU_OUT);
+
+/** Destroys a timestamp query. */
+NKGPU_API nkgpu_result nkgpu_timestamp_destroy(nkgpu_renderer renderer,
+                                                nkgpu_timestamp timestamp);
 
 /**
  * Creates a texture sampler with independent minification and magnification

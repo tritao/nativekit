@@ -290,7 +290,7 @@ class Renderer {
 	public function isDisposed():Bool
 		return disposed;
 
-	@:allow(Buffer, Image, Sampler, Shader, Pipeline, Readback, Batch, CommandBuffer, Uniforms,
+	@:allow(Buffer, Image, Sampler, Shader, Pipeline, Readback, Timestamp, Batch, CommandBuffer, Uniforms,
 		SurfaceFrame)
 	function ensureFrame():Void {
 		ensureLive();
@@ -298,14 +298,14 @@ class Renderer {
 			throw "GPU operation requires an active frame";
 	}
 
-	@:allow(Buffer, Image, Sampler, Shader, ShaderBuilder, Pipeline, PipelineBuilder, Readback, Batch,
+	@:allow(Buffer, Image, Sampler, Shader, ShaderBuilder, Pipeline, PipelineBuilder, Readback, Timestamp, Batch,
 		CommandBuffer, Uniforms, SurfaceFrame)
 	function ensureLive():Void {
 		if (disposed)
 			throw "GPU renderer has been disposed";
 	}
 
-	@:allow(Buffer, Image, Sampler, Shader, ShaderBuilder, Pipeline, PipelineBuilder, Readback, Batch,
+	@:allow(Buffer, Image, Sampler, Shader, ShaderBuilder, Pipeline, PipelineBuilder, Readback, Timestamp, Batch,
 		Uniforms, SurfaceFrame)
 	function registerResource(release:Void->Void):Void {
 		ensureLive();
