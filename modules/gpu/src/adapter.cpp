@@ -1248,8 +1248,11 @@ static nkgpu_result create_renderer_from_target(nk_surface surface,
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid renderer arguments");
     if (active_renderer)
         return fail(NKGPU_ERROR_WRONG_STATE, "cannot create a renderer during an active frame");
-    if (target.struct_size < sizeof(nk_surface_frame_target) || target.api == 0 ||
-        target.width <= 0 || target.height <= 0)
+    /* Explicit APIs expose their device/context before a drawable is
+       prepared. Renderer creation only needs that device identity; the
+       dimensions and native presentation target are validated when the first
+       frame is acquired. */
+    if (target.struct_size < sizeof(nk_surface_frame_target) || target.api == 0)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid frame target");
     if (!target.device.id)
         return fail(NKGPU_ERROR_UNKNOWN, "surface has no graphics-device identity");

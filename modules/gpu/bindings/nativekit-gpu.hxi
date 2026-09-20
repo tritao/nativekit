@@ -168,7 +168,8 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		 */
 		NKGPU_COMMAND_DISPATCH = 13;
 		/**
-		 * Copy a byte range between buffers; payload: source, source offset, destination, destination offset, size.
+		 * Copy a byte range between buffers; payload: source, source offset, destination, destination
+		 * offset, size.
 		 */
 		NKGPU_COMMAND_COPY_BUFFER = 14;
 		/**
@@ -176,11 +177,13 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		 */
 		NKGPU_COMMAND_COPY_IMAGE = 15;
 		/**
-		 * Upload a buffer region into an image; payload matches nkgpu_buffer_image_copy_desc without struct_size.
+		 * Upload a buffer region into an image; payload matches nkgpu_buffer_image_copy_desc without
+		 * struct_size.
 		 */
 		NKGPU_COMMAND_COPY_BUFFER_TO_IMAGE = 16;
 		/**
-		 * Download an image region into a buffer; payload matches nkgpu_buffer_image_copy_desc without struct_size.
+		 * Download an image region into a buffer; payload matches nkgpu_buffer_image_copy_desc without
+		 * struct_size.
 		 */
 		NKGPU_COMMAND_COPY_IMAGE_TO_BUFFER = 17;
 	}
