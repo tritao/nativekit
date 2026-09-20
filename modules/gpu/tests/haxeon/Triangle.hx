@@ -122,6 +122,8 @@ class Triangle {
 		commandBuffer.applyIndexBuffer(indexBuffer, 0);
 		commandBuffer.applyImage(0, image);
 		commandBuffer.applySampler(0, sampler);
+		commandBuffer.viewport(0, 0, 800, 600);
+		commandBuffer.scissor(true, 0, 0, 800, 600);
 		for (y in 0...20) {
 			for (x in 0...20) {
 				commandBuffer.applyUniform2f(0, -0.90 + x * 0.095, -0.90 + y * 0.095);
@@ -263,6 +265,8 @@ class Triangle {
 				pass.color(targetColor, colorAction).depth(targetDepth, depthAction);
 				renderer.beginPassFrame();
 				renderer.beginRenderPass(pass);
+				renderer.viewport(0, 0, 32, 32);
+				renderer.scissor(true, 0, 0, 32, 32);
 				var resourceCreationRejected = false;
 				try Sampler.create(renderer) catch (_:Dynamic) resourceCreationRejected = true;
 				if (!resourceCreationRejected)
@@ -270,6 +274,7 @@ class Triangle {
 				applyFrameBindings(pipeline, buffer, indexBuffer, image, sampler);
 				renderer.uniforms(16).writeFloat(0, 0).writeFloat(4, 0).apply(0);
 				renderer.draw(0, 6);
+				renderer.scissor(false);
 				renderer.endPass();
 				renderer.endFrame();
 				retainedImage = targetColor.graphicsImage();
@@ -295,8 +300,24 @@ class Triangle {
 				renderer.copyBuffer(transferSource, transferDestination, 4);
 				renderer.endPass();
 				renderer.endFrame();
+				var transferImage = Image.create(renderer, new ImageDesc(1, 1, ImageFormat.R32Uint,
+					ImageUsage.Sampled | ImageUsage.RenderTarget));
+				renderer.beginPassFrame();
+				renderer.beginCopyPass();
+				renderer.bufferToImage(transferDestination, transferImage, 1, 1);
+				renderer.imageToBuffer(transferImage, transferDestination, 1, 1);
+				renderer.endPass();
+				renderer.endFrame();
+				transferImage.dispose();
 				transferSource.dispose();
 				transferDestination.dispose();
+				encodeBatched(commandBuffer, pipeline, buffer, indexBuffer, image, sampler);
+				var sealedBatch = renderer.batch().windowPass(800, 600).commands(commandBuffer).seal();
+				var batchMutationRejected = false;
+				try sealedBatch.copyPass() catch (_:Dynamic) batchMutationRejected = true;
+				if (!batchMutationRejected)
+					throw "GPU sealed batch accepted a new pass";
+				sealedBatch.dispose();
 				exerciseOptionalFeatures(renderer);
 				targetColor.dispose();
 				targetDepth.dispose();

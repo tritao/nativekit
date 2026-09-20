@@ -49,6 +49,14 @@ enum abstract ReadbackState(Int) to Int {
 	var Failed = 3;
 }
 
+enum abstract BatchPassKind(Int) to Int {
+	var Window = 1;
+	var Target = 2;
+	var Compute = 3;
+	var Copy = 4;
+	var Render = 5;
+}
+
 enum abstract Filter(Int) to Int {
 	var Nearest = 1;
 	var Linear = 2;

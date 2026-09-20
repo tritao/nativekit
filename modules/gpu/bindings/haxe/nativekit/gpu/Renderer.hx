@@ -167,6 +167,76 @@ class Renderer {
 		GpuResult.check(NativeKitGpu.nkgpu_image_copy(value, desc), "renderer.copyImage");
 	}
 
+	/** Uploads a buffer rectangle into an image in the active copy pass. */
+	public function bufferToImage(source:Buffer, destination:Image, width:Int, height:Int,
+		rowPitch:Int = 0, bufferOffset:Int = 0, x:Int = 0, y:Int = 0,
+		mipLevel:Int = 0, layer:Int = 0):Void {
+		ensureFrame();
+		source.ensureLive();
+		destination.ensureLive();
+		if (source.rendererOwner() != this || destination.rendererOwner() != this || width <= 0 ||
+			height <= 0 || rowPitch < 0 || bufferOffset < 0 || x < 0 || y < 0 ||
+			mipLevel < 0 || layer < 0)
+			throw "GPU buffer-to-image arguments are invalid";
+		var desc = new nkgpu_buffer_image_copy_desc();
+		desc.set_struct_size(44);
+		desc.set_buffer(source.nativeHandle());
+		desc.set_buffer_offset(bufferOffset);
+		desc.set_row_pitch(rowPitch);
+		desc.set_image(destination.nativeHandle());
+		desc.set_mip_level(mipLevel);
+		desc.set_layer(layer);
+		desc.set_x(x);
+		desc.set_y(y);
+		desc.set_width(width);
+		desc.set_height(height);
+		GpuResult.check(NativeKitGpu.nkgpu_buffer_to_image(value, desc), "renderer.bufferToImage");
+	}
+
+	/** Downloads an image rectangle into a buffer in top-to-bottom row order. */
+	public function imageToBuffer(source:Image, destination:Buffer, width:Int, height:Int,
+		rowPitch:Int = 0, bufferOffset:Int = 0, x:Int = 0, y:Int = 0,
+		mipLevel:Int = 0, layer:Int = 0):Void {
+		ensureFrame();
+		source.ensureLive();
+		destination.ensureLive();
+		if (source.rendererOwner() != this || destination.rendererOwner() != this || width <= 0 ||
+			height <= 0 || rowPitch < 0 || bufferOffset < 0 || x < 0 || y < 0 ||
+			mipLevel < 0 || layer < 0)
+			throw "GPU image-to-buffer arguments are invalid";
+		var desc = new nkgpu_buffer_image_copy_desc();
+		desc.set_struct_size(44);
+		desc.set_buffer(destination.nativeHandle());
+		desc.set_buffer_offset(bufferOffset);
+		desc.set_row_pitch(rowPitch);
+		desc.set_image(source.nativeHandle());
+		desc.set_mip_level(mipLevel);
+		desc.set_layer(layer);
+		desc.set_x(x);
+		desc.set_y(y);
+		desc.set_width(width);
+		desc.set_height(height);
+		GpuResult.check(NativeKitGpu.nkgpu_image_to_buffer(value, desc), "renderer.imageToBuffer");
+	}
+
+	/** Applies a framebuffer-pixel viewport to the active render pass. */
+	public function viewport(x:Int, y:Int, width:Int, height:Int):Void {
+		ensureFrame();
+		if (width <= 0 || height <= 0)
+			throw "GPU viewport dimensions must be positive";
+		GpuResult.check(NativeKitGpu.nkgpu_apply_viewport(value, x, y, width, height), "renderer.viewport");
+	}
+
+	/** Applies or disables a framebuffer-pixel scissor rectangle. */
+	public function scissor(enabled:Bool, x:Int = 0, y:Int = 0, width:Int = 0,
+		height:Int = 0):Void {
+		ensureFrame();
+		if (enabled && (width <= 0 || height <= 0))
+			throw "GPU scissor dimensions must be positive when enabled";
+		GpuResult.check(NativeKitGpu.nkgpu_apply_scissor(value, enabled ? 1 : 0, x, y, width, height),
+			"renderer.scissor");
+	}
+
 	@:allow(RenderTarget)
 	function beginRenderTarget(target:RenderTarget, clear:Bool):Void {
 		ensureLive();
@@ -203,6 +273,9 @@ class Renderer {
 		return new CommandBuffer(this, capacity);
 	}
 
+	public function batch():Batch
+		return Batch.begin(this);
+
 	public function uniforms(size:Int):Uniforms {
 		ensureFrame();
 		if (size <= 0)
@@ -233,28 +306,28 @@ class Renderer {
 	public function isDisposed():Bool
 		return disposed;
 
-	@:allow(Buffer, Image, Sampler, Shader, Pipeline, RenderTarget, Readback, CommandBuffer, Uniforms)
+	@:allow(Buffer, Image, Sampler, Shader, Pipeline, RenderTarget, Readback, Batch, CommandBuffer, Uniforms)
 	function ensureFrame():Void {
 		ensureLive();
 		if (!frameActive)
 			throw "GPU operation requires an active frame";
 	}
 
-	@:allow(Buffer, Image, Sampler, Shader, ShaderBuilder, Pipeline, PipelineBuilder, RenderTarget, Readback,
+	@:allow(Buffer, Image, Sampler, Shader, ShaderBuilder, Pipeline, PipelineBuilder, RenderTarget, Readback, Batch,
 		CommandBuffer, Uniforms)
 	function ensureLive():Void {
 		if (disposed)
 			throw "GPU renderer has been disposed";
 	}
 
-	@:allow(Buffer, Image, Sampler, Shader, ShaderBuilder, Pipeline, PipelineBuilder, RenderTarget, Readback,
+	@:allow(Buffer, Image, Sampler, Shader, ShaderBuilder, Pipeline, PipelineBuilder, RenderTarget, Readback, Batch,
 		Uniforms)
 	function registerResource(release:Void->Void):Void {
 		ensureLive();
 		resources.push(release);
 	}
 
-	@:allow(Buffer, Image, Sampler, Shader, ShaderBuilder, Pipeline, PipelineBuilder, RenderTarget,
+	@:allow(Buffer, Image, Sampler, Shader, ShaderBuilder, Pipeline, PipelineBuilder, RenderTarget, Readback, Batch,
 		Uniforms)
 	function ensureResourceOperation():Void {
 		ensureLive();
