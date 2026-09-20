@@ -105,6 +105,18 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		NK_AUDIO_DSP_PARAMETER_DECAY_SECONDS = 3;
 		NK_AUDIO_DSP_PARAMETER_SUSTAIN_LEVEL = 4;
 		NK_AUDIO_DSP_PARAMETER_RELEASE_SECONDS = 5;
+		/**
+		 * Additive white-noise source level in the inclusive range [0, 1].
+		 */
+		NK_AUDIO_DSP_PARAMETER_NOISE_LEVEL = 6;
+		/**
+		 * State-variable low-pass cutoff in Hz; zero bypasses the filter.
+		 */
+		NK_AUDIO_DSP_PARAMETER_FILTER_CUTOFF_HZ = 7;
+		/**
+		 * State-variable low-pass resonance in the inclusive range [0, 1].
+		 */
+		NK_AUDIO_DSP_PARAMETER_FILTER_RESONANCE = 8;
 	}
 	/**
 	 * Built-in pitched oscillator shapes.

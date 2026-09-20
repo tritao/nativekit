@@ -23,8 +23,8 @@ extern "C" {
 typedef uint32_t nk_audio_dsp_engine NK_HANDLE NK_HANDLE_DESTROY(nk_audio_dsp_engine_destroy);
 
 /** Opaque handle for one instrument owned by a DSP renderer. */
-typedef uint32_t nk_audio_dsp_instrument NK_HANDLE
-    NK_HANDLE_DESTROY(nk_audio_dsp_instrument_destroy);
+typedef uint32_t
+    nk_audio_dsp_instrument NK_HANDLE NK_HANDLE_DESTROY(nk_audio_dsp_instrument_destroy);
 
 /** Features implemented by the selected DSP backend. */
 typedef uint32_t nk_audio_dsp_capabilities;
@@ -64,7 +64,13 @@ enum NK_ENUM(nk_audio_dsp_parameter) {
     NK_AUDIO_DSP_PARAMETER_ATTACK_SECONDS = 2,
     NK_AUDIO_DSP_PARAMETER_DECAY_SECONDS = 3,
     NK_AUDIO_DSP_PARAMETER_SUSTAIN_LEVEL = 4,
-    NK_AUDIO_DSP_PARAMETER_RELEASE_SECONDS = 5
+    NK_AUDIO_DSP_PARAMETER_RELEASE_SECONDS = 5,
+    /** Additive white-noise source level in the inclusive range [0, 1]. */
+    NK_AUDIO_DSP_PARAMETER_NOISE_LEVEL = 6,
+    /** State-variable low-pass cutoff in Hz; zero bypasses the filter. */
+    NK_AUDIO_DSP_PARAMETER_FILTER_CUTOFF_HZ = 7,
+    /** State-variable low-pass resonance in the inclusive range [0, 1]. */
+    NK_AUDIO_DSP_PARAMETER_FILTER_RESONANCE = 8
 };
 
 /** Events applied at exact sample offsets while rendering a block. */
@@ -160,8 +166,7 @@ typedef struct nk_audio_dsp_event {
 
 /** Creates a standalone DSP renderer; no playback device is required. */
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_create(
-    const nk_audio_dsp_engine_options *options,
-    nk_audio_dsp_engine *out_engine NK_OUT NK_OWNED);
+    const nk_audio_dsp_engine_options *options, nk_audio_dsp_engine *out_engine NK_OUT NK_OWNED);
 /** Stops all voices and destroys a DSP renderer. */
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_destroy(nk_audio_dsp_engine engine);
 /** Returns the renderer's normalized configuration. */

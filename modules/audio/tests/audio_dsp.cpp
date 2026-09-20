@@ -50,8 +50,9 @@ int main() {
     nk_audio_dsp_capabilities capabilities = 0;
     assert(nk_audio_dsp_engine_get_capabilities(engine, &capabilities) == NK_OK);
     assert((capabilities & NK_AUDIO_DSP_CAPABILITY_OSCILLATOR) != 0);
+    assert((capabilities & NK_AUDIO_DSP_CAPABILITY_NOISE) != 0);
     assert((capabilities & NK_AUDIO_DSP_CAPABILITY_ENVELOPE) != 0);
-    assert((capabilities & NK_AUDIO_DSP_CAPABILITY_FILTER) == 0);
+    assert((capabilities & NK_AUDIO_DSP_CAPABILITY_FILTER) != 0);
 
     nk_audio_dsp_instrument_options instrument_options{};
     instrument_options.struct_size = sizeof(instrument_options);
@@ -105,10 +106,27 @@ int main() {
 
     assert(nk_audio_dsp_instrument_set_parameter(instrument, NK_AUDIO_DSP_PARAMETER_GAIN, 0.5f) ==
            NK_OK);
+    assert(nk_audio_dsp_instrument_set_parameter(instrument, NK_AUDIO_DSP_PARAMETER_NOISE_LEVEL,
+                                                 0.25f) == NK_OK);
+    assert(nk_audio_dsp_instrument_set_parameter(
+               instrument, NK_AUDIO_DSP_PARAMETER_FILTER_CUTOFF_HZ, 1200.0f) == NK_OK);
+    assert(nk_audio_dsp_instrument_set_parameter(
+               instrument, NK_AUDIO_DSP_PARAMETER_FILTER_RESONANCE, 0.5f) == NK_OK);
     float gain = 0.0f;
     assert(nk_audio_dsp_instrument_get_parameter(instrument, NK_AUDIO_DSP_PARAMETER_GAIN, &gain) ==
            NK_OK);
     assert(gain == 0.5f);
+    float noise_level = 0.0f;
+    assert(nk_audio_dsp_instrument_get_parameter(instrument, NK_AUDIO_DSP_PARAMETER_NOISE_LEVEL,
+                                                 &noise_level) == NK_OK);
+    assert(noise_level == 0.25f);
+    float filter_cutoff = 0.0f;
+    assert(nk_audio_dsp_instrument_get_parameter(
+               instrument, NK_AUDIO_DSP_PARAMETER_FILTER_CUTOFF_HZ, &filter_cutoff) == NK_OK);
+    assert(filter_cutoff == 1200.0f);
+    assert(nk_audio_dsp_instrument_set_parameter(instrument,
+                                                 NK_AUDIO_DSP_PARAMETER_FILTER_CUTOFF_HZ,
+                                                 20000.0f) == NK_ERROR_INVALID_ARGUMENT);
     assert(nk_audio_dsp_instrument_set_parameter(instrument, NK_AUDIO_DSP_PARAMETER_GAIN, -1.0f) ==
            NK_ERROR_INVALID_ARGUMENT);
     assert(nk_audio_dsp_engine_render(engine, &target, nullptr, 0) == NK_OK);

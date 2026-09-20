@@ -1,6 +1,8 @@
 #include "audio_dsp_backend.hpp"
 
 #include "Control/adsr.h"
+#include "Filters/svf.h"
+#include "Noise/whitenoise.h"
 #include "Synthesis/oscillator.h"
 
 #include <cmath>
@@ -12,8 +14,13 @@ namespace nk::audio_dsp {
 struct Voice::Impl {
     daisysp::Oscillator oscillator;
     daisysp::Adsr envelope;
+    daisysp::WhiteNoise noise;
+    daisysp::Svf filter;
     uint32_t sample_rate = 0;
     float gain = 1.0f;
+    float noise_level = 0.0f;
+    float filter_cutoff_hz = 0.0f;
+    float filter_resonance = 0.0f;
     float velocity = 0.0f;
     bool gate = false;
     bool active = false;
@@ -31,7 +38,12 @@ void Voice::init(uint32_t sample_rate) noexcept {
     impl_->sample_rate = sample_rate;
     impl_->oscillator.Init(static_cast<float>(sample_rate));
     impl_->envelope.Init(static_cast<float>(sample_rate));
+    impl_->noise.Init();
+    impl_->filter.Init(static_cast<float>(sample_rate));
     impl_->gain = 1.0f;
+    impl_->noise_level = 0.0f;
+    impl_->filter_cutoff_hz = 0.0f;
+    impl_->filter_resonance = 0.0f;
     impl_->velocity = 0.0f;
     impl_->gate = false;
     impl_->active = false;
@@ -39,6 +51,9 @@ void Voice::init(uint32_t sample_rate) noexcept {
 
 void Voice::set_parameters(const VoiceParameters &parameters) noexcept {
     impl_->gain = parameters.gain;
+    impl_->noise_level = parameters.noise_level;
+    impl_->filter_cutoff_hz = parameters.filter_cutoff_hz;
+    impl_->filter_resonance = parameters.filter_resonance;
     switch (parameters.waveform) {
     case NK_AUDIO_DSP_WAVEFORM_SINE:
         impl_->oscillator.SetWaveform(daisysp::Oscillator::WAVE_SIN);
@@ -60,6 +75,9 @@ void Voice::set_parameters(const VoiceParameters &parameters) noexcept {
     impl_->envelope.SetDecayTime(parameters.decay_seconds);
     impl_->envelope.SetSustainLevel(parameters.sustain_level);
     impl_->envelope.SetReleaseTime(parameters.release_seconds);
+    impl_->filter.SetRes(impl_->filter_resonance);
+    if (impl_->filter_cutoff_hz > 0.0f)
+        impl_->filter.SetFreq(impl_->filter_cutoff_hz);
 }
 
 void Voice::note_on(uint32_t note, float velocity) noexcept {
@@ -67,6 +85,10 @@ void Voice::note_on(uint32_t note, float velocity) noexcept {
     const auto frequency = 440.0f * std::pow(2.0f, semitones / 12.0f);
     impl_->oscillator.SetFreq(frequency);
     impl_->oscillator.Reset();
+    impl_->filter.Init(static_cast<float>(impl_->sample_rate));
+    impl_->filter.SetRes(impl_->filter_resonance);
+    if (impl_->filter_cutoff_hz > 0.0f)
+        impl_->filter.SetFreq(impl_->filter_cutoff_hz);
     impl_->envelope.Retrigger(true);
     impl_->velocity = velocity;
     impl_->gate = true;
@@ -92,7 +114,13 @@ float Voice::process() noexcept {
         impl_->active = false;
         return 0.0f;
     }
-    return impl_->oscillator.Process() * impl_->gain * impl_->velocity * envelope;
+    auto sample = impl_->oscillator.Process();
+    sample += impl_->noise.Process() * impl_->noise_level;
+    if (impl_->filter_cutoff_hz > 0.0f) {
+        impl_->filter.Process(sample);
+        sample = impl_->filter.Low();
+    }
+    return sample * impl_->gain * impl_->velocity * envelope;
 }
 
 bool Voice::active() const noexcept {

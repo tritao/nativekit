@@ -4,6 +4,7 @@ endif()
 
 add_library(nativekit_daisysp OBJECT
     "${NK_VENDOR_DIR}/daisysp/Source/Control/adsr.cpp"
+    "${NK_VENDOR_DIR}/daisysp/Source/Filters/svf.cpp"
     "${NK_VENDOR_DIR}/daisysp/Source/Synthesis/oscillator.cpp")
 target_compile_features(nativekit_daisysp PRIVATE cxx_std_17)
 target_include_directories(nativekit_daisysp SYSTEM PRIVATE

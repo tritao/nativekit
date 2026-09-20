@@ -17,12 +17,15 @@ The standalone DSP API is exposed by `nativekit_audio_dsp.h` and the
 device and mixer graph: create a `nk_audio_dsp_engine`, create one or more
 instruments, submit frame-sorted note and parameter events, and render
 interleaved float blocks into caller-owned memory. The initial backend provides
-pitched sine, triangle, saw, and square oscillators with ADSR envelopes and
-reports those capabilities through `nk_audio_dsp_engine_get_capabilities()`.
-The first backend uses the pinned DaisySP oscillator and ADSR modules; only the
-translation units needed by this slice are compiled. The stable NativeKit ABI
-does not expose DaisySP types, so future DaisySP modules or other native DSP
-implementations can be added without changing tracker code.
+pitched sine, triangle, saw, and square oscillators, additive white noise, ADSR
+envelopes, and an optional state-variable low-pass filter. Noise level, filter
+cutoff, and filter resonance are sample-accurate instrument parameters; a zero
+cutoff bypasses the filter. The backend reports these capabilities through
+`nk_audio_dsp_engine_get_capabilities()`.
+The first backend uses the pinned DaisySP oscillator, noise, ADSR, and SVF
+modules; only the translation units needed by this slice are compiled. The
+stable NativeKit ABI does not expose DaisySP types, so future DaisySP modules or
+other native DSP implementations can be added without changing tracker code.
 
 The first API slice supports WAV, FLAC, and MP3 playback from native filesystem
 paths, cached URI assets, or caller-provided encoded memory.

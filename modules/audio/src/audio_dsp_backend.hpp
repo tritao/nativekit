@@ -14,6 +14,9 @@ struct VoiceParameters {
     float decay_seconds = 0.1f;
     float sustain_level = 0.8f;
     float release_seconds = 0.1f;
+    float noise_level = 0.0f;
+    float filter_cutoff_hz = 0.0f;
+    float filter_resonance = 0.0f;
 };
 
 /** Private backend-neutral voice boundary; DaisySP types stay in the .cpp. */

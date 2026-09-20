@@ -23,7 +23,8 @@ constexpr uint32_t max_channels = 8;
 constexpr uint32_t max_block_size = 65536;
 constexpr uint32_t max_voice_count = 4096;
 constexpr nk_audio_dsp_capabilities builtin_capabilities =
-    NK_AUDIO_DSP_CAPABILITY_OSCILLATOR | NK_AUDIO_DSP_CAPABILITY_ENVELOPE;
+    NK_AUDIO_DSP_CAPABILITY_OSCILLATOR | NK_AUDIO_DSP_CAPABILITY_NOISE |
+    NK_AUDIO_DSP_CAPABILITY_ENVELOPE | NK_AUDIO_DSP_CAPABILITY_FILTER;
 
 using DspParameters = nk::audio_dsp::VoiceParameters;
 
@@ -93,8 +94,7 @@ std::shared_ptr<DspEngineResource> get_engine(nk_audio_dsp_engine handle) {
 }
 
 std::shared_ptr<DspInstrumentResource> get_instrument(nk_audio_dsp_instrument handle) {
-    auto resource =
-        nk::core::handles().get(handle, nk::core::ResourceType::audio_dsp_instrument);
+    auto resource = nk::core::handles().get(handle, nk::core::ResourceType::audio_dsp_instrument);
     if (!resource) {
         nk::core::set_error("invalid audio DSP instrument handle");
         return {};
@@ -116,7 +116,24 @@ bool valid_instrument_parameters(const DspParameters &parameters) {
            valid_nonnegative_finite(parameters.decay_seconds) &&
            std::isfinite(parameters.sustain_level) && parameters.sustain_level >= 0.0f &&
            parameters.sustain_level <= 1.0f &&
-           valid_nonnegative_finite(parameters.release_seconds);
+           valid_nonnegative_finite(parameters.release_seconds) &&
+           std::isfinite(parameters.noise_level) && parameters.noise_level >= 0.0f &&
+           parameters.noise_level <= 1.0f &&
+           valid_nonnegative_finite(parameters.filter_cutoff_hz) &&
+           std::isfinite(parameters.filter_resonance) && parameters.filter_resonance >= 0.0f &&
+           parameters.filter_resonance <= 1.0f;
+}
+
+bool valid_filter_cutoff(float cutoff_hz, uint32_t sample_rate) {
+    return cutoff_hz == 0.0f || cutoff_hz <= static_cast<float>(sample_rate) / 3.0f;
+}
+
+nk_result validate_engine_parameters(const DspParameters &parameters,
+                                     const DspEngineResource &engine) {
+    if (!valid_instrument_parameters(parameters) ||
+        !valid_filter_cutoff(parameters.filter_cutoff_hz, engine.options.sample_rate))
+        return invalid_argument("audio DSP instrument parameters are invalid");
+    return NK_OK;
 }
 
 nk_result normalize_engine_options(const nk_audio_dsp_engine_options *input,
@@ -151,7 +168,7 @@ nk_result normalize_engine_options(const nk_audio_dsp_engine_options *input,
 }
 
 nk_result normalize_instrument_options(const nk_audio_dsp_instrument_options *input,
-                                        DspParameters &output) {
+                                       uint32_t sample_rate, DspParameters &output) {
     output = {};
     if (!input)
         return NK_OK;
@@ -163,13 +180,14 @@ nk_result normalize_instrument_options(const nk_audio_dsp_instrument_options *in
     output.decay_seconds = input->decay_seconds;
     output.sustain_level = input->sustain_level;
     output.release_seconds = input->release_seconds;
-    if (!valid_instrument_parameters(output))
+    if (!valid_instrument_parameters(output) ||
+        !valid_filter_cutoff(output.filter_cutoff_hz, sample_rate))
         return invalid_argument("audio DSP instrument parameters are invalid");
     return NK_OK;
 }
 
 bool valid_parameter(nk_audio_dsp_parameter parameter) {
-    return parameter <= NK_AUDIO_DSP_PARAMETER_RELEASE_SECONDS;
+    return parameter <= NK_AUDIO_DSP_PARAMETER_FILTER_RESONANCE;
 }
 
 nk_result set_parameter(DspParameters &parameters, nk_audio_dsp_parameter parameter, float value) {
@@ -207,6 +225,21 @@ nk_result set_parameter(DspParameters &parameters, nk_audio_dsp_parameter parame
             return invalid_argument("audio DSP release parameter is invalid");
         parameters.release_seconds = value;
         break;
+    case NK_AUDIO_DSP_PARAMETER_NOISE_LEVEL:
+        if (value < 0.0f || value > 1.0f)
+            return invalid_argument("audio DSP noise level parameter is invalid");
+        parameters.noise_level = value;
+        break;
+    case NK_AUDIO_DSP_PARAMETER_FILTER_CUTOFF_HZ:
+        if (value < 0.0f)
+            return invalid_argument("audio DSP filter cutoff parameter is invalid");
+        parameters.filter_cutoff_hz = value;
+        break;
+    case NK_AUDIO_DSP_PARAMETER_FILTER_RESONANCE:
+        if (value < 0.0f || value > 1.0f)
+            return invalid_argument("audio DSP filter resonance parameter is invalid");
+        parameters.filter_resonance = value;
+        break;
     default:
         return invalid_argument("audio DSP parameter is invalid");
     }
@@ -227,6 +260,12 @@ float get_parameter(const DspParameters &parameters, nk_audio_dsp_parameter para
         return parameters.sustain_level;
     case NK_AUDIO_DSP_PARAMETER_RELEASE_SECONDS:
         return parameters.release_seconds;
+    case NK_AUDIO_DSP_PARAMETER_NOISE_LEVEL:
+        return parameters.noise_level;
+    case NK_AUDIO_DSP_PARAMETER_FILTER_CUTOFF_HZ:
+        return parameters.filter_cutoff_hz;
+    case NK_AUDIO_DSP_PARAMETER_FILTER_RESONANCE:
+        return parameters.filter_resonance;
     default:
         return 0.0f;
     }
@@ -307,7 +346,12 @@ nk_result apply_event(DspEngineResource &engine, const nk_audio_dsp_event &event
             return NK_ERROR_INVALID_HANDLE;
         if (!instrument_belongs_to(instrument, engine))
             return invalid_request("audio DSP instrument belongs to another engine");
-        const auto result = set_parameter(instrument->current, event.parameter, event.value);
+        auto parameters = instrument->current;
+        auto result = set_parameter(parameters, event.parameter, event.value);
+        if (result == NK_OK)
+            result = validate_engine_parameters(parameters, engine);
+        if (result == NK_OK)
+            instrument->current = parameters;
         if (result == NK_OK)
             ++instrument->parameters_version;
         return result;
@@ -350,6 +394,8 @@ nk_result validate_event(const DspEngineResource &engine, const nk_audio_dsp_eve
             auto parameters = instrument->current;
             if (const auto result = set_parameter(parameters, event.parameter, event.value);
                 result != NK_OK)
+                return result;
+            if (const auto result = validate_engine_parameters(parameters, engine); result != NK_OK)
                 return result;
         }
     }
@@ -478,9 +524,9 @@ nk_result NK_CALL nk_audio_dsp_engine_reset(nk_audio_dsp_engine engine_handle) {
         });
 }
 
-nk_result NK_CALL nk_audio_dsp_instrument_create(
-    nk_audio_dsp_engine engine_handle, const nk_audio_dsp_instrument_options *options,
-    nk_audio_dsp_instrument *out_instrument) {
+nk_result NK_CALL nk_audio_dsp_instrument_create(nk_audio_dsp_engine engine_handle,
+                                                 const nk_audio_dsp_instrument_options *options,
+                                                 nk_audio_dsp_instrument *out_instrument) {
     return nk::core::result_boundary(
         "unexpected error while creating an audio DSP instrument", [&]() -> nk_result {
             if (const auto result = enter_dsp(); result != NK_OK)
@@ -492,7 +538,8 @@ nk_result NK_CALL nk_audio_dsp_instrument_create(
             if (!engine)
                 return NK_ERROR_INVALID_HANDLE;
             DspParameters parameters;
-            if (const auto result = normalize_instrument_options(options, parameters);
+            if (const auto result =
+                    normalize_instrument_options(options, engine->options.sample_rate, parameters);
                 result != NK_OK)
                 return result;
             auto instrument = std::make_shared<DspInstrumentResource>();
@@ -552,7 +599,12 @@ nk_result NK_CALL nk_audio_dsp_instrument_set_parameter(nk_audio_dsp_instrument 
             std::lock_guard lock(engine->mutex);
             if (!engine->alive)
                 return invalid_request("audio DSP engine is no longer alive");
-            const auto result = set_parameter(instrument->current, parameter, value);
+            auto parameters = instrument->current;
+            auto result = set_parameter(parameters, parameter, value);
+            if (result == NK_OK)
+                result = validate_engine_parameters(parameters, *engine);
+            if (result == NK_OK)
+                instrument->current = parameters;
             if (result == NK_OK)
                 ++instrument->parameters_version;
             return result;
@@ -615,8 +667,8 @@ nk_result NK_CALL nk_audio_dsp_engine_render(nk_audio_dsp_engine engine_handle,
                 return invalid_argument("audio DSP render target buffer is too small");
             uint32_t previous_frame = 0;
             for (uint32_t index = 0; index < event_count; ++index) {
-                if (const auto result = validate_event(*engine, events[index], target->frame_count,
-                                                       previous_frame);
+                if (const auto result =
+                        validate_event(*engine, events[index], target->frame_count, previous_frame);
                     result != NK_OK)
                     return result;
                 previous_frame = events[index].frame_offset;
