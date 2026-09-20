@@ -8,17 +8,25 @@ import NativeKitWindow;
 import NativeKitGpu;
 import GraphicsImageRef;
 import nativekit.gpu.Buffer;
+import nativekit.gpu.BufferDesc;
 import nativekit.gpu.CommandBuffer;
+import nativekit.gpu.AttachmentAction;
+import nativekit.gpu.Enums.BufferUsage;
 import nativekit.gpu.Enums.Filter;
+import nativekit.gpu.Enums.ImageFormat;
+import nativekit.gpu.Enums.ImageUsage;
 import nativekit.gpu.Enums.IndexType;
+import nativekit.gpu.Enums.LoadAction;
 import nativekit.gpu.Enums.ShaderStage;
 import nativekit.gpu.Enums.ShaderLanguage;
+import nativekit.gpu.Enums.StoreAction;
 import nativekit.gpu.Enums.UniformType;
 import nativekit.gpu.Enums.VertexFormat;
 import nativekit.gpu.Enums.Wrap;
 import nativekit.gpu.Image;
+import nativekit.gpu.ImageDesc;
 import nativekit.gpu.Pipeline;
-import nativekit.gpu.RenderTarget;
+import nativekit.gpu.RenderPassDesc;
 import nativekit.gpu.Renderer;
 import nativekit.gpu.Sampler;
 import nativekit.gpu.Shader;
@@ -142,7 +150,7 @@ class Triangle {
 		var ready = false;
 		var running = true;
 		var frames = 0;
-		var retainedTargetImage:Null<GraphicsImageRef> = null;
+		var retainedImage:Null<GraphicsImageRef> = null;
 		var immediateMs = 0.0;
 		var batchedMs = 0.0;
 		var commandBuffer:Null<CommandBuffer> = null;
@@ -183,12 +191,19 @@ class Triangle {
 				peerRenderer.endFrame();
 				peerRenderer.dispose();
 
-				var target = RenderTarget.create(renderer, 32, 32, true);
-				target.begin();
-				var endFrameRejected = false;
-				try renderer.endFrame() catch (_:Dynamic) endFrameRejected = true;
-				if (!endFrameRejected)
-					throw "window endFrame accepted an offscreen target pass";
+				var colorDesc = new ImageDesc(32, 32, ImageFormat.Rgba8,
+					ImageUsage.Sampled | ImageUsage.RenderTarget);
+				var targetColor = Image.create(renderer, colorDesc);
+				var depthDesc = new ImageDesc(32, 32, ImageFormat.Depth24Stencil8,
+					ImageUsage.DepthStencil);
+				var targetDepth = Image.create(renderer, depthDesc);
+				var pass = new RenderPassDesc();
+				var colorAction = new AttachmentAction(LoadAction.Clear, StoreAction.Store);
+				colorAction.clearAlpha = 1.0;
+				var depthAction = new AttachmentAction(LoadAction.Clear, StoreAction.Store);
+				pass.color(targetColor, colorAction).depth(targetDepth, depthAction);
+				renderer.beginPassFrame();
+				renderer.beginRenderPass(pass);
 				var resourceCreationRejected = false;
 				try Sampler.create(renderer) catch (_:Dynamic) resourceCreationRejected = true;
 				if (!resourceCreationRejected)
@@ -196,15 +211,35 @@ class Triangle {
 				applyFrameBindings(pipeline, buffer, indexBuffer, image, sampler);
 				renderer.uniforms(16).writeFloat(0, 0).writeFloat(4, 0).apply(0);
 				renderer.draw(0, 6);
-				target.end();
-				retainedTargetImage = target.sampledImage();
-				if (retainedTargetImage.width != 32 || retainedTargetImage.height != 32
-					|| (retainedTargetImage.api != GraphicsApi.Opengl
-						&& retainedTargetImage.api != GraphicsApi.OpenglEs
-						&& retainedTargetImage.api != GraphicsApi.D3d11
-						&& retainedTargetImage.api != GraphicsApi.Metal))
+				renderer.endPass();
+				renderer.endFrame();
+				retainedImage = targetColor.graphicsImage();
+				if (retainedImage.width != 32 || retainedImage.height != 32
+					|| (retainedImage.api != GraphicsApi.Opengl
+						&& retainedImage.api != GraphicsApi.OpenglEs
+						&& retainedImage.api != GraphicsApi.D3d11
+						&& retainedImage.api != GraphicsApi.Metal))
 					throw "offscreen target image metadata mismatch";
-				target.dispose();
+				var copyDesc = new ImageDesc(32, 32, ImageFormat.Rgba8,
+					ImageUsage.Sampled | ImageUsage.RenderTarget);
+				var copyDestination = Image.create(renderer, copyDesc);
+				renderer.beginPassFrame();
+				renderer.beginCopyPass();
+				renderer.copyImage(targetColor, copyDestination, 32, 32);
+				renderer.endPass();
+				renderer.endFrame();
+				copyDestination.dispose();
+				var transferSource = Buffer.create(renderer, new BufferDesc(4, BufferUsage.Transfer));
+				var transferDestination = Buffer.create(renderer, new BufferDesc(4, BufferUsage.Transfer));
+				renderer.beginPassFrame();
+				renderer.beginCopyPass();
+				renderer.copyBuffer(transferSource, transferDestination, 4);
+				renderer.endPass();
+				renderer.endFrame();
+				transferSource.dispose();
+				transferDestination.dispose();
+				targetColor.dispose();
+				targetDepth.dispose();
 				ready = true;
 			}
 
@@ -247,7 +282,7 @@ class Triangle {
 		try runtime.dispose() catch (_:Dynamic) blockedRuntimeShutdown = true;
 		if (!blockedRuntimeShutdown || runtime.isDisposed())
 			throw "runtime shut down with a retained graphics image";
-		retainedTargetImage.dispose();
+		retainedImage.dispose();
 		surface.dispose();
 		eventSubscription.dispose();
 		runtime.dispose();

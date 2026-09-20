@@ -40,6 +40,8 @@ fi
     --ffi-projection="$module_dir/bindings/nativekit-gpu.hxmap" \
     "$module_dir/tests/haxeon/Triangle.hx" \
     "$module_dir/bindings/haxe/nativekit/gpu/Buffer.hx" \
+    "$module_dir/bindings/haxe/nativekit/gpu/BufferDesc.hx" \
+    "$module_dir/bindings/haxe/nativekit/gpu/AttachmentAction.hx" \
     "$module_dir/bindings/haxe/nativekit/gpu/CommandBuffer.hx" \
     "$module_dir/bindings/haxe/nativekit/gpu/Enums.hx" \
     "$module_dir/bindings/haxe/nativekit/gpu/Image.hx" \
@@ -50,7 +52,9 @@ fi
     "$module_dir/bindings/haxe/nativekit/gpu/Surface.hx" \
     "$module_dir/bindings/haxe/nativekit/gpu/Uniforms.hx" \
     "$module_dir/bindings/haxe/nativekit/gpu/GpuResult.hx" \
+    "$module_dir/bindings/haxe/nativekit/gpu/ImageDesc.hx" \
     "$module_dir/bindings/haxe/nativekit/gpu/RenderTarget.hx" \
+    "$module_dir/bindings/haxe/nativekit/gpu/RenderPassDesc.hx" \
     "$nativekit_dir/bindings/haxe/GraphicsImageRef.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitEvent.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitEvents.hx" \

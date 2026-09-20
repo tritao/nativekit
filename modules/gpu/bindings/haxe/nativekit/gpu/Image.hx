@@ -1,6 +1,8 @@
 package nativekit.gpu;
 
 import haxe.io.Bytes;
+import NativeKit.GraphicsApi;
+import GraphicsImageRef;
 
 /** Renderer-owned RGBA8 sampled image. */
 class Image {
@@ -16,6 +18,17 @@ class Image {
 		this.width = width;
 		this.height = height;
 		renderer.registerResource(rendererClosed);
+	}
+
+	/** Creates an image from the current generic image descriptor. */
+	public static function create(renderer:Renderer, desc:ImageDesc):Image {
+		if (desc == null || desc.width <= 0 || desc.height <= 0 || desc.mipCount <= 0 ||
+			desc.sampleCount <= 0 || desc.layerCount <= 0)
+			throw "GPU image descriptor dimensions and counts must be positive";
+		renderer.ensureResourceOperation();
+		var made = NativeKitGpu.nkgpu_image_create_desc(renderer.nativeHandle(), desc.nativeValue());
+		GpuResult.check(made.status, "image.create");
+		return new Image(renderer, made.out_image, desc.width, desc.height);
 	}
 
 	/** Copies tightly packed row-major RGBA8 pixels into a new GPU image. */
@@ -51,6 +64,34 @@ class Image {
 		GpuResult.check(NativeKitGpu.nkgpu_apply_image(renderer.nativeHandle(), slot, value), "image.apply");
 	}
 
+	/** Binds this image as a storage resource in the active pass. */
+	public function applyStorage(slot:Int):Void {
+		ensureLive();
+		renderer.ensureFrame();
+		if (slot < 0)
+			throw "GPU storage-image slot must be non-negative";
+		GpuResult.check(NativeKitGpu.nkgpu_apply_storage_image(renderer.nativeHandle(), slot, value),
+			"image.applyStorage");
+	}
+
+	/** Exports this sampled image as a retained cross-module graphics image. */
+	public function graphicsImage():GraphicsImageRef {
+		ensureLive();
+		var borrowed = NativeKitGpu.nkgpu_image_get_graphics_image(renderer.nativeHandle(), value);
+		GpuResult.check(borrowed.status, "image.graphicsImage");
+		var api:GraphicsApi = NativeKitGpu.nkgpu_query_graphics_api(renderer.nativeHandle());
+		return GraphicsImageRef.fromBorrowedHandle(borrowed.out_image, width, height, api);
+	}
+
+	/** Updates a tightly packed image rectangle. */
+	public function update(x:Int, y:Int, width:Int, height:Int, pixels:Bytes, rowPitch:Int):Void {
+		ensureLive();
+		if (x < 0 || y < 0 || width <= 0 || height <= 0 || pixels == null || rowPitch <= 0)
+			throw "GPU image update arguments are invalid";
+		GpuResult.check(NativeKitGpu.nkgpu_image_update(renderer.nativeHandle(), value, x, y, width,
+			height, pixels, rowPitch), "image.update");
+	}
+
 	public function dispose():Void {
 		if (disposed)
 			return;
@@ -62,7 +103,7 @@ class Image {
 	public function isDisposed():Bool
 		return disposed;
 
-	@:allow(CommandBuffer)
+	@:allow(CommandBuffer, Renderer)
 	function rendererOwner():Renderer
 		return renderer;
 
@@ -70,6 +111,7 @@ class Image {
 	function rendererClosed():Void
 		disposed = true;
 
+	@:allow(Renderer)
 	function ensureLive():Void {
 		if (disposed)
 			throw "GPU image has been disposed";

@@ -25,7 +25,7 @@ class GraphicsImageRef {
 	 * producer and must be released with dispose(). The caller must supply the
 	 * dimensions and API reported by that producer.
 	 */
-	@:allow(nativekit.gpu.RenderTarget)
+	@:allow(nativekit.gpu.Image, nativekit.gpu.RenderTarget)
 	private static function fromBorrowedHandle(value:GraphicsImage, width:Int, height:Int,
 		api:GraphicsApi):GraphicsImageRef {
 		if (width <= 0 || height <= 0)

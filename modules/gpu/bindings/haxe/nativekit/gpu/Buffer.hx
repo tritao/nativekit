@@ -15,6 +15,16 @@ class Buffer {
 		renderer.registerResource(rendererClosed);
 	}
 
+	/** Creates a buffer from the current generic buffer descriptor. */
+	public static function create(renderer:Renderer, desc:BufferDesc):Buffer {
+		if (desc == null || desc.size <= 0)
+			throw "GPU buffer descriptor size must be positive";
+		renderer.ensureResourceOperation();
+		var made = NativeKitGpu.nkgpu_buffer_create_desc(renderer.nativeHandle(), desc.nativeValue());
+		GpuResult.check(made.status, "buffer.create");
+		return new Buffer(renderer, made.out_buffer);
+	}
+
 	public static function fromBytes(renderer:Renderer, data:Bytes):Buffer {
 		if (data == null || data.length == 0)
 			throw "GPU buffer data must not be empty";
@@ -71,6 +81,25 @@ class Buffer {
 		GpuResult.check(NativeKitGpu.nkgpu_apply_index_buffer(renderer.nativeHandle(), value, offset), "buffer.applyIndex");
 	}
 
+	/** Binds this buffer as a storage resource in the active pass. */
+	public function applyStorage(slot:Int):Void {
+		ensureLive();
+		renderer.ensureFrame();
+		if (slot < 0)
+			throw "GPU storage-buffer slot must be non-negative";
+		GpuResult.check(NativeKitGpu.nkgpu_apply_storage_buffer(renderer.nativeHandle(), slot, value),
+			"buffer.applyStorage");
+	}
+
+	/** Updates an arbitrary byte range of a dynamic buffer. */
+	public function update(offset:Int, data:Bytes):Void {
+		ensureLive();
+		if (offset < 0 || data == null || data.length == 0)
+			throw "GPU buffer update arguments are invalid";
+		GpuResult.check(NativeKitGpu.nkgpu_buffer_update(renderer.nativeHandle(), value, offset, data,
+			data.length), "buffer.update");
+	}
+
 	public function dispose():Void {
 		if (disposed)
 			return;
@@ -82,7 +111,7 @@ class Buffer {
 	public function isDisposed():Bool
 		return disposed;
 
-	@:allow(CommandBuffer)
+	@:allow(CommandBuffer, Renderer)
 	function rendererOwner():Renderer
 		return renderer;
 
@@ -90,6 +119,7 @@ class Buffer {
 	function rendererClosed():Void
 		disposed = true;
 
+	@:allow(Renderer)
 	function ensureLive():Void {
 		if (disposed)
 			throw "GPU buffer has been disposed";
