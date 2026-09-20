@@ -70,6 +70,8 @@ cmake -S "$repo_dir" -B "$build_dir" -GNinja \
 HAXEON_DIR="$haxeon_dir" "$repo_dir/tools/test-haxeon.sh"
 HAXEON_DIR="$haxeon_dir" NATIVEKIT_BUILD_DIR="$build_dir" \
     "$repo_dir/modules/gpu/tools/test-haxeon.sh"
+HAXEON_DIR="$haxeon_dir" NATIVEKIT_BUILD="$build_dir" \
+    "$repo_dir/modules/scene_render/tools/test-haxeon.sh"
 HAXEON_DIR="$haxeon_dir" NATIVEKIT_BUILD_DIR="$build_dir" \
     "$repo_dir/modules/ui/tools/test-haxeon.sh"
 HAXEON_DIR="$haxeon_dir" NATIVEKIT_BUILD_DIR="$build_dir" \
