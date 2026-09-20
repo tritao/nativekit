@@ -51,7 +51,6 @@ enum abstract ReadbackState(Int) to Int {
 
 enum abstract BatchPassKind(Int) to Int {
 	var Window = 1;
-	var Target = 2;
 	var Compute = 3;
 	var Copy = 4;
 	var Render = 5;

@@ -49,8 +49,6 @@ int main() {
     nkgpu_shader_builder shader_builder{};
     nkgpu_pipeline_builder unfinished_pipeline{};
     nkgpu_pipeline pipeline{};
-    nkgpu_render_target target{};
-    nkgpu_render_target lost_target{};
     nkgpu_buffer descriptor_buffer{};
     nkgpu_buffer transfer_source{};
     nkgpu_buffer transfer_destination{};
@@ -61,6 +59,8 @@ int main() {
     nkgpu_image descriptor_mipped{};
     nkgpu_image dynamic_image{};
     nkgpu_image published_image{};
+    nkgpu_image retained_gpu_image{};
+    nkgpu_image_desc retained_image_desc{};
     nkgpu_image transfer_image{};
     nkgpu_image transfer_image_second{};
     nkgpu_shader compute_shader{};
@@ -153,14 +153,21 @@ int main() {
             goto cleanup;
         }
         EXPECT_RESULT(nkgpu_renderer_create(other_surface, &foreign_renderer), NKGPU_OK);
-        nkgpu_render_target foreign_target{};
-        EXPECT_RESULT(nkgpu_render_target_create(foreign_renderer, 8, 8, 0, &foreign_target),
+        nkgpu_image foreign_gpu_image{};
+        nkgpu_image_desc foreign_image_desc{};
+        foreign_image_desc.struct_size = sizeof(foreign_image_desc);
+        foreign_image_desc.width = 8;
+        foreign_image_desc.height = 8;
+        foreign_image_desc.format = NKGPU_IMAGEFORMAT_RGBA8;
+        foreign_image_desc.usage = NKGPU_IMAGE_SAMPLED | NKGPU_IMAGE_RENDER_TARGET;
+        EXPECT_RESULT(nkgpu_image_create_desc(foreign_renderer, &foreign_image_desc,
+                                               &foreign_gpu_image),
                       NKGPU_OK);
-        EXPECT_RESULT(
-            nkgpu_render_target_get_image(foreign_renderer, foreign_target, &foreign_image),
-            NKGPU_OK);
+        EXPECT_RESULT(nkgpu_image_get_graphics_image(foreign_renderer, foreign_gpu_image,
+                                                      &foreign_image),
+                      NKGPU_OK);
         EXPECT_RESULT(nk_graphics_image_retain(foreign_image), NK_OK);
-        EXPECT_RESULT(nkgpu_render_target_destroy(foreign_renderer, foreign_target), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_image_destroy(foreign_renderer, foreign_gpu_image), NKGPU_OK);
         EXPECT_RESULT(nkgpu_frame_begin(first), NKGPU_OK);
         EXPECT_RESULT(
             nkgpu_begin_window_pass(first, window_options.width, window_options.height, 1),
@@ -179,9 +186,7 @@ int main() {
     EXPECT_RESULT(nkgpu_draw(first, 0, 3, 1), NKGPU_ERROR_WRONG_STATE);
     EXPECT_RESULT(nkgpu_begin_frame(first), NKGPU_OK);
     EXPECT_RESULT(nkgpu_begin_frame(second), NKGPU_ERROR_WRONG_STATE);
-    EXPECT_RESULT(nkgpu_end_render_target(first), NKGPU_ERROR_WRONG_STATE);
     EXPECT_RESULT(nkgpu_renderer_destroy(first), NKGPU_ERROR_WRONG_STATE);
-    EXPECT_RESULT(nkgpu_render_target_create(first, 16, 16, 0, &target), NKGPU_ERROR_WRONG_STATE);
     EXPECT_RESULT(nkgpu_buffer_create(first, buffer_data, sizeof(buffer_data), &buffer),
                   NKGPU_ERROR_WRONG_STATE);
     EXPECT_RESULT(nkgpu_end_frame(first), NKGPU_OK);
@@ -193,24 +198,6 @@ int main() {
             goto cleanup;
         }
     }
-
-    EXPECT_RESULT(nkgpu_render_target_create(first, 16, 16, 0, &target), NKGPU_OK);
-    EXPECT_RESULT(nkgpu_begin_render_target(second, target, 1), NKGPU_ERROR_INVALID_HANDLE);
-    EXPECT_RESULT(nkgpu_begin_render_target(first, target, 2), NKGPU_ERROR_INVALID_ARGUMENT);
-    EXPECT_RESULT(nkgpu_begin_render_target(first, target, 1), NKGPU_OK);
-    {
-        nkgpu_renderer_state state = NKGPU_RENDERER_READY;
-        EXPECT_RESULT(nkgpu_renderer_get_state(first, &state), NKGPU_OK);
-        if (state != NKGPU_RENDERER_RENDER_TARGET_ACTIVE) {
-            result = __LINE__;
-            goto cleanup;
-        }
-    }
-    EXPECT_RESULT(nkgpu_begin_frame(first), NKGPU_ERROR_WRONG_STATE);
-    EXPECT_RESULT(nkgpu_end_frame(first), NKGPU_ERROR_WRONG_STATE);
-    EXPECT_RESULT(nkgpu_render_target_destroy(first, target), NKGPU_ERROR_WRONG_STATE);
-    EXPECT_RESULT(nkgpu_end_render_target(first), NKGPU_OK);
-    EXPECT_RESULT(nkgpu_render_target_destroy(first, target), NKGPU_OK);
 
     {
         nkgpu_features features{};
@@ -529,11 +516,18 @@ int main() {
         nk_graphics_image borrowed{};
         nk_graphics_image_info info{};
         info.struct_size = sizeof(info);
-        EXPECT_RESULT(nkgpu_render_target_create(first, 8, 8, 1, &target), NKGPU_OK);
-        EXPECT_RESULT(nkgpu_render_target_get_image(first, target, &borrowed), NKGPU_OK);
+        nkgpu_image cycle_image{};
+        nkgpu_image_desc cycle_desc{};
+        cycle_desc.struct_size = sizeof(cycle_desc);
+        cycle_desc.width = 8;
+        cycle_desc.height = 8;
+        cycle_desc.format = NKGPU_IMAGEFORMAT_RGBA8;
+        cycle_desc.usage = NKGPU_IMAGE_SAMPLED | NKGPU_IMAGE_RENDER_TARGET;
+        EXPECT_RESULT(nkgpu_image_create_desc(first, &cycle_desc, &cycle_image), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_image_get_graphics_image(first, cycle_image, &borrowed), NKGPU_OK);
         EXPECT_RESULT(nk_graphics_image_retain(borrowed), NKGPU_OK);
         retained_image = borrowed;
-        EXPECT_RESULT(nkgpu_render_target_destroy(first, target), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_image_destroy(first, cycle_image), NKGPU_OK);
         EXPECT_RESULT(nk_graphics_image_get_info(retained_image, &info), NKGPU_OK);
         if (info.width != 8 || info.height != 8 || !info.device.id) {
             result = __LINE__;
@@ -653,7 +647,6 @@ int main() {
     EXPECT_RESULT(nkgpu_pipeline_begin(first, shader, 4, &unfinished_pipeline), NKGPU_OK);
     EXPECT_RESULT(nkgpu_buffer_begin(first, 16, &unfinished_buffer), NKGPU_OK);
 
-    EXPECT_RESULT(nkgpu_render_target_create(second, 8, 8, 0, &lost_target), NKGPU_OK);
     EXPECT_RESULT(nkgpu_test_lose_after_frames(second, 1), NKGPU_OK);
     EXPECT_RESULT(nkgpu_begin_frame(second), NKGPU_OK);
     EXPECT_RESULT(nkgpu_end_frame(second), NKGPU_OK);
@@ -671,16 +664,11 @@ int main() {
     {
         const uint8_t pixel[] = {255, 255, 255, 255};
         nkgpu_image lost_image{};
-        nkgpu_render_target new_target{};
         EXPECT_RESULT(nkgpu_image_create(second, 1, 1, NKGPU_IMAGEFORMAT_RGBA8, pixel,
                                          sizeof(pixel), 0, &lost_image),
                       NKGPU_ERROR_DEVICE_LOST);
-        EXPECT_RESULT(nkgpu_render_target_create(second, 8, 8, 0, &new_target),
-                      NKGPU_ERROR_DEVICE_LOST);
     }
     EXPECT_RESULT(nkgpu_draw(second, 0, 3, 1), NKGPU_ERROR_DEVICE_LOST);
-    EXPECT_RESULT(nkgpu_render_target_destroy(second, lost_target), NKGPU_OK);
-    lost_target = {};
     {
         nkgpu_renderer_stats stats{};
         EXPECT_RESULT(nkgpu_renderer_get_stats(second, &stats), NKGPU_OK);
@@ -700,10 +688,18 @@ int main() {
         EXPECT_RESULT(nkgpu_renderer_destroy(third), NKGPU_OK);
     }
 
-    EXPECT_RESULT(nkgpu_render_target_create(first, 16, 16, 0, &target), NKGPU_OK);
-    EXPECT_RESULT(nkgpu_render_target_get_image(first, target, &retained_image), NKGPU_OK);
+    retained_image_desc.struct_size = sizeof(retained_image_desc);
+    retained_image_desc.width = 16;
+    retained_image_desc.height = 16;
+    retained_image_desc.format = NKGPU_IMAGEFORMAT_RGBA8;
+    retained_image_desc.usage = NKGPU_IMAGE_SAMPLED | NKGPU_IMAGE_RENDER_TARGET;
+    EXPECT_RESULT(nkgpu_image_create_desc(first, &retained_image_desc, &retained_gpu_image),
+                  NKGPU_OK);
+    EXPECT_RESULT(nkgpu_image_get_graphics_image(first, retained_gpu_image, &retained_image),
+                  NKGPU_OK);
     EXPECT_RESULT(nk_graphics_image_retain(retained_image), NK_OK);
-    EXPECT_RESULT(nkgpu_render_target_destroy(first, target), NKGPU_OK);
+    EXPECT_RESULT(nkgpu_image_destroy(first, retained_gpu_image), NKGPU_OK);
+    retained_gpu_image = {};
     nkgpu_test_fail_next_present();
     EXPECT_RESULT(nkgpu_begin_frame(first), NKGPU_OK);
     EXPECT_RESULT(nkgpu_end_frame(first), NKGPU_ERROR_DEVICE_LOST);
@@ -712,7 +708,6 @@ int main() {
     EXPECT_RESULT(nkgpu_buffer_destroy(first, buffer), NKGPU_ERROR_INVALID_HANDLE);
     EXPECT_RESULT(nkgpu_buffer_end(unfinished_buffer, &buffer), NKGPU_ERROR_INVALID_HANDLE);
     EXPECT_RESULT(nkgpu_pipeline_end(unfinished_pipeline, &pipeline), NKGPU_ERROR_INVALID_HANDLE);
-    EXPECT_RESULT(nkgpu_render_target_destroy(first, target), NKGPU_ERROR_INVALID_HANDLE);
     {
         nk_graphics_image_info info{};
         info.struct_size = sizeof(info);
@@ -766,8 +761,9 @@ cleanup:
         nk_graphics_image_release(published_graphics_image);
     if (foreign_image.id)
         nk_graphics_image_release(foreign_image);
+    if (retained_gpu_image.id)
+        nkgpu_image_destroy(first, retained_gpu_image);
     if (first.id) {
-        nkgpu_end_render_target(first);
         nkgpu_end_frame(first);
         nkgpu_renderer_destroy(first);
     }

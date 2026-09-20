@@ -33,10 +33,6 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		 */
 		NKGPU_BATCH_PASS_WINDOW = 1;
 		/**
-		 * The pass targets an offscreen render target.
-		 */
-		NKGPU_BATCH_PASS_TARGET = 2;
-		/**
 		 * A compute pass with no render target.
 		 */
 		NKGPU_BATCH_PASS_COMPUTE = 3;
@@ -304,17 +300,13 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	enum nkgpu_renderer_state : u32 {
 		/**
-		 * The renderer is ready to begin a frame or standalone target pass.
+		 * The renderer is ready to begin a frame.
 		 */
 		NKGPU_RENDERER_READY = 0;
 		/**
-		 * A window frame is active, including frames between render passes.
+		 * A frame is active, including frames between render passes.
 		 */
 		NKGPU_RENDERER_FRAME_ACTIVE = 1;
-		/**
-		 * A standalone offscreen target pass is active.
-		 */
-		NKGPU_RENDERER_RENDER_TARGET_ACTIVE = 2;
 		/**
 		 * The backend/device is unusable; only diagnostics and destruction remain.
 		 */
@@ -676,9 +668,9 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * Appends one pass to a batch.
 	 *
 	 * Passes are replayed in append order. A window pass requires positive
-	 * `width`/`height`; a target pass requires a render target owned by the batch's
-	 * renderer; a render pass requires `render_pass`; compute and copy passes have
-	 * no target fields. Referenced resources are retained by the batch.
+	 * `width`/`height`; a render pass requires `render_pass`; compute and copy
+	 * passes have no attachment fields. Referenced resources are retained by the
+	 * batch.
 	 */
 	extern fn nkgpu_batch_append_pass(batch: nkgpu_batch, pass: ptr<const<nkgpu_batch_pass>>) -> nkgpu_result;
 	/**
@@ -757,16 +749,6 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * each may name a single-sample resolve image for MSAA.
 	 */
 	extern fn nkgpu_begin_render_pass(renderer: nkgpu_renderer, desc: ptr<const<nkgpu_render_pass_desc>>) -> nkgpu_result;
-	/**
-	 * Begins drawing to an offscreen target without presenting the window surface.
-	 * `clear` must be zero or one; one clears the color attachment. The renderer
-	 * must be idle. Pair with nkgpu_end_render_target() before any other pass.
-	 */
-	extern fn nkgpu_begin_render_target(renderer: nkgpu_renderer, target: nkgpu_render_target, clear: u32) -> nkgpu_result;
-	/**
-	 * Begins an offscreen target pass inside a frame.
-	 */
-	extern fn nkgpu_begin_target_pass(renderer: nkgpu_renderer, target: nkgpu_render_target, clear: u32) -> nkgpu_result;
 	/**
 	 * Begins a window-surface pass inside a frame.
 	 */
@@ -883,10 +865,6 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * Ends the active pass while keeping the frame open.
 	 */
 	extern fn nkgpu_end_pass(renderer: nkgpu_renderer) -> nkgpu_result;
-	/**
-	 * Ends and commits the active offscreen target pass without presenting.
-	 */
-	extern fn nkgpu_end_render_target(renderer: nkgpu_renderer) -> nkgpu_result;
 	/**
 	 * Begins a frame without opening a pass, for plans that contain several passes.
 	 */
@@ -1060,18 +1038,6 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * Copies ready readback bytes into caller-owned memory.
 	 */
 	extern fn nkgpu_readback_read(renderer: nkgpu_renderer, readback: nkgpu_readback, data: ptr<u8>, size: u32, out_size: ptr<u32> @out) -> nkgpu_result;
-	/**
-	 * Creates a sampled RGBA8 offscreen target, optionally with depth/stencil storage.
-	 */
-	extern fn nkgpu_render_target_create(renderer: nkgpu_renderer, width: u32, height: u32, depth_stencil: u32, out_target: ptr<nkgpu_render_target> @out) -> nkgpu_result;
-	/**
-	 * Destroys a render target; imported image references remain valid until released.
-	 */
-	extern fn nkgpu_render_target_destroy(renderer: nkgpu_renderer, target: nkgpu_render_target) -> nkgpu_result;
-	/**
-	 * Returns a borrowed generic image handle for the target's sampled color attachment.
-	 */
-	extern fn nkgpu_render_target_get_image(renderer: nkgpu_renderer, target: nkgpu_render_target, out_image: ptr<nk_graphics_image> @out) -> nkgpu_result;
 	/**
 	 * Creates the GPU renderer for a ready NativeKit surface.
 	 *
@@ -1267,25 +1233,21 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		 */
 		struct_size: u32 @offset(0) @struct_size;
 		/**
-		 * Selects how the pass target fields below are interpreted.
+		 * Selects how the pass fields below are interpreted.
 		 */
 		kind: nkgpu_batch_pass_kind @offset(4);
 		/**
-		 * Offscreen target for NKGPU_BATCH_PASS_TARGET; ignored for other pass kinds.
-		 */
-		target: nkgpu_render_target @offset(8);
-		/**
 		 * Non-zero to clear the target at the start of the pass, zero to load it.
 		 */
-		clear: u32 @offset(12);
+		clear: u32 @offset(8);
 		/**
-		 * Framebuffer width for NKGPU_BATCH_PASS_WINDOW; ignored for target/compute passes.
+		 * Framebuffer width for NKGPU_BATCH_PASS_WINDOW; ignored for other pass kinds.
 		 */
-		width: u32 @offset(16);
+		width: u32 @offset(12);
 		/**
-		 * Framebuffer height for NKGPU_BATCH_PASS_WINDOW; ignored for target/compute passes.
+		 * Framebuffer height for NKGPU_BATCH_PASS_WINDOW; ignored for other pass kinds.
 		 */
-		height: u32 @offset(20);
+		height: u32 @offset(16);
 		/**
 		 * General attachments for NKGPU_BATCH_PASS_RENDER; copied when appended.
 		 */
@@ -1600,10 +1562,6 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * Asynchronous readback handle returned by nkgpu_readback_begin_image().
 	 */
 	handle nkgpu_readback : u32;
-	/**
-	 * Offscreen render target owned by a renderer.
-	 */
-	handle nkgpu_render_target : u32;
 	/**
 	 * Renderer handle returned by nkgpu_renderer_create(). It owns the adapter
 	 * resources and unfinished builders created with it; renderer destruction

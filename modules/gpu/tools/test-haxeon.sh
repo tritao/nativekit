@@ -58,7 +58,6 @@ fi
     "$module_dir/bindings/haxe/nativekit/gpu/Uniforms.hx" \
     "$module_dir/bindings/haxe/nativekit/gpu/GpuResult.hx" \
     "$module_dir/bindings/haxe/nativekit/gpu/ImageDesc.hx" \
-    "$module_dir/bindings/haxe/nativekit/gpu/RenderTarget.hx" \
     "$module_dir/bindings/haxe/nativekit/gpu/RenderPassDesc.hx" \
     "$nativekit_dir/bindings/haxe/GraphicsImageRef.hx" \
     "$nativekit_dir/bindings/haxe/NativeKitEvent.hx" \

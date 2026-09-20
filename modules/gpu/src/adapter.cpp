@@ -37,7 +37,6 @@ enum Kind : uint32_t {
     ImageKind,
     ImageBuilderKind,
     SamplerKind,
-    RenderTargetKind,
     BatchKind,
     ReadbackKind
 };
@@ -46,7 +45,6 @@ using Handle = uint32_t;
 enum class RendererState : uint8_t {
     Ready,
     FrameActive,
-    RenderTargetActive,
     Lost,
 };
 
@@ -120,7 +118,6 @@ struct Renderer {
     bool in_pass = false;
     bool compute_pass = false;
     bool copy_pass = false;
-    Handle active_target = 0;
     int32_t pass_width = 0;
     int32_t pass_height = 0;
     sg_pixel_format surface_color_format = SG_PIXELFORMAT_RGBA8;
@@ -228,21 +225,9 @@ struct Sampler {
     Handle owner = 0;
     sg_sampler object{};
 };
-struct RenderTarget {
-    Handle owner = 0;
-    nk_graphics_image image{};
-    sg_image color{};
-    sg_view color_attachment{};
-    sg_image depth{};
-    sg_view depth_attachment{};
-    int32_t width = 0;
-    int32_t height = 0;
-};
-/* One recorded render pass: a target, its load action, and the packed command
-   records that run inside it. */
+/* One recorded pass and the packed command records that run inside it. */
 struct BatchPass {
     uint32_t kind = 0;
-    Handle target = 0;
     uint32_t clear = 0;
     uint32_t width = 0;
     uint32_t height = 0;
@@ -274,7 +259,6 @@ static Pool<UniformBuilder, UniformBuilderKind, 16> uniform_builder_pool;
 static Pool<Image, ImageKind, 256> image_pool;
 static Pool<ImageBuilder, ImageBuilderKind, 16> image_builder_pool;
 static Pool<Sampler, SamplerKind, 256> sampler_pool;
-static Pool<RenderTarget, RenderTargetKind, 128> render_target_pool;
 static Pool<Batch, BatchKind, 64> batch_pool;
 static Pool<Readback, ReadbackKind, 128> readback_pool;
 static Handle active_renderer = 0;
@@ -291,8 +275,7 @@ static std::atomic_bool forbid_surface_target_queries = false;
 #endif
 
 static bool renderer_is_active(const Renderer &renderer) {
-    return renderer.state == RendererState::FrameActive ||
-           renderer.state == RendererState::RenderTargetActive;
+    return renderer.state == RendererState::FrameActive;
 }
 
 static bool target_matches_renderer(const Renderer &renderer,
@@ -311,7 +294,6 @@ static void mark_renderer_lost(Handle handle, Renderer &renderer) {
     renderer.in_pass = false;
     renderer.compute_pass = false;
     renderer.copy_pass = false;
-    renderer.active_target = 0;
     renderer.pass_width = 0;
     renderer.pass_height = 0;
     renderer.bindings = {};
@@ -468,7 +450,6 @@ static nkgpu_result begin_frame_with_target(Handle handle, const nk_surface_fram
     slot->value.in_pass = false;
     slot->value.compute_pass = false;
     slot->value.copy_pass = false;
-    slot->value.active_target = 0;
     slot->value.bindings = {};
     active_renderer = handle;
     return NKGPU_OK;
@@ -480,8 +461,7 @@ static nkgpu_result require_idle_renderer(Handle handle) {
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
     if (slot->value.state == RendererState::Lost)
         return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
-    if (slot->value.in_pass || slot->value.state == RendererState::RenderTargetActive ||
-        (active_renderer && active_renderer != handle))
+    if (slot->value.in_pass || (active_renderer && active_renderer != handle))
         return fail(NKGPU_ERROR_WRONG_STATE, "GPU resources can only change between render passes");
     return NKGPU_OK;
 }
@@ -1014,9 +994,6 @@ nkgpu_result nkgpu_renderer_get_state(nkgpu_renderer renderer, nkgpu_renderer_st
     case RendererState::FrameActive:
         *out_state = NKGPU_RENDERER_FRAME_ACTIVE;
         break;
-    case RendererState::RenderTargetActive:
-        *out_state = NKGPU_RENDERER_RENDER_TARGET_ACTIVE;
-        break;
     case RendererState::Lost:
         *out_state = NKGPU_RENDERER_LOST;
         break;
@@ -1050,7 +1027,13 @@ nkgpu_result nkgpu_renderer_get_stats(nkgpu_renderer renderer, nkgpu_renderer_st
     for (const auto &resource : image_pool.slots) {
         if (resource.active && resource.value.owner == renderer) {
             ++stats.images_live;
-            stats.image_bytes += resource.value.pixels.size();
+            const uint64_t bytes = resource.value.pixels.size();
+            stats.image_bytes += bytes;
+            if (resource.value.usage &
+                (NKGPU_IMAGE_RENDER_TARGET | NKGPU_IMAGE_DEPTH_STENCIL)) {
+                ++stats.render_targets_live;
+                stats.render_target_bytes += bytes;
+            }
         }
     }
     for (const auto &resource : sampler_pool.slots)
@@ -1062,14 +1045,6 @@ nkgpu_result nkgpu_renderer_get_stats(nkgpu_renderer renderer, nkgpu_renderer_st
     for (const auto &resource : pipeline_pool.slots)
         if (resource.active && resource.value.owner == renderer)
             ++stats.pipelines_live;
-    for (const auto &resource : render_target_pool.slots) {
-        if (resource.active && resource.value.owner == renderer) {
-            ++stats.render_targets_live;
-            const uint64_t pixels = static_cast<uint64_t>(resource.value.width) *
-                                    static_cast<uint64_t>(resource.value.height);
-            stats.render_target_bytes += pixels * (resource.value.depth.id ? 8u : 4u);
-        }
-    }
     *out_stats = stats;
     return NKGPU_OK;
 }
@@ -1500,33 +1475,12 @@ nkgpu_result nkgpu_begin_render_pass(nkgpu_renderer renderer, const nkgpu_render
     owner->value.compute_pass = false;
     owner->value.copy_pass = false;
     ++owner->value.passes;
-    owner->value.active_target = 0;
     owner->value.pass_width = pass_width;
     owner->value.pass_height = pass_height;
     owner->value.bindings = {};
     return NKGPU_OK;
 }
 
-static void destroy_render_target(Pool<RenderTarget, RenderTargetKind, 128>::Slot &slot,
-                                  bool backend_available) {
-    auto &target = slot.value;
-    /*
-     * A batch may still hold this target; keep the backend objects and the
-     * imported image alive until the last pin is released.
-     */
-    if (!slot.pins) {
-        if (backend_available && target.depth_attachment.id)
-            sg_destroy_view(target.depth_attachment);
-        if (backend_available && target.color_attachment.id)
-            sg_destroy_view(target.color_attachment);
-        if (backend_available && target.depth.id)
-            sg_destroy_image(target.depth);
-        if (target.image.id)
-            nk_graphics_image_release(target.image);
-    }
-    record_resource_destroyed(target.owner);
-    render_target_pool.remove(slot);
-}
 /*
  * Releases one retained pin. When the slot was retired by its owner and no
  * other batch holds it, the deferred backend objects are destroyed here.
@@ -1535,28 +1489,6 @@ static void unpin_resource(uint32_t kind, uint32_t slot_index, bool backend_avai
     if (!slot_index)
         return;
     switch (kind) {
-    case RenderTargetKind: {
-        if (slot_index > render_target_pool.slots.size())
-            return;
-        auto &s = render_target_pool.slots[slot_index - 1];
-        if (s.pins)
-            --s.pins;
-        /* Without a reachable backend the slot stays retired and is
-           released when the renderer is torn down. */
-        if (!s.pins && s.retired && backend_available) {
-            auto &target = s.value;
-            if (target.depth_attachment.id)
-                sg_destroy_view(target.depth_attachment);
-            if (target.color_attachment.id)
-                sg_destroy_view(target.color_attachment);
-            if (target.depth.id)
-                sg_destroy_image(target.depth);
-            if (target.image.id)
-                nk_graphics_image_release(target.image);
-            render_target_pool.release(s);
-        }
-        break;
-    }
     case SamplerKind: {
         if (slot_index > sampler_pool.slots.size())
             return;
@@ -1637,11 +1569,6 @@ static void destroy_owned(Handle owner, bool backend_available) {
                 unpin_resource(retained.kind, retained.slot, backend_available);
             release_batch_images(s.value, 0);
             batch_pool.remove(s);
-        }
-    for (auto &s : render_target_pool.slots)
-        if ((s.active || s.retired || s.pins) && s.value.owner == owner) {
-            s.pins = 0;
-            destroy_render_target(s, backend_available);
         }
     for (auto &s : readback_pool.slots)
         if (s.active && s.value.owner == owner) {
@@ -1739,212 +1666,6 @@ nkgpu_result nkgpu_renderer_destroy(nkgpu_renderer h) {
         selected_renderer = 0;
         selected_api = nullptr;
     }
-    return NKGPU_OK;
-}
-nkgpu_result nkgpu_render_target_create(nkgpu_renderer renderer, uint32_t width, uint32_t height,
-                                        uint32_t depth_stencil, nkgpu_render_target *out) {
-    auto *owner = renderer_pool.get(renderer);
-    if (!owner)
-        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
-    if (!width || !height || !out || depth_stencil > 1 ||
-        width > static_cast<uint32_t>(INT32_MAX) || height > static_cast<uint32_t>(INT32_MAX))
-        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid render-target arguments");
-    const nkgpu_result idle = require_idle_renderer(renderer);
-    if (idle != NKGPU_OK)
-        return idle;
-    const nkgpu_result activated = activate_renderer(renderer);
-    if (activated != NKGPU_OK)
-        return activated;
-
-    RenderTarget target{};
-    target.owner = renderer;
-    target.width = static_cast<int32_t>(width);
-    target.height = static_cast<int32_t>(height);
-    if (consume_image_creation_failure(renderer))
-        return fail(NKGPU_ERROR_OUT_OF_MEMORY, "injected image allocation failure");
-    sg_image_desc color_desc{};
-    color_desc.width = static_cast<int>(width);
-    color_desc.height = static_cast<int>(height);
-    color_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
-    color_desc.usage.color_attachment = true;
-    target.color = sg_make_image(&color_desc);
-    if (sg_query_image_state(target.color) != SG_RESOURCESTATE_VALID) {
-        record_allocation_failure(renderer);
-        return fail(NKGPU_ERROR_OUT_OF_MEMORY, "render-target color image creation failed");
-    }
-
-    sg_view_desc sampled_view_desc{};
-    sampled_view_desc.texture.image = target.color;
-    const sg_view sampled_view = sg_make_view(&sampled_view_desc);
-    if (sg_query_view_state(sampled_view) != SG_RESOURCESTATE_VALID) {
-        sg_destroy_image(target.color);
-        return fail(NKGPU_ERROR_UNKNOWN, "render-target sampled view creation failed");
-    }
-
-    sg_view_desc color_attachment_desc{};
-    color_attachment_desc.color_attachment.image = target.color;
-    target.color_attachment = sg_make_view(&color_attachment_desc);
-    if (sg_query_view_state(target.color_attachment) != SG_RESOURCESTATE_VALID) {
-        sg_destroy_view(sampled_view);
-        sg_destroy_image(target.color);
-        return fail(NKGPU_ERROR_UNKNOWN, "render-target color attachment creation failed");
-    }
-
-    if (depth_stencil) {
-        sg_image_desc depth_desc{};
-        depth_desc.width = static_cast<int>(width);
-        depth_desc.height = static_cast<int>(height);
-        depth_desc.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
-        depth_desc.usage.depth_stencil_attachment = true;
-        if (consume_image_creation_failure(renderer)) {
-            sg_destroy_view(target.color_attachment);
-            sg_destroy_view(sampled_view);
-            sg_destroy_image(target.color);
-            return fail(NKGPU_ERROR_OUT_OF_MEMORY, "injected image allocation failure");
-        }
-        target.depth = sg_make_image(&depth_desc);
-        if (sg_query_image_state(target.depth) == SG_RESOURCESTATE_VALID) {
-            sg_view_desc depth_attachment_desc{};
-            depth_attachment_desc.depth_stencil_attachment.image = target.depth;
-            target.depth_attachment = sg_make_view(&depth_attachment_desc);
-        }
-        if (sg_query_image_state(target.depth) != SG_RESOURCESTATE_VALID ||
-            sg_query_view_state(target.depth_attachment) != SG_RESOURCESTATE_VALID) {
-            if (target.depth_attachment.id)
-                sg_destroy_view(target.depth_attachment);
-            if (target.depth.id)
-                sg_destroy_image(target.depth);
-            sg_destroy_view(target.color_attachment);
-            sg_destroy_view(sampled_view);
-            sg_destroy_image(target.color);
-            record_allocation_failure(renderer);
-            return fail(NKGPU_ERROR_OUT_OF_MEMORY,
-                        "render-target depth attachment creation failed");
-        }
-    }
-
-    const uint32_t backend_image = owner->value.api->external_image_create(
-        target.color, sampled_view, static_cast<int32_t>(width), static_cast<int32_t>(height));
-    if (!backend_image) {
-        if (target.depth_attachment.id)
-            sg_destroy_view(target.depth_attachment);
-        if (target.depth.id)
-            sg_destroy_image(target.depth);
-        sg_destroy_view(target.color_attachment);
-        sg_destroy_view(sampled_view);
-        sg_destroy_image(target.color);
-        return fail(NKGPU_ERROR_UNKNOWN, "Sokol sampled image registry is full");
-    }
-    const nk_result image_result = nk_core_graphics_image_register(
-        owner->value.graphics_api, owner->value.device, static_cast<int32_t>(width),
-        static_cast<int32_t>(height), owner->value.api, backend_image, release_graphics_image,
-        &target.image);
-    if (image_result != NK_OK) {
-        owner->value.api->external_image_release(backend_image);
-        if (target.depth_attachment.id)
-            sg_destroy_view(target.depth_attachment);
-        if (target.depth.id)
-            sg_destroy_image(target.depth);
-        sg_destroy_view(target.color_attachment);
-        return fail(NKGPU_ERROR_UNKNOWN, "NativeKit graphics image registration failed");
-    }
-
-    const Handle handle = render_target_pool.add(target);
-    if (!handle) {
-        if (target.depth_attachment.id)
-            sg_destroy_view(target.depth_attachment);
-        if (target.depth.id)
-            sg_destroy_image(target.depth);
-        sg_destroy_view(target.color_attachment);
-        nk_graphics_image_release(target.image);
-        record_allocation_failure(renderer);
-        return fail(NKGPU_ERROR_OUT_OF_MEMORY, "render-target pool full");
-    }
-    record_resource_created(renderer);
-    *out = handle;
-    return NKGPU_OK;
-}
-nkgpu_result nkgpu_render_target_get_image(nkgpu_renderer renderer, nkgpu_render_target handle,
-                                           nk_graphics_image *out) {
-    auto *owner = renderer_pool.get(renderer);
-    auto *target = render_target_pool.get(handle);
-    if (!owner || !target || target->value.owner != renderer || !out)
-        return fail(NKGPU_ERROR_INVALID_HANDLE, "invalid render-target image request");
-    const nkgpu_result idle = require_idle_renderer(renderer);
-    if (idle != NKGPU_OK)
-        return idle;
-    *out = target->value.image;
-    return NKGPU_OK;
-}
-nkgpu_result nkgpu_render_target_destroy(nkgpu_renderer renderer, nkgpu_render_target handle) {
-    auto *owner = renderer_pool.get(renderer);
-    auto *target = render_target_pool.get(handle);
-    if (!owner || !target || target->value.owner != renderer)
-        return fail(NKGPU_ERROR_INVALID_HANDLE, "invalid render-target handle/state");
-    bool backend_available = false;
-    const nkgpu_result ready = prepare_resource_destroy(renderer, backend_available);
-    if (ready != NKGPU_OK)
-        return ready;
-    destroy_render_target(*target, backend_available);
-    return NKGPU_OK;
-}
-nkgpu_result nkgpu_begin_render_target(nkgpu_renderer renderer, nkgpu_render_target handle,
-                                       uint32_t clear) {
-    auto *owner = renderer_pool.get(renderer);
-    auto *target = render_target_pool.get(handle);
-    if (!owner || !target || target->value.owner != renderer)
-        return fail(NKGPU_ERROR_INVALID_HANDLE, "invalid or foreign render target");
-    if (clear > 1)
-        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid render-target clear flag");
-    if (owner->value.state == RendererState::Lost)
-        return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
-    if (owner->value.state != RendererState::Ready || active_renderer)
-        return fail(NKGPU_ERROR_WRONG_STATE, "invalid render-target frame state");
-    const nkgpu_result activated = activate_renderer(renderer);
-    if (activated != NKGPU_OK)
-        return activated;
-    sg_reset_state_cache();
-    sg_pass pass{};
-    pass.action.colors[0].load_action = clear ? SG_LOADACTION_CLEAR : SG_LOADACTION_LOAD;
-    pass.action.colors[0].clear_value = {0.0f, 0.0f, 0.0f, 0.0f};
-    if (target->value.depth.id) {
-        pass.action.depth = {SG_LOADACTION_CLEAR, SG_STOREACTION_STORE, 1.0f};
-        pass.action.stencil = {SG_LOADACTION_CLEAR, SG_STOREACTION_STORE, 0};
-        pass.attachments.depth_stencil = target->value.depth_attachment;
-    }
-    pass.attachments.colors[0] = target->value.color_attachment;
-    sg_begin_pass(&pass);
-    owner->value.state = RendererState::RenderTargetActive;
-    owner->value.in_pass = true;
-    owner->value.compute_pass = false;
-    owner->value.copy_pass = false;
-    ++owner->value.passes;
-    owner->value.active_target = handle;
-    owner->value.pass_width = target->value.width;
-    owner->value.pass_height = target->value.height;
-    owner->value.bindings = {};
-    active_renderer = renderer;
-    return NKGPU_OK;
-}
-nkgpu_result nkgpu_end_render_target(nkgpu_renderer renderer) {
-    auto *owner = renderer_pool.get(renderer);
-    if (!owner)
-        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
-    if (owner->value.state == RendererState::Lost)
-        return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
-    if (owner->value.state != RendererState::RenderTargetActive || !owner->value.in_pass ||
-        !owner->value.active_target || active_renderer != renderer)
-        return fail(NKGPU_ERROR_WRONG_STATE, "no active render-target pass");
-    const nkgpu_result activated = activate_renderer(renderer);
-    if (activated != NKGPU_OK)
-        return activated;
-    sg_end_pass();
-    sg_commit();
-    owner->value.state = RendererState::Ready;
-    owner->value.in_pass = false;
-    owner->value.active_target = 0;
-    active_renderer = 0;
-    ++owner->value.frames;
     return NKGPU_OK;
 }
 static nkgpu_result save_buffer(Handle owner, sg_buffer object, uint32_t size,
@@ -2968,7 +2689,6 @@ nkgpu_result nkgpu_frame_begin(nkgpu_renderer h) {
     s->value.in_pass = false;
     s->value.compute_pass = false;
     s->value.copy_pass = false;
-    s->value.active_target = 0;
     s->value.bindings = {};
     active_renderer = h;
     return NKGPU_OK;
@@ -2995,7 +2715,6 @@ nkgpu_result nkgpu_begin_compute_pass(nkgpu_renderer h) {
     renderer->value.compute_pass = true;
     renderer->value.copy_pass = false;
     ++renderer->value.passes;
-    renderer->value.active_target = 0;
     renderer->value.pass_width = 0;
     renderer->value.pass_height = 0;
     renderer->value.bindings = {};
@@ -3024,7 +2743,6 @@ nkgpu_result nkgpu_begin_copy_pass(nkgpu_renderer h) {
     renderer->value.compute_pass = false;
     renderer->value.copy_pass = true;
     ++renderer->value.passes;
-    renderer->value.active_target = 0;
     renderer->value.pass_width = 0;
     renderer->value.pass_height = 0;
     renderer->value.bindings = {};
@@ -3095,44 +2813,9 @@ nkgpu_result nkgpu_begin_window_pass(nkgpu_renderer h, uint32_t width, uint32_t 
     sg_begin_pass(&pass);
     s->value.in_pass = true;
     ++s->value.passes;
-    s->value.active_target = 0;
     s->value.pass_width = static_cast<int32_t>(width);
     s->value.pass_height = static_cast<int32_t>(height);
     s->value.bindings = {};
-    return NKGPU_OK;
-}
-nkgpu_result nkgpu_begin_target_pass(nkgpu_renderer h, nkgpu_render_target target_handle,
-                                     uint32_t clear) {
-    auto *renderer = renderer_pool.get(h);
-    auto *target = render_target_pool.get(target_handle);
-    if (!renderer || !target || target->value.owner != h)
-        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign render target");
-    if (clear > 1)
-        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid target clear flag");
-    if (renderer->value.state == RendererState::Lost)
-        return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
-    if (renderer->value.state != RendererState::FrameActive || renderer->value.in_pass ||
-        active_renderer != h)
-        return fail(NKGPU_ERROR_WRONG_STATE, "target pass requires a frame with no active pass");
-    const nkgpu_result activated = activate_renderer(h);
-    if (activated != NKGPU_OK)
-        return activated;
-    sg_pass pass{};
-    pass.action.colors[0].load_action = clear ? SG_LOADACTION_CLEAR : SG_LOADACTION_LOAD;
-    pass.action.colors[0].clear_value = {0.0f, 0.0f, 0.0f, 0.0f};
-    if (target->value.depth.id) {
-        pass.action.depth = {SG_LOADACTION_CLEAR, SG_STOREACTION_STORE, 1.0f};
-        pass.action.stencil = {SG_LOADACTION_CLEAR, SG_STOREACTION_STORE, 0};
-        pass.attachments.depth_stencil = target->value.depth_attachment;
-    }
-    pass.attachments.colors[0] = target->value.color_attachment;
-    sg_begin_pass(&pass);
-    renderer->value.in_pass = true;
-    ++renderer->value.passes;
-    renderer->value.active_target = target_handle;
-    renderer->value.pass_width = target->value.width;
-    renderer->value.pass_height = target->value.height;
-    renderer->value.bindings = {};
     return NKGPU_OK;
 }
 nkgpu_result nkgpu_end_pass(nkgpu_renderer h) {
@@ -3155,7 +2838,6 @@ nkgpu_result nkgpu_end_pass(nkgpu_renderer h) {
     renderer->value.in_pass = false;
     renderer->value.compute_pass = false;
     renderer->value.copy_pass = false;
-    renderer->value.active_target = 0;
     renderer->value.bindings = {};
     return NKGPU_OK;
 }
@@ -4357,11 +4039,6 @@ static bool retain_batch_resource(Batch &batch, uint32_t kind, Handle handle) {
         resolvable = slot && slot->value.owner == batch.owner;
         break;
     }
-    case RenderTargetKind: {
-        auto *slot = render_target_pool.get_retained(handle);
-        resolvable = slot && slot->value.owner == batch.owner;
-        break;
-    }
     default:
         return false;
     }
@@ -4382,9 +4059,6 @@ static bool retain_batch_resource(Batch &batch, uint32_t kind, Handle handle) {
         break;
     case SamplerKind:
         ++sampler_pool.slots[slot_index - 1].pins;
-        break;
-    case RenderTargetKind:
-        ++render_target_pool.slots[slot_index - 1].pins;
         break;
     default:
         return false;
@@ -4565,13 +4239,6 @@ static void set_retained_active(uint32_t kind, uint32_t slot_index, bool active)
     if (!slot_index)
         return;
     switch (kind) {
-    case RenderTargetKind:
-        if (slot_index <= render_target_pool.slots.size()) {
-            auto &s = render_target_pool.slots[slot_index - 1];
-            if (s.retired)
-                s.active = active;
-        }
-        break;
     case SamplerKind:
         if (slot_index <= sampler_pool.slots.size()) {
             auto &s = sampler_pool.slots[slot_index - 1];
@@ -4714,8 +4381,8 @@ nkgpu_result nkgpu_batch_append_pass(nkgpu_batch batch, const nkgpu_batch_pass *
         return fail(NKGPU_ERROR_WRONG_STATE, "batch is sealed");
     if (!pass || pass->struct_size < offsetof(nkgpu_batch_pass, render_pass))
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid batch pass");
-    if (pass->kind != NKGPU_BATCH_PASS_WINDOW && pass->kind != NKGPU_BATCH_PASS_TARGET &&
-        pass->kind != NKGPU_BATCH_PASS_COMPUTE && pass->kind != NKGPU_BATCH_PASS_COPY &&
+    if (pass->kind != NKGPU_BATCH_PASS_WINDOW && pass->kind != NKGPU_BATCH_PASS_COMPUTE &&
+        pass->kind != NKGPU_BATCH_PASS_COPY &&
         pass->kind != NKGPU_BATCH_PASS_RENDER)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid batch pass kind");
     if (pass->kind != NKGPU_BATCH_PASS_RENDER && pass->clear > 1)
@@ -4731,16 +4398,6 @@ nkgpu_result nkgpu_batch_append_pass(nkgpu_batch batch, const nkgpu_batch_pass *
             return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid batch window-pass extent");
         recorded.width = pass->width;
         recorded.height = pass->height;
-    } else if (pass->kind == NKGPU_BATCH_PASS_TARGET) {
-        auto *target = render_target_pool.get(pass->target);
-        if (!target || target->value.owner != slot->value.owner)
-            return fail(NKGPU_ERROR_INVALID_HANDLE, "invalid or foreign render target");
-        const size_t before = slot->value.retained.size();
-        if (!retain_batch_resource(slot->value, RenderTargetKind, pass->target)) {
-            release_batch_retention(slot->value, before);
-            return fail(NKGPU_ERROR_INVALID_HANDLE, "render target cannot be retained");
-        }
-        recorded.target = pass->target;
     } else if (pass->kind == NKGPU_BATCH_PASS_RENDER) {
         const size_t before = slot->value.retained.size();
         if (!retain_batch_render_pass(slot->value, *pass->render_pass)) {
@@ -4839,10 +4496,6 @@ nkgpu_result nkgpu_batch_submit(nkgpu_renderer renderer, nkgpu_batch batch,
     /* Reject an impossible submission before any GPU state changes. */
     if (rs->value.state != RendererState::Ready || active_renderer)
         return fail(NKGPU_ERROR_WRONG_STATE, "a renderer frame is already active");
-    for (const auto &pass : bs->value.passes)
-        if (pass.kind == NKGPU_BATCH_PASS_TARGET && !render_target_pool.get_retained(pass.target))
-            return fail(NKGPU_ERROR_INVALID_HANDLE, "batch render target is unavailable");
-
     for (const auto &retained : bs->value.retained)
         set_retained_active(retained.kind, retained.slot, true);
 
@@ -4853,9 +4506,6 @@ nkgpu_result nkgpu_batch_submit(nkgpu_renderer renderer, nkgpu_batch batch,
         const BatchPass &pass = bs->value.passes[index];
         if (pass.kind == NKGPU_BATCH_PASS_WINDOW)
             result = nkgpu_begin_window_pass(renderer, pass.width, pass.height, pass.clear);
-        else if (pass.kind == NKGPU_BATCH_PASS_TARGET)
-            result =
-                nkgpu_begin_target_pass(renderer, nkgpu_render_target{pass.target}, pass.clear);
         else if (pass.kind == NKGPU_BATCH_PASS_RENDER)
             result = nkgpu_begin_render_pass(renderer, &pass.render_pass);
         else if (pass.kind == NKGPU_BATCH_PASS_COMPUTE)
@@ -4965,7 +4615,6 @@ static nkgpu_result end_frame(nkgpu_renderer r, bool present_surface) {
     rs->value.in_pass = false;
     rs->value.compute_pass = false;
     rs->value.copy_pass = false;
-    rs->value.active_target = 0;
     rs->value.pass_width = 0;
     rs->value.pass_height = 0;
     rs->value.has_frame_target = false;

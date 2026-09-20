@@ -158,7 +158,6 @@ int main() {
     nkgpu_shader compute_shader{};
     nkgpu_pipeline compute_pipeline{};
     nkgpu_buffer compute_buffer{};
-    nkgpu_render_target target{};
     nkgpu_image general_color{};
     nkgpu_image general_depth{};
     nkgpu_batch batch{};
@@ -167,7 +166,6 @@ int main() {
     nkgpu_pipeline textured_pipeline{};
     nkgpu_buffer textured_buffer{};
     nkgpu_sampler sampler{};
-    nk_graphics_image retained_image{};
     bool compute_supported = false;
 
     if (nk_window_create(&window_options, &window) != NK_OK) {
@@ -553,28 +551,6 @@ int main() {
         retained_buffer = {};
     }
 
-    /* An offscreen pass records and replays like a window pass. */
-    EXPECT_RESULT(nkgpu_render_target_create(renderer, 16, 16, 1, &target), NKGPU_OK);
-    EXPECT_RESULT(nkgpu_render_target_get_image(renderer, target, &retained_image), NKGPU_OK);
-    EXPECT_RESULT(nk_graphics_image_retain(retained_image), NK_OK);
-    EXPECT_RESULT(nkgpu_batch_begin(renderer, &batch), NKGPU_OK);
-    {
-        nkgpu_batch_pass pass{};
-        pass.struct_size = sizeof(pass);
-        pass.kind = NKGPU_BATCH_PASS_TARGET;
-        pass.target = target;
-        pass.clear = 1;
-        EXPECT_RESULT(nkgpu_batch_append_pass(batch, &pass), NKGPU_OK);
-        /* A window pass never carries a target. */
-        nkgpu_batch_pass bad{};
-        bad.struct_size = sizeof(bad);
-        bad.kind = NKGPU_BATCH_PASS_TARGET;
-        bad.target = nkgpu_render_target{0};
-        EXPECT_RESULT(nkgpu_batch_append_pass(batch, &bad), NKGPU_ERROR_INVALID_HANDLE);
-    }
-    EXPECT_RESULT(nkgpu_batch_seal(batch), NKGPU_OK);
-    EXPECT_RESULT(nkgpu_batch_submit(renderer, batch), NKGPU_OK);
-
     /* General attachment-based render passes are reusable batch passes too. */
     {
         nkgpu_image_desc color_desc{};
@@ -695,16 +671,29 @@ int main() {
 
         nk_graphics_image composite_image{};
         nkgpu_batch image_batch{};
-        nkgpu_render_target composite_target{};
-        EXPECT_RESULT(nkgpu_render_target_create(renderer, 16, 16, 1, &composite_target), NKGPU_OK);
+        nkgpu_image composite_gpu_image{};
+        nkgpu_image_desc composite_desc{};
+        composite_desc.struct_size = sizeof(composite_desc);
+        composite_desc.width = 16;
+        composite_desc.height = 16;
+        composite_desc.format = NKGPU_IMAGEFORMAT_RGBA8;
+        composite_desc.usage = NKGPU_IMAGE_SAMPLED | NKGPU_IMAGE_RENDER_TARGET;
+        EXPECT_RESULT(nkgpu_image_create_desc(renderer, &composite_desc, &composite_gpu_image),
+                      NKGPU_OK);
+        nkgpu_render_pass_desc composite_render_pass{};
+        composite_render_pass.struct_size = sizeof(composite_render_pass);
+        composite_render_pass.color_count = 1;
+        composite_render_pass.colors[0].image = composite_gpu_image;
+        composite_render_pass.colors[0].action.load_action = NKGPU_LOADACTION_CLEAR;
+        composite_render_pass.colors[0].action.store_action = NKGPU_STOREACTION_STORE;
+        composite_render_pass.colors[0].action.clear_color = {1.0f, 0.0f, 0.0f, 1.0f};
         /* Fill the target with the solid color pipeline. */
         EXPECT_RESULT(nkgpu_batch_begin(renderer, &image_batch), NKGPU_OK);
         {
             nkgpu_batch_pass pass{};
             pass.struct_size = sizeof(pass);
-            pass.kind = NKGPU_BATCH_PASS_TARGET;
-            pass.target = composite_target;
-            pass.clear = 1;
+            pass.kind = NKGPU_BATCH_PASS_RENDER;
+            pass.render_pass = &composite_render_pass;
             EXPECT_RESULT(nkgpu_batch_append_pass(image_batch, &pass), NKGPU_OK);
             std::vector<uint8_t> commands;
             append_apply_pipeline(commands, pipeline);
@@ -717,12 +706,13 @@ int main() {
         EXPECT_RESULT(nkgpu_batch_seal(image_batch), NKGPU_OK);
         EXPECT_RESULT(nkgpu_batch_submit(renderer, image_batch), NKGPU_OK);
         EXPECT_RESULT(nkgpu_batch_destroy(image_batch), NKGPU_OK);
-        EXPECT_RESULT(nkgpu_render_target_get_image(renderer, composite_target, &composite_image),
+        EXPECT_RESULT(nkgpu_image_get_graphics_image(renderer, composite_gpu_image,
+                                                     &composite_image),
                       NKGPU_OK);
         EXPECT_RESULT(nk_graphics_image_retain(composite_image), NK_OK);
-        /* The target goes away; the retained image keeps the texture alive. */
-        EXPECT_RESULT(nkgpu_render_target_destroy(renderer, composite_target), NKGPU_OK);
-        composite_target = {};
+        /* The GPU image goes away; the retained image keeps the texture alive. */
+        EXPECT_RESULT(nkgpu_image_destroy(renderer, composite_gpu_image), NKGPU_OK);
+        composite_gpu_image = {};
 
         EXPECT_RESULT(nkgpu_batch_begin(renderer, &image_batch), NKGPU_OK);
         {
@@ -884,21 +874,12 @@ int main() {
         EXPECT_RESULT(nkgpu_batch_destroy(worker_batch), NKGPU_OK);
     }
 
-    EXPECT_RESULT(nkgpu_batch_destroy(batch), NKGPU_OK);
-    batch = {};
-    EXPECT_RESULT(nkgpu_render_target_destroy(renderer, target), NKGPU_OK);
-    target = {};
-    EXPECT_RESULT(nk_graphics_image_release(retained_image), NK_OK);
-    retained_image = {};
-
 cleanup:
     nkgpu_test_allow_surface_target_queries();
     if (batch.id)
         nkgpu_batch_destroy(batch);
     if (general_batch.id)
         nkgpu_batch_destroy(general_batch);
-    if (retained_image.id)
-        nk_graphics_image_release(retained_image);
     if (renderer.id) {
         nkgpu_end_pass(renderer);
         nkgpu_end_frame(renderer);
@@ -923,8 +904,6 @@ cleanup:
         nkgpu_shader_destroy(renderer, textured_shader);
     if (sampler.id && renderer.id)
         nkgpu_sampler_destroy(renderer, sampler);
-    if (target.id && renderer.id)
-        nkgpu_render_target_destroy(renderer, target);
     if (general_depth.id && renderer.id)
         nkgpu_image_destroy(renderer, general_depth);
     if (general_color.id && renderer.id)
