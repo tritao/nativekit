@@ -5632,6 +5632,8 @@ nk_result NK_CALL nk_frame_backend_submit(const nk_surface_frame_target *target)
        here makes those GL releases run without a current context and leaves
        a stale GL error for the next frame.  execute_render_submission() calls
        nk_graphics_unbind_frame_target() after cleanup. */
+    if (nk::core::render_executor_physical() && !nk_executor_is_current(NK_EXECUTOR_RENDER))
+        return NK_ERROR_WRONG_THREAD;
     (void)target;
     return NK_OK;
 }

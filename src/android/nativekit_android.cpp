@@ -3063,6 +3063,8 @@ nk_result NK_CALL nk_frame_backend_submit(const nk_surface_frame_target *target)
     if (!target || target->api != NK_GRAPHICS_OPENGL_ES || !target->native_device ||
         !target->native_present_target)
         return NK_ERROR_INVALID_ARGUMENT;
+    if (!nk_executor_is_current(NK_EXECUTOR_RENDER))
+        return NK_ERROR_WRONG_THREAD;
     if (const auto resource = frame_target_surface(target);
         resource && resource->surface_destroy_pending.load(std::memory_order_acquire)) {
         nk::core::set_error("Android surface was destroyed before render submit");

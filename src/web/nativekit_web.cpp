@@ -3531,6 +3531,8 @@ nk_result NK_CALL nk_frame_backend_submit(const nk_surface_frame_target *target)
 #if defined(NK_WEB_THREADED_RENDER)
     if (!target || !target->native_context)
         return NK_ERROR_INVALID_ARGUMENT;
+    if (!nk_executor_is_current(NK_EXECUTOR_RENDER))
+        return NK_ERROR_WRONG_THREAD;
     return nk::web::commit_context_frame() ? NK_OK : NK_ERROR_UNKNOWN;
 #else
     (void)target;
