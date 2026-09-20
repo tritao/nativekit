@@ -117,6 +117,7 @@ import nativekit.ui.widgets.Tooltip;
 import nativekit.ui.widgets.Utf8Text;
 import nativekit.ui.widgets.VirtualGrid;
 import nativekit.ui.widgets.VirtualList;
+import nativekit.ui.widgets.VirtualExtentViewport;
 import nativekit.ui.widgets.VirtualViewport;
 import nativekit.ui.widgets.WindowChrome;
 import nativekit.ui.theme.Theme;
@@ -1233,6 +1234,15 @@ class FrameworkSmoke {
 			bottomViewport.first != 99988 || bottomViewport.last != 100000 ||
 			!bottomViewport.contains(99999) || bottomViewport.contains(99987))
 			return 247;
+		var extentViewport = new VirtualExtentViewport([40.0, 80.0, 120.0, 60.0],
+			120.0, 120.0);
+		var extentAtEnd = new VirtualExtentViewport([40.0, 80.0, 120.0, 60.0],
+			120.0, 1000.0);
+		if (extentViewport.totalExtent != 300.0 || extentViewport.first != 1 ||
+			extentViewport.last != 4 || extentViewport.startOffset(2) != 120.0 ||
+			extentViewport.count != 3 || extentAtEnd.offset != 180.0 ||
+			!extentAtEnd.contains(3))
+			return 253;
 		var gridController = new ScrollController();
 		var gridStyle = new LayoutStyle();
 		gridStyle.width = LayoutAxis.fixed(240.0);
@@ -1256,8 +1266,8 @@ class FrameworkSmoke {
 		if (builtCells[0] != "499:39")
 			return 250;
 		var tableColumns:Array<TableColumn> = [
-			new TableColumn("id", "ID", 80.0),
-			new TableColumn("name", "Name", 80.0),
+			new TableColumn("id", "ID", 60.0),
+			new TableColumn("name", "Name", 100.0),
 			new TableColumn("state", "State", 80.0)
 		];
 		var tableStyle = new LayoutStyle();
@@ -1265,11 +1275,24 @@ class FrameworkSmoke {
 		tableStyle.height = LayoutAxis.fixed(184.0);
 		var tableBuiltCells:Array<String> = [];
 		var tableSelection = -1;
+		var tableCellSelection = -1;
+		var tableSortColumn = -1;
+		var tableSortAscending = false;
+		var tableResizeColumn = -1;
+		var tableResizeWidth = 0.0;
 		var table = new TableView("table-smoke", 100000, tableColumns, 24.0, function(row, column) {
 			tableBuiltCells.push('$row:${column.key}');
 			return new Text('$row ${column.label}');
-		}, tableStyle, null, null, 240.0, 184.0, 24.0, 2, function(row) {
+		}, tableStyle, null, null, 240.0, 184.0, 24.0, 2, function(row:Int) {
 			tableSelection = row;
+		}, 0, function(row:Int, column:Int) {
+			tableCellSelection = row * 10 + column;
+		}, function(column:Int, ascending:Bool) {
+			tableSortColumn = column;
+			tableSortAscending = ascending;
+		}, function(column:Int, width:Float) {
+			tableResizeColumn = column;
+			tableResizeWidth = width;
 		});
 		var tableRoot = context.submit(table, new LayoutFrame(240.0, 184.0));
 		var tableSemantics:Semantics = cast tableRoot.semantics;
@@ -1285,6 +1308,34 @@ class FrameworkSmoke {
 		context.pointerUp(12.0, 24.0 + 3.0 * 24.0 + 12.0, 0);
 		if (table.selectedRow != 3 || tableSelection != 3)
 			return 252;
+		var selectedCell:Null<RenderNode> = null;
+		tableRoot.walk(function(node) {
+			if (node.semantics != null && node.semantics.role == AccessibilityRole.Cell &&
+				node.semantics.rowIndex == 3 && node.semantics.columnIndex == 0)
+				selectedCell = node;
+		});
+		if (selectedCell == null || !context.focusWidget(selectedCell.id))
+			return 254;
+		context.key(UiEventKind.KeyDown, UiKey.Down);
+		if (table.selectedRow != 4 || table.selectedColumn != 0 || tableCellSelection != 40)
+			return 255;
+		context.key(UiEventKind.KeyDown, UiKey.Right);
+		if (table.selectedRow != 4 || table.selectedColumn != 1 || tableCellSelection != 41)
+			return 256;
+		context.pointerDown(12.0, 12.0, 0);
+		context.pointerUp(12.0, 12.0, 0);
+		if (table.sortColumn != 0 || !table.sortAscending || tableSortColumn != 0 ||
+			!tableSortAscending)
+			return 257;
+		context.pointerDown(58.0, 12.0, 0);
+		context.pointerMove(78.0, 12.0);
+		context.pointerUp(78.0, 12.0, 0);
+		if (table.columns[0].width != 80.0 || tableResizeColumn != 0 || tableResizeWidth != 80.0)
+			return 258;
+		tableRoot = context.submit(table, new LayoutFrame(240.0, 184.0));
+		var resizedHeader = tableRoot.children[0].children[0].children[0].resolved;
+		if (resizedHeader == null || resizedHeader.width != 80.0 || table.controller.maxScrollX != 20.0)
+			return 259;
 		var builtRows:Array<Int> = [];
 		var listController = new ScrollController();
 		var virtualStyle = new LayoutStyle();
