@@ -292,7 +292,9 @@ typedef uint32_t nk_audio_dsp_event_kind;
 enum NK_ENUM(nk_audio_dsp_event_kind) {
     NK_AUDIO_DSP_EVENT_NOTE_ON = 0,
     NK_AUDIO_DSP_EVENT_NOTE_OFF = 1,
-    NK_AUDIO_DSP_EVENT_PARAMETER = 2
+    NK_AUDIO_DSP_EVENT_PARAMETER = 2,
+    /** Linearly changes one parameter over duration_frames. */
+    NK_AUDIO_DSP_EVENT_PARAMETER_RAMP = 3
 };
 
 /* ------------------------------------------------------------------------- */
@@ -359,21 +361,23 @@ typedef struct nk_audio_dsp_event {
     nk_audio_dsp_event_kind kind;
     /** Frame offset within the render target; frame_count is allowed. */
     uint32_t frame_offset;
-    /** Instrument for NOTE_ON and PARAMETER; ignored for NOTE_OFF. */
+    /** Instrument for NOTE_ON, PARAMETER, and PARAMETER_RAMP; ignored for NOTE_OFF. */
     nk_audio_dsp_instrument instrument;
-    /** Caller-owned voice identity for NOTE_ON/NOTE_OFF; ignored for PARAMETER. */
+    /** Caller-owned voice identity for NOTE_ON/NOTE_OFF; ignored for parameter events. */
     uint32_t voice_id;
     /** MIDI note number for NOTE_ON, in the inclusive range [0, 127]. */
     uint32_t note;
     /** NOTE_ON velocity in the inclusive range [0, 1]. */
     float velocity;
-    /** Parameter ID and value for PARAMETER. */
+    /** Parameter ID and start value for PARAMETER and PARAMETER_RAMP. */
     nk_audio_dsp_parameter parameter;
     float value;
     /** Zero-based oscillator source for oscillator-specific parameters. */
     uint32_t oscillator_index;
-    /** Reserved; set to zero. */
-    uint32_t reserved;
+    /** End value for PARAMETER_RAMP; ignored for other event kinds. */
+    float end_value;
+    /** Number of frames from value to end_value for PARAMETER_RAMP. */
+    uint32_t duration_frames;
     /** Reserved for compatible extensions; set all elements to zero. */
     uint64_t reserved2[1];
 } nk_audio_dsp_event;

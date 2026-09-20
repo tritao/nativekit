@@ -235,8 +235,9 @@ modulation-route options, create independent instruments from it, then render
 interleaved float blocks into a managed `haxe.io.Bytes` buffer. Use
 `DspPatchBuilder.operatorModulate()` for audio-rate oscillator-to-oscillator
 FM/PM routes. `DspEvent` provides note-on, note-off, global parameter, and
-oscillator-specific parameter automation constructors; events are validated
-for frame ordering in Haxe and applied natively at their exact sample offsets.
+oscillator-specific parameter automation and block-bounded linear ramp
+constructors; events are validated for frame ordering in Haxe and applied
+natively at their exact sample offsets.
 Use
 `DspInstrument.setOscillatorParameter()` and `oscillatorParameter()` for
 between-block source edits. Patches are copied into instruments, so a patch can

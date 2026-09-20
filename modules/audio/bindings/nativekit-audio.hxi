@@ -101,6 +101,10 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		NK_AUDIO_DSP_EVENT_NOTE_ON = 0;
 		NK_AUDIO_DSP_EVENT_NOTE_OFF = 1;
 		NK_AUDIO_DSP_EVENT_PARAMETER = 2;
+		/**
+		 * Linearly changes one parameter over duration_frames.
+		 */
+		NK_AUDIO_DSP_EVENT_PARAMETER_RAMP = 3;
 	}
 	/**
 	 * Filter components supported by the DSP patch model.
@@ -1204,11 +1208,11 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		 */
 		frame_offset: u32 @offset(8);
 		/**
-		 * Instrument for NOTE_ON and PARAMETER; ignored for NOTE_OFF.
+		 * Instrument for NOTE_ON, PARAMETER, and PARAMETER_RAMP; ignored for NOTE_OFF.
 		 */
 		instrument: nk_audio_dsp_instrument @offset(12);
 		/**
-		 * Caller-owned voice identity for NOTE_ON/NOTE_OFF; ignored for PARAMETER.
+		 * Caller-owned voice identity for NOTE_ON/NOTE_OFF; ignored for parameter events.
 		 */
 		voice_id: u32 @offset(16);
 		/**
@@ -1220,7 +1224,7 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		 */
 		velocity: f32 @offset(24);
 		/**
-		 * Parameter ID and value for PARAMETER.
+		 * Parameter ID and start value for PARAMETER and PARAMETER_RAMP.
 		 */
 		parameter: nk_audio_dsp_parameter @offset(28);
 		value: f32 @offset(32);
@@ -1229,9 +1233,13 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		 */
 		oscillator_index: u32 @offset(36);
 		/**
-		 * Reserved; set to zero.
+		 * End value for PARAMETER_RAMP; ignored for other event kinds.
 		 */
-		reserved: u32 @offset(40);
+		end_value: f32 @offset(40);
+		/**
+		 * Number of frames from value to end_value for PARAMETER_RAMP.
+		 */
+		duration_frames: u32 @offset(44);
 		/**
 		 * Reserved for compatible extensions; set all elements to zero.
 		 */

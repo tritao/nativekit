@@ -71,6 +71,9 @@ class DspSmoke {
 				throw "Haxe DSP render did not produce a signal";
 			if (renderedSamples.getInt32(48 * 4) != 0)
 				throw "Haxe DSP parameter event did not apply at its frame offset";
+			engine.render(target, [DspEvent.parameterRamp(instrument, DspParameter.Gain, 0.0, 0.5, 64)]);
+			if (instrument.parameter(DspParameter.Gain) != 0.5)
+				throw "Haxe DSP parameter ramp did not reach its end value";
 			engine.render(target, [DspEvent.noteOff(7)]);
 			var capabilities = engine.capabilities();
 			if ((capabilities & NativeKitAudio.DspCapabilities.Wavetable) == 0

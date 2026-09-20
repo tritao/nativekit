@@ -345,6 +345,30 @@ int main() {
     assert(contains_signal(samples, 32));
     assert(all_silent(samples + 32, 32));
 
+    nk_audio_dsp_event gain_ramp{};
+    gain_ramp.struct_size = sizeof(gain_ramp);
+    gain_ramp.kind = NK_AUDIO_DSP_EVENT_PARAMETER_RAMP;
+    gain_ramp.frame_offset = 0;
+    gain_ramp.instrument = instrument;
+    gain_ramp.parameter = NK_AUDIO_DSP_PARAMETER_GAIN;
+    gain_ramp.value = 0.0f;
+    gain_ramp.end_value = 1.0f;
+    gain_ramp.duration_frames = 64;
+    assert(nk_audio_dsp_engine_render(engine, &target, &gain_ramp, 1) == NK_OK);
+    assert(contains_signal(samples + 1, 63));
+    float ramp_gain = 0.0f;
+    assert(nk_audio_dsp_instrument_get_parameter(instrument, NK_AUDIO_DSP_PARAMETER_GAIN,
+                                                 &ramp_gain) == NK_OK);
+    assert(ramp_gain == 1.0f);
+    auto invalid_ramp = gain_ramp;
+    invalid_ramp.duration_frames = 65;
+    assert(nk_audio_dsp_engine_render(engine, &target, &invalid_ramp, 1) ==
+           NK_ERROR_INVALID_ARGUMENT);
+    invalid_ramp = gain_ramp;
+    invalid_ramp.parameter = NK_AUDIO_DSP_PARAMETER_WAVEFORM;
+    assert(nk_audio_dsp_engine_render(engine, &target, &invalid_ramp, 1) ==
+           NK_ERROR_INVALID_ARGUMENT);
+
     nk_audio_dsp_event note_off{};
     note_off.struct_size = sizeof(note_off);
     note_off.kind = NK_AUDIO_DSP_EVENT_NOTE_OFF;
