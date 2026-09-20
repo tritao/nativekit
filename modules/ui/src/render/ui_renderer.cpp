@@ -88,7 +88,8 @@ struct UiRendererImpl::State {
     };
 
     struct Target {
-        nkgpu_render_target handle{};
+        nkgpu_image color{};
+        nkgpu_image depth{};
         nk_graphics_image image{};
         int width = 0;
         int height = 0;
@@ -597,8 +598,10 @@ bool draw_mesh(UiRendererImpl::State &state, nkgpu_pipeline pipeline,
 }
 
 void destroy_target(UiRendererImpl::State &state, UiRendererImpl::State::Target &target) {
-    if (target.handle.id)
-        nkgpu_render_target_destroy(state.renderer, target.handle);
+    if (target.depth.id)
+        nkgpu_image_destroy(state.renderer, target.depth);
+    if (target.color.id)
+        nkgpu_image_destroy(state.renderer, target.color);
     target = {};
 }
 
@@ -628,7 +631,7 @@ uint64_t pooled_transient_target_bytes(const UiRendererImpl::State &state) {
 }
 
 void recycle_transient_target(UiRendererImpl::State &state, UiRendererImpl::State::Target target) {
-    if (!target.handle.id)
+    if (!target.color.id)
         return;
     if (pooled_transient_target_count(state) >= kMaxPooledTransientTargets) {
         destroy_target(state, target);
@@ -672,12 +675,31 @@ bool acquire_transient_target(UiRendererImpl::State &state, UiRendererImpl::Stat
 
 bool create_target(UiRendererImpl::State &state, UiRendererImpl::State::Target &target, int width,
                    int height) {
-    if (!gpu_result(state,
-                    nkgpu_render_target_create(state.renderer, static_cast<uint32_t>(width),
-                                               static_cast<uint32_t>(height), 1, &target.handle)) ||
-        !gpu_result(state,
-                    nkgpu_render_target_get_image(state.renderer, target.handle, &target.image)))
+    nkgpu_image_desc color_desc{};
+    color_desc.struct_size = sizeof(color_desc);
+    color_desc.width = static_cast<uint32_t>(width);
+    color_desc.height = static_cast<uint32_t>(height);
+    color_desc.format = NKGPU_IMAGEFORMAT_RGBA8;
+    color_desc.usage = NKGPU_IMAGE_SAMPLED | NKGPU_IMAGE_RENDER_TARGET;
+    if (!gpu_result(state, nkgpu_image_create_desc(state.renderer, &color_desc, &target.color)))
         return false;
+    if (!gpu_result(state, nkgpu_image_get_graphics_image(state.renderer, target.color,
+                                                          &target.image))) {
+        nkgpu_image_destroy(state.renderer, target.color);
+        target = {};
+        return false;
+    }
+    nkgpu_image_desc depth_desc{};
+    depth_desc.struct_size = sizeof(depth_desc);
+    depth_desc.width = static_cast<uint32_t>(width);
+    depth_desc.height = static_cast<uint32_t>(height);
+    depth_desc.format = NKGPU_IMAGEFORMAT_DEPTH24_STENCIL8;
+    depth_desc.usage = NKGPU_IMAGE_DEPTH_STENCIL;
+    if (!gpu_result(state, nkgpu_image_create_desc(state.renderer, &depth_desc, &target.depth))) {
+        nkgpu_image_destroy(state.renderer, target.color);
+        target = {};
+        return false;
+    }
     target.width = width;
     target.height = height;
     state.stats.gpu_resources += 1;
@@ -723,7 +745,7 @@ uint64_t cached_raster_bytes(const UiRendererImpl::State &state) {
 
 void destroy_cached_effect(UiRendererImpl::State &state,
                            UiRendererImpl::State::EffectCacheEntry &entry) {
-    const bool alive = entry.target.handle.id != 0;
+    const bool alive = entry.target.color.id != 0;
     destroy_target(state, entry.target);
     if (alive && state.stats.gpu_resources)
         --state.stats.gpu_resources;
@@ -843,18 +865,31 @@ UiRendererImpl::State::Target *resolve_target(UiRendererImpl::State &state, Reso
 
 bool begin_target_pass(UiRendererImpl::State &state, UiRendererImpl::State::Target &target,
                        bool load_existing) {
-    if (!target.handle.id)
+    if (!target.color.id)
         return false;
+    nkgpu_render_pass_desc render_pass{};
+    render_pass.struct_size = sizeof(render_pass);
+    render_pass.color_count = 1;
+    render_pass.colors[0].image = target.color;
+    render_pass.colors[0].action.load_action =
+        load_existing ? NKGPU_LOADACTION_LOAD : NKGPU_LOADACTION_CLEAR;
+    render_pass.colors[0].action.store_action = NKGPU_STOREACTION_STORE;
+    render_pass.colors[0].action.clear_color = {0.0f, 0.0f, 0.0f, 0.0f};
+    if (target.depth.id) {
+        render_pass.depth_stencil = target.depth;
+        render_pass.depth_stencil_action.load_action =
+            load_existing ? NKGPU_LOADACTION_LOAD : NKGPU_LOADACTION_CLEAR;
+        render_pass.depth_stencil_action.store_action = NKGPU_STOREACTION_STORE;
+        render_pass.depth_stencil_action.clear_depth = 1.0f;
+    }
     if (state.recording) {
         nkgpu_batch_pass pass{};
         pass.struct_size = sizeof(pass);
-        pass.kind = NKGPU_BATCH_PASS_TARGET;
-        pass.target = target.handle;
-        pass.clear = load_existing ? 0 : 1;
+        pass.kind = NKGPU_BATCH_PASS_RENDER;
+        pass.render_pass = &render_pass;
         if (!gpu_result(state, nkgpu_batch_append_pass(state.batch, &pass)))
             return false;
-    } else if (!gpu_result(state, nkgpu_begin_target_pass(state.renderer, target.handle,
-                                                          load_existing ? 0 : 1))) {
+    } else if (!gpu_result(state, nkgpu_begin_render_pass(state.renderer, &render_pass))) {
         return false;
     }
     state.width = target.width;
@@ -1736,8 +1771,8 @@ bool UiRendererImpl::beginTargetPass(ResourceId target_id, int width, int height
         }
     }
     auto &target = state_->targets[target_id.value];
-    if (!target.handle.id && !(transient ? acquire_transient_target(*state_, target, width, height)
-                                         : create_target(*state_, target, width, height)))
+    if (!target.color.id && !(transient ? acquire_transient_target(*state_, target, width, height)
+                                        : create_target(*state_, target, width, height)))
         return false;
     if (target.width != width || target.height != height) {
         if (transient) {
@@ -1765,7 +1800,7 @@ bool UiRendererImpl::beginEffectPass(ResourceId target_id, uint64_t cache_key, i
     auto found = state_->effect_cache.find(cache_key);
     if (found != state_->effect_cache.end() &&
         (found->second.target.width != width || found->second.target.height != height ||
-         !found->second.target.handle.id || !found->second.target.image.id)) {
+         !found->second.target.color.id || !found->second.target.image.id)) {
         destroy_cached_effect(*state_, found->second);
         state_->effect_cache.erase(found);
         found = state_->effect_cache.end();
@@ -1880,7 +1915,7 @@ bool UiRendererImpl::drawSurfaceMesh(const SurfaceMeshView &mesh) {
 
 bool UiRendererImpl::surfaceHasContent(ResourceId target) const {
     const auto found = state_->targets.find(target.value);
-    return found != state_->targets.end() && found->second.handle.id && found->second.image.id;
+    return found != state_->targets.end() && found->second.color.id && found->second.image.id;
 }
 
 bool UiRendererImpl::surfaceIsCurrent(ResourceId target, uint32_t generation,

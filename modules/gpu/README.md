@@ -25,13 +25,14 @@ Lab pass their native end-to-end checks.
 The public shader API requires an explicit `ShaderLanguage`: GLSL for GL,
 HLSL5 for D3D11, and MSL for Metal. The C renderer exposes
 `Ready`, `FrameActive`, `RenderTargetActive`, and `Lost` states. A window frame
-uses `nkgpu_begin_frame()` / `nkgpu_end_frame()`; a standalone offscreen pass
-uses `nkgpu_begin_render_target()` / `nkgpu_end_render_target()`. UI render-plan
-passes can also run between the begin and end of a window frame. Resource
-creation and destruction require no active pass, while binding and drawing
-require one. A fatal backend or device failure moves the renderer permanently
-to `Lost`: rendering and resource creation return
-`NKGPU_ERROR_DEVICE_LOST`, and callers must destroy and recreate that renderer.
+uses `nkgpu_begin_frame()` / `nkgpu_end_frame()`; general offscreen work uses
+`nkgpu_frame_begin()` / `nkgpu_begin_render_pass()` / `nkgpu_end_pass()` /
+`nkgpu_end_frame()`. UI render-plan passes use the same general attachment
+path, including when a sealed batch is being recorded. Resource creation and
+destruction require no active pass, while binding and drawing require one. A
+fatal backend or device failure moves the renderer permanently to `Lost`:
+rendering and resource creation return `NKGPU_ERROR_DEVICE_LOST`, and callers
+must destroy and recreate that renderer.
 Destruction remains safe after loss. Surface resize and DPR changes preserve
 the renderer; they update the swapchain/framebuffer dimensions without
 discarding UI or text state. GPU statistics are queryable with
@@ -164,11 +165,8 @@ makes the surface current and passes that value in Sokol's `sg_swapchain`.
 
 The generic NativeKit graphics-image API lets a producer expose a retained
 sampled image to consumers such as the UI compositor without exposing
-GPU-specific handles. `nativekit.gpu.RenderTarget` is the Haxe-facing typed
-wrapper for offscreen targets; its sampled image can be imported with
-`GraphicsSurface.fromImage()` and outlives the target while retained. This is
-the intended seam for future render producers (for example a 3D viewport),
-while backend-specific resource creation stays in the GPU module's Sokol implementation.
+GPU-specific handles. Backend-specific resource creation stays behind the
+NativeKit GPU surface.
 
 ## GPU feature-envelope direction
 
@@ -180,9 +178,7 @@ depth/stencil actions, optional resolve images, richer pipeline state,
 instanced vertex-buffer layouts, viewport commands, capability/limit queries,
 compute shader metadata, compute pipelines and passes, storage-buffer/image
 views, dispatch commands, compute-capable sealed batches, versioned command
-stream envelopes, and an opaque native device/context escape hatch. The older
-`nkgpu_render_target_*` functions remain as compatibility wrappers for existing
-callers.
+stream envelopes, and an opaque native device/context escape hatch.
 
 NativeKit now layers a private `nk_sokol_transfer_api` beside Sokol's regular
 dispatch table. GLCore and GLES3 expose real buffer/image transfers plus
@@ -193,3 +189,18 @@ portable surface does not expose backend fences or native resource structs. The
 WebGL build uses WebGL2 staging and synchronous readback, so it exposes the
 same transfer/readback operations but does not promise native asynchronous
 completion semantics.
+
+## Current GPU API
+
+Build render work from generic `nkgpu_image_desc` resources and
+`nkgpu_render_pass_desc` attachment descriptions. A frame may contain window,
+render, compute, and copy passes; sealed batches can retain and replay the same
+command records. Use `nkgpu_image_get_graphics_image()` when a sampled image
+crosses into the UI compositor or another NativeKit module. The returned
+graphics-image handle is borrowed from the image and must be retained before
+outliving it.
+
+Query `nkgpu_features` and `nkgpu_limits` before optional compute, storage,
+transfer, or readback work. Unsupported operations return
+`NKGPU_ERROR_UNSUPPORTED`, so callers do not need to identify the selected
+backend.

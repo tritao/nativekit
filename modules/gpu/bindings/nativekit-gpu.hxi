@@ -914,6 +914,14 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_image_end(builder: nkgpu_image_builder, out_image: ptr<nkgpu_image> @out) -> nkgpu_result;
 	/**
+	 * Publishes a sampled image through NativeKit's cross-module graphics-image
+	 * registry. The returned handle is borrowed from the image and remains valid
+	 * while the image is alive; retain it before keeping it beyond that lifetime.
+	 * Dynamic images cannot be published because updates may replace their native
+	 * storage.
+	 */
+	extern fn nkgpu_image_get_graphics_image(renderer: nkgpu_renderer, image: nkgpu_image, out_image: ptr<nk_graphics_image> @out) -> nkgpu_result;
+	/**
 	 * Downloads an image region into a buffer in top-to-bottom row order.
 	 */
 	extern fn nkgpu_image_to_buffer(renderer: nkgpu_renderer, desc: ptr<const<nkgpu_buffer_image_copy_desc>>) -> nkgpu_result;
