@@ -298,7 +298,9 @@ struct GpuExecutionStats {
 };
 
 class RenderPlan {
-  public:
+public:
+    static constexpr std::size_t max_clip_planes = 32;
+
     std::uint64_t source_revision() const noexcept { return source_revision_; }
     std::span<const RenderItem> items() const noexcept { return items_; }
     std::span<const WorldTransform> transforms() const noexcept { return transforms_; }
@@ -308,6 +310,9 @@ class RenderPlan {
     std::size_t culled_items() const noexcept { return culled_items_; }
     const std::array<float, 16> &view_projection() const noexcept {
         return view_projection_;
+    }
+    std::span<const std::array<float, 4>> clip_planes() const noexcept {
+        return {clip_planes_.data(), clip_plane_count_};
     }
 
   private:
@@ -324,6 +329,8 @@ class RenderPlan {
         0.0f, 1.0f, 0.0f, 0.0f,
         0.0f, 0.0f, 1.0f, 0.0f,
         0.0f, 0.0f, 0.0f, 1.0f};
+    std::array<std::array<float, 4>, max_clip_planes> clip_planes_{};
+    std::uint32_t clip_plane_count_ = 0;
     std::size_t visible_items_ = 0;
     std::size_t culled_items_ = 0;
     std::size_t compile_count_ = 0;

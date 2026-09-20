@@ -25,6 +25,13 @@ RenderPlan compile(const SceneSnapshot &snapshot, const SceneView &view) {
     RenderPlan plan;
     render_internal::build_items(plan, snapshot, view);
     render_internal::rebuild_batches(plan);
+    plan.clip_plane_count_ = 0;
+    for (const auto &plane : view.clip_planes) {
+        if (!plane.enabled || plan.clip_plane_count_ == RenderPlan::max_clip_planes)
+            continue;
+        plan.clip_planes_[plan.clip_plane_count_++] = {plane.normal[0], plane.normal[1],
+                                                       plane.normal[2], plane.distance};
+    }
     plan.source_revision_ = snapshot.revision();
     plan.view_signature_ = render_internal::view_signature(view);
     plan.view_root_ = view.root;
@@ -199,6 +206,13 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot,
     plan.view_projection_ = view.camera.enabled
         ? view.camera.view_projection
         : SceneCamera{}.view_projection;
+    plan.clip_plane_count_ = 0;
+    for (const auto &plane : view.clip_planes) {
+        if (!plane.enabled || plan.clip_plane_count_ == RenderPlan::max_clip_planes)
+            continue;
+        plan.clip_planes_[plan.clip_plane_count_++] = {plane.normal[0], plane.normal[1],
+                                                       plane.normal[2], plane.distance};
+    }
     plan.visible_items_ = 0;
     plan.culled_items_ = 0;
     for (const auto &item : plan.items_) {

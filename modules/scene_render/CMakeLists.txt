@@ -1,3 +1,29 @@
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
+set(NKSCENE_RENDER_SHADER_INPUTS
+    shaders/scene_vertex.glsl
+    shaders/scene_fragment.glsl
+    shaders/pick_vertex.glsl
+    shaders/pick_fragment.glsl
+    tools/generate-shaders.py)
+set(NKSCENE_RENDER_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+set(NKSCENE_RENDER_SHADER_HEADER
+    "${NKSCENE_RENDER_GENERATED_DIR}/scene_shader_sources.h")
+add_custom_command(
+    OUTPUT "${NKSCENE_RENDER_SHADER_HEADER}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${NKSCENE_RENDER_GENERATED_DIR}"
+    COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tools/generate-shaders.py"
+        --output "${NKSCENE_RENDER_SHADER_HEADER}"
+    DEPENDS ${NKSCENE_RENDER_SHADER_INPUTS}
+    VERBATIM)
+add_custom_target(nativekit_scene_render_shaders
+    DEPENDS "${NKSCENE_RENDER_SHADER_HEADER}")
+add_custom_target(nativekit_scene_render_shaders_check
+    COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tools/generate-shaders.py"
+        --check --output "${NKSCENE_RENDER_SHADER_HEADER}"
+    DEPENDS nativekit_scene_render_shaders
+    VERBATIM)
+
 add_library(nativekit_scene_render ${NK_LIBRARY_TYPE}
     src/gpu_executor.cpp
     src/instance_batches.cpp
@@ -8,6 +34,7 @@ add_library(nativekit_scene_render ${NK_LIBRARY_TYPE}
     src/render_plan.cpp
     src/resource_cache.cpp)
 add_library(NativeKit::scene_render ALIAS nativekit_scene_render)
+add_dependencies(nativekit_scene_render nativekit_scene_render_shaders)
 target_compile_features(nativekit_scene_render PRIVATE cxx_std_20)
 target_compile_definitions(nativekit_scene_render PRIVATE NKSRENDER_BUILDING_LIBRARY)
 target_include_directories(nativekit_scene_render
@@ -16,6 +43,7 @@ target_include_directories(nativekit_scene_render
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/modules/scene/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     PRIVATE
+        "${NKSCENE_RENDER_GENERATED_DIR}"
         src
         "${PROJECT_SOURCE_DIR}/modules/scene/src")
 target_link_libraries(nativekit_scene_render PUBLIC NativeKit::scene NativeKit::gpu)

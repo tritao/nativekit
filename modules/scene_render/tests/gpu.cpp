@@ -215,6 +215,56 @@ int main() {
         assert(stats.draw_calls == 1);
     }
 
+    {
+        auto scene = std::make_shared<Scene>();
+        const auto geometry = scene->reserve_geometry_id();
+        auto &geometry_resource = scene->geometry_store().create(geometry);
+        geometry_resource.payload.vertices = {
+            {{{-0.6f, -0.6f, 0.0f}}},
+            {{{0.6f, -0.6f, 0.0f}}},
+            {{{0.0f, 0.6f, 0.0f}}}};
+        geometry_resource.payload.indices = {0, 1, 2};
+        geometry_resource.subelements.ranges.push_back({0, 1, 7});
+        const auto material = scene->reserve_material_id();
+        auto &material_resource = scene->material_store().create(material);
+        material_resource.base_color = {0.8f, 0.8f, 0.8f, 1.0f};
+
+        Transaction create(scene);
+        const auto occurrence = scene->reserve_occurrence_id();
+        create.add_create(occurrence);
+        ChangeSet changes;
+        assert(scene->commit(create, changes) == NKS_OK);
+        create.close();
+        Transaction configure(scene);
+        configure.add_geometry(occurrence, geometry);
+        configure.add_material(occurrence, material);
+        assert(scene->commit(configure, changes) == NKS_OK);
+        configure.close();
+
+        nkscene::SceneView view;
+        view.clip_planes.push_back({{{1.0f, 0.0f, 0.0f}}, 0.0f, true});
+        auto plan = nkscene::compile(scene->snapshot(), view);
+        assert(plan.clip_planes().size() == 1);
+        assert(plan.visible_items() == 1);
+        assert(plan.culled_items() == 0);
+
+        nkscene::NativeKitGpuExecutor executor(renderer);
+        const auto stats = executor.execute(plan, scene->snapshot());
+        assert(stats.result == NKGPU_OK);
+        assert(stats.draw_calls == 1);
+
+        nkscene::PickResult clipped;
+        assert(executor.pick_pixel(plan, scene->snapshot(), options.width, options.height,
+                                  48, options.height / 2, &clipped) == NKGPU_OK);
+        assert(!clipped.occurrence.valid());
+
+        nkscene::PickResult visible;
+        assert(executor.pick_pixel(plan, scene->snapshot(), options.width, options.height,
+                                  80, options.height / 2, &visible) == NKGPU_OK);
+        assert(visible.occurrence == occurrence);
+        assert(visible.subelement.value == 7);
+    }
+
 cleanup:
     if (renderer.id)
         nkgpu_renderer_destroy(renderer);
