@@ -34,13 +34,17 @@ interpolation. Patches retain their table resources, so a caller may dispose
 the source handle immediately after patch creation. The Haxe facade exposes the
 same lifecycle through `DspWavetable.fromSamples()` and
 `DspWavetable.fromBytes()`.
-Use `nk_audio_dsp_patch_create()` to build an immutable reusable patch from
-explicit oscillator, noise, envelope, and filter components, then create one or
-more instruments with `nk_audio_dsp_instrument_create_from_patch()`. Instruments
-copy the patch at creation and remain independently automatable through the
-existing parameter events. The legacy flat instrument options are retained as a
-migration path while the patch model grows to include wavetables and
-additional modulation sources and destinations.
+Use `nk_audio_dsp_patch_create()` to build an immutable reusable patch from up
+to four independently tuned oscillator or wavetable sources plus noise,
+envelope, and filter components. Sources are mixed additively in array order;
+their levels are linear and their tuning offsets are expressed in cents. The
+Haxe builder exposes this as `DspPatchBuilder.oscillators` and
+`addOscillator()`. Create one or more instruments with
+`nk_audio_dsp_instrument_create_from_patch()`. Instruments copy the patch at
+creation and remain independently automatable through the existing parameter
+events. The legacy flat instrument options are retained as a migration path
+while the patch model grows to include additional modulation sources and
+destinations.
 
 Patches now also contain one optional LFO and up to eight typed modulation
 routes. Routes connect the LFO or the amplitude envelope to pitch (semitones),

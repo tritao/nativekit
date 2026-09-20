@@ -173,36 +173,40 @@ bool valid_wavetable_sample_count(uint32_t sample_count) {
 }
 
 bool valid_patch_parameters(const DspParameters &parameters) {
-    return valid_waveform(parameters.oscillator.waveform) &&
-           valid_nonnegative_finite(parameters.oscillator.level) &&
-           parameters.oscillator.level <= 1.0f &&
-           valid_nonnegative_finite(parameters.noise.level) && parameters.noise.level <= 1.0f &&
-           valid_nonnegative_finite(parameters.gain) &&
-           valid_nonnegative_finite(parameters.envelope.attack_seconds) &&
-           valid_nonnegative_finite(parameters.envelope.decay_seconds) &&
-           std::isfinite(parameters.envelope.sustain_level) &&
-           parameters.envelope.sustain_level >= 0.0f && parameters.envelope.sustain_level <= 1.0f &&
-           valid_nonnegative_finite(parameters.envelope.release_seconds) &&
-           valid_filter_type(parameters.filter.type) &&
-           valid_nonnegative_finite(parameters.filter.cutoff_hz) &&
-           std::isfinite(parameters.filter.resonance) && parameters.filter.resonance >= 0.0f &&
-           parameters.filter.resonance <= 1.0f &&
-           (parameters.filter.type != NK_AUDIO_DSP_FILTER_NONE ||
-            parameters.filter.cutoff_hz == 0.0f) &&
-           valid_waveform(parameters.lfo.waveform) && valid_lfo_mode(parameters.lfo.mode) &&
-           valid_nonnegative_finite(parameters.lfo.rate_hz) &&
-           std::isfinite(parameters.lfo.phase) && parameters.lfo.phase >= 0.0f &&
-           parameters.lfo.phase <= 1.0f &&
-           parameters.route_count <= NK_AUDIO_DSP_MAX_MODULATION_ROUTES && [&parameters]() {
-               for (uint32_t index = 0; index < parameters.route_count; ++index) {
-                   const auto &route = parameters.routes[index];
-                   if (!valid_modulation_source(route.source) ||
-                       !valid_modulation_destination(route.destination) ||
-                       !valid_modulation_polarity(route.polarity) || !std::isfinite(route.amount))
-                       return false;
-               }
-               return true;
-           }();
+    if (parameters.oscillator_count > NK_AUDIO_DSP_MAX_OSCILLATORS)
+        return false;
+    for (uint32_t index = 0; index < parameters.oscillator_count; ++index) {
+        const auto &oscillator = parameters.oscillators[index];
+        if (!valid_waveform(oscillator.waveform) || !valid_nonnegative_finite(oscillator.level) ||
+            oscillator.level > 1.0f || !std::isfinite(oscillator.detune_cents))
+            return false;
+    }
+    if (!valid_nonnegative_finite(parameters.noise.level) || parameters.noise.level > 1.0f ||
+        !valid_nonnegative_finite(parameters.gain) ||
+        !valid_nonnegative_finite(parameters.envelope.attack_seconds) ||
+        !valid_nonnegative_finite(parameters.envelope.decay_seconds) ||
+        !std::isfinite(parameters.envelope.sustain_level) ||
+        parameters.envelope.sustain_level < 0.0f || parameters.envelope.sustain_level > 1.0f ||
+        !valid_nonnegative_finite(parameters.envelope.release_seconds) ||
+        !valid_filter_type(parameters.filter.type) ||
+        !valid_nonnegative_finite(parameters.filter.cutoff_hz) ||
+        !std::isfinite(parameters.filter.resonance) || parameters.filter.resonance < 0.0f ||
+        parameters.filter.resonance > 1.0f ||
+        (parameters.filter.type == NK_AUDIO_DSP_FILTER_NONE &&
+         parameters.filter.cutoff_hz != 0.0f) ||
+        !valid_waveform(parameters.lfo.waveform) || !valid_lfo_mode(parameters.lfo.mode) ||
+        !valid_nonnegative_finite(parameters.lfo.rate_hz) || !std::isfinite(parameters.lfo.phase) ||
+        parameters.lfo.phase < 0.0f || parameters.lfo.phase > 1.0f ||
+        parameters.route_count > NK_AUDIO_DSP_MAX_MODULATION_ROUTES)
+        return false;
+    for (uint32_t index = 0; index < parameters.route_count; ++index) {
+        const auto &route = parameters.routes[index];
+        if (!valid_modulation_source(route.source) ||
+            !valid_modulation_destination(route.destination) ||
+            !valid_modulation_polarity(route.polarity) || !std::isfinite(route.amount))
+            return false;
+    }
+    return true;
 }
 
 bool valid_filter_cutoff(float cutoff_hz, uint32_t sample_rate) {
@@ -254,21 +258,30 @@ nk_result normalize_patch_options(const nk_audio_dsp_patch_options *input, DspPa
         return NK_OK;
     if (input->struct_size < sizeof(nk_audio_dsp_patch_options))
         return invalid_argument("audio DSP patch options are missing or too small");
-    if (input->oscillator.struct_size < sizeof(nk_audio_dsp_oscillator_options) ||
-        input->noise.struct_size < sizeof(nk_audio_dsp_noise_options) ||
+    if (input->noise.struct_size < sizeof(nk_audio_dsp_noise_options) ||
         input->envelope.struct_size < sizeof(nk_audio_dsp_envelope_options) ||
         input->filter.struct_size < sizeof(nk_audio_dsp_filter_options) ||
         input->lfo.struct_size < sizeof(nk_audio_dsp_lfo_options))
         return invalid_argument("audio DSP patch component options are missing or too small");
+    if (input->oscillator_count > NK_AUDIO_DSP_MAX_OSCILLATORS)
+        return invalid_argument("audio DSP patch has too many oscillators");
     if (input->route_count > NK_AUDIO_DSP_MAX_MODULATION_ROUTES)
         return invalid_argument("audio DSP patch has too many modulation routes");
-    output.oscillator.waveform = input->oscillator.waveform;
-    output.oscillator.level = input->oscillator.level;
-    if (input->oscillator.wavetable != NK_INVALID_HANDLE) {
-        auto wavetable = get_wavetable(input->oscillator.wavetable);
-        if (!wavetable)
-            return NK_ERROR_INVALID_HANDLE;
-        output.oscillator.wavetable = wavetable->table;
+    output.oscillator_count = input->oscillator_count;
+    for (uint32_t index = 0; index < output.oscillator_count; ++index) {
+        const auto &input_oscillator = input->oscillators[index];
+        if (input_oscillator.struct_size < sizeof(nk_audio_dsp_oscillator_options))
+            return invalid_argument("audio DSP oscillator options are missing or too small");
+        auto &oscillator = output.oscillators[index];
+        oscillator.waveform = input_oscillator.waveform;
+        oscillator.level = input_oscillator.level;
+        oscillator.detune_cents = input_oscillator.detune_cents;
+        if (input_oscillator.wavetable != NK_INVALID_HANDLE) {
+            auto wavetable = get_wavetable(input_oscillator.wavetable);
+            if (!wavetable)
+                return NK_ERROR_INVALID_HANDLE;
+            oscillator.wavetable = wavetable->table;
+        }
     }
     output.noise.level = input->noise.level;
     output.envelope.attack_seconds = input->envelope.attack_seconds;
@@ -305,8 +318,9 @@ nk_result normalize_instrument_options(const nk_audio_dsp_instrument_options *in
         return NK_OK;
     if (input->struct_size < sizeof(nk_audio_dsp_instrument_options))
         return invalid_argument("audio DSP instrument options are missing or too small");
-    output.oscillator.waveform = input->waveform;
-    output.oscillator.level = 1.0f;
+    output.oscillator_count = 1;
+    output.oscillators[0].waveform = input->waveform;
+    output.oscillators[0].level = 1.0f;
     output.gain = input->gain;
     output.envelope.attack_seconds = input->attack_seconds;
     output.envelope.decay_seconds = input->decay_seconds;
@@ -330,7 +344,9 @@ nk_result set_parameter(DspParameters &parameters, nk_audio_dsp_parameter parame
         if (value < 0.0f || value > static_cast<float>(NK_AUDIO_DSP_WAVEFORM_SQUARE) ||
             std::floor(value) != value)
             return invalid_argument("audio DSP waveform parameter is invalid");
-        parameters.oscillator.waveform = static_cast<nk_audio_dsp_waveform>(value);
+        if (parameters.oscillator_count == 0)
+            return invalid_argument("audio DSP patch has no oscillator to retune");
+        parameters.oscillators[0].waveform = static_cast<nk_audio_dsp_waveform>(value);
         break;
     case NK_AUDIO_DSP_PARAMETER_GAIN:
         if (value < 0.0f)
@@ -383,7 +399,9 @@ nk_result set_parameter(DspParameters &parameters, nk_audio_dsp_parameter parame
 float get_parameter(const DspParameters &parameters, nk_audio_dsp_parameter parameter) {
     switch (parameter) {
     case NK_AUDIO_DSP_PARAMETER_WAVEFORM:
-        return static_cast<float>(parameters.oscillator.waveform);
+        return parameters.oscillator_count == 0
+                   ? static_cast<float>(NK_AUDIO_DSP_WAVEFORM_SINE)
+                   : static_cast<float>(parameters.oscillators[0].waveform);
     case NK_AUDIO_DSP_PARAMETER_GAIN:
         return parameters.gain;
     case NK_AUDIO_DSP_PARAMETER_ATTACK_SECONDS:

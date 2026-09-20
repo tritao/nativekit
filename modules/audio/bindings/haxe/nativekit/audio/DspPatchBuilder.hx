@@ -4,7 +4,8 @@ import NativeKitAudio;
 
 /** Mutable Haxe-side builder for an immutable native DSP patch. */
 class DspPatchBuilder {
-	public var oscillator:DspOscillatorOptions = new DspOscillatorOptions();
+	/** Pitched sources are mixed additively in source order. */
+	public final oscillators:Array<DspOscillatorOptions> = [new DspOscillatorOptions()];
 	public var noise:DspNoiseOptions = new DspNoiseOptions();
 	public var envelope:DspEnvelopeOptions = new DspEnvelopeOptions();
 	public var filter:DspFilterOptions = new DspFilterOptions();
@@ -13,6 +14,14 @@ class DspPatchBuilder {
 	public final routes:Array<DspModulationRoute> = [];
 
 	public function new() {}
+
+	/** Appends a pitched source and returns this builder for fluent construction. */
+	public function addOscillator(?oscillator:DspOscillatorOptions):DspPatchBuilder {
+		if (oscillators.length >= NativeKitAudioConstants.NK_AUDIO_DSP_MAX_OSCILLATORS)
+			throw "DSP patch oscillator limit exceeded";
+		oscillators.push(oscillator == null ? new DspOscillatorOptions() : oscillator);
+		return this;
+	}
 
 	/** Appends a route and returns this builder for fluent patch construction. */
 	public function addRoute(route:DspModulationRoute):DspPatchBuilder {
@@ -33,11 +42,18 @@ class DspPatchBuilder {
 
 	/** Materializes the current builder state into an immutable native patch. */
 	public function build():DspPatch {
-		if (oscillator == null || noise == null || envelope == null || filter == null || lfo == null)
+		if (oscillators == null || noise == null || envelope == null || filter == null || lfo == null)
 			throw "DSP patch components must not be null";
+		if (oscillators.length > NativeKitAudioConstants.NK_AUDIO_DSP_MAX_OSCILLATORS)
+			throw "DSP patch oscillator limit exceeded";
 		var options = new NativeKitAudio.NativeDspPatchOptions();
 		options.set_struct_size(NativeKitAudio.NativeDspPatchOptions.size());
-		options.set_oscillator(oscillator.nativeValue());
+		options.set_oscillator_count(oscillators.length);
+		for (index in 0...oscillators.length) {
+			if (oscillators[index] == null)
+				throw "DSP patch oscillators must not be null";
+			options.set_oscillators(index, oscillators[index].nativeValue());
+		}
 		options.set_noise(noise.nativeValue());
 		options.set_envelope(envelope.nativeValue());
 		options.set_filter(filter.nativeValue());

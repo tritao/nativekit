@@ -9,6 +9,8 @@ class DspOscillatorOptions {
 
 	/** Optional immutable wavetable source; null selects the built-in waveform. */
 	public var wavetable:DspWavetable = null;
+	/** Relative tuning in cents; zero preserves the note frequency. */
+	public var detuneCents:Float = 0.0;
 
 	public function new() {}
 
@@ -19,6 +21,7 @@ class DspOscillatorOptions {
 		result.set_waveform(waveform);
 		result.set_level(level);
 		result.set_wavetable(wavetable == null ? NativeKitAudio.DspWavetableHandle.invalid() : wavetable.nativeHandle());
+		result.set_detune_cents(detuneCents);
 		return result;
 	}
 }

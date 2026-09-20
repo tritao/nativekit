@@ -110,6 +110,9 @@ enum NK_ENUM(nk_audio_dsp_modulation_polarity) {
 /** Maximum number of fixed, ABI-safe modulation routes in one patch. */
 enum { NK_AUDIO_DSP_MAX_MODULATION_ROUTES = 8 };
 
+/** Maximum number of independently tuned pitched sources in one patch. */
+enum { NK_AUDIO_DSP_MAX_OSCILLATORS = 4 };
+
 /** Instrument parameters accepted by nk_audio_dsp_instrument_set_parameter. */
 typedef uint32_t nk_audio_dsp_parameter;
 enum NK_ENUM(nk_audio_dsp_parameter) {
@@ -141,8 +144,10 @@ typedef struct nk_audio_dsp_oscillator_options {
     float level;
     /** Optional wavetable source; invalid selects the built-in waveform. */
     nk_audio_dsp_wavetable wavetable;
+    /** Relative tuning in cents; zero preserves the note frequency. */
+    float detune_cents;
     /** Reserved for compatible extensions; set all elements to zero. */
-    uint64_t reserved2[2];
+    uint64_t reserved2[1];
 } nk_audio_dsp_oscillator_options;
 
 /** White-noise source component in a reusable patch. */
@@ -228,8 +233,10 @@ typedef struct nk_audio_dsp_modulation_route_options {
 typedef struct nk_audio_dsp_patch_options {
     /** Set to sizeof(nk_audio_dsp_patch_options) before use. */
     uint32_t struct_size NK_STRUCT_SIZE;
-    /** Pitched oscillator source component. */
-    nk_audio_dsp_oscillator_options oscillator;
+    /** Pitched oscillator source components. */
+    nk_audio_dsp_oscillator_options oscillators[NK_AUDIO_DSP_MAX_OSCILLATORS];
+    /** Number of active pitched oscillator sources. Zero permits noise-only patches. */
+    uint32_t oscillator_count;
     /** White-noise source component. */
     nk_audio_dsp_noise_options noise;
     /** Amplitude envelope component. */

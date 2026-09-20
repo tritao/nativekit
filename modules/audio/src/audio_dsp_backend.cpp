@@ -22,6 +22,30 @@ bool is_power_of_two(uint32_t value) {
     return value != 0 && (value & (value - 1)) == 0;
 }
 
+void set_waveform(daisysp::Oscillator &oscillator, nk_audio_dsp_waveform waveform) {
+    switch (waveform) {
+    case NK_AUDIO_DSP_WAVEFORM_SINE:
+        oscillator.SetWaveform(daisysp::Oscillator::WAVE_SIN);
+        break;
+    case NK_AUDIO_DSP_WAVEFORM_TRIANGLE:
+        oscillator.SetWaveform(daisysp::Oscillator::WAVE_TRI);
+        break;
+    case NK_AUDIO_DSP_WAVEFORM_SAW:
+        oscillator.SetWaveform(daisysp::Oscillator::WAVE_RAMP);
+        break;
+    case NK_AUDIO_DSP_WAVEFORM_SQUARE:
+        oscillator.SetWaveform(daisysp::Oscillator::WAVE_SQUARE);
+        break;
+    default:
+        oscillator.SetWaveform(daisysp::Oscillator::WAVE_SIN);
+        break;
+    }
+}
+
+float clamp_frequency(float frequency, uint32_t sample_rate) {
+    return std::clamp(frequency, 1.0f, static_cast<float>(sample_rate) * 0.45f);
+}
+
 } // namespace
 
 std::shared_ptr<const Wavetable> Wavetable::create(const float *samples, uint32_t sample_count) {
@@ -69,8 +93,14 @@ std::shared_ptr<const Wavetable> Wavetable::create(const float *samples, uint32_
 }
 
 struct Voice::Impl {
-    daisysp::Oscillator oscillator;
-    daisysp::WavetableOscillator wavetable_oscillator;
+    struct OscillatorVoice {
+        daisysp::Oscillator oscillator;
+        daisysp::WavetableOscillator wavetable_oscillator;
+        std::shared_ptr<const Wavetable> wavetable;
+        float detune_cents = 0.0f;
+    };
+
+    std::array<OscillatorVoice, NK_AUDIO_DSP_MAX_OSCILLATORS> oscillators;
     daisysp::Oscillator lfo;
     daisysp::Adsr envelope;
     daisysp::WhiteNoise noise;
@@ -84,8 +114,8 @@ struct Voice::Impl {
     LfoParameters lfo_parameters;
     std::array<ModulationRoute, NK_AUDIO_DSP_MAX_MODULATION_ROUTES> routes{};
     uint32_t route_count = 0;
+    uint32_t oscillator_count = 0;
     float base_frequency = 440.0f;
-    std::shared_ptr<const Wavetable> wavetable;
     float velocity = 0.0f;
     bool gate = false;
     bool active = false;
@@ -101,8 +131,12 @@ Voice &Voice::operator=(Voice &&) noexcept = default;
 
 void Voice::init(uint32_t sample_rate) noexcept {
     impl_->sample_rate = sample_rate;
-    impl_->oscillator.Init(static_cast<float>(sample_rate));
-    impl_->wavetable_oscillator.Init(static_cast<float>(sample_rate));
+    for (auto &oscillator : impl_->oscillators) {
+        oscillator.oscillator.Init(static_cast<float>(sample_rate));
+        oscillator.wavetable_oscillator.Init(static_cast<float>(sample_rate));
+        oscillator.wavetable.reset();
+        oscillator.detune_cents = 0.0f;
+    }
     impl_->lfo.Init(static_cast<float>(sample_rate));
     impl_->lfo.SetAmp(1.0f);
     impl_->envelope.Init(static_cast<float>(sample_rate));
@@ -118,8 +152,8 @@ void Voice::init(uint32_t sample_rate) noexcept {
     impl_->lfo.Reset(0.0f);
     impl_->routes = {};
     impl_->route_count = 0;
+    impl_->oscillator_count = 0;
     impl_->base_frequency = 440.0f;
-    impl_->wavetable.reset();
     impl_->velocity = 0.0f;
     impl_->gate = false;
     impl_->active = false;
@@ -128,10 +162,25 @@ void Voice::init(uint32_t sample_rate) noexcept {
 void Voice::set_parameters(const PatchParameters &parameters) noexcept {
     const auto was_active = impl_->active;
     impl_->gain = parameters.gain;
-    impl_->wavetable = parameters.oscillator.wavetable;
-    impl_->wavetable_oscillator.SetTables(impl_->wavetable ? impl_->wavetable->tables() : nullptr,
-                                          impl_->wavetable ? impl_->wavetable->table_count() : 0);
-    impl_->wavetable_oscillator.SetAmp(parameters.oscillator.level);
+    impl_->oscillator_count = parameters.oscillator_count;
+    for (uint32_t index = 0; index < impl_->oscillators.size(); ++index) {
+        auto &voice_oscillator = impl_->oscillators[index];
+        if (index >= impl_->oscillator_count) {
+            voice_oscillator.wavetable.reset();
+            voice_oscillator.wavetable_oscillator.SetTables(nullptr, 0);
+            voice_oscillator.oscillator.SetAmp(0.0f);
+            continue;
+        }
+        const auto &parameters_oscillator = parameters.oscillators[index];
+        voice_oscillator.wavetable = parameters_oscillator.wavetable;
+        voice_oscillator.detune_cents = parameters_oscillator.detune_cents;
+        voice_oscillator.wavetable_oscillator.SetTables(
+            voice_oscillator.wavetable ? voice_oscillator.wavetable->tables() : nullptr,
+            voice_oscillator.wavetable ? voice_oscillator.wavetable->table_count() : 0);
+        voice_oscillator.wavetable_oscillator.SetAmp(parameters_oscillator.level);
+        voice_oscillator.oscillator.SetAmp(parameters_oscillator.level);
+        set_waveform(voice_oscillator.oscillator, parameters_oscillator.waveform);
+    }
     impl_->noise_level = parameters.noise.level;
     impl_->filter_type = parameters.filter.type;
     impl_->filter_cutoff_hz = parameters.filter.cutoff_hz;
@@ -139,45 +188,11 @@ void Voice::set_parameters(const PatchParameters &parameters) noexcept {
     impl_->lfo_parameters = parameters.lfo;
     impl_->routes = parameters.routes;
     impl_->route_count = parameters.route_count;
-    switch (parameters.oscillator.waveform) {
-    case NK_AUDIO_DSP_WAVEFORM_SINE:
-        impl_->oscillator.SetWaveform(daisysp::Oscillator::WAVE_SIN);
-        break;
-    case NK_AUDIO_DSP_WAVEFORM_TRIANGLE:
-        impl_->oscillator.SetWaveform(daisysp::Oscillator::WAVE_TRI);
-        break;
-    case NK_AUDIO_DSP_WAVEFORM_SAW:
-        impl_->oscillator.SetWaveform(daisysp::Oscillator::WAVE_RAMP);
-        break;
-    case NK_AUDIO_DSP_WAVEFORM_SQUARE:
-        impl_->oscillator.SetWaveform(daisysp::Oscillator::WAVE_SQUARE);
-        break;
-    default:
-        impl_->oscillator.SetWaveform(daisysp::Oscillator::WAVE_SIN);
-        break;
-    }
-    switch (parameters.lfo.waveform) {
-    case NK_AUDIO_DSP_WAVEFORM_SINE:
-        impl_->lfo.SetWaveform(daisysp::Oscillator::WAVE_SIN);
-        break;
-    case NK_AUDIO_DSP_WAVEFORM_TRIANGLE:
-        impl_->lfo.SetWaveform(daisysp::Oscillator::WAVE_TRI);
-        break;
-    case NK_AUDIO_DSP_WAVEFORM_SAW:
-        impl_->lfo.SetWaveform(daisysp::Oscillator::WAVE_RAMP);
-        break;
-    case NK_AUDIO_DSP_WAVEFORM_SQUARE:
-        impl_->lfo.SetWaveform(daisysp::Oscillator::WAVE_SQUARE);
-        break;
-    default:
-        impl_->lfo.SetWaveform(daisysp::Oscillator::WAVE_SIN);
-        break;
-    }
+    set_waveform(impl_->lfo, parameters.lfo.waveform);
     impl_->lfo.SetAmp(1.0f);
     impl_->lfo.SetFreq(parameters.lfo.rate_hz);
     if (!was_active)
         impl_->lfo.Reset(parameters.lfo.phase);
-    impl_->oscillator.SetAmp(parameters.oscillator.level);
     impl_->envelope.SetAttackTime(parameters.envelope.attack_seconds);
     impl_->envelope.SetDecayTime(parameters.envelope.decay_seconds);
     impl_->envelope.SetSustainLevel(parameters.envelope.sustain_level);
@@ -192,10 +207,16 @@ void Voice::note_on(uint32_t note, float velocity) noexcept {
     const auto semitones = static_cast<float>(note) - 69.0f;
     const auto frequency = 440.0f * std::pow(2.0f, semitones / 12.0f);
     impl_->base_frequency = frequency;
-    impl_->oscillator.SetFreq(frequency);
-    impl_->oscillator.Reset();
-    impl_->wavetable_oscillator.Reset();
-    impl_->wavetable_oscillator.SetFreq(frequency);
+    for (uint32_t index = 0; index < impl_->oscillator_count; ++index) {
+        auto &oscillator = impl_->oscillators[index];
+        const auto detuned_frequency =
+            frequency * std::pow(2.0f, oscillator.detune_cents / 1200.0f);
+        oscillator.oscillator.SetFreq(clamp_frequency(detuned_frequency, impl_->sample_rate));
+        oscillator.oscillator.Reset();
+        oscillator.wavetable_oscillator.Reset();
+        oscillator.wavetable_oscillator.SetFreq(
+            clamp_frequency(detuned_frequency, impl_->sample_rate));
+    }
     if (impl_->lfo_parameters.mode == NK_AUDIO_DSP_LFO_RETRIGGER)
         impl_->lfo.Reset(impl_->lfo_parameters.phase);
     impl_->filter.Init(static_cast<float>(impl_->sample_rate));
@@ -267,15 +288,19 @@ float Voice::process() noexcept {
     auto frequency = impl_->base_frequency;
     if (pitch_offset != 0.0f)
         frequency *= std::pow(2.0f, pitch_offset / 12.0f);
-    frequency = std::clamp(frequency, 1.0f, static_cast<float>(impl_->sample_rate) * 0.45f);
     float sample = 0.0f;
-    if (impl_->wavetable) {
-        impl_->wavetable_oscillator.SetFreq(frequency);
-        sample = impl_->wavetable_oscillator.Process();
-    } else {
-        if (pitch_offset != 0.0f)
-            impl_->oscillator.SetFreq(frequency);
-        sample = impl_->oscillator.Process();
+    for (uint32_t index = 0; index < impl_->oscillator_count; ++index) {
+        auto &oscillator = impl_->oscillators[index];
+        const auto detuned_frequency = clamp_frequency(
+            frequency * std::pow(2.0f, oscillator.detune_cents / 1200.0f), impl_->sample_rate);
+        oscillator.wavetable_oscillator.SetFreq(detuned_frequency);
+        if (oscillator.wavetable) {
+            sample += oscillator.wavetable_oscillator.Process();
+        } else {
+            if (pitch_offset != 0.0f)
+                oscillator.oscillator.SetFreq(detuned_frequency);
+            sample += oscillator.oscillator.Process();
+        }
     }
     sample += impl_->noise.Process() * impl_->noise_level;
     if (impl_->filter_type == NK_AUDIO_DSP_FILTER_SVF_LOW_PASS && impl_->filter_cutoff_hz > 0.0f) {

@@ -61,9 +61,10 @@ int main() {
 
     nk_audio_dsp_patch_options patch_options{};
     patch_options.struct_size = sizeof(patch_options);
-    patch_options.oscillator.struct_size = sizeof(patch_options.oscillator);
-    patch_options.oscillator.waveform = NK_AUDIO_DSP_WAVEFORM_SINE;
-    patch_options.oscillator.level = 0.75f;
+    patch_options.oscillator_count = 1;
+    patch_options.oscillators[0].struct_size = sizeof(patch_options.oscillators[0]);
+    patch_options.oscillators[0].waveform = NK_AUDIO_DSP_WAVEFORM_SINE;
+    patch_options.oscillators[0].level = 0.75f;
     patch_options.noise.struct_size = sizeof(patch_options.noise);
     patch_options.noise.level = 0.25f;
     patch_options.envelope.struct_size = sizeof(patch_options.envelope);
@@ -104,6 +105,10 @@ int main() {
     nk_audio_dsp_patch invalid_patch = NK_INVALID_HANDLE;
     assert(nk_audio_dsp_patch_create(&invalid_patch_options, &invalid_patch) ==
            NK_ERROR_INVALID_ARGUMENT);
+    invalid_patch_options = patch_options;
+    invalid_patch_options.oscillator_count = NK_AUDIO_DSP_MAX_OSCILLATORS + 1;
+    assert(nk_audio_dsp_patch_create(&invalid_patch_options, &invalid_patch) ==
+           NK_ERROR_INVALID_ARGUMENT);
 
     nk_audio_dsp_patch patch = NK_INVALID_HANDLE;
     assert(nk_audio_dsp_patch_create(&patch_options, &patch) == NK_OK);
@@ -126,7 +131,12 @@ int main() {
     nk_audio_dsp_wavetable wavetable = NK_INVALID_HANDLE;
     assert(nk_audio_dsp_wavetable_create(wavetable_samples, 32, &wavetable) == NK_OK);
     auto wavetable_options = patch_options;
-    wavetable_options.oscillator.wavetable = wavetable;
+    wavetable_options.oscillators[0].wavetable = wavetable;
+    wavetable_options.oscillator_count = 2;
+    wavetable_options.oscillators[1].struct_size = sizeof(wavetable_options.oscillators[1]);
+    wavetable_options.oscillators[1].waveform = NK_AUDIO_DSP_WAVEFORM_TRIANGLE;
+    wavetable_options.oscillators[1].level = 0.25f;
+    wavetable_options.oscillators[1].detune_cents = 7.0f;
     wavetable_options.noise.level = 0.0f;
     wavetable_options.filter.type = NK_AUDIO_DSP_FILTER_NONE;
     wavetable_options.filter.cutoff_hz = 0.0f;
@@ -235,7 +245,7 @@ int main() {
     assert(all_silent(samples, 64));
 
     auto free_running_options = patch_options;
-    free_running_options.oscillator.waveform = NK_AUDIO_DSP_WAVEFORM_SQUARE;
+    free_running_options.oscillators[0].waveform = NK_AUDIO_DSP_WAVEFORM_SQUARE;
     free_running_options.filter.type = NK_AUDIO_DSP_FILTER_NONE;
     free_running_options.filter.cutoff_hz = 0.0f;
     free_running_options.gain = 1.0f;

@@ -25,6 +25,7 @@ struct OscillatorParameters {
     nk_audio_dsp_waveform waveform = NK_AUDIO_DSP_WAVEFORM_SINE;
     float level = 1.0f;
     std::shared_ptr<const Wavetable> wavetable;
+    float detune_cents = 0.0f;
 };
 
 struct NoiseParameters {
@@ -60,7 +61,8 @@ struct ModulationRoute {
 };
 
 struct PatchParameters {
-    OscillatorParameters oscillator;
+    std::array<OscillatorParameters, NK_AUDIO_DSP_MAX_OSCILLATORS> oscillators{};
+    uint32_t oscillator_count = 1;
     NoiseParameters noise;
     EnvelopeParameters envelope;
     FilterParameters filter;
