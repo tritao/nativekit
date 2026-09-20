@@ -579,6 +579,47 @@ int main() {
         subtree_backend.raster_cache_hits != 1)
         return 127;
 
+    // Explicit content revisions participate in raster identity, while a
+    // composite-only revision leaves the cached subtree pixels reusable.
+    std::vector<LayoutNode> content_changed_nodes = nodes;
+    content_changed_nodes[0].content_revision = 7;
+    LayoutSnapshot content_changed_snapshot;
+    if (!engine.layout(content_changed_nodes, 320.0f, 200.0f, 1.0f / 60.0f,
+                       content_changed_snapshot, &layout_error))
+        return 128;
+    LayoutRenderFrame content_changed_subtree_frame;
+    if (!compiler.compile(content_changed_snapshot, main_target, 1.5f,
+                          content_changed_subtree_frame, &compile_error, false,
+                          engine.text_engine(), nullptr, &subtree_paints))
+        return 128;
+    RecordingRenderer revision_backend;
+    if (!execute_render_plan(revision_backend, subtree_frame.plan(), subtree_frame.resources(),
+                             {main_target, subtree_frame_target}, &subtree_execution_error) ||
+        !execute_render_plan(revision_backend, moved_subtree_frame.plan(),
+                             moved_subtree_frame.resources(),
+                             {main_target, subtree_frame_target}, &subtree_execution_error) ||
+        !execute_render_plan(revision_backend, content_changed_subtree_frame.plan(),
+                             content_changed_subtree_frame.resources(),
+                             {main_target, subtree_frame_target}, &subtree_execution_error) ||
+        revision_backend.raster_cache_hits != 1)
+        return 128;
+
+    std::vector<LayoutNode> composite_changed_nodes = nodes;
+    composite_changed_nodes[0].composite_revision = 9;
+    LayoutSnapshot composite_changed_snapshot;
+    if (!engine.layout(composite_changed_nodes, 320.0f, 200.0f, 1.0f / 60.0f,
+                       composite_changed_snapshot, &layout_error))
+        return 129;
+    LayoutRenderFrame composite_changed_subtree_frame;
+    if (!compiler.compile(composite_changed_snapshot, main_target, 1.5f,
+                          composite_changed_subtree_frame, &compile_error, false,
+                          engine.text_engine(), nullptr, &subtree_paints) ||
+        !execute_render_plan(revision_backend, composite_changed_subtree_frame.plan(),
+                             composite_changed_subtree_frame.resources(),
+                             {main_target, subtree_frame_target}, &subtree_execution_error) ||
+        revision_backend.raster_cache_hits != 2)
+        return 129;
+
     // Raster entries are keyed by content, but the renderer must also reject
     // a cached surface when its physical dimensions change (resize/DPR).
     auto &subtree_raster_pass = subtree_frame.plan().passes[1];

@@ -55,8 +55,9 @@ class LayoutTransaction {
 			var lineHeight:Float = node.paragraphStyle.lineHeight == null ? 0.0 : node.paragraphStyle.lineHeight;
 			if (node.id <= 0 || node.id == 0x80000000)
 				throw "Layout node ID is out of range";
-			if (measureVersion < 0)
-				throw "Layout measurement version must be non-negative";
+			if (measureVersion < 0 || node.contentRevision < 0 || node.geometryRevision < 0 ||
+				node.compositeRevision < 0)
+				throw "Layout revisions must be non-negative";
 			if (!finitePositive(node.textStyle.fontSize) || !finite(node.textStyle.letterSpacing) ||
 				!finite(lineHeight) || lineHeight < 0.0)
 				throw "Layout text style values are invalid";
@@ -172,6 +173,12 @@ class LayoutTransaction {
 				style.transformOriginX);
 			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_TRANSFORM_ORIGIN_Y_OFFSET,
 				style.transformOriginY);
+			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_CONTENT_REVISION_OFFSET,
+				node.contentRevision);
+			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_GEOMETRY_REVISION_OFFSET,
+				node.geometryRevision);
+			writeInt(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_COMPOSITE_REVISION_OFFSET,
+				node.compositeRevision);
 			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_POSITION_X_OFFSET,
 				style.positionX);
 			writeFloat(output, record, NativeKitUIConstants.NKUI_LAYOUT_NODE_POSITION_Y_OFFSET,

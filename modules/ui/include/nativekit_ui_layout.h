@@ -18,9 +18,9 @@ extern "C" {
 /** Layout bridge and wire-format versions and fixed sizes. */
 enum {
     NKUI_LAYOUT_API_VERSION = 20,
-    NKUI_LAYOUT_TRANSACTION_VERSION = 15,
+    NKUI_LAYOUT_TRANSACTION_VERSION = 16,
     NKUI_LAYOUT_TRANSACTION_HEADER_BYTES = 16,
-    NKUI_LAYOUT_NODE_RECORD_BYTES = 248,
+    NKUI_LAYOUT_NODE_RECORD_BYTES = 260,
     NKUI_LAYOUT_MAX_TRANSACTION_BYTES = 16 * 1024 * 1024,
     NKUI_LAYOUT_RESOLVED_ITEM_BYTES = 96
 };
@@ -195,7 +195,13 @@ enum {
     /** Normalized horizontal transform origin, in the range 0..1. */
     NKUI_LAYOUT_NODE_TRANSFORM_ORIGIN_X_OFFSET = 240,
     /** Normalized vertical transform origin, in the range 0..1. */
-    NKUI_LAYOUT_NODE_TRANSFORM_ORIGIN_Y_OFFSET = 244
+    NKUI_LAYOUT_NODE_TRANSFORM_ORIGIN_Y_OFFSET = 244,
+    /** Haxe-owned paint/content revision used by native raster caches. */
+    NKUI_LAYOUT_NODE_CONTENT_REVISION_OFFSET = 248,
+    /** Haxe-owned resolved geometry revision for shared scene metadata. */
+    NKUI_LAYOUT_NODE_GEOMETRY_REVISION_OFFSET = 252,
+    /** Haxe-owned compositing revision for shared scene metadata. */
+    NKUI_LAYOUT_NODE_COMPOSITE_REVISION_OFFSET = 256
 };
 
 /** Opaque retained layout session used by a Haxe-owned component tree. */

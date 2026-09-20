@@ -153,6 +153,7 @@ uint64_t primitive_content_generation(const LayoutPrimitive &primitive,
     uint64_t hash = kContentHashOffset;
     hash_u32(hash, static_cast<uint32_t>(primitive.kind));
     hash_u32(hash, primitive.node_id);
+    hash_u32(hash, primitive.content_revision);
     for (const float value :
          {primitive.bounds.x, primitive.bounds.y, primitive.bounds.width, primitive.bounds.height,
           primitive.transform.a, primitive.transform.b, primitive.transform.c,

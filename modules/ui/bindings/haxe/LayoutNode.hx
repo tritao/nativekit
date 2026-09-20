@@ -15,6 +15,12 @@ class LayoutNode {
 	public var intrinsicContent:Null<LayoutContent>;
 	/** Invalidates native intrinsic measurement when no content object is attached. */
 	public var measureVersion:Int;
+	/** Paint/text revision consumed by native raster-cache identity. */
+	public var contentRevision:Int;
+	/** Resolved bounds/transform/clip revision shared by native scene consumers. */
+	public var geometryRevision:Int;
+	/** Opacity/effects revision shared by native scene consumers. */
+	public var compositeRevision:Int;
 	public final children:Array<LayoutNode>;
 
 	public function new(id:Int, visualKind:LayoutVisualKind = LayoutVisualKind.Box,
@@ -32,6 +38,9 @@ class LayoutNode {
 		hitChildren = true;
 		intrinsicContent = null;
 		measureVersion = 0;
+		contentRevision = 0;
+		geometryRevision = 0;
+		compositeRevision = 0;
 		children = [];
 	}
 

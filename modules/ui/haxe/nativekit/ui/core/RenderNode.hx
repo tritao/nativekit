@@ -289,6 +289,14 @@ class RenderNode {
 		}
 	}
 
+	/** Copies retained scene revisions into the native layout transaction payload. */
+	@:allow(nativekit.ui.core.UiContext)
+	function syncSceneRevisions():Void {
+		layout.contentRevision = contentRevision;
+		layout.geometryRevision = geometryRevision;
+		layout.compositeRevision = compositeRevision;
+	}
+
 	/** Returns the complete opt-in fingerprint for safe retained paint reuse. */
 	@:allow(nativekit.ui.core.UiContext)
 	function retainedPaintKey():Null<String> {
