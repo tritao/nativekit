@@ -54,9 +54,11 @@ int run_frame(nk_window window, nk_surface surface, bool cancel, int32_t width, 
     }
 
     FrameProbe probe{frame, target};
-    if (nk::core::dispatch_to_render_sync(&run_frame_probe, &probe, sizeof(probe)) != NK_OK) {
+    const nk_result dispatched =
+        nk::core::dispatch_to_render_sync(&run_frame_probe, &probe, sizeof(probe));
+    if (dispatched != NK_OK) {
         (void)nk_surface_cancel_frame(frame);
-        return 20;
+        return 20 + (-static_cast<int>(dispatched) * 100);
     }
     if (!probe.render_executor || probe.bind != NK_OK || probe.submit != NK_OK ||
         probe.unbind != NK_OK || probe.surface_api_violations != 0) {
