@@ -8,9 +8,10 @@ class HxiNativeKitSceneMain {
 		var output = Sys.args()[0],
 			sceneHxi = File.getContent(Sys.args()[1]),
 			renderHxi = File.getContent(Sys.args()[2]),
-			nativekitRoot = Sys.args()[3],
-			nativekitHxi = File.getContent(Sys.args()[4]),
-			gpuHxi = File.getContent(Sys.args()[5]),
+			interactionHxi = File.getContent(Sys.args()[3]),
+			nativekitRoot = Sys.args()[4],
+			nativekitHxi = File.getContent(Sys.args()[5]),
+			gpuHxi = File.getContent(Sys.args()[6]),
 			compiler = new Compiler();
 		CompilerIntrinsics.register(compiler);
 		compiler.addSourceRoot(Sys.getCwd() + "/stdlib");
@@ -18,14 +19,17 @@ class HxiNativeKitSceneMain {
 		compiler.addSourceRoot(nativekitRoot + "/modules/gpu/bindings/haxe");
 		compiler.addSourceRoot(nativekitRoot + "/modules/scene/bindings/haxe");
 		compiler.addSourceRoot(nativekitRoot + "/modules/scene_render/bindings/haxe");
+		compiler.addSourceRoot(nativekitRoot + "/modules/scene_interaction/bindings/haxe");
 		compiler.update("NativeKitWindow.hx", File.getContent(nativekitRoot + "/bindings/haxe/NativeKitWindow.hx"));
 		compiler.addFfiProjection("NativeKit.hxmap", File.getContent(nativekitRoot + "/bindings/haxe/nativekit.hxmap"));
 		compiler.addFfiProjection("NativeKitGpu.hxmap", File.getContent(nativekitRoot + "/modules/gpu/bindings/nativekit-gpu.hxmap"));
 		compiler.addFfiProjection("NativeKitSceneRender.hxmap", File.getContent(nativekitRoot + "/modules/scene_render/bindings/nativekit-scene-render.hxmap"));
+		compiler.addFfiProjection("NativeKitSceneInteraction.hxmap", File.getContent(nativekitRoot + "/modules/scene_interaction/bindings/nativekit-scene-interaction.hxmap"));
 		compiler.addFfiInterface("NativeKit.hxi", nativekitHxi);
 		compiler.addFfiInterface("NativeKitGpu.hxi", gpuHxi);
 		compiler.addFfiInterface("NativeKitScene.hxi", sceneHxi);
 		compiler.addFfiInterface("NativeKitSceneRender.hxi", renderHxi);
+		compiler.addFfiInterface("NativeKitSceneInteraction.hxi", interactionHxi);
 		compiler.update("Main.hx", source());
 		File.saveBytes(output, HlWriter.encode(compiler.compile("Main").module));
 	}
@@ -33,6 +37,7 @@ class HxiNativeKitSceneMain {
 	static function source():String return '
 import NativeKitScene;
 import NativeKitSceneRender;
+import NativeKitSceneInteraction;
 import NativeKitGpu;
 import NativeKit;
 import NativeKit.WindowFlags;
@@ -52,6 +57,8 @@ import nativekit.scene.Transform;
 import nativekit.scene.Occurrence;
 import nativekit.scene.VisibilityFilter;
 import nativekit.scene.SelectionSet;
+import nativekit.scene.SceneInteraction;
+import nativekit.scene.SelectionMode;
 import nativekit.gpu.Renderer;
 import nativekit.gpu.Surface;
 
@@ -97,6 +104,18 @@ class Main {
 			children = snapshot.children(group);
 		if (infos.length != 3 || groupInfo == null || firstInfo == null || secondInfo == null)
 			return 10;
+		var interaction = SceneInteraction.create();
+		interaction.select(first, SelectionMode.Replace);
+		if (!interaction.isSelected(first) || interaction.selected().length != 1)
+			return 26;
+		interaction.select(second, SelectionMode.Add);
+		if (interaction.selected().length != 2)
+			return 26;
+		interaction.select(first, SelectionMode.Toggle);
+		if (interaction.isSelected(first) || !interaction.isSelected(second))
+			return 26;
+		interaction.clearSelection();
+		interaction.dispose();
 		var spatialIndex = SpatialIndex.create(snapshot),
 			spatialBounds = spatialIndex.queryBounds(-2.0, -1.0, -1.0, 0.0, 1.0, 1.0),
 			spatialRay = spatialIndex.queryRay(-0.65, 0.0, 1.0, 0.0, 0.0, -1.0),

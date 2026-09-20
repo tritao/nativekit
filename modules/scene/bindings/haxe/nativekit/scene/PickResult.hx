@@ -7,7 +7,7 @@ class PickResult {
 	final picked:nkscene_render_pick_result;
 	final pickedOccurrence:Occurrence;
 
-	@:allow(SceneRenderer, SpatialIndex)
+	@:allow(SceneRenderer, SceneInteraction, SpatialIndex)
 	private function new(picked:nkscene_render_pick_result) {
 		this.picked = picked;
 		pickedOccurrence = Occurrence.fromNative(picked.get_occurrence());
@@ -33,4 +33,8 @@ class PickResult {
 
 	public function depth():Float
 		return picked.get_depth();
+
+	@:allow(SceneInteraction)
+	function nativeValue():nkscene_render_pick_result
+		return picked;
 }

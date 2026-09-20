@@ -115,6 +115,20 @@ class SceneRenderer {
 		};
 	}
 
+	@:allow(SceneInteraction)
+	function nativeExecutor():nkscene_render_executor {
+		ensureLive();
+		return executor.borrow();
+	}
+
+	@:allow(SceneInteraction)
+	function nativePlan():nkscene_render_plan {
+		ensureLive();
+		if (planOwner == null)
+			throw "sceneInteraction requires a compiled render plan";
+		return planOwner.borrow();
+	}
+
 	public function dispose():Void {
 		if (disposed)
 			return;

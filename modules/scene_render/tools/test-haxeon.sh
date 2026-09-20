@@ -14,6 +14,7 @@ mkdir -p "$generated_dir"
 
 scene_header="$repo_dir/modules/scene/include/nativekit_scene.h"
 render_header="$repo_dir/modules/scene_render/include/nativekit_scene_render.h"
+interaction_header="$repo_dir/modules/scene_interaction/include/nativekit_scene_interaction.h"
 nativekit_import_header="$repo_dir/bindings/haxe/nativekit_import.h"
 gpu_import_header="$repo_dir/modules/gpu/bindings/nativekit_gpu_import.h"
 nativekit_header="$repo_dir/include/nativekit.h"
@@ -79,16 +80,38 @@ import_hxi \
 	--source-label=modules/scene_render/include/nativekit_scene_render.h \
 	"$render_header"
 
+import_hxi \
+	--target="$target" \
+	--library=nativekit_scene_interaction \
+	--interface=NativeKitSceneInteraction \
+	--depends=NativeKitSceneRender \
+	--depends=NativeKitScene \
+	--depends=NativeKitGpu \
+	--include="$repo_dir/modules/scene_interaction/include" \
+	--include="$repo_dir/modules/scene_render/include" \
+	--include="$repo_dir/modules/scene/include" \
+	--include="$repo_dir/modules/gpu/include" \
+	--include="$repo_dir/include" \
+	--exclude-header="$render_header" \
+	--exclude-header="$scene_header" \
+	--exclude-header="$gpu_header" \
+	--exclude-header="$graphics_header" \
+	--exclude-header="$nativekit_header" \
+	--output="$generated_dir/nativekit-scene-interaction.hxi" \
+	--source-label=modules/scene_interaction/bindings/nativekit_scene_interaction_import.h \
+	"$interaction_header"
+
 output="$generated_dir/nativekit-scene.hx.hl"
 (
 	cd "$haxeon_dir"
 	"$haxe_bin" -cp "$haxeon_dir/src" -cp "$module_dir/tests/haxeon" --run HxiNativeKitSceneMain \
 		"$output" "$generated_dir/nativekit-scene.hxi" "$generated_dir/nativekit-scene-render.hxi" \
-		"$repo_dir" "$generated_dir/nativekit.hxi" "$generated_dir/nativekit-gpu.hxi"
+		"$generated_dir/nativekit-scene-interaction.hxi" "$repo_dir" \
+		"$generated_dir/nativekit.hxi" "$generated_dir/nativekit-gpu.hxi"
 )
 
 set +e
-LD_LIBRARY_PATH="$haxeon_runtime_dir:$haxeon_dir/.tools/hashlink:$nativekit_build/modules/scene_render:$nativekit_build/modules/scene:$nativekit_build/modules/gpu:$nativekit_build:${LD_LIBRARY_PATH:-}" \
+LD_LIBRARY_PATH="$haxeon_runtime_dir:$haxeon_dir/.tools/hashlink:$nativekit_build/modules/scene_interaction:$nativekit_build/modules/scene_render:$nativekit_build/modules/scene:$nativekit_build/modules/gpu:$nativekit_build:${LD_LIBRARY_PATH:-}" \
 	xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 "$hashlink_bin" "$output"
 status=$?
 set -e
