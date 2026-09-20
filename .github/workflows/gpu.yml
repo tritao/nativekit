@@ -1,0 +1,32 @@
+name: GPU
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  linux-gl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - name: Install GPU test dependencies
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          libgl1-mesa-dev libgtk-3-dev libwebkit2gtk-4.1-dev
+          ninja-build xvfb dbus-x11
+      - name: Configure
+        run: >-
+          cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=Debug
+          -DNK_BUILD_SHARED=OFF -DNK_BUILD_EXAMPLES=OFF
+          -DNK_BUILD_TESTS=ON -DNK_BUILD_GPU=ON -DNK_BUILD_UI=OFF
+      - name: Build GPU tests
+        run: >-
+          cmake --build build --target nativekit_gpu_transfer_smoke_test
+          nativekit_gpu_contract_smoke_test nativekit_gpu_batch_submit_test
+      - name: Run transfer and contract tests
+        run: >-
+          ctest --test-dir build --output-on-failure --timeout 120
+          -L 'gpu|transfer'

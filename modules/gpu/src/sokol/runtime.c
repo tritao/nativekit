@@ -317,42 +317,59 @@ static uint32_t nk_sokol_image_copy(sg_image source, uint32_t source_mip, uint32
         height > destination_height - destination_y)
         return 0;
 
+    const size_t row_size = (size_t)width * source_bytes;
+    const size_t temporary_size = row_size * height;
+    if (!row_size || row_size / source_bytes != width || temporary_size / row_size != height)
+        return 0;
+    uint8_t *temporary = (uint8_t *)malloc(temporary_size);
+    if (!temporary)
+        return 0;
+
     GLint old_read_framebuffer = 0;
-    GLint old_draw_framebuffer = 0;
-    GLuint framebuffers[2] = {0, 0};
+    GLint old_pack_buffer = 0;
+    GLint old_unpack_buffer = 0;
+    GLuint framebuffer = 0;
     clear_gl_errors();
     glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &old_read_framebuffer);
-    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &old_draw_framebuffer);
-    glGenFramebuffers(2, framebuffers);
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffers[0]);
+    glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &old_pack_buffer);
+    glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &old_unpack_buffer);
+    glGenFramebuffers(1, &framebuffer);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
     glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, source_target, source_texture,
                            (GLint)source_mip);
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, framebuffers[1]);
-    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, destination_target,
-                           destination_texture, (GLint)destination_mip);
     const GLenum read_status = glCheckFramebufferStatus(GL_READ_FRAMEBUFFER);
-    const GLenum draw_status = glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
-    if (read_status == GL_FRAMEBUFFER_COMPLETE && draw_status == GL_FRAMEBUFFER_COMPLETE) {
+    if (read_status == GL_FRAMEBUFFER_COMPLETE) {
         const GLint source_gl_y = (GLint)source_height - (GLint)source_y - (GLint)height;
-        const GLint destination_gl_y = (GLint)destination_height - (GLint)destination_y - (GLint)height;
-        glBlitFramebuffer((GLint)source_x, source_gl_y, (GLint)(source_x + width),
-                          source_gl_y + (GLint)height, (GLint)destination_x, destination_gl_y,
-                          (GLint)(destination_x + width), destination_gl_y + (GLint)height,
-                          GL_COLOR_BUFFER_BIT, GL_NEAREST);
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+        glReadPixels((GLint)source_x, source_gl_y, (GLsizei)width, (GLsizei)height, source_format,
+                     source_type, temporary);
+        glPixelStorei(GL_PACK_ALIGNMENT, 4);
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+        glBindTexture(destination_target, destination_texture);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        const GLint destination_gl_y =
+            (GLint)destination_height - (GLint)destination_y - (GLint)height;
+        glTexSubImage2D(destination_target, (GLint)destination_mip, (GLint)destination_x,
+                        destination_gl_y, (GLsizei)width, (GLsizei)height, destination_format,
+                        destination_type, temporary);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+        glBindTexture(destination_target, 0);
     }
     glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)old_read_framebuffer);
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, (GLuint)old_draw_framebuffer);
-    glDeleteFramebuffers(2, framebuffers);
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, (GLuint)old_pack_buffer);
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, (GLuint)old_unpack_buffer);
+    glDeleteFramebuffers(1, &framebuffer);
     const GLenum error = glGetError();
+    free(temporary);
     sg_reset_state_cache();
-    return read_status == GL_FRAMEBUFFER_COMPLETE && draw_status == GL_FRAMEBUFFER_COMPLETE &&
-           error == GL_NO_ERROR;
+    return read_status == GL_FRAMEBUFFER_COMPLETE && error == GL_NO_ERROR;
 }
 
 static uint32_t nk_sokol_buffer_to_image(sg_buffer source, uint32_t source_offset,
                                          uint32_t row_pitch, sg_image destination,
-                                         uint32_t mip_level, uint32_t layer, uint32_t x,
-                                         uint32_t y, uint32_t width, uint32_t height) {
+                                         uint32_t mip_level, uint32_t layer, uint32_t x, uint32_t y,
+                                         uint32_t width, uint32_t height) {
     uint32_t source_buffer = 0;
     uint32_t texture = 0;
     GLenum target = 0;
@@ -365,23 +382,51 @@ static uint32_t nk_sokol_buffer_to_image(sg_buffer source, uint32_t source_offse
         !image_transfer_info(destination, mip_level, layer, &texture, &target, &image_width,
                              &image_height, &format, &type, &bytes) ||
         !width || !height || x > image_width || y > image_height || width > image_width - x ||
-        height > image_height - y || width > UINT32_MAX / bytes ||
-        row_pitch < width * bytes || row_pitch % bytes != 0)
+        height > image_height - y || width > UINT32_MAX / bytes || row_pitch < width * bytes ||
+        row_pitch % bytes != 0)
+        return 0;
+    const size_t tight_row = (size_t)width * bytes;
+    const size_t source_size = (size_t)row_pitch * height;
+    const size_t temporary_size = tight_row * height;
+    if (source_size / row_pitch != height || temporary_size / tight_row != height)
+        return 0;
+    uint8_t *temporary = (uint8_t *)malloc(temporary_size);
+    if (!temporary)
         return 0;
     clear_gl_errors();
     GLint old_unpack_buffer = 0;
     glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &old_unpack_buffer);
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, source_buffer);
+    const uint8_t *mapped = (const uint8_t *)glMapBufferRange(
+        GL_PIXEL_UNPACK_BUFFER, (GLintptr)source_offset, (GLsizeiptr)source_size, GL_MAP_READ_BIT);
+    if (!mapped) {
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, (GLuint)old_unpack_buffer);
+        free(temporary);
+        sg_reset_state_cache();
+        return 0;
+    }
+    for (uint32_t row = 0; row < height; ++row) {
+        memcpy(temporary + (size_t)row * tight_row, mapped + (size_t)(height - row - 1) * row_pitch,
+               tight_row);
+    }
+    const GLboolean unmapped = glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+    if (!unmapped || glGetError() != GL_NO_ERROR) {
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, (GLuint)old_unpack_buffer);
+        free(temporary);
+        sg_reset_state_cache();
+        return 0;
+    }
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
     glBindTexture(target, texture);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glPixelStorei(GL_UNPACK_ROW_LENGTH, (GLint)(row_pitch / bytes));
-    glTexSubImage2D(target, (GLint)mip_level, (GLint)x, (GLint)y, (GLsizei)width, (GLsizei)height,
-                    format, type, (const void *)(uintptr_t)source_offset);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    glTexSubImage2D(target, (GLint)mip_level, (GLint)x, (GLint)y, (GLsizei)width, (GLsizei)height,
+                    format, type, temporary);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     glBindTexture(target, 0);
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, (GLuint)old_unpack_buffer);
     const GLenum error = glGetError();
+    free(temporary);
     sg_reset_state_cache();
     return error == GL_NO_ERROR;
 }
