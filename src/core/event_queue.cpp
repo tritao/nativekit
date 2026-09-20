@@ -13,9 +13,8 @@ namespace nk::core {
 
 namespace {
 bool is_terminal_request_event(const QueuedEvent &event) {
-    if (event.kind == NK_EVENT_TRANSPORT_CONNECTED ||
-        event.kind == NK_EVENT_TRANSPORT_ACCEPTED || event.kind == NK_EVENT_TRANSPORT_CLOSED ||
-        event.kind == NK_EVENT_TRANSPORT_FAILED)
+    if (event.kind == NK_EVENT_TRANSPORT_CONNECTED || event.kind == NK_EVENT_TRANSPORT_ACCEPTED ||
+        event.kind == NK_EVENT_TRANSPORT_CLOSED || event.kind == NK_EVENT_TRANSPORT_FAILED)
         return true;
     if (event.kind == NK_EVENT_TASK_COMPLETE || event.kind == NK_EVENT_TASK_FAILED ||
         event.kind == NK_EVENT_TASK_CANCELLED)

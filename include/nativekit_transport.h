@@ -112,8 +112,8 @@ NK_API nk_result NK_CALL nk_transport_send(nk_transport transport,
                                            uint64_t size);
 
 /** Reads currently buffered application bytes without blocking. This call is thread-safe. */
-NK_API nk_result NK_CALL nk_transport_receive(nk_transport transport, void *data,
-                                              uint64_t size, uint64_t *out_received NK_OUT);
+NK_API nk_result NK_CALL nk_transport_receive(nk_transport transport, void *data, uint64_t size,
+                                              uint64_t *out_received NK_OUT);
 
 /** Stops a transport, joins its worker, and releases its handle. This call is thread-safe. */
 NK_API nk_result NK_CALL nk_transport_close(nk_transport transport);

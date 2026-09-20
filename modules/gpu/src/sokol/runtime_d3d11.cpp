@@ -692,12 +692,24 @@ int d3d11_end_pass() {
 }
 
 const nk_sokol_transfer_api transfer_api = {
-    d3d11_buffer_copy,         d3d11_image_copy,           d3d11_buffer_to_image,
-    d3d11_image_to_buffer,     d3d11_readback_begin,       d3d11_readback_begin_buffer,
-    d3d11_readback_status,     d3d11_readback_size,        d3d11_readback_row_pitch,
-    d3d11_readback_read,       d3d11_readback_destroy,     d3d11_begin_pass,
-    d3d11_end_pass,            d3d11_timestamp_begin,      d3d11_timestamp_end,
-    d3d11_timestamp_status,    d3d11_timestamp_elapsed_ns, d3d11_timestamp_destroy,
+    d3d11_buffer_copy,
+    d3d11_image_copy,
+    d3d11_buffer_to_image,
+    d3d11_image_to_buffer,
+    d3d11_readback_begin,
+    d3d11_readback_begin_buffer,
+    d3d11_readback_status,
+    d3d11_readback_size,
+    d3d11_readback_row_pitch,
+    d3d11_readback_read,
+    d3d11_readback_destroy,
+    d3d11_begin_pass,
+    d3d11_end_pass,
+    d3d11_timestamp_begin,
+    d3d11_timestamp_end,
+    d3d11_timestamp_status,
+    d3d11_timestamp_elapsed_ns,
+    d3d11_timestamp_destroy,
     d3d11_timestamp_supported,
 };
 

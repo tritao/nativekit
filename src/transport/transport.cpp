@@ -28,7 +28,9 @@
 #if defined(__EMSCRIPTEN__)
 
 namespace nk::transport {
-nk_capabilities capabilities() noexcept { return 0; }
+nk_capabilities capabilities() noexcept {
+    return 0;
+}
 void shutdown() noexcept {}
 } // namespace nk::transport
 
@@ -52,13 +54,16 @@ nk_result NK_CALL nk_transport_receive(nk_transport, void *, uint64_t, uint64_t 
         *out_received = 0;
     return NK_ERROR_UNSUPPORTED;
 }
-nk_result NK_CALL nk_transport_close(nk_transport) { return NK_ERROR_UNSUPPORTED; }
-nk_result NK_CALL nk_listener_close(nk_listener) { return NK_ERROR_UNSUPPORTED; }
+nk_result NK_CALL nk_transport_close(nk_transport) {
+    return NK_ERROR_UNSUPPORTED;
+}
+nk_result NK_CALL nk_listener_close(nk_listener) {
+    return NK_ERROR_UNSUPPORTED;
+}
 nk_result NK_CALL nk_transport_event_data(const nk_event *, nk_transport_data_event *) {
     return NK_ERROR_UNSUPPORTED;
 }
-nk_result NK_CALL nk_transport_event_accepted(const nk_event *,
-                                               nk_transport_accepted_event *) {
+nk_result NK_CALL nk_transport_event_accepted(const nk_event *, nk_transport_accepted_event *) {
     return NK_ERROR_UNSUPPORTED;
 }
 
@@ -149,8 +154,8 @@ bool copy_string(const char *value, std::string &out, bool nullable = true) {
 }
 
 bool valid_kind(nk_transport_kind kind) {
-    return kind == NK_TRANSPORT_TCP || kind == NK_TRANSPORT_UDP ||
-           kind == NK_TRANSPORT_WEBSOCKET || kind == NK_TRANSPORT_LOCAL;
+    return kind == NK_TRANSPORT_TCP || kind == NK_TRANSPORT_UDP || kind == NK_TRANSPORT_WEBSOCKET ||
+           kind == NK_TRANSPORT_LOCAL;
 }
 
 bool copy_options(const nk_transport_options *input, TransportOptions &output, bool listening) {
@@ -264,8 +269,8 @@ bool set_nonblocking(socket_type socket) noexcept {
 
 bool set_no_delay(socket_type socket) noexcept {
     int value = 1;
-    return setsockopt(socket, IPPROTO_TCP, TCP_NODELAY,
-                      reinterpret_cast<const char *>(&value), sizeof(value)) == 0;
+    return setsockopt(socket, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char *>(&value),
+                      sizeof(value)) == 0;
 }
 
 int wait_socket(socket_type socket, bool readable, bool writable, uint32_t timeout_ms) noexcept {
@@ -378,9 +383,8 @@ class Sha1 {
                            static_cast<uint32_t>(block[index * 4 + 3]);
         }
         for (unsigned index = 16; index != 80; ++index)
-            words[index] = rotate(words[index - 3] ^ words[index - 8] ^ words[index - 14] ^
-                                       words[index - 16],
-                                   1);
+            words[index] = rotate(
+                words[index - 3] ^ words[index - 8] ^ words[index - 14] ^ words[index - 16], 1);
         uint32_t a = state_[0];
         uint32_t b = state_[1];
         uint32_t c = state_[2];
@@ -419,8 +423,7 @@ class Sha1 {
     std::array<uint8_t, 64> block_{};
     std::size_t used_ = 0;
     uint64_t total_ = 0;
-    std::array<uint32_t, 5> state_ = {0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476,
-                                      0xc3d2e1f0};
+    std::array<uint32_t, 5> state_ = {0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0};
 };
 
 std::string base64(const uint8_t *data, std::size_t size) {
@@ -452,8 +455,9 @@ std::string websocket_accept(std::string_view key) {
 
 std::string lower_copy(std::string_view value) {
     std::string result(value);
-    std::transform(result.begin(), result.end(), result.begin(),
-                   [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
+    std::transform(result.begin(), result.end(), result.begin(), [](unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
     return result;
 }
 
@@ -550,7 +554,8 @@ nk_result connect_socket(const TransportOptions &options, socket_type &out_socke
 
     nk_result result = NK_TRANSPORT_ERROR_CONNECTION;
     for (addrinfo *address = addresses; address; address = address->ai_next) {
-        const auto socket = ::socket(address->ai_family, address->ai_socktype, address->ai_protocol);
+        const auto socket =
+            ::socket(address->ai_family, address->ai_socktype, address->ai_protocol);
         if (socket == invalid_socket)
             continue;
         if (!set_nonblocking(socket)) {
@@ -559,9 +564,8 @@ nk_result connect_socket(const TransportOptions &options, socket_type &out_socke
         }
         if ((options.flags & NK_TRANSPORT_NO_DELAY) != 0 && options.kind != NK_TRANSPORT_UDP)
             (void)set_no_delay(socket);
-        const int connected =
-            ::connect(socket, address->ai_addr,
-                      static_cast<socket_length_type>(address->ai_addrlen));
+        const int connected = ::connect(socket, address->ai_addr,
+                                        static_cast<socket_length_type>(address->ai_addrlen));
         if (connected == 0) {
             out_socket = socket;
             result = NK_OK;
@@ -639,7 +643,8 @@ nk_result create_listener_socket(const TransportOptions &options, socket_type &o
 
     nk_result result = NK_TRANSPORT_ERROR_CONNECTION;
     for (addrinfo *address = addresses; address; address = address->ai_next) {
-        const auto socket = ::socket(address->ai_family, address->ai_socktype, address->ai_protocol);
+        const auto socket =
+            ::socket(address->ai_family, address->ai_socktype, address->ai_protocol);
         if (socket == invalid_socket)
             continue;
         if ((options.flags & NK_TRANSPORT_REUSE_ADDRESS) != 0) {
@@ -794,8 +799,8 @@ class TransportResource final : public nk::core::Resource,
     bool read_http_headers(std::string &headers) noexcept {
         const auto deadline = clock_type::now() + std::chrono::milliseconds(options.timeout_ms);
         for (;;) {
-            const auto position = std::search(wire_input.begin(), wire_input.end(),
-                                              "\r\n\r\n", "\r\n\r\n" + 4);
+            const auto position =
+                std::search(wire_input.begin(), wire_input.end(), "\r\n\r\n", "\r\n\r\n" + 4);
             if (position != wire_input.end()) {
                 const auto end = static_cast<std::size_t>(position - wire_input.begin()) + 4;
                 headers.assign(reinterpret_cast<const char *>(wire_input.data()), end);
@@ -811,8 +816,8 @@ class TransportResource final : public nk::core::Resource,
                 continue;
             std::array<uint8_t, read_chunk> bytes{};
 #if defined(_WIN32)
-            const int count =
-                ::recv(socket, reinterpret_cast<char *>(bytes.data()), static_cast<int>(bytes.size()), 0);
+            const int count = ::recv(socket, reinterpret_cast<char *>(bytes.data()),
+                                     static_cast<int>(bytes.size()), 0);
 #else
             const ssize_t count = ::recv(socket, bytes.data(), bytes.size(), 0);
 #endif
@@ -897,7 +902,8 @@ bool emit_simple(nk_event_kind kind, nk_handle source, nk_result result = NK_OK)
 }
 
 template <typename Payload>
-bool emit_payload(nk_event_kind kind, nk_handle source, nk_result result, const Payload &payload) noexcept {
+bool emit_payload(nk_event_kind kind, nk_handle source, nk_result result,
+                  const Payload &payload) noexcept {
 #if NK_ENABLE_NO_EXCEPTIONS
     nk::core::QueuedEvent event;
     event.kind = kind;
@@ -931,7 +937,8 @@ std::shared_ptr<ListenerResource> get_listener(nk_listener handle) {
         nk::core::handles().get(static_cast<nk_handle>(handle), nk::core::ResourceType::listener));
 }
 
-std::vector<uint8_t> websocket_frame(const void *data, std::size_t size, bool mask, uint8_t opcode) {
+std::vector<uint8_t> websocket_frame(const void *data, std::size_t size, bool mask,
+                                     uint8_t opcode) {
     std::vector<uint8_t> result;
     const std::size_t header_size = size < 126 ? 2 : size <= 0xffff ? 4 : 10;
     result.resize(header_size + (mask ? 4 : 0) + size);
@@ -947,7 +954,8 @@ std::vector<uint8_t> websocket_frame(const void *data, std::size_t size, bool ma
     } else {
         result[1] = static_cast<uint8_t>(127 | (mask ? 0x80 : 0));
         for (unsigned index = 0; index != 8; ++index)
-            result[2 + index] = static_cast<uint8_t>(static_cast<uint64_t>(size) >> (56 - index * 8));
+            result[2 + index] =
+                static_cast<uint8_t>(static_cast<uint64_t>(size) >> (56 - index * 8));
         position = 10;
     }
     std::array<uint8_t, 4> mask_key{};
@@ -1045,8 +1053,8 @@ void TransportResource::receive_application(const uint8_t *data, std::size_t siz
     {
         std::lock_guard lock(mutex);
         if (state != State::open ||
-            size > options.receive_buffer_size -
-                       std::min(options.receive_buffer_size, incoming_bytes))
+            size >
+                options.receive_buffer_size - std::min(options.receive_buffer_size, incoming_bytes))
             return;
         incoming.emplace_back(data, data + size);
         incoming_bytes += size;
@@ -1054,8 +1062,9 @@ void TransportResource::receive_application(const uint8_t *data, std::size_t siz
 #else
     try {
         std::lock_guard lock(mutex);
-        if (state != State::open || size > options.receive_buffer_size - std::min(options.receive_buffer_size,
-                                                                                    incoming_bytes))
+        if (state != State::open ||
+            size >
+                options.receive_buffer_size - std::min(options.receive_buffer_size, incoming_bytes))
             return;
         incoming.emplace_back(data, data + size);
         incoming_bytes += size;
@@ -1106,7 +1115,8 @@ bool TransportResource::parse_websocket_frames() noexcept {
         const std::size_t payload_offset = header_size + mask_size;
         std::vector<uint8_t> payload(static_cast<std::size_t>(size));
         if (size != 0)
-            std::memcpy(payload.data(), wire_input.data() + payload_offset, static_cast<std::size_t>(size));
+            std::memcpy(payload.data(), wire_input.data() + payload_offset,
+                        static_cast<std::size_t>(size));
         if (masked) {
             for (std::size_t index = 0; index != payload.size(); ++index)
                 payload[index] ^= mask_key[index % mask_key.size()];
@@ -1172,7 +1182,8 @@ bool TransportResource::read_socket() noexcept {
             receive_application(bytes.data(), static_cast<std::size_t>(count));
             return true;
         }
-        return count == 0 || socket_would_block(socket_error()) || socket_interrupted(socket_error());
+        return count == 0 || socket_would_block(socket_error()) ||
+               socket_interrupted(socket_error());
     }
 
     std::array<uint8_t, read_chunk> bytes{};
@@ -1208,8 +1219,8 @@ bool TransportResource::write_socket() noexcept {
         int sent = 0;
         if (options.kind == NK_TRANSPORT_UDP && udp_server && udp_peer_valid) {
             sent = ::sendto(socket, reinterpret_cast<const char *>(chunk.data() + outgoing_offset),
-                             static_cast<int>(remaining), 0,
-                             reinterpret_cast<const sockaddr *>(&udp_peer.storage), udp_peer.size);
+                            static_cast<int>(remaining), 0,
+                            reinterpret_cast<const sockaddr *>(&udp_peer.storage), udp_peer.size);
         } else {
             sent = ::send(socket, reinterpret_cast<const char *>(chunk.data() + outgoing_offset),
                           static_cast<int>(remaining), 0);
@@ -1265,12 +1276,11 @@ nk_result TransportResource::websocket_handshake() noexcept {
             !header_has_token(upgrade, "websocket") || !header_has_token(connection, "upgrade"))
             return NK_TRANSPORT_ERROR_PROTOCOL;
         const auto accept = websocket_accept(key);
-        const std::string response =
-            "HTTP/1.1 101 Switching Protocols\r\n"
-            "Upgrade: websocket\r\n"
-            "Connection: Upgrade\r\n"
-            "Sec-WebSocket-Accept: " +
-            accept + "\r\n\r\n";
+        const std::string response = "HTTP/1.1 101 Switching Protocols\r\n"
+                                     "Upgrade: websocket\r\n"
+                                     "Connection: Upgrade\r\n"
+                                     "Sec-WebSocket-Accept: " +
+                                     accept + "\r\n\r\n";
         if (!send_all(socket, response.data(), response.size(), options.timeout_ms, stopping))
             return NK_TRANSPORT_ERROR_CONNECTION;
         if (!parse_websocket_frames())
@@ -1280,13 +1290,17 @@ nk_result TransportResource::websocket_handshake() noexcept {
 
     const std::string key = "dGhlIHNhbXBsZSBub25jZQ==";
     const std::string host = options.host + ":" + std::to_string(options.port);
-    const std::string request =
-        "GET " + options.path + " HTTP/1.1\r\n"
-        "Host: " + host + "\r\n"
-        "Upgrade: websocket\r\n"
-        "Connection: Upgrade\r\n"
-        "Sec-WebSocket-Key: " + key + "\r\n"
-        "Sec-WebSocket-Version: 13\r\n\r\n";
+    const std::string request = "GET " + options.path +
+                                " HTTP/1.1\r\n"
+                                "Host: " +
+                                host +
+                                "\r\n"
+                                "Upgrade: websocket\r\n"
+                                "Connection: Upgrade\r\n"
+                                "Sec-WebSocket-Key: " +
+                                key +
+                                "\r\n"
+                                "Sec-WebSocket-Version: 13\r\n\r\n";
     if (!send_all(socket, request.data(), request.size(), options.timeout_ms, stopping))
         return NK_TRANSPORT_ERROR_CONNECTION;
     std::string response;
@@ -1389,8 +1403,8 @@ void ListenerResource::run() noexcept {
             sockaddr_storage peer{};
             socket_length_type peer_size = sizeof(peer);
 #if defined(_WIN32)
-            const int count = ::recvfrom(socket, reinterpret_cast<char *>(probe.data()), 1, MSG_PEEK,
-                                         reinterpret_cast<sockaddr *>(&peer), &peer_size);
+            const int count = ::recvfrom(socket, reinterpret_cast<char *>(probe.data()), 1,
+                                         MSG_PEEK, reinterpret_cast<sockaddr *>(&peer), &peer_size);
 #else
             const ssize_t count = ::recvfrom(socket, probe.data(), probe.size(), MSG_PEEK,
                                              reinterpret_cast<sockaddr *>(&peer), &peer_size);
@@ -1474,7 +1488,9 @@ void ListenerResource::run() noexcept {
 } // namespace
 
 namespace nk::transport {
-nk_capabilities capabilities() noexcept { return NK_CAP_TRANSPORT; }
+nk_capabilities capabilities() noexcept {
+    return NK_CAP_TRANSPORT;
+}
 
 void shutdown() noexcept {
     const auto listeners = nk::core::handles().handles_of_type(nk::core::ResourceType::listener);
@@ -1540,12 +1556,11 @@ nk_result NK_CALL nk_transport_listen(const nk_transport_options *options,
         auto listener = std::make_shared<ListenerResource>();
         listener->options = std::move(copied);
         listener->generation = nk::core::runtime_generation();
-        nk_result result = create_listener_socket(listener->options, listener->socket,
-                                                  listener->local_path);
+        nk_result result =
+            create_listener_socket(listener->options, listener->socket, listener->local_path);
         if (result != NK_OK)
             return fail(result, "listener socket creation failed");
-        const auto handle =
-            nk::core::handles().insert(nk::core::ResourceType::listener, listener);
+        const auto handle = nk::core::handles().insert(nk::core::ResourceType::listener, listener);
         if (handle == NK_INVALID_HANDLE) {
             close_socket(listener->socket);
             listener->socket = invalid_socket;
@@ -1602,7 +1617,7 @@ nk_result NK_CALL nk_transport_send(nk_transport handle, const void *data, uint6
 }
 
 nk_result NK_CALL nk_transport_receive(nk_transport handle, void *data, uint64_t size,
-                                        uint64_t *out_received) {
+                                       uint64_t *out_received) {
     return nk::core::result_boundary("transport receive", [&]() -> nk_result {
         if (!out_received || (size != 0 && !data))
             return fail(NK_ERROR_INVALID_ARGUMENT, "transport receive arguments are invalid");
@@ -1674,14 +1689,14 @@ nk_result NK_CALL nk_transport_event_data(const nk_event *event,
 }
 
 nk_result NK_CALL nk_transport_event_accepted(const nk_event *event,
-                                               nk_transport_accepted_event *out_accepted) {
+                                              nk_transport_accepted_event *out_accepted) {
     if (!event || !out_accepted || out_accepted->struct_size < sizeof(*out_accepted) ||
         event->kind != NK_EVENT_TRANSPORT_ACCEPTED || !event->data ||
         event->data_size != sizeof(nk_transport_accepted_event))
         return fail(NK_ERROR_INVALID_ARGUMENT, "transport accepted event is invalid");
     std::memcpy(out_accepted, event->data, sizeof(*out_accepted));
-    if (out_accepted->struct_size < sizeof(*out_accepted) ||
-        !valid_kind(out_accepted->kind) || out_accepted->transport == NK_INVALID_HANDLE)
+    if (out_accepted->struct_size < sizeof(*out_accepted) || !valid_kind(out_accepted->kind) ||
+        out_accepted->transport == NK_INVALID_HANDLE)
         return fail(NK_ERROR_INVALID_ARGUMENT, "transport accepted payload is malformed");
     out_accepted->struct_size = sizeof(*out_accepted);
     return NK_OK;
