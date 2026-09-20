@@ -143,7 +143,7 @@ if(NK_BUILD_TESTS)
             set_tests_properties(nativekit_gpu_transfer_smoke PROPERTIES
                 LABELS "graphics;gpu;transfer"
                 TIMEOUT 30
-                ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
+                ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1;NO_AT_BRIDGE=1")
 
             add_executable(nativekit_gpu_contract_smoke_test tests/contract_smoke.cpp)
             target_compile_features(nativekit_gpu_contract_smoke_test PRIVATE cxx_std_17)
@@ -160,7 +160,7 @@ if(NK_BUILD_TESTS)
             set_tests_properties(nativekit_gpu_contract_smoke PROPERTIES
                 LABELS "graphics;gpu"
                 TIMEOUT 15
-                ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
+                ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1;NO_AT_BRIDGE=1")
             add_executable(nativekit_gpu_batch_submit_test tests/batch_submit.cpp)
             target_compile_features(nativekit_gpu_batch_submit_test PRIVATE cxx_std_17)
             target_compile_definitions(nativekit_gpu_batch_submit_test PRIVATE NKGPU_TESTING=1)
@@ -179,7 +179,7 @@ if(NK_BUILD_TESTS)
             set_tests_properties(nativekit_gpu_batch_submit PROPERTIES
                 LABELS "graphics;gpu"
                 TIMEOUT 15
-                ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
+                ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1;NO_AT_BRIDGE=1")
         endif()
     endif()
 endif()
