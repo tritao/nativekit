@@ -2,15 +2,19 @@ package pages;
 
 import UiExplorer;
 import Color;
+import Insets;
 import GradientStop;
 import Image;
 import LayoutAxis;
+import LayoutDirection;
 import LayoutStyle;
 import LineCap;
 import LineJoin;
 import PathBuilder;
 import Rect;
+import Transform2D;
 import nativekit.ui.core.View;
+import nativekit.ui.core.CachePolicy;
 import nativekit.ui.widgets.CanvasView;
 import nativekit.ui.widgets.Column;
 import nativekit.ui.widgets.KeyedView;
@@ -20,6 +24,7 @@ import nativekit.ui.widgets.LayeredImageView;
 import nativekit.ui.widgets.LayeredImageView.ImageLayer;
 import nativekit.ui.widgets.NineSliceView;
 import nativekit.ui.widgets.Row;
+import RendererStats;
 import components.CubeView;
 
 /** The original retained graphics workload, presented as an Explorer page. */
@@ -208,6 +213,70 @@ class GraphicsPage {
 		items.push(explorer.keyed("frame-preview", demoPanel(explorer, "Frame workload",
 			"A compact visualization of retained work: layout, paint compilation, and compositor submission.",
 			preview(explorer, "frame", ["Layout 72%", "Paint 46%", "Submit 88%"]))));
+		items.push(explorer.keyed("retained-revisions", retainedRevisionDemo(explorer)));
+	}
+
+	static function retainedRevisionDemo(explorer:UiExplorer):View {
+		var metrics = explorer.latestFrameMetrics();
+		var rendererStats:RendererStats = explorer.latestRendererStats();
+		var submitSummary = metrics == null
+			? "Submit metrics become available after the first presented frame."
+			: 'submit=${metrics.nativeLayoutSubmitted ? "native layout" : "reused geometry"}' +
+				' · geometry changed=${metrics.resolvedGeometryChangedNodes}' +
+				' · geometry reused=${metrics.resolvedGeometryReusedNodes}' +
+				' · paint=${metrics.paintedNodes} rebuilt / ${metrics.paintSkippedNodes} skipped';
+		var cacheSummary = 'raster cache hits=${rendererStats.rasterCacheHits}' +
+			' · misses=${rendererStats.rasterCacheMisses}' +
+			' · entries=${rendererStats.rasterCacheEntries}';
+		var offset = explorer.state.retainedLayerOffset;
+		return explorer.panel("retained-revisions-panel", [
+			explorer.keyed("heading", explorer.heading("Revision-aware retained work")),
+			explorer.keyed("copy", explorer.caption(
+			"This custom layer is raster-cached and has a stylesheet opacity. Move it to exercise composite and hit-geometry invalidation while the subtree pixels remain reusable.")),
+			explorer.keyed("metrics", explorer.caption(submitSummary + "\n" + cacheSummary)),
+			explorer.keyed("preview", retainedRevisionPreview(explorer, offset)),
+			explorer.keyed("controls", new Row("retained-revisions-controls", [
+				explorer.keyed("move", explorer.button(offset == 0.0 ? "Move cached layer" : "Reset cached layer",
+				"move-cached-layer", function() {
+					explorer.state.retainedLayerOffset = offset == 0.0 ? 42.0 : 0.0;
+				})),
+				explorer.keyed("hint", explorer.caption(
+					"Expected: transform changes update composition and picking, while raster cache hits continue rising."))
+		], controlsStyle(explorer)))
+		]);
+	}
+
+	static function retainedRevisionPreview(explorer:UiExplorer, offset:Float):CanvasView {
+		var style = new LayoutStyle();
+		style.width = LayoutAxis.stretch();
+		style.height = LayoutAxis.fixed(150.0);
+		style.padding = new Insets(12.0, 12.0, 12.0, 12.0);
+		style.transform = Transform2D.translation(offset, 0.0);
+		return new CanvasView("retained-layer", function(canvas, geometry) {
+			var background = explorer.state.lightTheme
+				? Color.rgba(0.06, 0.10, 0.18, 1.0)
+				: Color.rgba(0.02, 0.04, 0.08, 1.0);
+			canvas.fillRectIfPositive(new Rect(0.0, 0.0, geometry.width, geometry.height), background);
+			for (index in 0...18) {
+				var column = index % 6;
+				var row = Std.int(index / 6);
+				var color = index % 3 == 0 ? Color.rgba(0.18, 0.48, 0.82, 1.0) :
+					index % 3 == 1 ? Color.rgba(0.16, 0.70, 0.46, 1.0) :
+					Color.rgba(0.50, 0.28, 0.72, 1.0);
+				canvas.fillRect(new Rect(12.0 + column * 48.0, 14.0 + row * 36.0,
+					32.0, 22.0), color);
+			}
+		}, style, "Cached subtree whose placement can change independently", true,
+			CachePolicy.Raster, "retained-layer-content-v1");
+	}
+
+	static function controlsStyle(explorer:UiExplorer):LayoutStyle {
+		var style = new LayoutStyle();
+		style.width = LayoutAxis.stretch();
+		style.direction = LayoutDirection.LeftToRight;
+		style.childGap = 12.0;
+		style.padding = new Insets(0.0, 0.0, 0.0, 0.0);
+		return style;
 	}
 
 	static function demoPanel(explorer:UiExplorer, title:String, copy:String,
