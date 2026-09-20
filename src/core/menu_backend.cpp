@@ -3,7 +3,7 @@
 #include "core/error.hpp"
 #include "core/runtime.hpp"
 
-#if !defined(NK_BACKEND_MACOS) && !defined(NK_BACKEND_GTK)
+#if !defined(NK_BACKEND_MACOS) && !defined(NK_BACKEND_GTK) && !defined(NK_BACKEND_WINDOWS)
 namespace nk::backend {
 
 nk_result menu_install(const std::shared_ptr<nk::core::MenuResource> &) noexcept {

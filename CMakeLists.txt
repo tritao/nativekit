@@ -256,6 +256,7 @@ elseif(WIN32)
     endif()
     target_sources(nativekit PRIVATE
         src/windows/nativekit_win.cpp
+        src/windows/nativekit_win_menu.cpp
         src/windows/nativekit_win_accessibility.cpp
         src/windows/nativekit_win_joystick.cpp)
     target_compile_definitions(nativekit PRIVATE NK_BACKEND_WINDOWS=1)

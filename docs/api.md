@@ -174,12 +174,16 @@ Set the process menu with `nk_application_set_menu()`. macOS renders this tree
 as `NSApp.mainMenu`; Linux exports it through GTK `GMenu`/`GAction` models so
 GNOME, KDE, and other desktop integrations can present the menu when their
 shell supports it. GTK application windows retain an in-window menubar when
-the desktop shell does not consume the exported menubar. Both backends report
-command activation through `NK_EVENT_MENU_ITEM_ACTIVATED`; a Quit-role item
-uses `NK_EVENT_APPLICATION_QUIT_REQUESTED`. The `NK_CAP_APPLICATION_MENU` bit
-must be checked before installation. Other backends currently retain and
-validate the model but return `NK_ERROR_UNSUPPORTED` when native installation
-is requested.
+the desktop shell does not consume the exported menubar. Windows installs the
+tree as a native Win32 menu bar on each NativeKit-owned top-level window; the
+menu is per-window because Windows has no global desktop menubar. New windows
+inherit the installed menu, the root title is ignored, and keyboard shortcuts
+use Win32 accelerators. All
+supported backends report command activation through
+`NK_EVENT_MENU_ITEM_ACTIVATED`; a Quit-role item uses
+`NK_EVENT_APPLICATION_QUIT_REQUESTED`. The `NK_CAP_APPLICATION_MENU` bit must
+be checked before installation. Other backends retain and validate the model
+but return `NK_ERROR_UNSUPPORTED` when native installation is requested.
 
 On macOS, a non-empty menu title creates the first application menu in the
 menubar. Root-level items with a standard role are placed in that application

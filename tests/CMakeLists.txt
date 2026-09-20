@@ -256,6 +256,10 @@ if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
 endif()
 
 if(WIN32)
+    add_executable(nativekit_win_menu integration/win_menu.cpp)
+    target_link_libraries(nativekit_win_menu PRIVATE NativeKit::nativekit)
+    add_test(NAME win_menu COMMAND nativekit_win_menu)
+    set_tests_properties(win_menu PROPERTIES LABELS "windows;menu" TIMEOUT 120)
     add_executable(nativekit_win_integration integration/win_create_destroy.c)
     target_link_libraries(nativekit_win_integration PRIVATE NativeKit::nativekit)
     set_target_properties(nativekit_win_integration PROPERTIES LINKER_LANGUAGE CXX)
@@ -330,6 +334,7 @@ endif()
 
 if(MINGW)
     foreach(target nativekit_c_abi nativekit_core_tests nativekit_win_integration
+            nativekit_win_menu
             nativekit_win_pointer_capture
             nativekit_win_accessibility_uia nativekit_win_text_input
             nativekit_capability_conformance)

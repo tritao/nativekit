@@ -38,6 +38,7 @@
 #include <dxgi1_2.h>
 #include <wrl/client.h>
 #include "nativekit_win_accessibility.hpp"
+#include "windows/nativekit_win_menu.hpp"
 
 #if defined(NK_HAS_WEBVIEW2)
 #include <WebView2.h>
@@ -1324,6 +1325,10 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
         }
         return 0;
     }
+    if (message == WM_NCDESTROY)
+        nk::backend::menu_backend_window_destroying(window);
+    if (nk::backend::menu_backend_handle_message(window, message, wparam, lparam))
+        return 0;
     auto *resource =
         reinterpret_cast<WinWindowResource *>(GetWindowLongPtrW(window, GWLP_USERDATA));
     if (message == WM_NCCREATE) {
@@ -2943,6 +2948,8 @@ void pump_events() noexcept {
     nk::windows_joystick::pump();
     MSG message;
     while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+        if (nk::backend::menu_backend_translate_accelerator(message))
+            continue;
         TranslateMessage(&message);
         DispatchMessageW(&message);
     }
@@ -2952,6 +2959,7 @@ void pump_events() noexcept {
 
 void shutdown() noexcept {
     nk::windows_joystick::shutdown();
+    menu_backend_shutdown();
     while (!notifications.empty())
         remove_notification(notifications.begin()->first);
     if (notification_window) {
@@ -3017,7 +3025,7 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
         NK_CAP_JOYSTICK | NK_CAP_GAMEPAD_RUMBLE | NK_CAP_SYSTEM_INFO | NK_CAP_APPLICATION_PATH |
         NK_CAP_APPLICATION_STORAGE | NK_CAP_SYSTEM_FONTS | NK_CAP_KEEP_AWAKE |
         NK_CAP_DISPLAY_ORIENTATION | NK_CAP_WRAP_NATIVE_WINDOW | NK_CAP_SURFACE_FRAME_CALLBACK |
-        NK_CAP_WINDOW_CUSTOM_DECORATIONS;
+        NK_CAP_WINDOW_CUSTOM_DECORATIONS | NK_CAP_APPLICATION_MENU;
 #if defined(NK_HAS_WEBVIEW2)
     if (webview2_available())
         capabilities |= NK_CAP_WEBVIEW;
@@ -3065,6 +3073,7 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
         resource->handle = nk::core::handles().insert(nk::core::ResourceType::window, resource);
         if (resource->handle == NK_INVALID_HANDLE)
             return fail(NK_ERROR_OUT_OF_MEMORY, "window handle registry is full");
+        nk::backend::menu_backend_window_created(resource->window);
         if (owner)
             owner->owned_windows.push_back(resource->handle);
         if (!(options->flags & NK_WINDOW_HIDDEN)) {
@@ -3111,6 +3120,7 @@ nk_result NK_CALL nk_window_destroy(nk_handle handle) {
         nk::core::handles().erase(handle, nk::core::ResourceType::window);
         return NK_OK;
     }
+    nk::backend::menu_backend_window_destroying(resource->window);
     SetWindowLongPtrW(resource->window, GWLP_USERDATA, 0);
     DestroyWindow(resource->window);
     resource->window = nullptr;
