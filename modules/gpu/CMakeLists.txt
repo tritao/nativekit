@@ -185,6 +185,20 @@ if(NK_BUILD_TESTS)
 endif()
 
 if(NK_BUILD_GPU_BACKEND_MATRIX AND NK_BUILD_TESTS)
+  if(NKGPU_XVFB_RUN)
+    add_executable(nativekit_gpu_gles3_smoke_test tests/gles3_smoke.cpp)
+    target_compile_features(nativekit_gpu_gles3_smoke_test PRIVATE cxx_std_17)
+    target_include_directories(nativekit_gpu_gles3_smoke_test PRIVATE
+        src "${NK_SOKOL_MATRIX_GLES3_INCLUDE_DIR}")
+    target_link_libraries(nativekit_gpu_gles3_smoke_test PRIVATE NativeKit::gpu
+        NativeKit::nativekit "${NK_SOKOL_MATRIX_GLES3_LIBRARY}")
+    add_test(NAME nativekit_gpu_gles3_smoke
+        COMMAND ${NKGPU_XVFB_RUN} -a $<TARGET_FILE:nativekit_gpu_gles3_smoke_test>)
+    set_tests_properties(nativekit_gpu_gles3_smoke PROPERTIES
+        LABELS "graphics;gpu;sokol" TIMEOUT 30
+        ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
+  endif()
+
     add_executable(nativekit_sokol_runtime_matrix_test tests/runtime_matrix.c)
     target_include_directories(nativekit_sokol_runtime_matrix_test PRIVATE
         "${PROJECT_SOURCE_DIR}/include" "${NK_VENDOR_DIR}/sokol"
