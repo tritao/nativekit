@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstring>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -183,6 +184,7 @@ class MutableSurfaceProducer final : public SurfaceProducer {
         return true;
     }
     uint32_t generation() const override { return generation_value; }
+    bool recordable() const override { return true; }
     SurfaceRenderResult render(UiRenderer &, ResourceId, const SurfaceDescriptor &) override {
         return SurfaceRenderResult::Rendered;
     }
@@ -969,10 +971,9 @@ int main() {
     if (!backend.recorded_frame)
         return 65;
 
-    /*
-     * Plans that composite a live surface producer render through callbacks,
-     * which a sealed batch cannot carry, so those frames stay inline.
-     */
+    /* Live, non-recordable producers cannot cross the render boundary. Their
+       replacement is a retained graphics-image binding; recordable producers
+       remain valid because they encode entirely through the supplied renderer. */
     {
         struct TestProducer final : SurfaceProducer {
             bool ready() const override { return true; }
@@ -999,9 +1000,12 @@ int main() {
         if (!producer_resources.bind_surface(producer_target, producer))
             return 66;
         RecordingRenderer producer_backend;
-        if (!execute_render_plan(producer_backend, producer_plan, producer_resources,
-                                 {main_target, frame_target}, &execution_error) ||
-            producer_backend.recorded_frame)
+        if (execute_render_plan(producer_backend, producer_plan, producer_resources,
+                                {main_target, frame_target}, &execution_error) ||
+            producer_backend.recorded_frame || !execution_error.message ||
+            std::strcmp(
+                execution_error.message,
+                "surface producer must publish a retained graphics image or be recordable") != 0)
             return 67;
     }
 

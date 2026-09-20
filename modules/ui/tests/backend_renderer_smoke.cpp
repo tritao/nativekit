@@ -9,6 +9,7 @@
 #include "core/frame_backend.hpp"
 #include "testing.h"
 
+#include <array>
 #include <chrono>
 #include <condition_variable>
 #include <cstdlib>
@@ -94,6 +95,8 @@ struct RenderTask {
     nkgpu_renderer producer{};
     nkgpu_image image_resource{};
     nk_graphics_image image{};
+    std::array<nkgpu_render_target, 4> published_targets{};
+    std::array<nk_graphics_image, 4> published_images{};
 };
 
 struct BlockingRenderTask {
@@ -273,6 +276,35 @@ void destroy_offscreen_resources(RenderTask &task) noexcept {
     task.success = true;
 }
 
+void create_published_images(RenderTask &task) noexcept {
+    for (size_t index = 0; index < task.published_targets.size(); ++index) {
+        if (nkgpu_render_target_create(task.producer, 32, 32, 0, &task.published_targets[index]) !=
+                NKGPU_OK ||
+            nkgpu_begin_render_target(task.producer, task.published_targets[index], 1) !=
+                NKGPU_OK ||
+            nkgpu_end_render_target(task.producer) != NKGPU_OK ||
+            nkgpu_render_target_get_image(task.producer, task.published_targets[index],
+                                          &task.published_images[index]) != NKGPU_OK)
+            return;
+    }
+    task.success = true;
+}
+
+void destroy_published_images(RenderTask &task) noexcept {
+    for (auto &published_target : task.published_targets) {
+        if (published_target.id)
+            (void)nkgpu_render_target_destroy(task.producer, published_target);
+        published_target = {};
+    }
+    task.published_images = {};
+    task.success = true;
+}
+
+void invalidate_all_renderers(RenderTask &task) noexcept {
+    nkgpu_test_invalidate_all();
+    task.success = true;
+}
+
 bool run_shutdown_orphan_completion_test() {
     if (!nk::core::render_executor_physical())
         return true;
@@ -449,7 +481,10 @@ int main() {
     nk_surface_frame_target setup_target{};
     RenderTask setup_task{};
     RenderTask destroy_task{};
+    RenderTask published_task{};
+    RenderTask published_destroy_task{};
     bool setup_ok = false;
+    bool published_setup_ok = false;
     uint64_t setup_surface_call_violations = 0;
 
     nk_init_options init{};
@@ -556,6 +591,13 @@ int main() {
             result = 8;
             goto cleanup;
         }
+        nkgpu_uniform_builder wrong_thread_uniform{};
+        if (!check(nkgpu_uniforms_begin(producer, 16, &wrong_thread_uniform) ==
+                       NKGPU_ERROR_WRONG_THREAD,
+                   "reject platform uniform-pool mutation")) {
+            result = 8;
+            goto cleanup;
+        }
     }
     if (!check(nk_surface_present(surface) == NK_OK, "close setup frame")) {
         result = 9;
@@ -591,6 +633,18 @@ int main() {
         goto cleanup;
     }
     if (!check(nkui_renderer_create(&renderer) == NKUI_OK, "nkui_renderer_create")) {
+        result = 14;
+        goto cleanup;
+    }
+
+    /* Build several immutable producer frames on RENDER. The APP side will
+       publish these one at a time while one render is blocked, proving that
+       the sealed plans retain the image generation they captured and that
+       only the newest pending plan survives replacement. */
+    published_task.producer = producer;
+    published_task.function = &create_published_images;
+    published_setup_ok = dispatch_render_task(published_task);
+    if (!check(published_setup_ok, "create retained producer images")) {
         result = 14;
         goto cleanup;
     }
@@ -651,6 +705,93 @@ int main() {
         if (!nk::core::render_executor_physical() &&
             !check(nk_surface_present(surface) == NK_OK, "nk_surface_present")) {
             result = 19;
+            goto cleanup;
+        }
+    }
+
+    {
+        int32_t width = 0;
+        int32_t height = 0;
+        if (!check(nk_surface_get_framebuffer_size(surface, &width, &height) == NK_OK &&
+                       width > 0 && height > 0,
+                   "retained producer framebuffer")) {
+            result = 20;
+            goto cleanup;
+        }
+        const nkui_frame_info retained_frame{sizeof(retained_frame),
+                                             static_cast<float>(window_options.width),
+                                             static_cast<float>(window_options.height),
+                                             width,
+                                             height,
+                                             static_cast<float>(width) / window_options.width};
+        nkui_renderer_stats before_retained_stats{};
+        if (!check(nkui_renderer_get_stats(renderer, &before_retained_stats) == NKUI_OK,
+                   "read retained producer stats")) {
+            result = 20;
+            goto cleanup;
+        }
+
+        BlockingRenderTask retained_blocker{};
+        if (nk::core::render_executor_physical() && !start_blocking_render_task(retained_blocker)) {
+            result = 20;
+            goto cleanup;
+        }
+        if (nk::core::render_executor_physical()) {
+            nk::core::reset_render_surface_api_violations();
+            nk::core::set_render_surface_api_guard(true);
+            nkgpu_test_forbid_surface_target_queries();
+        }
+        bool retained_submissions_ok = true;
+        for (size_t index = 0; index < published_task.published_images.size(); ++index) {
+            if (nkui_graphics_surface_publish_image(
+                    imported_surface, published_task.published_images[index]) != NKUI_OK ||
+                nkui_renderer_render_frame(renderer, list, surface, &retained_frame) != NKUI_OK) {
+                retained_submissions_ok = false;
+                break;
+            }
+            if (!nk::core::render_executor_physical() && nk_surface_present(surface) != NK_OK) {
+                retained_submissions_ok = false;
+                break;
+            }
+        }
+        if (nk::core::render_executor_physical()) {
+            {
+                std::lock_guard lock(retained_blocker.mutex);
+                retained_blocker.release = true;
+            }
+            retained_blocker.condition.notify_one();
+            RenderTask retained_barrier{};
+            retained_barrier.function = [](RenderTask &task) noexcept { task.success = true; };
+            retained_submissions_ok =
+                retained_submissions_ok && dispatch_render_task(retained_barrier);
+            retained_submissions_ok =
+                retained_submissions_ok &&
+                wait_render_submission_executions(
+                    renderer, before_retained_stats.render_submission_executions + 2) &&
+                wait_surface_frame_state(surface, false);
+            const uint64_t violations = nk::core::render_surface_api_violations();
+            nk::core::set_render_surface_api_guard(false);
+            nkgpu_test_allow_surface_target_queries();
+            nkui_renderer_stats after_retained_stats{};
+            retained_submissions_ok =
+                retained_submissions_ok && violations == 0 &&
+                nkui_renderer_get_stats(renderer, &after_retained_stats) == NKUI_OK &&
+                after_retained_stats.render_submissions ==
+                    before_retained_stats.render_submissions +
+                        published_task.published_images.size() &&
+                after_retained_stats.render_submission_replacements >=
+                    before_retained_stats.render_submission_replacements + 2 &&
+                after_retained_stats.render_submission_executions ==
+                    before_retained_stats.render_submission_executions + 2 &&
+                after_retained_stats.render_submission_failures ==
+                    before_retained_stats.render_submission_failures;
+        }
+        if (!check(retained_submissions_ok, "retained producer publication stress")) {
+            if (nk::core::render_executor_physical()) {
+                nk::core::set_render_surface_api_guard(false);
+                nkgpu_test_allow_surface_target_queries();
+            }
+            result = 20;
             goto cleanup;
         }
     }
@@ -1266,7 +1407,14 @@ int main() {
                 result = 31;
                 goto cleanup;
             }
-            nkgpu_test_invalidate_all();
+            RenderTask invalidate_task{};
+            invalidate_task.function = &invalidate_all_renderers;
+            if (!dispatch_render_task(invalidate_task)) {
+                nk::core::set_render_surface_api_guard(false);
+                nkgpu_test_allow_surface_target_queries();
+                result = 31;
+                goto cleanup;
+            }
             nk::core::reset_render_surface_api_violations();
             if (!submit_and_drain(recovery_renderer, "device-loss") ||
                 !check(nk::core::render_surface_api_violations() == 0,
@@ -1362,6 +1510,11 @@ cleanup:
     if (scheduler_image.id && nkui_resource_destroy(scheduler_image) != NKUI_OK)
         result = result ? result : 23;
     if (producer.id) {
+        published_destroy_task.producer = producer;
+        published_destroy_task.published_targets = published_task.published_targets;
+        published_destroy_task.function = &destroy_published_images;
+        if (!dispatch_render_task(published_destroy_task))
+            result = result ? result : 24;
         destroy_task.surface = surface;
         destroy_task.producer = producer;
         destroy_task.image_resource = image_resource;

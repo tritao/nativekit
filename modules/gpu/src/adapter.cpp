@@ -1493,6 +1493,10 @@ void nkgpu_test_lose_all_after_frames(uint32_t frames) {
 }
 
 void nkgpu_test_invalidate_all(void) {
+    /* The test hook mutates every renderer slot, so a physically split build
+       must invoke it on RENDER just like the real device-loss transition. */
+    if (nk::core::render_executor_physical() && !nk_executor_is_current(NK_EXECUTOR_RENDER))
+        return;
     for (uint32_t index = 0; index < renderer_pool.slots.size(); ++index) {
         auto &slot = renderer_pool.slots[index];
         if (slot.active) {
@@ -1507,6 +1511,9 @@ nkgpu_result nkgpu_test_invalidate_surface(nkgpu_renderer renderer) {
     auto *slot = renderer_pool.get(renderer);
     if (!slot)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    const nkgpu_result executor = require_renderer_executor(renderer, slot->value);
+    if (executor != NKGPU_OK)
+        return executor;
     mark_renderer_lost(renderer, slot->value);
     return NKGPU_OK;
 }
@@ -3417,6 +3424,9 @@ nkgpu_result nkgpu_uniforms_begin(nkgpu_renderer r, uint32_t size, nkgpu_uniform
     const nkgpu_result live = renderer_live(r, renderer ? &renderer->value : nullptr);
     if (live != NKGPU_OK)
         return live;
+    const nkgpu_result executor = require_renderer_executor(r, renderer->value);
+    if (executor != NKGPU_OK)
+        return executor;
     if (!size || !out)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid uniform builder");
     *out = 0;
@@ -3448,6 +3458,12 @@ nkgpu_result nkgpu_uniforms_write_f32(nkgpu_uniform_builder h, uint32_t offset, 
     auto *s = uniform_builder_pool.get(h);
     if (!s || offset > s->value.size || s->value.size - offset < sizeof(value))
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale/out-of-range uniform builder");
+    auto *renderer = renderer_pool.get(s->value.owner);
+    if (!renderer)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "uniform builder owner is stale");
+    const nkgpu_result executor = require_renderer_executor(s->value.owner, renderer->value);
+    if (executor != NKGPU_OK)
+        return executor;
     memcpy(s->value.data + offset, &value, sizeof(value));
     return NKGPU_OK;
 }

@@ -212,15 +212,18 @@ bool execute_render_plan(UiRenderer &renderer, const RenderPlan &plan,
     RenderPlanScheduleError schedule_error{};
     if (!schedule_render_plan(plan, pass_order, &schedule_error))
         return fail(error, schedule_error.pass_index, 0, schedule_error.message);
-    /*
-     * A live surface producer renders through callbacks, which a sealed
-     * submission batch cannot carry, so those frames are drawn inline.
-     */
-    bool record = true;
+    /* Every render-plan execution is batch-capable. A live, non-recordable
+       producer is rejected below instead of being rendered through an inline
+       callback: callbacks would observe mutable APP state after sealing and
+       would violate the APP -> RENDER ownership boundary. Retained graphics
+       images are represented in FrameResources as graphics-image bindings and
+       therefore do not enter this path. */
+    constexpr bool record = true;
     for (const auto &dependency : plan.dependencies) {
-        if (resources.surface(dependency.producer)) {
-            record = false;
-            break;
+        const auto *producer = resources.surface(dependency.producer);
+        if (producer && !producer->recordable()) {
+            return fail(error, 0, 0,
+                        "surface producer must publish a retained graphics image or be recordable");
         }
     }
     if (!renderer.beginFrame(record, &window.frame_target))

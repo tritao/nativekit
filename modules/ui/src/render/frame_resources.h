@@ -63,10 +63,17 @@ class SurfaceProducer {
     // the target while this revision and the resolved descriptor remain unchanged.
     virtual uint32_t generation() const = 0;
     /**
+     * Return true when render() only emits commands through the supplied renderer and is safe
+     * to record into a sealed batch on RENDER. Non-recordable callback producers are rejected
+     * by the render executor; external producers should publish a retained graphics image.
+     */
+     virtual bool recordable() const { return false; }
+     /**
      * Return a borrowed retained image when this producer publishes its
      * output instead of rendering through a callback. The frame planner
      * retains the image while sealing an asynchronous submission. Returning a
-     * zero handle keeps the legacy callback path unchanged.
+     * zero handle means the producer has no retained frame and must be
+     * explicitly recordable to cross the render boundary.
      */
     virtual nk_graphics_image retained_image() const { return {}; }
     // Return Unavailable for a transient synchronization miss; Failed aborts the frame.

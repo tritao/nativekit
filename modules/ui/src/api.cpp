@@ -2951,8 +2951,10 @@ extern "C" nkui_result nkui_graphics_surface_create(nk_graphics_image image,
     std::lock_guard<std::mutex> lock(resources_mutex);
     ResourceSlot *slot = nullptr;
     const auto result = allocate_resource(nkui::ResourceKind::RenderTarget, out_surface, &slot);
-    if (result != NKUI_OK)
+    if (result != NKUI_OK) {
+        (void)nk_graphics_image_release(image);
         return result;
+    }
     slot->surface = std::move(producer);
     return NKUI_OK;
 }
@@ -3523,11 +3525,18 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
                                              command.resource, published, generation))
                                 sealable = false;
                         } else {
+                            const auto generation =
+                                static_cast<uint64_t>(surface_slot->surface->generation());
                             valid = frame_resources.bind_surface(
-                                command.resource, *surface_slot->surface,
-                                static_cast<uint64_t>(surface_slot->surface->generation()));
-                            /* A live result producer is a callback and cannot be sealed. */
-                            sealable = false;
+                                command.resource, *surface_slot->surface, generation);
+                            if (valid && surface_slot->surface->recordable()) {
+                                if (!owned_resources.bind_surface(
+                                        command.resource, surface_slot->surface, generation))
+                                    sealable = false;
+                            } else {
+                                /* Non-recordable producers cannot cross the render boundary. */
+                                sealable = false;
+                            }
                         }
                     } else {
                         valid = false;
