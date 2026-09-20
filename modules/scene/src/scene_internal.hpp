@@ -15,7 +15,7 @@
 
 namespace nkscene {
 
-class Scene {
+class NKS_API Scene {
 public:
     OccurrenceId reserve_occurrence_id() noexcept { return occurrences.reserve_id(); }
     GeometryId reserve_geometry_id() noexcept { return GeometryId{next_geometry_id++}; }

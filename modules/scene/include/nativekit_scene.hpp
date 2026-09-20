@@ -145,7 +145,7 @@ struct SnapshotOccurrence {
 
 class Scene;
 
-class SceneSnapshot {
+class NKS_API SceneSnapshot {
 public:
     SceneSnapshot();
 
