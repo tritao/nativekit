@@ -330,10 +330,13 @@ int main() {
     nkui_display_list custom_list{};
     if (nkui_display_list_create(&custom_list) != NKUI_OK ||
         nkui_layout_session_set_custom_paint(session, 2, custom_list) != NKUI_OK ||
+        nkui_layout_session_set_custom_paint_composite(session, 2, custom_list) != NKUI_OK ||
         nkui_layout_session_set_custom_paint(session, 3, custom_list) !=
             NKUI_ERROR_INVALID_ARGUMENT ||
         nkui_display_list_destroy(custom_list) != NKUI_ERROR_INVALID_ARGUMENT ||
-        nkui_layout_session_clear_custom_paints(session) != NKUI_OK ||
+        nkui_layout_session_clear_custom_paint(session, 2) != NKUI_OK ||
+        nkui_display_list_destroy(custom_list) != NKUI_ERROR_INVALID_ARGUMENT ||
+        nkui_layout_session_clear_custom_paint_composite(session, 2) != NKUI_OK ||
         nkui_display_list_destroy(custom_list) != NKUI_OK)
         return 25;
 

@@ -635,6 +635,8 @@ if(NK_BUILD_EXAMPLES)
                 _nkui_image_create
                 _nkui_image_create_filtered
                 _nkui_image_load_file
+                _nkui_layout_session_clear_custom_paint
+                _nkui_layout_session_clear_custom_paint_composite
                 _nkui_layout_session_clear_custom_paints
                 _nkui_layout_session_create
                 _nkui_layout_session_destroy

@@ -636,6 +636,14 @@ interface NativeKitUI @target("portable-abi32") @library("nativekit_ui") @depend
 	 */
 	extern fn nkui_layout_session_clear_custom_paints(session: nkui_layout_session) -> nkui_result;
 	/**
+	 * Clears the retained content display list for one custom-visual node.
+	 */
+	extern fn nkui_layout_session_clear_custom_paint(session: nkui_layout_session, node_id: u32) -> nkui_result;
+	/**
+	 * Clears the retained composite metadata display list for one custom-visual node.
+	 */
+	extern fn nkui_layout_session_clear_custom_paint_composite(session: nkui_layout_session, node_id: u32) -> nkui_result;
+	/**
 	 * Creates a private layout session.
 	 */
 	extern fn nkui_layout_session_create(out_session: ptr<nkui_layout_session> @out) -> nkui_result;

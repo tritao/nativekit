@@ -150,6 +150,24 @@ class LayoutSession {
 			"layoutSession.clearCustomPaints");
 	}
 
+	/** Removes one retained custom content display list without disturbing its composite plane. */
+	public function clearCustomPaint(nodeId:Int):Void {
+		ensureLive();
+		if (nodeId <= 0)
+			throw "Custom paint node ID must be positive";
+		UiResult.check(NativeKitUI.nkui_layout_session_clear_custom_paint(value, nodeId),
+			"layoutSession.clearCustomPaint");
+	}
+
+	/** Removes one retained custom composite display list without disturbing its content plane. */
+	public function clearCustomPaintComposite(nodeId:Int):Void {
+		ensureLive();
+		if (nodeId <= 0)
+			throw "Custom paint node ID must be positive";
+		UiResult.check(NativeKitUI.nkui_layout_session_clear_custom_paint_composite(value, nodeId),
+			"layoutSession.clearCustomPaintComposite");
+	}
+
 	/** Attaches a custom display list to a Custom layout node for ordered rendering. */
 	public function setCustomPaint(nodeId:Int, displayList:DisplayList):Void {
 		ensureLive();

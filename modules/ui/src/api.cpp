@@ -1497,6 +1497,17 @@ void release_custom_paints(LayoutSessionState &session) {
     session.cache_policies.clear();
 }
 
+void release_custom_paint(std::unordered_map<uint32_t, nkui_display_list> &paints,
+                          uint32_t node_id) {
+    const auto found = paints.find(node_id);
+    if (found == paints.end())
+        return;
+    auto *list = resolve(found->second);
+    if (list && list->custom_refs)
+        --list->custom_refs;
+    paints.erase(found);
+}
+
 bool collect_display_resources(const uint8_t *data, size_t size,
                                std::vector<nkui::ResourceId> &out) {
     size_t offset = 0;
@@ -1878,6 +1889,30 @@ extern "C" nkui_result nkui_layout_session_clear_custom_paints(nkui_layout_sessi
     if (!state)
         return NKUI_ERROR_INVALID_HANDLE;
     release_custom_paints(*state);
+    return NKUI_OK;
+}
+
+extern "C" nkui_result
+nkui_layout_session_clear_custom_paint(nkui_layout_session session, uint32_t node_id) {
+    if (active_measure_session || !node_id)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::scoped_lock lock(layout_sessions_mutex, lists_mutex);
+    auto *state = resolve(session);
+    if (!state)
+        return NKUI_ERROR_INVALID_HANDLE;
+    release_custom_paint(state->custom_paints, node_id);
+    return NKUI_OK;
+}
+
+extern "C" nkui_result
+nkui_layout_session_clear_custom_paint_composite(nkui_layout_session session, uint32_t node_id) {
+    if (active_measure_session || !node_id)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::scoped_lock lock(layout_sessions_mutex, lists_mutex);
+    auto *state = resolve(session);
+    if (!state)
+        return NKUI_ERROR_INVALID_HANDLE;
+    release_custom_paint(state->custom_paint_composites, node_id);
     return NKUI_OK;
 }
 

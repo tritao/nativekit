@@ -63,10 +63,12 @@ class UiContext {
 	var customPaintKeys:Map<Int, String>;
 	var customContentRevisions:Map<Int, Int>;
 	var customListHasCommands:Map<Int, Bool>;
+	var customPaintBound:Map<Int, Bool>;
 	var customCompositeCanvases:Map<Int, Canvas>;
 	var customCompositeLists:Map<Int, DisplayList>;
 	var customCompositeRevisions:Map<Int, Int>;
 	var customCompositeGeometries:Map<Int, ResolvedLayoutItem>;
+	var customCompositeBound:Map<Int, Bool>;
 	var accessibilityBridge:Null<AccessibilityBridge>;
 	var accessibilitySurface:Null<NativeKitSurface>;
 	var decorationWindow:Null<WindowHandle>;
@@ -113,10 +115,12 @@ class UiContext {
 		customPaintKeys = new Map();
 		customContentRevisions = new Map();
 		customListHasCommands = new Map();
+		customPaintBound = new Map();
 		customCompositeCanvases = new Map();
 		customCompositeLists = new Map();
 		customCompositeRevisions = new Map();
 		customCompositeGeometries = new Map();
+		customCompositeBound = new Map();
 		accessibilityBridge = null;
 		accessibilitySurface = null;
 		decorationWindow = null;
@@ -377,29 +381,35 @@ class UiContext {
 		if (root == null)
 			throw "Submit a view before rendering the UI context";
 		diagnosticStage = 21;
-		session.clearCustomPaints();
 		var painted = new Map<Int, Bool>();
 		var paintedNodes = 0;
 		var paintSkippedNodes = 0;
 		var emptyPaintNodes = 0;
 		diagnosticStage = 22;
 		root.walk(function(node) {
+			var nodeId = node.id.value;
 			if (node.resolved != null && node.cachePolicy != CachePolicy.None)
 				session.setCachePolicy(node.id.value, node.cachePolicy);
-			if (!node.hasPaintHandler() || node.resolved == null)
+			if (!node.hasPaintHandler() || node.resolved == null) {
+				clearCustomPaintBindings(node.id.value);
 				return;
+			}
 			if (node.resolved.visible &&
 				(node.resolved.width <= 0.0 || node.resolved.height <= 0.0))
 				emptyPaintNodes++;
 			if (node.resolved.width <= 0.0 || node.resolved.height <= 0.0 ||
-				node.resolved.clipBounds.width <= 0.0 || node.resolved.clipBounds.height <= 0.0)
+				node.resolved.clipBounds.width <= 0.0 || node.resolved.clipBounds.height <= 0.0) {
+				clearCustomPaintBindings(nodeId);
 				return;
-			var nodeId = node.id.value;
+			}
 			var displayList = customLists.get(nodeId);
 			var contentReused = displayList != null && canReuseCustomPaint(node);
 			if (contentReused) {
 				if (customListHasCommands.get(nodeId) == true) {
-					session.setCustomPaint(nodeId, displayList);
+					if (customPaintBound.get(nodeId) != true) {
+						session.setCustomPaint(nodeId, displayList);
+						customPaintBound.set(nodeId, true);
+					}
 					if (node.cachePolicy != CachePolicy.None)
 						session.setCustomPaintCachePolicy(nodeId, node.cachePolicy);
 				}
@@ -425,8 +435,13 @@ class UiContext {
 				canvas.update(displayList);
 				var hasCommands = displayList.info().commandCount > 0;
 				customListHasCommands.set(nodeId, hasCommands);
-				if (hasCommands)
+				if (hasCommands) {
 					session.setCustomPaint(nodeId, displayList);
+					customPaintBound.set(nodeId, true);
+				} else {
+					session.clearCustomPaint(nodeId);
+					customPaintBound.set(nodeId, false);
+				}
 				if (hasCommands && node.cachePolicy != CachePolicy.None)
 					session.setCustomPaintCachePolicy(nodeId, node.cachePolicy);
 				customGeometries.set(nodeId, geometry);
@@ -436,8 +451,10 @@ class UiContext {
 			}
 
 			var compositeList = customCompositeLists.get(nodeId);
-			if (node.hasCompositePaint()) {
+			if (node.hasCompositePaint() && customListHasCommands.get(nodeId) == true) {
+				var compositeRebuilt = false;
 				if (compositeList == null || !canReuseCustomComposite(node)) {
+					compositeRebuilt = true;
 					var compositeCanvas = customCompositeCanvases.get(nodeId);
 					if (compositeCanvas == null) {
 						compositeCanvas = new Canvas();
@@ -453,9 +470,17 @@ class UiContext {
 					customCompositeRevisions.set(nodeId, node.compositeRevision);
 					customCompositeGeometries.set(nodeId, cast node.resolved);
 				}
-				if (compositeList != null && compositeList.info().commandCount > 0 &&
-					customListHasCommands.get(nodeId) == true)
-					session.setCustomPaintComposite(nodeId, compositeList);
+				if (compositeList != null && compositeList.info().commandCount > 0) {
+					if (compositeRebuilt || customCompositeBound.get(nodeId) != true)
+						session.setCustomPaintComposite(nodeId, compositeList);
+					customCompositeBound.set(nodeId, true);
+				} else if (customCompositeBound.get(nodeId) == true) {
+					session.clearCustomPaintComposite(nodeId);
+					customCompositeBound.set(nodeId, false);
+				}
+			} else if (customCompositeBound.get(nodeId) == true) {
+				session.clearCustomPaintComposite(nodeId);
+				customCompositeBound.set(nodeId, false);
 			}
 			if (contentReused)
 				paintSkippedNodes++;
@@ -475,6 +500,7 @@ class UiContext {
 				staleSeen.set(nodeId, true);
 			}
 		for (nodeId in stale) {
+			clearCustomPaintBindings(nodeId);
 			var canvas = customCanvases.get(nodeId);
 			if (canvas != null)
 				canvas.reset();
@@ -486,6 +512,7 @@ class UiContext {
 			customGeometries.remove(nodeId);
 			customPaintKeys.remove(nodeId);
 			customContentRevisions.remove(nodeId);
+			customPaintBound.remove(nodeId);
 			var compositeCanvas = customCompositeCanvases.get(nodeId);
 			if (compositeCanvas != null)
 				compositeCanvas.reset();
@@ -496,6 +523,7 @@ class UiContext {
 			customCompositeLists.remove(nodeId);
 			customCompositeRevisions.remove(nodeId);
 			customCompositeGeometries.remove(nodeId);
+			customCompositeBound.remove(nodeId);
 			customListHasCommands.remove(nodeId);
 		}
 		diagnosticStage = 24;
@@ -702,6 +730,17 @@ class UiContext {
 			sameGeometry(previousGeometry, node.resolved);
 	}
 
+	function clearCustomPaintBindings(nodeId:Int):Void {
+		if (customPaintBound.get(nodeId) == true) {
+			session.clearCustomPaint(nodeId);
+			customPaintBound.set(nodeId, false);
+		}
+		if (customCompositeBound.get(nodeId) == true) {
+			session.clearCustomPaintComposite(nodeId);
+			customCompositeBound.set(nodeId, false);
+		}
+	}
+
 	static function sameGeometry(left:ResolvedLayoutItem, right:ResolvedLayoutItem):Bool {
 		return left.flags == right.flags && left.x == right.x && left.y == right.y &&
 			left.width == right.width && left.height == right.height && left.baseline == right.baseline &&
@@ -729,12 +768,15 @@ class UiContext {
 		if (stateStore.revision != submittedStateRevision)
 			result |= UiDirtyFlag.NeedsBuild | UiDirtyFlag.NeedsStyle | UiDirtyFlag.NeedsTextLayout |
 				UiDirtyFlag.NeedsLayout | UiDirtyFlag.NeedsPaint | UiDirtyFlag.NeedsComposite |
-				UiDirtyFlag.NeedsSemantics;
+				UiDirtyFlag.NeedsSemantics | UiDirtyFlag.NeedsHitGeometry;
 		if (interactionStates.revision != submittedInteractionRevision)
-			result |= UiDirtyFlag.NeedsStyle | UiDirtyFlag.NeedsPaint | UiDirtyFlag.NeedsSemantics;
+			result |= UiDirtyFlag.NeedsStyle | UiDirtyFlag.NeedsTextLayout | UiDirtyFlag.NeedsLayout |
+				UiDirtyFlag.NeedsPaint | UiDirtyFlag.NeedsComposite | UiDirtyFlag.NeedsSemantics |
+				UiDirtyFlag.NeedsHitGeometry;
 		if (buildContext.styleRevision != submittedStyleRevision)
-			result |= UiDirtyFlag.NeedsStyle | UiDirtyFlag.NeedsTextLayout | UiDirtyFlag.NeedsLayout | UiDirtyFlag.NeedsPaint |
-				UiDirtyFlag.NeedsComposite | UiDirtyFlag.NeedsSemantics;
+			result |= UiDirtyFlag.NeedsStyle | UiDirtyFlag.NeedsTextLayout | UiDirtyFlag.NeedsLayout |
+				UiDirtyFlag.NeedsPaint | UiDirtyFlag.NeedsComposite | UiDirtyFlag.NeedsSemantics |
+				UiDirtyFlag.NeedsHitGeometry;
 		if (animations.activeCount > 0)
 			result |= UiDirtyFlag.NeedsComposite;
 		return result;
@@ -793,10 +835,12 @@ class UiContext {
 		customPaintKeys = new Map();
 		customContentRevisions = new Map();
 		customListHasCommands = new Map();
+		customPaintBound = new Map();
 		customCompositeCanvases = new Map();
 		customCompositeLists = new Map();
 		customCompositeRevisions = new Map();
 		customCompositeGeometries = new Map();
+		customCompositeBound = new Map();
 		events.setHitTestProvider(null);
 		session.dispose();
 		clipboard.dispose();
