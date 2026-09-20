@@ -26,6 +26,13 @@ The first backend uses the pinned DaisySP oscillator, noise, ADSR, and SVF
 modules; only the translation units needed by this slice are compiled. The
 stable NativeKit ABI does not expose DaisySP types, so future DaisySP modules or
 other native DSP implementations can be added without changing tracker code.
+Use `nk_audio_dsp_patch_create()` to build an immutable reusable patch from
+explicit oscillator, noise, envelope, and filter components, then create one or
+more instruments with `nk_audio_dsp_instrument_create_from_patch()`. Instruments
+copy the patch at creation and remain independently automatable through the
+existing parameter events. The legacy flat instrument options are retained as a
+migration path while the patch model grows to include wavetables and
+modulation routing.
 
 The first API slice supports WAV, FLAC, and MP3 playback from native filesystem
 paths, cached URI assets, or caller-provided encoded memory.

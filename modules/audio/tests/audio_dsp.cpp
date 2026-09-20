@@ -54,6 +54,36 @@ int main() {
     assert((capabilities & NK_AUDIO_DSP_CAPABILITY_ENVELOPE) != 0);
     assert((capabilities & NK_AUDIO_DSP_CAPABILITY_FILTER) != 0);
 
+    nk_audio_dsp_patch_options patch_options{};
+    patch_options.struct_size = sizeof(patch_options);
+    patch_options.oscillator.struct_size = sizeof(patch_options.oscillator);
+    patch_options.oscillator.waveform = NK_AUDIO_DSP_WAVEFORM_SINE;
+    patch_options.oscillator.level = 0.75f;
+    patch_options.noise.struct_size = sizeof(patch_options.noise);
+    patch_options.noise.level = 0.25f;
+    patch_options.envelope.struct_size = sizeof(patch_options.envelope);
+    patch_options.envelope.attack_seconds = 0.0f;
+    patch_options.envelope.decay_seconds = 0.0f;
+    patch_options.envelope.sustain_level = 1.0f;
+    patch_options.envelope.release_seconds = 0.0f;
+    patch_options.filter.struct_size = sizeof(patch_options.filter);
+    patch_options.filter.type = NK_AUDIO_DSP_FILTER_SVF_LOW_PASS;
+    patch_options.filter.cutoff_hz = 1200.0f;
+    patch_options.filter.resonance = 0.5f;
+    patch_options.gain = 0.5f;
+
+    nk_audio_dsp_patch patch = NK_INVALID_HANDLE;
+    assert(nk_audio_dsp_patch_create(&patch_options, &patch) == NK_OK);
+    nk_audio_dsp_instrument instrument = NK_INVALID_HANDLE;
+    assert(nk_audio_dsp_instrument_create_from_patch(engine, patch, &instrument) == NK_OK);
+    nk_audio_dsp_engine second_engine = NK_INVALID_HANDLE;
+    assert(nk_audio_dsp_engine_create(&engine_options, &second_engine) == NK_OK);
+    nk_audio_dsp_instrument second_instrument = NK_INVALID_HANDLE;
+    assert(nk_audio_dsp_instrument_create_from_patch(second_engine, patch, &second_instrument) ==
+           NK_OK);
+    assert(nk_audio_dsp_patch_destroy(patch) == NK_OK);
+    assert(nk_audio_dsp_patch_destroy(patch) == NK_ERROR_INVALID_HANDLE);
+
     nk_audio_dsp_instrument_options instrument_options{};
     instrument_options.struct_size = sizeof(instrument_options);
     instrument_options.waveform = NK_AUDIO_DSP_WAVEFORM_SINE;
@@ -63,8 +93,13 @@ int main() {
     instrument_options.sustain_level = 1.0f;
     instrument_options.release_seconds = 0.0f;
 
-    nk_audio_dsp_instrument instrument = NK_INVALID_HANDLE;
-    assert(nk_audio_dsp_instrument_create(engine, &instrument_options, &instrument) == NK_OK);
+    nk_audio_dsp_instrument legacy_instrument = NK_INVALID_HANDLE;
+    assert(nk_audio_dsp_instrument_create(engine, &instrument_options, &legacy_instrument) ==
+           NK_OK);
+    float legacy_waveform = -1.0f;
+    assert(nk_audio_dsp_instrument_get_parameter(legacy_instrument, NK_AUDIO_DSP_PARAMETER_WAVEFORM,
+                                                 &legacy_waveform) == NK_OK);
+    assert(legacy_waveform == static_cast<float>(NK_AUDIO_DSP_WAVEFORM_SINE));
 
     float samples[64]{};
     nk_audio_dsp_render_target target{};
@@ -135,6 +170,9 @@ int main() {
     assert(nk_audio_dsp_engine_reset(engine) == NK_OK);
     assert(nk_audio_dsp_instrument_destroy(instrument) == NK_OK);
     assert(nk_audio_dsp_instrument_destroy(instrument) == NK_ERROR_INVALID_HANDLE);
+    assert(nk_audio_dsp_instrument_destroy(legacy_instrument) == NK_OK);
+    assert(nk_audio_dsp_instrument_destroy(second_instrument) == NK_OK);
+    assert(nk_audio_dsp_engine_destroy(second_engine) == NK_OK);
     assert(nk_audio_dsp_engine_destroy(engine) == NK_OK);
     assert(nk_audio_dsp_engine_destroy(engine) == NK_ERROR_INVALID_HANDLE);
     nk_shutdown();

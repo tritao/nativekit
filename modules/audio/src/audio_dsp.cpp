@@ -26,12 +26,18 @@ constexpr nk_audio_dsp_capabilities builtin_capabilities =
     NK_AUDIO_DSP_CAPABILITY_OSCILLATOR | NK_AUDIO_DSP_CAPABILITY_NOISE |
     NK_AUDIO_DSP_CAPABILITY_ENVELOPE | NK_AUDIO_DSP_CAPABILITY_FILTER;
 
-using DspParameters = nk::audio_dsp::VoiceParameters;
+using DspParameters = nk::audio_dsp::PatchParameters;
 
 struct DspEngineResource;
+struct DspPatchResource;
+
+struct DspPatchResource final : nk::core::Resource {
+    DspParameters parameters;
+};
 
 struct DspInstrumentResource final : nk::core::Resource {
     std::weak_ptr<DspEngineResource> engine;
+    std::shared_ptr<DspPatchResource> patch;
     DspParameters defaults;
     DspParameters current;
     uint64_t parameters_version = 1;
@@ -102,26 +108,44 @@ std::shared_ptr<DspInstrumentResource> get_instrument(nk_audio_dsp_instrument ha
     return std::dynamic_pointer_cast<DspInstrumentResource>(std::move(resource));
 }
 
+std::shared_ptr<DspPatchResource> get_patch(nk_audio_dsp_patch handle) {
+    auto resource = nk::core::handles().get(handle, nk::core::ResourceType::audio_dsp_patch);
+    if (!resource) {
+        nk::core::set_error("invalid audio DSP patch handle");
+        return {};
+    }
+    return std::dynamic_pointer_cast<DspPatchResource>(std::move(resource));
+}
+
 bool valid_waveform(nk_audio_dsp_waveform waveform) {
     return waveform <= NK_AUDIO_DSP_WAVEFORM_SQUARE;
+}
+
+bool valid_filter_type(nk_audio_dsp_filter_type type) {
+    return type == NK_AUDIO_DSP_FILTER_NONE || type == NK_AUDIO_DSP_FILTER_SVF_LOW_PASS;
 }
 
 bool valid_nonnegative_finite(float value) {
     return std::isfinite(value) && value >= 0.0f;
 }
 
-bool valid_instrument_parameters(const DspParameters &parameters) {
-    return valid_waveform(parameters.waveform) && valid_nonnegative_finite(parameters.gain) &&
-           valid_nonnegative_finite(parameters.attack_seconds) &&
-           valid_nonnegative_finite(parameters.decay_seconds) &&
-           std::isfinite(parameters.sustain_level) && parameters.sustain_level >= 0.0f &&
-           parameters.sustain_level <= 1.0f &&
-           valid_nonnegative_finite(parameters.release_seconds) &&
-           std::isfinite(parameters.noise_level) && parameters.noise_level >= 0.0f &&
-           parameters.noise_level <= 1.0f &&
-           valid_nonnegative_finite(parameters.filter_cutoff_hz) &&
-           std::isfinite(parameters.filter_resonance) && parameters.filter_resonance >= 0.0f &&
-           parameters.filter_resonance <= 1.0f;
+bool valid_patch_parameters(const DspParameters &parameters) {
+    return valid_waveform(parameters.oscillator.waveform) &&
+           valid_nonnegative_finite(parameters.oscillator.level) &&
+           parameters.oscillator.level <= 1.0f &&
+           valid_nonnegative_finite(parameters.noise.level) && parameters.noise.level <= 1.0f &&
+           valid_nonnegative_finite(parameters.gain) &&
+           valid_nonnegative_finite(parameters.envelope.attack_seconds) &&
+           valid_nonnegative_finite(parameters.envelope.decay_seconds) &&
+           std::isfinite(parameters.envelope.sustain_level) &&
+           parameters.envelope.sustain_level >= 0.0f && parameters.envelope.sustain_level <= 1.0f &&
+           valid_nonnegative_finite(parameters.envelope.release_seconds) &&
+           valid_filter_type(parameters.filter.type) &&
+           valid_nonnegative_finite(parameters.filter.cutoff_hz) &&
+           std::isfinite(parameters.filter.resonance) && parameters.filter.resonance >= 0.0f &&
+           parameters.filter.resonance <= 1.0f &&
+           (parameters.filter.type != NK_AUDIO_DSP_FILTER_NONE ||
+            parameters.filter.cutoff_hz == 0.0f);
 }
 
 bool valid_filter_cutoff(float cutoff_hz, uint32_t sample_rate) {
@@ -130,9 +154,9 @@ bool valid_filter_cutoff(float cutoff_hz, uint32_t sample_rate) {
 
 nk_result validate_engine_parameters(const DspParameters &parameters,
                                      const DspEngineResource &engine) {
-    if (!valid_instrument_parameters(parameters) ||
-        !valid_filter_cutoff(parameters.filter_cutoff_hz, engine.options.sample_rate))
-        return invalid_argument("audio DSP instrument parameters are invalid");
+    if (!valid_patch_parameters(parameters) ||
+        !valid_filter_cutoff(parameters.filter.cutoff_hz, engine.options.sample_rate))
+        return invalid_argument("audio DSP patch parameters are invalid");
     return NK_OK;
 }
 
@@ -167,6 +191,33 @@ nk_result normalize_engine_options(const nk_audio_dsp_engine_options *input,
     return NK_OK;
 }
 
+nk_result normalize_patch_options(const nk_audio_dsp_patch_options *input, DspParameters &output) {
+    output = {};
+    if (!input)
+        return NK_OK;
+    if (input->struct_size < sizeof(nk_audio_dsp_patch_options))
+        return invalid_argument("audio DSP patch options are missing or too small");
+    if (input->oscillator.struct_size < sizeof(nk_audio_dsp_oscillator_options) ||
+        input->noise.struct_size < sizeof(nk_audio_dsp_noise_options) ||
+        input->envelope.struct_size < sizeof(nk_audio_dsp_envelope_options) ||
+        input->filter.struct_size < sizeof(nk_audio_dsp_filter_options))
+        return invalid_argument("audio DSP patch component options are missing or too small");
+    output.oscillator.waveform = input->oscillator.waveform;
+    output.oscillator.level = input->oscillator.level;
+    output.noise.level = input->noise.level;
+    output.envelope.attack_seconds = input->envelope.attack_seconds;
+    output.envelope.decay_seconds = input->envelope.decay_seconds;
+    output.envelope.sustain_level = input->envelope.sustain_level;
+    output.envelope.release_seconds = input->envelope.release_seconds;
+    output.filter.type = input->filter.type;
+    output.filter.cutoff_hz = input->filter.cutoff_hz;
+    output.filter.resonance = input->filter.resonance;
+    output.gain = input->gain;
+    if (!valid_patch_parameters(output))
+        return invalid_argument("audio DSP patch parameters are invalid");
+    return NK_OK;
+}
+
 nk_result normalize_instrument_options(const nk_audio_dsp_instrument_options *input,
                                        uint32_t sample_rate, DspParameters &output) {
     output = {};
@@ -174,14 +225,15 @@ nk_result normalize_instrument_options(const nk_audio_dsp_instrument_options *in
         return NK_OK;
     if (input->struct_size < sizeof(nk_audio_dsp_instrument_options))
         return invalid_argument("audio DSP instrument options are missing or too small");
-    output.waveform = input->waveform;
+    output.oscillator.waveform = input->waveform;
+    output.oscillator.level = 1.0f;
     output.gain = input->gain;
-    output.attack_seconds = input->attack_seconds;
-    output.decay_seconds = input->decay_seconds;
-    output.sustain_level = input->sustain_level;
-    output.release_seconds = input->release_seconds;
-    if (!valid_instrument_parameters(output) ||
-        !valid_filter_cutoff(output.filter_cutoff_hz, sample_rate))
+    output.envelope.attack_seconds = input->attack_seconds;
+    output.envelope.decay_seconds = input->decay_seconds;
+    output.envelope.sustain_level = input->sustain_level;
+    output.envelope.release_seconds = input->release_seconds;
+    if (!valid_patch_parameters(output) ||
+        !valid_filter_cutoff(output.filter.cutoff_hz, sample_rate))
         return invalid_argument("audio DSP instrument parameters are invalid");
     return NK_OK;
 }
@@ -198,7 +250,7 @@ nk_result set_parameter(DspParameters &parameters, nk_audio_dsp_parameter parame
         if (value < 0.0f || value > static_cast<float>(NK_AUDIO_DSP_WAVEFORM_SQUARE) ||
             std::floor(value) != value)
             return invalid_argument("audio DSP waveform parameter is invalid");
-        parameters.waveform = static_cast<nk_audio_dsp_waveform>(value);
+        parameters.oscillator.waveform = static_cast<nk_audio_dsp_waveform>(value);
         break;
     case NK_AUDIO_DSP_PARAMETER_GAIN:
         if (value < 0.0f)
@@ -208,37 +260,39 @@ nk_result set_parameter(DspParameters &parameters, nk_audio_dsp_parameter parame
     case NK_AUDIO_DSP_PARAMETER_ATTACK_SECONDS:
         if (value < 0.0f)
             return invalid_argument("audio DSP attack parameter is invalid");
-        parameters.attack_seconds = value;
+        parameters.envelope.attack_seconds = value;
         break;
     case NK_AUDIO_DSP_PARAMETER_DECAY_SECONDS:
         if (value < 0.0f)
             return invalid_argument("audio DSP decay parameter is invalid");
-        parameters.decay_seconds = value;
+        parameters.envelope.decay_seconds = value;
         break;
     case NK_AUDIO_DSP_PARAMETER_SUSTAIN_LEVEL:
         if (value < 0.0f || value > 1.0f)
             return invalid_argument("audio DSP sustain parameter is invalid");
-        parameters.sustain_level = value;
+        parameters.envelope.sustain_level = value;
         break;
     case NK_AUDIO_DSP_PARAMETER_RELEASE_SECONDS:
         if (value < 0.0f)
             return invalid_argument("audio DSP release parameter is invalid");
-        parameters.release_seconds = value;
+        parameters.envelope.release_seconds = value;
         break;
     case NK_AUDIO_DSP_PARAMETER_NOISE_LEVEL:
         if (value < 0.0f || value > 1.0f)
             return invalid_argument("audio DSP noise level parameter is invalid");
-        parameters.noise_level = value;
+        parameters.noise.level = value;
         break;
     case NK_AUDIO_DSP_PARAMETER_FILTER_CUTOFF_HZ:
         if (value < 0.0f)
             return invalid_argument("audio DSP filter cutoff parameter is invalid");
-        parameters.filter_cutoff_hz = value;
+        parameters.filter.cutoff_hz = value;
+        parameters.filter.type =
+            value == 0.0f ? NK_AUDIO_DSP_FILTER_NONE : NK_AUDIO_DSP_FILTER_SVF_LOW_PASS;
         break;
     case NK_AUDIO_DSP_PARAMETER_FILTER_RESONANCE:
         if (value < 0.0f || value > 1.0f)
             return invalid_argument("audio DSP filter resonance parameter is invalid");
-        parameters.filter_resonance = value;
+        parameters.filter.resonance = value;
         break;
     default:
         return invalid_argument("audio DSP parameter is invalid");
@@ -249,23 +303,23 @@ nk_result set_parameter(DspParameters &parameters, nk_audio_dsp_parameter parame
 float get_parameter(const DspParameters &parameters, nk_audio_dsp_parameter parameter) {
     switch (parameter) {
     case NK_AUDIO_DSP_PARAMETER_WAVEFORM:
-        return static_cast<float>(parameters.waveform);
+        return static_cast<float>(parameters.oscillator.waveform);
     case NK_AUDIO_DSP_PARAMETER_GAIN:
         return parameters.gain;
     case NK_AUDIO_DSP_PARAMETER_ATTACK_SECONDS:
-        return parameters.attack_seconds;
+        return parameters.envelope.attack_seconds;
     case NK_AUDIO_DSP_PARAMETER_DECAY_SECONDS:
-        return parameters.decay_seconds;
+        return parameters.envelope.decay_seconds;
     case NK_AUDIO_DSP_PARAMETER_SUSTAIN_LEVEL:
-        return parameters.sustain_level;
+        return parameters.envelope.sustain_level;
     case NK_AUDIO_DSP_PARAMETER_RELEASE_SECONDS:
-        return parameters.release_seconds;
+        return parameters.envelope.release_seconds;
     case NK_AUDIO_DSP_PARAMETER_NOISE_LEVEL:
-        return parameters.noise_level;
+        return parameters.noise.level;
     case NK_AUDIO_DSP_PARAMETER_FILTER_CUTOFF_HZ:
-        return parameters.filter_cutoff_hz;
+        return parameters.filter.cutoff_hz;
     case NK_AUDIO_DSP_PARAMETER_FILTER_RESONANCE:
-        return parameters.filter_resonance;
+        return parameters.filter.resonance;
     default:
         return 0.0f;
     }
@@ -274,6 +328,29 @@ float get_parameter(const DspParameters &parameters, nk_audio_dsp_parameter para
 bool instrument_belongs_to(const std::shared_ptr<DspInstrumentResource> &instrument,
                            const DspEngineResource &engine) {
     return instrument && instrument->engine.lock().get() == &engine;
+}
+
+nk_result create_instrument_resource(const std::shared_ptr<DspEngineResource> &engine,
+                                     const std::shared_ptr<DspPatchResource> &patch,
+                                     const DspParameters &parameters,
+                                     nk_audio_dsp_instrument *out_instrument) {
+    auto instrument = std::make_shared<DspInstrumentResource>();
+    instrument->engine = engine;
+    instrument->patch = patch;
+    instrument->defaults = parameters;
+    instrument->current = parameters;
+    std::lock_guard lock(engine->mutex);
+    if (!engine->alive)
+        return invalid_request("audio DSP engine is no longer alive");
+    const auto handle =
+        nk::core::handles().insert(nk::core::ResourceType::audio_dsp_instrument, instrument);
+    if (handle == NK_INVALID_HANDLE) {
+        nk::core::set_error("could not allocate an audio DSP instrument handle");
+        return NK_ERROR_OUT_OF_MEMORY;
+    }
+    engine->instruments.emplace_back(instrument);
+    *out_instrument = handle;
+    return NK_OK;
 }
 
 void sync_voice_parameters(DspVoice &voice) noexcept {
@@ -524,6 +601,68 @@ nk_result NK_CALL nk_audio_dsp_engine_reset(nk_audio_dsp_engine engine_handle) {
         });
 }
 
+nk_result NK_CALL nk_audio_dsp_patch_create(const nk_audio_dsp_patch_options *options,
+                                            nk_audio_dsp_patch *out_patch) {
+    return nk::core::result_boundary(
+        "unexpected error while creating an audio DSP patch", [&]() -> nk_result {
+            if (const auto result = enter_dsp(); result != NK_OK)
+                return result;
+            if (!out_patch)
+                return invalid_argument("audio DSP patch output is missing");
+            *out_patch = NK_INVALID_HANDLE;
+            DspParameters parameters;
+            if (const auto result = normalize_patch_options(options, parameters); result != NK_OK)
+                return result;
+            auto patch = std::make_shared<DspPatchResource>();
+            patch->parameters = parameters;
+            const auto handle =
+                nk::core::handles().insert(nk::core::ResourceType::audio_dsp_patch, patch);
+            if (handle == NK_INVALID_HANDLE) {
+                nk::core::set_error("could not allocate an audio DSP patch handle");
+                return NK_ERROR_OUT_OF_MEMORY;
+            }
+            *out_patch = handle;
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_audio_dsp_patch_destroy(nk_audio_dsp_patch patch_handle) {
+    return nk::core::result_boundary(
+        "unexpected error while destroying an audio DSP patch", [&]() -> nk_result {
+            if (const auto result = enter_dsp(); result != NK_OK)
+                return result;
+            if (!get_patch(patch_handle))
+                return NK_ERROR_INVALID_HANDLE;
+            if (!nk::core::handles().erase(patch_handle, nk::core::ResourceType::audio_dsp_patch))
+                return NK_ERROR_INVALID_HANDLE;
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_audio_dsp_instrument_create_from_patch(
+    nk_audio_dsp_engine engine_handle, nk_audio_dsp_patch patch_handle,
+    nk_audio_dsp_instrument *out_instrument) {
+    return nk::core::result_boundary(
+        "unexpected error while creating an instrument from an audio DSP patch",
+        [&]() -> nk_result {
+            if (const auto result = enter_dsp(); result != NK_OK)
+                return result;
+            if (!out_instrument)
+                return invalid_argument("audio DSP instrument output is missing");
+            *out_instrument = NK_INVALID_HANDLE;
+            auto engine = get_engine(engine_handle);
+            if (!engine)
+                return NK_ERROR_INVALID_HANDLE;
+            auto patch = get_patch(patch_handle);
+            if (!patch)
+                return NK_ERROR_INVALID_HANDLE;
+            if (const auto result = validate_engine_parameters(patch->parameters, *engine);
+                result != NK_OK)
+                return result;
+            return create_instrument_resource(engine, patch, patch->parameters, out_instrument);
+        });
+}
+
 nk_result NK_CALL nk_audio_dsp_instrument_create(nk_audio_dsp_engine engine_handle,
                                                  const nk_audio_dsp_instrument_options *options,
                                                  nk_audio_dsp_instrument *out_instrument) {
@@ -542,22 +681,9 @@ nk_result NK_CALL nk_audio_dsp_instrument_create(nk_audio_dsp_engine engine_hand
                     normalize_instrument_options(options, engine->options.sample_rate, parameters);
                 result != NK_OK)
                 return result;
-            auto instrument = std::make_shared<DspInstrumentResource>();
-            instrument->engine = engine;
-            instrument->defaults = parameters;
-            instrument->current = parameters;
-            std::lock_guard lock(engine->mutex);
-            if (!engine->alive)
-                return invalid_request("audio DSP engine is no longer alive");
-            const auto handle = nk::core::handles().insert(
-                nk::core::ResourceType::audio_dsp_instrument, instrument);
-            if (handle == NK_INVALID_HANDLE) {
-                nk::core::set_error("could not allocate an audio DSP instrument handle");
-                return NK_ERROR_OUT_OF_MEMORY;
-            }
-            engine->instruments.emplace_back(instrument);
-            *out_instrument = handle;
-            return NK_OK;
+            auto patch = std::make_shared<DspPatchResource>();
+            patch->parameters = parameters;
+            return create_instrument_resource(engine, patch, parameters, out_instrument);
         });
 }
 

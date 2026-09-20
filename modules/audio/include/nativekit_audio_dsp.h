@@ -22,6 +22,9 @@ extern "C" {
 /** Opaque handle for one standalone DSP renderer. */
 typedef uint32_t nk_audio_dsp_engine NK_HANDLE NK_HANDLE_DESTROY(nk_audio_dsp_engine_destroy);
 
+/** Opaque handle for an immutable, reusable DSP patch definition. */
+typedef uint32_t nk_audio_dsp_patch NK_HANDLE NK_HANDLE_DESTROY(nk_audio_dsp_patch_destroy);
+
 /** Opaque handle for one instrument owned by a DSP renderer. */
 typedef uint32_t
     nk_audio_dsp_instrument NK_HANDLE NK_HANDLE_DESTROY(nk_audio_dsp_instrument_destroy);
@@ -56,6 +59,13 @@ enum NK_ENUM(nk_audio_dsp_waveform) {
     NK_AUDIO_DSP_WAVEFORM_SQUARE = 3
 };
 
+/** Filter components supported by the DSP patch model. */
+typedef uint32_t nk_audio_dsp_filter_type;
+enum NK_ENUM(nk_audio_dsp_filter_type) {
+    NK_AUDIO_DSP_FILTER_NONE = 0,
+    NK_AUDIO_DSP_FILTER_SVF_LOW_PASS = 1
+};
+
 /** Instrument parameters accepted by nk_audio_dsp_instrument_set_parameter. */
 typedef uint32_t nk_audio_dsp_parameter;
 enum NK_ENUM(nk_audio_dsp_parameter) {
@@ -72,6 +82,85 @@ enum NK_ENUM(nk_audio_dsp_parameter) {
     /** State-variable low-pass resonance in the inclusive range [0, 1]. */
     NK_AUDIO_DSP_PARAMETER_FILTER_RESONANCE = 8
 };
+
+/* ------------------------------------------------------------------------- */
+/* Patch components                                                          */
+/* ------------------------------------------------------------------------- */
+
+/** Oscillator source component in a reusable patch. */
+typedef struct nk_audio_dsp_oscillator_options {
+    /** Set to sizeof(nk_audio_dsp_oscillator_options) before use. */
+    uint32_t struct_size NK_STRUCT_SIZE;
+    /** Built-in oscillator shape. */
+    nk_audio_dsp_waveform waveform;
+    /** Linear source level in the inclusive range [0, 1]. */
+    float level;
+    /** Reserved for compatible extensions; set all elements to zero. */
+    uint64_t reserved2[2];
+} nk_audio_dsp_oscillator_options;
+
+/** White-noise source component in a reusable patch. */
+typedef struct nk_audio_dsp_noise_options {
+    /** Set to sizeof(nk_audio_dsp_noise_options) before use. */
+    uint32_t struct_size NK_STRUCT_SIZE;
+    /** Linear source level in the inclusive range [0, 1]. */
+    float level;
+    /** Reserved; set to zero. */
+    uint32_t reserved;
+    /** Reserved for compatible extensions; set all elements to zero. */
+    uint64_t reserved2[2];
+} nk_audio_dsp_noise_options;
+
+/** Amplitude envelope component in a reusable patch. */
+typedef struct nk_audio_dsp_envelope_options {
+    /** Set to sizeof(nk_audio_dsp_envelope_options) before use. */
+    uint32_t struct_size NK_STRUCT_SIZE;
+    /** Attack duration in seconds. */
+    float attack_seconds;
+    /** Decay duration in seconds. */
+    float decay_seconds;
+    /** Sustained amplitude in the inclusive range [0, 1]. */
+    float sustain_level;
+    /** Release duration in seconds. */
+    float release_seconds;
+    /** Reserved for compatible extensions; set all elements to zero. */
+    uint64_t reserved2[2];
+} nk_audio_dsp_envelope_options;
+
+/** Filter component in a reusable patch. */
+typedef struct nk_audio_dsp_filter_options {
+    /** Set to sizeof(nk_audio_dsp_filter_options) before use. */
+    uint32_t struct_size NK_STRUCT_SIZE;
+    /** Filter algorithm; NONE or SVF_LOW_PASS. */
+    nk_audio_dsp_filter_type type;
+    /** Cutoff in Hz; zero bypasses the filter. */
+    float cutoff_hz;
+    /** Resonance in the inclusive range [0, 1]. */
+    float resonance;
+    /** Reserved for compatible extensions; set all elements to zero. */
+    uint64_t reserved2[2];
+} nk_audio_dsp_filter_options;
+
+/**
+ * Immutable reusable DSP patch. Components are evaluated in source, envelope,
+ * filter, and output-gain order.
+ */
+typedef struct nk_audio_dsp_patch_options {
+    /** Set to sizeof(nk_audio_dsp_patch_options) before use. */
+    uint32_t struct_size NK_STRUCT_SIZE;
+    /** Pitched oscillator source component. */
+    nk_audio_dsp_oscillator_options oscillator;
+    /** White-noise source component. */
+    nk_audio_dsp_noise_options noise;
+    /** Amplitude envelope component. */
+    nk_audio_dsp_envelope_options envelope;
+    /** Optional filter component. */
+    nk_audio_dsp_filter_options filter;
+    /** Linear output gain; zero is silent. */
+    float gain;
+    /** Reserved for compatible extensions; set all elements to zero. */
+    uint64_t reserved2[2];
+} nk_audio_dsp_patch_options;
 
 /** Events applied at exact sample offsets while rendering a block. */
 typedef uint32_t nk_audio_dsp_event_kind;
@@ -103,7 +192,7 @@ typedef struct nk_audio_dsp_engine_options {
     uint64_t reserved2[2];
 } nk_audio_dsp_engine_options;
 
-/** Initial parameters for one pitched instrument. */
+/** Legacy flat parameters for one pitched instrument. Prefer patches. */
 typedef struct nk_audio_dsp_instrument_options {
     /** Set to sizeof(nk_audio_dsp_instrument_options) before passing the structure. */
     uint32_t struct_size NK_STRUCT_SIZE;
@@ -178,7 +267,16 @@ NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_get_capabilities(
 /** Restores instruments and voices to their creation state. */
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_reset(nk_audio_dsp_engine engine);
 
-/** Creates an instrument associated with a renderer. */
+/** Creates an immutable, renderer-independent patch definition. */
+NKAUDIO_API nk_result NK_CALL nk_audio_dsp_patch_create(
+    const nk_audio_dsp_patch_options *options, nk_audio_dsp_patch *out_patch NK_OUT NK_OWNED);
+/** Destroys a patch definition; instruments created from it retain their copy. */
+NKAUDIO_API nk_result NK_CALL nk_audio_dsp_patch_destroy(nk_audio_dsp_patch patch);
+/** Creates an instrument from an immutable reusable patch definition. */
+NKAUDIO_API nk_result NK_CALL
+nk_audio_dsp_instrument_create_from_patch(nk_audio_dsp_engine engine, nk_audio_dsp_patch patch,
+                                          nk_audio_dsp_instrument *out_instrument NK_OUT NK_OWNED);
+/** Creates an instrument from the legacy flat options. Prefer patch_create(). */
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_instrument_create(
     nk_audio_dsp_engine engine, const nk_audio_dsp_instrument_options *options,
     nk_audio_dsp_instrument *out_instrument NK_OUT NK_OWNED);

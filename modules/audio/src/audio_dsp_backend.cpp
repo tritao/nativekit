@@ -19,6 +19,7 @@ struct Voice::Impl {
     uint32_t sample_rate = 0;
     float gain = 1.0f;
     float noise_level = 0.0f;
+    nk_audio_dsp_filter_type filter_type = NK_AUDIO_DSP_FILTER_NONE;
     float filter_cutoff_hz = 0.0f;
     float filter_resonance = 0.0f;
     float velocity = 0.0f;
@@ -42,6 +43,7 @@ void Voice::init(uint32_t sample_rate) noexcept {
     impl_->filter.Init(static_cast<float>(sample_rate));
     impl_->gain = 1.0f;
     impl_->noise_level = 0.0f;
+    impl_->filter_type = NK_AUDIO_DSP_FILTER_NONE;
     impl_->filter_cutoff_hz = 0.0f;
     impl_->filter_resonance = 0.0f;
     impl_->velocity = 0.0f;
@@ -49,12 +51,13 @@ void Voice::init(uint32_t sample_rate) noexcept {
     impl_->active = false;
 }
 
-void Voice::set_parameters(const VoiceParameters &parameters) noexcept {
+void Voice::set_parameters(const PatchParameters &parameters) noexcept {
     impl_->gain = parameters.gain;
-    impl_->noise_level = parameters.noise_level;
-    impl_->filter_cutoff_hz = parameters.filter_cutoff_hz;
-    impl_->filter_resonance = parameters.filter_resonance;
-    switch (parameters.waveform) {
+    impl_->noise_level = parameters.noise.level;
+    impl_->filter_type = parameters.filter.type;
+    impl_->filter_cutoff_hz = parameters.filter.cutoff_hz;
+    impl_->filter_resonance = parameters.filter.resonance;
+    switch (parameters.oscillator.waveform) {
     case NK_AUDIO_DSP_WAVEFORM_SINE:
         impl_->oscillator.SetWaveform(daisysp::Oscillator::WAVE_SIN);
         break;
@@ -71,12 +74,14 @@ void Voice::set_parameters(const VoiceParameters &parameters) noexcept {
         impl_->oscillator.SetWaveform(daisysp::Oscillator::WAVE_SIN);
         break;
     }
-    impl_->envelope.SetAttackTime(parameters.attack_seconds);
-    impl_->envelope.SetDecayTime(parameters.decay_seconds);
-    impl_->envelope.SetSustainLevel(parameters.sustain_level);
-    impl_->envelope.SetReleaseTime(parameters.release_seconds);
+    impl_->oscillator.SetAmp(parameters.oscillator.level);
+    impl_->envelope.SetAttackTime(parameters.envelope.attack_seconds);
+    impl_->envelope.SetDecayTime(parameters.envelope.decay_seconds);
+    impl_->envelope.SetSustainLevel(parameters.envelope.sustain_level);
+    impl_->envelope.SetReleaseTime(parameters.envelope.release_seconds);
     impl_->filter.SetRes(impl_->filter_resonance);
-    if (impl_->filter_cutoff_hz > 0.0f)
+    if (parameters.filter.type == NK_AUDIO_DSP_FILTER_SVF_LOW_PASS &&
+        impl_->filter_cutoff_hz > 0.0f)
         impl_->filter.SetFreq(impl_->filter_cutoff_hz);
 }
 
@@ -87,7 +92,7 @@ void Voice::note_on(uint32_t note, float velocity) noexcept {
     impl_->oscillator.Reset();
     impl_->filter.Init(static_cast<float>(impl_->sample_rate));
     impl_->filter.SetRes(impl_->filter_resonance);
-    if (impl_->filter_cutoff_hz > 0.0f)
+    if (impl_->filter_type == NK_AUDIO_DSP_FILTER_SVF_LOW_PASS && impl_->filter_cutoff_hz > 0.0f)
         impl_->filter.SetFreq(impl_->filter_cutoff_hz);
     impl_->envelope.Retrigger(true);
     impl_->velocity = velocity;
@@ -116,7 +121,7 @@ float Voice::process() noexcept {
     }
     auto sample = impl_->oscillator.Process();
     sample += impl_->noise.Process() * impl_->noise_level;
-    if (impl_->filter_cutoff_hz > 0.0f) {
+    if (impl_->filter_type == NK_AUDIO_DSP_FILTER_SVF_LOW_PASS && impl_->filter_cutoff_hz > 0.0f) {
         impl_->filter.Process(sample);
         sample = impl_->filter.Low();
     }

@@ -7,16 +7,34 @@
 
 namespace nk::audio_dsp {
 
-struct VoiceParameters {
+struct OscillatorParameters {
     nk_audio_dsp_waveform waveform = NK_AUDIO_DSP_WAVEFORM_SINE;
-    float gain = 1.0f;
+    float level = 1.0f;
+};
+
+struct NoiseParameters {
+    float level = 0.0f;
+};
+
+struct EnvelopeParameters {
     float attack_seconds = 0.01f;
     float decay_seconds = 0.1f;
     float sustain_level = 0.8f;
     float release_seconds = 0.1f;
-    float noise_level = 0.0f;
-    float filter_cutoff_hz = 0.0f;
-    float filter_resonance = 0.0f;
+};
+
+struct FilterParameters {
+    nk_audio_dsp_filter_type type = NK_AUDIO_DSP_FILTER_NONE;
+    float cutoff_hz = 0.0f;
+    float resonance = 0.0f;
+};
+
+struct PatchParameters {
+    OscillatorParameters oscillator;
+    NoiseParameters noise;
+    EnvelopeParameters envelope;
+    FilterParameters filter;
+    float gain = 1.0f;
 };
 
 /** Private backend-neutral voice boundary; DaisySP types stay in the .cpp. */
@@ -30,7 +48,7 @@ class Voice final {
     Voice &operator=(const Voice &) = delete;
 
     void init(uint32_t sample_rate) noexcept;
-    void set_parameters(const VoiceParameters &parameters) noexcept;
+    void set_parameters(const PatchParameters &parameters) noexcept;
     void note_on(uint32_t note, float velocity) noexcept;
     void note_off() noexcept;
     void reset() noexcept;

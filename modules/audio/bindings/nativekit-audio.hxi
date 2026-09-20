@@ -96,6 +96,13 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		NK_AUDIO_DSP_EVENT_PARAMETER = 2;
 	}
 	/**
+	 * Filter components supported by the DSP patch model.
+	 */
+	enum nk_audio_dsp_filter_type : u32 {
+		NK_AUDIO_DSP_FILTER_NONE = 0;
+		NK_AUDIO_DSP_FILTER_SVF_LOW_PASS = 1;
+	}
+	/**
 	 * Instrument parameters accepted by nk_audio_dsp_instrument_set_parameter.
 	 */
 	enum nk_audio_dsp_parameter : u32 {
@@ -567,9 +574,13 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 */
 	extern fn nk_audio_dsp_engine_reset(engine: nk_audio_dsp_engine) -> nk_result;
 	/**
-	 * Creates an instrument associated with a renderer.
+	 * Creates an instrument from the legacy flat options. Prefer patch_create().
 	 */
 	extern fn nk_audio_dsp_instrument_create(engine: nk_audio_dsp_engine, options: ptr<const<nk_audio_dsp_instrument_options>>, out_instrument: ptr<nk_audio_dsp_instrument> @out @owned) -> nk_result;
+	/**
+	 * Creates an instrument from an immutable reusable patch definition.
+	 */
+	extern fn nk_audio_dsp_instrument_create_from_patch(engine: nk_audio_dsp_engine, patch: nk_audio_dsp_patch, out_instrument: ptr<nk_audio_dsp_instrument> @out @owned) -> nk_result;
 	/**
 	 * Destroys an instrument and releases any voices using it.
 	 */
@@ -582,6 +593,14 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 * Sets one instrument parameter between render calls.
 	 */
 	extern fn nk_audio_dsp_instrument_set_parameter(instrument: nk_audio_dsp_instrument, parameter: nk_audio_dsp_parameter, value: f32) -> nk_result;
+	/**
+	 * Creates an immutable, renderer-independent patch definition.
+	 */
+	extern fn nk_audio_dsp_patch_create(options: ptr<const<nk_audio_dsp_patch_options>>, out_patch: ptr<nk_audio_dsp_patch> @out @owned) -> nk_result;
+	/**
+	 * Destroys a patch definition; instruments created from it retain their copy.
+	 */
+	extern fn nk_audio_dsp_patch_destroy(patch: nk_audio_dsp_patch) -> nk_result;
 	/**
 	 * Returns linear gain for the process-wide NativeKit audio mixer.
 	 */
@@ -1033,6 +1052,35 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		reserved2: array<u64, 2> @offset(24);
 	}
 	/**
+	 * Amplitude envelope component in a reusable patch.
+	 */
+	struct nk_audio_dsp_envelope_options @layout(40, 8) {
+		/**
+		 * Set to sizeof(nk_audio_dsp_envelope_options) before use.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Attack duration in seconds.
+		 */
+		attack_seconds: f32 @offset(4);
+		/**
+		 * Decay duration in seconds.
+		 */
+		decay_seconds: f32 @offset(8);
+		/**
+		 * Sustained amplitude in the inclusive range [0, 1].
+		 */
+		sustain_level: f32 @offset(12);
+		/**
+		 * Release duration in seconds.
+		 */
+		release_seconds: f32 @offset(16);
+		/**
+		 * Reserved for compatible extensions; set all elements to zero.
+		 */
+		reserved2: array<u64, 2> @offset(24);
+	}
+	/**
 	 * One sample-accurate event in a render block. Events must be frame sorted.
 	 */
 	struct nk_audio_dsp_event @layout(56, 8) {
@@ -1075,7 +1123,32 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		reserved2: array<u64, 2> @offset(40);
 	}
 	/**
-	 * Initial parameters for one pitched instrument.
+	 * Filter component in a reusable patch.
+	 */
+	struct nk_audio_dsp_filter_options @layout(32, 8) {
+		/**
+		 * Set to sizeof(nk_audio_dsp_filter_options) before use.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Filter algorithm; NONE or SVF_LOW_PASS.
+		 */
+		type: nk_audio_dsp_filter_type @offset(4);
+		/**
+		 * Cutoff in Hz; zero bypasses the filter.
+		 */
+		cutoff_hz: f32 @offset(8);
+		/**
+		 * Resonance in the inclusive range [0, 1].
+		 */
+		resonance: f32 @offset(12);
+		/**
+		 * Reserved for compatible extensions; set all elements to zero.
+		 */
+		reserved2: array<u64, 2> @offset(16);
+	}
+	/**
+	 * Legacy flat parameters for one pitched instrument. Prefer patches.
 	 */
 	struct nk_audio_dsp_instrument_options @layout(48, 8) {
 		/**
@@ -1110,6 +1183,82 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		 * Reserved for compatible extensions; set all elements to zero.
 		 */
 		reserved2: array<u64, 2> @offset(32);
+	}
+	/**
+	 * White-noise source component in a reusable patch.
+	 */
+	struct nk_audio_dsp_noise_options @layout(32, 8) {
+		/**
+		 * Set to sizeof(nk_audio_dsp_noise_options) before use.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Linear source level in the inclusive range [0, 1].
+		 */
+		level: f32 @offset(4);
+		/**
+		 * Reserved; set to zero.
+		 */
+		reserved: u32 @offset(8);
+		/**
+		 * Reserved for compatible extensions; set all elements to zero.
+		 */
+		reserved2: array<u64, 2> @offset(16);
+	}
+	/**
+	 * Oscillator source component in a reusable patch.
+	 */
+	struct nk_audio_dsp_oscillator_options @layout(32, 8) {
+		/**
+		 * Set to sizeof(nk_audio_dsp_oscillator_options) before use.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Built-in oscillator shape.
+		 */
+		waveform: nk_audio_dsp_waveform @offset(4);
+		/**
+		 * Linear source level in the inclusive range [0, 1].
+		 */
+		level: f32 @offset(8);
+		/**
+		 * Reserved for compatible extensions; set all elements to zero.
+		 */
+		reserved2: array<u64, 2> @offset(16);
+	}
+	/**
+	 * Immutable reusable DSP patch. Components are evaluated in source, envelope,
+	 * filter, and output-gain order.
+	 */
+	struct nk_audio_dsp_patch_options @layout(168, 8) {
+		/**
+		 * Set to sizeof(nk_audio_dsp_patch_options) before use.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Pitched oscillator source component.
+		 */
+		oscillator: nk_audio_dsp_oscillator_options @offset(8);
+		/**
+		 * White-noise source component.
+		 */
+		noise: nk_audio_dsp_noise_options @offset(40);
+		/**
+		 * Amplitude envelope component.
+		 */
+		envelope: nk_audio_dsp_envelope_options @offset(72);
+		/**
+		 * Optional filter component.
+		 */
+		filter: nk_audio_dsp_filter_options @offset(112);
+		/**
+		 * Linear output gain; zero is silent.
+		 */
+		gain: f32 @offset(144);
+		/**
+		 * Reserved for compatible extensions; set all elements to zero.
+		 */
+		reserved2: array<u64, 2> @offset(152);
 	}
 	/**
 	 * Interleaved float output supplied to nk_audio_dsp_engine_render.
@@ -1278,6 +1427,10 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 * Opaque handle for one instrument owned by a DSP renderer.
 	 */
 	handle nk_audio_dsp_instrument : u32 @destroy("nk_audio_dsp_instrument_destroy");
+	/**
+	 * Opaque handle for an immutable, reusable DSP patch definition.
+	 */
+	handle nk_audio_dsp_patch : u32 @destroy("nk_audio_dsp_patch_destroy");
 	/**
 	 * Opaque handle for one reusable set of mixer bus targets.
 	 */
