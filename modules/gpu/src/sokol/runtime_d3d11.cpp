@@ -319,8 +319,8 @@ uint32_t d3d11_image_copy(sg_image source, uint32_t source_mip, uint32_t source_
         const uint32_t source_subresource = subresource(source_info, source_mip, source_layer);
         const uint32_t destination_subresource =
             subresource(destination_info, destination_mip, destination_layer);
-        context()->CopySubresourceRegion(destination_info.texture, destination_subresource, 0, 0, 0,
-                                          source_info.texture, source_subresource, nullptr);
+        context()->CopySubresourceRegion(destination_info.texture, destination_subresource, 0, 0,
+                                          0, source_info.texture, source_subresource, nullptr);
         return 1;
     }
     D3D11_BOX box{};
