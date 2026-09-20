@@ -5,6 +5,7 @@
 
 #include <chrono>
 #include <cstdio>
+#include <cstring>
 #include <thread>
 
 #define EXPECT_RESULT(expression, expected)                                                        \
@@ -51,16 +52,21 @@ int main() {
     nkgpu_render_target target{};
     nkgpu_render_target lost_target{};
     nkgpu_buffer descriptor_buffer{};
+    nkgpu_buffer transfer_source{};
+    nkgpu_buffer transfer_destination{};
     nkgpu_buffer compute_buffer{};
     nkgpu_image descriptor_color{};
     nkgpu_image descriptor_color_second{};
     nkgpu_image descriptor_depth{};
     nkgpu_image descriptor_mipped{};
     nkgpu_image dynamic_image{};
+    nkgpu_image transfer_image{};
+    nkgpu_image transfer_image_second{};
     nkgpu_shader compute_shader{};
     nkgpu_shader_builder compute_shader_builder{};
     nkgpu_pipeline compute_pipeline{};
     nkgpu_pipeline_builder compute_pipeline_builder{};
+    nkgpu_readback transfer_readback{};
     nk_graphics_image retained_image{};
     nk_graphics_image foreign_image{};
     const uint8_t buffer_data[] = {0, 0, 0, 0};
@@ -223,11 +229,112 @@ int main() {
         unsupported_stream.version = 99;
         EXPECT_RESULT(nkgpu_submit_command_stream(first, &unsupported_stream),
                       NKGPU_ERROR_INVALID_ARGUMENT);
-        if (!features.mrt_count || !features.instancing || !limits.max_texture_size ||
+        if (!features.mrt_count || !features.instancing || !features.buffer_copy ||
+            !features.image_copy || !features.image_readback || !limits.max_texture_size ||
             !limits.max_color_attachments) {
             result = __LINE__;
             goto cleanup;
         }
+
+        const uint8_t transfer_pixels[] = {
+            1, 0, 0, 0,
+            2, 0, 0, 0,
+            3, 0, 0, 0,
+            4, 0, 0, 0,
+        };
+        nkgpu_buffer_desc transfer_buffer_desc{};
+        transfer_buffer_desc.struct_size = sizeof(transfer_buffer_desc);
+        transfer_buffer_desc.size = sizeof(transfer_pixels);
+        transfer_buffer_desc.usage = NKGPU_BUFFER_TRANSFER;
+        transfer_buffer_desc.data = transfer_pixels;
+        transfer_buffer_desc.data_size = sizeof(transfer_pixels);
+        EXPECT_RESULT(nkgpu_buffer_create_desc(first, &transfer_buffer_desc, &transfer_source),
+                      NKGPU_OK);
+        transfer_buffer_desc.data = nullptr;
+        transfer_buffer_desc.data_size = 0;
+        EXPECT_RESULT(nkgpu_buffer_create_desc(first, &transfer_buffer_desc, &transfer_destination),
+                      NKGPU_OK);
+        nkgpu_buffer_copy_desc buffer_copy{};
+        buffer_copy.struct_size = sizeof(buffer_copy);
+        buffer_copy.source = transfer_source;
+        buffer_copy.destination = transfer_destination;
+        buffer_copy.size = sizeof(transfer_pixels);
+        EXPECT_RESULT(nkgpu_buffer_copy(first, &buffer_copy), NKGPU_OK);
+
+        nkgpu_image_desc transfer_image_desc{};
+        transfer_image_desc.struct_size = sizeof(transfer_image_desc);
+        transfer_image_desc.width = 2;
+        transfer_image_desc.height = 2;
+        transfer_image_desc.format = NKGPU_IMAGEFORMAT_R32_UINT;
+        transfer_image_desc.usage = NKGPU_IMAGE_SAMPLED | NKGPU_IMAGE_RENDER_TARGET;
+        EXPECT_RESULT(nkgpu_image_create_desc(first, &transfer_image_desc, &transfer_image),
+                      NKGPU_OK);
+        EXPECT_RESULT(nkgpu_image_create_desc(first, &transfer_image_desc,
+                                               &transfer_image_second),
+                      NKGPU_OK);
+        nkgpu_buffer_image_copy_desc buffer_to_image{};
+        buffer_to_image.struct_size = sizeof(buffer_to_image);
+        buffer_to_image.buffer = transfer_destination;
+        buffer_to_image.image = transfer_image;
+        buffer_to_image.width = 2;
+        buffer_to_image.height = 2;
+        EXPECT_RESULT(nkgpu_buffer_to_image(first, &buffer_to_image), NKGPU_OK);
+
+        nkgpu_image_copy_desc image_copy{};
+        image_copy.struct_size = sizeof(image_copy);
+        image_copy.source = transfer_image;
+        image_copy.destination = transfer_image_second;
+        image_copy.width = 2;
+        image_copy.height = 2;
+        EXPECT_RESULT(nkgpu_image_copy(first, &image_copy), NKGPU_OK);
+
+        nkgpu_buffer_image_copy_desc image_to_buffer = buffer_to_image;
+        image_to_buffer.image = transfer_image_second;
+        EXPECT_RESULT(nkgpu_image_to_buffer(first, &image_to_buffer), NKGPU_OK);
+        buffer_to_image.image = transfer_image;
+        EXPECT_RESULT(nkgpu_buffer_to_image(first, &buffer_to_image), NKGPU_OK);
+
+        nkgpu_image_readback_desc readback_desc{};
+        readback_desc.struct_size = sizeof(readback_desc);
+        readback_desc.image = transfer_image;
+        readback_desc.width = 2;
+        readback_desc.height = 2;
+        EXPECT_RESULT(nkgpu_readback_begin_image(first, &readback_desc, &transfer_readback),
+                      NKGPU_OK);
+        nkgpu_readback_info readback_info{};
+        readback_info.struct_size = sizeof(readback_info);
+        for (int attempt = 0; attempt < 100; ++attempt) {
+            EXPECT_RESULT(nkgpu_readback_query(first, transfer_readback, &readback_info),
+                          NKGPU_OK);
+            if (readback_info.state != NKGPU_READBACK_PENDING)
+                break;
+            std::this_thread::yield();
+        }
+        if (readback_info.state != NKGPU_READBACK_READY ||
+            readback_info.size != sizeof(transfer_pixels)) {
+            result = __LINE__;
+            goto cleanup;
+        }
+        uint8_t readback_pixels[sizeof(transfer_pixels)]{};
+        uint32_t readback_size = 0;
+        EXPECT_RESULT(nkgpu_readback_read(first, transfer_readback, readback_pixels,
+                                          sizeof(readback_pixels), &readback_size),
+                      NKGPU_OK);
+        if (readback_size != sizeof(readback_pixels) ||
+            memcmp(readback_pixels, transfer_pixels, sizeof(transfer_pixels)) != 0) {
+            result = __LINE__;
+            goto cleanup;
+        }
+        EXPECT_RESULT(nkgpu_readback_destroy(first, transfer_readback), NKGPU_OK);
+        transfer_readback = {};
+        EXPECT_RESULT(nkgpu_image_destroy(first, transfer_image_second), NKGPU_OK);
+        transfer_image_second = {};
+        EXPECT_RESULT(nkgpu_image_destroy(first, transfer_image), NKGPU_OK);
+        transfer_image = {};
+        EXPECT_RESULT(nkgpu_buffer_destroy(first, transfer_destination), NKGPU_OK);
+        transfer_destination = {};
+        EXPECT_RESULT(nkgpu_buffer_destroy(first, transfer_source), NKGPU_OK);
+        transfer_source = {};
 
         const uint8_t initial[] = {1, 2, 3, 4, 5, 6, 7, 8};
         nkgpu_buffer_desc buffer_desc{};
@@ -582,6 +689,8 @@ int main() {
     }
 
 cleanup:
+    if (transfer_readback.id)
+        nkgpu_readback_destroy(first, transfer_readback);
     if (descriptor_depth.id)
         nkgpu_image_destroy(first, descriptor_depth);
     if (descriptor_color_second.id)
@@ -592,8 +701,16 @@ cleanup:
         nkgpu_image_destroy(first, dynamic_image);
     if (descriptor_mipped.id)
         nkgpu_image_destroy(first, descriptor_mipped);
+    if (transfer_image_second.id)
+        nkgpu_image_destroy(first, transfer_image_second);
+    if (transfer_image.id)
+        nkgpu_image_destroy(first, transfer_image);
     if (descriptor_buffer.id)
         nkgpu_buffer_destroy(first, descriptor_buffer);
+    if (transfer_destination.id)
+        nkgpu_buffer_destroy(first, transfer_destination);
+    if (transfer_source.id)
+        nkgpu_buffer_destroy(first, transfer_source);
     if (compute_buffer.id)
         nkgpu_buffer_destroy(first, compute_buffer);
     if (compute_pipeline.id)

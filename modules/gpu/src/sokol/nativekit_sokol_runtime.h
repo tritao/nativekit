@@ -17,6 +17,8 @@
     NK_SOKOL_RUNTIME_CAT(NK_SOKOL_RUNTIME_PREFIX, external_image_release)
 #define nk_sokol_external_image_resolve                                                            \
     NK_SOKOL_RUNTIME_CAT(NK_SOKOL_RUNTIME_PREFIX, external_image_resolve)
+#define nk_sokol_transfer_get_api                                                                  \
+    NK_SOKOL_RUNTIME_CAT(NK_SOKOL_RUNTIME_PREFIX, transfer_get_api)
 #endif
 
 #ifdef __cplusplus
@@ -43,6 +45,34 @@ uint32_t nk_sokol_external_image_create(sg_image image, sg_view view, int32_t wi
 void nk_sokol_external_image_release(uint32_t image);
 int nk_sokol_external_image_resolve(uint32_t image, sg_view *out_view, int32_t *out_width,
                                     int32_t *out_height);
+
+typedef struct nk_sokol_transfer_api nk_sokol_transfer_api;
+
+struct nk_sokol_transfer_api {
+    uint32_t (*buffer_copy)(sg_buffer source, uint32_t source_offset, sg_buffer destination,
+                            uint32_t destination_offset, uint32_t size);
+    uint32_t (*image_copy)(sg_image source, uint32_t source_mip, uint32_t source_layer,
+                           uint32_t source_x, uint32_t source_y, sg_image destination,
+                           uint32_t destination_mip, uint32_t destination_layer,
+                           uint32_t destination_x, uint32_t destination_y, uint32_t width,
+                           uint32_t height);
+    uint32_t (*buffer_to_image)(sg_buffer source, uint32_t source_offset, uint32_t row_pitch,
+                                sg_image destination, uint32_t mip_level, uint32_t layer,
+                                uint32_t x, uint32_t y, uint32_t width, uint32_t height);
+    uint32_t (*image_to_buffer)(sg_image source, uint32_t mip_level, uint32_t layer,
+                                uint32_t x, uint32_t y, uint32_t width, uint32_t height,
+                                sg_buffer destination, uint32_t destination_offset,
+                                uint32_t row_pitch);
+    uint32_t (*readback_begin)(sg_image source, uint32_t mip_level, uint32_t layer, uint32_t x,
+                               uint32_t y, uint32_t width, uint32_t height);
+    uint32_t (*readback_status)(uint32_t readback);
+    uint32_t (*readback_size)(uint32_t readback);
+    uint32_t (*readback_row_pitch)(uint32_t readback);
+    int (*readback_read)(uint32_t readback, void *destination, uint32_t size);
+    void (*readback_destroy)(uint32_t readback);
+};
+
+const nk_sokol_transfer_api *nk_sokol_transfer_get_api(void);
 
 #ifdef __cplusplus
 }

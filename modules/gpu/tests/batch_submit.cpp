@@ -78,6 +78,17 @@ void append_draw(std::vector<uint8_t> &bytes, uint32_t base, uint32_t count, uin
     append_record(bytes, NKGPU_COMMAND_DRAW, payload);
 }
 
+void append_copy_buffer(std::vector<uint8_t> &bytes, nkgpu_buffer source, uint32_t source_offset,
+                        nkgpu_buffer destination, uint32_t destination_offset, uint32_t size) {
+    std::vector<uint8_t> payload;
+    append_u32(payload, source.id);
+    append_u32(payload, source_offset);
+    append_u32(payload, destination.id);
+    append_u32(payload, destination_offset);
+    append_u32(payload, size);
+    append_record(bytes, NKGPU_COMMAND_COPY_BUFFER, payload);
+}
+
 void append_apply_scissor(std::vector<uint8_t> &bytes, uint32_t enabled, int32_t x, int32_t y,
                           int32_t width, int32_t height) {
     std::vector<uint8_t> payload;
@@ -259,6 +270,16 @@ int main() {
         append_draw(overlay_commands, 0, 3, 1);
         EXPECT_RESULT(nkgpu_batch_append_command(batch, overlay_commands.data(),
                                                  static_cast<uint32_t>(overlay_commands.size())),
+                      NKGPU_OK);
+
+        nkgpu_batch_pass copy_pass{};
+        copy_pass.struct_size = sizeof(copy_pass);
+        copy_pass.kind = NKGPU_BATCH_PASS_COPY;
+        EXPECT_RESULT(nkgpu_batch_append_pass(batch, &copy_pass), NKGPU_OK);
+        std::vector<uint8_t> copy_commands;
+        append_copy_buffer(copy_commands, buffer, 0, buffer, 12, 4);
+        EXPECT_RESULT(nkgpu_batch_append_command(batch, copy_commands.data(),
+                                                 static_cast<uint32_t>(copy_commands.size())),
                       NKGPU_OK);
     }
     /* Sealing is idempotent and freezes the batch. */

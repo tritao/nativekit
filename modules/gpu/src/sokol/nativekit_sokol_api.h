@@ -4,6 +4,8 @@
 #include "sokol_gfx.h"
 #include "nativekit_graphics.h"
 
+typedef struct nk_sokol_transfer_api nk_sokol_transfer_api;
+
 #if defined(NK_SOKOL_API_PREFIX)
 #define NK_SOKOL_API_CAT2(a, b) a##b
 #define NK_SOKOL_API_CAT(a, b) NK_SOKOL_API_CAT2(a, b)
@@ -22,6 +24,7 @@ typedef struct nk_sokol_api {
     void (*update_buffer)(sg_buffer buffer, const sg_range *data);
     void (*apply_viewport)(int x, int y, int width, int height, bool origin_top_left);
     void (*dispatch)(int num_groups_x, int num_groups_y, int num_groups_z);
+    const nk_sokol_transfer_api *transfer;
     int (*runtime_acquire)(const sg_desc *desc, nk_graphics_device device, uint64_t native_device);
     int (*runtime_is_compatible)(const sg_desc *desc, nk_graphics_device device,
                                  uint64_t native_device);

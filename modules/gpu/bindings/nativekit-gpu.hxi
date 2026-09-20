@@ -40,6 +40,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		 * A compute pass with no render target.
 		 */
 		NKGPU_BATCH_PASS_COMPUTE = 3;
+		/**
+		 * A transfer pass with no render target.
+		 */
+		NKGPU_BATCH_PASS_COPY = 4;
 	}
 	/**
 	 * Blend factors accepted by generic pipeline state.
@@ -163,6 +167,22 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		 * Dispatch compute workgroups; payload: x, y, and z group counts.
 		 */
 		NKGPU_COMMAND_DISPATCH = 13;
+		/**
+		 * Copy a byte range between buffers; payload: source, source offset, destination, destination offset, size.
+		 */
+		NKGPU_COMMAND_COPY_BUFFER = 14;
+		/**
+		 * Copy a 2D image region; payload matches nkgpu_image_copy_desc without struct_size.
+		 */
+		NKGPU_COMMAND_COPY_IMAGE = 15;
+		/**
+		 * Upload a buffer region into an image; payload matches nkgpu_buffer_image_copy_desc without struct_size.
+		 */
+		NKGPU_COMMAND_COPY_BUFFER_TO_IMAGE = 16;
+		/**
+		 * Download an image region into a buffer; payload matches nkgpu_buffer_image_copy_desc without struct_size.
+		 */
+		NKGPU_COMMAND_COPY_IMAGE_TO_BUFFER = 17;
 	}
 	/**
 	 * Comparison function used by depth and stencil state.
@@ -265,6 +285,14 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		NKGPU_PRIMITIVETYPE_TRIANGLE_STRIP = 5;
 	}
 	/**
+	 * State of an asynchronous GPU readback.
+	 */
+	enum nkgpu_readback_state : u32 {
+		NKGPU_READBACK_PENDING = 1;
+		NKGPU_READBACK_READY = 2;
+		NKGPU_READBACK_FAILED = 3;
+	}
+	/**
 	 * Observable renderer lifecycle state.
 	 */
 	enum nkgpu_renderer_state : u32 {
@@ -321,6 +349,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		 * The call was made from a thread that does not satisfy the executor it requires.
 		 */
 		NKGPU_ERROR_WRONG_THREAD = -7;
+		/**
+		 * The selected backend does not expose the requested optional operation.
+		 */
+		NKGPU_ERROR_UNSUPPORTED = -8;
 	}
 	/**
 	 * Source language accepted by the shader creation functions.
@@ -664,6 +696,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_begin_compute_pass(renderer: nkgpu_renderer) -> nkgpu_result;
 	/**
+	 * Begins a transfer pass inside an active frame.
+	 */
+	extern fn nkgpu_begin_copy_pass(renderer: nkgpu_renderer) -> nkgpu_result;
+	/**
 	 * Begins a frame for a renderer.
 	 *
 	 * This makes the renderer's surface current, refreshes its framebuffer size,
@@ -724,6 +760,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_buffer_begin_kind(renderer: nkgpu_renderer, size: u32, usage: nkgpu_buffer_usage, out_builder: ptr<nkgpu_buffer_builder> @out) -> nkgpu_result;
 	/**
+	 * Copies an arbitrary byte range between buffers.
+	 */
+	extern fn nkgpu_buffer_copy(renderer: nkgpu_renderer, desc: ptr<const<nkgpu_buffer_copy_desc>>) -> nkgpu_result;
+	/**
 	 * Creates a GPU buffer from an existing byte array.
 	 *
 	 * The adapter copies `size` bytes from `data`. Both must be non-null and
@@ -751,6 +791,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * longer valid after this call, including when GPU creation reports an error.
 	 */
 	extern fn nkgpu_buffer_end(builder: nkgpu_buffer_builder, out_buffer: ptr<nkgpu_buffer> @out) -> nkgpu_result;
+	/**
+	 * Uploads a buffer region into an image.
+	 */
+	extern fn nkgpu_buffer_to_image(renderer: nkgpu_renderer, desc: ptr<const<nkgpu_buffer_image_copy_desc>>) -> nkgpu_result;
 	/**
 	 * Updates an arbitrary byte range of a dynamic buffer.
 	 */
@@ -815,6 +859,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_image_begin(renderer: nkgpu_renderer, width: u32, height: u32, out_builder: ptr<nkgpu_image_builder> @out) -> nkgpu_result;
 	/**
+	 * Copies a 2D region between compatible images.
+	 */
+	extern fn nkgpu_image_copy(renderer: nkgpu_renderer, desc: ptr<const<nkgpu_image_copy_desc>>) -> nkgpu_result;
+	/**
 	 * Creates an image from tightly packed pixels as a convenience wrapper.
 	 */
 	extern fn nkgpu_image_create(renderer: nkgpu_renderer, width: u32, height: u32, format: nkgpu_image_format, pixels: ptr<const<u8>>, size: u32, dynamic_update: u32, out_image: ptr<nkgpu_image> @out) -> nkgpu_result;
@@ -833,6 +881,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * bound with nkgpu_apply_image().
 	 */
 	extern fn nkgpu_image_end(builder: nkgpu_image_builder, out_image: ptr<nkgpu_image> @out) -> nkgpu_result;
+	/**
+	 * Downloads an image region into a buffer in top-to-bottom row order.
+	 */
+	extern fn nkgpu_image_to_buffer(renderer: nkgpu_renderer, desc: ptr<const<nkgpu_buffer_image_copy_desc>>) -> nkgpu_result;
 	/**
 	 * Updates an image rectangle from rows with the supplied byte pitch.
 	 */
@@ -943,6 +995,22 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_query_graphics_api(renderer: nkgpu_renderer) -> nk_graphics_api;
 	extern fn nkgpu_query_limits(renderer: nkgpu_renderer, out_limits: ptr<nkgpu_limits> @out) -> nkgpu_result;
+	/**
+	 * Begins an asynchronous readback of an image rectangle.
+	 */
+	extern fn nkgpu_readback_begin_image(renderer: nkgpu_renderer, desc: ptr<const<nkgpu_image_readback_desc>>, out_readback: ptr<nkgpu_readback> @out) -> nkgpu_result;
+	/**
+	 * Destroys a readback object, whether pending or ready.
+	 */
+	extern fn nkgpu_readback_destroy(renderer: nkgpu_renderer, readback: nkgpu_readback) -> nkgpu_result;
+	/**
+	 * Polls a readback without exposing backend synchronization objects.
+	 */
+	extern fn nkgpu_readback_query(renderer: nkgpu_renderer, readback: nkgpu_readback, out_info: ptr<nkgpu_readback_info> @out) -> nkgpu_result;
+	/**
+	 * Copies ready readback bytes into caller-owned memory.
+	 */
+	extern fn nkgpu_readback_read(renderer: nkgpu_renderer, readback: nkgpu_readback, data: ptr<u8>, size: u32, out_size: ptr<u32> @out) -> nkgpu_result;
 	/**
 	 * Creates a sampled RGBA8 offscreen target, optionally with depth/stencil storage.
 	 */
@@ -1150,7 +1218,7 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		 */
 		kind: nkgpu_batch_pass_kind @offset(4);
 		/**
-		 * Offscreen target for NKGPU_BATCH_PASS_TARGET; ignored for window/compute passes.
+		 * Offscreen target for NKGPU_BATCH_PASS_TARGET; ignored for other pass kinds.
 		 */
 		target: nkgpu_render_target @offset(8);
 		/**
@@ -1179,6 +1247,17 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		op_alpha: nkgpu_blend_op @offset(24);
 	}
 	/**
+	 * Describes a buffer-to-buffer transfer.
+	 */
+	struct nkgpu_buffer_copy_desc @layout(24, 4) {
+		struct_size: u32 @offset(0) @struct_size;
+		source: nkgpu_buffer @offset(4);
+		source_offset: u32 @offset(8);
+		destination: nkgpu_buffer @offset(12);
+		destination_offset: u32 @offset(16);
+		size: u32 @offset(20);
+	}
+	/**
 	 * Descriptor for a general GPU buffer.
 	 */
 	struct nkgpu_buffer_desc @layout(40, 8) {
@@ -1189,6 +1268,22 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		data_size: u32 @offset(24);
 		dynamic_update: u32 @offset(28);
 		stream: u32 @offset(32);
+	}
+	/**
+	 * Describes a buffer-to-image transfer. Coordinates use NativeKit's top-left origin.
+	 */
+	struct nkgpu_buffer_image_copy_desc @layout(44, 4) {
+		struct_size: u32 @offset(0) @struct_size;
+		buffer: nkgpu_buffer @offset(4);
+		buffer_offset: u32 @offset(8);
+		row_pitch: u32 @offset(12);
+		image: nkgpu_image @offset(16);
+		mip_level: u32 @offset(20);
+		layer: u32 @offset(24);
+		x: u32 @offset(28);
+		y: u32 @offset(32);
+		width: u32 @offset(36);
+		height: u32 @offset(40);
 	}
 	/**
 	 * An RGBA clear color used by render-pass actions.
@@ -1243,6 +1338,24 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		image_readback: u32 @offset(36);
 	}
 	/**
+	 * Describes a 2D image-region transfer. Coordinates use NativeKit's top-left origin.
+	 */
+	struct nkgpu_image_copy_desc @layout(52, 4) {
+		struct_size: u32 @offset(0) @struct_size;
+		source: nkgpu_image @offset(4);
+		source_mip: u32 @offset(8);
+		source_layer: u32 @offset(12);
+		source_x: u32 @offset(16);
+		source_y: u32 @offset(20);
+		destination: nkgpu_image @offset(24);
+		destination_mip: u32 @offset(28);
+		destination_layer: u32 @offset(32);
+		destination_x: u32 @offset(36);
+		destination_y: u32 @offset(40);
+		width: u32 @offset(44);
+		height: u32 @offset(48);
+	}
+	/**
 	 * Descriptor for a general 2D image or image array.
 	 */
 	struct nkgpu_image_desc @layout(56, 8) {
@@ -1258,6 +1371,19 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		data_size: u32 @offset(40);
 		row_pitch: u32 @offset(44);
 		dynamic_update: u32 @offset(48);
+	}
+	/**
+	 * Describes one asynchronous image readback request.
+	 */
+	struct nkgpu_image_readback_desc @layout(32, 4) {
+		struct_size: u32 @offset(0) @struct_size;
+		image: nkgpu_image @offset(4);
+		mip_level: u32 @offset(8);
+		layer: u32 @offset(12);
+		x: u32 @offset(16);
+		y: u32 @offset(20);
+		width: u32 @offset(24);
+		height: u32 @offset(28);
 	}
 	/**
 	 * Reports portable resource and binding limits for one renderer.
@@ -1280,6 +1406,17 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		backend: nkgpu_backend @offset(4);
 		device: u64 @offset(8);
 		context: u64 @offset(16);
+	}
+	/**
+	 * Reports readback state and the tightly packed result layout.
+	 */
+	struct nkgpu_readback_info @layout(24, 4) {
+		struct_size: u32 @offset(0) @struct_size;
+		state: nkgpu_readback_state @offset(4);
+		size: u32 @offset(8);
+		row_pitch: u32 @offset(12);
+		width: u32 @offset(16);
+		height: u32 @offset(20);
 	}
 	/**
 	 * General render-pass description.
@@ -1369,6 +1506,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * Temporary builder handle returned by nkgpu_pipeline_begin().
 	 */
 	handle nkgpu_pipeline_builder : u32;
+	/**
+	 * Asynchronous readback handle returned by nkgpu_readback_begin_image().
+	 */
+	handle nkgpu_readback : u32;
 	/**
 	 * Offscreen render target owned by a renderer.
 	 */

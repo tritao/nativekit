@@ -12,6 +12,7 @@ const nk_sokol_api *nk_sokol_get_api(void) {
         api.update_buffer = sg_update_buffer;
         api.apply_viewport = sg_apply_viewport;
         api.dispatch = sg_dispatch;
+        api.transfer = nk_sokol_transfer_get_api();
         api.runtime_acquire = nk_sokol_runtime_acquire;
         api.runtime_is_compatible = nk_sokol_runtime_is_compatible;
         api.runtime_release = nk_sokol_runtime_release;
