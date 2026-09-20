@@ -844,10 +844,7 @@ static nkgpu_image_format_support make_image_format_support(nkgpu_image_format f
     support.render_target = native.render && !image_format_is_depth(format) ? 1u : 0u;
     support.blend = native.blend && !image_format_is_depth(format) ? 1u : 0u;
     support.depth_stencil = native.depth && image_format_is_depth(format) ? 1u : 0u;
-    support.multisample = native.msaa &&
-                                  (support.render_target || support.depth_stencil)
-                              ? 1u
-                              : 0u;
+    support.multisample = native.msaa && (support.render_target || support.depth_stencil) ? 1u : 0u;
     support.storage = features.compute && limits.max_storage_image_bindings_per_stage > 0 &&
                               (native.read || native.write)
                           ? 1u
@@ -1167,8 +1164,7 @@ nkgpu_result nkgpu_query_limits(nkgpu_renderer renderer, nkgpu_limits *out_limit
     return NKGPU_OK;
 }
 
-nkgpu_result nkgpu_query_image_format_support(nkgpu_renderer renderer,
-                                              nkgpu_image_format format,
+nkgpu_result nkgpu_query_image_format_support(nkgpu_renderer renderer, nkgpu_image_format format,
                                               nkgpu_image_format_support *out_support) {
     auto *slot = renderer_pool.get(renderer);
     if (!slot || !out_support)
@@ -1188,8 +1184,8 @@ nkgpu_result nkgpu_query_image_format_support(nkgpu_renderer renderer,
         return fail(NKGPU_ERROR_UNSUPPORTED, "image format capabilities are unavailable");
     const sg_features features = selected_api->query_features();
     const sg_limits limits = selected_api->query_limits();
-    *out_support = make_image_format_support(
-        format, selected_api->query_pixelformat(native_format), features, limits);
+    *out_support = make_image_format_support(format, selected_api->query_pixelformat(native_format),
+                                             features, limits);
     return NKGPU_OK;
 }
 

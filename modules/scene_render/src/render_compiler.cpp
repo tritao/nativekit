@@ -21,23 +21,22 @@ RenderPlan compile(const SceneSnapshot &snapshot, const SceneView &view) {
     return plan;
 }
 
-RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot,
-                    const ChangeSet &changes, const SceneView &view) {
+RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const ChangeSet &changes,
+                    const SceneView &view) {
     RenderUpdate result;
-    const bool topology_changed = std::any_of(
-        changes.changes.begin(), changes.changes.end(), [](const SceneChange &change) {
+    const bool topology_changed =
+        std::any_of(changes.changes.begin(), changes.changes.end(), [](const SceneChange &change) {
             return has_domain(change.domains, ChangeDomain::Created) ||
-                has_domain(change.domains, ChangeDomain::Destroyed);
+                   has_domain(change.domains, ChangeDomain::Destroyed);
         });
-    const bool effective_state_dirty = std::any_of(
-        changes.changes.begin(), changes.changes.end(), [](const SceneChange &change) {
+    const bool effective_state_dirty =
+        std::any_of(changes.changes.begin(), changes.changes.end(), [](const SceneChange &change) {
             return has_domain(change.domains, ChangeDomain::Hierarchy) ||
-                has_domain(change.domains, ChangeDomain::Visibility) ||
-                has_domain(change.domains, ChangeDomain::Material);
+                   has_domain(change.domains, ChangeDomain::Visibility) ||
+                   has_domain(change.domains, ChangeDomain::Material);
         });
-    const auto effective = effective_state_dirty
-        ? render_internal::effective_state(snapshot, view)
-        : render_internal::EffectiveState{};
+    const auto effective = effective_state_dirty ? render_internal::effective_state(snapshot, view)
+                                                 : render_internal::EffectiveState{};
     std::unordered_set<GeometryId> changed_geometry_resources;
     std::unordered_set<MaterialId> changed_material_resources;
     std::size_t invalidated_items = 0;
@@ -47,11 +46,10 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot,
         const auto *material = snapshot.find_material(item.material);
         const auto desired_geometry = occurrence ? occurrence->geometry : invalid_geometry;
         const auto desired_material = occurrence && effective_state_dirty
-            ? effective.material.at(item.occurrence)
-            : item.material;
+                                          ? effective.material.at(item.occurrence)
+                                          : item.material;
         if (!occurrence || !geometry || !material ||
-            (desired_geometry != item.geometry &&
-             !snapshot.find_geometry(desired_geometry)) ||
+            (desired_geometry != item.geometry && !snapshot.find_geometry(desired_geometry)) ||
             !snapshot.find_material(desired_material)) {
             ++invalidated_items;
             continue;
@@ -66,12 +64,11 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot,
             changed_material_resources.insert(item.material);
     }
     if (topology_changed || plan.source_revision() > snapshot.revision() ||
-        plan.view_signature_ != render_internal::view_signature(view) ||
-        invalidated_items != 0 ||
-        (view.root.valid() && std::any_of(
-             changes.changes.begin(), changes.changes.end(), [](const SceneChange &change) {
-                 return has_domain(change.domains, ChangeDomain::Hierarchy);
-             }))) {
+        plan.view_signature_ != render_internal::view_signature(view) || invalidated_items != 0 ||
+        (view.root.valid() &&
+         std::any_of(changes.changes.begin(), changes.changes.end(), [](const SceneChange &change) {
+             return has_domain(change.domains, ChangeDomain::Hierarchy);
+         }))) {
         plan = compile(snapshot, view);
         result.plan_rebuilt = true;
         result.invalidated_items = invalidated_items;
@@ -104,9 +101,9 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot,
         }
         if (has_domain(change.domains, ChangeDomain::Visibility)) {
             if (effective.visible.at(change.occurrence))
-                item.flags = static_cast<RenderFlags>(
-                    static_cast<std::uint32_t>(item.flags) &
-                    ~static_cast<std::uint32_t>(RenderFlags::Hidden));
+                item.flags =
+                    static_cast<RenderFlags>(static_cast<std::uint32_t>(item.flags) &
+                                             ~static_cast<std::uint32_t>(RenderFlags::Hidden));
             else
                 item.flags |= RenderFlags::Hidden;
             ++result.patched_visibility;
@@ -122,8 +119,8 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot,
             result.geometry_rebuilt = true;
         }
     }
-    const bool hierarchy_changed = std::any_of(
-        changes.changes.begin(), changes.changes.end(), [](const SceneChange &change) {
+    const bool hierarchy_changed =
+        std::any_of(changes.changes.begin(), changes.changes.end(), [](const SceneChange &change) {
             return has_domain(change.domains, ChangeDomain::Hierarchy);
         });
     if (hierarchy_changed) {
@@ -144,9 +141,9 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot,
             if (visible == was_visible)
                 continue;
             if (visible)
-                item.flags = static_cast<RenderFlags>(
-                    static_cast<std::uint32_t>(item.flags) &
-                    ~static_cast<std::uint32_t>(RenderFlags::Hidden));
+                item.flags =
+                    static_cast<RenderFlags>(static_cast<std::uint32_t>(item.flags) &
+                                             ~static_cast<std::uint32_t>(RenderFlags::Hidden));
             else
                 item.flags |= RenderFlags::Hidden;
             ++result.patched_visibility;

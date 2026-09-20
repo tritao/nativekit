@@ -33,7 +33,8 @@ extern "C" {
 #endif
 
 typedef uint32_t nkscene_render_plan NK_HANDLE NK_HANDLE_DESTROY(nkscene_render_plan_destroy);
-typedef uint32_t nkscene_render_executor NK_HANDLE NK_HANDLE_DESTROY(nkscene_render_executor_destroy);
+typedef uint32_t
+    nkscene_render_executor NK_HANDLE NK_HANDLE_DESTROY(nkscene_render_executor_destroy);
 
 typedef struct nkscene_render_visibility_override {
     nkscene_occurrence_id occurrence;
@@ -49,11 +50,11 @@ typedef struct nkscene_render_view {
     uint32_t struct_size NK_STRUCT_SIZE;
     nkscene_occurrence_id root;
     uint32_t include_invisible NK_BOOL32;
-    const nkscene_render_visibility_override *visibility_overrides
-        NK_BORROWED_ARRAY(visibility_override_count);
+    const nkscene_render_visibility_override *
+        visibility_overrides NK_BORROWED_ARRAY(visibility_override_count);
     uint32_t visibility_override_count;
-    const nkscene_render_material_override *material_overrides
-        NK_BORROWED_ARRAY(material_override_count);
+    const nkscene_render_material_override *
+        material_overrides NK_BORROWED_ARRAY(material_override_count);
     uint32_t material_override_count;
 } nkscene_render_view;
 
@@ -91,12 +92,12 @@ typedef struct nkscene_render_execution_stats {
     uint64_t draw_calls;
 } nkscene_render_execution_stats;
 
-NKSRENDER_API nkscene_result NKS_CALL nkscene_render_plan_compile(
-    nkscene_snapshot snapshot, const nkscene_render_view *view,
-    nkscene_render_plan *out_plan NK_OUT NK_OWNED);
+NKSRENDER_API nkscene_result NKS_CALL
+nkscene_render_plan_compile(nkscene_snapshot snapshot, const nkscene_render_view *view,
+                            nkscene_render_plan *out_plan NK_OUT NK_OWNED);
 NKSRENDER_API void NKS_CALL nkscene_render_plan_destroy(nkscene_render_plan plan);
-NKSRENDER_API nkscene_result NKS_CALL nkscene_render_plan_get_item_count(
-    nkscene_render_plan plan, uint64_t *out_count NK_OUT);
+NKSRENDER_API nkscene_result NKS_CALL
+nkscene_render_plan_get_item_count(nkscene_render_plan plan, uint64_t *out_count NK_OUT);
 NKSRENDER_API nkscene_result NKS_CALL nkscene_render_plan_update(
     nkscene_render_plan plan, nkscene_snapshot snapshot, nkscene_change_set changes,
     const nkscene_render_view *view, nkscene_render_update *out_update NK_INOUT);
@@ -170,11 +171,7 @@ struct SceneView {
     std::vector<MaterialOverride> material_overrides;
 };
 
-enum class RenderFlags : std::uint32_t {
-    None = 0,
-    Hidden = 1u << 0,
-    Opaque = 1u << 1
-};
+enum class RenderFlags : std::uint32_t { None = 0, Hidden = 1u << 0, Opaque = 1u << 1 };
 
 constexpr RenderFlags operator|(RenderFlags lhs, RenderFlags rhs) noexcept {
     return static_cast<RenderFlags>(static_cast<std::uint32_t>(lhs) |
@@ -256,14 +253,14 @@ struct GpuExecutionStats {
 };
 
 class RenderPlan {
-public:
+  public:
     std::uint64_t source_revision() const noexcept { return source_revision_; }
     std::span<const RenderItem> items() const noexcept { return items_; }
     std::span<const WorldTransform> transforms() const noexcept { return transforms_; }
     std::span<const InstanceBatch> batches() const noexcept { return batches_; }
     std::size_t compile_count() const noexcept { return compile_count_; }
 
-private:
+  private:
     std::uint64_t source_revision_ = 0;
     std::uint64_t view_signature_ = 0;
     std::vector<RenderItem> items_;
@@ -274,15 +271,15 @@ private:
     std::size_t compile_count_ = 0;
 
     friend NKSRENDER_API RenderPlan compile(const SceneSnapshot &, const SceneView &);
-    friend NKSRENDER_API RenderUpdate update(RenderPlan &, const SceneSnapshot &,
-                                             const ChangeSet &, const SceneView &);
+    friend NKSRENDER_API RenderUpdate update(RenderPlan &, const SceneSnapshot &, const ChangeSet &,
+                                             const SceneView &);
     friend NKSRENDER_API RenderUpdate refresh(RenderPlan &, const SceneSnapshot &,
                                               const SceneView &);
     friend void render_internal::rebuild_batches(RenderPlan &plan);
     friend void render_internal::build_items(RenderPlan &plan, const SceneSnapshot &snapshot,
                                              const SceneView &view);
-    friend std::unordered_map<OccurrenceId, std::size_t> render_internal::item_indices(
-        const RenderPlan &plan);
+    friend std::unordered_map<OccurrenceId, std::size_t>
+    render_internal::item_indices(const RenderPlan &plan);
 };
 
 NKSRENDER_API RenderPlan compile(const SceneSnapshot &snapshot, const SceneView &view);
@@ -291,8 +288,8 @@ NKSRENDER_API RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapsho
 NKSRENDER_API RenderUpdate refresh(RenderPlan &plan, const SceneSnapshot &snapshot,
                                    const SceneView &view);
 
-NKSRENDER_API PickResult pick(const RenderPlan &, const SceneSnapshot &,
-                              std::uint32_t primitive, Vec3 world_position, float depth);
+NKSRENDER_API PickResult pick(const RenderPlan &, const SceneSnapshot &, std::uint32_t primitive,
+                              Vec3 world_position, float depth);
 
 /**
  * Executes the opaque triangle subset of a RenderPlan through NativeKit GPU.
@@ -302,7 +299,7 @@ NKSRENDER_API PickResult pick(const RenderPlan &, const SceneSnapshot &,
  * A renderer must outlive the executor while GPU resources are cached.
  */
 class NKSRENDER_API NativeKitGpuExecutor {
-public:
+  public:
     NativeKitGpuExecutor();
     explicit NativeKitGpuExecutor(nkgpu_renderer renderer);
     ~NativeKitGpuExecutor();
@@ -322,7 +319,7 @@ public:
                             PickResult *out_result);
     std::span<const GpuCommand> commands() const noexcept;
 
-private:
+  private:
     struct State;
     std::unique_ptr<State> state_;
 };

@@ -43,8 +43,8 @@ EffectiveState effective_state(const SceneSnapshot &snapshot, const SceneView &v
         visited.emplace(start, true);
         const auto override_found = visibility_overrides.find(start);
         const bool local_visible = override_found != visibility_overrides.end()
-            ? override_found->second
-            : (view.include_invisible || occurrence->visible);
+                                       ? override_found->second
+                                       : (view.include_invisible || occurrence->visible);
         const bool visible = parent_visible && local_visible;
         if (selected) {
             result.in_view[start] = true;

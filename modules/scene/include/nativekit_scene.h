@@ -93,10 +93,7 @@ typedef struct nkscene_geometry_data {
     uint32_t subelement_count;
 } nkscene_geometry_data;
 
-enum {
-    NKS_MATERIAL_OPAQUE = 1u << 0,
-    NKS_MATERIAL_DOUBLE_SIDED = 1u << 1
-};
+enum { NKS_MATERIAL_OPAQUE = 1u << 0, NKS_MATERIAL_DOUBLE_SIDED = 1u << 1 };
 
 typedef struct nkscene_material_data {
     uint32_t struct_size NK_STRUCT_SIZE;
@@ -132,8 +129,7 @@ enum {
 /* Scene lifecycle                                                           */
 /* ------------------------------------------------------------------------- */
 
-NKS_API nkscene_result NKS_CALL nkscene_scene_create(
-    nkscene_scene *out_scene NK_OUT NK_OWNED);
+NKS_API nkscene_result NKS_CALL nkscene_scene_create(nkscene_scene *out_scene NK_OUT NK_OWNED);
 NKS_API void NKS_CALL nkscene_scene_destroy(nkscene_scene scene);
 
 /* ------------------------------------------------------------------------- */
@@ -143,62 +139,59 @@ NKS_API void NKS_CALL nkscene_scene_destroy(nkscene_scene scene);
 NKS_API nkscene_result NKS_CALL nkscene_transaction_begin(
     nkscene_scene scene, nkscene_transaction *out_transaction NK_OUT NK_OWNED);
 NKS_API void NKS_CALL nkscene_transaction_cancel(nkscene_transaction transaction);
-NKS_API nkscene_result NKS_CALL nkscene_transaction_commit(
-    nkscene_transaction transaction);
+NKS_API nkscene_result NKS_CALL nkscene_transaction_commit(nkscene_transaction transaction);
 NKS_API nkscene_result NKS_CALL nkscene_transaction_commit_with_changes(
     nkscene_transaction transaction, nkscene_change_set *out_changes NK_OUT NK_OWNED);
 
-NKS_API nkscene_result NKS_CALL nkscene_tx_create_occurrence(
-    nkscene_transaction transaction, nkscene_occurrence_id *out_occurrence);
-NKS_API nkscene_result NKS_CALL nkscene_tx_destroy_occurrence(
-    nkscene_transaction transaction, nkscene_occurrence_id occurrence);
-NKS_API nkscene_result NKS_CALL nkscene_tx_set_parent(
-    nkscene_transaction transaction, nkscene_occurrence_id occurrence,
-    nkscene_occurrence_id parent);
-NKS_API nkscene_result NKS_CALL nkscene_tx_set_transform(
-    nkscene_transaction transaction, nkscene_occurrence_id occurrence,
-    const nkscene_transform *transform);
-NKS_API nkscene_result NKS_CALL nkscene_tx_set_geometry(
-    nkscene_transaction transaction, nkscene_occurrence_id occurrence,
-    nkscene_geometry_id geometry);
-NKS_API nkscene_result NKS_CALL nkscene_tx_set_material(
-    nkscene_transaction transaction, nkscene_occurrence_id occurrence,
-    nkscene_material_id material);
-NKS_API nkscene_result NKS_CALL nkscene_tx_set_visibility(
-    nkscene_transaction transaction, nkscene_occurrence_id occurrence,
-    uint32_t visible);
+NKS_API nkscene_result NKS_CALL nkscene_tx_create_occurrence(nkscene_transaction transaction,
+                                                             nkscene_occurrence_id *out_occurrence);
+NKS_API nkscene_result NKS_CALL nkscene_tx_destroy_occurrence(nkscene_transaction transaction,
+                                                              nkscene_occurrence_id occurrence);
+NKS_API nkscene_result NKS_CALL nkscene_tx_set_parent(nkscene_transaction transaction,
+                                                      nkscene_occurrence_id occurrence,
+                                                      nkscene_occurrence_id parent);
+NKS_API nkscene_result NKS_CALL nkscene_tx_set_transform(nkscene_transaction transaction,
+                                                         nkscene_occurrence_id occurrence,
+                                                         const nkscene_transform *transform);
+NKS_API nkscene_result NKS_CALL nkscene_tx_set_geometry(nkscene_transaction transaction,
+                                                        nkscene_occurrence_id occurrence,
+                                                        nkscene_geometry_id geometry);
+NKS_API nkscene_result NKS_CALL nkscene_tx_set_material(nkscene_transaction transaction,
+                                                        nkscene_occurrence_id occurrence,
+                                                        nkscene_material_id material);
+NKS_API nkscene_result NKS_CALL nkscene_tx_set_visibility(nkscene_transaction transaction,
+                                                          nkscene_occurrence_id occurrence,
+                                                          uint32_t visible);
 
 /* ------------------------------------------------------------------------- */
 /* Snapshots and changes                                                     */
 /* ------------------------------------------------------------------------- */
 
-NKS_API nkscene_result NKS_CALL nkscene_scene_snapshot(
-    nkscene_scene scene, nkscene_snapshot *out_snapshot NK_OUT NK_OWNED);
+NKS_API nkscene_result NKS_CALL
+nkscene_scene_snapshot(nkscene_scene scene, nkscene_snapshot *out_snapshot NK_OUT NK_OWNED);
 NKS_API void NKS_CALL nkscene_snapshot_destroy(nkscene_snapshot snapshot);
-NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_revision(
-    nkscene_snapshot snapshot, uint64_t *out_revision NK_OUT);
+NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_revision(nkscene_snapshot snapshot,
+                                                              uint64_t *out_revision NK_OUT);
 NKS_API void NKS_CALL nkscene_change_set_destroy(nkscene_change_set changes);
-NKS_API nkscene_result NKS_CALL nkscene_change_set_get_revision(
-    nkscene_change_set changes, uint64_t *out_revision NK_OUT);
+NKS_API nkscene_result NKS_CALL nkscene_change_set_get_revision(nkscene_change_set changes,
+                                                                uint64_t *out_revision NK_OUT);
 
 /* ------------------------------------------------------------------------- */
 /* Resource identifiers                                                      */
 /* ------------------------------------------------------------------------- */
 
-NKS_API nkscene_result NKS_CALL nkscene_geometry_create(
-    nkscene_scene scene, nkscene_geometry_id *out_geometry NK_OUT);
-NKS_API void NKS_CALL nkscene_geometry_destroy(
-    nkscene_scene scene, nkscene_geometry_id geometry);
-NKS_API nkscene_result NKS_CALL nkscene_material_create(
-    nkscene_scene scene, nkscene_material_id *out_material NK_OUT);
-NKS_API void NKS_CALL nkscene_material_destroy(
-    nkscene_scene scene, nkscene_material_id material);
-NKS_API nkscene_result NKS_CALL nkscene_geometry_set_data(
-    nkscene_scene scene, nkscene_geometry_id geometry,
-    const nkscene_geometry_data *data);
-NKS_API nkscene_result NKS_CALL nkscene_material_set_data(
-    nkscene_scene scene, nkscene_material_id material,
-    const nkscene_material_data *data);
+NKS_API nkscene_result NKS_CALL nkscene_geometry_create(nkscene_scene scene,
+                                                        nkscene_geometry_id *out_geometry NK_OUT);
+NKS_API void NKS_CALL nkscene_geometry_destroy(nkscene_scene scene, nkscene_geometry_id geometry);
+NKS_API nkscene_result NKS_CALL nkscene_material_create(nkscene_scene scene,
+                                                        nkscene_material_id *out_material NK_OUT);
+NKS_API void NKS_CALL nkscene_material_destroy(nkscene_scene scene, nkscene_material_id material);
+NKS_API nkscene_result NKS_CALL nkscene_geometry_set_data(nkscene_scene scene,
+                                                          nkscene_geometry_id geometry,
+                                                          const nkscene_geometry_data *data);
+NKS_API nkscene_result NKS_CALL nkscene_material_set_data(nkscene_scene scene,
+                                                          nkscene_material_id material,
+                                                          const nkscene_material_data *data);
 
 #ifdef __cplusplus
 }

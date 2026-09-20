@@ -2,8 +2,8 @@
 
 namespace nkscene {
 
-PickResult pick(const RenderPlan &plan, const SceneSnapshot &snapshot,
-               std::uint32_t primitive, Vec3 world_position, float depth) {
+PickResult pick(const RenderPlan &plan, const SceneSnapshot &snapshot, std::uint32_t primitive,
+                Vec3 world_position, float depth) {
     PickResult result;
     result.worldPosition = world_position;
     result.depth = depth;

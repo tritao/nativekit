@@ -842,9 +842,9 @@ NKGPU_API nkgpu_result nkgpu_query_limits(nkgpu_renderer renderer,
                                           nkgpu_limits *out_limits NKGPU_OUT);
 
 /** Queries backend support for one NativeKit image format. */
-NKGPU_API nkgpu_result nkgpu_query_image_format_support(
-    nkgpu_renderer renderer, nkgpu_image_format format,
-    nkgpu_image_format_support *out_support NKGPU_OUT);
+NKGPU_API nkgpu_result
+nkgpu_query_image_format_support(nkgpu_renderer renderer, nkgpu_image_format format,
+                                 nkgpu_image_format_support *out_support NKGPU_OUT);
 
 /** Returns opaque native device/context tokens for advanced backend integration. */
 NKGPU_API nkgpu_result nkgpu_get_native_context(nkgpu_renderer renderer,

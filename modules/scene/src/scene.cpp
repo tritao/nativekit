@@ -27,7 +27,9 @@ SceneSnapshot::SceneSnapshot() : state_(std::make_shared<State>()) {}
 
 SceneSnapshot::SceneSnapshot(std::shared_ptr<const State> state) : state_(std::move(state)) {}
 
-std::uint64_t SceneSnapshot::revision() const noexcept { return state_->revisions.scene; }
+std::uint64_t SceneSnapshot::revision() const noexcept {
+    return state_->revisions.scene;
+}
 
 const RevisionCounters &SceneSnapshot::revisions() const noexcept {
     return state_->revisions;
@@ -38,11 +40,11 @@ std::span<const SnapshotOccurrence> SceneSnapshot::occurrences() const noexcept 
 }
 
 const SnapshotOccurrence *SceneSnapshot::find(OccurrenceId id) const noexcept {
-    const auto found = std::lower_bound(
-        state_->occurrences.begin(), state_->occurrences.end(), id,
-        [](const SnapshotOccurrence &occurrence, OccurrenceId value) {
-            return occurrence.occurrence.value < value.value;
-        });
+    const auto found =
+        std::lower_bound(state_->occurrences.begin(), state_->occurrences.end(), id,
+                         [](const SnapshotOccurrence &occurrence, OccurrenceId value) {
+                             return occurrence.occurrence.value < value.value;
+                         });
     return found == state_->occurrences.end() || found->occurrence != id ? nullptr : &*found;
 }
 
@@ -55,20 +57,18 @@ std::span<const MaterialResource> SceneSnapshot::materials() const noexcept {
 }
 
 const GeometryResource *SceneSnapshot::find_geometry(GeometryId id) const noexcept {
-    const auto found = std::lower_bound(
-        state_->geometries.begin(), state_->geometries.end(), id,
-        [](const GeometryResource &resource, GeometryId value) {
-            return resource.id.value < value.value;
-        });
+    const auto found = std::lower_bound(state_->geometries.begin(), state_->geometries.end(), id,
+                                        [](const GeometryResource &resource, GeometryId value) {
+                                            return resource.id.value < value.value;
+                                        });
     return found == state_->geometries.end() || found->id != id ? nullptr : &*found;
 }
 
 const MaterialResource *SceneSnapshot::find_material(MaterialId id) const noexcept {
-    const auto found = std::lower_bound(
-        state_->materials.begin(), state_->materials.end(), id,
-        [](const MaterialResource &resource, MaterialId value) {
-            return resource.id.value < value.value;
-        });
+    const auto found = std::lower_bound(state_->materials.begin(), state_->materials.end(), id,
+                                        [](const MaterialResource &resource, MaterialId value) {
+                                            return resource.id.value < value.value;
+                                        });
     return found == state_->materials.end() || found->id != id ? nullptr : &*found;
 }
 
@@ -82,25 +82,23 @@ LocalTransform multiply(const LocalTransform &lhs, const LocalTransform &rhs) no
     LocalTransform result{};
     for (std::size_t column = 0; column < 4; ++column) {
         for (std::size_t row = 0; row < 4; ++row) {
-            result.matrix[column * 4 + row] =
-                lhs.matrix[row] * rhs.matrix[column * 4] +
-                lhs.matrix[4 + row] * rhs.matrix[column * 4 + 1] +
-                lhs.matrix[8 + row] * rhs.matrix[column * 4 + 2] +
-                lhs.matrix[12 + row] * rhs.matrix[column * 4 + 3];
+            result.matrix[column * 4 + row] = lhs.matrix[row] * rhs.matrix[column * 4] +
+                                              lhs.matrix[4 + row] * rhs.matrix[column * 4 + 1] +
+                                              lhs.matrix[8 + row] * rhs.matrix[column * 4 + 2] +
+                                              lhs.matrix[12 + row] * rhs.matrix[column * 4 + 3];
         }
     }
     return result;
 }
 
 std::array<float, 3> transform_point(const LocalTransform &transform,
-                                      const std::array<float, 3> &point) noexcept {
-    return {
-        transform.matrix[0] * point[0] + transform.matrix[4] * point[1] +
-            transform.matrix[8] * point[2] + transform.matrix[12],
-        transform.matrix[1] * point[0] + transform.matrix[5] * point[1] +
-            transform.matrix[9] * point[2] + transform.matrix[13],
-        transform.matrix[2] * point[0] + transform.matrix[6] * point[1] +
-            transform.matrix[10] * point[2] + transform.matrix[14]};
+                                     const std::array<float, 3> &point) noexcept {
+    return {transform.matrix[0] * point[0] + transform.matrix[4] * point[1] +
+                transform.matrix[8] * point[2] + transform.matrix[12],
+            transform.matrix[1] * point[0] + transform.matrix[5] * point[1] +
+                transform.matrix[9] * point[2] + transform.matrix[13],
+            transform.matrix[2] * point[0] + transform.matrix[6] * point[1] +
+                transform.matrix[10] * point[2] + transform.matrix[14]};
 }
 
 Bounds transformed_bounds(const Bounds &local, const LocalTransform &transform) noexcept {
@@ -113,10 +111,9 @@ Bounds transformed_bounds(const Bounds &local, const LocalTransform &transform) 
     for (int x = 0; x < 2; ++x) {
         for (int y = 0; y < 2; ++y) {
             for (int z = 0; z < 2; ++z) {
-                const std::array<float, 3> point{
-                    x ? local.maximum[0] : local.minimum[0],
-                    y ? local.maximum[1] : local.minimum[1],
-                    z ? local.maximum[2] : local.minimum[2]};
+                const std::array<float, 3> point{x ? local.maximum[0] : local.minimum[0],
+                                                 y ? local.maximum[1] : local.minimum[1],
+                                                 z ? local.maximum[2] : local.minimum[2]};
                 const auto transformed = transform_point(transform, point);
                 for (int axis = 0; axis < 3; ++axis) {
                     result.minimum[axis] = std::min(result.minimum[axis], transformed[axis]);
@@ -176,14 +173,12 @@ void Scene::recompute_world_transforms(ChangeSet &changes) {
                 if (const auto *parent_world = world_transforms_.find(parent))
                     world = multiply(parent_world->transform, *local);
             }
-            world_transforms_.insert_or_assign(current,
-                                               WorldTransform{world, revisions.scene + 1});
+            world_transforms_.insert_or_assign(current, WorldTransform{world, revisions.scene + 1});
             ++changes.stats.dirty_world_transforms;
             if (const auto *geometry = geometry_refs.find(current)) {
                 const auto *resource = geometries.find(geometry->id);
                 if (resource && resource->bounds.valid) {
-                    bounds.insert_or_assign(current,
-                                            transformed_bounds(resource->bounds, world));
+                    bounds.insert_or_assign(current, transformed_bounds(resource->bounds, world));
                     ++changes.stats.dirty_bounds;
                 } else {
                     bounds.erase(current);
@@ -260,7 +255,8 @@ nkscene_result Scene::validate(const Transaction &transaction) const noexcept {
                 using T = std::decay_t<decltype(value)>;
                 if constexpr (std::is_same_v<T, CreateOccurrence>) {
                     const bool valid = value.occurrence.valid() &&
-                        !occurrences.contains(value.occurrence) && !live.contains(value.occurrence);
+                                       !occurrences.contains(value.occurrence) &&
+                                       !live.contains(value.occurrence);
                     if (valid) {
                         live.emplace(value.occurrence, true);
                         final_parents.emplace(value.occurrence, invalid_occurrence);
@@ -268,18 +264,18 @@ nkscene_result Scene::validate(const Transaction &transaction) const noexcept {
                         result = NKS_ERROR_INVALID_ARGUMENT;
                     }
                 } else if constexpr (std::is_same_v<T, DestroyOccurrence>) {
-                    const bool valid = value.occurrence.valid() &&
-                        exists_after(live, value.occurrence);
+                    const bool valid =
+                        value.occurrence.valid() && exists_after(live, value.occurrence);
                     if (valid) {
                         live[value.occurrence] = false;
                     } else {
                         result = NKS_ERROR_STALE_ID;
                     }
                 } else if constexpr (std::is_same_v<T, SetParent>) {
-                    const bool valid_target = value.occurrence.valid() &&
-                        exists_after(live, value.occurrence);
-                    const bool valid_parent = value.parent == invalid_occurrence ||
-                        exists_after(live, value.parent);
+                    const bool valid_target =
+                        value.occurrence.valid() && exists_after(live, value.occurrence);
+                    const bool valid_parent =
+                        value.parent == invalid_occurrence || exists_after(live, value.parent);
                     if (!valid_target || !valid_parent) {
                         result = NKS_ERROR_STALE_ID;
                     } else if (value.occurrence == value.parent) {
@@ -342,8 +338,8 @@ nkscene_result Scene::validate(const Transaction &transaction) const noexcept {
 }
 
 void Scene::record_change(ChangeSet &changes,
-                          std::unordered_map<OccurrenceId, std::size_t> &indices,
-                          OccurrenceId id, ChangeDomain domain) {
+                          std::unordered_map<OccurrenceId, std::size_t> &indices, OccurrenceId id,
+                          ChangeDomain domain) {
     const auto found = indices.find(id);
     if (found == indices.end()) {
         indices.emplace(id, changes.changes.size());
@@ -372,8 +368,7 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
                     hierarchy.add(value.occurrence);
                     local_transforms.insert_or_assign(value.occurrence, LocalTransform{});
                     visibilities_.insert_or_assign(value.occurrence, Visibility{});
-                    record_change(changes, change_indices, value.occurrence,
-                                  ChangeDomain::Created);
+                    record_change(changes, change_indices, value.occurrence, ChangeDomain::Created);
                 } else if constexpr (std::is_same_v<T, DestroyOccurrence>) {
                     source_entities.erase(value.occurrence);
                     parent_components.erase(value.occurrence);
@@ -391,8 +386,7 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
                     const auto previous = hierarchy.parent(value.occurrence);
                     if (previous != value.parent) {
                         hierarchy.reparent(value.occurrence, value.parent);
-                        parent_components.insert_or_assign(value.occurrence,
-                                                           Parent{value.parent});
+                        parent_components.insert_or_assign(value.occurrence, Parent{value.parent});
                         record_change(changes, change_indices, value.occurrence,
                                       ChangeDomain::Hierarchy);
                     }
@@ -422,8 +416,7 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
                 } else if constexpr (std::is_same_v<T, SetVisibility>) {
                     const auto *previous = visibilities_.find(value.occurrence);
                     if (!previous || previous->visible != value.visible) {
-                        visibilities_.insert_or_assign(value.occurrence,
-                                                       Visibility{value.visible});
+                        visibilities_.insert_or_assign(value.occurrence, Visibility{value.visible});
                         record_change(changes, change_indices, value.occurrence,
                                       ChangeDomain::Visibility);
                     }
@@ -443,15 +436,18 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
         bool visibility_changed = false;
         bool bounds_changed = false;
         for (const auto &change : changes.changes) {
-            hierarchy_changed = hierarchy_changed || has_domain(change.domains, ChangeDomain::Created) ||
-                has_domain(change.domains, ChangeDomain::Destroyed) ||
-                has_domain(change.domains, ChangeDomain::Hierarchy);
-            transform_changed = transform_changed ||
-                has_domain(change.domains, ChangeDomain::Transform);
-            geometry_changed = geometry_changed || has_domain(change.domains, ChangeDomain::Geometry);
-            material_changed = material_changed || has_domain(change.domains, ChangeDomain::Material);
-            visibility_changed = visibility_changed ||
-                has_domain(change.domains, ChangeDomain::Visibility);
+            hierarchy_changed = hierarchy_changed ||
+                                has_domain(change.domains, ChangeDomain::Created) ||
+                                has_domain(change.domains, ChangeDomain::Destroyed) ||
+                                has_domain(change.domains, ChangeDomain::Hierarchy);
+            transform_changed =
+                transform_changed || has_domain(change.domains, ChangeDomain::Transform);
+            geometry_changed =
+                geometry_changed || has_domain(change.domains, ChangeDomain::Geometry);
+            material_changed =
+                material_changed || has_domain(change.domains, ChangeDomain::Material);
+            visibility_changed =
+                visibility_changed || has_domain(change.domains, ChangeDomain::Visibility);
             bounds_changed = bounds_changed || has_domain(change.domains, ChangeDomain::Bounds);
         }
         if (hierarchy_changed)
@@ -511,8 +507,8 @@ LocalTransform from_public_transform(const nkscene_transform &transform) {
     return result;
 }
 
-    nkscene_result commit_transaction(nkscene_transaction transaction_handle,
-                                      nkscene_change_set *out_changes) {
+nkscene_result commit_transaction(nkscene_transaction transaction_handle,
+                                  nkscene_change_set *out_changes) {
     if (out_changes)
         *out_changes = 0;
     auto &state = registry();
@@ -539,15 +535,15 @@ LocalTransform from_public_transform(const nkscene_transform &transform) {
 
 } // namespace
 
-NKS_API std::shared_ptr<const SceneSnapshot> resolve_snapshot_handle(
-    nkscene_snapshot snapshot) noexcept {
+NKS_API std::shared_ptr<const SceneSnapshot>
+resolve_snapshot_handle(nkscene_snapshot snapshot) noexcept {
     auto &state = registry();
     std::lock_guard lock(state.mutex);
     return state.snapshots.get(unpack_handle(snapshot));
 }
 
-NKS_API std::shared_ptr<const ChangeSet> resolve_change_set_handle(
-    nkscene_change_set changes) noexcept {
+NKS_API std::shared_ptr<const ChangeSet>
+resolve_change_set_handle(nkscene_change_set changes) noexcept {
     auto &state = registry();
     std::lock_guard lock(state.mutex);
     return state.change_sets.get(unpack_handle(changes));
@@ -586,8 +582,8 @@ void NKS_CALL nkscene_scene_destroy(nkscene_scene scene) {
     state.scenes.remove(scene_handle);
 }
 
-nkscene_result NKS_CALL nkscene_transaction_begin(
-    nkscene_scene scene, nkscene_transaction *out_transaction) {
+nkscene_result NKS_CALL nkscene_transaction_begin(nkscene_scene scene,
+                                                  nkscene_transaction *out_transaction) {
     if (!out_transaction)
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = nkscene::registry();
@@ -618,8 +614,8 @@ nkscene_result NKS_CALL nkscene_transaction_commit_with_changes(
     return nkscene::commit_transaction(transaction_handle, out_changes);
 }
 
-nkscene_result NKS_CALL nkscene_tx_create_occurrence(
-    nkscene_transaction handle, nkscene_occurrence_id *out_occurrence) {
+nkscene_result NKS_CALL nkscene_tx_create_occurrence(nkscene_transaction handle,
+                                                     nkscene_occurrence_id *out_occurrence) {
     if (!out_occurrence)
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = nkscene::registry();
@@ -634,8 +630,8 @@ nkscene_result NKS_CALL nkscene_tx_create_occurrence(
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_tx_destroy_occurrence(
-    nkscene_transaction handle, nkscene_occurrence_id occurrence) {
+nkscene_result NKS_CALL nkscene_tx_destroy_occurrence(nkscene_transaction handle,
+                                                      nkscene_occurrence_id occurrence) {
     auto &state = nkscene::registry();
     std::lock_guard lock(state.mutex);
     std::shared_ptr<nkscene::Transaction> transaction;
@@ -646,9 +642,9 @@ nkscene_result NKS_CALL nkscene_tx_destroy_occurrence(
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_tx_set_parent(
-    nkscene_transaction handle, nkscene_occurrence_id occurrence,
-    nkscene_occurrence_id parent) {
+nkscene_result NKS_CALL nkscene_tx_set_parent(nkscene_transaction handle,
+                                              nkscene_occurrence_id occurrence,
+                                              nkscene_occurrence_id parent) {
     auto &state = nkscene::registry();
     std::lock_guard lock(state.mutex);
     std::shared_ptr<nkscene::Transaction> transaction;
@@ -659,9 +655,9 @@ nkscene_result NKS_CALL nkscene_tx_set_parent(
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_tx_set_transform(
-    nkscene_transaction handle, nkscene_occurrence_id occurrence,
-    const nkscene_transform *transform) {
+nkscene_result NKS_CALL nkscene_tx_set_transform(nkscene_transaction handle,
+                                                 nkscene_occurrence_id occurrence,
+                                                 const nkscene_transform *transform) {
     if (!transform)
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = nkscene::registry();
@@ -674,9 +670,9 @@ nkscene_result NKS_CALL nkscene_tx_set_transform(
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_tx_set_geometry(
-    nkscene_transaction handle, nkscene_occurrence_id occurrence,
-    nkscene_geometry_id geometry) {
+nkscene_result NKS_CALL nkscene_tx_set_geometry(nkscene_transaction handle,
+                                                nkscene_occurrence_id occurrence,
+                                                nkscene_geometry_id geometry) {
     auto &state = nkscene::registry();
     std::lock_guard lock(state.mutex);
     std::shared_ptr<nkscene::Transaction> transaction;
@@ -687,9 +683,9 @@ nkscene_result NKS_CALL nkscene_tx_set_geometry(
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_tx_set_material(
-    nkscene_transaction handle, nkscene_occurrence_id occurrence,
-    nkscene_material_id material) {
+nkscene_result NKS_CALL nkscene_tx_set_material(nkscene_transaction handle,
+                                                nkscene_occurrence_id occurrence,
+                                                nkscene_material_id material) {
     auto &state = nkscene::registry();
     std::lock_guard lock(state.mutex);
     std::shared_ptr<nkscene::Transaction> transaction;
@@ -700,8 +696,9 @@ nkscene_result NKS_CALL nkscene_tx_set_material(
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_tx_set_visibility(
-    nkscene_transaction handle, nkscene_occurrence_id occurrence, uint32_t visible) {
+nkscene_result NKS_CALL nkscene_tx_set_visibility(nkscene_transaction handle,
+                                                  nkscene_occurrence_id occurrence,
+                                                  uint32_t visible) {
     auto &state = nkscene::registry();
     std::lock_guard lock(state.mutex);
     std::shared_ptr<nkscene::Transaction> transaction;
@@ -712,8 +709,8 @@ nkscene_result NKS_CALL nkscene_tx_set_visibility(
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_scene_snapshot(
-    nkscene_scene scene, nkscene_snapshot *out_snapshot) {
+nkscene_result NKS_CALL nkscene_scene_snapshot(nkscene_scene scene,
+                                               nkscene_snapshot *out_snapshot) {
     if (!out_snapshot)
         return NKS_ERROR_INVALID_ARGUMENT;
     *out_snapshot = 0;
@@ -734,8 +731,8 @@ void NKS_CALL nkscene_snapshot_destroy(nkscene_snapshot snapshot) {
     state.snapshots.remove(nkscene::unpack_handle(snapshot));
 }
 
-nkscene_result NKS_CALL nkscene_snapshot_get_revision(
-    nkscene_snapshot snapshot, uint64_t *out_revision) {
+nkscene_result NKS_CALL nkscene_snapshot_get_revision(nkscene_snapshot snapshot,
+                                                      uint64_t *out_revision) {
     if (!out_revision)
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = nkscene::registry();
@@ -753,8 +750,8 @@ void NKS_CALL nkscene_change_set_destroy(nkscene_change_set changes) {
     state.change_sets.remove(nkscene::unpack_handle(changes));
 }
 
-nkscene_result NKS_CALL nkscene_change_set_get_revision(
-    nkscene_change_set changes, uint64_t *out_revision) {
+nkscene_result NKS_CALL nkscene_change_set_get_revision(nkscene_change_set changes,
+                                                        uint64_t *out_revision) {
     if (!out_revision)
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = nkscene::registry();
@@ -766,8 +763,8 @@ nkscene_result NKS_CALL nkscene_change_set_get_revision(
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_geometry_create(
-    nkscene_scene scene, nkscene_geometry_id *out_geometry) {
+nkscene_result NKS_CALL nkscene_geometry_create(nkscene_scene scene,
+                                                nkscene_geometry_id *out_geometry) {
     if (!out_geometry)
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = nkscene::registry();
@@ -787,8 +784,8 @@ void NKS_CALL nkscene_geometry_destroy(nkscene_scene scene, nkscene_geometry_id 
         owner->destroy_geometry({geometry.value});
 }
 
-nkscene_result NKS_CALL nkscene_material_create(
-    nkscene_scene scene, nkscene_material_id *out_material) {
+nkscene_result NKS_CALL nkscene_material_create(nkscene_scene scene,
+                                                nkscene_material_id *out_material) {
     if (!out_material)
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = nkscene::registry();
@@ -808,8 +805,8 @@ void NKS_CALL nkscene_material_destroy(nkscene_scene scene, nkscene_material_id 
         owner->destroy_material({material.value});
 }
 
-nkscene_result NKS_CALL nkscene_geometry_set_data(
-    nkscene_scene scene, nkscene_geometry_id geometry, const nkscene_geometry_data *data) {
+nkscene_result NKS_CALL nkscene_geometry_set_data(nkscene_scene scene, nkscene_geometry_id geometry,
+                                                  const nkscene_geometry_data *data) {
     if (!data || data->struct_size < sizeof(nkscene_geometry_data))
         return NKS_ERROR_INVALID_ARGUMENT;
     if ((data->vertex_count != 0 && !data->vertices) ||
@@ -828,8 +825,7 @@ nkscene_result NKS_CALL nkscene_geometry_set_data(
     const auto primitive_count = element_count / 3;
     for (uint32_t index = 0; index < data->subelement_count; ++index) {
         const auto &range = data->subelements[index];
-        if (static_cast<uint64_t>(range.first_primitive) + range.primitive_count >
-            primitive_count)
+        if (static_cast<uint64_t>(range.first_primitive) + range.primitive_count > primitive_count)
             return NKS_ERROR_INVALID_ARGUMENT;
     }
 
@@ -866,8 +862,8 @@ nkscene_result NKS_CALL nkscene_geometry_set_data(
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_material_set_data(
-    nkscene_scene scene, nkscene_material_id material, const nkscene_material_data *data) {
+nkscene_result NKS_CALL nkscene_material_set_data(nkscene_scene scene, nkscene_material_id material,
+                                                  const nkscene_material_data *data) {
     if (!data || data->struct_size < sizeof(nkscene_material_data))
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = nkscene::registry();

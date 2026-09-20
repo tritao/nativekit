@@ -34,14 +34,12 @@ nkscene_result copy_view(const nkscene_render_view *input, nkscene::SceneView &o
     output.visibility_overrides.reserve(input->visibility_override_count);
     for (uint32_t index = 0; index < input->visibility_override_count; ++index) {
         const auto &value = input->visibility_overrides[index];
-        output.visibility_overrides.push_back(
-            {{value.occurrence.value}, value.visible != 0});
+        output.visibility_overrides.push_back({{value.occurrence.value}, value.visible != 0});
     }
     output.material_overrides.reserve(input->material_override_count);
     for (uint32_t index = 0; index < input->material_override_count; ++index) {
         const auto &value = input->material_overrides[index];
-        output.material_overrides.push_back(
-            {{value.occurrence.value}, {value.material.value}});
+        output.material_overrides.push_back({{value.occurrence.value}, {value.material.value}});
     }
     return NKS_OK;
 }
@@ -50,9 +48,9 @@ nkscene_result copy_view(const nkscene_render_view *input, nkscene::SceneView &o
 
 extern "C" {
 
-nkscene_result NKS_CALL nkscene_render_plan_compile(
-    nkscene_snapshot snapshot_handle, const nkscene_render_view *view_input,
-    nkscene_render_plan *out_plan) {
+nkscene_result NKS_CALL nkscene_render_plan_compile(nkscene_snapshot snapshot_handle,
+                                                    const nkscene_render_view *view_input,
+                                                    nkscene_render_plan *out_plan) {
     if (!out_plan)
         return NKS_ERROR_INVALID_ARGUMENT;
     *out_plan = 0;
@@ -78,8 +76,8 @@ void NKS_CALL nkscene_render_plan_destroy(nkscene_render_plan plan) {
     state.plans.remove(nkscene::unpack_handle(plan));
 }
 
-nkscene_result NKS_CALL nkscene_render_plan_get_item_count(
-    nkscene_render_plan plan_handle, uint64_t *out_count) {
+nkscene_result NKS_CALL nkscene_render_plan_get_item_count(nkscene_render_plan plan_handle,
+                                                           uint64_t *out_count) {
     if (!out_count)
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = registry();
@@ -91,10 +89,11 @@ nkscene_result NKS_CALL nkscene_render_plan_get_item_count(
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_render_plan_update(
-    nkscene_render_plan plan_handle, nkscene_snapshot snapshot_handle,
-    nkscene_change_set changes_handle, const nkscene_render_view *view_input,
-    nkscene_render_update *out_update) {
+nkscene_result NKS_CALL nkscene_render_plan_update(nkscene_render_plan plan_handle,
+                                                   nkscene_snapshot snapshot_handle,
+                                                   nkscene_change_set changes_handle,
+                                                   const nkscene_render_view *view_input,
+                                                   nkscene_render_update *out_update) {
     if (!out_update)
         return NKS_ERROR_INVALID_ARGUMENT;
     if (out_update->struct_size < sizeof(nkscene_render_update))
@@ -128,9 +127,10 @@ nkscene_result NKS_CALL nkscene_render_plan_update(
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_render_plan_refresh(
-    nkscene_render_plan plan_handle, nkscene_snapshot snapshot_handle,
-    const nkscene_render_view *view_input, nkscene_render_update *out_update) {
+nkscene_result NKS_CALL nkscene_render_plan_refresh(nkscene_render_plan plan_handle,
+                                                    nkscene_snapshot snapshot_handle,
+                                                    const nkscene_render_view *view_input,
+                                                    nkscene_render_update *out_update) {
     if (!out_update)
         return NKS_ERROR_INVALID_ARGUMENT;
     if (out_update->struct_size < sizeof(nkscene_render_update))
@@ -163,9 +163,11 @@ nkscene_result NKS_CALL nkscene_render_plan_refresh(
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_render_plan_pick(
-    nkscene_render_plan plan_handle, nkscene_snapshot snapshot_handle, uint32_t primitive,
-    const float world_position[3], float depth, nkscene_render_pick_result *out_result) {
+nkscene_result NKS_CALL nkscene_render_plan_pick(nkscene_render_plan plan_handle,
+                                                 nkscene_snapshot snapshot_handle,
+                                                 uint32_t primitive, const float world_position[3],
+                                                 float depth,
+                                                 nkscene_render_pick_result *out_result) {
     if (!world_position || !out_result)
         return NKS_ERROR_INVALID_ARGUMENT;
     const auto snapshot = nkscene::resolve_snapshot_handle(snapshot_handle);
@@ -179,9 +181,9 @@ nkscene_result NKS_CALL nkscene_render_plan_pick(
         if (!plan)
             return NKS_ERROR_INVALID_HANDLE;
     }
-    const auto result = nkscene::pick(
-        *plan, *snapshot, primitive, {world_position[0], world_position[1], world_position[2]},
-        depth);
+    const auto result =
+        nkscene::pick(*plan, *snapshot, primitive,
+                      {world_position[0], world_position[1], world_position[2]}, depth);
     *out_result = {};
     out_result->occurrence.value = result.occurrence.value;
     out_result->source.value = result.source.value;
@@ -193,8 +195,8 @@ nkscene_result NKS_CALL nkscene_render_plan_pick(
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_render_executor_create(
-    nkgpu_renderer renderer, nkscene_render_executor *out_executor) {
+nkscene_result NKS_CALL nkscene_render_executor_create(nkgpu_renderer renderer,
+                                                       nkscene_render_executor *out_executor) {
     if (!out_executor)
         return NKS_ERROR_INVALID_ARGUMENT;
     *out_executor = 0;
@@ -214,9 +216,10 @@ void NKS_CALL nkscene_render_executor_destroy(nkscene_render_executor executor) 
     state.executors.remove(nkscene::unpack_handle(executor));
 }
 
-nkscene_result NKS_CALL nkscene_render_executor_execute(
-    nkscene_render_executor executor_handle, nkscene_render_plan plan_handle,
-    nkscene_snapshot snapshot_handle, nkscene_render_execution_stats *out_stats) {
+nkscene_result NKS_CALL nkscene_render_executor_execute(nkscene_render_executor executor_handle,
+                                                        nkscene_render_plan plan_handle,
+                                                        nkscene_snapshot snapshot_handle,
+                                                        nkscene_render_execution_stats *out_stats) {
     if (!out_stats)
         return NKS_ERROR_INVALID_ARGUMENT;
     if (out_stats->struct_size < sizeof(nkscene_render_execution_stats))
@@ -260,10 +263,12 @@ nkscene_result NKS_CALL nkscene_render_executor_get_last_result(
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_render_executor_pick_pixel(
-    nkscene_render_executor executor_handle, nkscene_render_plan plan_handle,
-    nkscene_snapshot snapshot_handle, uint32_t width, uint32_t height, uint32_t x, uint32_t y,
-    nkscene_render_pick_result *out_result) {
+nkscene_result NKS_CALL nkscene_render_executor_pick_pixel(nkscene_render_executor executor_handle,
+                                                           nkscene_render_plan plan_handle,
+                                                           nkscene_snapshot snapshot_handle,
+                                                           uint32_t width, uint32_t height,
+                                                           uint32_t x, uint32_t y,
+                                                           nkscene_render_pick_result *out_result) {
     if (!out_result)
         return NKS_ERROR_INVALID_ARGUMENT;
     const auto snapshot = nkscene::resolve_snapshot_handle(snapshot_handle);
