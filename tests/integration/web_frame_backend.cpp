@@ -14,6 +14,18 @@
 
 namespace {
 
+#ifdef __EMSCRIPTEN__
+void report_frame_backend_stage(int stage) {
+    // clang-format off
+    EM_ASM({
+        document.documentElement.dataset.nativekitFrameBackendResult = "stage-" + $0;
+    }, stage);
+    // clang-format on
+}
+#else
+void report_frame_backend_stage(int) {}
+#endif
+
 struct FrameProbe {
     nk_surface_frame frame = NK_INVALID_HANDLE;
     nk_surface_frame_target target{};
@@ -84,6 +96,7 @@ int main() {
     const nk_result initialized = nk_init(&init);
     if (initialized != NK_OK)
         return 100 - static_cast<int>(initialized);
+    report_frame_backend_stage(100);
 
     nk_window_options window_options{};
     window_options.struct_size = sizeof(window_options);
@@ -95,8 +108,10 @@ int main() {
     int result = 0;
 
     const nk_result window_created = nk_window_create(&window_options, &window);
-    if (window_created != NK_OK)
+    if (window_created != NK_OK) {
         result = 200 - static_cast<int>(window_created);
+        report_frame_backend_stage(result);
+    }
 
     nk_surface_options surface_options{};
     surface_options.struct_size = sizeof(surface_options);
@@ -107,8 +122,10 @@ int main() {
     nk_result surface_created = NK_ERROR_UNKNOWN;
     if (!result)
         surface_created = nk_surface_create(window, &surface_options, &surface);
-    if (!result && surface_created != NK_OK)
+    if (!result && surface_created != NK_OK) {
         result = 300 - static_cast<int>(surface_created);
+        report_frame_backend_stage(result);
+    }
 
     if (!result) {
         /* Alternate present/cancel while resizing. This exercises the complete
@@ -119,10 +136,13 @@ int main() {
                 run_frame(window, surface, index == 1, sizes[index][0], sizes[index][1]);
             if (frame_result != 0) {
                 result = frame_result;
+                report_frame_backend_stage(result);
                 break;
             }
         }
     }
+
+    report_frame_backend_stage(900);
 
     if (surface != NK_INVALID_HANDLE && nk_surface_destroy(surface) != NK_OK && !result)
         result = 5;
