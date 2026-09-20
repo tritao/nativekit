@@ -1498,8 +1498,8 @@ typedef struct nkgpu_batch_pass {
     uint32_t width;
     /** Framebuffer height for NKGPU_BATCH_PASS_WINDOW; ignored for target/compute passes. */
     uint32_t height;
-    /** General attachments for NKGPU_BATCH_PASS_RENDER. */
-    nkgpu_render_pass_desc render_pass;
+    /** General attachments for NKGPU_BATCH_PASS_RENDER; copied when appended. */
+    const nkgpu_render_pass_desc *render_pass;
 } nkgpu_batch_pass;
 
 /**

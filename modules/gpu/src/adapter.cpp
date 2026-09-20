@@ -4671,7 +4671,8 @@ nkgpu_result nkgpu_batch_append_pass(nkgpu_batch batch, const nkgpu_batch_pass *
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid batch pass kind");
     if (pass->kind != NKGPU_BATCH_PASS_RENDER && pass->clear > 1)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid batch pass clear flag");
-    if (pass->kind == NKGPU_BATCH_PASS_RENDER && pass->struct_size < sizeof(nkgpu_batch_pass))
+    if (pass->kind == NKGPU_BATCH_PASS_RENDER &&
+        (pass->struct_size < sizeof(nkgpu_batch_pass) || !pass->render_pass))
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "batch render pass descriptor is too small");
     BatchPass recorded{};
     recorded.kind = pass->kind;
@@ -4693,11 +4694,11 @@ nkgpu_result nkgpu_batch_append_pass(nkgpu_batch batch, const nkgpu_batch_pass *
         recorded.target = pass->target;
     } else if (pass->kind == NKGPU_BATCH_PASS_RENDER) {
         const size_t before = slot->value.retained.size();
-        if (!retain_batch_render_pass(slot->value, pass->render_pass)) {
+        if (!retain_batch_render_pass(slot->value, *pass->render_pass)) {
             release_batch_retention(slot->value, before);
             return static_cast<nkgpu_result>(NKGPU_ERROR_INVALID_ARGUMENT);
         }
-        recorded.render_pass = pass->render_pass;
+        recorded.render_pass = *pass->render_pass;
     }
     slot->value.passes.push_back(std::move(recorded));
     return NKGPU_OK;
