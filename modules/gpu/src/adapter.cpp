@@ -3193,9 +3193,10 @@ nkgpu_result nkgpu_image_create_desc(nkgpu_renderer r, const nkgpu_image_desc *i
     const uint32_t max_texture_size = static_cast<uint32_t>(std::max(0, limits.max_image_size_2d));
     const uint32_t max_array_layers =
         static_cast<uint32_t>(std::max(0, limits.max_image_array_layers));
-    const uint32_t max_samples = selected_api->query_max_samples
-                                     ? static_cast<uint32_t>(std::max(1, selected_api->query_max_samples()))
-                                     : 1u;
+    const uint32_t max_samples =
+        selected_api->query_max_samples
+            ? static_cast<uint32_t>(std::max(1, selected_api->query_max_samples()))
+            : 1u;
     if (desc.width > max_texture_size || desc.height > max_texture_size ||
         layer_count > max_array_layers || sample_count > max_samples)
         return fail(NKGPU_ERROR_UNSUPPORTED, "image descriptor exceeds backend limits");
