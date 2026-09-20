@@ -616,6 +616,46 @@ int main() {
         EXPECT_RESULT(nkgpu_end_pass(first), NKGPU_OK);
         EXPECT_RESULT(nkgpu_end_frame(first), NKGPU_OK);
 
+        {
+            nkgpu_image_format resolve_format = 0;
+            for (nkgpu_image_format candidate = NKGPU_IMAGEFORMAT_R8;
+                 candidate <= NKGPU_IMAGEFORMAT_R32_UINT; ++candidate) {
+                nkgpu_image_format_support candidate_support{};
+                candidate_support.struct_size = sizeof(candidate_support);
+                EXPECT_RESULT(nkgpu_query_image_format_support(first, candidate,
+                                                                &candidate_support),
+                              NKGPU_OK);
+                if (candidate != NKGPU_IMAGEFORMAT_RGBA8 && candidate_support.render_target) {
+                    resolve_format = candidate;
+                    break;
+                }
+            }
+            if (resolve_format) {
+                nkgpu_image mismatched_resolve{};
+                nkgpu_image_desc mismatched_resolve_desc{};
+                mismatched_resolve_desc.struct_size = sizeof(mismatched_resolve_desc);
+                mismatched_resolve_desc.width = 16;
+                mismatched_resolve_desc.height = 16;
+                mismatched_resolve_desc.format = resolve_format;
+                mismatched_resolve_desc.usage = NKGPU_IMAGE_RENDER_TARGET;
+                EXPECT_RESULT(nkgpu_image_create_desc(first, &mismatched_resolve_desc,
+                                                       &mismatched_resolve),
+                              NKGPU_OK);
+                nkgpu_render_pass_desc mismatched_resolve_pass{};
+                mismatched_resolve_pass.struct_size = sizeof(mismatched_resolve_pass);
+                mismatched_resolve_pass.color_count = 1;
+                mismatched_resolve_pass.colors[0].image = descriptor_color;
+                mismatched_resolve_pass.colors[0].resolve_image = mismatched_resolve;
+                mismatched_resolve_pass.colors[0].action.load_action = NKGPU_LOADACTION_CLEAR;
+                mismatched_resolve_pass.colors[0].action.store_action = NKGPU_STOREACTION_STORE;
+                EXPECT_RESULT(nkgpu_frame_begin(first), NKGPU_OK);
+                EXPECT_RESULT(nkgpu_begin_render_pass(first, &mismatched_resolve_pass),
+                              NKGPU_ERROR_INVALID_ARGUMENT);
+                EXPECT_RESULT(nkgpu_end_frame(first), NKGPU_OK);
+                EXPECT_RESULT(nkgpu_image_destroy(first, mismatched_resolve), NKGPU_OK);
+            }
+        }
+
         if (features.compute && features.storage_buffer) {
             const char *compute_source =
                 nkgpu_query_graphics_api(first) == NK_GRAPHICS_OPENGL_ES
@@ -816,6 +856,122 @@ int main() {
         EXPECT_RESULT(nkgpu_pipeline_end(expanded_pipeline, &pipeline), NKGPU_OK);
         EXPECT_RESULT(nkgpu_pipeline_destroy(first, pipeline), NKGPU_OK);
         pipeline = {};
+
+        nkgpu_image_format non_blend_format = 0;
+        for (nkgpu_image_format candidate = NKGPU_IMAGEFORMAT_R8;
+             candidate <= NKGPU_IMAGEFORMAT_R32_UINT; ++candidate) {
+            nkgpu_image_format_support candidate_support{};
+            candidate_support.struct_size = sizeof(candidate_support);
+            EXPECT_RESULT(nkgpu_query_image_format_support(first, candidate,
+                                                            &candidate_support),
+                          NKGPU_OK);
+            if (candidate_support.render_target && !candidate_support.blend) {
+                non_blend_format = candidate;
+                break;
+            }
+        }
+        if (non_blend_format) {
+            nkgpu_pipeline_builder unsupported_blend_pipeline{};
+            nkgpu_pipeline unsupported_pipeline{};
+            EXPECT_RESULT(nkgpu_pipeline_begin(first, shader, 4, &unsupported_blend_pipeline),
+                          NKGPU_OK);
+            EXPECT_RESULT(nkgpu_pipeline_attribute(unsupported_blend_pipeline, 0, 0, 0,
+                                                   NKGPU_VERTEXFORMAT_FLOAT),
+                          NKGPU_OK);
+            EXPECT_RESULT(nkgpu_pipeline_color_target(unsupported_blend_pipeline, 0,
+                                                      non_blend_format, NKGPU_COLORMASK_RGBA,
+                                                      &blend_state),
+                          NKGPU_OK);
+            EXPECT_RESULT(nkgpu_pipeline_end(unsupported_blend_pipeline, &unsupported_pipeline),
+                          NKGPU_ERROR_UNSUPPORTED);
+        }
+        nkgpu_features pipeline_features{};
+        pipeline_features.struct_size = sizeof(pipeline_features);
+        EXPECT_RESULT(nkgpu_query_features(first, &pipeline_features), NKGPU_OK);
+        if (pipeline_features.max_samples < UINT32_MAX) {
+            nkgpu_pipeline_builder unsupported_msaa_pipeline{};
+            nkgpu_pipeline unsupported_pipeline{};
+            EXPECT_RESULT(nkgpu_pipeline_begin(first, shader, 4, &unsupported_msaa_pipeline),
+                          NKGPU_OK);
+            EXPECT_RESULT(nkgpu_pipeline_attribute(unsupported_msaa_pipeline, 0, 0, 0,
+                                                   NKGPU_VERTEXFORMAT_FLOAT),
+                          NKGPU_OK);
+            EXPECT_RESULT(nkgpu_pipeline_multisample(unsupported_msaa_pipeline,
+                                                      pipeline_features.max_samples + 1, 0),
+                          NKGPU_OK);
+            EXPECT_RESULT(nkgpu_pipeline_end(unsupported_msaa_pipeline, &unsupported_pipeline),
+                          NKGPU_ERROR_UNSUPPORTED);
+        }
+
+        {
+            nkgpu_image pass_color0{};
+            nkgpu_image pass_color1{};
+            nkgpu_image pass_depth{};
+            nkgpu_image_desc pass_color_desc{};
+            pass_color_desc.struct_size = sizeof(pass_color_desc);
+            pass_color_desc.width = 16;
+            pass_color_desc.height = 16;
+            pass_color_desc.format = NKGPU_IMAGEFORMAT_RGBA8;
+            pass_color_desc.usage = NKGPU_IMAGE_RENDER_TARGET;
+            EXPECT_RESULT(nkgpu_image_create_desc(first, &pass_color_desc, &pass_color0),
+                          NKGPU_OK);
+            EXPECT_RESULT(nkgpu_image_create_desc(first, &pass_color_desc, &pass_color1),
+                          NKGPU_OK);
+            nkgpu_image_desc pass_depth_desc{};
+            pass_depth_desc.struct_size = sizeof(pass_depth_desc);
+            pass_depth_desc.width = 16;
+            pass_depth_desc.height = 16;
+            pass_depth_desc.format = NKGPU_IMAGEFORMAT_DEPTH24_STENCIL8;
+            pass_depth_desc.usage = NKGPU_IMAGE_DEPTH_STENCIL;
+            EXPECT_RESULT(nkgpu_image_create_desc(first, &pass_depth_desc, &pass_depth),
+                          NKGPU_OK);
+
+            nkgpu_render_pass_desc test_pass{};
+            test_pass.struct_size = sizeof(test_pass);
+            test_pass.color_count = 2;
+            test_pass.colors[0].image = pass_color0;
+            test_pass.colors[1].image = pass_color1;
+            for (uint32_t index = 0; index < test_pass.color_count; ++index) {
+                test_pass.colors[index].action.load_action = NKGPU_LOADACTION_CLEAR;
+                test_pass.colors[index].action.store_action = NKGPU_STOREACTION_STORE;
+            }
+            test_pass.depth_stencil = pass_depth;
+            test_pass.depth_stencil_action.load_action = NKGPU_LOADACTION_CLEAR;
+            test_pass.depth_stencil_action.store_action = NKGPU_STOREACTION_STORE;
+
+            nkgpu_pipeline_builder pass_pipeline_builder{};
+            nkgpu_pipeline pass_pipeline{};
+            EXPECT_RESULT(nkgpu_pipeline_begin(first, shader, 4, &pass_pipeline_builder),
+                          NKGPU_OK);
+            EXPECT_RESULT(nkgpu_pipeline_attribute(pass_pipeline_builder, 0, 0, 0,
+                                                   NKGPU_VERTEXFORMAT_FLOAT),
+                          NKGPU_OK);
+            EXPECT_RESULT(nkgpu_pipeline_color_target(pass_pipeline_builder, 0,
+                                                      NKGPU_IMAGEFORMAT_RGBA8,
+                                                      NKGPU_COLORMASK_RGBA, nullptr),
+                          NKGPU_OK);
+            EXPECT_RESULT(nkgpu_pipeline_color_target(pass_pipeline_builder, 1,
+                                                      NKGPU_IMAGEFORMAT_RGBA8,
+                                                      NKGPU_COLORMASK_RGBA, nullptr),
+                          NKGPU_OK);
+            EXPECT_RESULT(nkgpu_pipeline_depth_stencil(pass_pipeline_builder, 1), NKGPU_OK);
+            EXPECT_RESULT(nkgpu_pipeline_end(pass_pipeline_builder, &pass_pipeline), NKGPU_OK);
+
+            nkgpu_render_pass_desc one_color_pass = test_pass;
+            one_color_pass.color_count = 1;
+            EXPECT_RESULT(nkgpu_frame_begin(first), NKGPU_OK);
+            EXPECT_RESULT(nkgpu_begin_render_pass(first, &one_color_pass), NKGPU_OK);
+            EXPECT_RESULT(nkgpu_apply_pipeline(first, pass_pipeline), NKGPU_ERROR_INVALID_ARGUMENT);
+            EXPECT_RESULT(nkgpu_end_pass(first), NKGPU_OK);
+            EXPECT_RESULT(nkgpu_begin_render_pass(first, &test_pass), NKGPU_OK);
+            EXPECT_RESULT(nkgpu_apply_pipeline(first, pass_pipeline), NKGPU_OK);
+            EXPECT_RESULT(nkgpu_end_pass(first), NKGPU_OK);
+            EXPECT_RESULT(nkgpu_end_frame(first), NKGPU_OK);
+            EXPECT_RESULT(nkgpu_pipeline_destroy(first, pass_pipeline), NKGPU_OK);
+            EXPECT_RESULT(nkgpu_image_destroy(first, pass_depth), NKGPU_OK);
+            EXPECT_RESULT(nkgpu_image_destroy(first, pass_color1), NKGPU_OK);
+            EXPECT_RESULT(nkgpu_image_destroy(first, pass_color0), NKGPU_OK);
+        }
     }
     EXPECT_RESULT(nkgpu_pipeline_begin(second, shader, 4, &unfinished_pipeline),
                   NKGPU_ERROR_INVALID_HANDLE);

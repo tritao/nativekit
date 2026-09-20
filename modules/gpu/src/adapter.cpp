@@ -147,6 +147,10 @@ struct Renderer {
     bool copy_pass = false;
     int32_t pass_width = 0;
     int32_t pass_height = 0;
+    uint32_t pass_color_count = 0;
+    std::array<sg_pixel_format, NKGPU_MAX_COLOR_ATTACHMENTS> pass_color_formats{};
+    sg_pixel_format pass_depth_format = SG_PIXELFORMAT_NONE;
+    uint32_t pass_sample_count = 1;
     sg_pixel_format surface_color_format = SG_PIXELFORMAT_RGBA8;
     sg_pixel_format surface_depth_format = SG_PIXELFORMAT_DEPTH_STENCIL;
     uint64_t frames = 0;
@@ -185,6 +189,7 @@ struct Pipeline {
     Handle owner = 0;
     sg_pipeline object{};
     Handle shader = 0;
+    sg_pipeline_desc desc{};
 };
 struct BufferBuilder {
     Handle owner = 0;
@@ -850,6 +855,48 @@ static nkgpu_image_format_support make_image_format_support(nkgpu_image_format f
                           ? 1u
                           : 0u;
     return support;
+}
+
+static nkgpu_result validate_pipeline_capabilities(const sg_pipeline_desc &desc) {
+    if (!selected_api || !selected_api->query_pixelformat)
+        return fail(NKGPU_ERROR_UNSUPPORTED, "pipeline format capabilities are unavailable");
+    if (desc.compute)
+        return NKGPU_OK;
+    if (desc.color_count <= 0 || desc.color_count > NKGPU_MAX_COLOR_ATTACHMENTS)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "render pipeline has no color targets");
+    const uint32_t max_samples =
+        selected_api->query_max_samples
+            ? static_cast<uint32_t>(std::max(1, selected_api->query_max_samples()))
+            : 1u;
+    if (desc.sample_count <= 0 || static_cast<uint32_t>(desc.sample_count) > max_samples)
+        return fail(NKGPU_ERROR_UNSUPPORTED, "pipeline sample count is unavailable");
+    for (int index = 0; index < desc.color_count; ++index) {
+        const sg_pixel_format format = desc.colors[index].pixel_format;
+        if (format == SG_PIXELFORMAT_NONE)
+            return fail(NKGPU_ERROR_INVALID_ARGUMENT, "render pipeline color format is missing");
+        const sg_pixelformat_info support = selected_api->query_pixelformat(format);
+        if (!support.render)
+            return fail(NKGPU_ERROR_UNSUPPORTED, "pipeline color format is not renderable");
+        if (desc.colors[index].blend.enabled && !support.blend)
+            return fail(NKGPU_ERROR_UNSUPPORTED, "pipeline color format does not support blending");
+        if (desc.sample_count > 1 && !support.msaa)
+            return fail(NKGPU_ERROR_UNSUPPORTED, "pipeline color format does not support MSAA");
+    }
+    if (desc.depth.pixel_format != SG_PIXELFORMAT_NONE) {
+        const sg_pixelformat_info support = selected_api->query_pixelformat(desc.depth.pixel_format);
+        if (!support.depth)
+            return fail(NKGPU_ERROR_UNSUPPORTED, "pipeline depth format is unavailable");
+        if (desc.sample_count > 1 && !support.msaa)
+            return fail(NKGPU_ERROR_UNSUPPORTED, "pipeline depth format does not support MSAA");
+    }
+    return NKGPU_OK;
+}
+
+static void reset_pass_attachment_state(Renderer &renderer) {
+    renderer.pass_color_count = 0;
+    renderer.pass_color_formats.fill(SG_PIXELFORMAT_NONE);
+    renderer.pass_depth_format = SG_PIXELFORMAT_NONE;
+    renderer.pass_sample_count = 1;
 }
 
 static sg_image_usage convert_image_usage(nkgpu_image_usage usage, bool dynamic_update) {
@@ -1543,6 +1590,9 @@ nkgpu_result nkgpu_begin_render_pass(nkgpu_renderer renderer, const nkgpu_render
     int32_t pass_width = 0;
     int32_t pass_height = 0;
     uint32_t pass_sample_count = 1;
+    std::array<sg_pixel_format, NKGPU_MAX_COLOR_ATTACHMENTS> pass_color_formats{};
+    pass_color_formats.fill(SG_PIXELFORMAT_NONE);
+    sg_pixel_format pass_depth_format = SG_PIXELFORMAT_NONE;
     for (uint32_t index = 0; index < desc->color_count; ++index) {
         const nkgpu_color_attachment &attachment = desc->colors[index];
         auto *color = image_pool.get(attachment.image);
@@ -1562,15 +1612,19 @@ nkgpu_result nkgpu_begin_render_pass(nkgpu_renderer renderer, const nkgpu_render
                         "render-pass attachments have mismatched extents");
         fill_color_action(pass.action.colors[index], attachment.action);
         pass.attachments.colors[index] = color->value.color_attachment;
+        pass_color_formats[index] = convert_image_format(color->value.format);
         if (attachment.resolve_image.id) {
             auto *resolve = image_pool.get(attachment.resolve_image);
             if (!resolve || resolve->value.owner != renderer ||
                 !resolve->value.resolve_attachment.id ||
-                !(resolve->value.usage & NKGPU_IMAGE_RENDER_TARGET) ||
+                !(resolve->value.usage & NKGPU_IMAGE_RENDER_TARGET))
+                return fail(NKGPU_ERROR_INVALID_HANDLE, "invalid render-pass resolve image");
+            if (resolve->value.format != color->value.format ||
                 resolve->value.width != color->value.width ||
                 resolve->value.height != color->value.height || resolve->value.sample_count != 1 ||
                 color->value.sample_count <= 1)
-                return fail(NKGPU_ERROR_INVALID_HANDLE, "invalid render-pass resolve image");
+                return fail(NKGPU_ERROR_INVALID_ARGUMENT,
+                            "render-pass resolve image is incompatible");
             pass.attachments.resolves[index] = resolve->value.resolve_attachment;
         }
     }
@@ -1598,9 +1652,14 @@ nkgpu_result nkgpu_begin_render_pass(nkgpu_renderer renderer, const nkgpu_render
             convert_store_action(desc->depth_stencil_action.store_action),
             static_cast<uint8_t>(std::min(desc->depth_stencil_action.clear_stencil, 255u))};
         pass.attachments.depth_stencil = depth->value.depth_attachment;
+        pass_depth_format = convert_image_format(depth->value.format);
     }
     if (!pass_width || !pass_height)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "render pass has no attachments");
+    owner->value.pass_color_count = desc->color_count;
+    owner->value.pass_color_formats = pass_color_formats;
+    owner->value.pass_depth_format = pass_depth_format;
+    owner->value.pass_sample_count = pass_sample_count;
     sg_begin_pass(&pass);
     owner->value.in_pass = true;
     owner->value.compute_pass = false;
@@ -2489,6 +2548,7 @@ nkgpu_result nkgpu_pipeline_begin(nkgpu_renderer r, nkgpu_shader shader, uint32_
     b.desc.color_count = 1;
     b.desc.colors[0].pixel_format = renderer_pool.get(r)->value.surface_color_format;
     b.desc.colors[0].write_mask = SG_COLORMASK_RGBA;
+    b.desc.sample_count = 1;
     Handle h = pipeline_builder_pool.add(b);
     if (!h)
         return fail(NKGPU_ERROR_UNKNOWN, "builder pool full");
@@ -2778,14 +2838,25 @@ nkgpu_result nkgpu_pipeline_end(nkgpu_pipeline_builder h, nkgpu_pipeline *out) {
     const nkgpu_result activated = activate_renderer(owner);
     if (activated != NKGPU_OK)
         return activated;
-    sg_pipeline object = sg_make_pipeline(&s->value.desc);
+    const sg_pipeline_desc pipeline_desc = s->value.desc;
+    const nkgpu_result capabilities = validate_pipeline_capabilities(pipeline_desc);
+    if (capabilities != NKGPU_OK) {
+        pipeline_builder_pool.remove(*s);
+        return capabilities;
+    }
+    sg_pipeline object = sg_make_pipeline(&pipeline_desc);
     const Handle shader = s->value.shader;
     pipeline_builder_pool.remove(*s);
     if (sg_query_pipeline_state(object) != SG_RESOURCESTATE_VALID) {
         record_allocation_failure(owner);
         return fail(NKGPU_ERROR_OUT_OF_MEMORY, "pipeline creation failed");
     }
-    Handle result = pipeline_pool.add(Pipeline{owner, object, shader});
+    Pipeline pipeline_value{};
+    pipeline_value.owner = owner;
+    pipeline_value.object = object;
+    pipeline_value.shader = shader;
+    pipeline_value.desc = pipeline_desc;
+    Handle result = pipeline_pool.add(std::move(pipeline_value));
     if (!result) {
         sg_destroy_pipeline(object);
         record_allocation_failure(owner);
@@ -2870,6 +2941,7 @@ nkgpu_result nkgpu_begin_compute_pass(nkgpu_renderer h) {
     sg_pass pass{};
     pass.compute = true;
     sg_begin_pass(&pass);
+    reset_pass_attachment_state(renderer->value);
     renderer->value.in_pass = true;
     renderer->value.compute_pass = true;
     renderer->value.copy_pass = false;
@@ -2898,6 +2970,7 @@ nkgpu_result nkgpu_begin_copy_pass(nkgpu_renderer h) {
         return fail(NKGPU_ERROR_UNSUPPORTED, "transfer operations are unavailable");
     if (selected_api->transfer->begin_pass && !selected_api->transfer->begin_pass())
         return fail(NKGPU_ERROR_UNKNOWN, "transfer pass could not be started");
+    reset_pass_attachment_state(renderer->value);
     renderer->value.in_pass = true;
     renderer->value.compute_pass = false;
     renderer->value.copy_pass = true;
@@ -2969,6 +3042,10 @@ nkgpu_result nkgpu_begin_window_pass(nkgpu_renderer h, uint32_t width, uint32_t 
     } else {
         pass.swapchain.gl.framebuffer = static_cast<uint32_t>(target.native_target);
     }
+    reset_pass_attachment_state(s->value);
+    s->value.pass_color_count = 1;
+    s->value.pass_color_formats[0] = s->value.surface_color_format;
+    s->value.pass_depth_format = s->value.surface_depth_format;
     sg_begin_pass(&pass);
     s->value.in_pass = true;
     ++s->value.passes;
@@ -3042,6 +3119,19 @@ nkgpu_result nkgpu_apply_pipeline(nkgpu_renderer r, nkgpu_pipeline h) {
         return pass;
     if (!rs || !p || p->value.owner != r)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "invalid pipeline/frame");
+    if (p->value.desc.compute != rs->value.compute_pass)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "pipeline type does not match the active pass");
+    if (!p->value.desc.compute) {
+        if (p->value.desc.color_count != static_cast<int>(rs->value.pass_color_count) ||
+            p->value.desc.sample_count != static_cast<int>(rs->value.pass_sample_count) ||
+            p->value.desc.depth.pixel_format != rs->value.pass_depth_format)
+            return fail(NKGPU_ERROR_INVALID_ARGUMENT, "pipeline targets do not match the active pass");
+        for (int index = 0; index < p->value.desc.color_count; ++index) {
+            if (p->value.desc.colors[index].pixel_format != rs->value.pass_color_formats[index])
+                return fail(NKGPU_ERROR_INVALID_ARGUMENT,
+                            "pipeline color target does not match the active pass");
+        }
+    }
     sg_apply_pipeline(p->value.object);
     return NKGPU_OK;
 }
@@ -4543,11 +4633,15 @@ static bool retain_batch_render_pass(Batch &batch, const nkgpu_render_pass_desc 
             auto *resolve = image_pool.get_retained(attachment.resolve_image);
             if (!resolve || resolve->value.owner != batch.owner ||
                 !resolve->value.resolve_attachment.id ||
-                !(resolve->value.usage & NKGPU_IMAGE_RENDER_TARGET) ||
+                !(resolve->value.usage & NKGPU_IMAGE_RENDER_TARGET)) {
+                fail(NKGPU_ERROR_INVALID_HANDLE, "invalid batch render-pass resolve image");
+                return false;
+            }
+            if (resolve->value.format != color->value.format ||
                 resolve->value.width != color->value.width ||
                 resolve->value.height != color->value.height || resolve->value.sample_count != 1 ||
                 color->value.sample_count <= 1) {
-                fail(NKGPU_ERROR_INVALID_HANDLE, "invalid batch render-pass resolve image");
+                fail(NKGPU_ERROR_INVALID_ARGUMENT, "batch render-pass resolve image is incompatible");
                 return false;
             }
         }
