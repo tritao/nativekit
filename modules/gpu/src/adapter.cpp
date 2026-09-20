@@ -4845,6 +4845,17 @@ nkgpu_result nkgpu_batch_append_pass(nkgpu_batch batch, const nkgpu_batch_pass *
     return NKGPU_OK;
 }
 
+nkgpu_result nkgpu_batch_append_render_pass(nkgpu_batch batch,
+                                            const nkgpu_render_pass_desc *desc) {
+    if (!desc)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "batch render-pass descriptor is null");
+    nkgpu_batch_pass pass{};
+    pass.struct_size = sizeof(pass);
+    pass.kind = NKGPU_BATCH_PASS_RENDER;
+    pass.render_pass = desc;
+    return nkgpu_batch_append_pass(batch, &pass);
+}
+
 nkgpu_result nkgpu_batch_append_command(nkgpu_batch batch, const uint8_t *commands, uint32_t size) {
     auto *slot = batch_pool.get(batch);
     if (!slot)

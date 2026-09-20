@@ -523,6 +523,13 @@ int main() {
         EXPECT_RESULT(nkgpu_batch_submit(renderer, general_batch), NKGPU_OK);
         EXPECT_RESULT(nkgpu_batch_destroy(general_batch), NKGPU_OK);
         general_batch = {};
+
+        nkgpu_batch helper_batch{};
+        EXPECT_RESULT(nkgpu_batch_begin(renderer, &helper_batch), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_batch_append_render_pass(helper_batch, &render_pass), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_batch_seal(helper_batch), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_batch_submit(renderer, helper_batch), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_batch_destroy(helper_batch), NKGPU_OK);
         EXPECT_RESULT(nkgpu_image_destroy(renderer, general_depth), NKGPU_OK);
         general_depth = {};
         EXPECT_RESULT(nkgpu_image_destroy(renderer, general_color), NKGPU_OK);

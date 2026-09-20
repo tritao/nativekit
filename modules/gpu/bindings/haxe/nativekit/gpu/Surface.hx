@@ -38,6 +38,17 @@ class Surface {
 		return value;
 	}
 
+	/** Acquires an immutable surface frame for explicit batch submission. */
+	public function acquireFrame():SurfaceFrame {
+		ensureLive();
+		var target = new NativeKit.SurfaceFrameTarget();
+		target.set_struct_size(80);
+		var acquired = NativeKit.nk_surface_acquire_frame(value, target);
+		if (acquired.status != NativeKit.Result.Ok)
+			throw new NativeKitError(acquired.status, "surface.acquireFrame", NativeKit.nk_last_error());
+		return new SurfaceFrame(this, acquired.out_frame, acquired.out_target);
+	}
+
 	public function createRenderer():Renderer {
 		ensureLive();
 		var renderer = Renderer.create(this);

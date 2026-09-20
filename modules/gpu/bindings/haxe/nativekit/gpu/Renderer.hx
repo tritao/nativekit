@@ -276,6 +276,10 @@ class Renderer {
 	public function batch():Batch
 		return Batch.begin(this);
 
+	@:allow(SurfaceFrame)
+	function ownsSurface(surface:Surface):Bool
+		return this.surface == surface;
+
 	public function uniforms(size:Int):Uniforms {
 		ensureFrame();
 		if (size <= 0)
@@ -306,7 +310,8 @@ class Renderer {
 	public function isDisposed():Bool
 		return disposed;
 
-	@:allow(Buffer, Image, Sampler, Shader, Pipeline, RenderTarget, Readback, Batch, CommandBuffer, Uniforms)
+	@:allow(Buffer, Image, Sampler, Shader, Pipeline, RenderTarget, Readback, Batch, CommandBuffer, Uniforms,
+		SurfaceFrame)
 	function ensureFrame():Void {
 		ensureLive();
 		if (!frameActive)
@@ -314,21 +319,21 @@ class Renderer {
 	}
 
 	@:allow(Buffer, Image, Sampler, Shader, ShaderBuilder, Pipeline, PipelineBuilder, RenderTarget, Readback, Batch,
-		CommandBuffer, Uniforms)
+		CommandBuffer, Uniforms, SurfaceFrame)
 	function ensureLive():Void {
 		if (disposed)
 			throw "GPU renderer has been disposed";
 	}
 
 	@:allow(Buffer, Image, Sampler, Shader, ShaderBuilder, Pipeline, PipelineBuilder, RenderTarget, Readback, Batch,
-		Uniforms)
+		Uniforms, SurfaceFrame)
 	function registerResource(release:Void->Void):Void {
 		ensureLive();
 		resources.push(release);
 	}
 
 	@:allow(Buffer, Image, Sampler, Shader, ShaderBuilder, Pipeline, PipelineBuilder, RenderTarget, Readback, Batch,
-		Uniforms)
+		Uniforms, SurfaceFrame)
 	function ensureResourceOperation():Void {
 		ensureLive();
 		if (frameActive)

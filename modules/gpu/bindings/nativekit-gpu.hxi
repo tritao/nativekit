@@ -681,6 +681,14 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_batch_append_pass(batch: nkgpu_batch, pass: ptr<const<nkgpu_batch_pass>>) -> nkgpu_result;
 	/**
+	 * Appends a general attachment-based render pass to a batch.
+	 *
+	 * This is the binding-friendly form of nkgpu_batch_append_pass(): the
+	 * descriptor is copied immediately and no pointer-bearing batch-pass record
+	 * needs to be constructed by the caller.
+	 */
+	extern fn nkgpu_batch_append_render_pass(batch: nkgpu_batch, desc: ptr<const<nkgpu_render_pass_desc>>) -> nkgpu_result;
+	/**
 	 * Starts recording a sealed submission batch.
 	 *
 	 * A batch records the passes and packed command records of one frame so the
