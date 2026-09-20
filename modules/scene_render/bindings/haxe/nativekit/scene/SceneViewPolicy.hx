@@ -28,6 +28,14 @@ class SceneViewPolicy {
 	public function show(occurrence:Occurrence):SceneViewPolicy
 		return setVisibility(occurrence, true);
 
+	/** Visibility follows the occurrence hierarchy, so this affects descendants. */
+	public function hideSubtree(occurrence:Occurrence):SceneViewPolicy
+		return hide(occurrence);
+
+	/** Restores this subtree unless another ancestor policy keeps it hidden. */
+	public function showSubtree(occurrence:Occurrence):SceneViewPolicy
+		return show(occurrence);
+
 	public function setMaterial(occurrence:Occurrence, material:Material):SceneViewPolicy {
 		var stable = occurrence.stableValue();
 		for (index in 0...materialOccurrences.length) {
@@ -53,6 +61,10 @@ class SceneViewPolicy {
 
 	public function materialCount():Int
 		return materialOccurrences.length;
+
+	public function applySourceFilter(snapshot:Snapshot,
+			filter:SourceEntityFilter):SceneViewPolicy
+		return filter.apply(snapshot, this);
 
 	/** Applies this policy without disturbing other view layers. */
 	public function apply(view:SceneView):SceneView {

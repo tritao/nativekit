@@ -86,9 +86,10 @@ void print(const TimedViewUpdate &result) {
 } // namespace
 
 int main() {
-    constexpr std::size_t occurrence_count = 50000;
-    constexpr std::size_t group_count = 50;
-    constexpr std::size_t leaf_count = occurrence_count - group_count;
+constexpr std::size_t occurrence_count = 50000;
+constexpr std::size_t group_count = 50;
+constexpr std::size_t leaf_count = occurrence_count - group_count;
+constexpr std::size_t source_count = 500;
 
     auto scene = std::make_shared<Scene>();
     const auto geometry = scene->reserve_geometry_id();
@@ -133,6 +134,8 @@ int main() {
         configure.add_parent(leaves[index], groups[index % groups.size()]);
         configure.add_geometry(leaves[index], geometry);
         configure.add_material(leaves[index], materials[index % materials.size()]);
+        configure.add_source_entity(leaves[index],
+                                    nkscene::EntityId{(index % source_count) + 1});
     }
     assert(scene->commit(configure, changes) == NKS_OK);
     configure.close();
@@ -316,6 +319,36 @@ int main() {
     assert(view_result.render.updated_material_resources == 0);
     assert(view_result.render.patched_culling == 0);
     assert(presentation_plan.clip_planes().size() == 2);
+    print(view_result);
+
+    nkscene::SceneView source_view = presentation_view;
+    const nkscene::EntityId material_source{42};
+    const nkscene::EntityId hidden_source{84};
+    std::size_t material_source_count = 0;
+    std::size_t hidden_source_count = 0;
+    for (const auto &occurrence : presentation_snapshot.occurrences()) {
+        if (occurrence.source == material_source) {
+            source_view.set_material_override(occurrence.occurrence, materials[2]);
+            ++material_source_count;
+        }
+        if (occurrence.source == hidden_source) {
+            source_view.set_visibility_override(occurrence.occurrence, false);
+            if (occurrence.visible)
+                ++hidden_source_count;
+        }
+    }
+    assert(material_source_count > 0);
+    assert(hidden_source_count > 0);
+    auto source_plan = nkscene::compile(presentation_snapshot, presentation_view);
+    view_result = run_view("view source rules", source_plan, presentation_snapshot, source_view);
+    assert(!view_result.render.plan_rebuilt);
+    assert(!view_result.render.geometry_rebuilt);
+    assert(view_result.render.patched_instances == 0);
+    assert(view_result.render.patched_visibility == hidden_source_count);
+    assert(view_result.render.patched_materials == material_source_count);
+    assert(view_result.render.updated_geometry_resources == 0);
+    assert(view_result.render.updated_material_resources == 0);
+    assert(view_result.render.patched_culling == 0);
     print(view_result);
 
     assert(scene->geometry_store().find(geometry)->revision == geometry_revision);

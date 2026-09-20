@@ -48,6 +48,7 @@ import NativeKitRuntime;
 import nativekit.scene.Scene;
 import nativekit.scene.SceneView;
 import nativekit.scene.SceneViewPolicy;
+import nativekit.scene.SourceEntityFilter;
 import nativekit.scene.SceneRenderer;
 import nativekit.scene.SpatialIndex;
 import nativekit.scene.PickPollResult;
@@ -230,6 +231,36 @@ class Main {
 		if (refreshed == null || refreshed.get_plan_rebuilt() != 0
 			|| haxe.Int64.toInt(refreshed.get_patched_materials()) != 1
 			|| haxe.Int64.toInt(refreshedExecution.get_commands()) != 2) return 14;
+		var subtreePolicy = new SceneViewPolicy().hideSubtree(group),
+			subtreeView = new SceneView().setRoot(group).setViewProjection(Transform.identity())
+			.applyPolicy(subtreePolicy),
+			subtreeExecution = sceneRenderer.render(snapshot, subtreeView),
+			subtreeUpdate = sceneRenderer.lastUpdate();
+		if (subtreePolicy.visibilityCount() != 1
+			|| subtreeView.visibilityOverrideCount() != 1
+			|| subtreeUpdate == null
+			|| subtreeUpdate.get_plan_rebuilt() != 0
+			|| haxe.Int64.toInt(subtreeUpdate.get_patched_visibility()) != 2
+			|| haxe.Int64.toInt(subtreeExecution.get_commands()) != 0) return 29;
+		var sourceFilter = new SourceEntityFilter()
+			.hideSource(haxe.Int64.ofInt(84))
+			.setSourceMaterial(haxe.Int64.ofInt(42), highlight),
+			sourcePolicy = new SceneViewPolicy().applySourceFilter(snapshot, sourceFilter),
+			sourceView = new SceneView().setRoot(group).setViewProjection(Transform.identity())
+			.applyPolicy(sourcePolicy),
+			sourceExecution = sceneRenderer.render(snapshot, sourceView),
+			sourceUpdate = sceneRenderer.lastUpdate();
+		if (sourceFilter.visibilityRuleCount() != 1
+			|| sourceFilter.materialRuleCount() != 1
+			|| sourceView.visibilityOverrideCount() != 1
+			|| sourceView.materialOverrideCount() != 1
+			|| sourceUpdate == null
+			|| sourceUpdate.get_plan_rebuilt() != 0
+			|| haxe.Int64.toInt(sourceUpdate.get_patched_visibility()) != 1
+			|| haxe.Int64.toInt(sourceUpdate.get_patched_materials()) != 1
+			|| haxe.Int64.toInt(sourceUpdate.get_updated_geometry_resources()) != 0
+			|| haxe.Int64.toInt(sourceUpdate.get_updated_material_resources()) != 0
+			|| haxe.Int64.toInt(sourceExecution.get_commands()) != 1) return 30;
 		var clippedView = new SceneView().setRoot(group).setViewProjection(Transform.identity())
 			.addClipPlane(1.0, 0.0, 0.0, 0.0),
 			clippedExecution = sceneRenderer.render(snapshot, clippedView),
