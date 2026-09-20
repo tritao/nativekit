@@ -34,6 +34,8 @@ struct ReadbackSlot {
     ID3D11Texture2D *texture = nullptr;
     ID3D11Buffer *buffer = nullptr;
     ID3D11Query *query = nullptr;
+    uint32_t x = 0;
+    uint32_t y = 0;
     uint32_t size = 0;
     uint32_t row_pitch = 0;
     uint32_t width = 0;
@@ -237,6 +239,8 @@ void release_readback(ReadbackSlot &slot) {
     slot.texture = nullptr;
     slot.buffer = nullptr;
     slot.query = nullptr;
+    slot.x = 0;
+    slot.y = 0;
     slot.size = 0;
     slot.row_pitch = 0;
     slot.width = 0;
@@ -306,6 +310,19 @@ uint32_t d3d11_image_copy(sg_image source, uint32_t source_mip, uint32_t source_
                     width, height, destination_info) ||
         source_info.format != destination_info.format || !context())
         return 0;
+    if (source_info.format == DXGI_FORMAT_R32_TYPELESS) {
+        /* D3D11 requires whole-subresource copies for depth-stencil resources. */
+        if (source_x || source_y || destination_x || destination_y || width != source_info.width ||
+            height != source_info.height || width != destination_info.width ||
+            height != destination_info.height)
+            return 0;
+        context()->CopySubresourceRegion(
+            destination_info.texture,
+            subresource(destination_info, destination_mip, destination_layer), 0, 0, 0,
+            source_info.texture,
+            subresource(source_info, source_mip, source_layer), nullptr);
+        return 1;
+    }
     D3D11_BOX box{};
     box.left = source_x;
     box.right = source_x + width;
@@ -382,18 +399,27 @@ uint32_t d3d11_image_to_buffer(sg_image source, uint32_t mip_level, uint32_t lay
     if (!transfer_size || transfer_size > UINT32_MAX || destination_offset > destination_size ||
         transfer_size > destination_size - destination_offset)
         return 0;
+    const bool depth = source_info.format == DXGI_FORMAT_R32_TYPELESS;
+    const uint32_t staging_width = depth ? source_info.width : width;
+    const uint32_t staging_height = depth ? source_info.height : height;
     ID3D11Texture2D *staging_texture = nullptr;
-    if (!create_staging_texture(source_info, width, height, &staging_texture))
+    if (!create_staging_texture(source_info, staging_width, staging_height, &staging_texture))
         return 0;
-    D3D11_BOX source_box{};
-    source_box.left = x;
-    source_box.right = x + width;
-    source_box.top = y;
-    source_box.bottom = y + height;
-    source_box.front = 0;
-    source_box.back = 1;
-    context()->CopySubresourceRegion(staging_texture, 0, 0, 0, 0, source_info.texture,
-                                     subresource(source_info, mip_level, layer), &source_box);
+    if (depth) {
+        /* D3D11 requires whole-subresource copies for depth-stencil resources. */
+        context()->CopySubresourceRegion(staging_texture, 0, 0, 0, 0, source_info.texture,
+                                         subresource(source_info, mip_level, layer), nullptr);
+    } else {
+        D3D11_BOX source_box{};
+        source_box.left = x;
+        source_box.right = x + width;
+        source_box.top = y;
+        source_box.bottom = y + height;
+        source_box.front = 0;
+        source_box.back = 1;
+        context()->CopySubresourceRegion(staging_texture, 0, 0, 0, 0, source_info.texture,
+                                         subresource(source_info, mip_level, layer), &source_box);
+    }
     context()->Flush();
     D3D11_MAPPED_SUBRESOURCE mapped_texture{};
     if (FAILED(context()->Map(staging_texture, 0, D3D11_MAP_READ, 0, &mapped_texture))) {
@@ -419,7 +445,9 @@ uint32_t d3d11_image_to_buffer(sg_image source, uint32_t mip_level, uint32_t lay
         auto *destination_row =
             static_cast<uint8_t *>(mapped_buffer.pData) + static_cast<size_t>(row) * row_pitch;
         const auto *source_row = static_cast<const uint8_t *>(mapped_texture.pData) +
-                                 static_cast<size_t>(row) * mapped_texture.RowPitch;
+                                 static_cast<size_t>(row + (depth ? y : 0)) *
+                                     mapped_texture.RowPitch +
+                                 static_cast<size_t>(depth ? x : 0) * source_info.bytes;
         std::memcpy(destination_row, source_row, tight_pitch);
         if (row_pitch > tight_pitch)
             std::memset(destination_row + tight_pitch, 0, row_pitch - tight_pitch);
@@ -449,18 +477,27 @@ uint32_t d3d11_readback_begin(sg_image source, uint32_t mip_level, uint32_t laye
     }
     if (index == kReadbackCapacity)
         return 0;
+    const bool depth = source_info.format == DXGI_FORMAT_R32_TYPELESS;
+    const uint32_t staging_width = depth ? source_info.width : width;
+    const uint32_t staging_height = depth ? source_info.height : height;
     ID3D11Texture2D *staging_texture = nullptr;
-    if (!create_staging_texture(source_info, width, height, &staging_texture))
+    if (!create_staging_texture(source_info, staging_width, staging_height, &staging_texture))
         return 0;
-    D3D11_BOX source_box{};
-    source_box.left = x;
-    source_box.right = x + width;
-    source_box.top = y;
-    source_box.bottom = y + height;
-    source_box.front = 0;
-    source_box.back = 1;
-    context()->CopySubresourceRegion(staging_texture, 0, 0, 0, 0, source_info.texture,
-                                     subresource(source_info, mip_level, layer), &source_box);
+    if (depth) {
+        /* D3D11 requires whole-subresource copies for depth-stencil resources. */
+        context()->CopySubresourceRegion(staging_texture, 0, 0, 0, 0, source_info.texture,
+                                         subresource(source_info, mip_level, layer), nullptr);
+    } else {
+        D3D11_BOX source_box{};
+        source_box.left = x;
+        source_box.right = x + width;
+        source_box.top = y;
+        source_box.bottom = y + height;
+        source_box.front = 0;
+        source_box.back = 1;
+        context()->CopySubresourceRegion(staging_texture, 0, 0, 0, 0, source_info.texture,
+                                         subresource(source_info, mip_level, layer), &source_box);
+    }
     D3D11_QUERY_DESC query_desc{};
     query_desc.Query = D3D11_QUERY_EVENT;
     ID3D11Query *query = nullptr;
@@ -475,6 +512,8 @@ uint32_t d3d11_readback_begin(sg_image source, uint32_t mip_level, uint32_t laye
         slot.generation = 1;
     slot.texture = staging_texture;
     slot.query = query;
+    slot.x = depth ? x : 0;
+    slot.y = depth ? y : 0;
     slot.size = width * source_info.bytes * height;
     slot.row_pitch = width * source_info.bytes;
     slot.width = width;
@@ -672,7 +711,8 @@ int d3d11_readback_read(uint32_t token, void *destination, uint32_t size) {
     for (uint32_t row = 0; row < slot->height; ++row) {
         std::memcpy(static_cast<uint8_t *>(destination) + static_cast<size_t>(row) * tight_pitch,
                     static_cast<const uint8_t *>(mapped.pData) +
-                        static_cast<size_t>(row) * mapped.RowPitch,
+                        static_cast<size_t>(row + slot->y) * mapped.RowPitch +
+                        static_cast<size_t>(slot->x) * tight_pitch / slot->width,
                     tight_pitch);
     }
     context()->Unmap(slot->texture, 0);
