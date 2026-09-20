@@ -1,6 +1,7 @@
 #include "web/host.h"
 
 #include "core/event_queue.hpp"
+#include "core/executor.hpp"
 #include "core/runtime.hpp"
 #include "core/resource_events.hpp"
 #include "nativekit_web_config.h"
@@ -25,6 +26,23 @@
 #endif
 
 namespace {
+
+#if defined(NK_WEB_THREADED_RENDER)
+struct CanvasResizeRequest {
+    std::string selector;
+    nk::web::CanvasSize size{};
+    bool success = false;
+};
+
+void resize_canvas_on_render(void *data) {
+    auto *request = static_cast<CanvasResizeRequest *>(data);
+    if (!request)
+        return;
+    request->success = emscripten_set_canvas_element_size(
+                           request->selector.c_str(), request->size.framebuffer_width,
+                           request->size.framebuffer_height) == EMSCRIPTEN_RESULT_SUCCESS;
+}
+#endif
 
 struct HostState {
     std::string selector;
@@ -2190,6 +2208,17 @@ void set_canvas_mouse_passthrough(const char *selector, bool enabled) noexcept {
 }
 
 bool set_canvas_framebuffer_size(const char *selector, const CanvasSize &size) noexcept {
+#if defined(NK_WEB_THREADED_RENDER)
+    if (nk::core::render_executor_physical() && !nk_executor_is_current(NK_EXECUTOR_RENDER)) {
+        CanvasResizeRequest request;
+        request.selector = selector ? selector : "";
+        request.size = size;
+        if (nk::core::dispatch_to_render_sync(&resize_canvas_on_render, &request,
+                                              sizeof(request)) != NK_OK)
+            return false;
+        return request.success;
+    }
+#endif
     return emscripten_set_canvas_element_size(selector, size.framebuffer_width,
                                               size.framebuffer_height) == EMSCRIPTEN_RESULT_SUCCESS;
 }
