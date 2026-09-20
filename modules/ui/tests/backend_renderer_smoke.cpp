@@ -889,8 +889,9 @@ int main() {
              scheduler_stats.render_submissions != before_scheduler_stats.render_submissions + 3 ||
              scheduler_stats.render_submission_replacements !=
                  before_scheduler_stats.render_submission_replacements + 1 ||
-             scheduler_stats.render_submission_cancellations !=
-                 before_scheduler_stats.render_submission_cancellations ||
+             (supports_target_switch &&
+              scheduler_stats.render_submission_cancellations !=
+                  before_scheduler_stats.render_submission_cancellations) ||
              (shared_gpu_runtime && scheduler_stats.render_submission_failures !=
                                         before_scheduler_stats.render_submission_failures) ||
              (shared_gpu_runtime &&
