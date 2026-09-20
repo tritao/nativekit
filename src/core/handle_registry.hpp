@@ -36,7 +36,9 @@ enum class ResourceType : std::uint8_t {
     audio_bus_effect,
     audio_mix_snapshot,
     audio_clip,
-    audio_voice
+    audio_voice,
+    audio_dsp_engine,
+    audio_dsp_instrument
 };
 
 struct Resource {

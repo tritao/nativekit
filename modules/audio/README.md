@@ -12,6 +12,16 @@ mixer graph is exposed separately by `nativekit_audio_graph.h` and the
 buses, effects, snapshots, concurrency, virtualization, and global mix policy.
 Both targets currently link the same NativeKit runtime and miniaudio backend.
 
+The standalone DSP API is exposed by `nativekit_audio_dsp.h` and the
+`NativeKit::audio_dsp` target. It is intentionally separate from the playback
+device and mixer graph: create a `nk_audio_dsp_engine`, create one or more
+instruments, submit frame-sorted note and parameter events, and render
+interleaved float blocks into caller-owned memory. The initial backend provides
+pitched sine, triangle, saw, and square oscillators with ADSR envelopes and
+reports those capabilities through `nk_audio_dsp_engine_get_capabilities()`.
+The stable NativeKit ABI does not expose backend types, so future DaisySP or
+other native DSP implementations can be added without changing tracker code.
+
 The first API slice supports WAV, FLAC, and MP3 playback from native filesystem
 paths, cached URI assets, or caller-provided encoded memory.
 `nk_audio_clip` owns a reusable source, while each `nk_audio_voice` has

@@ -51,6 +51,71 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		NK_AUDIO_DEVICE_INTERRUPTED = 5;
 	}
 	/**
+	 * Features implemented by the selected DSP backend.
+	 */
+	flags nk_audio_dsp_capabilities : u32 {
+		/**
+		 * Oscillator-based pitched sound generation.
+		 */
+		NK_AUDIO_DSP_CAPABILITY_OSCILLATOR = 1;
+		/**
+		 * Noise source generation.
+		 */
+		NK_AUDIO_DSP_CAPABILITY_NOISE = 2;
+		/**
+		 * Wavetable playback.
+		 */
+		NK_AUDIO_DSP_CAPABILITY_WAVETABLE = 4;
+		/**
+		 * Attack/decay/sustain/release amplitude shaping.
+		 */
+		NK_AUDIO_DSP_CAPABILITY_ENVELOPE = 8;
+		/**
+		 * Low-frequency modulation source.
+		 */
+		NK_AUDIO_DSP_CAPABILITY_LFO = 16;
+		/**
+		 * Audio-rate filtering.
+		 */
+		NK_AUDIO_DSP_CAPABILITY_FILTER = 32;
+		/**
+		 * Frequency or phase modulation.
+		 */
+		NK_AUDIO_DSP_CAPABILITY_FM = 64;
+		/**
+		 * Phase modulation.
+		 */
+		NK_AUDIO_DSP_CAPABILITY_PHASE_MODULATION = 128;
+	}
+	/**
+	 * Events applied at exact sample offsets while rendering a block.
+	 */
+	enum nk_audio_dsp_event_kind : u32 {
+		NK_AUDIO_DSP_EVENT_NOTE_ON = 0;
+		NK_AUDIO_DSP_EVENT_NOTE_OFF = 1;
+		NK_AUDIO_DSP_EVENT_PARAMETER = 2;
+	}
+	/**
+	 * Instrument parameters accepted by nk_audio_dsp_instrument_set_parameter.
+	 */
+	enum nk_audio_dsp_parameter : u32 {
+		NK_AUDIO_DSP_PARAMETER_WAVEFORM = 0;
+		NK_AUDIO_DSP_PARAMETER_GAIN = 1;
+		NK_AUDIO_DSP_PARAMETER_ATTACK_SECONDS = 2;
+		NK_AUDIO_DSP_PARAMETER_DECAY_SECONDS = 3;
+		NK_AUDIO_DSP_PARAMETER_SUSTAIN_LEVEL = 4;
+		NK_AUDIO_DSP_PARAMETER_RELEASE_SECONDS = 5;
+	}
+	/**
+	 * Built-in pitched oscillator shapes.
+	 */
+	enum nk_audio_dsp_waveform : u32 {
+		NK_AUDIO_DSP_WAVEFORM_SINE = 0;
+		NK_AUDIO_DSP_WAVEFORM_TRIANGLE = 1;
+		NK_AUDIO_DSP_WAVEFORM_SAW = 2;
+		NK_AUDIO_DSP_WAVEFORM_SQUARE = 3;
+	}
+	/**
 	 * Built-in processing effect types available on mixer buses.
 	 */
 	enum nk_audio_effect_type : u32 {
@@ -462,6 +527,49 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 * Stops the process-wide audio playback device without destroying the engine graph.
 	 */
 	extern fn nk_audio_device_stop() -> nk_result;
+	/**
+	 * Creates a standalone DSP renderer; no playback device is required.
+	 */
+	extern fn nk_audio_dsp_engine_create(options: ptr<const<nk_audio_dsp_engine_options>>, out_engine: ptr<nk_audio_dsp_engine> @out @owned) -> nk_result;
+	/**
+	 * Stops all voices and destroys a DSP renderer.
+	 */
+	extern fn nk_audio_dsp_engine_destroy(engine: nk_audio_dsp_engine) -> nk_result;
+	/**
+	 * Returns the capabilities of the renderer's private backend.
+	 */
+	extern fn nk_audio_dsp_engine_get_capabilities(engine: nk_audio_dsp_engine, out_capabilities: ptr<nk_audio_dsp_capabilities> @out) -> nk_result;
+	/**
+	 * Returns the renderer's normalized configuration.
+	 */
+	extern fn nk_audio_dsp_engine_get_options(engine: nk_audio_dsp_engine, out_options: ptr<nk_audio_dsp_engine_options> @out) -> nk_result;
+	/**
+	 * Renders one interleaved float block. The destination is cleared before
+	 * voices are mixed. Events are consumed only for this call and are applied at
+	 * their exact frame offsets, including an event at frame_count for the next
+	 * block's state.
+	 */
+	extern fn nk_audio_dsp_engine_render(engine: nk_audio_dsp_engine, target: ptr<nk_audio_dsp_render_target> @inout, events: ptr<const<nk_audio_dsp_event>> @in_array("event_count"), event_count: u32) -> nk_result;
+	/**
+	 * Restores instruments and voices to their creation state.
+	 */
+	extern fn nk_audio_dsp_engine_reset(engine: nk_audio_dsp_engine) -> nk_result;
+	/**
+	 * Creates an instrument associated with a renderer.
+	 */
+	extern fn nk_audio_dsp_instrument_create(engine: nk_audio_dsp_engine, options: ptr<const<nk_audio_dsp_instrument_options>>, out_instrument: ptr<nk_audio_dsp_instrument> @out @owned) -> nk_result;
+	/**
+	 * Destroys an instrument and releases any voices using it.
+	 */
+	extern fn nk_audio_dsp_instrument_destroy(instrument: nk_audio_dsp_instrument) -> nk_result;
+	/**
+	 * Reads one current instrument parameter.
+	 */
+	extern fn nk_audio_dsp_instrument_get_parameter(instrument: nk_audio_dsp_instrument, parameter: nk_audio_dsp_parameter, out_value: ptr<f32> @out) -> nk_result;
+	/**
+	 * Sets one instrument parameter between render calls.
+	 */
+	extern fn nk_audio_dsp_instrument_set_parameter(instrument: nk_audio_dsp_instrument, parameter: nk_audio_dsp_parameter, value: f32) -> nk_result;
 	/**
 	 * Returns linear gain for the process-wide NativeKit audio mixer.
 	 */
@@ -880,6 +988,143 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		reserved2: array<u64, 2> @offset(32);
 	}
 	/**
+	 * Configuration for one standalone DSP renderer. Zero fields select defaults.
+	 */
+	struct nk_audio_dsp_engine_options @layout(40, 8) {
+		/**
+		 * Set to sizeof(nk_audio_dsp_engine_options) before passing the structure.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Output sample rate in frames per second; zero selects 48000.
+		 */
+		sample_rate: u32 @offset(4);
+		/**
+		 * Interleaved output channel count; zero selects two channels.
+		 */
+		channels: u32 @offset(8);
+		/**
+		 * Maximum render block size; zero selects 256 frames.
+		 */
+		block_size: u32 @offset(12);
+		/**
+		 * Maximum simultaneously active voice IDs; zero selects 64 voices.
+		 */
+		max_voices: u32 @offset(16);
+		/**
+		 * Reserved; set to zero.
+		 */
+		reserved: u32 @offset(20);
+		/**
+		 * Reserved for compatible extensions; set all elements to zero.
+		 */
+		reserved2: array<u64, 2> @offset(24);
+	}
+	/**
+	 * One sample-accurate event in a render block. Events must be frame sorted.
+	 */
+	struct nk_audio_dsp_event @layout(56, 8) {
+		/**
+		 * Set to sizeof(nk_audio_dsp_event) before passing the structure.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Event operation.
+		 */
+		kind: nk_audio_dsp_event_kind @offset(4);
+		/**
+		 * Frame offset within the render target; frame_count is allowed.
+		 */
+		frame_offset: u32 @offset(8);
+		/**
+		 * Instrument for NOTE_ON and PARAMETER; ignored for NOTE_OFF.
+		 */
+		instrument: nk_audio_dsp_instrument @offset(12);
+		/**
+		 * Caller-owned voice identity for NOTE_ON/NOTE_OFF; ignored for PARAMETER.
+		 */
+		voice_id: u32 @offset(16);
+		/**
+		 * MIDI note number for NOTE_ON, in the inclusive range [0, 127].
+		 */
+		note: u32 @offset(20);
+		/**
+		 * NOTE_ON velocity in the inclusive range [0, 1].
+		 */
+		velocity: f32 @offset(24);
+		/**
+		 * Parameter ID and value for PARAMETER.
+		 */
+		parameter: nk_audio_dsp_parameter @offset(28);
+		value: f32 @offset(32);
+		/**
+		 * Reserved for compatible extensions; set all elements to zero.
+		 */
+		reserved2: array<u64, 2> @offset(40);
+	}
+	/**
+	 * Initial parameters for one pitched instrument.
+	 */
+	struct nk_audio_dsp_instrument_options @layout(48, 8) {
+		/**
+		 * Set to sizeof(nk_audio_dsp_instrument_options) before passing the structure.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Initial oscillator shape.
+		 */
+		waveform: nk_audio_dsp_waveform @offset(4);
+		/**
+		 * Linear output gain; zero is silent.
+		 */
+		gain: f32 @offset(8);
+		/**
+		 * Amplitude attack duration in seconds.
+		 */
+		attack_seconds: f32 @offset(12);
+		/**
+		 * Amplitude decay duration in seconds.
+		 */
+		decay_seconds: f32 @offset(16);
+		/**
+		 * Sustained amplitude in the inclusive range [0, 1].
+		 */
+		sustain_level: f32 @offset(20);
+		/**
+		 * Amplitude release duration in seconds.
+		 */
+		release_seconds: f32 @offset(24);
+		/**
+		 * Reserved for compatible extensions; set all elements to zero.
+		 */
+		reserved2: array<u64, 2> @offset(32);
+	}
+	/**
+	 * Interleaved float output supplied to nk_audio_dsp_engine_render.
+	 */
+	struct nk_audio_dsp_render_target @layout(32, 8) {
+		/**
+		 * Set to sizeof(nk_audio_dsp_render_target) before passing the structure.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Interleaved destination samples, with frame_count * channels elements.
+		 */
+		samples: ptr<f32> @offset(8);
+		/**
+		 * Number of PCM frames to render. Must not exceed the engine block size.
+		 */
+		frame_count: u32 @offset(16);
+		/**
+		 * Number of interleaved channels; must match the engine configuration.
+		 */
+		channels: u32 @offset(20);
+		/**
+		 * Number of float elements available at samples.
+		 */
+		sample_count: u64 @offset(24);
+	}
+	/**
 	 * Three-dimensional audio coordinate in the right-handed OpenGL convention.
 	 */
 	struct nk_audio_vec3 @layout(12, 4) {
@@ -1013,6 +1258,14 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 * Opaque handle for one reusable audio clip source.
 	 */
 	handle nk_audio_clip : u32 @destroy("nk_audio_clip_destroy");
+	/**
+	 * Opaque handle for one standalone DSP renderer.
+	 */
+	handle nk_audio_dsp_engine : u32 @destroy("nk_audio_dsp_engine_destroy");
+	/**
+	 * Opaque handle for one instrument owned by a DSP renderer.
+	 */
+	handle nk_audio_dsp_instrument : u32 @destroy("nk_audio_dsp_instrument_destroy");
 	/**
 	 * Opaque handle for one reusable set of mixer bus targets.
 	 */
