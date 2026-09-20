@@ -78,4 +78,9 @@ private:
     RevisionCounters revisions;
 };
 
+NKS_API std::shared_ptr<const SceneSnapshot> resolve_snapshot_handle(
+    nkscene_snapshot snapshot) noexcept;
+NKS_API std::shared_ptr<const ChangeSet> resolve_change_set_handle(
+    nkscene_change_set changes) noexcept;
+
 } // namespace nkscene

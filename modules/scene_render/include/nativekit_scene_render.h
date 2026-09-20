@@ -5,7 +5,7 @@
 /* Dependencies                                                              */
 /* ------------------------------------------------------------------------- */
 
-#include "nativekit_scene.hpp"
+#include "nativekit_scene.h"
 #include "nativekit_gpu.h"
 
 /* ------------------------------------------------------------------------- */
@@ -25,10 +25,81 @@
 #endif
 
 /* ------------------------------------------------------------------------- */
-/* C++ linkage                                                               */
+/* C linkage                                                                 */
 /* ------------------------------------------------------------------------- */
 
 #ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef struct nkscene_render_plan {
+    uint64_t value;
+} nkscene_render_plan NK_HANDLE NK_HANDLE_DESTROY(nkscene_render_plan_destroy);
+
+typedef struct nkscene_render_visibility_override {
+    nkscene_occurrence_id occurrence;
+    uint32_t visible NK_BOOL32;
+} nkscene_render_visibility_override;
+
+typedef struct nkscene_render_material_override {
+    nkscene_occurrence_id occurrence;
+    nkscene_material_id material;
+} nkscene_render_material_override;
+
+typedef struct nkscene_render_view {
+    uint32_t struct_size NK_STRUCT_SIZE;
+    nkscene_occurrence_id root;
+    uint32_t include_invisible NK_BOOL32;
+    const nkscene_render_visibility_override *visibility_overrides
+        NK_BORROWED_ARRAY(visibility_override_count);
+    uint32_t visibility_override_count;
+    const nkscene_render_material_override *material_overrides
+        NK_BORROWED_ARRAY(material_override_count);
+    uint32_t material_override_count;
+} nkscene_render_view;
+
+typedef struct nkscene_render_update {
+    uint32_t struct_size NK_STRUCT_SIZE;
+    uint32_t plan_rebuilt NK_BOOL32;
+    uint32_t geometry_rebuilt NK_BOOL32;
+    uint64_t patched_instances;
+    uint64_t patched_visibility;
+    uint64_t patched_materials;
+    uint64_t rebuilt_batches;
+    uint64_t updated_geometry_resources;
+    uint64_t updated_material_resources;
+    uint64_t invalidated_items;
+} nkscene_render_update;
+
+typedef struct nkscene_render_pick_result {
+    nkscene_occurrence_id occurrence;
+    nkscene_entity_id source;
+    uint32_t subelement;
+    float world_position[3];
+    float depth;
+} nkscene_render_pick_result;
+
+NKSRENDER_API nkscene_result NKS_CALL nkscene_render_plan_compile(
+    nkscene_snapshot snapshot, const nkscene_render_view *view,
+    nkscene_render_plan *out_plan NK_OUT NK_OWNED);
+NKSRENDER_API void NKS_CALL nkscene_render_plan_destroy(nkscene_render_plan plan);
+NKSRENDER_API nkscene_result NKS_CALL nkscene_render_plan_get_item_count(
+    nkscene_render_plan plan, uint64_t *out_count NK_OUT);
+NKSRENDER_API nkscene_result NKS_CALL nkscene_render_plan_update(
+    nkscene_render_plan plan, nkscene_snapshot snapshot, nkscene_change_set changes,
+    const nkscene_render_view *view, nkscene_render_update *out_update NK_INOUT);
+NKSRENDER_API nkscene_result NKS_CALL nkscene_render_plan_pick(
+    nkscene_render_plan plan, nkscene_snapshot snapshot, uint32_t primitive,
+    const float world_position[3], float depth, nkscene_render_pick_result *out_result NK_OUT);
+
+#ifdef __cplusplus
+}
+
+/* ------------------------------------------------------------------------- */
+/* C++ linkage                                                               */
+/* ------------------------------------------------------------------------- */
+
+#include "nativekit_scene.hpp"
 
 #include <cstdint>
 #include <span>

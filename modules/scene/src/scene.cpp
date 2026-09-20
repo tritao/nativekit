@@ -478,6 +478,8 @@ struct RuntimeRegistry {
     std::mutex mutex;
     HandleTable<Scene> scenes;
     HandleTable<Transaction> transactions;
+    HandleTable<SceneSnapshot> snapshots;
+    HandleTable<ChangeSet> change_sets;
 };
 
 RuntimeRegistry &registry() {
@@ -509,7 +511,47 @@ LocalTransform from_public_transform(const nkscene_transform &transform) {
     return result;
 }
 
+nkscene_result commit_transaction(nkscene_transaction transaction_handle,
+                                  nkscene_change_set *out_changes) {
+    if (out_changes)
+        out_changes->value = 0;
+    auto &state = registry();
+    std::lock_guard lock(state.mutex);
+    std::shared_ptr<Transaction> transaction;
+    const auto result = require_transaction(transaction_handle, transaction);
+    if (result != NKS_OK)
+        return result;
+
+    ChangeSet changes;
+    const auto commit_result = transaction->scene()->commit(*transaction, changes);
+    if (commit_result != NKS_OK)
+        return commit_result;
+
+    if (out_changes) {
+        auto change_set = std::make_shared<ChangeSet>(std::move(changes));
+        const auto handle = state.change_sets.create(std::move(change_set));
+        out_changes->value = pack_handle(handle);
+    }
+    transaction->close();
+    state.transactions.remove(unpack_handle(transaction_handle.value));
+    return NKS_OK;
+}
+
 } // namespace
+
+NKS_API std::shared_ptr<const SceneSnapshot> resolve_snapshot_handle(
+    nkscene_snapshot snapshot) noexcept {
+    auto &state = registry();
+    std::lock_guard lock(state.mutex);
+    return state.snapshots.get(unpack_handle(snapshot.value));
+}
+
+NKS_API std::shared_ptr<const ChangeSet> resolve_change_set_handle(
+    nkscene_change_set changes) noexcept {
+    auto &state = registry();
+    std::lock_guard lock(state.mutex);
+    return state.change_sets.get(unpack_handle(changes.value));
+}
 
 } // namespace nkscene
 
@@ -566,19 +608,14 @@ void NKS_CALL nkscene_transaction_cancel(nkscene_transaction transaction) {
 }
 
 nkscene_result NKS_CALL nkscene_transaction_commit(nkscene_transaction transaction_handle) {
-    auto &state = nkscene::registry();
-    std::lock_guard lock(state.mutex);
-    std::shared_ptr<nkscene::Transaction> transaction;
-    const auto result = nkscene::require_transaction(transaction_handle, transaction);
-    if (result != NKS_OK)
-        return result;
-    nkscene::ChangeSet changes;
-    const auto commit_result = transaction->scene()->commit(*transaction, changes);
-    if (commit_result == NKS_OK) {
-        transaction->close();
-        state.transactions.remove(nkscene::unpack_handle(transaction_handle.value));
-    }
-    return commit_result;
+    return nkscene::commit_transaction(transaction_handle, nullptr);
+}
+
+nkscene_result NKS_CALL nkscene_transaction_commit_with_changes(
+    nkscene_transaction transaction_handle, nkscene_change_set *out_changes) {
+    if (!out_changes)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    return nkscene::commit_transaction(transaction_handle, out_changes);
 }
 
 nkscene_result NKS_CALL nkscene_tx_create_occurrence(
@@ -675,6 +712,60 @@ nkscene_result NKS_CALL nkscene_tx_set_visibility(
     return NKS_OK;
 }
 
+nkscene_result NKS_CALL nkscene_scene_snapshot(
+    nkscene_scene scene, nkscene_snapshot *out_snapshot) {
+    if (!out_snapshot)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    out_snapshot->value = 0;
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    auto owner = state.scenes.get(nkscene::unpack_handle(scene.value));
+    if (!owner)
+        return NKS_ERROR_INVALID_HANDLE;
+    auto snapshot = std::make_shared<nkscene::SceneSnapshot>(owner->snapshot());
+    const auto handle = state.snapshots.create(std::move(snapshot));
+    out_snapshot->value = nkscene::pack_handle(handle);
+    return NKS_OK;
+}
+
+void NKS_CALL nkscene_snapshot_destroy(nkscene_snapshot snapshot) {
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    state.snapshots.remove(nkscene::unpack_handle(snapshot.value));
+}
+
+nkscene_result NKS_CALL nkscene_snapshot_get_revision(
+    nkscene_snapshot snapshot, uint64_t *out_revision) {
+    if (!out_revision)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    const auto value = state.snapshots.get(nkscene::unpack_handle(snapshot.value));
+    if (!value)
+        return NKS_ERROR_INVALID_HANDLE;
+    *out_revision = value->revision();
+    return NKS_OK;
+}
+
+void NKS_CALL nkscene_change_set_destroy(nkscene_change_set changes) {
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    state.change_sets.remove(nkscene::unpack_handle(changes.value));
+}
+
+nkscene_result NKS_CALL nkscene_change_set_get_revision(
+    nkscene_change_set changes, uint64_t *out_revision) {
+    if (!out_revision)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    const auto value = state.change_sets.get(nkscene::unpack_handle(changes.value));
+    if (!value)
+        return NKS_ERROR_INVALID_HANDLE;
+    *out_revision = value->scene_revision;
+    return NKS_OK;
+}
+
 nkscene_result NKS_CALL nkscene_geometry_create(
     nkscene_scene scene, nkscene_geometry_id *out_geometry) {
     if (!out_geometry)
@@ -715,6 +806,82 @@ void NKS_CALL nkscene_material_destroy(nkscene_scene scene, nkscene_material_id 
     auto owner = state.scenes.get(nkscene::unpack_handle(scene.value));
     if (owner)
         owner->destroy_material({material.value});
+}
+
+nkscene_result NKS_CALL nkscene_geometry_set_data(
+    nkscene_scene scene, nkscene_geometry_id geometry, const nkscene_geometry_data *data) {
+    if (!data || data->struct_size < sizeof(nkscene_geometry_data))
+        return NKS_ERROR_INVALID_ARGUMENT;
+    if ((data->vertex_count != 0 && !data->vertices) ||
+        (data->index_count != 0 && !data->indices) ||
+        (data->subelement_count != 0 && !data->subelements))
+        return NKS_ERROR_INVALID_ARGUMENT;
+    const auto element_count = data->index_count != 0 ? data->index_count : data->vertex_count;
+    if (element_count % 3 != 0)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    if (data->index_count != 0) {
+        for (uint32_t index = 0; index < data->index_count; ++index)
+            if (data->indices[index] >= data->vertex_count)
+                return NKS_ERROR_INVALID_ARGUMENT;
+    }
+    const auto primitive_count = element_count / 3;
+    for (uint32_t index = 0; index < data->subelement_count; ++index) {
+        const auto &range = data->subelements[index];
+        if (static_cast<uint64_t>(range.first_primitive) + range.primitive_count >
+            primitive_count)
+            return NKS_ERROR_INVALID_ARGUMENT;
+    }
+
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    auto owner = state.scenes.get(nkscene::unpack_handle(scene.value));
+    if (!owner)
+        return NKS_ERROR_INVALID_HANDLE;
+    if (!owner->geometry_store().find({geometry.value}))
+        return NKS_ERROR_STALE_ID;
+    auto &resource = owner->geometry_store().create({geometry.value});
+    resource.payload.vertices.resize(data->vertex_count);
+    for (uint32_t index = 0; index < data->vertex_count; ++index)
+        std::copy(std::begin(data->vertices[index].position),
+                  std::end(data->vertices[index].position),
+                  resource.payload.vertices[index].position.begin());
+    resource.payload.indices.clear();
+    if (data->index_count != 0)
+        resource.payload.indices.assign(data->indices, data->indices + data->index_count);
+    resource.bounds.valid = data->bounds.valid != 0;
+    std::copy(std::begin(data->bounds.minimum), std::end(data->bounds.minimum),
+              resource.bounds.minimum.begin());
+    std::copy(std::begin(data->bounds.maximum), std::end(data->bounds.maximum),
+              resource.bounds.maximum.begin());
+    resource.subelements.ranges.clear();
+    if (data->subelement_count != 0) {
+        resource.subelements.ranges.reserve(data->subelement_count);
+        for (uint32_t index = 0; index < data->subelement_count; ++index) {
+            const auto &range = data->subelements[index];
+            resource.subelements.ranges.push_back(
+                {range.first_primitive, range.primitive_count, range.subelement});
+        }
+    }
+    return NKS_OK;
+}
+
+nkscene_result NKS_CALL nkscene_material_set_data(
+    nkscene_scene scene, nkscene_material_id material, const nkscene_material_data *data) {
+    if (!data || data->struct_size < sizeof(nkscene_material_data))
+        return NKS_ERROR_INVALID_ARGUMENT;
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    auto owner = state.scenes.get(nkscene::unpack_handle(scene.value));
+    if (!owner)
+        return NKS_ERROR_INVALID_HANDLE;
+    if (!owner->material_store().find({material.value}))
+        return NKS_ERROR_STALE_ID;
+    auto &resource = owner->material_store().create({material.value});
+    std::copy(std::begin(data->base_color), std::end(data->base_color),
+              resource.base_color.begin());
+    resource.opacity = data->opacity;
+    resource.flags = data->flags;
+    return NKS_OK;
 }
 
 } // extern "C"
