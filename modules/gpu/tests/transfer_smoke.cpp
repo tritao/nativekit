@@ -829,6 +829,13 @@ int main() {
         std::fprintf(stderr, "single-pixel R32_UINT readback did not match\n");
         return 1;
     }
+    uint32_t picked_column[2]{};
+    if (!readback(resources.renderer, resources.round_trip_image, 0, 0, 1, 2,
+                  reinterpret_cast<uint8_t *>(picked_column), sizeof(picked_column)) ||
+        picked_column[0] != pixels[0] || picked_column[1] != pixels[2]) {
+        std::fprintf(stderr, "R32_UINT rectangle readback did not match\n");
+        return 1;
+    }
     nkgpu_image_readback_desc invalid_readback{};
     invalid_readback.struct_size = sizeof(invalid_readback);
     invalid_readback.image = resources.round_trip_image;
