@@ -274,8 +274,6 @@ UINT item_state(const nk::core::MenuItemResource &resource) {
     UINT result = MFS_ENABLED;
     if (resource.flags & NK_MENU_ITEM_DISABLED)
         result |= MFS_DISABLED | MFS_GRAYED;
-    if (resource.flags & NK_MENU_ITEM_HIDDEN)
-        result |= 0x8000u;
     if (resource.flags & NK_MENU_ITEM_CHECKED)
         result |= MFS_CHECKED;
     return result;
@@ -284,6 +282,8 @@ UINT item_state(const nk::core::MenuItemResource &resource) {
 bool append_item(HMENU parent, const std::shared_ptr<nk::core::MenuItemResource> &resource,
                  BuildState &build) {
     if (!resource)
+        return true;
+    if (resource->flags & NK_MENU_ITEM_HIDDEN)
         return true;
     if (resource->kind == NK_MENU_ITEM_SEPARATOR)
         return AppendMenuW(parent, MF_SEPARATOR, 0, nullptr) != FALSE;

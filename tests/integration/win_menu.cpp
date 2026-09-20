@@ -74,6 +74,13 @@ int main() {
     nk_menu_item checkbox = NK_INVALID_HANDLE;
     assert(nk_menu_add_item(menu, submenu, &checkbox_options, &checkbox) == NK_OK);
 
+    nk_menu_item_options hidden_options = {};
+    hidden_options.struct_size = sizeof(hidden_options);
+    hidden_options.flags = NK_MENU_ITEM_HIDDEN;
+    hidden_options.label = "Hidden item";
+    nk_menu_item hidden = NK_INVALID_HANDLE;
+    assert(nk_menu_add_item(menu, submenu, &hidden_options, &hidden) == NK_OK);
+
     nk_window_options window_options = {};
     window_options.struct_size = sizeof(window_options);
     window_options.flags = NK_WINDOW_HIDDEN | NK_WINDOW_RESIZABLE;
@@ -94,6 +101,14 @@ int main() {
     HMENU file = GetSubMenu(root, 0);
     assert(file != nullptr && GetMenuItemCount(file) == 2);
     assert(menu_label(file, 0).find(L"Close\tCtrl+W") != std::wstring::npos);
+    assert(nk_menu_item_set_visible(hidden, 1) == NK_OK);
+    root = GetMenu(hwnd);
+    file = GetSubMenu(root, 0);
+    assert(file != nullptr && GetMenuItemCount(file) == 3);
+    assert(nk_menu_item_set_visible(hidden, 0) == NK_OK);
+    root = GetMenu(hwnd);
+    file = GetSubMenu(root, 0);
+    assert(file != nullptr && GetMenuItemCount(file) == 2);
 
     const UINT command_id = GetMenuItemID(file, 0);
     assert(command_id != static_cast<UINT>(-1));
