@@ -4139,9 +4139,8 @@ nkgpu_result nkgpu_readback_destroy(nkgpu_renderer r, nkgpu_readback h) {
     return NKGPU_OK;
 }
 
-static nkgpu_result query_timestamp_backend(Renderer &renderer,
-                                             Timestamp &timestamp,
-                                             nkgpu_timestamp_info &out_info) {
+static nkgpu_result query_timestamp_backend(Renderer &renderer, Timestamp &timestamp,
+                                            nkgpu_timestamp_info &out_info) {
     const nk_sokol_transfer_api *transfer = renderer.api->transfer;
     if (!transfer || !transfer->timestamp_supported || !transfer->timestamp_supported() ||
         !transfer->timestamp_status || !transfer->timestamp_elapsed_ns)
