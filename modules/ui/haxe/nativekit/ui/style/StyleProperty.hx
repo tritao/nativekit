@@ -138,10 +138,10 @@ class StyleProperty<T> {
 		"positionY", 0.0, false, StyleImpact.Layout, null,
 		function(style) return style.positionY, function(style, value) style.positionY = value);
 	public static final ZIndex:StyleProperty<Int> = new StyleProperty(
-		"zIndex", 0, false, StyleImpact.Paint, null,
+		"zIndex", 0, false, StyleImpact.Paint | StyleImpact.HitGeometry, null,
 		function(style) return style.zIndex, function(style, value) style.zIndex = value);
 	public static final ClipToParent:StyleProperty<Bool> = new StyleProperty(
-		"clipToParent", true, false, StyleImpact.Paint, null,
+		"clipToParent", true, false, StyleImpact.Paint | StyleImpact.HitGeometry, null,
 		function(style) return style.clipToParent, function(style, value) style.clipToParent = value);
 	public static final Padding:StyleProperty<Insets> = new StyleProperty(
 		"padding", new Insets(0.0, 0.0, 0.0, 0.0), false, StyleImpact.Layout, null,
@@ -165,13 +165,13 @@ class StyleProperty<T> {
 		"radiusBottomLeft", 0.0, false, StyleImpact.Paint, floatInterpolate,
 		function(style) return style.radiusBottomLeft, function(style, value) style.radiusBottomLeft = value);
 	public static final ClipHorizontal:StyleProperty<Bool> = new StyleProperty(
-		"clipHorizontal", false, false, StyleImpact.Paint, null,
+		"clipHorizontal", false, false, StyleImpact.Paint | StyleImpact.HitGeometry, null,
 		function(style) return style.clipHorizontal, function(style, value) style.clipHorizontal = value);
 	public static final ClipVertical:StyleProperty<Bool> = new StyleProperty(
-		"clipVertical", false, false, StyleImpact.Paint, null,
+		"clipVertical", false, false, StyleImpact.Paint | StyleImpact.HitGeometry, null,
 		function(style) return style.clipVertical, function(style, value) style.clipVertical = value);
 	public static final Visible:StyleProperty<Bool> = new StyleProperty(
-		"visible", true, false, StyleImpact.Paint, null,
+		"visible", true, false, StyleImpact.Paint | StyleImpact.HitGeometry, null,
 		function(style) return style.visible, function(style, value) style.visible = value);
 	public static final Transform:StyleProperty<Transform2D> = new StyleProperty(
 		"transform", Transform2D.identity(), false, StyleImpact.Composite | StyleImpact.HitGeometry, null,

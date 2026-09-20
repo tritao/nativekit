@@ -12,6 +12,8 @@ import NativeKit.WindowDecorationRegionKind;
 import nativekit.ui.style.ComputedStyle;
 import nativekit.ui.style.Decoration;
 import nativekit.ui.style.StyleProperty;
+import nativekit.ui.style.StyleDiff;
+import nativekit.ui.style.StyleImpact;
 import nativekit.ui.semantics.Semantics;
 
 /** One Haxe-owned node joins visual layout, interaction, focus, and state identity. */
@@ -44,6 +46,14 @@ class RenderNode {
 	/** Optional native cursor override for this node's window-chrome region. */
 	public var windowDecorationCursor:Null<CursorShape>;
 	public var semantics:Null<Semantics>;
+	/** Revision of paint/text content consumed by retained scene caches. */
+	public var contentRevision(default, null):Int;
+	/** Revision of resolved bounds, transforms, clips, and paint order. */
+	public var geometryRevision(default, null):Int;
+	/** Revision of opacity/effects and other compositing inputs. */
+	public var compositeRevision(default, null):Int;
+	/** Categories raised while this node was compared with its prior frame. */
+	public var invalidationFlags(default, null):Int;
 	final handlers:Map<String, Array<UiEvent->Void>>;
 	final outsidePointerDownHandlers:Array<UiEvent->Void>;
 	final resolvedHandlers:Array<ResolvedLayoutItem->Void>;
@@ -78,6 +88,12 @@ class RenderNode {
 		windowDecoration = null;
 		windowDecorationCursor = null;
 		semantics = null;
+		contentRevision = 1;
+		geometryRevision = 1;
+		compositeRevision = 1;
+		invalidationFlags = UiDirtyFlag.NeedsBuild | UiDirtyFlag.NeedsStyle |
+			UiDirtyFlag.NeedsTextLayout | UiDirtyFlag.NeedsLayout | UiDirtyFlag.NeedsPaint |
+			UiDirtyFlag.NeedsComposite | UiDirtyFlag.NeedsSemantics | UiDirtyFlag.NeedsHitGeometry;
 		handlers = new Map();
 		outsidePointerDownHandlers = [];
 		resolvedHandlers = [];
@@ -339,6 +355,52 @@ class RenderNode {
 			return false;
 		var value = computedStyle.get(StyleProperty.Decorations);
 		return value != null && value.decorations.length > 0;
+	}
+
+	/**
+	 * Carries retained-scene revisions across freshly built trees. The view
+	 * layer still submits a complete layout transaction, but downstream work
+	 * can now distinguish content, geometry, and composition changes.
+	 */
+	@:allow(nativekit.ui.debug.UiStyleInvalidationMetrics)
+	function syncRevisions(previous:Null<RenderNode>, diff:StyleDiff):Void {
+		if (previous == null) {
+			invalidationFlags = UiDirtyFlag.NeedsBuild | UiDirtyFlag.NeedsStyle |
+				UiDirtyFlag.NeedsTextLayout | UiDirtyFlag.NeedsLayout | UiDirtyFlag.NeedsPaint |
+				UiDirtyFlag.NeedsComposite | UiDirtyFlag.NeedsSemantics | UiDirtyFlag.NeedsHitGeometry;
+			return;
+		}
+
+		contentRevision = previous.contentRevision;
+		geometryRevision = previous.geometryRevision;
+		compositeRevision = previous.compositeRevision;
+		invalidationFlags = UiDirtyFlag.None;
+		if (diff.changed) {
+			invalidationFlags = UiDirtyFlag.NeedsStyle | UiDirtyFlag.fromStyleImpact(diff.impact);
+			if ((diff.impact & (StyleImpact.Paint | StyleImpact.TextLayout)) != 0)
+				contentRevision++;
+			if ((diff.impact & (StyleImpact.Layout | StyleImpact.TextLayout |
+				StyleImpact.HitGeometry)) != 0)
+				geometryRevision++;
+			if ((diff.impact & StyleImpact.Composite) != 0)
+				compositeRevision++;
+		}
+
+		// Text and external intrinsic content are not represented by computed
+		// style, so classify them explicitly as both content and geometry.
+		if (layout.visualKind != previous.layout.visualKind || layout.text != previous.layout.text ||
+			layout.measureVersion != previous.layout.measureVersion ||
+			layout.intrinsicContent != previous.layout.intrinsicContent) {
+			contentRevision++;
+			geometryRevision++;
+			invalidationFlags |= UiDirtyFlag.NeedsTextLayout | UiDirtyFlag.NeedsLayout |
+				UiDirtyFlag.NeedsPaint;
+		}
+
+		if (hitTestSelf != previous.hitTestSelf || hitTestBehavior != previous.hitTestBehavior) {
+			geometryRevision++;
+			invalidationFlags |= UiDirtyFlag.NeedsHitGeometry;
+		}
 	}
 
 	@:allow(nativekit.ui.core.EventDispatcher)

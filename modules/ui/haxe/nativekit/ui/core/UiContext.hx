@@ -22,8 +22,6 @@ import nativekit.ui.semantics.AccessibilityActionData;
 import nativekit.ui.semantics.AccessibilityRequest;
 import nativekit.ui.semantics.Semantics;
 import nativekit.ui.theme.Theme;
-import nativekit.ui.style.ComputedStyle;
-import nativekit.ui.style.StyleDiff;
 import nativekit.ui.style.StyleSheet;
 import nativekit.ui.gestures.GestureArena;
 import nativekit.ui.animation.AnimationScheduler;
@@ -57,12 +55,14 @@ class UiContext {
 	var submittedBuildKey:Null<String>;
 	var submittedTheme:Null<Theme>;
 	var submittedStyleSheet:Null<StyleSheet>;
+	final hitTestIds:Array<Int>;
 	var disposed:Bool;
 	var customCanvases:Map<Int, Canvas>;
 	var customLists:Map<Int, DisplayList>;
 	var customGeometries:Map<Int, ResolvedLayoutItem>;
-	var customStyles:Map<Int, Null<ComputedStyle>>;
 	var customPaintKeys:Map<Int, String>;
+	var customContentRevisions:Map<Int, Int>;
+	var customCompositeRevisions:Map<Int, Int>;
 	var customListHasCommands:Map<Int, Bool>;
 	var accessibilityBridge:Null<AccessibilityBridge>;
 	var accessibilitySurface:Null<NativeKitSurface>;
@@ -101,13 +101,15 @@ class UiContext {
 		submittedBuildKey = null;
 		submittedTheme = null;
 		submittedStyleSheet = null;
+		hitTestIds = [];
 		disposed = false;
 		buildContext.setFocusRequester(function(id) { return focusWidget(id); });
 		customCanvases = new Map();
 		customLists = new Map();
 		customGeometries = new Map();
-		customStyles = new Map();
 		customPaintKeys = new Map();
+		customContentRevisions = new Map();
+		customCompositeRevisions = new Map();
 		customListHasCommands = new Map();
 		accessibilityBridge = null;
 		accessibilitySurface = null;
@@ -258,9 +260,9 @@ class UiContext {
 			events.focusEvent(previousFocus, UiEventKind.Blur);
 		root = next;
 		events.setHitTestProvider(function(x:Float, y:Float) {
-			var ids = session.hitTest(x, y);
+			session.hitTestInto(x, y, hitTestIds);
 			var path:Array<RenderNode> = [];
-			for (id in ids) {
+			for (id in hitTestIds) {
 				var node = nodesById.get(id);
 				if (node == null)
 					return [];
@@ -379,8 +381,9 @@ class UiContext {
 			if (hasCommands && node.cachePolicy != CachePolicy.None)
 				session.setCustomPaintCachePolicy(nodeId, node.cachePolicy);
 			customGeometries.set(nodeId, geometry);
-			customStyles.set(nodeId, node.computedStyle);
 			customPaintKeys.set(nodeId, node.retainedPaintKey());
+			customContentRevisions.set(nodeId, node.contentRevision);
+			customCompositeRevisions.set(nodeId, node.compositeRevision);
 			paintedNodes++;
 			painted.set(nodeId, true);
 		});
@@ -399,8 +402,9 @@ class UiContext {
 			customCanvases.remove(nodeId);
 			customLists.remove(nodeId);
 			customGeometries.remove(nodeId);
-			customStyles.remove(nodeId);
 			customPaintKeys.remove(nodeId);
+			customContentRevisions.remove(nodeId);
+			customCompositeRevisions.remove(nodeId);
 			customListHasCommands.remove(nodeId);
 		}
 		diagnosticStage = 24;
@@ -588,11 +592,14 @@ class UiContext {
 		if (key == null || !customPaintKeys.exists(nodeId) ||
 			!customListHasCommands.exists(nodeId) || customPaintKeys.get(nodeId) != key)
 			return false;
+		if (customContentRevisions.get(nodeId) != node.contentRevision ||
+			customCompositeRevisions.get(nodeId) != node.compositeRevision)
+			return false;
 		var previousGeometry = customGeometries.get(nodeId);
 		if (previousGeometry == null || node.resolved == null ||
 			!sameGeometry(previousGeometry, node.resolved))
 			return false;
-		return !StyleDiff.compare(customStyles.get(nodeId), node.computedStyle).changed;
+		return true;
 	}
 
 	static function sameGeometry(left:ResolvedLayoutItem, right:ResolvedLayoutItem):Bool {
@@ -678,8 +685,9 @@ class UiContext {
 		customCanvases = new Map();
 		customLists = new Map();
 		customGeometries = new Map();
-		customStyles = new Map();
 		customPaintKeys = new Map();
+		customContentRevisions = new Map();
+		customCompositeRevisions = new Map();
 		customListHasCommands = new Map();
 		events.setHitTestProvider(null);
 		session.dispose();

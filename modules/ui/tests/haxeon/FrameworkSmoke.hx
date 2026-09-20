@@ -2459,6 +2459,9 @@ class FrameworkSmoke {
 		var initialTransformGeometry:ResolvedLayoutItem = cast transformRoot.resolved;
 		var transformWidth = initialTransformGeometry.width;
 		var transformHeight = initialTransformGeometry.height;
+		var initialContentRevision = transformRoot.contentRevision;
+		var initialGeometryRevision = transformRoot.geometryRevision;
+		var initialCompositeRevision = transformRoot.compositeRevision;
 		var transformAnimation = new AnimationController(context.animations, function(value) {
 			transformCanvas.style.transform = Transform2D.translation(value, 0.0);
 		});
@@ -2472,8 +2475,25 @@ class FrameworkSmoke {
 			transformMetrics.hitGeometryInvalidatedNodes <= 0 ||
 			transformGeometry.width != transformWidth ||
 			transformGeometry.height != transformHeight ||
-			transformGeometry.transform.tx == 0.0)
+			transformGeometry.transform.tx == 0.0 ||
+			transformRoot.contentRevision != initialContentRevision ||
+			transformRoot.geometryRevision <= initialGeometryRevision ||
+			transformRoot.compositeRevision <= initialCompositeRevision)
 			return 241;
+		var opacitySheet = new StyleSheet("RevisionOpacity");
+		opacitySheet.rule(StyleSelector.widget("canvas"), [StyleValue.opacity(0.5)]);
+		context.setStyleSheet(opacitySheet);
+		transformFrame.deltaSeconds = 0.0;
+		var opacityRoot = context.submit(transformCanvas, transformFrame);
+		if (opacityRoot.geometryRevision != transformRoot.geometryRevision ||
+			opacityRoot.contentRevision != transformRoot.contentRevision ||
+			opacityRoot.compositeRevision <= transformRoot.compositeRevision ||
+			!UiDirtyFlag.contains(opacityRoot.invalidationFlags, UiDirtyFlag.NeedsComposite) ||
+			UiDirtyFlag.contains(opacityRoot.invalidationFlags, UiDirtyFlag.NeedsHitGeometry)) {
+			Sys.println('revision opacity check failed content=${opacityRoot.contentRevision}/${transformRoot.contentRevision} geometry=${opacityRoot.geometryRevision}/${transformRoot.geometryRevision} composite=${opacityRoot.compositeRevision}/${transformRoot.compositeRevision} flags=${opacityRoot.invalidationFlags}');
+			return 242;
+		}
+		context.setStyleSheet(new StyleSheet("Application"));
 		var spring = new SpringController(0.0, 180.0, 24.0, 1.0, 0.001,
 			context.animations);
 		spring.setTarget(1.0);

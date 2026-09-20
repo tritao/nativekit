@@ -662,6 +662,18 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	 */
 	extern fn nkui_layout_session_hit_test(session: nkui_layout_session, x: f32, y: f32, out_path: nullable<ptr<u8>> @out_buffer("inout_bytes"), inout_bytes: ptr<u32> @inout) -> nkui_result;
 	/**
+	 * Executes a geometric hit test into caller-owned reusable storage.
+	 *
+	 * `path` is a mutable byte buffer containing uint32_t node IDs in
+	 * root-to-target order. `path_capacity_bytes` is its capacity in bytes and
+	 * must be a multiple of sizeof(uint32_t). `out_count` receives the number of
+	 * node IDs written. If the buffer is too small, no IDs are written,
+	 * `out_count` receives the required number of IDs, and NKUI_ERROR_INVALID_ARGUMENT
+	 * is returned so the caller can grow and retry without a size-query allocation.
+	 * A zero-capacity buffer is valid when `path` is NULL.
+	 */
+	extern fn nkui_layout_session_hit_test_into(session: nkui_layout_session, x: f32, y: f32, path: ptr<u8> @in_array("path_capacity_bytes"), path_capacity_bytes: u32, out_count: ptr<u32> @out) -> nkui_result;
+	/**
 	 * Executes the submitted layout through the existing NativeKit renderer.
 	 *
 	 * The retained UI surface uses on-demand scheduling; request another frame

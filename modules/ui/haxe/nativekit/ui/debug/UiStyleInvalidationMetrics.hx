@@ -50,12 +50,16 @@ class UiStyleInvalidationMetrics {
 			current.walk(function(node) {
 				var prior = previousById.get(node.id.value);
 				var diff = StyleDiff.compare(prior == null ? null : prior.computedStyle, node.computedStyle);
-				if (!diff.changed) {
+				node.syncRevisions(prior, diff);
+				var flags = node.invalidationFlags;
+				if (!diff.changed && flags == UiDirtyFlag.None) {
 					styleUnchangedNodes++;
 					return;
 				}
-				styleChangedNodes++;
-				var flags = UiDirtyFlag.NeedsStyle | UiDirtyFlag.fromStyleImpact(diff.impact);
+				if (diff.changed)
+					styleChangedNodes++;
+				else
+					styleUnchangedNodes++;
 				invalidationFlags |= flags;
 				if (UiDirtyFlag.contains(flags, UiDirtyFlag.NeedsLayout)) layoutInvalidatedNodes++;
 				if (UiDirtyFlag.contains(flags, UiDirtyFlag.NeedsTextLayout)) textLayoutInvalidatedNodes++;
