@@ -46,6 +46,11 @@ typedef struct nkscene_render_material_override {
     nkscene_material_id material;
 } nkscene_render_material_override;
 
+typedef struct nkscene_render_camera {
+    uint32_t enabled NK_BOOL32;
+    nkscene_transform view_projection;
+} nkscene_render_camera;
+
 typedef struct nkscene_render_view {
     uint32_t struct_size NK_STRUCT_SIZE;
     nkscene_occurrence_id root;
@@ -56,6 +61,7 @@ typedef struct nkscene_render_view {
     const nkscene_render_material_override *
         material_overrides NK_BORROWED_ARRAY(material_override_count);
     uint32_t material_override_count;
+    nkscene_render_camera camera;
 } nkscene_render_view;
 
 typedef struct nkscene_render_update {
@@ -69,6 +75,9 @@ typedef struct nkscene_render_update {
     uint64_t updated_geometry_resources;
     uint64_t updated_material_resources;
     uint64_t invalidated_items;
+    uint64_t patched_culling;
+    uint64_t visible_items;
+    uint64_t culled_items;
 } nkscene_render_update;
 
 typedef struct nkscene_render_pick_result {
@@ -136,6 +145,7 @@ NKSRENDER_API nkscene_result NKS_CALL nkscene_render_executor_pick_pixel(
 
 #include "nativekit_scene.hpp"
 
+#include <array>
 #include <cstdint>
 #include <span>
 #include <unordered_map>
@@ -161,6 +171,15 @@ struct MaterialOverride {
     MaterialId material;
 };
 
+struct SceneCamera {
+    bool enabled = false;
+    std::array<float, 16> view_projection{
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f,
+        0.0f, 0.0f, 0.0f, 1.0f};
+};
+
 struct SceneView {
     /** Invalid means that the view contains every occurrence. */
     OccurrenceId root;
@@ -169,9 +188,16 @@ struct SceneView {
     /** Later entries replace earlier entries for the same occurrence. */
     std::vector<VisibilityOverride> visibility_overrides;
     std::vector<MaterialOverride> material_overrides;
+    /** Optional world-to-clip transform used for bounds culling and rendering. */
+    SceneCamera camera;
 };
 
-enum class RenderFlags : std::uint32_t { None = 0, Hidden = 1u << 0, Opaque = 1u << 1 };
+enum class RenderFlags : std::uint32_t {
+    None = 0,
+    Hidden = 1u << 0,
+    Opaque = 1u << 1,
+    Culled = 1u << 2
+};
 
 constexpr RenderFlags operator|(RenderFlags lhs, RenderFlags rhs) noexcept {
     return static_cast<RenderFlags>(static_cast<std::uint32_t>(lhs) |
@@ -212,6 +238,9 @@ struct RenderUpdate {
     std::size_t updated_geometry_resources = 0;
     std::size_t updated_material_resources = 0;
     std::size_t invalidated_items = 0;
+    std::size_t patched_culling = 0;
+    std::size_t visible_items = 0;
+    std::size_t culled_items = 0;
 };
 
 struct Vec3 {
@@ -259,6 +288,11 @@ class RenderPlan {
     std::span<const WorldTransform> transforms() const noexcept { return transforms_; }
     std::span<const InstanceBatch> batches() const noexcept { return batches_; }
     std::size_t compile_count() const noexcept { return compile_count_; }
+    std::size_t visible_items() const noexcept { return visible_items_; }
+    std::size_t culled_items() const noexcept { return culled_items_; }
+    const std::array<float, 16> &view_projection() const noexcept {
+        return view_projection_;
+    }
 
   private:
     std::uint64_t source_revision_ = 0;
@@ -268,6 +302,13 @@ class RenderPlan {
     std::vector<InstanceBatch> batches_;
     std::unordered_map<GeometryId, std::uint64_t> geometry_revisions_;
     std::unordered_map<MaterialId, std::uint64_t> material_revisions_;
+    std::array<float, 16> view_projection_ = {
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f,
+        0.0f, 0.0f, 0.0f, 1.0f};
+    std::size_t visible_items_ = 0;
+    std::size_t culled_items_ = 0;
     std::size_t compile_count_ = 0;
 
     friend NKSRENDER_API RenderPlan compile(const SceneSnapshot &, const SceneView &);

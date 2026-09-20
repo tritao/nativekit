@@ -55,6 +55,11 @@ int main(void) {
 
     nkscene_render_view view = {0};
     view.struct_size = sizeof(view);
+    view.camera.enabled = 1;
+    view.camera.view_projection.matrix[0] = 1.0f;
+    view.camera.view_projection.matrix[5] = 1.0f;
+    view.camera.view_projection.matrix[10] = 1.0f;
+    view.camera.view_projection.matrix[15] = 1.0f;
     nkscene_render_plan plan = {0};
     assert(nkscene_render_plan_compile(snapshot, &view, &plan) == NKS_OK);
     uint64_t item_count = 0;
@@ -111,6 +116,9 @@ int main(void) {
     assert(update.plan_rebuilt == 0);
     assert(update.geometry_rebuilt == 0);
     assert(update.patched_instances == 1);
+    assert(update.patched_culling == 1);
+    assert(update.visible_items == 0);
+    assert(update.culled_items == 1);
     assert(update.updated_geometry_resources == 0);
     assert(update.updated_material_resources == 0);
 

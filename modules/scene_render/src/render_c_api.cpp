@@ -41,6 +41,9 @@ nkscene_result copy_view(const nkscene_render_view *input, nkscene::SceneView &o
         const auto &value = input->material_overrides[index];
         output.material_overrides.push_back({{value.occurrence.value}, {value.material.value}});
     }
+    output.camera.enabled = input->camera.enabled != 0;
+    for (uint32_t index = 0; index < 16; ++index)
+        output.camera.view_projection[index] = input->camera.view_projection.matrix[index];
     return NKS_OK;
 }
 
@@ -124,6 +127,9 @@ nkscene_result NKS_CALL nkscene_render_plan_update(nkscene_render_plan plan_hand
     out_update->updated_geometry_resources = update.updated_geometry_resources;
     out_update->updated_material_resources = update.updated_material_resources;
     out_update->invalidated_items = update.invalidated_items;
+    out_update->patched_culling = update.patched_culling;
+    out_update->visible_items = update.visible_items;
+    out_update->culled_items = update.culled_items;
     return NKS_OK;
 }
 
@@ -160,6 +166,9 @@ nkscene_result NKS_CALL nkscene_render_plan_refresh(nkscene_render_plan plan_han
     out_update->updated_geometry_resources = update.updated_geometry_resources;
     out_update->updated_material_resources = update.updated_material_resources;
     out_update->invalidated_items = update.invalidated_items;
+    out_update->patched_culling = update.patched_culling;
+    out_update->visible_items = update.visible_items;
+    out_update->culled_items = update.culled_items;
     return NKS_OK;
 }
 

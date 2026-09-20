@@ -15,6 +15,7 @@ struct EffectiveState {
 
 void rebuild_batches(RenderPlan &plan);
 void build_items(RenderPlan &plan, const SceneSnapshot &snapshot, const SceneView &view);
+bool culled_by_camera(const Bounds &bounds, const SceneCamera &camera) noexcept;
 EffectiveState effective_state(const SceneSnapshot &snapshot, const SceneView &view);
 std::uint64_t view_signature(const SceneView &view) noexcept;
 std::unordered_map<OccurrenceId, std::size_t> item_indices(const RenderPlan &plan);

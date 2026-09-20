@@ -1,8 +1,38 @@
 #include "render_internal.hpp"
 
+#include <array>
+#include <functional>
 #include <unordered_map>
 
 namespace nkscene::render_internal {
+
+namespace {
+
+bool outside_plane(const Bounds &bounds, const std::array<float, 4> &plane) noexcept {
+    const auto x = plane[0] >= 0.0f ? bounds.maximum[0] : bounds.minimum[0];
+    const auto y = plane[1] >= 0.0f ? bounds.maximum[1] : bounds.minimum[1];
+    const auto z = plane[2] >= 0.0f ? bounds.maximum[2] : bounds.minimum[2];
+    return plane[0] * x + plane[1] * y + plane[2] * z + plane[3] < 0.0f;
+}
+
+} // namespace
+
+bool culled_by_camera(const Bounds &bounds, const SceneCamera &camera) noexcept {
+    if (!camera.enabled || !bounds.valid)
+        return false;
+    const auto &m = camera.view_projection;
+    const std::array<std::array<float, 4>, 6> planes = {{
+        {m[0] + m[3], m[4] + m[7], m[8] + m[11], m[12] + m[15]},
+        {m[3] - m[0], m[7] - m[4], m[11] - m[8], m[15] - m[12]},
+        {m[1] + m[3], m[5] + m[7], m[9] + m[11], m[13] + m[15]},
+        {m[3] - m[1], m[7] - m[5], m[11] - m[9], m[15] - m[13]},
+        {m[2] + m[3], m[6] + m[7], m[10] + m[11], m[14] + m[15]},
+        {m[3] - m[2], m[7] - m[6], m[11] - m[10], m[15] - m[14]}}};
+    for (const auto &plane : planes)
+        if (outside_plane(bounds, plane))
+            return true;
+    return false;
+}
 
 EffectiveState effective_state(const SceneSnapshot &snapshot, const SceneView &view) {
     EffectiveState result;
@@ -89,6 +119,9 @@ std::uint64_t view_signature(const SceneView &view) noexcept {
         add(override.occurrence.value);
         add(override.material.value);
     }
+    add(view.camera.enabled ? 1 : 0);
+    for (const auto value : view.camera.view_projection)
+        add(std::hash<float>{}(value));
     return hash;
 }
 
@@ -96,6 +129,11 @@ void build_items(RenderPlan &plan, const SceneSnapshot &snapshot, const SceneVie
     const auto state = effective_state(snapshot, view);
     plan.items_.clear();
     plan.transforms_.clear();
+    plan.visible_items_ = 0;
+    plan.culled_items_ = 0;
+    plan.view_projection_ = view.camera.enabled
+        ? view.camera.view_projection
+        : SceneCamera{}.view_projection;
     plan.items_.reserve(snapshot.occurrences().size());
     plan.transforms_.reserve(snapshot.occurrences().size());
     for (const auto &occurrence : snapshot.occurrences()) {
@@ -115,6 +153,12 @@ void build_items(RenderPlan &plan, const SceneSnapshot &snapshot, const SceneVie
         item.flags = RenderFlags::Opaque;
         if (!state.visible.at(occurrence.occurrence))
             item.flags |= RenderFlags::Hidden;
+        if (culled_by_camera(occurrence.bounds, view.camera)) {
+            item.flags |= RenderFlags::Culled;
+            ++plan.culled_items_;
+        } else if (state.visible.at(occurrence.occurrence)) {
+            ++plan.visible_items_;
+        }
         plan.items_.push_back(item);
     }
 }

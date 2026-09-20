@@ -29,6 +29,21 @@ class SceneView {
 		return this;
 	}
 
+	/** Enables bounds culling and applies a column-major world-to-clip matrix. */
+	public function setViewProjection(transform:Transform):SceneView {
+		var camera = new nkscene_render_camera();
+		camera.set_enabled(1);
+		camera.set_view_projection(transform.nativeValue());
+		value.set_camera(camera);
+		return this;
+	}
+
+	/** Disables bounds culling and restores the default identity projection. */
+	public function clearViewProjection():SceneView {
+		value.set_camera(new nkscene_render_camera());
+		return this;
+	}
+
 	public function setVisibility(occurrence:Occurrence, visible:Bool):SceneView {
 		var override = new nkscene_render_visibility_override();
 		override.set_occurrence(occurrence.nativeValue());

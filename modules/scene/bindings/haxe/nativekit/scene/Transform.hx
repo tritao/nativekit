@@ -48,7 +48,7 @@ class Transform {
 		return value.get_matrix(index);
 	}
 
-	@:allow(Transaction)
+	@:allow(Transaction, SceneView)
 	function nativeValue():nkscene_transform
 		return value;
 

@@ -281,12 +281,76 @@ void scene_views_are_hierarchy_aware() {
     assert(plan.items().front().occurrence == leaf);
 }
 
+void scene_view_camera_culling_is_incremental() {
+    auto scene = std::make_shared<Scene>();
+    const auto geometry = scene->reserve_geometry_id();
+    auto &geometry_resource = scene->geometry_store().create(geometry);
+    geometry_resource.bounds.valid = true;
+    geometry_resource.bounds.minimum = {-0.25f, -0.25f, -0.25f};
+    geometry_resource.bounds.maximum = {0.25f, 0.25f, 0.25f};
+    const auto material = scene->reserve_material_id();
+    scene->material_store().create(material);
+    const auto inside = scene->reserve_occurrence_id();
+    const auto outside = scene->reserve_occurrence_id();
+
+    Transaction create(scene);
+    create.add_create(inside);
+    create.add_create(outside);
+    ChangeSet changes;
+    assert(scene->commit(create, changes) == NKS_OK);
+    create.close();
+
+    Transaction configure(scene);
+    configure.add_geometry(inside, geometry);
+    configure.add_material(inside, material);
+    configure.add_geometry(outside, geometry);
+    configure.add_material(outside, material);
+    configure.add_transform(outside, translated(2.0f));
+    assert(scene->commit(configure, changes) == NKS_OK);
+    configure.close();
+
+    nkscene::SceneView view;
+    view.camera.enabled = true;
+    const auto snapshot = scene->snapshot();
+    auto plan = nkscene::compile(snapshot, view);
+    assert(plan.items().size() == 2);
+    assert(plan.visible_items() == 1);
+    assert(plan.culled_items() == 1);
+    const auto find_item = [&](nkscene::OccurrenceId id) {
+        return std::find_if(plan.items().begin(), plan.items().end(),
+                            [id](const nkscene::RenderItem &item) {
+                                return item.occurrence == id;
+                            });
+    };
+    assert(!nkscene::has_render_flag(find_item(inside)->flags,
+                                     nkscene::RenderFlags::Culled));
+    assert(nkscene::has_render_flag(find_item(outside)->flags,
+                                    nkscene::RenderFlags::Culled));
+    const auto compile_count = plan.compile_count();
+
+    Transaction move_inside(scene);
+    move_inside.add_transform(outside, translated(0.5f));
+    assert(scene->commit(move_inside, changes) == NKS_OK);
+    move_inside.close();
+    const auto moved_snapshot = scene->snapshot();
+    const auto update = nkscene::update(plan, moved_snapshot, changes, view);
+    assert(!update.plan_rebuilt);
+    assert(update.patched_instances == 1);
+    assert(update.patched_culling == 1);
+    assert(update.visible_items == 2);
+    assert(update.culled_items == 0);
+    assert(plan.compile_count() == compile_count);
+    assert(!nkscene::has_render_flag(find_item(outside)->flags,
+                                     nkscene::RenderFlags::Culled));
+}
+
 } // namespace
 
 int main() {
     geometry_payload_contract_is_validated();
     resource_lifecycle_is_cache_safe();
     scene_views_are_hierarchy_aware();
+    scene_view_camera_culling_is_incremental();
     constexpr std::size_t count = 50000;
     auto scene = std::make_shared<Scene>();
     const auto geometry = scene->reserve_geometry_id();

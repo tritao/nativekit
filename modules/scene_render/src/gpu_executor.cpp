@@ -66,6 +66,7 @@ std::vector<DesiredBatch> desired_batches(const RenderPlan &plan) {
             const auto *item =
                 item_index == item_indices.end() ? nullptr : &plan.items()[item_index->second];
             if (!item || has_render_flag(item->flags, RenderFlags::Hidden) ||
+                has_render_flag(item->flags, RenderFlags::Culled) ||
                 item->transformIndex >= transforms.size())
                 continue;
             const auto &transform = transforms[item->transformIndex];
@@ -81,23 +82,26 @@ std::vector<DesiredBatch> desired_batches(const RenderPlan &plan) {
 }
 
 const char *vertex_shader_source(bool gles) {
-    return gles ? "#version 300 es\n"
-                  "precision highp float;\n"
-                  "layout(location=0) in vec3 position;\n"
-                  "layout(location=1) in vec4 transform0;\n"
-                  "layout(location=2) in vec4 transform1;\n"
-                  "layout(location=3) in vec4 transform2;\n"
-                  "layout(location=4) in vec4 transform3;\n"
-                  "void main(){ mat4 transform=mat4(transform0,transform1,transform2,transform3);"
-                  "gl_Position=transform*vec4(position,1.0); }\n"
-                : "#version 330\n"
-                  "layout(location=0) in vec3 position;\n"
-                  "layout(location=1) in vec4 transform0;\n"
-                  "layout(location=2) in vec4 transform1;\n"
-                  "layout(location=3) in vec4 transform2;\n"
-                  "layout(location=4) in vec4 transform3;\n"
-                  "void main(){ mat4 transform=mat4(transform0,transform1,transform2,transform3);"
-                  "gl_Position=transform*vec4(position,1.0); }\n";
+    return gles
+        ? "#version 300 es\n"
+          "precision highp float;\n"
+          "layout(location=0) in vec3 position;\n"
+          "layout(location=1) in vec4 transform0;\n"
+          "layout(location=2) in vec4 transform1;\n"
+          "layout(location=3) in vec4 transform2;\n"
+          "layout(location=4) in vec4 transform3;\n"
+          "uniform mat4 view_projection;\n"
+          "void main(){ mat4 transform=mat4(transform0,transform1,transform2,transform3);"
+          "gl_Position=view_projection*transform*vec4(position,1.0); }\n"
+        : "#version 330\n"
+          "layout(location=0) in vec3 position;\n"
+          "layout(location=1) in vec4 transform0;\n"
+          "layout(location=2) in vec4 transform1;\n"
+          "layout(location=3) in vec4 transform2;\n"
+          "layout(location=4) in vec4 transform3;\n"
+           "uniform mat4 view_projection;\n"
+           "void main(){ mat4 transform=mat4(transform0,transform1,transform2,transform3);"
+           "gl_Position=view_projection*transform*vec4(position,1.0); }\n";
 }
 
 const char *fragment_shader_source(bool gles) {
@@ -113,27 +117,30 @@ const char *fragment_shader_source(bool gles) {
 }
 
 const char *pick_vertex_shader_source(bool gles) {
-    return gles ? "#version 300 es\n"
-                  "precision highp float;\n"
-                  "layout(location=0) in vec3 position;\n"
-                  "layout(location=1) in vec4 transform0;\n"
-                  "layout(location=2) in vec4 transform1;\n"
-                  "layout(location=3) in vec4 transform2;\n"
-                  "layout(location=4) in vec4 transform3;\n"
-                  "layout(location=5) in vec4 pick_color;\n"
-                  "out vec4 vertex_pick_color;\n"
-                  "void main(){ mat4 transform=mat4(transform0,transform1,transform2,transform3);"
-                  "vertex_pick_color=pick_color; gl_Position=transform*vec4(position,1.0); }\n"
-                : "#version 330\n"
-                  "layout(location=0) in vec3 position;\n"
-                  "layout(location=1) in vec4 transform0;\n"
-                  "layout(location=2) in vec4 transform1;\n"
-                  "layout(location=3) in vec4 transform2;\n"
-                  "layout(location=4) in vec4 transform3;\n"
-                  "layout(location=5) in vec4 pick_color;\n"
-                  "out vec4 vertex_pick_color;\n"
-                  "void main(){ mat4 transform=mat4(transform0,transform1,transform2,transform3);"
-                  "vertex_pick_color=pick_color; gl_Position=transform*vec4(position,1.0); }\n";
+    return gles
+        ? "#version 300 es\n"
+          "precision highp float;\n"
+          "layout(location=0) in vec3 position;\n"
+          "layout(location=1) in vec4 transform0;\n"
+          "layout(location=2) in vec4 transform1;\n"
+          "layout(location=3) in vec4 transform2;\n"
+          "layout(location=4) in vec4 transform3;\n"
+          "layout(location=5) in vec4 pick_color;\n"
+          "uniform mat4 view_projection;\n"
+          "out vec4 vertex_pick_color;\n"
+          "void main(){ mat4 transform=mat4(transform0,transform1,transform2,transform3);"
+          "vertex_pick_color=pick_color; gl_Position=view_projection*transform*vec4(position,1.0); }\n"
+        : "#version 330\n"
+          "layout(location=0) in vec3 position;\n"
+          "layout(location=1) in vec4 transform0;\n"
+          "layout(location=2) in vec4 transform1;\n"
+          "layout(location=3) in vec4 transform2;\n"
+          "layout(location=4) in vec4 transform3;\n"
+          "layout(location=5) in vec4 pick_color;\n"
+          "uniform mat4 view_projection;\n"
+          "out vec4 vertex_pick_color;\n"
+          "void main(){ mat4 transform=mat4(transform0,transform1,transform2,transform3);"
+          "vertex_pick_color=pick_color; gl_Position=view_projection*transform*vec4(position,1.0); }\n";
 }
 
 const char *pick_fragment_shader_source(bool gles) {
@@ -308,7 +315,13 @@ bool ensure_pipeline(StateT &state, GpuExecutionStats &stats, bool indexed) {
             (result = attribute(2, "transform1", "TEXCOORD")) != NKGPU_OK ||
             (result = attribute(3, "transform2", "TEXCOORD")) != NKGPU_OK ||
             (result = attribute(4, "transform3", "TEXCOORD")) != NKGPU_OK ||
-            (result = nkgpu_shader_uniform_block(shader_builder, 0, NKGPU_SHADERSTAGE_FRAGMENT,
+            (result = nkgpu_shader_uniform_block(shader_builder, 1,
+                                                 NKGPU_SHADERSTAGE_VERTEX,
+                                                 sizeof(float) * 16)) != NKGPU_OK ||
+            (result = nkgpu_shader_uniform(shader_builder, 1, 0, "view_projection",
+                                           NKGPU_UNIFORMTYPE_MAT4, 1)) != NKGPU_OK ||
+            (result = nkgpu_shader_uniform_block(shader_builder, 0,
+                                                 NKGPU_SHADERSTAGE_FRAGMENT,
                                                  sizeof(float) * 4)) != NKGPU_OK ||
             (result = nkgpu_shader_uniform(shader_builder, 0, 0, "material_color",
                                            NKGPU_UNIFORMTYPE_FLOAT4, 0)) != NKGPU_OK ||
@@ -372,6 +385,11 @@ bool ensure_pick_pipeline(StateT &state, GpuExecutionStats &stats, bool indexed)
             (result = attribute(3, "transform2", "TEXCOORD")) != NKGPU_OK ||
             (result = attribute(4, "transform3", "TEXCOORD")) != NKGPU_OK ||
             (result = attribute(5, "pick_color", "TEXCOORD")) != NKGPU_OK ||
+            (result = nkgpu_shader_uniform_block(shader_builder, 1,
+                                                 NKGPU_SHADERSTAGE_VERTEX,
+                                                 sizeof(float) * 16)) != NKGPU_OK ||
+            (result = nkgpu_shader_uniform(shader_builder, 1, 0, "view_projection",
+                                           NKGPU_UNIFORMTYPE_MAT4, 1)) != NKGPU_OK ||
             (result = nkgpu_shader_end(shader_builder, &state.pick_shader)) != NKGPU_OK)
             return set_failure(state, stats, result);
     }
@@ -760,7 +778,8 @@ GpuExecutionStats NativeKitGpuExecutor::execute(const RenderPlan &plan,
     state_->commands.clear();
     state_->commands.reserve(plan.items().size());
     for (const auto &item : plan.items()) {
-        if (has_render_flag(item.flags, RenderFlags::Hidden))
+        if (has_render_flag(item.flags, RenderFlags::Hidden) ||
+            has_render_flag(item.flags, RenderFlags::Culled))
             continue;
         state_->commands.push_back(
             {item.occurrence, item.geometry, item.material, item.transformIndex});
@@ -806,6 +825,10 @@ GpuExecutionStats NativeKitGpuExecutor::execute(const RenderPlan &plan,
             material_color[3] *= material->opacity;
         }
         if ((result = nkgpu_apply_pipeline(state_->renderer, pipeline)) != NKGPU_OK ||
+            (result = nkgpu_apply_uniform_data(
+                 state_->renderer, 1,
+                 reinterpret_cast<const std::uint8_t *>(plan.view_projection().data()),
+                 sizeof(float) * 16)) != NKGPU_OK ||
             (result = nkgpu_apply_vertex_buffer(state_->renderer, 0, geometry->second.buffer, 0)) !=
                 NKGPU_OK ||
             (geometry->second.indexed &&
@@ -904,6 +927,10 @@ nkgpu_result NativeKitGpuExecutor::pick_pixel(const RenderPlan &plan, const Scen
         const auto &pipeline =
             geometry->second.indexed ? state_->pick_indexed_pipeline : state_->pick_pipeline;
         if ((result = nkgpu_apply_pipeline(state_->renderer, pipeline)) != NKGPU_OK ||
+            (result = nkgpu_apply_uniform_data(
+                 state_->renderer, 1,
+                 reinterpret_cast<const std::uint8_t *>(plan.view_projection().data()),
+                 sizeof(float) * 16)) != NKGPU_OK ||
             (result = nkgpu_apply_vertex_buffer(state_->renderer, 0, geometry->second.buffer, 0)) !=
                 NKGPU_OK ||
             (geometry->second.indexed &&

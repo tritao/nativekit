@@ -72,6 +72,8 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
         plan = compile(snapshot, view);
         result.plan_rebuilt = true;
         result.invalidated_items = invalidated_items;
+        result.visible_items = plan.visible_items_;
+        result.culled_items = plan.culled_items_;
         return result;
     }
 
@@ -118,18 +120,46 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
             batches_dirty = true;
             result.geometry_rebuilt = true;
         }
+        if (has_domain(change.domains, ChangeDomain::Bounds) ||
+            has_domain(change.domains, ChangeDomain::Geometry)) {
+            const auto culled = render_internal::culled_by_camera(
+                snapshot_occurrence->bounds, view.camera);
+            const auto was_culled = has_render_flag(item.flags, RenderFlags::Culled);
+            if (culled != was_culled) {
+                if (culled)
+                    item.flags |= RenderFlags::Culled;
+                else
+                    item.flags = static_cast<RenderFlags>(
+                        static_cast<std::uint32_t>(item.flags) &
+                        ~static_cast<std::uint32_t>(RenderFlags::Culled));
+                ++result.patched_culling;
+            }
+        }
     }
-    const bool hierarchy_changed =
-        std::any_of(changes.changes.begin(), changes.changes.end(), [](const SceneChange &change) {
-            return has_domain(change.domains, ChangeDomain::Hierarchy);
+    const bool world_transforms_changed = std::any_of(
+        changes.changes.begin(), changes.changes.end(), [](const SceneChange &change) {
+            return has_domain(change.domains, ChangeDomain::Transform) ||
+                has_domain(change.domains, ChangeDomain::Hierarchy);
         });
-    if (hierarchy_changed) {
+    if (world_transforms_changed) {
         for (auto &item : plan.items_) {
             if (const auto *occurrence = snapshot.find(item.occurrence)) {
                 if (occurrence->world_transform.revision !=
                     plan.transforms_[item.transformIndex].revision) {
                     plan.transforms_[item.transformIndex] = occurrence->world_transform;
                     ++result.patched_instances;
+                }
+                const auto culled = render_internal::culled_by_camera(
+                    occurrence->bounds, view.camera);
+                const auto was_culled = has_render_flag(item.flags, RenderFlags::Culled);
+                if (culled != was_culled) {
+                    if (culled)
+                        item.flags |= RenderFlags::Culled;
+                    else
+                        item.flags = static_cast<RenderFlags>(
+                            static_cast<std::uint32_t>(item.flags) &
+                            ~static_cast<std::uint32_t>(RenderFlags::Culled));
+                    ++result.patched_culling;
                 }
             }
         }
@@ -155,17 +185,32 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
     }
     plan.source_revision_ = snapshot.revision();
     plan.view_signature_ = render_internal::view_signature(view);
+    plan.visible_items_ = 0;
+    plan.culled_items_ = 0;
+    for (const auto &item : plan.items_) {
+        if (has_render_flag(item.flags, RenderFlags::Culled))
+            ++plan.culled_items_;
+        else if (!has_render_flag(item.flags, RenderFlags::Hidden))
+            ++plan.visible_items_;
+    }
+    result.visible_items = plan.visible_items_;
+    result.culled_items = plan.culled_items_;
     return result;
 }
 
 RenderUpdate refresh(RenderPlan &plan, const SceneSnapshot &snapshot, const SceneView &view) {
     RenderUpdate result;
     if (plan.source_revision() == snapshot.revision() &&
-        plan.view_signature_ == render_internal::view_signature(view))
+        plan.view_signature_ == render_internal::view_signature(view)) {
+        result.visible_items = plan.visible_items_;
+        result.culled_items = plan.culled_items_;
         return result;
+    }
 
     plan = compile(snapshot, view);
     result.plan_rebuilt = true;
+    result.visible_items = plan.visible_items_;
+    result.culled_items = plan.culled_items_;
     return result;
 }
 
