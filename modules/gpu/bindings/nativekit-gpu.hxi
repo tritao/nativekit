@@ -381,6 +381,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		 * A compute storage image.
 		 */
 		NKGPU_SHADERBINDING_STORAGE_IMAGE = 4;
+		/**
+		 * A standalone sampler state binding.
+		 */
+		NKGPU_SHADERBINDING_SAMPLER = 5;
 	}
 	/**
 	 * Source language accepted by the shader creation functions.

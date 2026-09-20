@@ -630,6 +630,8 @@ enum NK_ENUM(nkgpu_shader_binding_kind) {
     NKGPU_SHADERBINDING_STORAGE_BUFFER = 3,
     /** A compute storage image. */
     NKGPU_SHADERBINDING_STORAGE_IMAGE = 4,
+    /** A standalone sampler state binding. */
+    NKGPU_SHADERBINDING_SAMPLER = 5,
 };
 
 /** General shader resource metadata retained by the shader builder. */
