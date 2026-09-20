@@ -357,43 +357,61 @@ class Main {
 		asyncPickRequest.dispose();
 		var presentation = ScenePresentation.create(view, highlight, hoverHighlight);
 		presentation.select(second, SelectionMode.Replace);
-		presentation.requestHover(realSceneRenderer, movedSnapshot, 64, 64, 16, 32);
-		var presentationExecution = presentation.render(realSceneRenderer, movedSnapshot),
+		var presentationFrameTransaction = scene.beginTransaction(),
+			presentationFrameChanges = presentationFrameTransaction.commitWithChanges(),
+			presentationSnapshot = scene.snapshot();
+		presentation.requestHover(realSceneRenderer, presentationSnapshot, 64, 64, 16, 32);
+		var presentationExecution = presentation.render(realSceneRenderer, presentationSnapshot,
+			presentationFrameChanges),
 			hoverReady = presentation.interaction.hovered() != null;
 		for (attempt in 0...100) {
 			if (hoverReady)
 				break;
 			Sys.sleep(0.001);
-			presentationExecution = presentation.render(realSceneRenderer, movedSnapshot);
+			presentationExecution = presentation.render(realSceneRenderer, presentationSnapshot,
+				presentationFrameChanges);
 			hoverReady = presentation.interaction.hovered() != null;
 		}
 		var presentationUpdate = realSceneRenderer.lastUpdate();
 		var presentationPatchedMaterials = presentationUpdate == null
 			? -1 : haxe.Int64.toInt(presentationUpdate.get_patched_materials());
-		if (!hoverReady
-			|| presentation.view.selectionOverrideCount() != 1
-			|| presentation.view.hoverOverrideCount() != 1
-			|| presentation.view.materialOverrideCount() != 2
-			|| presentationUpdate == null
-			|| presentationUpdate.get_plan_rebuilt() != 0
-			|| presentationPatchedMaterials < 1
-			|| presentationPatchedMaterials > 2
-			|| presentationExecution.get_result() != NativeKitGpu.GpuStatus.Ok
-			|| haxe.Int64.toInt(presentationExecution.get_draw_calls()) != 2) {
-			presentation.dispose();
-			return 28;
-		}
+		presentationSnapshot.dispose();
+		presentationFrameChanges.dispose();
+		var nextFrameTransaction = scene.beginTransaction(),
+			nextFrameChanges = nextFrameTransaction.commitWithChanges(),
+			nextFrameSnapshot = scene.snapshot(),
+			nextFrameExecution = presentation.render(realSceneRenderer, nextFrameSnapshot,
+				nextFrameChanges),
+			nextFrameUpdate = realSceneRenderer.lastUpdate();
+		var validPresentationFrames = hoverReady
+			&& presentation.view.selectionOverrideCount() == 1
+			&& presentation.view.hoverOverrideCount() == 1
+			&& presentation.view.materialOverrideCount() == 2
+			&& presentationUpdate != null
+			&& presentationUpdate.get_plan_rebuilt() == 0
+			&& presentationPatchedMaterials >= 1
+			&& presentationPatchedMaterials <= 2
+			&& presentationExecution.get_result() == NativeKitGpu.GpuStatus.Ok
+			&& haxe.Int64.toInt(presentationExecution.get_draw_calls()) == 2
+			&& nextFrameUpdate != null
+			&& nextFrameUpdate.get_plan_rebuilt() == 0
+			&& haxe.Int64.toInt(nextFrameUpdate.get_patched_materials()) == 0
+			&& nextFrameExecution.get_result() == NativeKitGpu.GpuStatus.Ok
+			&& haxe.Int64.toInt(nextFrameExecution.get_draw_calls()) == 2;
+		nextFrameChanges.dispose();
 		presentation.dispose();
+		if (!validPresentationFrames)
+			return 28;
 		var gpuClippedView = new SceneView().setRoot(group).setViewProjection(Transform.identity())
 			.addClipPlane(1.0, 0.0, 0.0, 0.6),
-			gpuClippedExecution = realSceneRenderer.render(movedSnapshot, gpuClippedView),
+			gpuClippedExecution = realSceneRenderer.render(nextFrameSnapshot, gpuClippedView),
 			gpuClippedUpdate = realSceneRenderer.lastUpdate();
 		if (gpuClippedUpdate == null
 			|| gpuClippedUpdate.get_plan_rebuilt() != 0
 			|| haxe.Int64.toInt(gpuClippedExecution.get_commands()) != 2
 			|| haxe.Int64.toInt(gpuClippedExecution.get_draw_calls()) != 1) return 23;
-		var clippedLeft = realSceneRenderer.pickPixel(movedSnapshot, 64, 64, 8, 32),
-			clippedRight = realSceneRenderer.pickPixel(movedSnapshot, 64, 64, 16, 32);
+		var clippedLeft = realSceneRenderer.pickPixel(nextFrameSnapshot, 64, 64, 8, 32),
+			clippedRight = realSceneRenderer.pickPixel(nextFrameSnapshot, 64, 64, 16, 32);
 		if (clippedLeft.occurrence().stableValue() != haxe.Int64.ofInt(0)
 			|| !clippedRight.occurrence().equals(first)
 			|| clippedRight.subelement() != 42) return 24;
@@ -405,6 +423,7 @@ class Main {
 
 		sceneRenderer.dispose();
 		spatialIndex.dispose();
+		nextFrameSnapshot.dispose();
 		movedSnapshot.dispose();
 		culledSnapshot.dispose();
 		restoredSnapshot.dispose();
