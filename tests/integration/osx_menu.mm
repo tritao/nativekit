@@ -2,6 +2,7 @@
 
 #include "nativekit.h"
 #include "nativekit_menu.h"
+#include "nativekit_window.h"
 
 #include <cassert>
 
