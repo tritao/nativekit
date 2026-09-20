@@ -898,7 +898,7 @@ int main() {
               scheduler_stats.gpu_frames != before_scheduler_stats.gpu_frames + 2) ||
              (shared_gpu_runtime &&
               scheduler_stats.resource_creations < before_scheduler_stats.resource_creations) ||
-             (shared_gpu_runtime &&
+             (shared_native_context &&
               scheduler_stats.surface_recreations <
                   before_scheduler_stats.surface_recreations + 1) ||
              (supports_target_switch && scheduler_stats.render_submission_failures !=
