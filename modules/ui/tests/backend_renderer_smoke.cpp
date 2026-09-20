@@ -511,6 +511,7 @@ int main() {
         result = 9;
         goto cleanup;
     }
+    /* Imported images use the retained-image producer path, without a live callback. */
     if (!check(nkui_graphics_surface_create(image, &imported_surface) == NKUI_OK,
                "nkui_graphics_surface_create")) {
         result = 11;

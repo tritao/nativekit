@@ -99,7 +99,6 @@ struct ResourceSlot {
     bool system_fallbacks = false;
     std::shared_ptr<nkui::TextEngine> text;
     std::unique_ptr<nkui::SurfaceProducer> surface;
-    nk_graphics_image graphics_image{};
     nkui::PreparedGlyphs text_glyphs;
     std::unordered_map<int32_t, nkui::PreparedGlyphs> scaled_text_glyphs;
     float text_width = 0.0f;
@@ -193,6 +192,51 @@ struct RendererSlot {
     nkui::UiGpuStats retired_gpu{};
     nkui_renderer_stats stats{};
     uint16_t generation = 1;
+};
+
+class RetainedImageSurfaceProducer final : public nkui::SurfaceProducer {
+  public:
+    RetainedImageSurfaceProducer() = default;
+
+    void adopt_retained_image(nk_graphics_image image) { image_ = image; }
+
+    ~RetainedImageSurfaceProducer() override {
+        if (image_.id)
+            nk_graphics_image_release(image_);
+    }
+
+    bool ready() const override { return image_.id != 0; }
+
+    bool describe(int requested_width, int requested_height,
+                  nkui::SurfaceDescriptor &description) const override {
+        if (requested_width <= 0 || requested_height <= 0 || !image_.id)
+            return false;
+        nk_graphics_image_info info{};
+        info.struct_size = sizeof(info);
+        if (nk_graphics_image_get_info(image_, &info) != NK_OK || info.width <= 0 ||
+            info.height <= 0)
+            return false;
+        description.width = info.width;
+        description.height = info.height;
+        description.format = nkui::SurfacePixelFormat::Rgba8;
+        description.alpha = nkui::SurfaceAlphaMode::Premultiplied;
+        description.filter = nkui::SurfaceFilter::Linear;
+        description.color_space = nkui::SurfaceColorSpace::Linear;
+        return true;
+    }
+
+    uint32_t generation() const override { return 1; }
+
+    nk_graphics_image retained_image() const override { return image_; }
+
+    nkui::SurfaceRenderResult render(nkui::UiRenderer &, nkui::ResourceId,
+                                     const nkui::SurfaceDescriptor &) override {
+        /* A retained image is resolved as a sealed graphics-image binding. */
+        return nkui::SurfaceRenderResult::Failed;
+    }
+
+  private:
+    nk_graphics_image image_{};
 };
 
 struct LayoutSessionState : std::enable_shared_from_this<LayoutSessionState> {
@@ -1441,10 +1485,6 @@ nkui_result allocate_resource(nkui::ResourceKind kind, nkui_resource *out,
 }
 
 void release_resource_slot(ResourceSlot &slot) {
-    if (slot.graphics_image.id) {
-        nk_graphics_image_release(slot.graphics_image);
-        slot.graphics_image = {};
-    }
     slot.surface.reset();
     slot.text.reset();
     slot.text_glyphs = {};
@@ -2811,16 +2851,17 @@ extern "C" nkui_result nkui_graphics_surface_create(nk_graphics_image image,
     if (nk_graphics_image_get_info(image, &info) != NK_OK || !info.device.id || info.width <= 0 ||
         info.height <= 0)
         return NKUI_ERROR_INVALID_HANDLE;
-    if (nk_graphics_image_retain(image) != NK_OK)
+    auto producer = std::make_unique<RetainedImageSurfaceProducer>();
+    if (nk_graphics_image_retain(image) != NK_OK) {
         return NKUI_ERROR_INVALID_HANDLE;
+    }
+    producer->adopt_retained_image(image);
     std::lock_guard<std::mutex> lock(resources_mutex);
     ResourceSlot *slot = nullptr;
     const auto result = allocate_resource(nkui::ResourceKind::RenderTarget, out_surface, &slot);
-    if (result != NKUI_OK) {
-        nk_graphics_image_release(image);
+    if (result != NKUI_OK)
         return result;
-    }
-    slot->graphics_image = image;
+    slot->surface = std::move(producer);
     return NKUI_OK;
 }
 
@@ -3357,15 +3398,7 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
                         valid = false;
                         break;
                     }
-                    if (surface_slot->graphics_image.id) {
-                        valid = frame_resources.bind_graphics_image(
-                            command.resource, surface_slot->graphics_image,
-                            static_cast<uint64_t>(surface_slot->graphics_image.id));
-                        if (valid && !owned_resources.bind_graphics_image(
-                                         command.resource, surface_slot->graphics_image,
-                                         static_cast<uint64_t>(surface_slot->graphics_image.id)))
-                            sealable = false;
-                    } else if (surface_slot->surface) {
+                    if (surface_slot->surface) {
                         const nk_graphics_image published = surface_slot->surface->retained_image();
                         if (published.id) {
                             const auto generation =
@@ -3859,13 +3892,7 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                         valid = false;
                         break;
                     }
-                    if (surface_slot->graphics_image.id) {
-                        valid = frame_resources.bind_graphics_image(command.resource,
-                                                                    surface_slot->graphics_image);
-                        if (valid && !owned_resources.bind_graphics_image(
-                                         command.resource, surface_slot->graphics_image))
-                            sealable = false;
-                    } else if (surface_slot->surface) {
+                    if (surface_slot->surface) {
                         const nk_graphics_image published = surface_slot->surface->retained_image();
                         if (published.id) {
                             const auto generation =
