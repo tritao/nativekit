@@ -91,6 +91,41 @@ struct RenderUpdate {
     std::size_t rebuilt_batches = 0;
 };
 
+struct Vec3 {
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
+};
+
+struct SubelementId {
+    std::uint32_t value = 0;
+    constexpr bool valid() const noexcept { return value != 0; }
+};
+
+struct PickResult {
+    OccurrenceId occurrence;
+    EntityId source;
+    SubelementId subelement;
+    Vec3 worldPosition;
+    float depth = 0.0f;
+};
+
+struct GpuCommand {
+    OccurrenceId occurrence;
+    GeometryId geometry;
+    MaterialId material;
+    std::uint32_t transformIndex = 0;
+};
+
+struct GpuExecutionStats {
+    std::size_t geometry_resources_created = 0;
+    std::size_t geometry_resources_updated = 0;
+    std::size_t material_resources_created = 0;
+    std::size_t material_resources_updated = 0;
+    std::size_t commands = 0;
+    std::size_t draw_calls = 0;
+};
+
 class RenderPlan {
 public:
     std::uint64_t source_revision() const noexcept { return source_revision_; }
@@ -119,6 +154,26 @@ private:
 NKSRENDER_API RenderPlan compile(const SceneSnapshot &snapshot, const SceneView &view);
 NKSRENDER_API RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot,
                                   const ChangeSet &changes, const SceneView &view);
+
+NKSRENDER_API PickResult pick(const RenderPlan &, const SceneSnapshot &,
+                              std::uint32_t primitive, Vec3 world_position, float depth);
+
+class NKSRENDER_API NativeKitGpuExecutor {
+public:
+    NativeKitGpuExecutor();
+    ~NativeKitGpuExecutor();
+    NativeKitGpuExecutor(NativeKitGpuExecutor &&) noexcept;
+    NativeKitGpuExecutor &operator=(NativeKitGpuExecutor &&) noexcept;
+    NativeKitGpuExecutor(const NativeKitGpuExecutor &) = delete;
+    NativeKitGpuExecutor &operator=(const NativeKitGpuExecutor &) = delete;
+
+    GpuExecutionStats execute(const RenderPlan &, const SceneSnapshot &);
+    std::span<const GpuCommand> commands() const noexcept;
+
+private:
+    struct State;
+    std::unique_ptr<State> state_;
+};
 
 } // namespace nkscene
 

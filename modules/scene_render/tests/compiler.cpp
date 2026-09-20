@@ -93,5 +93,24 @@ int main() {
     assert(!update.plan_rebuilt);
     assert(update.patched_visibility == 1000);
     assert(plan.items().size() == count);
+
+    nkscene::NativeKitGpuExecutor executor;
+    auto gpu_stats = executor.execute(plan, scene->snapshot());
+    assert(gpu_stats.geometry_resources_created == 1);
+    assert(gpu_stats.material_resources_created == materials.size());
+    assert(gpu_stats.commands == count - 1000);
+    assert(executor.commands().size() == count - 1000);
+    gpu_stats = executor.execute(plan, scene->snapshot());
+    assert(gpu_stats.geometry_resources_created == 0);
+    assert(gpu_stats.material_resources_created == 0);
+    scene->geometry_store().create(geometry);
+    gpu_stats = executor.execute(plan, scene->snapshot());
+    assert(gpu_stats.geometry_resources_updated == 1);
+
+    const auto pick_result = nkscene::pick(
+        plan, scene->snapshot(), 0, nkscene::Vec3{1.0f, 2.0f, 3.0f}, 0.5f);
+    assert(pick_result.occurrence.valid());
+    assert(pick_result.subelement.valid());
+    assert(pick_result.worldPosition.x == 1.0f);
     return 0;
 }

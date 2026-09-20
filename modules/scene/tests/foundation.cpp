@@ -67,6 +67,20 @@ void stale_runtime_handles() {
     nkscene_scene_destroy(scene);
 }
 
+void resource_ids_have_scene_ownership() {
+    nkscene_scene scene{};
+    assert(nkscene_scene_create(&scene) == NKS_OK);
+    nkscene_geometry_id geometry{};
+    nkscene_material_id material{};
+    assert(nkscene_geometry_create(scene, &geometry) == NKS_OK);
+    assert(nkscene_material_create(scene, &material) == NKS_OK);
+    assert(geometry.value != 0);
+    assert(material.value != 0);
+    nkscene_geometry_destroy(scene, geometry);
+    nkscene_material_destroy(scene, material);
+    nkscene_scene_destroy(scene);
+}
+
 } // namespace
 
 int main() {
@@ -75,5 +89,6 @@ int main() {
     create_destroy_stress(scene);
     nkscene_scene_destroy(scene);
     stale_runtime_handles();
+    resource_ids_have_scene_ownership();
     return 0;
 }

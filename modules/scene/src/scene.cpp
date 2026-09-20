@@ -675,4 +675,46 @@ nkscene_result NKS_CALL nkscene_tx_set_visibility(
     return NKS_OK;
 }
 
+nkscene_result NKS_CALL nkscene_geometry_create(
+    nkscene_scene scene, nkscene_geometry_id *out_geometry) {
+    if (!out_geometry)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    auto owner = state.scenes.get(nkscene::unpack_handle(scene.value));
+    if (!owner)
+        return NKS_ERROR_INVALID_HANDLE;
+    out_geometry->value = owner->create_geometry().value;
+    return NKS_OK;
+}
+
+void NKS_CALL nkscene_geometry_destroy(nkscene_scene scene, nkscene_geometry_id geometry) {
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    auto owner = state.scenes.get(nkscene::unpack_handle(scene.value));
+    if (owner)
+        owner->destroy_geometry({geometry.value});
+}
+
+nkscene_result NKS_CALL nkscene_material_create(
+    nkscene_scene scene, nkscene_material_id *out_material) {
+    if (!out_material)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    auto owner = state.scenes.get(nkscene::unpack_handle(scene.value));
+    if (!owner)
+        return NKS_ERROR_INVALID_HANDLE;
+    out_material->value = owner->create_material().value;
+    return NKS_OK;
+}
+
+void NKS_CALL nkscene_material_destroy(nkscene_scene scene, nkscene_material_id material) {
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    auto owner = state.scenes.get(nkscene::unpack_handle(scene.value));
+    if (owner)
+        owner->destroy_material({material.value});
+}
+
 } // extern "C"

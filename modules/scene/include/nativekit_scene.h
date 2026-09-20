@@ -137,6 +137,19 @@ NKS_API nkscene_result NKS_CALL nkscene_tx_set_visibility(
     nkscene_transaction transaction, nkscene_occurrence_id occurrence,
     uint32_t visible);
 
+/* ------------------------------------------------------------------------- */
+/* Resource identifiers                                                      */
+/* ------------------------------------------------------------------------- */
+
+NKS_API nkscene_result NKS_CALL nkscene_geometry_create(
+    nkscene_scene scene, nkscene_geometry_id *out_geometry NKS_OUT);
+NKS_API void NKS_CALL nkscene_geometry_destroy(
+    nkscene_scene scene, nkscene_geometry_id geometry);
+NKS_API nkscene_result NKS_CALL nkscene_material_create(
+    nkscene_scene scene, nkscene_material_id *out_material NKS_OUT);
+NKS_API void NKS_CALL nkscene_material_destroy(
+    nkscene_scene scene, nkscene_material_id material);
+
 #ifdef __cplusplus
 }
 #endif

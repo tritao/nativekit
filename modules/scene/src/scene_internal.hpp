@@ -20,6 +20,18 @@ public:
     OccurrenceId reserve_occurrence_id() noexcept { return occurrences.reserve_id(); }
     GeometryId reserve_geometry_id() noexcept { return GeometryId{next_geometry_id++}; }
     MaterialId reserve_material_id() noexcept { return MaterialId{next_material_id++}; }
+    GeometryId create_geometry() {
+        const auto id = reserve_geometry_id();
+        geometries.create(id);
+        return id;
+    }
+    MaterialId create_material() {
+        const auto id = reserve_material_id();
+        materials.create(id);
+        return id;
+    }
+    void destroy_geometry(GeometryId id) noexcept { geometries.destroy(id); }
+    void destroy_material(MaterialId id) noexcept { materials.destroy(id); }
     std::size_t occurrence_count() const noexcept { return occurrences.size(); }
     bool contains(OccurrenceId id) const noexcept { return occurrences.contains(id); }
 
