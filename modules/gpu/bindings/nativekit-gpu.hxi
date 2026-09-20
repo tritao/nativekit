@@ -1501,11 +1501,29 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		kind: nkgpu_shader_binding_kind @offset(4);
 		stage: nkgpu_shader_stage @offset(8);
 		slot: u32 @offset(12);
+		/**
+		 * Sampler slot for NKGPU_SHADERBINDING_SAMPLED_IMAGE.
+		 */
 		secondary_slot: u32 @offset(16);
+		/**
+		 * Byte size for NKGPU_SHADERBINDING_UNIFORM_BLOCK.
+		 */
 		size: u32 @offset(20);
+		/**
+		 * Access format for NKGPU_SHADERBINDING_STORAGE_IMAGE.
+		 */
 		format: nkgpu_image_format @offset(24);
+		/**
+		 * Non-zero for read-only storage-buffer metadata.
+		 */
 		readonly: u32 @offset(28);
+		/**
+		 * Non-zero for write-only storage-image metadata.
+		 */
 		writeonly: u32 @offset(32);
+		/**
+		 * GLSL combined image/sampler name for sampled-image metadata.
+		 */
 		name: utf8 @offset(40);
 	}
 	/**
