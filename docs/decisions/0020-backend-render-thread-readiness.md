@@ -92,9 +92,11 @@ pthread-capable, cross-origin-isolated page for the opt-in mode.
 2. Keep the GTK offscreen bridge covered by the GTK/Xvfb target and lifecycle
    tests; add a visual compositor assertion when the UI test harness can run
    against an accelerated X server.
-3. Enable the shared sealed-plan path for those physical modes. A live
-   `SurfaceProducer` remains an explicit fallback until it publishes a retained
-   `nk_graphics_image`.
+3. Enable the shared sealed-plan path for those physical modes. Public UI frame
+   submission rejects non-recordable `SurfaceProducer` callbacks; producers must
+   publish a retained `nk_graphics_image`. Recordable producers may encode
+   backend-safe offscreen passes, while retained-image publication is the fully
+   data-only form.
 
 This order keeps the already-proven D3D11, Metal, and Android handoff stable and
 prevents a backend from claiming physical `RENDER` ownership before it can bind

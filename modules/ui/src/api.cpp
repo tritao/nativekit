@@ -3515,7 +3515,10 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
             !owned_resources.bind_text(bind.id, std::move(snapshot), bind.content_generation))
             sealable = false;
     }
-    if (!sealable && threaded)
+    /* A public frame submission must always cross the renderer boundary as
+       owned data. Non-recordable SurfaceProducer callbacks are intentionally
+       rejected; callers must publish a retained nk_graphics_image instead. */
+    if (!sealable)
         return NKUI_ERROR_RENDERING;
     if (!threaded) {
         const bool new_backend = !renderer_slot->renderer->valid();
@@ -3556,10 +3559,7 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
                                                                {main_target, frame_target});
         return sealed_executed ? NKUI_OK : NKUI_ERROR_RENDERING;
     }
-    /* Frames that composite a live surface producer keep the borrowed path. */
-    const bool executed = nkui::execute_render_plan(*renderer_slot->renderer, plan, frame_resources,
-                                                    {main_target, frame_target});
-    return executed ? NKUI_OK : NKUI_ERROR_RENDERING;
+    return NKUI_ERROR_RENDERING;
 }
 
 extern "C" nkui_result nkui_renderer_render_frame(nkui_renderer renderer, nkui_display_list list,
@@ -3963,7 +3963,10 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                                     glyphs->mode, *glyphs))
             return NKUI_ERROR_RENDERING;
     auto *session_text_engine = session_state->frame.text_engine();
-    if (!sealable && threaded)
+    /* A public frame submission must always cross the renderer boundary as
+       owned data. Non-recordable SurfaceProducer callbacks are intentionally
+       rejected; callers must publish a retained nk_graphics_image instead. */
+    if (!sealable)
         return NKUI_ERROR_RENDERING;
     if (!threaded) {
         const bool new_backend = !renderer_slot->renderer->valid();
@@ -4009,10 +4012,7 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                                                                {main_target, frame_target});
         return sealed_executed ? NKUI_OK : NKUI_ERROR_RENDERING;
     }
-    /* Frames that composite a live surface producer keep the borrowed path. */
-    const bool executed = nkui::execute_render_plan(*renderer_slot->renderer, plan, frame_resources,
-                                                    {main_target, frame_target});
-    return executed ? NKUI_OK : NKUI_ERROR_RENDERING;
+    return NKUI_ERROR_RENDERING;
 }
 
 extern "C" nkui_result nkui_renderer_render(nkui_renderer renderer, nkui_display_list list,

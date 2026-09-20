@@ -121,11 +121,12 @@ destruction they were holding.
    `nativekit_gpu_batch_submit`.
 2. ~~Translate UI render-plan execution to record one batch and submit it, still
    on the platform executor. Behavior and visuals must not change.~~ Done. The
-   plan executor records every frame that has no live surface producer; frames
-   that composite one stay inline because a producer renders through callbacks
-   a batch cannot carry. Stream-buffer appends moved out of the pass
-   requirement, because a recorded frame fills its buffers before any pass
-   opens, and Sokol rewinds the append cursor per frame either way.
+   plan executor records every frame that has no non-recordable surface producer;
+   explicitly recordable producers encode their offscreen passes into that batch.
+   Public UI submission rejects legacy callback producers, which must be migrated
+   to retained `nk_graphics_image` publication. Stream-buffer appends moved out
+   of the pass requirement, because a recorded frame fills its buffers before any
+   pass opens, and Sokol rewinds the append cursor per frame either way.
 3. ~~Add the deferred submit path and run submission on `NK_EXECUTOR_RENDER`,
    keeping acquisition and presentation on the platform executor.~~ Done.
    `nkgpu_batch_submit()` requires render-executor affinity and the surface
