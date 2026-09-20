@@ -1,6 +1,8 @@
 #include "nativekit.h"
 #include "nativekit_gpu.h"
 #include "nativekit_window.h"
+#include "adapter_internal.h"
+#include "core/executor.hpp"
 #include "testing.h"
 
 #include <chrono>
@@ -43,16 +45,197 @@ static uint32_t image_format_bytes(nkgpu_image_format format) {
         return 0;
     }
 }
+#if defined(NK_GTK_THREADED_RENDER)
+
+namespace {
+
+struct PhysicalContractTask {
+    nk_surface surface = NK_INVALID_HANDLE;
+    nk_surface_frame_target target{};
+    int result = 0;
+};
+
+void run_physical_contract(void *user_data) {
+    auto &task = *static_cast<PhysicalContractTask *>(user_data);
+    nkgpu_renderer first{};
+    nkgpu_renderer second{};
+    nkgpu_render_target target{};
+    nk_graphics_image retained_image{};
+    nkgpu_shader shader{};
+    nkgpu_pipeline pipeline{};
+    nkgpu_buffer buffer{};
+    nkgpu_batch batch{};
+    const uint8_t vertices[] = {0, 0, 0, 0};
+    const bool gles = task.target.api == NK_GRAPHICS_OPENGL_ES;
+    const char *vertex_source =
+        gles ? "#version 300 es\nvoid main(){gl_Position=vec4(0.0);}\n"
+             : "#version 330\nvoid main(){gl_Position=vec4(0.0);}\n";
+    const char *fragment_source =
+        gles ? "#version 300 es\nprecision mediump float; out vec4 c;\n"
+               "void main(){c=vec4(1.0);}\n"
+             : "#version 330\nout vec4 c; void main(){c=vec4(1.0);}\n";
+
+#define CHECK_GPU(expression, expected)                                                            \
+    do {                                                                                           \
+        const nkgpu_result actual = (expression);                                                  \
+        if (actual != (expected)) {                                                                \
+            std::fprintf(stderr, "%s returned %d, expected %d: %s\n", #expression, actual,       \
+                         (expected), nkgpu_last_error());                                          \
+            task.result = __LINE__;                                                                \
+            goto physical_cleanup;                                                                 \
+        }                                                                                          \
+    } while (0)
+
+    CHECK_GPU(nkgpu_renderer_create_for_frame_target(task.surface, &task.target, &first),
+              NKGPU_OK);
+    CHECK_GPU(nkgpu_renderer_create_for_frame_target(task.surface, &task.target, &second),
+              NKGPU_OK);
+    CHECK_GPU(nkgpu_end_frame(first), NKGPU_ERROR_WRONG_STATE);
+    CHECK_GPU(nkgpu_frame_begin_with_target(first, &task.target), NKGPU_OK);
+    CHECK_GPU(nkgpu_frame_begin_with_target(second, &task.target), NKGPU_ERROR_WRONG_STATE);
+    CHECK_GPU(nkgpu_end_render_target(first), NKGPU_ERROR_WRONG_STATE);
+    CHECK_GPU(nkgpu_renderer_destroy(first), NKGPU_ERROR_WRONG_STATE);
+    CHECK_GPU(nkgpu_end_frame_deferred_present(first), NKGPU_OK);
+
+    CHECK_GPU(nkgpu_render_target_create(first, 16, 16, 1, &target), NKGPU_OK);
+    CHECK_GPU(nkgpu_render_target_get_image(first, target, &retained_image), NKGPU_OK);
+    CHECK_GPU(nk_graphics_image_retain(retained_image), NKGPU_OK);
+    CHECK_GPU(nkgpu_render_target_destroy(first, target), NKGPU_OK);
+    target = {};
+    {
+        nk_graphics_image_info info{};
+        info.struct_size = sizeof(info);
+        CHECK_GPU(nk_graphics_image_get_info(retained_image, &info), NK_OK);
+        if (info.width != 16 || info.height != 16 || !info.device.id) {
+            task.result = __LINE__;
+            goto physical_cleanup;
+        }
+    }
+    CHECK_GPU(nk_graphics_image_release(retained_image), NK_OK);
+    retained_image = {};
+
+    CHECK_GPU(nkgpu_shader_create(first, NKGPU_SHADERLANGUAGE_GLSL, vertex_source, fragment_source,
+                                  &shader),
+              NKGPU_OK);
+    {
+        nkgpu_pipeline_builder builder{};
+        CHECK_GPU(nkgpu_pipeline_begin(first, shader, sizeof(vertices), &builder), NKGPU_OK);
+        CHECK_GPU(nkgpu_pipeline_attribute(builder, 0, 0, 0, NKGPU_VERTEXFORMAT_FLOAT2),
+                  NKGPU_OK);
+        CHECK_GPU(nkgpu_pipeline_end(builder, &pipeline), NKGPU_OK);
+    }
+    CHECK_GPU(nkgpu_buffer_create(first, vertices, sizeof(vertices), &buffer), NKGPU_OK);
+    CHECK_GPU(nkgpu_batch_begin(first, &batch), NKGPU_OK);
+    {
+        nkgpu_batch_pass pass{};
+        pass.struct_size = sizeof(pass);
+        pass.kind = NKGPU_BATCH_PASS_WINDOW;
+        pass.clear = 1;
+        pass.width = static_cast<uint32_t>(task.target.width);
+        pass.height = static_cast<uint32_t>(task.target.height);
+        CHECK_GPU(nkgpu_batch_append_pass(batch, &pass), NKGPU_OK);
+    }
+    CHECK_GPU(nkgpu_batch_seal(batch), NKGPU_OK);
+    CHECK_GPU(nkgpu_batch_submit(first, batch, &task.target), NKGPU_OK);
+    CHECK_GPU(nkgpu_batch_destroy(batch), NKGPU_OK);
+    batch = {};
+
+    CHECK_GPU(nkgpu_test_lose_after_frames(second, 1), NKGPU_OK);
+    CHECK_GPU(nkgpu_frame_begin_with_target(second, &task.target), NKGPU_OK);
+    CHECK_GPU(nkgpu_end_frame_deferred_present(second), NKGPU_OK);
+    {
+        nkgpu_renderer_state state = NKGPU_RENDERER_READY;
+        CHECK_GPU(nkgpu_renderer_get_state(second, &state), NKGPU_OK);
+        if (state != NKGPU_RENDERER_LOST) {
+            task.result = __LINE__;
+            goto physical_cleanup;
+        }
+    }
+    CHECK_GPU(nkgpu_frame_begin_with_target(second, &task.target), NKGPU_ERROR_DEVICE_LOST);
+
+physical_cleanup:
+    if (batch.id)
+        (void)nkgpu_batch_destroy(batch);
+    if (buffer.id && first.id)
+        (void)nkgpu_buffer_destroy(first, buffer);
+    if (pipeline.id && first.id)
+        (void)nkgpu_pipeline_destroy(first, pipeline);
+    if (shader.id && first.id)
+        (void)nkgpu_shader_destroy(first, shader);
+    if (retained_image.id)
+        (void)nk_graphics_image_release(retained_image);
+    if (first.id)
+        (void)nkgpu_renderer_destroy(first);
+    if (second.id)
+        (void)nkgpu_renderer_destroy(second);
+#undef CHECK_GPU
+}
+
+bool wait_for_surface(nk_surface surface) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline) {
+        nk_event event{};
+        event.struct_size = sizeof(event);
+        if (nk_poll_event(&event) != NK_OK) {
+            nk_event_release(&event);
+            return false;
+        }
+        const bool ready = event.kind == NK_EVENT_SURFACE_READY && event.source == surface;
+        nk_event_release(&event);
+        if (ready)
+            return true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return false;
+}
+
+} // namespace
+
+int main() {
+    nk_init_options init{};
+    init.struct_size = sizeof(init);
+    init.api_version = NK_API_VERSION;
+    if (nk_init(&init) != NK_OK)
+        return 1;
+    nk_window_options options{};
+    options.struct_size = sizeof(options);
+    options.width = 192;
+    options.height = 128;
+    options.title = "NativeKit physical GPU contract";
+    nk_window window = NK_INVALID_HANDLE;
+    nk_surface surface = NK_INVALID_HANDLE;
+    int result = 0;
+    if (nk_window_create(&options, &window) != NK_OK ||
+        nkgpu_surface_create(window, options.width, options.height, &surface) != NKGPU_OK ||
+        !wait_for_surface(surface)) {
+        result = 2;
+    } else {
+        nk_surface_frame_target target{};
+        target.struct_size = sizeof(target);
+        if (nk_surface_get_frame_target(surface, &target) != NK_OK) {
+            result = 3;
+        } else {
+            PhysicalContractTask task{surface, target, 0};
+            nkgpu_test_forbid_surface_target_queries();
+            const nk_result dispatched =
+                nk::core::dispatch_to_render_sync(&run_physical_contract, &task, sizeof(task));
+            nkgpu_test_allow_surface_target_queries();
+            result = dispatched == NK_OK ? task.result : 4;
+        }
+    }
+    if (surface != NK_INVALID_HANDLE)
+        (void)nkgpu_surface_destroy(surface);
+    if (window != NK_INVALID_HANDLE)
+        (void)nk_window_destroy(window);
+    nk_shutdown();
+    return result;
+}
+
+#else
 
 int main() {
     if (!nkgpu_test_generation_exhaustion())
         return 1;
-#if defined(NK_GTK_THREADED_RENDER)
-    /* This suite exercises the legacy inline GPU API.  GTK threaded mode
-       intentionally makes GPU ownership render-executor-only; the physical
-       frame-target path is covered by the threaded UI/backend tests. */
-    return 77;
-#endif
     nk_init_options init{};
     init.struct_size = sizeof(init);
     init.api_version = NK_API_VERSION;
@@ -1322,5 +1505,7 @@ cleanup:
     nk_shutdown();
     return result;
 }
+
+#endif
 
 #undef EXPECT_RESULT

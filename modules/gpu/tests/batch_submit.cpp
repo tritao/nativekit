@@ -3,6 +3,7 @@
 #include "nativekit_window.h"
 #include "adapter_internal.h"
 #include "core/frame_backend.hpp"
+#include "core/executor.hpp"
 #include "testing.h"
 
 #if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
@@ -174,14 +175,223 @@ bool check_rgba8_readback(nkgpu_renderer renderer, nkgpu_image image,
 
 } // namespace
 
-int main() {
 #if defined(NK_GTK_THREADED_RENDER)
-    /* Batch construction/submission must run on RENDER when GTK is split.
-       Keep this legacy inline suite skipped here rather than violating the
-       executor ownership contract; frame-target submission is covered by the
-       threaded backend smoke tests. */
-    return 77;
-#endif
+
+namespace {
+
+struct PhysicalBatchTask {
+    nk_surface surface = NK_INVALID_HANDLE;
+    nk_surface_frame_target target{};
+    int result = 0;
+};
+
+void run_physical_batch(void *user_data) {
+    auto &task = *static_cast<PhysicalBatchTask *>(user_data);
+    nkgpu_renderer renderer{};
+    nkgpu_shader shader{};
+    nkgpu_pipeline pipeline{};
+    nkgpu_buffer buffer{};
+    nkgpu_batch batch{};
+    nkgpu_batch worker_batch{};
+    std::atomic<nkgpu_result> worker_result{NKGPU_OK};
+    std::thread worker;
+    nkgpu_render_target offscreen{};
+    const float vertices[] = {-1.0f, -1.0f, 3.0f, -1.0f, -1.0f, 3.0f};
+    const bool gles = task.target.api == NK_GRAPHICS_OPENGL_ES;
+    const char *vertex_source = gles ? "#version 300 es\n"
+                                       "layout(location=0) in vec2 position;\n"
+                                       "void main(){gl_Position=vec4(position,0.0,1.0);}\n"
+                                     : "#version 330\n"
+                                       "layout(location=0) in vec2 position;\n"
+                                       "void main(){gl_Position=vec4(position,0.0,1.0);}\n";
+    const char *fragment_source = gles ? "#version 300 es\nprecision mediump float;\n"
+                                         "out vec4 color;\n"
+                                         "void main(){color=vec4(1.0,0.0,0.0,1.0);}\n"
+                                       : "#version 330\nout vec4 color;\n"
+                                         "void main(){color=vec4(1.0,0.0,0.0,1.0);}\n";
+
+#define CHECK_GPU(expression, expected)                                                            \
+    do {                                                                                           \
+        const nkgpu_result actual = (expression);                                                  \
+        if (actual != (expected)) {                                                                \
+            std::fprintf(stderr, "%s returned %d, expected %d: %s\n", #expression, actual,       \
+                         (expected), nkgpu_last_error());                                          \
+            task.result = __LINE__;                                                                \
+            goto physical_cleanup;                                                                 \
+        }                                                                                          \
+    } while (0)
+
+    CHECK_GPU(nkgpu_renderer_create_for_frame_target(task.surface, &task.target, &renderer),
+              NKGPU_OK);
+    CHECK_GPU(nkgpu_shader_create(renderer, NKGPU_SHADERLANGUAGE_GLSL, vertex_source,
+                                  fragment_source, &shader),
+              NKGPU_OK);
+    {
+        nkgpu_pipeline_builder builder{};
+        CHECK_GPU(nkgpu_pipeline_begin(renderer, shader, 2 * sizeof(float), &builder), NKGPU_OK);
+        CHECK_GPU(nkgpu_pipeline_attribute(builder, 0, 0, 0, NKGPU_VERTEXFORMAT_FLOAT2),
+                  NKGPU_OK);
+        CHECK_GPU(nkgpu_pipeline_end(builder, &pipeline), NKGPU_OK);
+    }
+    CHECK_GPU(nkgpu_buffer_create(renderer, reinterpret_cast<const uint8_t *>(vertices),
+                                  sizeof(vertices), &buffer),
+              NKGPU_OK);
+
+    CHECK_GPU(nkgpu_batch_begin(renderer, &batch), NKGPU_OK);
+    {
+        nkgpu_batch_pass pass{};
+        pass.struct_size = sizeof(pass);
+        pass.kind = NKGPU_BATCH_PASS_WINDOW;
+        pass.clear = 1;
+        pass.width = static_cast<uint32_t>(task.target.width);
+        pass.height = static_cast<uint32_t>(task.target.height);
+        CHECK_GPU(nkgpu_batch_append_pass(batch, &pass), NKGPU_OK);
+        std::vector<uint8_t> commands;
+        append_apply_pipeline(commands, pipeline);
+        append_apply_vertex_buffer(commands, 0, buffer, 0);
+        append_draw(commands, 0, 3, 1);
+        CHECK_GPU(nkgpu_batch_append_command(batch, commands.data(),
+                                             static_cast<uint32_t>(commands.size())),
+                  NKGPU_OK);
+    }
+    CHECK_GPU(nkgpu_batch_seal(batch), NKGPU_OK);
+    CHECK_GPU(nkgpu_batch_submit(renderer, batch, &task.target), NKGPU_OK);
+    {
+        uint8_t pixel[4]{};
+        glReadPixels(task.target.width / 2, task.target.height / 2, 1, 1, GL_RGBA,
+                     GL_UNSIGNED_BYTE, pixel);
+        if (pixel[0] < 200 || pixel[1] > 40 || pixel[2] > 40 || pixel[3] != 255) {
+            std::fprintf(stderr, "physical batch pixel was (%u,%u,%u,%u)\n", pixel[0], pixel[1],
+                         pixel[2], pixel[3]);
+            task.result = __LINE__;
+            goto physical_cleanup;
+        }
+    }
+    CHECK_GPU(nkgpu_batch_destroy(batch), NKGPU_OK);
+    batch = {};
+
+    CHECK_GPU(nkgpu_render_target_create(renderer, 16, 16, 1, &offscreen), NKGPU_OK);
+    CHECK_GPU(nkgpu_batch_begin(renderer, &batch), NKGPU_OK);
+    {
+        nkgpu_batch_pass pass{};
+        pass.struct_size = sizeof(pass);
+        pass.kind = NKGPU_BATCH_PASS_TARGET;
+        pass.target = offscreen;
+        pass.clear = 1;
+        CHECK_GPU(nkgpu_batch_append_pass(batch, &pass), NKGPU_OK);
+    }
+    CHECK_GPU(nkgpu_batch_seal(batch), NKGPU_OK);
+    CHECK_GPU(nkgpu_batch_submit(renderer, batch, &task.target), NKGPU_OK);
+
+    /* Submission is render-executor-only, but the sealed batch remains usable
+       after a worker observes the affinity error. */
+    CHECK_GPU(nkgpu_batch_begin(renderer, &worker_batch), NKGPU_OK);
+    {
+        nkgpu_batch_pass pass{};
+        pass.struct_size = sizeof(pass);
+        pass.kind = NKGPU_BATCH_PASS_WINDOW;
+        pass.clear = 1;
+        pass.width = static_cast<uint32_t>(task.target.width);
+        pass.height = static_cast<uint32_t>(task.target.height);
+        CHECK_GPU(nkgpu_batch_append_pass(worker_batch, &pass), NKGPU_OK);
+    }
+    CHECK_GPU(nkgpu_batch_seal(worker_batch), NKGPU_OK);
+    worker = std::thread([&] {
+        worker_result = nkgpu_batch_submit(renderer, worker_batch, &task.target);
+    });
+    worker.join();
+    if (worker_result.load() != NKGPU_ERROR_WRONG_THREAD) {
+        std::fprintf(stderr, "worker batch returned %d\n", worker_result.load());
+        task.result = __LINE__;
+        goto physical_cleanup;
+    }
+    CHECK_GPU(nkgpu_batch_submit(renderer, worker_batch, &task.target), NKGPU_OK);
+    CHECK_GPU(nkgpu_batch_destroy(worker_batch), NKGPU_OK);
+    worker_batch = {};
+
+physical_cleanup:
+    if (worker.joinable())
+        worker.join();
+    if (worker_batch.id)
+        (void)nkgpu_batch_destroy(worker_batch);
+    if (batch.id)
+        (void)nkgpu_batch_destroy(batch);
+    if (offscreen.id && renderer.id)
+        (void)nkgpu_render_target_destroy(renderer, offscreen);
+    if (buffer.id && renderer.id)
+        (void)nkgpu_buffer_destroy(renderer, buffer);
+    if (pipeline.id && renderer.id)
+        (void)nkgpu_pipeline_destroy(renderer, pipeline);
+    if (shader.id && renderer.id)
+        (void)nkgpu_shader_destroy(renderer, shader);
+    if (renderer.id)
+        (void)nkgpu_renderer_destroy(renderer);
+#undef CHECK_GPU
+}
+
+bool wait_for_surface(nk_surface surface) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline) {
+        nk_event event{};
+        event.struct_size = sizeof(event);
+        if (nk_poll_event(&event) != NK_OK) {
+            nk_event_release(&event);
+            return false;
+        }
+        const bool ready = event.kind == NK_EVENT_SURFACE_READY && event.source == surface;
+        nk_event_release(&event);
+        if (ready)
+            return true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return false;
+}
+
+} // namespace
+
+int main() {
+    nk_init_options init{};
+    init.struct_size = sizeof(init);
+    init.api_version = NK_API_VERSION;
+    if (nk_init(&init) != NK_OK)
+        return 1;
+    nk_window_options options{};
+    options.struct_size = sizeof(options);
+    options.width = 128;
+    options.height = 96;
+    options.title = "NativeKit physical GPU batch";
+    nk_window window = NK_INVALID_HANDLE;
+    nk_surface surface = NK_INVALID_HANDLE;
+    int result = 0;
+    if (nk_window_create(&options, &window) != NK_OK ||
+        nkgpu_surface_create(window, options.width, options.height, &surface) != NKGPU_OK ||
+        !wait_for_surface(surface)) {
+        result = 2;
+    } else {
+        nk_surface_frame_target target{};
+        target.struct_size = sizeof(target);
+        if (nk_surface_get_frame_target(surface, &target) != NK_OK) {
+            result = 3;
+        } else {
+            PhysicalBatchTask task{surface, target, 0};
+            nkgpu_test_forbid_surface_target_queries();
+            const nk_result dispatched =
+                nk::core::dispatch_to_render_sync(&run_physical_batch, &task, sizeof(task));
+            nkgpu_test_allow_surface_target_queries();
+            result = dispatched == NK_OK ? task.result : 4;
+        }
+    }
+    if (surface != NK_INVALID_HANDLE)
+        (void)nkgpu_surface_destroy(surface);
+    if (window != NK_INVALID_HANDLE)
+        (void)nk_window_destroy(window);
+    nk_shutdown();
+    return result;
+}
+
+#else
+
+int main() {
     nk_init_options init{};
     init.struct_size = sizeof(init);
     init.api_version = NK_API_VERSION;
@@ -1211,5 +1421,7 @@ cleanup:
     nk_shutdown();
     return result;
 }
+
+#endif
 
 #undef EXPECT_RESULT
