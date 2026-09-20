@@ -1,6 +1,7 @@
 #include "nativekit_scene_render.h"
 
 #include "scene_internal.hpp"
+#include "scene_shader_sources.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -12,6 +13,27 @@ namespace {
 using nkscene::ChangeSet;
 using nkscene::Scene;
 using nkscene::Transaction;
+
+void shader_sources_cover_backend_matrix() {
+    struct BackendCase {
+        nkgpu_backend backend;
+        nkgpu_shader_language language;
+    };
+    const BackendCase backends[] = {
+        {NKGPU_BACKEND_GLCORE, NKGPU_SHADERLANGUAGE_GLSL},
+        {NKGPU_BACKEND_GLES3, NKGPU_SHADERLANGUAGE_GLSL},
+        {NKGPU_BACKEND_D3D11, NKGPU_SHADERLANGUAGE_HLSL5},
+        {NKGPU_BACKEND_METAL, NKGPU_SHADERLANGUAGE_MSL},
+    };
+    for (const auto &backend : backends) {
+        const auto regular = nkscene::render_internal::scene_shader_sources(backend.backend, false);
+        const auto picking = nkscene::render_internal::scene_shader_sources(backend.backend, true);
+        assert(regular.vertex && regular.fragment && regular.language == backend.language);
+        assert(picking.vertex && picking.fragment && picking.language == backend.language);
+    }
+    const auto web = nkscene::render_internal::scene_shader_sources(NKGPU_BACKEND_GLES3, false);
+    assert(web.language == NKGPU_SHADERLANGUAGE_GLSL);
+}
 
 nkscene::LocalTransform translated(float x) {
     nkscene::LocalTransform transform;
@@ -284,6 +306,7 @@ void scene_views_are_hierarchy_aware() {
 } // namespace
 
 int main() {
+    shader_sources_cover_backend_matrix();
     geometry_payload_contract_is_validated();
     resource_lifecycle_is_cache_safe();
     scene_views_are_hierarchy_aware();

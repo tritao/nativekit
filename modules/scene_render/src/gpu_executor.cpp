@@ -1,4 +1,5 @@
 #include "nativekit_scene_render.h"
+#include "scene_shader_sources.hpp"
 
 #include <algorithm>
 #include <array>
@@ -78,82 +79,6 @@ std::vector<DesiredBatch> desired_batches(const RenderPlan &plan) {
             result.push_back(std::move(desired));
     }
     return result;
-}
-
-const char *vertex_shader_source(bool gles) {
-    return gles ? "#version 300 es\n"
-                  "precision highp float;\n"
-                  "layout(location=0) in vec3 position;\n"
-                  "layout(location=1) in vec4 transform0;\n"
-                  "layout(location=2) in vec4 transform1;\n"
-                  "layout(location=3) in vec4 transform2;\n"
-                  "layout(location=4) in vec4 transform3;\n"
-                  "void main(){ mat4 transform=mat4(transform0,transform1,transform2,transform3);"
-                  "gl_Position=transform*vec4(position,1.0); }\n"
-                : "#version 330\n"
-                  "layout(location=0) in vec3 position;\n"
-                  "layout(location=1) in vec4 transform0;\n"
-                  "layout(location=2) in vec4 transform1;\n"
-                  "layout(location=3) in vec4 transform2;\n"
-                  "layout(location=4) in vec4 transform3;\n"
-                  "void main(){ mat4 transform=mat4(transform0,transform1,transform2,transform3);"
-                  "gl_Position=transform*vec4(position,1.0); }\n";
-}
-
-const char *fragment_shader_source(bool gles) {
-    return gles ? "#version 300 es\n"
-                  "precision mediump float;\n"
-                  "uniform vec4 material_color;\n"
-                  "out vec4 fragment_color;\n"
-                  "void main(){ fragment_color=material_color; }\n"
-                : "#version 330\n"
-                  "uniform vec4 material_color;\n"
-                  "out vec4 fragment_color;\n"
-                  "void main(){ fragment_color=material_color; }\n";
-}
-
-const char *pick_vertex_shader_source(bool gles) {
-    return gles ? "#version 300 es\n"
-                  "precision highp float;\n"
-                  "layout(location=0) in vec3 position;\n"
-                  "layout(location=1) in vec4 transform0;\n"
-                  "layout(location=2) in vec4 transform1;\n"
-                  "layout(location=3) in vec4 transform2;\n"
-                  "layout(location=4) in vec4 transform3;\n"
-                  "layout(location=5) in vec4 pick_color;\n"
-                  "out vec4 vertex_pick_color;\n"
-                  "void main(){ mat4 transform=mat4(transform0,transform1,transform2,transform3);"
-                  "vertex_pick_color=pick_color; gl_Position=transform*vec4(position,1.0); }\n"
-                : "#version 330\n"
-                  "layout(location=0) in vec3 position;\n"
-                  "layout(location=1) in vec4 transform0;\n"
-                  "layout(location=2) in vec4 transform1;\n"
-                  "layout(location=3) in vec4 transform2;\n"
-                  "layout(location=4) in vec4 transform3;\n"
-                  "layout(location=5) in vec4 pick_color;\n"
-                  "out vec4 vertex_pick_color;\n"
-                  "void main(){ mat4 transform=mat4(transform0,transform1,transform2,transform3);"
-                  "vertex_pick_color=pick_color; gl_Position=transform*vec4(position,1.0); }\n";
-}
-
-const char *pick_fragment_shader_source(bool gles) {
-    return gles ? "#version 300 es\n"
-                  "precision mediump float;\n"
-                  "in vec4 vertex_pick_color;\n"
-                  "out vec4 fragment_color;\n"
-                  "layout(location=1) out vec4 fragment_subelement;\n"
-                  "void main(){ uint id=uint(gl_PrimitiveID)+1u;"
-                  "fragment_color=vertex_pick_color; fragment_subelement=vec4(float(id & "
-                  "0xffu)/255.0,"
-                  "float((id >> 8u) & 0xffu)/255.0,float((id >> 16u) & 0xffu)/255.0,1.0); }\n"
-                : "#version 330\n"
-                  "in vec4 vertex_pick_color;\n"
-                  "out vec4 fragment_color;\n"
-                  "layout(location=1) out vec4 fragment_subelement;\n"
-                  "void main(){ uint id=uint(gl_PrimitiveID)+1u;"
-                  "fragment_color=vertex_pick_color; fragment_subelement=vec4(float(id & "
-                  "0xffu)/255.0,"
-                  "float((id >> 8u) & 0xffu)/255.0,float((id >> 16u) & 0xffu)/255.0,1.0); }\n";
 }
 
 } // namespace
@@ -287,17 +212,16 @@ bool ensure_pipeline(StateT &state, GpuExecutionStats &stats, bool indexed) {
     if (pipeline.id)
         return true;
 
-    const auto graphics_api = nkgpu_query_graphics_api(state.renderer);
-    const bool gles = graphics_api == NK_GRAPHICS_OPENGL_ES;
-    if (graphics_api != NK_GRAPHICS_OPENGL && !gles)
+    const auto sources = render_internal::scene_shader_sources(
+        nkgpu_query_backend(state.renderer), false);
+    if (!sources.vertex || !sources.fragment)
         return set_failure(state, stats, NKGPU_ERROR_UNSUPPORTED);
 
     nkgpu_result result = NKGPU_OK;
     if (!state.shader.id) {
         nkgpu_shader_builder shader_builder{};
-        result = nkgpu_shader_begin(state.renderer, NKGPU_SHADERLANGUAGE_GLSL,
-                                    vertex_shader_source(gles), fragment_shader_source(gles),
-                                    &shader_builder);
+        result = nkgpu_shader_begin(state.renderer, sources.language, sources.vertex,
+                                    sources.fragment, &shader_builder);
         if (result != NKGPU_OK)
             return set_failure(state, stats, result);
         const auto attribute = [&](std::uint32_t location, const char *name, const char *semantic) {
@@ -350,17 +274,16 @@ bool ensure_pick_pipeline(StateT &state, GpuExecutionStats &stats, bool indexed)
     if (pipeline.id)
         return true;
 
-    const auto graphics_api = nkgpu_query_graphics_api(state.renderer);
-    const bool gles = graphics_api == NK_GRAPHICS_OPENGL_ES;
-    if (graphics_api != NK_GRAPHICS_OPENGL && !gles)
+    const auto sources = render_internal::scene_shader_sources(
+        nkgpu_query_backend(state.renderer), true);
+    if (!sources.vertex || !sources.fragment)
         return set_failure(state, stats, NKGPU_ERROR_UNSUPPORTED);
 
     nkgpu_result result = NKGPU_OK;
     if (!state.pick_shader.id) {
         nkgpu_shader_builder shader_builder{};
-        result = nkgpu_shader_begin(state.renderer, NKGPU_SHADERLANGUAGE_GLSL,
-                                    pick_vertex_shader_source(gles),
-                                    pick_fragment_shader_source(gles), &shader_builder);
+        result = nkgpu_shader_begin(state.renderer, sources.language, sources.vertex,
+                                    sources.fragment, &shader_builder);
         if (result != NKGPU_OK)
             return set_failure(state, stats, result);
         const auto attribute = [&](std::uint32_t location, const char *name, const char *semantic) {
