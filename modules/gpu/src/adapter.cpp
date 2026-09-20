@@ -1207,13 +1207,12 @@ nkgpu_result nkgpu_query_features(nkgpu_renderer renderer, nkgpu_features *out_f
         slot->value.api->transfer && slot->value.api->transfer->readback_begin ? 1u : 0u;
     features.buffer_readback =
         slot->value.api->transfer && slot->value.api->transfer->readback_begin_buffer ? 1u : 0u;
-    features.timestamps =
-        slot->value.api->transfer && slot->value.api->transfer->timestamp_begin &&
-                slot->value.api->transfer->timestamp_end &&
-                slot->value.api->transfer->timestamp_status &&
-                slot->value.api->transfer->timestamp_elapsed_ns
-            ? 1u
-            : 0u;
+    features.timestamps = slot->value.api->transfer && slot->value.api->transfer->timestamp_begin &&
+                                  slot->value.api->transfer->timestamp_end &&
+                                  slot->value.api->transfer->timestamp_status &&
+                                  slot->value.api->transfer->timestamp_elapsed_ns
+                              ? 1u
+                              : 0u;
     *out_features = features;
     return NKGPU_OK;
 }
@@ -2450,7 +2449,8 @@ nkgpu_result nkgpu_shader_texture_type(nkgpu_shader_builder h, uint32_t view_slo
     auto *s = shader_builder_pool.get(h);
     if (!s || view_slot >= SG_MAX_VIEW_BINDSLOTS || sampler_slot >= SG_MAX_SAMPLER_BINDSLOTS ||
         view_slot >= SG_MAX_TEXTURE_SAMPLER_PAIRS || !name ||
-        !convert_shader_stage(stage, converted) || !convert_image_type(image_type, converted_image_type))
+        !convert_shader_stage(stage, converted) ||
+        !convert_image_type(image_type, converted_image_type))
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid shader texture binding");
     const nkgpu_result idle = require_idle_renderer(s->value.owner);
     if (idle != NKGPU_OK)
@@ -2960,7 +2960,10 @@ nkgpu_result nkgpu_frame_begin(nkgpu_renderer h) {
         return fail(NKGPU_ERROR_WRONG_STATE, "a renderer frame is already active");
     const bool context_backend = s->value.graphics_api == NK_GRAPHICS_OPENGL ||
                                  s->value.graphics_api == NK_GRAPHICS_OPENGL_ES;
-    if (!context_backend && nk_surface_make_current(s->value.surface) != NK_OK)
+    /* Explicit APIs acquire a drawable only when a window pass actually needs
+       one. Offscreen render and copy passes must not consume a presentation
+       image merely to start a GPU frame. */
+    if (context_backend && nk_surface_make_current(s->value.surface) != NK_OK)
         return fail(NKGPU_ERROR_UNKNOWN, "current: %s", nk_last_error());
     const nkgpu_result activated = activate_renderer(h);
     if (activated != NKGPU_OK)
@@ -3057,8 +3060,15 @@ nkgpu_result nkgpu_begin_window_pass(nkgpu_renderer h, uint32_t width, uint32_t 
         s->value.has_frame_target ? s->value.frame_target : nk_surface_frame_target{};
     if (!s->value.has_frame_target) {
         target.struct_size = sizeof(target);
-        if (nk_surface_get_frame_target(s->value.surface, &target) != NK_OK)
-            return fail(NKGPU_ERROR_UNKNOWN, "surface framebuffer is unavailable");
+        if (nk_surface_get_frame_target(s->value.surface, &target) != NK_OK || target.width <= 0 ||
+            target.height <= 0) {
+            if (nk_surface_make_current(s->value.surface) != NK_OK)
+                return fail(NKGPU_ERROR_UNKNOWN, "current: %s", nk_last_error());
+            target = {};
+            target.struct_size = sizeof(target);
+            if (nk_surface_get_frame_target(s->value.surface, &target) != NK_OK)
+                return fail(NKGPU_ERROR_UNKNOWN, "surface framebuffer is unavailable");
+        }
     }
     if (target.width <= 0 || target.height <= 0)
         return fail(NKGPU_ERROR_UNKNOWN, "surface framebuffer is unavailable");
@@ -3363,8 +3373,7 @@ nkgpu_result nkgpu_image_create_desc(nkgpu_renderer r, const nkgpu_image_desc *i
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "depth-storage images are not portable");
     if ((image_type == NKGPU_IMAGETYPE_CUBE || image_type == NKGPU_IMAGETYPE_CUBE_ARRAY) &&
         (usage & (NKGPU_IMAGE_RENDER_TARGET | NKGPU_IMAGE_DEPTH_STENCIL | NKGPU_IMAGE_STORAGE)))
-        return fail(NKGPU_ERROR_UNSUPPORTED,
-                    "cube images currently support sampled usage only");
+        return fail(NKGPU_ERROR_UNSUPPORTED, "cube images currently support sampled usage only");
     if (desc.dynamic_update &&
         (usage & (NKGPU_IMAGE_RENDER_TARGET | NKGPU_IMAGE_DEPTH_STENCIL | NKGPU_IMAGE_STORAGE)))
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "dynamic images must be sampled images");
@@ -3415,12 +3424,11 @@ nkgpu_result nkgpu_image_create_desc(nkgpu_renderer r, const nkgpu_image_desc *i
     if (sample_count > 1 && !format_support.multisample)
         return fail(NKGPU_ERROR_UNSUPPORTED, "image format does not support multisampling");
     const int native_max_texture_size =
-        image_type == NKGPU_IMAGETYPE_CUBE ? limits.max_image_size_cube
-                                           : (image_type == NKGPU_IMAGETYPE_CUBE_ARRAY
-                                                  ? limits.max_image_size_array
-                                                  : limits.max_image_size_2d);
-    const uint32_t max_texture_size =
-        static_cast<uint32_t>(std::max(0, native_max_texture_size));
+        image_type == NKGPU_IMAGETYPE_CUBE
+            ? limits.max_image_size_cube
+            : (image_type == NKGPU_IMAGETYPE_CUBE_ARRAY ? limits.max_image_size_array
+                                                        : limits.max_image_size_2d);
+    const uint32_t max_texture_size = static_cast<uint32_t>(std::max(0, native_max_texture_size));
     const uint32_t max_array_layers =
         static_cast<uint32_t>(std::max(0, limits.max_image_array_layers));
     const uint32_t max_samples =
@@ -3812,8 +3820,8 @@ static uint32_t image_row_pitch(const Image &image, uint32_t width) {
     return bytes && width <= UINT32_MAX / bytes ? width * bytes : 0;
 }
 
-static nkgpu_result validate_buffer_copy(const nkgpu_buffer_copy_desc &desc,
-                                         const Buffer &source, const Buffer &destination) {
+static nkgpu_result validate_buffer_copy(const nkgpu_buffer_copy_desc &desc, const Buffer &source,
+                                         const Buffer &destination) {
     if (!desc.size || desc.source_offset > source.size ||
         desc.size > source.size - desc.source_offset ||
         desc.destination_offset > destination.size ||
@@ -3877,8 +3885,7 @@ nkgpu_result nkgpu_image_copy(nkgpu_renderer r, const nkgpu_image_copy_desc *des
     auto *destination = image_pool.get(desc->destination);
     if (!source || !destination || source->value.owner != r || destination->value.owner != r)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign image-copy handle");
-    const nkgpu_result valid =
-        validate_image_copy(*desc, source->value, destination->value);
+    const nkgpu_result valid = validate_image_copy(*desc, source->value, destination->value);
     if (valid != NKGPU_OK)
         return valid;
     Renderer *renderer = nullptr;
@@ -3900,7 +3907,8 @@ static nkgpu_result validate_buffer_image_copy(const nkgpu_buffer_image_copy_des
                                                const Buffer &buffer, const Image &image,
                                                uint32_t &row_pitch) {
     if (image.sample_count != 1)
-        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "buffer-image transfers require single-sample images");
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT,
+                    "buffer-image transfers require single-sample images");
     uint32_t image_width = 0;
     uint32_t image_height = 0;
     if (!image_region_dimensions(image, desc.mip_level, desc.layer, desc.x, desc.y, desc.width,
@@ -4014,9 +4022,8 @@ nkgpu_result nkgpu_readback_begin_image(nkgpu_renderer r, const nkgpu_image_read
     return NKGPU_OK;
 }
 
-nkgpu_result nkgpu_readback_begin_buffer(nkgpu_renderer r,
-                                        const nkgpu_buffer_readback_desc *desc,
-                                        nkgpu_readback *out) {
+nkgpu_result nkgpu_readback_begin_buffer(nkgpu_renderer r, const nkgpu_buffer_readback_desc *desc,
+                                         nkgpu_readback *out) {
     if (!desc || desc->struct_size < sizeof(nkgpu_buffer_readback_desc) || !out)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid buffer readback descriptor");
     *out = 0;
@@ -5198,6 +5205,7 @@ static nkgpu_result end_frame(nkgpu_renderer r, bool present_surface) {
         return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
     if (rs->value.state != RendererState::FrameActive || active_renderer != r)
         return fail(NKGPU_ERROR_WRONG_STATE, "no active frame");
+    const bool had_frame_target = rs->value.has_frame_target;
     const nkgpu_result activated = activate_renderer(r);
     if (activated != NKGPU_OK)
         return activated;
@@ -5229,7 +5237,7 @@ static nkgpu_result end_frame(nkgpu_renderer r, bool present_surface) {
     rs->value.frame_target = {};
     active_renderer = 0;
     nk_result present_result = NK_OK;
-    if (present_surface) {
+    if (present_surface && had_frame_target) {
 #if defined(NKGPU_TESTING)
         present_result =
             fail_next_present ? NK_ERROR_UNKNOWN : nk_surface_present(rs->value.surface);
@@ -5238,7 +5246,7 @@ static nkgpu_result end_frame(nkgpu_renderer r, bool present_surface) {
 #endif
     }
 #if defined(NKGPU_TESTING)
-    if (present_surface && fail_next_present) {
+    if (present_surface && had_frame_target && fail_next_present) {
         fail_next_present = false;
         mark_renderer_lost(r, rs->value);
         return fail(NKGPU_ERROR_DEVICE_LOST, "injected present failure");

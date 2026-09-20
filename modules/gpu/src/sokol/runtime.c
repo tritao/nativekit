@@ -53,7 +53,11 @@ typedef struct nk_sokol_readback_slot {
 } nk_sokol_readback_slot;
 
 static nk_sokol_readback_slot readbacks[NK_SOKOL_READBACK_CAPACITY];
-enum { NK_SOKOL_TIMESTAMP_PENDING = 1, NK_SOKOL_TIMESTAMP_READY = 2, NK_SOKOL_TIMESTAMP_FAILED = 3 };
+enum {
+    NK_SOKOL_TIMESTAMP_PENDING = 1,
+    NK_SOKOL_TIMESTAMP_READY = 2,
+    NK_SOKOL_TIMESTAMP_FAILED = 3
+};
 
 #ifndef GL_COPY_READ_BUFFER
 #define GL_COPY_READ_BUFFER 0x8F36
@@ -241,7 +245,7 @@ static GLenum image_attachment(sg_pixel_format format) {
     return format == SG_PIXELFORMAT_DEPTH
                ? GL_DEPTH_ATTACHMENT
                : (format == SG_PIXELFORMAT_DEPTH_STENCIL ? GL_DEPTH_STENCIL_ATTACHMENT
-                                                          : GL_COLOR_ATTACHMENT0);
+                                                         : GL_COLOR_ATTACHMENT0);
 }
 
 static int image_transfer_info(sg_image image, uint32_t mip_level, uint32_t layer,
@@ -388,8 +392,9 @@ static uint32_t nk_sokol_image_copy(sg_image source, uint32_t source_mip, uint32
     glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &old_unpack_buffer);
     glGenFramebuffers(1, &framebuffer);
     glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
-    glFramebufferTexture2D(GL_READ_FRAMEBUFFER, image_attachment(sg_query_image_pixelformat(source)),
-                           source_target, source_texture, (GLint)source_mip);
+    glFramebufferTexture2D(GL_READ_FRAMEBUFFER,
+                           image_attachment(sg_query_image_pixelformat(source)), source_target,
+                           source_texture, (GLint)source_mip);
     const GLenum read_status = glCheckFramebufferStatus(GL_READ_FRAMEBUFFER);
     if (read_status == GL_FRAMEBUFFER_COMPLETE) {
         const GLint source_gl_y = (GLint)source_height - (GLint)source_y - (GLint)height;
@@ -670,12 +675,10 @@ static uint32_t nk_sokol_readback_begin(sg_image source, uint32_t mip_level, uin
     return readback_token(index, slot->generation);
 }
 
-static uint32_t nk_sokol_readback_begin_buffer(sg_buffer source, uint32_t offset,
-                                               uint32_t size) {
+static uint32_t nk_sokol_readback_begin_buffer(sg_buffer source, uint32_t offset, uint32_t size) {
     uint32_t source_buffer = 0;
     if (!size || !buffer_transfer_info(source, &source_buffer) ||
-        offset > sg_query_buffer_size(source) ||
-        size > sg_query_buffer_size(source) - offset)
+        offset > sg_query_buffer_size(source) || size > sg_query_buffer_size(source) - offset)
         return 0;
     uint32_t index = NK_SOKOL_READBACK_CAPACITY;
     for (uint32_t i = 0; i < NK_SOKOL_READBACK_CAPACITY; ++i) {

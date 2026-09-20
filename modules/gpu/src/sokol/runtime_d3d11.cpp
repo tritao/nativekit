@@ -43,6 +43,18 @@ struct ReadbackSlot {
 
 ReadbackSlot readbacks[kReadbackCapacity];
 
+struct TimestampSlot {
+    uint32_t generation = 0;
+    ID3D11Query *begin = nullptr;
+    ID3D11Query *end = nullptr;
+    ID3D11Query *disjoint = nullptr;
+    uint64_t nanoseconds = 0;
+    bool active = false;
+    bool ended = false;
+};
+
+TimestampSlot timestamps[kReadbackCapacity];
+
 ID3D11Device *device() {
     return const_cast<ID3D11Device *>(static_cast<const ID3D11Device *>(sg_d3d11_device()));
 }
@@ -94,6 +106,12 @@ bool format_info(sg_pixel_format format, DXGI_FORMAT &out_format, uint32_t &out_
         out_format = DXGI_FORMAT_R32_UINT;
         out_bytes = 4;
         return true;
+    case SG_PIXELFORMAT_DEPTH:
+        out_format = DXGI_FORMAT_R32_TYPELESS;
+        out_bytes = 4;
+        return true;
+    case SG_PIXELFORMAT_DEPTH_STENCIL:
+        return false;
     default:
         return false;
     }
@@ -118,8 +136,10 @@ bool image_info(sg_image image, uint32_t mip_level, uint32_t layer, uint32_t x, 
     auto *texture =
         const_cast<ID3D11Texture2D *>(static_cast<const ID3D11Texture2D *>(native.tex2d));
     texture->GetDesc(&out.desc);
-    if (out.desc.Format != expected_format || out.desc.SampleDesc.Count != 1 ||
-        out.desc.ArraySize <= layer)
+    const bool depth_format = expected_format == DXGI_FORMAT_R32_TYPELESS;
+    const bool format_matches = out.desc.Format == expected_format ||
+                                (depth_format && out.desc.Format == DXGI_FORMAT_D32_FLOAT);
+    if (!format_matches || out.desc.SampleDesc.Count != 1 || out.desc.ArraySize <= layer)
         return false;
     out.texture = texture;
     out.format = expected_format;
@@ -217,6 +237,37 @@ void release_readback(ReadbackSlot &slot) {
     slot.width = 0;
     slot.height = 0;
     slot.active = false;
+    slot.generation = (slot.generation % 0xFFFFu) + 1u;
+    if (!slot.generation)
+        slot.generation = 1;
+}
+
+uint32_t timestamp_token(uint32_t index, uint32_t generation) {
+    return (generation << 16) | (index + 1u);
+}
+
+TimestampSlot *timestamp_slot(uint32_t token) {
+    const uint32_t encoded_index = token & 0xFFFFu;
+    const uint32_t generation = token >> 16;
+    if (!encoded_index || encoded_index > kReadbackCapacity || !generation)
+        return nullptr;
+    TimestampSlot &slot = timestamps[encoded_index - 1u];
+    return slot.active && slot.generation == generation ? &slot : nullptr;
+}
+
+void release_timestamp(TimestampSlot &slot) {
+    if (slot.begin)
+        slot.begin->Release();
+    if (slot.end)
+        slot.end->Release();
+    if (slot.disjoint)
+        slot.disjoint->Release();
+    slot.begin = nullptr;
+    slot.end = nullptr;
+    slot.disjoint = nullptr;
+    slot.nanoseconds = 0;
+    slot.active = false;
+    slot.ended = false;
     slot.generation = (slot.generation % 0xFFFFu) + 1u;
     if (!slot.generation)
         slot.generation = 1;
@@ -475,6 +526,100 @@ uint32_t d3d11_readback_begin_buffer(sg_buffer source, uint32_t offset, uint32_t
     return readback_token(index, slot.generation);
 }
 
+uint32_t d3d11_timestamp_begin() {
+    if (!device() || !context())
+        return 0;
+    uint32_t index = kReadbackCapacity;
+    for (uint32_t i = 0; i < kReadbackCapacity; ++i) {
+        if (!timestamps[i].active) {
+            index = i;
+            break;
+        }
+    }
+    if (index == kReadbackCapacity)
+        return 0;
+
+    D3D11_QUERY_DESC timestamp_desc{};
+    timestamp_desc.Query = D3D11_QUERY_TIMESTAMP;
+    D3D11_QUERY_DESC disjoint_desc{};
+    disjoint_desc.Query = D3D11_QUERY_TIMESTAMP_DISJOINT;
+    ID3D11Query *begin = nullptr;
+    ID3D11Query *end = nullptr;
+    ID3D11Query *disjoint = nullptr;
+    if (FAILED(device()->CreateQuery(&timestamp_desc, &begin)) ||
+        FAILED(device()->CreateQuery(&timestamp_desc, &end)) ||
+        FAILED(device()->CreateQuery(&disjoint_desc, &disjoint))) {
+        if (begin)
+            begin->Release();
+        if (end)
+            end->Release();
+        if (disjoint)
+            disjoint->Release();
+        return 0;
+    }
+    context()->Begin(disjoint);
+    context()->End(begin);
+    TimestampSlot &slot = timestamps[index];
+    if (!slot.generation)
+        slot.generation = 1;
+    slot.begin = begin;
+    slot.end = end;
+    slot.disjoint = disjoint;
+    slot.active = true;
+    slot.ended = false;
+    return timestamp_token(index, slot.generation);
+}
+
+int d3d11_timestamp_end(uint32_t token) {
+    TimestampSlot *slot = timestamp_slot(token);
+    if (!slot || slot->ended || !context())
+        return 0;
+    context()->End(slot->end);
+    context()->End(slot->disjoint);
+    context()->Flush();
+    slot->ended = true;
+    return 1;
+}
+
+uint32_t d3d11_timestamp_status(uint32_t token) {
+    TimestampSlot *slot = timestamp_slot(token);
+    if (!slot || !slot->ended || !context())
+        return kReadbackPending;
+    D3D11_QUERY_DATA_TIMESTAMP_DISJOINT disjoint_data{};
+    const HRESULT disjoint_result = context()->GetData(
+        slot->disjoint, &disjoint_data, sizeof(disjoint_data), D3D11_ASYNC_GETDATA_DONOTFLUSH);
+    if (disjoint_result == S_FALSE)
+        return kReadbackPending;
+    if (FAILED(disjoint_result) || disjoint_data.Disjoint || !disjoint_data.Frequency)
+        return kReadbackFailed;
+    UINT64 begin = 0;
+    UINT64 end = 0;
+    const HRESULT begin_result =
+        context()->GetData(slot->begin, &begin, sizeof(begin), D3D11_ASYNC_GETDATA_DONOTFLUSH);
+    const HRESULT end_result =
+        context()->GetData(slot->end, &end, sizeof(end), D3D11_ASYNC_GETDATA_DONOTFLUSH);
+    if (begin_result == S_FALSE || end_result == S_FALSE)
+        return kReadbackPending;
+    if (FAILED(begin_result) || FAILED(end_result) || end < begin)
+        return kReadbackFailed;
+    const long double elapsed = static_cast<long double>(end - begin) * 1000000000.0L /
+                                static_cast<long double>(disjoint_data.Frequency);
+    slot->nanoseconds = elapsed >= static_cast<long double>(UINT64_MAX)
+                            ? UINT64_MAX
+                            : static_cast<uint64_t>(elapsed);
+    return kReadbackReady;
+}
+
+uint64_t d3d11_timestamp_elapsed_ns(uint32_t token) {
+    TimestampSlot *slot = timestamp_slot(token);
+    return slot ? slot->nanoseconds : 0;
+}
+
+void d3d11_timestamp_destroy(uint32_t token) {
+    if (TimestampSlot *slot = timestamp_slot(token))
+        release_timestamp(*slot);
+}
+
 uint32_t d3d11_readback_status(uint32_t token) {
     ReadbackSlot *slot = readback_slot(token);
     if (!slot || !slot->query || !context())
@@ -541,10 +686,12 @@ int d3d11_end_pass() {
 }
 
 const nk_sokol_transfer_api transfer_api = {
-    d3d11_buffer_copy,    d3d11_image_copy,       d3d11_buffer_to_image, d3d11_image_to_buffer,
-    d3d11_readback_begin, d3d11_readback_begin_buffer, d3d11_readback_status,
-    d3d11_readback_size,  d3d11_readback_row_pitch, d3d11_readback_read,
-    d3d11_readback_destroy, d3d11_begin_pass, d3d11_end_pass,
+    d3d11_buffer_copy,      d3d11_image_copy,           d3d11_buffer_to_image,
+    d3d11_image_to_buffer,  d3d11_readback_begin,       d3d11_readback_begin_buffer,
+    d3d11_readback_status,  d3d11_readback_size,        d3d11_readback_row_pitch,
+    d3d11_readback_read,    d3d11_readback_destroy,     d3d11_begin_pass,
+    d3d11_end_pass,         d3d11_timestamp_begin,      d3d11_timestamp_end,
+    d3d11_timestamp_status, d3d11_timestamp_elapsed_ns, d3d11_timestamp_destroy,
 };
 
 } // namespace
@@ -575,4 +722,7 @@ extern "C" void nk_sokol_d3d11_transfer_shutdown(void) {
     for (auto &slot : readbacks)
         if (slot.active)
             release_readback(slot);
+    for (auto &slot : timestamps)
+        if (slot.active)
+            release_timestamp(slot);
 }

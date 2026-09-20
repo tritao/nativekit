@@ -1460,13 +1460,11 @@ NKGPU_API nkgpu_result nkgpu_timestamp_begin(nkgpu_renderer renderer,
 NKGPU_API nkgpu_result nkgpu_timestamp_end(nkgpu_renderer renderer, nkgpu_timestamp timestamp);
 
 /** Polls a timestamp without exposing backend query objects. */
-NKGPU_API nkgpu_result nkgpu_timestamp_query(nkgpu_renderer renderer,
-                                             nkgpu_timestamp timestamp,
+NKGPU_API nkgpu_result nkgpu_timestamp_query(nkgpu_renderer renderer, nkgpu_timestamp timestamp,
                                              nkgpu_timestamp_info *out_info NKGPU_OUT);
 
 /** Destroys a timestamp query. */
-NKGPU_API nkgpu_result nkgpu_timestamp_destroy(nkgpu_renderer renderer,
-                                                nkgpu_timestamp timestamp);
+NKGPU_API nkgpu_result nkgpu_timestamp_destroy(nkgpu_renderer renderer, nkgpu_timestamp timestamp);
 
 /**
  * Creates a texture sampler with independent minification and magnification

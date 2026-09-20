@@ -78,6 +78,9 @@ bool format_bytes(sg_pixel_format format, uint32_t &out_bytes) {
     case SG_PIXELFORMAT_RGBA32F:
         out_bytes = 16;
         return true;
+    case SG_PIXELFORMAT_DEPTH:
+        out_bytes = 4;
+        return true;
     default:
         return false;
     }
