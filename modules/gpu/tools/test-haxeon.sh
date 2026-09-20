@@ -42,6 +42,7 @@ fi
     "$module_dir/bindings/haxe/nativekit/gpu/Buffer.hx" \
     "$module_dir/bindings/haxe/nativekit/gpu/BufferDesc.hx" \
     "$module_dir/bindings/haxe/nativekit/gpu/AttachmentAction.hx" \
+    "$module_dir/bindings/haxe/nativekit/gpu/Batch.hx" \
     "$module_dir/bindings/haxe/nativekit/gpu/CommandBuffer.hx" \
     "$module_dir/bindings/haxe/nativekit/gpu/Enums.hx" \
     "$module_dir/bindings/haxe/nativekit/gpu/Features.hx" \

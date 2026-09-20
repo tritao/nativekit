@@ -74,6 +74,24 @@ class CommandBuffer {
 		word(sampler.nativeHandle().rawValue());
 	}
 
+	public function applyStorageBuffer(slot:Int, buffer:Buffer):Void {
+		ensureRenderer(buffer.rendererOwner());
+		if (slot < 0)
+			throw "GPU storage-buffer slot must be non-negative";
+		header(11, 16);
+		word(slot);
+		word(buffer.nativeHandle().rawValue());
+	}
+
+	public function applyStorageImage(slot:Int, image:Image):Void {
+		ensureRenderer(image.rendererOwner());
+		if (slot < 0)
+			throw "GPU storage-image slot must be non-negative";
+		header(12, 16);
+		word(slot);
+		word(image.nativeHandle().rawValue());
+	}
+
 	public function applyUniforms(slot:Int, data:Bytes):Void {
 		if (slot < 0 || data == null)
 			throw "GPU uniform slot and data are invalid";
@@ -106,6 +124,118 @@ class CommandBuffer {
 		word(baseElement);
 		word(elementCount);
 		word(instanceCount);
+	}
+
+	public function scissor(enabled:Bool, x:Int = 0, y:Int = 0, width:Int = 0,
+		height:Int = 0):Void {
+		if (enabled && (width <= 0 || height <= 0))
+			throw "GPU scissor dimensions must be positive when enabled";
+		header(8, 28);
+		word(enabled ? 1 : 0);
+		word(x);
+		word(y);
+		word(width);
+		word(height);
+	}
+
+	public function viewport(x:Int, y:Int, width:Int, height:Int):Void {
+		if (width <= 0 || height <= 0)
+			throw "GPU viewport dimensions must be positive";
+		header(10, 24);
+		word(x);
+		word(y);
+		word(width);
+		word(height);
+	}
+
+	public function dispatch(x:Int, y:Int = 1, z:Int = 1):Void {
+		if (x <= 0 || y <= 0 || z <= 0)
+			throw "GPU dispatch dimensions must be positive";
+		header(13, 20);
+		word(x);
+		word(y);
+		word(z);
+	}
+
+	public function copyBuffer(source:Buffer, destination:Buffer, size:Int,
+		sourceOffset:Int = 0, destinationOffset:Int = 0):Void {
+		ensureRenderer(source.rendererOwner());
+		ensureRenderer(destination.rendererOwner());
+		if (size <= 0 || sourceOffset < 0 || destinationOffset < 0)
+			throw "GPU buffer-copy arguments are invalid";
+		header(14, 28);
+		word(source.nativeHandle().rawValue());
+		word(sourceOffset);
+		word(destination.nativeHandle().rawValue());
+		word(destinationOffset);
+		word(size);
+	}
+
+	public function copyImage(source:Image, destination:Image, width:Int, height:Int,
+		sourceX:Int = 0, sourceY:Int = 0, destinationX:Int = 0, destinationY:Int = 0,
+		sourceMip:Int = 0, sourceLayer:Int = 0, destinationMip:Int = 0,
+		destinationLayer:Int = 0):Void {
+		ensureRenderer(source.rendererOwner());
+		ensureRenderer(destination.rendererOwner());
+		if (width <= 0 || height <= 0 || sourceX < 0 || sourceY < 0 || destinationX < 0 ||
+			destinationY < 0 || sourceMip < 0 || sourceLayer < 0 || destinationMip < 0 ||
+			destinationLayer < 0)
+			throw "GPU image-copy arguments are invalid";
+		header(15, 56);
+		word(source.nativeHandle().rawValue());
+		word(sourceMip);
+		word(sourceLayer);
+		word(sourceX);
+		word(sourceY);
+		word(destination.nativeHandle().rawValue());
+		word(destinationMip);
+		word(destinationLayer);
+		word(destinationX);
+		word(destinationY);
+		word(width);
+		word(height);
+	}
+
+	public function copyBufferToImage(source:Buffer, destination:Image, width:Int, height:Int,
+		rowPitch:Int = 0, bufferOffset:Int = 0, x:Int = 0, y:Int = 0,
+		mipLevel:Int = 0, layer:Int = 0):Void {
+		ensureRenderer(source.rendererOwner());
+		ensureRenderer(destination.rendererOwner());
+		if (width <= 0 || height <= 0 || rowPitch < 0 || bufferOffset < 0 || x < 0 || y < 0 ||
+			mipLevel < 0 || layer < 0)
+			throw "GPU buffer-to-image arguments are invalid";
+		header(16, 48);
+		word(source.nativeHandle().rawValue());
+		word(bufferOffset);
+		word(rowPitch);
+		word(destination.nativeHandle().rawValue());
+		word(mipLevel);
+		word(layer);
+		word(x);
+		word(y);
+		word(width);
+		word(height);
+	}
+
+	public function copyImageToBuffer(source:Image, destination:Buffer, width:Int, height:Int,
+		rowPitch:Int = 0, bufferOffset:Int = 0, x:Int = 0, y:Int = 0,
+		mipLevel:Int = 0, layer:Int = 0):Void {
+		ensureRenderer(source.rendererOwner());
+		ensureRenderer(destination.rendererOwner());
+		if (width <= 0 || height <= 0 || rowPitch < 0 || bufferOffset < 0 || x < 0 || y < 0 ||
+			mipLevel < 0 || layer < 0)
+			throw "GPU image-to-buffer arguments are invalid";
+		header(17, 48);
+		word(destination.nativeHandle().rawValue());
+		word(bufferOffset);
+		word(rowPitch);
+		word(source.nativeHandle().rawValue());
+		word(mipLevel);
+		word(layer);
+		word(x);
+		word(y);
+		word(width);
+		word(height);
 	}
 
 	public function finish():Bytes
