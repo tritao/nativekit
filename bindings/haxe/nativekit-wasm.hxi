@@ -616,6 +616,10 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 * The backend can observe native clipboard changes.
 		 */
 		NK_CAP_CLIPBOARD_WATCH = 8796093022208;
+		/**
+		 * The backend can install a native application menu.
+		 */
+		NK_CAP_APPLICATION_MENU = 17592186044416;
 	}
 	/**
 	 * Flags carried by nk_clipboard_changed_event.
@@ -976,6 +980,14 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 * A notification could not be shown or completed.
 		 */
 		NK_EVENT_NOTIFICATION_FAILED = 503;
+		/**
+		 * The user activated an application menu item.
+		 */
+		NK_EVENT_MENU_ITEM_ACTIVATED = 510;
+		/**
+		 * The user requested that the application terminate.
+		 */
+		NK_EVENT_APPLICATION_QUIT_REQUESTED = 511;
 		/**
 		 * The attached mobile host geometry or insets changed.
 		 */
