@@ -7,6 +7,7 @@ uniform vec4 clip_planes[32];
 uniform vec4 clip_plane_count;
 out vec4 fragment_color;
 layout(location=1) out vec4 fragment_subelement;
+layout(location=2) out float fragment_depth;
 
 void main() {
     for (int index = 0; index < 32; ++index) {
@@ -20,4 +21,5 @@ void main() {
     fragment_subelement = vec4(float(id & 0xffu) / 255.0,
                                float((id >> 8u) & 0xffu) / 255.0,
                                float((id >> 16u) & 0xffu) / 255.0, 1.0);
+    fragment_depth = gl_FragCoord.z;
 }

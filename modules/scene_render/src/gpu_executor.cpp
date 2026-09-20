@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -149,6 +150,7 @@ struct NativeKitGpuExecutor::State {
     nkgpu_pipeline pick_indexed_pipeline{};
     nkgpu_image pick_color{};
     nkgpu_image pick_subelement{};
+    nkgpu_image pick_depth_value{};
     nkgpu_image pick_depth{};
     std::uint32_t pick_width = 0;
     std::uint32_t pick_height = 0;
@@ -178,6 +180,8 @@ struct NativeKitGpuExecutor::State {
             (void)nkgpu_image_destroy(renderer, pick_color);
         if (pick_subelement.id)
             (void)nkgpu_image_destroy(renderer, pick_subelement);
+        if (pick_depth_value.id)
+            (void)nkgpu_image_destroy(renderer, pick_depth_value);
         if (pick_depth.id)
             (void)nkgpu_image_destroy(renderer, pick_depth);
         if (pipeline.id)
@@ -203,6 +207,7 @@ struct NativeKitGpuExecutor::State {
         pick_shader = {};
         pick_color = {};
         pick_subelement = {};
+        pick_depth_value = {};
         pick_depth = {};
         pick_width = 0;
         pick_height = 0;
@@ -213,6 +218,11 @@ struct GpuPickRequest::State {
     nkgpu_renderer renderer{};
     nkgpu_readback color_readback{};
     nkgpu_readback subelement_readback{};
+    nkgpu_readback depth_readback{};
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    std::uint32_t x = 0;
+    std::uint32_t y = 0;
     std::uint64_t snapshot_revision = 0;
     std::uint64_t plan_source_revision = 0;
     std::uint64_t plan_view_signature = 0;
@@ -227,6 +237,8 @@ struct GpuPickRequest::State {
             (void)nkgpu_readback_destroy(renderer, color_readback);
         if (subelement_readback.id)
             (void)nkgpu_readback_destroy(renderer, subelement_readback);
+        if (depth_readback.id)
+            (void)nkgpu_readback_destroy(renderer, depth_readback);
     }
 };
 
@@ -422,6 +434,8 @@ bool ensure_pick_pipeline(StateT &state, GpuExecutionStats &stats, bool indexed)
                                               NKGPU_COLORMASK_RGBA, nullptr)) != NKGPU_OK ||
         (result = nkgpu_pipeline_color_target(pipeline_builder, 1, NKGPU_IMAGEFORMAT_RGBA8,
                                               NKGPU_COLORMASK_RGBA, nullptr)) != NKGPU_OK ||
+        (result = nkgpu_pipeline_color_target(pipeline_builder, 2, NKGPU_IMAGEFORMAT_R32F,
+                                              NKGPU_COLORMASK_R, nullptr)) != NKGPU_OK ||
         (result = nkgpu_pipeline_end(pipeline_builder, &pipeline)) != NKGPU_OK)
         return set_failure(state, stats, result);
     return true;
@@ -430,17 +444,21 @@ bool ensure_pick_pipeline(StateT &state, GpuExecutionStats &stats, bool indexed)
 template<class StateT>
 bool ensure_pick_targets(StateT &state, std::uint32_t width, std::uint32_t height,
                          GpuExecutionStats &stats) {
-    if (state.pick_color.id && state.pick_subelement.id && state.pick_width == width &&
+    if (state.pick_color.id && state.pick_subelement.id && state.pick_depth_value.id &&
+        state.pick_width == width &&
         state.pick_height == height)
         return true;
     if (state.pick_color.id)
         (void)nkgpu_image_destroy(state.renderer, state.pick_color);
     if (state.pick_subelement.id)
         (void)nkgpu_image_destroy(state.renderer, state.pick_subelement);
+    if (state.pick_depth_value.id)
+        (void)nkgpu_image_destroy(state.renderer, state.pick_depth_value);
     if (state.pick_depth.id)
         (void)nkgpu_image_destroy(state.renderer, state.pick_depth);
     state.pick_color = {};
     state.pick_subelement = {};
+    state.pick_depth_value = {};
     state.pick_depth = {};
 
     nkgpu_image_desc color{};
@@ -463,6 +481,17 @@ bool ensure_pick_targets(StateT &state, std::uint32_t width, std::uint32_t heigh
         return set_failure(state, stats, result);
     }
 
+    nkgpu_image_desc depth_value = color;
+    depth_value.format = NKGPU_IMAGEFORMAT_R32F;
+    result = nkgpu_image_create_desc(state.renderer, &depth_value, &state.pick_depth_value);
+    if (result != NKGPU_OK) {
+        (void)nkgpu_image_destroy(state.renderer, state.pick_color);
+        (void)nkgpu_image_destroy(state.renderer, state.pick_subelement);
+        state.pick_color = {};
+        state.pick_subelement = {};
+        return set_failure(state, stats, result);
+    }
+
     nkgpu_image_desc depth{};
     depth.struct_size = sizeof(depth);
     depth.width = width;
@@ -476,8 +505,10 @@ bool ensure_pick_targets(StateT &state, std::uint32_t width, std::uint32_t heigh
     if (result != NKGPU_OK) {
         (void)nkgpu_image_destroy(state.renderer, state.pick_color);
         (void)nkgpu_image_destroy(state.renderer, state.pick_subelement);
+        (void)nkgpu_image_destroy(state.renderer, state.pick_depth_value);
         state.pick_color = {};
         state.pick_subelement = {};
+        state.pick_depth_value = {};
         return set_failure(state, stats, result);
     }
     state.pick_width = width;
@@ -719,13 +750,73 @@ nkgpu_result begin_pick_readback(StateT &state, nkgpu_image image, std::uint32_t
     return nkgpu_readback_begin_image(state.renderer, &readback_desc, &out_readback);
 }
 
+bool invert_matrix(const std::array<float, 16> &matrix,
+                   std::array<float, 16> &inverse) noexcept {
+    float augmented[4][8]{};
+    for (std::size_t row = 0; row < 4; ++row) {
+        for (std::size_t column = 0; column < 4; ++column)
+            augmented[row][column] = matrix[column * 4 + row];
+        augmented[row][4 + row] = 1.0f;
+    }
+    for (std::size_t column = 0; column < 4; ++column) {
+        auto pivot = column;
+        for (std::size_t row = column + 1; row < 4; ++row)
+            if (std::abs(augmented[row][column]) > std::abs(augmented[pivot][column]))
+                pivot = row;
+        if (std::abs(augmented[pivot][column]) < 1.0e-8f)
+            return false;
+        if (pivot != column)
+            for (std::size_t index = 0; index < 8; ++index)
+                std::swap(augmented[pivot][index], augmented[column][index]);
+        const auto divisor = augmented[column][column];
+        for (auto &value : augmented[column])
+            value /= divisor;
+        for (std::size_t row = 0; row < 4; ++row) {
+            if (row == column)
+                continue;
+            const auto factor = augmented[row][column];
+            for (std::size_t index = 0; index < 8; ++index)
+                augmented[row][index] -= factor * augmented[column][index];
+        }
+    }
+    for (std::size_t row = 0; row < 4; ++row)
+        for (std::size_t column = 0; column < 4; ++column)
+            inverse[column * 4 + row] = augmented[row][4 + column];
+    return true;
+}
+
+bool unproject_pick_pixel(const RenderPlan &plan, std::uint32_t x, std::uint32_t y,
+                          std::uint32_t width, std::uint32_t height, float depth,
+                          Vec3 &world_position) noexcept {
+    if (!width || !height || !std::isfinite(depth))
+        return false;
+    std::array<float, 16> inverse{};
+    if (!invert_matrix(plan.view_projection(), inverse))
+        return false;
+    const std::array<float, 4> clip{
+        (static_cast<float>(x) + 0.5f) / static_cast<float>(width) * 2.0f - 1.0f,
+        1.0f - (static_cast<float>(y) + 0.5f) / static_cast<float>(height) * 2.0f,
+        depth * 2.0f - 1.0f, 1.0f};
+    std::array<float, 4> world{};
+    for (std::size_t row = 0; row < 4; ++row)
+        for (std::size_t column = 0; column < 4; ++column)
+            world[row] += inverse[column * 4 + row] * clip[column];
+    if (std::abs(world[3]) < 1.0e-8f)
+        return false;
+    world_position = {world[0] / world[3], world[1] / world[3], world[2] / world[3]};
+    return true;
+}
+
 void resolve_pick_result(const RenderPlan &plan, const SceneSnapshot &snapshot,
-                         std::uint32_t pick_id, std::uint32_t subelement_id,
+                         std::uint32_t pick_id, std::uint32_t subelement_id, std::uint32_t x,
+                         std::uint32_t y, std::uint32_t width, std::uint32_t height, float depth,
                          PickResult &out_result) {
     out_result = {};
     if (pick_id == 0 || pick_id > plan.items().size())
         return;
     out_result = nkscene::pick(plan, snapshot, pick_id - 1, {}, 0.0f);
+    out_result.depth = depth;
+    (void)unproject_pick_pixel(plan, x, y, width, height, depth, out_result.worldPosition);
     if (subelement_id == 0)
         return;
     const auto &item = plan.items()[pick_id - 1];
@@ -886,6 +977,10 @@ std::uint32_t NativeKitGpuExecutor::poll_pick_pixel(
                                          request_state.subelement_readback);
             request_state.subelement_readback = {};
         }
+        if (request_state.depth_readback.id) {
+            (void)nkgpu_readback_destroy(request_state.renderer, request_state.depth_readback);
+            request_state.depth_readback = {};
+        }
         return request_state.state;
     }
 
@@ -909,11 +1004,23 @@ std::uint32_t NativeKitGpuExecutor::poll_pick_pixel(
         *out_error = result;
         return request_state.state;
     }
+    nkgpu_readback_info depth_info{};
+    depth_info.struct_size = sizeof(depth_info);
+    result = nkgpu_readback_query(request_state.renderer, request_state.depth_readback,
+                                  &depth_info);
+    if (result != NKGPU_OK) {
+        request_state.state = NKS_RENDER_PICK_FAILED;
+        request_state.error = result;
+        *out_error = result;
+        return request_state.state;
+    }
     if (color_info.state == NKGPU_READBACK_PENDING ||
-        subelement_info.state == NKGPU_READBACK_PENDING)
+        subelement_info.state == NKGPU_READBACK_PENDING ||
+        depth_info.state == NKGPU_READBACK_PENDING)
         return NKS_RENDER_PICK_PENDING;
     if (color_info.state != NKGPU_READBACK_READY ||
-        subelement_info.state != NKGPU_READBACK_READY) {
+        subelement_info.state != NKGPU_READBACK_READY ||
+        depth_info.state != NKGPU_READBACK_READY) {
         request_state.state = NKS_RENDER_PICK_FAILED;
         request_state.error = NKGPU_ERROR_UNKNOWN;
         *out_error = request_state.error;
@@ -940,12 +1047,26 @@ std::uint32_t NativeKitGpuExecutor::poll_pick_pixel(
         *out_error = request_state.error;
         return request_state.state;
     }
+    float depth = 1.0f;
+    read_size = 0;
+    result = nkgpu_readback_read(request_state.renderer, request_state.depth_readback,
+                                 reinterpret_cast<std::uint8_t *>(&depth), sizeof(depth),
+                                 &read_size);
+    if (result != NKGPU_OK || read_size < sizeof(depth)) {
+        request_state.state = NKS_RENDER_PICK_FAILED;
+        request_state.error = result != NKGPU_OK ? result : NKGPU_ERROR_UNKNOWN;
+        *out_error = request_state.error;
+        return request_state.state;
+    }
     (void)nkgpu_readback_destroy(request_state.renderer, request_state.color_readback);
     (void)nkgpu_readback_destroy(request_state.renderer, request_state.subelement_readback);
+    (void)nkgpu_readback_destroy(request_state.renderer, request_state.depth_readback);
     request_state.color_readback = {};
     request_state.subelement_readback = {};
+    request_state.depth_readback = {};
     resolve_pick_result(current_plan, current_snapshot, decode_pick_id(pixel),
-                        decode_pick_id(subelement_pixel), request_state.result);
+                        decode_pick_id(subelement_pixel), request_state.x, request_state.y,
+                        request_state.width, request_state.height, depth, request_state.result);
     request_state.state = NKS_RENDER_PICK_READY;
     *out_result = request_state.result;
     return request_state.state;
@@ -1015,7 +1136,7 @@ nkgpu_result NativeKitGpuExecutor::begin_pick_pixel(const RenderPlan &plan,
 
     nkgpu_render_pass_desc pass{};
     pass.struct_size = sizeof(pass);
-    pass.color_count = 2;
+    pass.color_count = 3;
     pass.colors[0].image = state_->pick_color;
     pass.colors[0].action.load_action = NKGPU_LOADACTION_CLEAR;
     pass.colors[0].action.store_action = NKGPU_STOREACTION_STORE;
@@ -1024,6 +1145,10 @@ nkgpu_result NativeKitGpuExecutor::begin_pick_pixel(const RenderPlan &plan,
     pass.colors[1].action.load_action = NKGPU_LOADACTION_CLEAR;
     pass.colors[1].action.store_action = NKGPU_STOREACTION_STORE;
     pass.colors[1].action.clear_color = {0.0f, 0.0f, 0.0f, 0.0f};
+    pass.colors[2].image = state_->pick_depth_value;
+    pass.colors[2].action.load_action = NKGPU_LOADACTION_CLEAR;
+    pass.colors[2].action.store_action = NKGPU_STOREACTION_STORE;
+    pass.colors[2].action.clear_color = {1.0f, 0.0f, 0.0f, 0.0f};
     pass.depth_stencil = state_->pick_depth;
     pass.depth_stencil_action.load_action = NKGPU_LOADACTION_CLEAR;
     pass.depth_stencil_action.store_action = NKGPU_STOREACTION_STORE;
@@ -1089,6 +1214,10 @@ nkgpu_result NativeKitGpuExecutor::begin_pick_pixel(const RenderPlan &plan,
     auto request = std::make_shared<GpuPickRequest>();
     request->state_ = std::make_unique<GpuPickRequest::State>();
     request->state_->renderer = state_->renderer;
+    request->state_->width = width;
+    request->state_->height = height;
+    request->state_->x = x;
+    request->state_->y = y;
     request->state_->snapshot_revision = snapshot.revision();
     request->state_->plan_source_revision = plan.source_revision();
     request->state_->plan_view_signature = plan.view_signature();
@@ -1101,6 +1230,15 @@ nkgpu_result NativeKitGpuExecutor::begin_pick_pixel(const RenderPlan &plan,
                                       request->state_->subelement_readback)) != NKGPU_OK) {
         (void)nkgpu_readback_destroy(state_->renderer, request->state_->color_readback);
         request->state_->color_readback = {};
+        state_->last_result = result;
+        return result;
+    }
+    if ((result = begin_pick_readback(*state_, state_->pick_depth_value, x, y,
+                                      request->state_->depth_readback)) != NKGPU_OK) {
+        (void)nkgpu_readback_destroy(state_->renderer, request->state_->color_readback);
+        (void)nkgpu_readback_destroy(state_->renderer, request->state_->subelement_readback);
+        request->state_->color_readback = {};
+        request->state_->subelement_readback = {};
         state_->last_result = result;
         return result;
     }

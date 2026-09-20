@@ -7,6 +7,7 @@
 #include <array>
 #include <cassert>
 #include <chrono>
+#include <cmath>
 #include <memory>
 #include <thread>
 
@@ -162,6 +163,9 @@ int main() {
         assert(async_picked.occurrence == occurrence);
         assert(async_picked.source == nkscene::EntityId{42});
         assert(async_picked.subelement.value == 42);
+        assert(std::abs(async_picked.worldPosition.x + 0.7421875f) < 0.05f);
+        assert(std::abs(async_picked.worldPosition.z) < 0.001f);
+        assert(std::abs(async_picked.depth - 0.5f) < 0.01f);
 
         nkscene::LocalTransform transform;
         transform.matrix[12] = 0.25f;
