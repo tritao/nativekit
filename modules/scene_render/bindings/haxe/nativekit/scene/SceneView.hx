@@ -133,6 +133,10 @@ class SceneView {
 		return this;
 	}
 
+	/** Applies reusable base visibility and material presentation rules. */
+	public function applyPolicy(policy:SceneViewPolicy):SceneView
+		return policy.apply(this);
+
 	public function applySelection(selection:SelectionSet, highlight:Material):SceneView {
 		clearSelectionOverrides();
 		selection.apply(this, highlight);

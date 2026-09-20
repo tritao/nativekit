@@ -47,6 +47,7 @@ import NativeKitEventValue;
 import NativeKitRuntime;
 import nativekit.scene.Scene;
 import nativekit.scene.SceneView;
+import nativekit.scene.SceneViewPolicy;
 import nativekit.scene.SceneRenderer;
 import nativekit.scene.SpatialIndex;
 import nativekit.scene.PickPollResult;
@@ -238,13 +239,18 @@ class Main {
 			|| clippedUpdate.get_plan_rebuilt() != 0
 			|| haxe.Int64.toInt(clippedUpdate.get_patched_culling()) != 1
 			|| haxe.Int64.toInt(clippedExecution.get_commands()) != 1) return 15;
-		var composedView = new SceneView().setRoot(group).setViewProjection(Transform.identity())
-			.setVisibility(first, false)
-			.setMaterial(second, highlight)
+		var visibilityPolicy = new SceneViewPolicy().hide(first).show(first).hide(first),
+			materialPolicy = new SceneViewPolicy().setMaterial(second, material)
+			.setMaterial(second, highlight),
+			composedView = new SceneView().setRoot(group).setViewProjection(Transform.identity())
+			.applyPolicy(visibilityPolicy)
+			.applyPolicy(materialPolicy)
 			.addClipPlane(1.0, 0.0, 0.0, 0.6),
 			composedExecution = sceneRenderer.render(snapshot, composedView),
 			composedUpdate = sceneRenderer.lastUpdate();
-		if (composedUpdate == null
+		if (visibilityPolicy.visibilityCount() != 1
+			|| materialPolicy.materialCount() != 1
+			|| composedUpdate == null
 			|| composedUpdate.get_plan_rebuilt() != 0
 			|| haxe.Int64.toInt(composedUpdate.get_patched_visibility()) != 1
 			|| haxe.Int64.toInt(composedUpdate.get_patched_materials()) != 1

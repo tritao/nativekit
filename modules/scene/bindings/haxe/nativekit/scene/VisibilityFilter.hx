@@ -7,6 +7,13 @@ class VisibilityFilter {
 	public function new() {}
 
 	public function set(occurrence:Occurrence, visible:Bool):VisibilityFilter {
+		var stable = occurrence.stableValue();
+		for (entry in entries) {
+			if (entry.occurrence.stableValue() == stable) {
+				entry.visible = visible;
+				return this;
+			}
+		}
 		entries.push({occurrence: occurrence, visible: visible});
 		return this;
 	}
