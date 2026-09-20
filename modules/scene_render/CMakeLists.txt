@@ -32,7 +32,8 @@ add_library(nativekit_scene_render ${NK_LIBRARY_TYPE}
     src/render_c_api.cpp
     src/render_items.cpp
     src/render_plan.cpp
-    src/resource_cache.cpp)
+    src/resource_cache.cpp
+    src/spatial_index.cpp)
 add_library(NativeKit::scene_render ALIAS nativekit_scene_render)
 add_dependencies(nativekit_scene_render nativekit_scene_render_shaders)
 target_compile_features(nativekit_scene_render PRIVATE cxx_std_20)

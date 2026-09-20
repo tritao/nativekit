@@ -435,6 +435,88 @@ void scene_view_clip_planes_are_incremental() {
     assert(plan.clip_planes().size() == 2);
 }
 
+void spatial_queries_and_cpu_picking_are_snapshot_bound() {
+    auto scene = std::make_shared<Scene>();
+    const auto geometry = scene->reserve_geometry_id();
+    auto &geometry_resource = scene->geometry_store().create(geometry);
+    geometry_resource.bounds.valid = true;
+    geometry_resource.bounds.minimum = {-0.5f, -0.5f, 0.0f};
+    geometry_resource.bounds.maximum = {0.5f, 0.5f, 0.0f};
+    geometry_resource.payload.vertices = {
+        nkscene::GeometryVertex{{-0.5f, -0.5f, 0.0f}},
+        nkscene::GeometryVertex{{0.5f, -0.5f, 0.0f}},
+        nkscene::GeometryVertex{{0.0f, 0.5f, 0.0f}}};
+    geometry_resource.payload.indices = {0, 1, 2};
+    geometry_resource.subelements.ranges.push_back({0, 1, 42});
+    const auto material = scene->reserve_material_id();
+    scene->material_store().create(material);
+
+    const auto first = scene->reserve_occurrence_id();
+    const auto second = scene->reserve_occurrence_id();
+    const auto hidden = scene->reserve_occurrence_id();
+    Transaction create(scene);
+    create.add_create(first);
+    create.add_create(second);
+    create.add_create(hidden);
+    ChangeSet changes;
+    assert(scene->commit(create, changes) == NKS_OK);
+    create.close();
+
+    Transaction configure(scene);
+    configure.add_geometry(first, geometry);
+    configure.add_material(first, material);
+    configure.add_source_entity(first, nkscene::EntityId{42});
+    configure.add_transform(first, translated(-2.0f));
+    configure.add_geometry(second, geometry);
+    configure.add_material(second, material);
+    configure.add_source_entity(second, nkscene::EntityId{84});
+    configure.add_transform(second, translated(2.0f));
+    configure.add_geometry(hidden, geometry);
+    configure.add_material(hidden, material);
+    configure.add_source_entity(hidden, nkscene::EntityId{126});
+    configure.add_visibility(hidden, false);
+    assert(scene->commit(configure, changes) == NKS_OK);
+    configure.close();
+
+    const auto snapshot = scene->snapshot();
+    nkscene::SceneSpatialIndex index(snapshot);
+    assert(index.source_revision() == snapshot.revision());
+
+    nkscene::Bounds left_bounds;
+    left_bounds.valid = true;
+    left_bounds.minimum = {-3.0f, -1.0f, -1.0f};
+    left_bounds.maximum = {-1.0f, 1.0f, 1.0f};
+    const auto left = index.query_bounds(left_bounds);
+    assert(left.size() == 1);
+    assert(left.front() == first);
+
+    nkscene::Bounds all_bounds;
+    all_bounds.valid = true;
+    all_bounds.minimum = {-3.0f, -1.0f, -1.0f};
+    all_bounds.maximum = {3.0f, 1.0f, 1.0f};
+    const auto all = index.query_bounds(all_bounds);
+    assert(all.size() == 3);
+    assert(all[0] == first);
+    assert(all[1] == second);
+    assert(all[2] == hidden);
+
+    const nkscene::Ray left_ray{{-2.0f, 0.0f, 5.0f}, {0.0f, 0.0f, -1.0f}};
+    const auto ray_candidates = index.query_ray(left_ray);
+    assert(ray_candidates.size() == 1);
+    assert(ray_candidates.front() == first);
+    const auto left_pick = index.pick_ray(left_ray);
+    assert(left_pick.occurrence == first);
+    assert(left_pick.source == nkscene::EntityId{42});
+    assert(left_pick.subelement.value == 42);
+    assert(left_pick.worldPosition.x == -2.0f);
+    assert(left_pick.worldPosition.z == 0.0f);
+    assert(left_pick.depth == 5.0f);
+
+    const nkscene::Ray hidden_ray{{0.0f, 0.0f, 5.0f}, {0.0f, 0.0f, -1.0f}};
+    assert(index.query_ray(hidden_ray).size() == 1);
+    assert(!index.pick_ray(hidden_ray).occurrence.valid());
+}
+
 } // namespace
 
 int main() {
@@ -443,6 +525,7 @@ int main() {
     scene_views_are_hierarchy_aware();
     scene_view_camera_culling_is_incremental();
     scene_view_clip_planes_are_incremental();
+    spatial_queries_and_cpu_picking_are_snapshot_bound();
     constexpr std::size_t count = 50000;
     auto scene = std::make_shared<Scene>();
     const auto geometry = scene->reserve_geometry_id();

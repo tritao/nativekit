@@ -96,6 +96,36 @@ int main(void) {
     assert(pick.occurrence.value == occurrence.value);
     assert(pick.subelement == 1);
 
+    nkscene_render_spatial_index spatial_index = 0;
+    assert(nkscene_render_spatial_index_create(snapshot, &spatial_index) == NKS_OK);
+    assert(nkscene_render_spatial_index_get_revision(spatial_index, &revision) == NKS_OK);
+    nkscene_bounds query_bounds = {0};
+    query_bounds.valid = 1;
+    query_bounds.minimum[0] = -1.0f;
+    query_bounds.minimum[1] = -1.0f;
+    query_bounds.minimum[2] = -1.0f;
+    query_bounds.maximum[0] = 2.0f;
+    query_bounds.maximum[1] = 2.0f;
+    query_bounds.maximum[2] = 1.0f;
+    uint64_t query_count = 0;
+    assert(nkscene_render_spatial_index_query_bounds(
+               spatial_index, &query_bounds, &query_count) == NKS_OK);
+    assert(query_count == 1);
+    nkscene_render_spatial_occurrence query_result = {0};
+    assert(nkscene_render_spatial_index_get_occurrence(
+               spatial_index, 0, &query_result) == NKS_OK);
+    assert(query_result.occurrence.value == occurrence.value);
+    nkscene_render_ray ray = {{0.25f, 0.25f, 1.0f}, {0.0f, 0.0f, -1.0f}};
+    assert(nkscene_render_spatial_index_query_ray(spatial_index, &ray, &query_count) == NKS_OK);
+    assert(query_count == 1);
+    assert(nkscene_render_spatial_index_pick_ray(spatial_index, &ray, &pick) == NKS_OK);
+    assert(pick.occurrence.value == occurrence.value);
+    assert(pick.subelement == 1);
+    assert(pick.depth == 1.0f);
+    nkscene_render_spatial_index_destroy(spatial_index);
+    assert(nkscene_render_spatial_index_get_revision(spatial_index, &revision) ==
+           NKS_ERROR_INVALID_HANDLE);
+
     nkscene_snapshot_destroy(snapshot);
     nkscene_change_set_destroy(changes);
 

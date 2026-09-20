@@ -24,6 +24,16 @@ interface NativeKitSceneRender @target("portable-abi64") @library("nativekit_sce
 	 */
 	extern fn nkscene_render_plan_refresh(plan: nkscene_render_plan, snapshot: nkscene_snapshot, view: ptr<const<nkscene_render_view>>, out_update: ptr<nkscene_render_update> @inout) -> nkscene_result;
 	extern fn nkscene_render_plan_update(plan: nkscene_render_plan, snapshot: nkscene_snapshot, changes: nkscene_change_set, view: ptr<const<nkscene_render_view>>, out_update: ptr<nkscene_render_update> @inout) -> nkscene_result;
+	/**
+	 * Builds a read-only spatial index for one immutable scene snapshot.
+	 */
+	extern fn nkscene_render_spatial_index_create(snapshot: nkscene_snapshot, out_index: ptr<nkscene_render_spatial_index> @out @owned) -> nkscene_result;
+	extern fn nkscene_render_spatial_index_destroy(index: nkscene_render_spatial_index) -> void;
+	extern fn nkscene_render_spatial_index_get_occurrence(index: nkscene_render_spatial_index, result_index: u64, out_result: ptr<nkscene_render_spatial_occurrence> @out) -> nkscene_result;
+	extern fn nkscene_render_spatial_index_get_revision(index: nkscene_render_spatial_index, out_revision: ptr<u64> @out) -> nkscene_result;
+	extern fn nkscene_render_spatial_index_pick_ray(index: nkscene_render_spatial_index, ray: ptr<const<nkscene_render_ray>>, out_result: ptr<nkscene_render_pick_result> @out) -> nkscene_result;
+	extern fn nkscene_render_spatial_index_query_bounds(index: nkscene_render_spatial_index, bounds: ptr<const<nkscene_bounds>>, out_count: ptr<u64> @out) -> nkscene_result;
+	extern fn nkscene_render_spatial_index_query_ray(index: nkscene_render_spatial_index, ray: ptr<const<nkscene_render_ray>>, out_count: ptr<u64> @out) -> nkscene_result;
 	struct nkscene_render_camera @layout(68, 4) {
 		enabled: u32 @offset(0);
 		view_projection: nkscene_transform @offset(4);
@@ -55,6 +65,13 @@ interface NativeKitSceneRender @target("portable-abi64") @library("nativekit_sce
 		subelement: u32 @offset(16);
 		world_position: array<f32, 3> @offset(20);
 		depth: f32 @offset(32);
+	}
+	struct nkscene_render_ray @layout(24, 4) {
+		origin: array<f32, 3> @offset(0);
+		direction: array<f32, 3> @offset(12);
+	}
+	struct nkscene_render_spatial_occurrence @layout(8, 8) {
+		occurrence: nkscene_occurrence_id @offset(0);
 	}
 	struct nkscene_render_update @layout(96, 8) {
 		struct_size: u32 @offset(0) @struct_size;
@@ -89,4 +106,5 @@ interface NativeKitSceneRender @target("portable-abi64") @library("nativekit_sce
 	}
 	handle nkscene_render_executor : u32 @destroy("nkscene_render_executor_destroy");
 	handle nkscene_render_plan : u32 @destroy("nkscene_render_plan_destroy");
+	handle nkscene_render_spatial_index : u32 @destroy("nkscene_render_spatial_index_destroy");
 }

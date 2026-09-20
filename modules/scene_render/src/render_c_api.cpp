@@ -13,6 +13,7 @@ struct RenderRegistry {
     std::mutex mutex;
     nkscene::HandleTable<nkscene::RenderPlan> plans;
     nkscene::HandleTable<nkscene::NativeKitGpuExecutor> executors;
+    nkscene::HandleTable<nkscene::SceneSpatialIndex> spatial_indices;
 };
 
 RenderRegistry &registry() {
@@ -215,8 +216,123 @@ nkscene_result NKS_CALL nkscene_render_plan_pick(nkscene_render_plan plan_handle
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_render_executor_create(nkgpu_renderer renderer,
-                                                       nkscene_render_executor *out_executor) {
+nkscene_result NKS_CALL nkscene_render_spatial_index_create(
+    nkscene_snapshot snapshot_handle, nkscene_render_spatial_index *out_index) {
+    if (!out_index)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    *out_index = 0;
+    const auto snapshot = nkscene::resolve_snapshot_handle(snapshot_handle);
+    if (!snapshot)
+        return NKS_ERROR_INVALID_HANDLE;
+    auto index = std::make_shared<nkscene::SceneSpatialIndex>(*snapshot);
+    auto &state = registry();
+    std::lock_guard lock(state.mutex);
+    const auto handle = state.spatial_indices.create(std::move(index));
+    if (!handle.valid())
+        return NKS_ERROR_OUT_OF_MEMORY;
+    *out_index = nkscene::pack_handle(handle);
+    return NKS_OK;
+}
+
+void NKS_CALL nkscene_render_spatial_index_destroy(nkscene_render_spatial_index index) {
+    auto &state = registry();
+    std::lock_guard lock(state.mutex);
+    state.spatial_indices.remove(nkscene::unpack_handle(index));
+}
+
+nkscene_result NKS_CALL nkscene_render_spatial_index_get_revision(
+    nkscene_render_spatial_index index_handle, uint64_t *out_revision) {
+    if (!out_revision)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    auto &state = registry();
+    std::lock_guard lock(state.mutex);
+    const auto index = state.spatial_indices.get(nkscene::unpack_handle(index_handle));
+    if (!index)
+        return NKS_ERROR_INVALID_HANDLE;
+    *out_revision = index->source_revision();
+    return NKS_OK;
+}
+
+nkscene_result NKS_CALL nkscene_render_spatial_index_query_bounds(
+    nkscene_render_spatial_index index_handle, const nkscene_bounds *bounds,
+    uint64_t *out_count) {
+    if (!bounds || !out_count)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    auto &state = registry();
+    std::lock_guard lock(state.mutex);
+    const auto index = state.spatial_indices.get(nkscene::unpack_handle(index_handle));
+    if (!index)
+        return NKS_ERROR_INVALID_HANDLE;
+    nkscene::Bounds query;
+    for (uint32_t axis = 0; axis < 3; ++axis) {
+        query.minimum[axis] = bounds->minimum[axis];
+        query.maximum[axis] = bounds->maximum[axis];
+    }
+    query.valid = bounds->valid != 0;
+    *out_count = index->query_bounds(query).size();
+    return NKS_OK;
+}
+
+nkscene_result NKS_CALL nkscene_render_spatial_index_query_ray(
+    nkscene_render_spatial_index index_handle, const nkscene_render_ray *ray,
+    uint64_t *out_count) {
+    if (!ray || !out_count)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    auto &state = registry();
+    std::lock_guard lock(state.mutex);
+    const auto index = state.spatial_indices.get(nkscene::unpack_handle(index_handle));
+    if (!index)
+        return NKS_ERROR_INVALID_HANDLE;
+    const nkscene::Ray query{{ray->origin[0], ray->origin[1], ray->origin[2]},
+                             {ray->direction[0], ray->direction[1], ray->direction[2]}};
+    *out_count = index->query_ray(query).size();
+    return NKS_OK;
+}
+
+nkscene_result NKS_CALL nkscene_render_spatial_index_get_occurrence(
+    nkscene_render_spatial_index index_handle, uint64_t result_index,
+    nkscene_render_spatial_occurrence *out_result) {
+    if (!out_result)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    *out_result = {};
+    auto &state = registry();
+    std::lock_guard lock(state.mutex);
+    const auto index = state.spatial_indices.get(nkscene::unpack_handle(index_handle));
+    if (!index)
+        return NKS_ERROR_INVALID_HANDLE;
+    const auto occurrence = index->query_result(result_index);
+    if (!occurrence.valid())
+        return NKS_ERROR_INVALID_ARGUMENT;
+    out_result->occurrence.value = occurrence.value;
+    return NKS_OK;
+}
+
+nkscene_result NKS_CALL nkscene_render_spatial_index_pick_ray(
+    nkscene_render_spatial_index index_handle, const nkscene_render_ray *ray,
+    nkscene_render_pick_result *out_result) {
+    if (!ray || !out_result)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    auto &state = registry();
+    std::lock_guard lock(state.mutex);
+    const auto index = state.spatial_indices.get(nkscene::unpack_handle(index_handle));
+    if (!index)
+        return NKS_ERROR_INVALID_HANDLE;
+    const nkscene::Ray query{{ray->origin[0], ray->origin[1], ray->origin[2]},
+                             {ray->direction[0], ray->direction[1], ray->direction[2]}};
+    const auto result = index->pick_ray(query);
+    *out_result = {};
+    out_result->occurrence.value = result.occurrence.value;
+    out_result->source.value = result.source.value;
+    out_result->subelement = result.subelement.value;
+    out_result->world_position[0] = result.worldPosition.x;
+    out_result->world_position[1] = result.worldPosition.y;
+    out_result->world_position[2] = result.worldPosition.z;
+    out_result->depth = result.depth;
+    return NKS_OK;
+}
+
+nkscene_result NKS_CALL nkscene_render_executor_create(
+    nkgpu_renderer renderer, nkscene_render_executor *out_executor) {
     if (!out_executor)
         return NKS_ERROR_INVALID_ARGUMENT;
     *out_executor = 0;

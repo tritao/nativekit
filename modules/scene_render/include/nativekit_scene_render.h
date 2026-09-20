@@ -35,6 +35,8 @@ extern "C" {
 typedef uint32_t nkscene_render_plan NK_HANDLE NK_HANDLE_DESTROY(nkscene_render_plan_destroy);
 typedef uint32_t
     nkscene_render_executor NK_HANDLE NK_HANDLE_DESTROY(nkscene_render_executor_destroy);
+typedef uint32_t nkscene_render_spatial_index NK_HANDLE
+    NK_HANDLE_DESTROY(nkscene_render_spatial_index_destroy);
 
 typedef struct nkscene_render_visibility_override {
     nkscene_occurrence_id occurrence;
@@ -96,6 +98,15 @@ typedef struct nkscene_render_pick_result {
     float depth;
 } nkscene_render_pick_result;
 
+typedef struct nkscene_render_ray {
+    float origin[3];
+    float direction[3];
+} nkscene_render_ray;
+
+typedef struct nkscene_render_spatial_occurrence {
+    nkscene_occurrence_id occurrence;
+} nkscene_render_spatial_occurrence;
+
 typedef struct nkscene_render_execution_stats {
     uint32_t struct_size NK_STRUCT_SIZE;
     nkgpu_result result;
@@ -125,6 +136,26 @@ NKSRENDER_API nkscene_result NKS_CALL nkscene_render_plan_refresh(
 NKSRENDER_API nkscene_result NKS_CALL nkscene_render_plan_pick(
     nkscene_render_plan plan, nkscene_snapshot snapshot, uint32_t primitive,
     const float world_position[3], float depth, nkscene_render_pick_result *out_result NK_OUT);
+
+/** Builds a read-only spatial index for one immutable scene snapshot. */
+NKSRENDER_API nkscene_result NKS_CALL nkscene_render_spatial_index_create(
+    nkscene_snapshot snapshot, nkscene_render_spatial_index *out_index NK_OUT NK_OWNED);
+NKSRENDER_API void NKS_CALL nkscene_render_spatial_index_destroy(
+    nkscene_render_spatial_index index);
+NKSRENDER_API nkscene_result NKS_CALL nkscene_render_spatial_index_get_revision(
+    nkscene_render_spatial_index index, uint64_t *out_revision NK_OUT);
+NKSRENDER_API nkscene_result NKS_CALL nkscene_render_spatial_index_query_bounds(
+    nkscene_render_spatial_index index, const nkscene_bounds *bounds,
+    uint64_t *out_count NK_OUT);
+NKSRENDER_API nkscene_result NKS_CALL nkscene_render_spatial_index_query_ray(
+    nkscene_render_spatial_index index, const nkscene_render_ray *ray,
+    uint64_t *out_count NK_OUT);
+NKSRENDER_API nkscene_result NKS_CALL nkscene_render_spatial_index_get_occurrence(
+    nkscene_render_spatial_index index, uint64_t result_index,
+    nkscene_render_spatial_occurrence *out_result NK_OUT);
+NKSRENDER_API nkscene_result NKS_CALL nkscene_render_spatial_index_pick_ray(
+    nkscene_render_spatial_index index, const nkscene_render_ray *ray,
+    nkscene_render_pick_result *out_result NK_OUT);
 /**
  * Creates an executor bound to a GPU renderer. Pass a zero renderer for the
  * headless resource and command path. The renderer must outlive the executor.
@@ -155,6 +186,7 @@ NKSRENDER_API nkscene_result NKS_CALL nkscene_render_executor_pick_pixel(
 
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <unordered_map>
 #include <vector>
@@ -276,6 +308,32 @@ struct PickResult {
     SubelementId subelement;
     Vec3 worldPosition;
     float depth = 0.0f;
+};
+
+struct Ray {
+    Vec3 origin;
+    Vec3 direction;
+};
+
+class NKSRENDER_API SceneSpatialIndex {
+public:
+    explicit SceneSpatialIndex(const SceneSnapshot &snapshot);
+    ~SceneSpatialIndex();
+    SceneSpatialIndex(SceneSpatialIndex &&) noexcept;
+    SceneSpatialIndex &operator=(SceneSpatialIndex &&) noexcept;
+    SceneSpatialIndex(const SceneSpatialIndex &) = delete;
+    SceneSpatialIndex &operator=(const SceneSpatialIndex &) = delete;
+
+    std::uint64_t source_revision() const noexcept;
+    std::span<const OccurrenceId> query_bounds(const Bounds &) const;
+    std::span<const OccurrenceId> query_ray(const Ray &) const;
+    std::size_t query_result_count() const noexcept;
+    OccurrenceId query_result(std::size_t index) const noexcept;
+    PickResult pick_ray(const Ray &) const;
+
+private:
+    struct State;
+    std::unique_ptr<State> state_;
 };
 
 struct GpuCommand {

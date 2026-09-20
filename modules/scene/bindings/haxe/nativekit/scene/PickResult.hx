@@ -7,7 +7,7 @@ class PickResult {
 	final picked:nkscene_render_pick_result;
 	final pickedOccurrence:Occurrence;
 
-	@:allow(SceneRenderer)
+	@:allow(SceneRenderer, SpatialIndex)
 	private function new(picked:nkscene_render_pick_result) {
 		this.picked = picked;
 		pickedOccurrence = Occurrence.fromNative(picked.get_occurrence());
