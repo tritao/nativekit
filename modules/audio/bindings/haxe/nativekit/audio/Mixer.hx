@@ -52,7 +52,7 @@ class Mixer {
 		return result.out_state;
 	}
 
-	/** Returns the process-wide audio engine clock in PCM frames. */
+	/** Returns the monotonic process-wide playback-device clock in PCM frames. */
 	public static function timeFrames():haxe.Int64 {
 		var result = NativeKitAudio.nk_audio_get_time_pcm_frames();
 		AudioResult.check(result.status, "audio.mixer.timeFrames");

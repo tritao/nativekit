@@ -2,6 +2,7 @@
 #include "nativekit_time.h"
 
 #include <cassert>
+#include <chrono>
 #include <cstdio>
 #include <filesystem>
 #include <thread>
@@ -106,6 +107,12 @@ int main() {
     assert(configured_sample_rate == 48000);
     assert(nk_audio_device_get_state(&device_state) == NK_OK);
     assert(device_state == NK_AUDIO_DEVICE_STARTED);
+    uint64_t clock_before = 0;
+    uint64_t clock_after = 0;
+    assert(nk_audio_get_time_pcm_frames(&clock_before) == NK_OK);
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    assert(nk_audio_get_time_pcm_frames(&clock_after) == NK_OK);
+    assert(clock_after > clock_before);
     device_options.sample_rate = 44100;
     assert(nk_audio_device_configure(&device_options) == NK_ERROR_INVALID_REQUEST);
     device_options.sample_rate = 48000;

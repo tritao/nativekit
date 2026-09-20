@@ -415,7 +415,7 @@ nk_audio_voice_get_directional_attenuation_factor(nk_audio_voice voice, float *o
 /* Engine timing                                                             */
 /* ------------------------------------------------------------------------- */
 
-/** Returns the process-wide audio engine clock in PCM frames. */
+/** Returns the monotonic process-wide playback-device clock in PCM frames. */
 NKAUDIO_API nk_result NK_CALL nk_audio_get_time_pcm_frames(uint64_t *out_time_pcm_frames NK_OUT);
 /** Returns the process-wide audio engine sample rate in frames per second. */
 NKAUDIO_API nk_result NK_CALL nk_audio_get_sample_rate(uint32_t *out_sample_rate NK_OUT);

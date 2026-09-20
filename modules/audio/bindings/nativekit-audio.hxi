@@ -743,7 +743,7 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 */
 	extern fn nk_audio_get_sample_rate(out_sample_rate: ptr<u32> @out) -> nk_result;
 	/**
-	 * Returns the process-wide audio engine clock in PCM frames.
+	 * Returns the monotonic process-wide playback-device clock in PCM frames.
 	 */
 	extern fn nk_audio_get_time_pcm_frames(out_time_pcm_frames: ptr<u64> @out) -> nk_result;
 	/**

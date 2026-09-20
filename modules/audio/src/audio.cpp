@@ -49,13 +49,14 @@ struct PendingAudioDeviceConfig {
 PendingAudioDeviceConfig pending_device_config;
 
 void audio_device_notification_callback(const ma_device_notification *notification) noexcept;
-void audio_engine_process_callback(void *user_data, float *frames_out,
-                                   ma_uint64 frame_count) noexcept;
+void audio_engine_data_callback(ma_device *device, void *frames_out, const void *frames_in,
+                                ma_uint32 frame_count) noexcept;
 
 struct AudioEngineResource final : nk::core::Resource {
     ma_engine engine{};
     bool initialized = false;
     std::atomic<bool> interrupted{false};
+    std::atomic<uint64_t> device_time_frames{0};
     std::vector<std::weak_ptr<nk::core::Resource>> voices;
 
     ~AudioEngineResource() override {
@@ -68,14 +69,32 @@ struct AudioEngineResource final : nk::core::Resource {
     }
 };
 
-void audio_engine_process_callback(void *user_data, float *frames_out,
-                                   ma_uint64 frame_count) noexcept {
-    auto *engine = static_cast<AudioEngineResource *>(user_data);
+void audio_engine_data_callback(ma_device *, void *frames_out, const void *frames_in,
+                                ma_uint32 frame_count) noexcept {
+    auto *engine = active_engine_resource.load(std::memory_order_acquire);
     if (!engine || !frames_out || frame_count == 0)
         return;
-    nk::audio_dsp::process_device_output(frames_out, frame_count,
-                                         ma_engine_get_sample_rate(&engine->engine),
-                                         ma_engine_get_channels(&engine->engine));
+
+    (void)frames_in;
+    const auto sample_rate = ma_engine_get_sample_rate(&engine->engine);
+    const auto channels = ma_engine_get_channels(&engine->engine);
+    const auto device_frame =
+        engine->device_time_frames.fetch_add(frame_count, std::memory_order_acq_rel);
+
+    // Keep miniaudio's graph clock aligned with the hardware timeline even
+    // when the graph has no native voices to pull frames from.
+    ma_engine_set_time_in_pcm_frames(&engine->engine, device_frame);
+    ma_uint64 frames_read = 0;
+    const auto result =
+        ma_engine_read_pcm_frames(&engine->engine, frames_out, frame_count, &frames_read);
+    if (result != MA_SUCCESS || frames_read < frame_count) {
+        auto *float_output = static_cast<float *>(frames_out);
+        ma_silence_pcm_frames(float_output + frames_read * channels, frame_count - frames_read,
+                              ma_format_f32, channels);
+    }
+
+    nk::audio_dsp::process_device_output(static_cast<float *>(frames_out), frame_count,
+                                         sample_rate, channels);
 }
 
 struct AudioBusResource;
@@ -1066,8 +1085,7 @@ std::shared_ptr<AudioEngineResource> ensure_engine(nk_result &out_result) {
     config.periodSizeInMilliseconds = device_config.period_size_in_milliseconds;
     config.noAutoStart = device_config.no_auto_start ? MA_TRUE : MA_FALSE;
     config.notificationCallback = audio_device_notification_callback;
-    config.onProcess = audio_engine_process_callback;
-    config.pProcessUserData = next.get();
+    config.dataCallback = audio_engine_data_callback;
 
     active_engine_resource.store(next.get(), std::memory_order_release);
     const auto result = ma_engine_init(&config, &next->engine);
@@ -2200,7 +2218,7 @@ nk_result NK_CALL nk_audio_dsp_engine_attach_device(nk_audio_dsp_engine engine_h
             if (!engine)
                 return invalid_request("the audio device has not been initialized");
             return nk::audio_dsp::attach_device(
-                engine_handle, ma_engine_get_time_in_pcm_frames(&engine->engine),
+                engine_handle, engine->device_time_frames.load(std::memory_order_acquire),
                 ma_engine_get_sample_rate(&engine->engine), ma_engine_get_channels(&engine->engine));
         });
 }
@@ -4284,7 +4302,7 @@ nk_result NK_CALL nk_audio_get_time_pcm_frames(uint64_t *out_time_pcm_frames) {
             if (!engine)
                 return engine_result;
             promote_virtual_voices(*engine);
-            *out_time_pcm_frames = ma_engine_get_time_in_pcm_frames(&engine->engine);
+            *out_time_pcm_frames = engine->device_time_frames.load(std::memory_order_acquire);
             return NK_OK;
         });
 }
