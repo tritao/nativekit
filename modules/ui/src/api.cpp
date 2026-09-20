@@ -25,6 +25,7 @@
 #include "render/ui_renderer.h"
 
 #include <algorithm>
+#include <atomic>
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -199,18 +200,56 @@ class RetainedImageSurfaceProducer final : public nkui::SurfaceProducer {
   public:
     RetainedImageSurfaceProducer() = default;
 
-    void adopt_retained_image(nk_graphics_image image) { image_ = image; }
-
-    ~RetainedImageSurfaceProducer() override {
-        if (image_.id)
-            nk_graphics_image_release(image_);
+    void adopt_retained_image(nk_graphics_image image) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        image_ = image;
     }
 
-    bool ready() const override { return image_.id != 0; }
+    bool publish_image(nk_graphics_image image) {
+        if (!image.id)
+            return false;
+        nk_graphics_image_info info{};
+        info.struct_size = sizeof(info);
+        if (nk_graphics_image_get_info(image, &info) != NK_OK || !info.device.id ||
+            info.width <= 0 || info.height <= 0 || nk_graphics_image_retain(image) != NK_OK)
+            return false;
+        nk_graphics_image previous{};
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            previous = image_;
+            image_ = image;
+            uint32_t next = generation_.load(std::memory_order_relaxed) + 1;
+            if (!next)
+                next = 1;
+            generation_.store(next, std::memory_order_release);
+        }
+        if (previous.id)
+            nk_graphics_image_release(previous);
+        return true;
+    }
+
+    ~RetainedImageSurfaceProducer() override {
+        nk_graphics_image previous{};
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            previous = image_;
+            image_ = {};
+        }
+        if (previous.id)
+            nk_graphics_image_release(previous);
+    }
+
+    bool ready() const override {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return image_.id != 0;
+    }
 
     bool describe(int requested_width, int requested_height,
                   nkui::SurfaceDescriptor &description) const override {
-        if (requested_width <= 0 || requested_height <= 0 || !image_.id)
+        if (requested_width <= 0 || requested_height <= 0)
+            return false;
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!image_.id)
             return false;
         nk_graphics_image_info info{};
         info.struct_size = sizeof(info);
@@ -226,9 +265,12 @@ class RetainedImageSurfaceProducer final : public nkui::SurfaceProducer {
         return true;
     }
 
-    uint32_t generation() const override { return 1; }
+    uint32_t generation() const override { return generation_.load(std::memory_order_acquire); }
 
-    nk_graphics_image retained_image() const override { return image_; }
+    nk_graphics_image retained_image() const override {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return image_;
+    }
 
     nkui::SurfaceRenderResult render(nkui::UiRenderer &, nkui::ResourceId,
                                      const nkui::SurfaceDescriptor &) override {
@@ -237,7 +279,9 @@ class RetainedImageSurfaceProducer final : public nkui::SurfaceProducer {
     }
 
   private:
+    mutable std::mutex mutex_;
     nk_graphics_image image_{};
+    std::atomic_uint32_t generation_{1};
 };
 
 struct LayoutSessionState : std::enable_shared_from_this<LayoutSessionState> {
@@ -2911,6 +2955,19 @@ extern "C" nkui_result nkui_graphics_surface_create(nk_graphics_image image,
         return result;
     slot->surface = std::move(producer);
     return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_graphics_surface_publish_image(nkui_resource surface,
+                                                           nk_graphics_image image) {
+    if (!surface.id || !image.id)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(resources_mutex);
+    auto *slot = resolve(surface, nkui::ResourceKind::RenderTarget);
+    auto *producer =
+        slot ? dynamic_cast<RetainedImageSurfaceProducer *>(slot->surface.get()) : nullptr;
+    if (!producer)
+        return NKUI_ERROR_INVALID_HANDLE;
+    return producer->publish_image(image) ? NKUI_OK : NKUI_ERROR_INVALID_HANDLE;
 }
 
 extern "C" nkui_result nkui_renderer_create(nkui_renderer *out_renderer) {

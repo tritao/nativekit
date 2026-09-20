@@ -21,6 +21,14 @@ class GraphicsSurface extends NativeKitUIResource {
 		return fromHandle(image.nativeHandle());
 	}
 
+	/** Publishes the latest retained camera/video/native image to this surface. */
+	public function publish(image:GraphicsImageRef):Void {
+		if (image == null)
+			throw "graphicsSurface.publish requires an image";
+		UiResult.check(NativeKitUI.nkui_graphics_surface_publish_image(nativeHandle(),
+			image.nativeHandle()), "graphicsSurface.publish");
+	}
+
 	static function fromHandle(image:GraphicsImage):GraphicsSurface {
 		var made = NativeKitUI.nkui_graphics_surface_create(image);
 		UiResult.check(made.status, "graphicsSurface.fromGraphicsImage");

@@ -142,6 +142,12 @@ when the last batch holding them is destroyed. Submission ends the frame with
 deferred presentation, leaving presentation to the surface owner, and runs on
 the render executor in physical split builds (ADR 0017).
 
+Renderers created from an acquired frame target are render-thread-owned in
+physical split builds. Their GPU resource creation, updates, pass encoding,
+batch mutation, and destruction return `NKGPU_ERROR_WRONG_THREAD` when called
+from another executor. The legacy `nkgpu_renderer_create()` path remains
+single-executor compatible for existing immediate callers.
+
 Renderer, resource, and builder handles are distinct one-word value types in
 the public C ABI. Their IDs encode a resource kind, generation, and pool slot;
 the raw token stays internal to the adapter. HXI projects each C type to a

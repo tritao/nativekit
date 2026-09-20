@@ -548,6 +548,15 @@ int main() {
         result = 8;
         goto cleanup;
     }
+    if (nk::core::render_executor_physical()) {
+        nkgpu_render_target wrong_thread_target{};
+        if (!check(nkgpu_render_target_create(producer, 4, 4, 0, &wrong_thread_target) ==
+                       NKGPU_ERROR_WRONG_THREAD,
+                   "reject platform mutation of render-owned renderer")) {
+            result = 8;
+            goto cleanup;
+        }
+    }
     if (!check(nk_surface_present(surface) == NK_OK, "close setup frame")) {
         result = 9;
         goto cleanup;
@@ -555,6 +564,11 @@ int main() {
     /* Imported images use the retained-image producer path, without a live callback. */
     if (!check(nkui_graphics_surface_create(image, &imported_surface) == NKUI_OK,
                "nkui_graphics_surface_create")) {
+        result = 11;
+        goto cleanup;
+    }
+    if (!check(nkui_graphics_surface_publish_image(imported_surface, image) == NKUI_OK,
+               "nkui_graphics_surface_publish_image")) {
         result = 11;
         goto cleanup;
     }

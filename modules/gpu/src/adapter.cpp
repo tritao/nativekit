@@ -170,6 +170,10 @@ struct Renderer {
     uint64_t failed_allocations = 0;
     nk_surface_frame_target frame_target{};
     bool has_frame_target = false;
+    /* Explicit frame-target renderers are owned by the physical RENDER
+       executor. Legacy surface renderers retain the historical single-
+       executor behavior for compatibility. */
+    bool render_thread_owned = false;
 #if defined(NKGPU_TESTING)
     uint64_t test_frames_before_loss = UINT64_MAX;
 #endif
@@ -433,11 +437,22 @@ static bool make_renderer_surface_current(const Renderer &renderer) {
            target.api == renderer.graphics_api && target.device.id == renderer.device.id;
 }
 
+static nkgpu_result require_renderer_executor(Handle /*handle*/, const Renderer &renderer) {
+    if (renderer.render_thread_owned && nk::core::render_executor_physical() &&
+        !nk_executor_is_current(NK_EXECUTOR_RENDER))
+        return fail(NKGPU_ERROR_WRONG_THREAD,
+                    "render-thread-owned renderer requires the render executor");
+    return NKGPU_OK;
+}
+
 static nkgpu_result activate_renderer(Handle handle,
                                       const nk_surface_frame_target *provided_target = nullptr) {
     auto *slot = renderer_pool.get(handle);
     if (!slot)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    const nkgpu_result executor = require_renderer_executor(handle, slot->value);
+    if (executor != NKGPU_OK)
+        return executor;
     if (slot->value.state == RendererState::Lost)
         return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
     if (active_renderer && active_renderer != handle)
@@ -518,6 +533,9 @@ static nkgpu_result require_idle_renderer(Handle handle) {
     auto *slot = renderer_pool.get(handle);
     if (!slot)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    const nkgpu_result executor = require_renderer_executor(handle, slot->value);
+    if (executor != NKGPU_OK)
+        return executor;
     if (slot->value.state == RendererState::Lost)
         return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
     if (slot->value.in_pass || (active_renderer && active_renderer != handle))
@@ -529,6 +547,9 @@ static nkgpu_result require_streaming_resource_access(Handle handle) {
     auto *slot = renderer_pool.get(handle);
     if (!slot)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    const nkgpu_result executor = require_renderer_executor(handle, slot->value);
+    if (executor != NKGPU_OK)
+        return executor;
     if (slot->value.state == RendererState::Lost)
         return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
     if (active_renderer && active_renderer != handle)
@@ -540,6 +561,9 @@ static nkgpu_result require_active_pass(Handle handle) {
     auto *slot = renderer_pool.get(handle);
     if (!slot)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    const nkgpu_result executor = require_renderer_executor(handle, slot->value);
+    if (executor != NKGPU_OK)
+        return executor;
     if (slot->value.state == RendererState::Lost)
         return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
     if (!renderer_is_active(slot->value) || !slot->value.in_pass || active_renderer != handle)
@@ -551,6 +575,9 @@ static nkgpu_result prepare_resource_destroy(Handle handle, bool &backend_availa
     auto *slot = renderer_pool.get(handle);
     if (!slot)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    const nkgpu_result executor = require_renderer_executor(handle, slot->value);
+    if (executor != NKGPU_OK)
+        return executor;
     if (active_renderer && active_renderer != handle)
         return fail(NKGPU_ERROR_WRONG_STATE, "another renderer has an active frame");
     if (slot->value.state == RendererState::Lost) {
@@ -1450,6 +1477,9 @@ nkgpu_result nkgpu_test_lose_after_frames(nkgpu_renderer renderer, uint32_t fram
     auto *slot = renderer_pool.get(renderer);
     if (!slot)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    const nkgpu_result executor = require_renderer_executor(renderer, slot->value);
+    if (executor != NKGPU_OK)
+        return executor;
     if (slot->value.state == RendererState::Lost)
         return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
     slot->value.test_frames_before_loss = frames;
@@ -1522,7 +1552,8 @@ nkgpu_result nkgpu_surface_destroy(nk_surface s) {
 }
 static nkgpu_result create_renderer_from_target(nk_surface surface,
                                                 const nk_surface_frame_target &target,
-                                                nkgpu_renderer *out) {
+                                                nkgpu_renderer *out,
+                                                bool render_thread_owned) {
     if (!surface || !out)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid renderer arguments");
     if (active_renderer)
@@ -1588,6 +1619,7 @@ static nkgpu_result create_renderer_from_target(nk_surface surface,
     renderer_state.has_context_target = target.native_context != 0;
     renderer_state.surface_color_format = color_format;
     renderer_state.surface_depth_format = depth_format;
+    renderer_state.render_thread_owned = render_thread_owned;
     Handle h = renderer_pool.add(renderer_state);
     if (!h) {
         api->runtime_release();
@@ -1614,7 +1646,7 @@ nkgpu_result nkgpu_renderer_create(nk_surface surface, nkgpu_renderer *out) {
         return fail(NKGPU_ERROR_UNKNOWN, "current: %s", nk_last_error());
     if (context_backend && nk_surface_get_frame_target(surface, &target) != NK_OK)
         return fail(NKGPU_ERROR_UNKNOWN, "surface target query: %s", nk_last_error());
-    return create_renderer_from_target(surface, target, out);
+    return create_renderer_from_target(surface, target, out, false);
 }
 
 nkgpu_result nkgpu_renderer_create_for_frame_target(nk_surface surface,
@@ -1627,7 +1659,7 @@ nkgpu_result nkgpu_renderer_create_for_frame_target(nk_surface surface,
     const nkgpu_result bound = nkgpu_bind_frame_target(frame_target);
     if (bound != NKGPU_OK)
         return bound;
-    return create_renderer_from_target(surface, *frame_target, out_renderer);
+    return create_renderer_from_target(surface, *frame_target, out_renderer, true);
 }
 static void destroy_image_backend(Image &image) {
     if (image.storage_image.id)
@@ -1971,6 +2003,9 @@ nkgpu_result nkgpu_renderer_destroy(nkgpu_renderer h) {
     auto *s = renderer_pool.get(h);
     if (!s)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    const nkgpu_result executor = require_renderer_executor(h, s->value);
+    if (executor != NKGPU_OK)
+        return executor;
     if (renderer_is_active(s->value))
         return fail(NKGPU_ERROR_WRONG_STATE, "renderer has active frame");
     if (active_renderer && active_renderer != h)
@@ -3060,6 +3095,9 @@ nkgpu_result nkgpu_frame_begin(nkgpu_renderer h) {
     auto *s = renderer_pool.get(h);
     if (!s)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    const nkgpu_result executor = require_renderer_executor(h, s->value);
+    if (executor != NKGPU_OK)
+        return executor;
     if (s->value.state == RendererState::Lost)
         return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
     if (s->value.state != RendererState::Ready || active_renderer)
@@ -3155,6 +3193,11 @@ nkgpu_result nkgpu_begin_window_pass(nkgpu_renderer h, uint32_t width, uint32_t 
     auto *s = renderer_pool.get(h);
     if (!s || !width || !height || width > INT32_MAX || height > INT32_MAX || clear > 1)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid window-pass arguments");
+    if (s) {
+        const nkgpu_result executor = require_renderer_executor(h, s->value);
+        if (executor != NKGPU_OK)
+            return executor;
+    }
     if (s->value.state == RendererState::Lost)
         return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
     if (s->value.state != RendererState::FrameActive || s->value.in_pass || active_renderer != h)
@@ -3223,10 +3266,50 @@ nkgpu_result nkgpu_begin_window_pass(nkgpu_renderer h, uint32_t width, uint32_t 
     s->value.bindings = {};
     return NKGPU_OK;
 }
+nkgpu_result nkgpu_begin_target_pass(nkgpu_renderer h, nkgpu_render_target target_handle,
+                                     uint32_t clear) {
+    auto *renderer = renderer_pool.get(h);
+    auto *target = render_target_pool.get(target_handle);
+    if (!renderer || !target || target->value.owner != h)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign render target");
+    const nkgpu_result executor = require_renderer_executor(h, renderer->value);
+    if (executor != NKGPU_OK)
+        return executor;
+    if (clear > 1)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid target clear flag");
+    if (renderer->value.state == RendererState::Lost)
+        return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
+    if (renderer->value.state != RendererState::FrameActive || renderer->value.in_pass ||
+        active_renderer != h)
+        return fail(NKGPU_ERROR_WRONG_STATE, "target pass requires a frame with no active pass");
+    const nkgpu_result activated = activate_renderer(h);
+    if (activated != NKGPU_OK)
+        return activated;
+    sg_pass pass{};
+    pass.action.colors[0].load_action = clear ? SG_LOADACTION_CLEAR : SG_LOADACTION_LOAD;
+    pass.action.colors[0].clear_value = {0.0f, 0.0f, 0.0f, 0.0f};
+    if (target->value.depth.id) {
+        pass.action.depth = {SG_LOADACTION_CLEAR, SG_STOREACTION_STORE, 1.0f};
+        pass.action.stencil = {SG_LOADACTION_CLEAR, SG_STOREACTION_STORE, 0};
+        pass.attachments.depth_stencil = target->value.depth_attachment;
+    }
+    pass.attachments.colors[0] = target->value.color_attachment;
+    sg_begin_pass(&pass);
+    renderer->value.in_pass = true;
+    ++renderer->value.passes;
+    renderer->value.active_target = target_handle;
+    renderer->value.pass_width = target->value.width;
+    renderer->value.pass_height = target->value.height;
+    renderer->value.bindings = {};
+    return NKGPU_OK;
+}
 nkgpu_result nkgpu_end_pass(nkgpu_renderer h) {
     auto *renderer = renderer_pool.get(h);
     if (!renderer)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    const nkgpu_result executor = require_renderer_executor(h, renderer->value);
+    if (executor != NKGPU_OK)
+        return executor;
     if (renderer->value.state == RendererState::Lost)
         return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
     if (renderer->value.state != RendererState::FrameActive || !renderer->value.in_pass ||
@@ -5094,6 +5177,9 @@ nkgpu_result nkgpu_batch_begin(nkgpu_renderer renderer, nkgpu_batch *out_batch) 
     auto *slot = renderer_pool.get(renderer);
     if (!slot)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    const nkgpu_result executor = require_renderer_executor(renderer, slot->value);
+    if (executor != NKGPU_OK)
+        return executor;
     if (slot->value.state == RendererState::Lost)
         return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
     Batch batch{};
@@ -5197,6 +5283,13 @@ nkgpu_result nkgpu_batch_append_pass(nkgpu_batch batch, const nkgpu_batch_pass *
     auto *slot = batch_pool.get(batch);
     if (!slot)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale batch");
+    auto *renderer = renderer_pool.get(slot->value.owner);
+    if (!renderer)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "batch owner is stale");
+    const nkgpu_result executor =
+        require_renderer_executor(slot->value.owner, renderer->value);
+    if (executor != NKGPU_OK)
+        return executor;
     if (slot->value.sealed)
         return fail(NKGPU_ERROR_WRONG_STATE, "batch is sealed");
     if (!pass || pass->struct_size < offsetof(nkgpu_batch_pass, render_pass))
@@ -5243,6 +5336,13 @@ nkgpu_result nkgpu_batch_append_command(nkgpu_batch batch, const uint8_t *comman
     auto *slot = batch_pool.get(batch);
     if (!slot)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale batch");
+    auto *renderer = renderer_pool.get(slot->value.owner);
+    if (!renderer)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "batch owner is stale");
+    const nkgpu_result executor =
+        require_renderer_executor(slot->value.owner, renderer->value);
+    if (executor != NKGPU_OK)
+        return executor;
     if (slot->value.sealed)
         return fail(NKGPU_ERROR_WRONG_STATE, "batch is sealed");
     if (!commands || !size)
@@ -5279,6 +5379,13 @@ nkgpu_result nkgpu_batch_seal(nkgpu_batch batch) {
     auto *slot = batch_pool.get(batch);
     if (!slot)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale batch");
+    auto *renderer = renderer_pool.get(slot->value.owner);
+    if (!renderer)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "batch owner is stale");
+    const nkgpu_result executor =
+        require_renderer_executor(slot->value.owner, renderer->value);
+    if (executor != NKGPU_OK)
+        return executor;
     if (slot->value.sealed)
         return NKGPU_OK;
     if (slot->value.passes.empty())
@@ -5293,6 +5400,9 @@ nkgpu_result nkgpu_batch_submit(nkgpu_renderer renderer, nkgpu_batch batch,
     auto *bs = batch_pool.get(batch);
     if (!rs || !bs)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer or batch");
+    const nkgpu_result executor = require_renderer_executor(renderer, rs->value);
+    if (executor != NKGPU_OK)
+        return executor;
     if (rs->value.state == RendererState::Lost)
         return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
     /*
@@ -5395,6 +5505,13 @@ nkgpu_result nkgpu_batch_destroy(nkgpu_batch batch) {
     auto *slot = batch_pool.get(batch);
     if (!slot)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale batch");
+    auto *renderer = renderer_pool.get(slot->value.owner);
+    if (!renderer)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "batch owner is stale");
+    const nkgpu_result executor =
+        require_renderer_executor(slot->value.owner, renderer->value);
+    if (executor != NKGPU_OK)
+        return executor;
     release_batch_retention(slot->value, 0);
     release_batch_images(slot->value, 0);
     batch_pool.remove(*slot);
@@ -5405,6 +5522,9 @@ static nkgpu_result end_frame(nkgpu_renderer r, bool present_surface) {
     auto *rs = renderer_pool.get(r);
     if (!rs)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    const nkgpu_result executor = require_renderer_executor(r, rs->value);
+    if (executor != NKGPU_OK)
+        return executor;
     if (rs->value.state == RendererState::Lost)
         return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
     if (rs->value.state != RendererState::FrameActive || active_renderer != r)

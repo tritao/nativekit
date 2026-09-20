@@ -273,6 +273,13 @@ Prepared text publishes those immutable objects itself through
 layout generation, geometry, scale, and mode, so sealing cost follows the number of
 bindings rather than the size of the glyph buffers.
 
+External camera, video, and native render producers should use
+`nkui_graphics_surface_create()` once, then publish each new retained
+`nk_graphics_image` with `nkui_graphics_surface_publish_image()`. The surface
+resource remains stable while NativeKit retains the latest image and advances its
+content generation, so sealed plans capture an immutable image lease instead of
+executing a producer callback on the render thread.
+
 ## Custom native window chrome
 
 Desktop Haxe UI trees can provide their own borderless-window hit testing. Attach

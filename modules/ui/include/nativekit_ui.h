@@ -1058,6 +1058,16 @@ NKUI_API nkui_result nkui_image_load_file(const char *path NKUI_UTF8, nkui_image
 NKUI_API nkui_result nkui_graphics_surface_create(nk_graphics_image image,
                                                   nkui_resource *out_surface NKUI_OUT);
 
+/**
+ * Publishes a new retained graphics image to an existing graphics surface.
+ * The surface handle remains stable, and NativeKit retains the image until a
+ * later publication or surface destruction. This is the handoff path for
+ * camera, video, and other native producers; callers retain ownership of
+ * their input image.
+ */
+NKUI_API nkui_result nkui_graphics_surface_publish_image(nkui_resource surface,
+                                                         nk_graphics_image image);
+
 /* ------------------------------------------------------------------------- */
 /* Renderer APIs                                                             */
 /* ------------------------------------------------------------------------- */
