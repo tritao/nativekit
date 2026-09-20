@@ -8,6 +8,10 @@
 #include <string>
 #include <unordered_map>
 
+namespace {
+void perform_native_role(nk_menu_item handle, id sender);
+}
+
 @interface NKMenuActionTarget : NSObject
 - (void)activate:(id)sender;
 @end
@@ -16,7 +20,9 @@
 - (void)activate:(id)sender {
     if (![sender isKindOfClass:[NSMenuItem class]])
         return;
-    nk::core::menu_item_activated(static_cast<nk_menu_item>([(NSMenuItem *)sender tag]));
+    const auto handle = static_cast<nk_menu_item>([(NSMenuItem *)sender tag]);
+    perform_native_role(handle, sender);
+    nk::core::menu_item_activated(handle);
 }
 @end
 
@@ -25,6 +31,7 @@ namespace {
 struct MacMenuState {
     nk_menu handle = NK_INVALID_HANDLE;
     __strong NSMenu *menu = nil;
+    __strong NSMenu *application_menu = nil;
     __strong NSMenu *previous = nil;
     __strong id target = nil;
     std::unordered_map<nk_menu_item, NSMenuItem *> items;
@@ -40,12 +47,39 @@ NSString *menu_string(const std::string &value) {
 
 NSString *shortcut_key(nk_key key) {
     if (key >= NK_KEY_A && key <= NK_KEY_Z)
-        return [[NSString alloc] initWithFormat:@"%c", static_cast<int>(key)];
+        return [[NSString alloc] initWithFormat:@"%c", static_cast<int>(key + ('a' - 'A'))];
     if (key >= NK_KEY_0 && key <= NK_KEY_9)
         return [[NSString alloc] initWithFormat:@"%c", static_cast<int>(key)];
+    if (key >= NK_KEY_F1 && key <= NK_KEY_F24)
+        return [[NSString alloc]
+            initWithFormat:@"%C", static_cast<unichar>(NSF1FunctionKey + key - NK_KEY_F1)];
+    if (key >= NK_KEY_KP_0 && key <= NK_KEY_KP_9)
+        return [[NSString alloc] initWithFormat:@"%c", static_cast<int>('0' + key - NK_KEY_KP_0)];
     switch (key) {
     case NK_KEY_SPACE:
         return @" ";
+    case NK_KEY_APOSTROPHE:
+        return @"'";
+    case NK_KEY_COMMA:
+        return @",";
+    case NK_KEY_MINUS:
+        return @"-";
+    case NK_KEY_PERIOD:
+        return @".";
+    case NK_KEY_SLASH:
+        return @"/";
+    case NK_KEY_SEMICOLON:
+        return @";";
+    case NK_KEY_EQUAL:
+        return @"=";
+    case NK_KEY_LEFT_BRACKET:
+        return @"[";
+    case NK_KEY_BACKSLASH:
+        return @"\\";
+    case NK_KEY_RIGHT_BRACKET:
+        return @"]";
+    case NK_KEY_GRAVE_ACCENT:
+        return @"`";
     case NK_KEY_TAB:
         return @"\t";
     case NK_KEY_ENTER:
@@ -65,8 +99,63 @@ NSString *shortcut_key(nk_key key) {
     case NK_KEY_DOWN:
         return
             [[NSString alloc] initWithFormat:@"%C", static_cast<unichar>(NSDownArrowFunctionKey)];
+    case NK_KEY_INSERT:
+        return [[NSString alloc] initWithFormat:@"%C", static_cast<unichar>(NSInsertFunctionKey)];
+    case NK_KEY_DELETE:
+        return [[NSString alloc] initWithFormat:@"%C", static_cast<unichar>(NSDeleteFunctionKey)];
+    case NK_KEY_PAGE_UP:
+        return [[NSString alloc] initWithFormat:@"%C", static_cast<unichar>(NSPageUpFunctionKey)];
+    case NK_KEY_PAGE_DOWN:
+        return [[NSString alloc] initWithFormat:@"%C", static_cast<unichar>(NSPageDownFunctionKey)];
+    case NK_KEY_HOME:
+        return [[NSString alloc] initWithFormat:@"%C", static_cast<unichar>(NSHomeFunctionKey)];
+    case NK_KEY_END:
+        return [[NSString alloc] initWithFormat:@"%C", static_cast<unichar>(NSEndFunctionKey)];
+    case NK_KEY_KP_DECIMAL:
+        return @".";
+    case NK_KEY_KP_DIVIDE:
+        return @"/";
+    case NK_KEY_KP_MULTIPLY:
+        return @"*";
+    case NK_KEY_KP_SUBTRACT:
+        return @"-";
+    case NK_KEY_KP_ADD:
+        return @"+";
+    case NK_KEY_KP_ENTER:
+        return @"\r";
+    case NK_KEY_KP_EQUAL:
+        return @"=";
     default:
         return nil;
+    }
+}
+
+nk_menu_shortcut default_role_shortcut(nk_menu_item_role role) {
+    switch (role) {
+    case NK_MENU_ROLE_PREFERENCES:
+        return {NK_KEY_COMMA, NK_MENU_MOD_PRIMARY};
+    case NK_MENU_ROLE_HIDE:
+        return {NK_KEY_H, NK_MENU_MOD_PRIMARY};
+    case NK_MENU_ROLE_HIDE_OTHERS:
+        return {NK_KEY_H, NK_MENU_MOD_PRIMARY | NK_MENU_MOD_ALT};
+    case NK_MENU_ROLE_UNDO:
+        return {NK_KEY_Z, NK_MENU_MOD_PRIMARY};
+    case NK_MENU_ROLE_REDO:
+        return {NK_KEY_Z, NK_MENU_MOD_PRIMARY | NK_MENU_MOD_SHIFT};
+    case NK_MENU_ROLE_CUT:
+        return {NK_KEY_X, NK_MENU_MOD_PRIMARY};
+    case NK_MENU_ROLE_COPY:
+        return {NK_KEY_C, NK_MENU_MOD_PRIMARY};
+    case NK_MENU_ROLE_PASTE:
+        return {NK_KEY_V, NK_MENU_MOD_PRIMARY};
+    case NK_MENU_ROLE_SELECT_ALL:
+        return {NK_KEY_A, NK_MENU_MOD_PRIMARY};
+    case NK_MENU_ROLE_MINIMIZE:
+        return {NK_KEY_M, NK_MENU_MOD_PRIMARY};
+    case NK_MENU_ROLE_QUIT:
+        return {NK_KEY_Q, NK_MENU_MOD_PRIMARY};
+    default:
+        return {NK_KEY_UNKNOWN, 0};
     }
 }
 
@@ -83,6 +172,62 @@ NSEventModifierFlags shortcut_modifiers(nk_menu_modifiers modifiers) {
     return result;
 }
 
+void perform_native_role(nk_menu_item handle, id sender) {
+    const auto resource = std::static_pointer_cast<nk::core::MenuItemResource>(
+        nk::core::handles().get(handle, nk::core::ResourceType::menu_item));
+    if (!resource || (resource->flags & NK_MENU_ITEM_DISABLED) ||
+        (resource->flags & NK_MENU_ITEM_HIDDEN) || resource->kind == NK_MENU_ITEM_SEPARATOR ||
+        resource->kind == NK_MENU_ITEM_SUBMENU)
+        return;
+    switch (resource->role) {
+    case NK_MENU_ROLE_ABOUT:
+        [NSApp orderFrontStandardAboutPanel:sender];
+        break;
+    case NK_MENU_ROLE_PREFERENCES:
+        [NSApp sendAction:@selector(showPreferencesWindow:) to:nil from:sender];
+        break;
+    case NK_MENU_ROLE_HIDE:
+        [NSApp hide:sender];
+        break;
+    case NK_MENU_ROLE_HIDE_OTHERS:
+        [NSApp hideOtherApplications:sender];
+        break;
+    case NK_MENU_ROLE_SHOW_ALL:
+        [NSApp unhideAllApplications:sender];
+        break;
+    case NK_MENU_ROLE_UNDO:
+        [NSApp sendAction:@selector(undo:) to:nil from:sender];
+        break;
+    case NK_MENU_ROLE_REDO:
+        [NSApp sendAction:@selector(redo:) to:nil from:sender];
+        break;
+    case NK_MENU_ROLE_CUT:
+        [NSApp sendAction:@selector(cut:) to:nil from:sender];
+        break;
+    case NK_MENU_ROLE_COPY:
+        [NSApp sendAction:@selector(copy:) to:nil from:sender];
+        break;
+    case NK_MENU_ROLE_PASTE:
+        [NSApp sendAction:@selector(paste:) to:nil from:sender];
+        break;
+    case NK_MENU_ROLE_SELECT_ALL:
+        [NSApp sendAction:@selector(selectAll:) to:nil from:sender];
+        break;
+    case NK_MENU_ROLE_MINIMIZE:
+        [NSApp sendAction:@selector(performMiniaturize:) to:nil from:sender];
+        break;
+    case NK_MENU_ROLE_ZOOM:
+        [NSApp sendAction:@selector(performZoom:) to:nil from:sender];
+        break;
+    case NK_MENU_ROLE_BRING_ALL_TO_FRONT:
+        [NSApp arrangeInFront:sender];
+        break;
+    case NK_MENU_ROLE_NONE:
+    case NK_MENU_ROLE_QUIT:
+        break;
+    }
+}
+
 void set_native_state(NSMenuItem *native, const nk::core::MenuItemResource &item) {
     NSString *title = menu_string(item.label);
     [native setTitle:title ?: @""];
@@ -90,9 +235,11 @@ void set_native_state(NSMenuItem *native, const nk::core::MenuItemResource &item
     [native setHidden:(item.flags & NK_MENU_ITEM_HIDDEN) != 0];
     [native setState:(item.flags & NK_MENU_ITEM_CHECKED) ? NSControlStateValueOn
                                                          : NSControlStateValueOff];
-    NSString *key = shortcut_key(item.shortcut.key);
+    const auto shortcut =
+        item.shortcut.key == NK_KEY_UNKNOWN ? default_role_shortcut(item.role) : item.shortcut;
+    NSString *key = shortcut_key(shortcut.key);
     [native setKeyEquivalent:key ?: @""];
-    [native setKeyEquivalentModifierMask:shortcut_modifiers(item.shortcut.modifiers)];
+    [native setKeyEquivalentModifierMask:shortcut_modifiers(shortcut.modifiers)];
 }
 
 NSMenuItem *add_native_item(const std::shared_ptr<nk::core::MenuItemResource> &item,
@@ -136,6 +283,7 @@ void clear_native_menu(bool restore) {
         [NSApp setMainMenu:state.previous];
     state.items.clear();
     state.menu = nil;
+    state.application_menu = nil;
     state.previous = nil;
     state.target = nil;
     state.handle = NK_INVALID_HANDLE;
@@ -158,11 +306,24 @@ nk_result menu_install(const std::shared_ptr<nk::core::MenuResource> &menu) noex
         [state.menu setAutoenablesItems:NO];
         state.previous = NSApp.mainMenu;
         state.target = [[NKMenuActionTarget alloc] init];
+        if (!menu->title.empty()) {
+            state.application_menu = [[NSMenu alloc] initWithTitle:menu_title ?: @""];
+            [state.application_menu setAutoenablesItems:NO];
+            NSMenuItem *application_item = [[NSMenuItem alloc] initWithTitle:menu_title ?: @""
+                                                                      action:nil
+                                                               keyEquivalent:@""];
+            [application_item setSubmenu:state.application_menu];
+            [state.menu addItem:application_item];
+        }
         for (const auto child : menu->children) {
             const auto resource = std::static_pointer_cast<nk::core::MenuItemResource>(
                 nk::core::handles().get(child, nk::core::ResourceType::menu_item));
-            if (resource)
-                add_native_item(resource, state.menu);
+            if (!resource)
+                continue;
+            NSMenu *parent = state.menu;
+            if (state.application_menu && resource->role != NK_MENU_ROLE_NONE)
+                parent = state.application_menu;
+            add_native_item(resource, parent);
         }
         [NSApp setMainMenu:state.menu];
     }
@@ -188,6 +349,8 @@ nk_result menu_item_added(const std::shared_ptr<nk::core::MenuResource> &menu,
             if (found == state.items.end() || !found->second.submenu)
                 return NK_ERROR_INVALID_HANDLE;
             parent = found->second.submenu;
+        } else if (state.application_menu && item->role != NK_MENU_ROLE_NONE) {
+            parent = state.application_menu;
         }
         add_native_item(item, parent);
     }

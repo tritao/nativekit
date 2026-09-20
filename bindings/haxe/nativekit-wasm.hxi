@@ -1828,6 +1828,54 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 */
 		NK_KEY_LAST = 348;
 	}
+	flags nk_menu_item_flags : u32 {
+		NK_MENU_ITEM_DISABLED = 1;
+		NK_MENU_ITEM_CHECKED = 2;
+		NK_MENU_ITEM_HIDDEN = 4;
+	}
+	enum nk_menu_item_kind : u32 {
+		NK_MENU_ITEM_COMMAND = 0;
+		NK_MENU_ITEM_CHECKBOX = 1;
+		NK_MENU_ITEM_RADIO = 2;
+		NK_MENU_ITEM_SUBMENU = 3;
+		NK_MENU_ITEM_SEPARATOR = 4;
+	}
+	enum nk_menu_item_role : u32 {
+		NK_MENU_ROLE_NONE = 0;
+		NK_MENU_ROLE_ABOUT = 1;
+		NK_MENU_ROLE_PREFERENCES = 2;
+		NK_MENU_ROLE_QUIT = 3;
+		NK_MENU_ROLE_HIDE = 4;
+		NK_MENU_ROLE_HIDE_OTHERS = 5;
+		NK_MENU_ROLE_SHOW_ALL = 6;
+		NK_MENU_ROLE_UNDO = 7;
+		NK_MENU_ROLE_REDO = 8;
+		NK_MENU_ROLE_CUT = 9;
+		NK_MENU_ROLE_COPY = 10;
+		NK_MENU_ROLE_PASTE = 11;
+		NK_MENU_ROLE_SELECT_ALL = 12;
+		NK_MENU_ROLE_MINIMIZE = 13;
+		NK_MENU_ROLE_ZOOM = 14;
+		NK_MENU_ROLE_BRING_ALL_TO_FRONT = 15;
+	}
+	flags nk_menu_modifiers : u32 {
+		/**
+		 * The platform's primary shortcut modifier (Command on macOS, Control elsewhere).
+		 */
+		NK_MENU_MOD_PRIMARY = 1;
+		/**
+		 * The platform's primary shortcut modifier (Command on macOS, Control elsewhere).
+		 */
+		NK_MENU_MOD_SHIFT = 2;
+		/**
+		 * The platform's primary shortcut modifier (Command on macOS, Control elsewhere).
+		 */
+		NK_MENU_MOD_ALT = 4;
+		/**
+		 * The platform's primary shortcut modifier (Command on macOS, Control elsewhere).
+		 */
+		NK_MENU_MOD_CONTROL = 8;
+	}
 	/**
 	 * Button flags accepted by a message dialog.
 	 */
@@ -2733,6 +2781,10 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 */
 	extern fn nk_api_version() -> u32;
 	/**
+	 * Replaces the process application menu; zero detaches the current menu.
+	 */
+	extern fn nk_application_set_menu(menu: nk_menu) -> nk_result;
+	/**
 	 * Returned UTF-8 views remain owned by the event until nk_event_release().
 	 */
 	extern fn nk_clipboard_event_file(event: ptr<const<nk_event>>, index: u32, out_path: ptr<ptr<const<c_char>>>, out_length: ptr<u32>) -> nk_result;
@@ -3003,6 +3055,30 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 * The returned string may be empty after a successful call.
 	 */
 	extern fn nk_last_error() -> utf8 @borrowed;
+	/**
+	 * Adds an item to the root when parent is zero, or to a submenu item.
+	 */
+	extern fn nk_menu_add_item(menu: nk_menu, parent: nk_menu_item, options: ptr<const<nk_menu_item_options>>, out_item: ptr<nk_menu_item> @out @owned) -> nk_result;
+	/**
+	 * Creates an empty application menu tree.
+	 */
+	extern fn nk_menu_create(options: ptr<const<nk_menu_options>>, out_menu: ptr<nk_menu> @out @owned) -> nk_result;
+	/**
+	 * Destroys a menu and all of its items.
+	 */
+	extern fn nk_menu_destroy(menu: nk_menu) -> nk_result;
+	/**
+	 * Removes an item and all of its descendants.
+	 */
+	extern fn nk_menu_item_remove(item: nk_menu_item) -> nk_result;
+	extern fn nk_menu_item_set_checked(item: nk_menu_item, checked: nk_bool) -> nk_result;
+	extern fn nk_menu_item_set_enabled(item: nk_menu_item, enabled: nk_bool) -> nk_result;
+	/**
+	 * Updates item state; all strings and model data remain owned by NativeKit.
+	 */
+	extern fn nk_menu_item_set_label(item: nk_menu_item, label: utf8) -> nk_result;
+	extern fn nk_menu_item_set_shortcut(item: nk_menu_item, shortcut: ptr<const<nk_menu_shortcut>>) -> nk_result;
+	extern fn nk_menu_item_set_visible(item: nk_menu_item, visible: nk_bool) -> nk_result;
 	/**
 	 * Attaches NativeKit to a caller-owned mobile container. The caller retains
 	 * ownership and must keep the container alive until nk_mobile_host_destroy().
@@ -4562,6 +4638,46 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		modifiers: nk_modifiers @offset(12);
 	}
 	/**
+	 * Payload carried by NK_EVENT_MENU_ITEM_ACTIVATED.
+	 */
+	struct nk_menu_item_activated_event @layout(24, 8) {
+		command_id: nk_menu_command_id @offset(0);
+		item: nk_menu_item @offset(8);
+		checked: nk_bool @offset(12);
+		reserved: u32 @offset(16);
+	}
+	/**
+	 * Options used to add one item to a menu or submenu.
+	 */
+	struct nk_menu_item_options @layout(56, 8) {
+		struct_size: u32 @offset(0) @struct_size;
+		kind: nk_menu_item_kind @offset(4);
+		flags: nk_menu_item_flags @offset(8);
+		role: nk_menu_item_role @offset(12);
+		command_id: nk_menu_command_id @offset(16);
+		label: nullable<utf8> @offset(24);
+		shortcut: nk_menu_shortcut @offset(28);
+		reserved: array<u64, 2> @offset(40);
+	}
+	/**
+	 * Options used to create an application menu root.
+	 */
+	struct nk_menu_options @layout(24, 8) {
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Optional macOS application-menu title; empty leaves the root unwrapped.
+		 */
+		title: nullable<utf8> @offset(4);
+		reserved: array<u64, 2> @offset(8);
+	}
+	struct nk_menu_shortcut @layout(8, 4) {
+		/**
+		 * Printable, navigation, function, or keypad key; unknown clears it.
+		 */
+		key: nk_key @offset(0);
+		modifiers: nk_menu_modifiers @offset(4);
+	}
+	/**
 	 * Options for a native message dialog.
 	 */
 	struct nk_message_dialog_options @layout(24, 4) {
@@ -6050,6 +6166,18 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	handle nk_handle : u32;
 	handle nk_joystick : u32;
 	type nk_keep_awake = u32;
+	/**
+	 * A live application menu tree.
+	 */
+	handle nk_menu : u32 @destroy("nk_menu_destroy");
+	/**
+	 * Application-defined command identity carried by activation events.
+	 */
+	type nk_menu_command_id = u64;
+	/**
+	 * A live item owned by an application menu.
+	 */
+	handle nk_menu_item : u32 @destroy("nk_menu_item_remove");
 	handle nk_mobile_host : u32 @destroy("nk_mobile_host_destroy");
 	handle nk_monitor : u32;
 	type nk_nullable_surface_frame_callback = nullable<nk_surface_frame_callback>;

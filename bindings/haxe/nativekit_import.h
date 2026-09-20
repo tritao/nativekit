@@ -14,6 +14,7 @@
 #include "nativekit_accessibility.h"
 #include "nativekit_system.h"
 #include "nativekit_mobile.h"
+#include "nativekit_menu.h"
 #include "nativekit_resource.h"
 #include "nativekit_clipboard.h"
 #include "nativekit_file_watch.h"
