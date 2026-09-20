@@ -1,9 +1,31 @@
-target_sources(nativekit PRIVATE src/audio.cpp src/audio_dsp.cpp)
+if(NOT EXISTS "${NK_VENDOR_DIR}/daisysp/Source/daisysp.h")
+    message(FATAL_ERROR "DaisySP submodule is missing; run git submodule update --init")
+endif()
+
+add_library(nativekit_daisysp OBJECT
+    "${NK_VENDOR_DIR}/daisysp/Source/Control/adsr.cpp"
+    "${NK_VENDOR_DIR}/daisysp/Source/Synthesis/oscillator.cpp")
+target_compile_features(nativekit_daisysp PRIVATE cxx_std_17)
+target_include_directories(nativekit_daisysp SYSTEM PRIVATE
+    "${NK_VENDOR_DIR}/daisysp/Source"
+    "${NK_VENDOR_DIR}/daisysp/Source/Utility")
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+    target_compile_options(nativekit_daisysp PRIVATE -Wno-enum-compare-conditional)
+endif()
+
+target_sources(nativekit PRIVATE
+    src/audio.cpp
+    src/audio_dsp.cpp
+    src/audio_dsp_backend.cpp
+    $<TARGET_OBJECTS:nativekit_daisysp>)
 
 target_compile_definitions(nativekit PRIVATE NKAUDIO_BUILDING_LIBRARY)
 target_include_directories(nativekit PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
     "${NK_VENDOR_DIR}/miniaudio")
+target_include_directories(nativekit SYSTEM PRIVATE
+    "${NK_VENDOR_DIR}/daisysp/Source"
+    "${NK_VENDOR_DIR}/daisysp/Source/Utility")
 if(APPLE)
     target_link_libraries(nativekit PRIVATE "-framework CoreAudio" "-framework AudioToolbox")
 endif()
@@ -54,3 +76,6 @@ install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES "${NK_VENDOR_DIR}/miniaudio/LICENSE"
     DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/NativeKit
     RENAME miniaudio-LICENSE)
+install(FILES "${NK_VENDOR_DIR}/daisysp/LICENSE"
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/NativeKit
+    RENAME DaisySP-LICENSE)

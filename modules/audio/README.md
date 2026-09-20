@@ -19,8 +19,10 @@ instruments, submit frame-sorted note and parameter events, and render
 interleaved float blocks into caller-owned memory. The initial backend provides
 pitched sine, triangle, saw, and square oscillators with ADSR envelopes and
 reports those capabilities through `nk_audio_dsp_engine_get_capabilities()`.
-The stable NativeKit ABI does not expose backend types, so future DaisySP or
-other native DSP implementations can be added without changing tracker code.
+The first backend uses the pinned DaisySP oscillator and ADSR modules; only the
+translation units needed by this slice are compiled. The stable NativeKit ABI
+does not expose DaisySP types, so future DaisySP modules or other native DSP
+implementations can be added without changing tracker code.
 
 The first API slice supports WAV, FLAC, and MP3 playback from native filesystem
 paths, cached URI assets, or caller-provided encoded memory.

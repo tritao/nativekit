@@ -1,14 +1,13 @@
 #include "nativekit_audio_dsp.h"
 
+#include "audio_dsp_backend.hpp"
 #include "core/boundary.hpp"
 #include "core/error.hpp"
 #include "core/handle_registry.hpp"
 #include "core/runtime.hpp"
 
-#include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <limits>
 #include <memory>
 #include <mutex>
 #include <utility>
@@ -23,26 +22,10 @@ constexpr uint32_t default_max_voices = 64;
 constexpr uint32_t max_channels = 8;
 constexpr uint32_t max_block_size = 65536;
 constexpr uint32_t max_voice_count = 4096;
-constexpr float two_pi = 6.28318530717958647692f;
-
 constexpr nk_audio_dsp_capabilities builtin_capabilities =
     NK_AUDIO_DSP_CAPABILITY_OSCILLATOR | NK_AUDIO_DSP_CAPABILITY_ENVELOPE;
 
-enum class EnvelopeStage : uint32_t {
-    attack,
-    decay,
-    sustain,
-    release
-};
-
-struct DspParameters {
-    nk_audio_dsp_waveform waveform = NK_AUDIO_DSP_WAVEFORM_SINE;
-    float gain = 1.0f;
-    float attack_seconds = 0.01f;
-    float decay_seconds = 0.1f;
-    float sustain_level = 0.8f;
-    float release_seconds = 0.1f;
-};
+using DspParameters = nk::audio_dsp::VoiceParameters;
 
 struct DspEngineResource;
 
@@ -50,17 +33,27 @@ struct DspInstrumentResource final : nk::core::Resource {
     std::weak_ptr<DspEngineResource> engine;
     DspParameters defaults;
     DspParameters current;
+    uint64_t parameters_version = 1;
 };
 
 struct DspVoice {
+    nk::audio_dsp::Voice backend;
     std::shared_ptr<DspInstrumentResource> instrument;
     uint32_t voice_id = 0;
     uint32_t note = 0;
     float velocity = 0.0f;
-    float phase = 0.0f;
-    float envelope = 0.0f;
-    EnvelopeStage stage = EnvelopeStage::attack;
+    uint64_t parameters_version = 0;
     bool active = false;
+
+    void clear() noexcept {
+        backend.reset();
+        instrument.reset();
+        voice_id = 0;
+        note = 0;
+        velocity = 0.0f;
+        parameters_version = 0;
+        active = false;
+    }
 };
 
 struct DspEngineResource final : nk::core::Resource {
@@ -244,90 +237,19 @@ bool instrument_belongs_to(const std::shared_ptr<DspInstrumentResource> &instrum
     return instrument && instrument->engine.lock().get() == &engine;
 }
 
-uint32_t envelope_frames(float seconds, uint32_t sample_rate) {
-    if (seconds <= 0.0f)
-        return 0;
-    const auto frames = static_cast<double>(seconds) * static_cast<double>(sample_rate);
-    if (frames >= static_cast<double>(std::numeric_limits<uint32_t>::max()))
-        return std::numeric_limits<uint32_t>::max();
-    return std::max(1u, static_cast<uint32_t>(std::ceil(frames)));
+void sync_voice_parameters(DspVoice &voice) noexcept {
+    if (!voice.instrument || voice.parameters_version == voice.instrument->parameters_version)
+        return;
+    voice.backend.set_parameters(voice.instrument->current);
+    voice.parameters_version = voice.instrument->parameters_version;
 }
 
-float advance_envelope(DspVoice &voice, const DspParameters &parameters, uint32_t sample_rate) {
-    switch (voice.stage) {
-    case EnvelopeStage::attack: {
-        const auto frames = envelope_frames(parameters.attack_seconds, sample_rate);
-        if (frames == 0) {
-            voice.envelope = 1.0f;
-            voice.stage = EnvelopeStage::decay;
-        } else {
-            voice.envelope = std::min(1.0f, voice.envelope + 1.0f / frames);
-            if (voice.envelope >= 1.0f)
-                voice.stage = EnvelopeStage::decay;
-        }
-        break;
-    }
-    case EnvelopeStage::decay: {
-        const auto frames = envelope_frames(parameters.decay_seconds, sample_rate);
-        if (frames == 0) {
-            voice.envelope = parameters.sustain_level;
-            voice.stage = EnvelopeStage::sustain;
-        } else {
-            voice.envelope = std::max(parameters.sustain_level,
-                                      voice.envelope -
-                                          (1.0f - parameters.sustain_level) / frames);
-            if (voice.envelope <= parameters.sustain_level)
-                voice.stage = EnvelopeStage::sustain;
-        }
-        break;
-    }
-    case EnvelopeStage::sustain:
-        voice.envelope = parameters.sustain_level;
-        break;
-    case EnvelopeStage::release: {
-        const auto frames = envelope_frames(parameters.release_seconds, sample_rate);
-        if (frames == 0) {
-            voice.envelope = 0.0f;
-            voice.active = false;
-        } else {
-            voice.envelope = std::max(0.0f, voice.envelope - 1.0f / frames);
-            if (voice.envelope <= 0.0f)
-                voice.active = false;
-        }
-        break;
-    }
-    }
-    return voice.active ? voice.envelope : 0.0f;
-}
-
-float oscillator_sample(nk_audio_dsp_waveform waveform, float phase) {
-    switch (waveform) {
-    case NK_AUDIO_DSP_WAVEFORM_SINE:
-        return std::sin(two_pi * phase);
-    case NK_AUDIO_DSP_WAVEFORM_TRIANGLE:
-        return 2.0f * std::abs(2.0f * phase - 1.0f) - 1.0f;
-    case NK_AUDIO_DSP_WAVEFORM_SAW:
-        return 2.0f * phase - 1.0f;
-    case NK_AUDIO_DSP_WAVEFORM_SQUARE:
-        return phase < 0.5f ? 1.0f : -1.0f;
-    default:
-        return 0.0f;
-    }
-}
-
-float voice_sample(DspVoice &voice, const DspEngineResource &engine) {
+float voice_sample(DspVoice &voice) noexcept {
     if (!voice.active || !voice.instrument)
         return 0.0f;
-    const auto &parameters = voice.instrument->current;
-    const auto envelope = advance_envelope(voice, parameters, engine.options.sample_rate);
-    if (!voice.active)
-        return 0.0f;
-    const auto semitones = static_cast<float>(voice.note) - 69.0f;
-    const auto frequency = 440.0f * std::pow(2.0f, semitones / 12.0f);
-    const auto result = oscillator_sample(parameters.waveform, voice.phase) * parameters.gain *
-                        voice.velocity * envelope;
-    voice.phase += frequency / static_cast<float>(engine.options.sample_rate);
-    voice.phase -= std::floor(voice.phase);
+    sync_voice_parameters(voice);
+    const auto result = voice.backend.process();
+    voice.active = voice.backend.active();
     return result;
 }
 
@@ -358,30 +280,25 @@ nk_result apply_event(DspEngineResource &engine, const nk_audio_dsp_event &event
         auto *voice = find_voice(engine, event.voice_id);
         if (!voice)
             voice = find_free_voice(engine);
-        if (!voice)
-        {
+        if (!voice) {
             nk::core::set_error("audio DSP voice limit reached");
             return NK_ERROR_QUEUE_FULL;
         }
-        *voice = {};
+        voice->clear();
         voice->instrument = std::move(instrument);
         voice->voice_id = event.voice_id;
         voice->note = event.note;
         voice->velocity = event.velocity;
         voice->active = true;
-        voice->stage = EnvelopeStage::attack;
+        sync_voice_parameters(*voice);
+        voice->backend.note_on(event.note, event.velocity);
         return NK_OK;
     }
     case NK_AUDIO_DSP_EVENT_NOTE_OFF: {
         auto *voice = find_voice(engine, event.voice_id);
         if (!voice)
             return NK_OK;
-        const auto &parameters = voice->instrument->current;
-        if (parameters.release_seconds <= 0.0f) {
-            *voice = {};
-        } else {
-            voice->stage = EnvelopeStage::release;
-        }
+        voice->backend.note_off();
         return NK_OK;
     }
     case NK_AUDIO_DSP_EVENT_PARAMETER: {
@@ -390,7 +307,10 @@ nk_result apply_event(DspEngineResource &engine, const nk_audio_dsp_event &event
             return NK_ERROR_INVALID_HANDLE;
         if (!instrument_belongs_to(instrument, engine))
             return invalid_request("audio DSP instrument belongs to another engine");
-        return set_parameter(instrument->current, event.parameter, event.value);
+        const auto result = set_parameter(instrument->current, event.parameter, event.value);
+        if (result == NK_OK)
+            ++instrument->parameters_version;
+        return result;
     }
     default:
         return invalid_argument("audio DSP event kind is invalid");
@@ -438,7 +358,7 @@ nk_result validate_event(const DspEngineResource &engine, const nk_audio_dsp_eve
 
 void reset_voices(DspEngineResource &engine) {
     for (auto &voice : engine.voices)
-        voice = {};
+        voice.clear();
 }
 
 } // namespace
@@ -460,6 +380,8 @@ nk_result NK_CALL nk_audio_dsp_engine_create(const nk_audio_dsp_engine_options *
             auto engine = std::make_shared<DspEngineResource>();
             engine->options = normalized;
             engine->voices.resize(normalized.max_voices);
+            for (auto &voice : engine->voices)
+                voice.backend.init(normalized.sample_rate);
             const auto handle =
                 nk::core::handles().insert(nk::core::ResourceType::audio_dsp_engine, engine);
             if (handle == NK_INVALID_HANDLE) {
@@ -546,6 +468,7 @@ nk_result NK_CALL nk_audio_dsp_engine_reset(nk_audio_dsp_engine engine_handle) {
                  iterator != engine->instruments.end();) {
                 if (auto instrument = iterator->lock()) {
                     instrument->current = instrument->defaults;
+                    ++instrument->parameters_version;
                     ++iterator;
                 } else {
                     iterator = engine->instruments.erase(iterator);
@@ -603,7 +526,7 @@ nk_result NK_CALL nk_audio_dsp_instrument_destroy(nk_audio_dsp_instrument instru
                 std::lock_guard lock(engine->mutex);
                 for (auto &voice : engine->voices) {
                     if (voice.instrument.get() == instrument.get())
-                        voice = {};
+                        voice.clear();
                 }
             }
             if (!nk::core::handles().erase(instrument_handle,
@@ -629,7 +552,10 @@ nk_result NK_CALL nk_audio_dsp_instrument_set_parameter(nk_audio_dsp_instrument 
             std::lock_guard lock(engine->mutex);
             if (!engine->alive)
                 return invalid_request("audio DSP engine is no longer alive");
-            return set_parameter(instrument->current, parameter, value);
+            const auto result = set_parameter(instrument->current, parameter, value);
+            if (result == NK_OK)
+                ++instrument->parameters_version;
+            return result;
         });
 }
 
@@ -707,7 +633,7 @@ nk_result NK_CALL nk_audio_dsp_engine_render(nk_audio_dsp_engine engine_handle,
                 }
                 float mixed = 0.0f;
                 for (auto &voice : engine->voices)
-                    mixed += voice_sample(voice, *engine);
+                    mixed += voice_sample(voice);
                 for (uint32_t channel = 0; channel < target->channels; ++channel)
                     target->samples[static_cast<uint64_t>(frame) * target->channels + channel] =
                         mixed;

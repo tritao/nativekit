@@ -31,3 +31,6 @@
 [submodule "vendor/miniaudio"]
 	path = vendor/miniaudio
 	url = https://github.com/mackron/miniaudio.git
+[submodule "vendor/daisysp"]
+	path = vendor/daisysp
+	url = https://github.com/electro-smith/DaisySP.git
