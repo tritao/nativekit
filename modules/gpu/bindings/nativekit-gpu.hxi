@@ -1244,7 +1244,7 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	/**
 	 * One render pass recorded into a submission batch.
 	 */
-	struct nkgpu_batch_pass @layout(228, 4) {
+	struct nkgpu_batch_pass @layout(32, 8) {
 		/**
 		 * Set to sizeof(nkgpu_batch_pass) or a larger compatible size.
 		 */
@@ -1270,9 +1270,9 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		 */
 		height: u32 @offset(20);
 		/**
-		 * General attachments for NKGPU_BATCH_PASS_RENDER.
+		 * General attachments for NKGPU_BATCH_PASS_RENDER; copied when appended.
 		 */
-		render_pass: nkgpu_render_pass_desc @offset(24);
+		render_pass: ptr<const<nkgpu_render_pass_desc>> @offset(24);
 	}
 	/**
 	 * Blend configuration for one color attachment.
