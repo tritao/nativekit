@@ -683,8 +683,9 @@ bool create_target(UiRendererImpl::State &state, UiRendererImpl::State::Target &
     color_desc.usage = NKGPU_IMAGE_SAMPLED | NKGPU_IMAGE_RENDER_TARGET;
     if (!gpu_result(state, nkgpu_image_create_desc(state.renderer, &color_desc, &target.color)))
         return false;
-    if (!gpu_result(state, nkgpu_image_get_graphics_image(state.renderer, target.color,
-                                                          &target.image))) {
+    const nkgpu_result image_result =
+        nkgpu_image_get_graphics_image(state.renderer, target.color, &target.image);
+    if (!gpu_result(state, image_result)) {
         nkgpu_image_destroy(state.renderer, target.color);
         target = {};
         return false;
