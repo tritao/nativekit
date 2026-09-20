@@ -17,6 +17,7 @@ import nativekit.ui.widgets.ScrollAxis;
 import nativekit.ui.widgets.ScrollController;
 import nativekit.ui.widgets.ScrollView;
 import nativekit.ui.widgets.Spacer;
+import nativekit.ui.widgets.VirtualViewport;
 
 /** Fixed-height virtual list composed from ordinary rows inside ScrollView. */
 class VirtualList implements View {
@@ -55,16 +56,10 @@ class VirtualList implements View {
 			var viewportHeight = controller.viewportHeight > 0.0 ? controller.viewportHeight :
 				(viewportStyle.height.sizing == LayoutSizing.Fixed ? viewportStyle.height.value :
 				fallbackViewportHeight);
-			var first = itemCount == 0 ? 0 : Std.int(controller.offsetY / itemHeight);
-			if (first > 0)
-				first--;
-			if (first > itemCount)
-				first = itemCount;
-			var last = Std.int((controller.offsetY + viewportHeight) / itemHeight) + 2;
-			if (last > itemCount)
-				last = itemCount;
-			if (last < first)
-				last = first;
+			var virtualWindow = new VirtualViewport(itemCount, itemHeight, viewportHeight,
+				controller.offsetY);
+			var first = virtualWindow.first;
+			var last = virtualWindow.last;
 
 			var rowViews:Array<KeyedView> = [];
 			var beforeHeight = first * itemHeight;
