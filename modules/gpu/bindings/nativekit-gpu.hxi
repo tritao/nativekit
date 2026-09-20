@@ -1021,6 +1021,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * Returns the NativeKit graphics API selected for this renderer's surface.
 	 */
 	extern fn nkgpu_query_graphics_api(renderer: nkgpu_renderer) -> nk_graphics_api;
+	/**
+	 * Queries backend support for one NativeKit image format.
+	 */
+	extern fn nkgpu_query_image_format_support(renderer: nkgpu_renderer, format: nkgpu_image_format, out_support: ptr<nkgpu_image_format_support> @out) -> nkgpu_result;
 	extern fn nkgpu_query_limits(renderer: nkgpu_renderer, out_limits: ptr<nkgpu_limits> @out) -> nkgpu_result;
 	/**
 	 * Begins an asynchronous readback of an image rectangle.
@@ -1390,6 +1394,19 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		data_size: u32 @offset(40);
 		row_pitch: u32 @offset(44);
 		dynamic_update: u32 @offset(48);
+	}
+	/**
+	 * Reports the portable operations supported by one image format.
+	 */
+	struct nkgpu_image_format_support @layout(32, 4) {
+		struct_size: u32 @offset(0) @struct_size;
+		sampled: u32 @offset(4);
+		filter: u32 @offset(8);
+		render_target: u32 @offset(12);
+		blend: u32 @offset(16);
+		multisample: u32 @offset(20);
+		depth_stencil: u32 @offset(24);
+		storage: u32 @offset(28);
 	}
 	/**
 	 * Describes one asynchronous image readback request.

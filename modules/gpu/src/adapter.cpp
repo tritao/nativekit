@@ -833,6 +833,28 @@ static bool image_format_is_depth(nkgpu_image_format format) {
            format == NKGPU_IMAGEFORMAT_DEPTH32F;
 }
 
+static nkgpu_image_format_support make_image_format_support(nkgpu_image_format format,
+                                                            sg_pixelformat_info native,
+                                                            sg_features features,
+                                                            sg_limits limits) {
+    nkgpu_image_format_support support{};
+    support.struct_size = sizeof(support);
+    support.sampled = native.sample ? 1u : 0u;
+    support.filter = native.filter ? 1u : 0u;
+    support.render_target = native.render && !image_format_is_depth(format) ? 1u : 0u;
+    support.blend = native.blend && !image_format_is_depth(format) ? 1u : 0u;
+    support.depth_stencil = native.depth && image_format_is_depth(format) ? 1u : 0u;
+    support.multisample = native.msaa &&
+                                  (support.render_target || support.depth_stencil)
+                              ? 1u
+                              : 0u;
+    support.storage = features.compute && limits.max_storage_image_bindings_per_stage > 0 &&
+                              (native.read || native.write)
+                          ? 1u
+                          : 0u;
+    return support;
+}
+
 static sg_image_usage convert_image_usage(nkgpu_image_usage usage, bool dynamic_update) {
     sg_image_usage result{};
     result.storage_image = (usage & NKGPU_IMAGE_STORAGE) != 0;
@@ -1142,6 +1164,32 @@ nkgpu_result nkgpu_query_limits(nkgpu_renderer renderer, nkgpu_limits *out_limit
     limits.max_storage_image_bindings =
         static_cast<uint32_t>(std::max(0, native.max_storage_image_bindings_per_stage));
     *out_limits = limits;
+    return NKGPU_OK;
+}
+
+nkgpu_result nkgpu_query_image_format_support(nkgpu_renderer renderer,
+                                              nkgpu_image_format format,
+                                              nkgpu_image_format_support *out_support) {
+    auto *slot = renderer_pool.get(renderer);
+    if (!slot || !out_support)
+        return fail(!out_support ? NKGPU_ERROR_INVALID_ARGUMENT : NKGPU_ERROR_INVALID_HANDLE,
+                    "invalid image format support query");
+    if (out_support->struct_size < sizeof(nkgpu_image_format_support))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "image format support output is too small");
+    const sg_pixel_format native_format = convert_image_format(format);
+    if (!image_format_bytes(format) || native_format == SG_PIXELFORMAT_NONE)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid image format");
+    if (slot->value.state == RendererState::Lost)
+        return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
+    const nkgpu_result activated = activate_renderer(renderer);
+    if (activated != NKGPU_OK)
+        return activated;
+    if (!selected_api->query_pixelformat)
+        return fail(NKGPU_ERROR_UNSUPPORTED, "image format capabilities are unavailable");
+    const sg_features features = selected_api->query_features();
+    const sg_limits limits = selected_api->query_limits();
+    *out_support = make_image_format_support(
+        format, selected_api->query_pixelformat(native_format), features, limits);
     return NKGPU_OK;
 }
 
@@ -3186,10 +3234,20 @@ nkgpu_result nkgpu_image_create_desc(nkgpu_renderer r, const nkgpu_image_desc *i
         return activated;
     const sg_features features = selected_api->query_features();
     const sg_limits limits = selected_api->query_limits();
-    if (usage & NKGPU_IMAGE_STORAGE) {
-        if (!features.compute || limits.max_storage_image_bindings_per_stage <= 0)
-            return fail(NKGPU_ERROR_UNSUPPORTED, "storage images are unavailable");
-    }
+    if (!selected_api->query_pixelformat)
+        return fail(NKGPU_ERROR_UNSUPPORTED, "image format capabilities are unavailable");
+    const nkgpu_image_format_support format_support = make_image_format_support(
+        desc.format, selected_api->query_pixelformat(native_format), features, limits);
+    if ((usage & NKGPU_IMAGE_SAMPLED) && !format_support.sampled)
+        return fail(NKGPU_ERROR_UNSUPPORTED, "image format cannot be sampled");
+    if ((usage & NKGPU_IMAGE_RENDER_TARGET) && !format_support.render_target)
+        return fail(NKGPU_ERROR_UNSUPPORTED, "image format cannot be a color attachment");
+    if ((usage & NKGPU_IMAGE_DEPTH_STENCIL) && !format_support.depth_stencil)
+        return fail(NKGPU_ERROR_UNSUPPORTED, "image format cannot be a depth attachment");
+    if ((usage & NKGPU_IMAGE_STORAGE) && !format_support.storage)
+        return fail(NKGPU_ERROR_UNSUPPORTED, "image format cannot be a storage image");
+    if (sample_count > 1 && !format_support.multisample)
+        return fail(NKGPU_ERROR_UNSUPPORTED, "image format does not support multisampling");
     const uint32_t max_texture_size = static_cast<uint32_t>(std::max(0, limits.max_image_size_2d));
     const uint32_t max_array_layers =
         static_cast<uint32_t>(std::max(0, limits.max_image_array_layers));

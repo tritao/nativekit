@@ -216,6 +216,15 @@ int main() {
         EXPECT_RESULT(nkgpu_query_limits(first, nullptr), NKGPU_ERROR_INVALID_ARGUMENT);
         EXPECT_RESULT(nkgpu_query_features(first, &features), NKGPU_OK);
         EXPECT_RESULT(nkgpu_query_limits(first, &limits), NKGPU_OK);
+        nkgpu_image_format_support short_format_support{};
+        short_format_support.struct_size = sizeof(short_format_support) - 1;
+        EXPECT_RESULT(nkgpu_query_image_format_support(first, NKGPU_IMAGEFORMAT_RGBA8,
+                                                        &short_format_support),
+                      NKGPU_ERROR_INVALID_ARGUMENT);
+        EXPECT_RESULT(nkgpu_query_image_format_support(first, NKGPU_IMAGEFORMAT_RGBA8, nullptr),
+                      NKGPU_ERROR_INVALID_ARGUMENT);
+        EXPECT_RESULT(nkgpu_query_image_format_support(first, 99, &short_format_support),
+                      NKGPU_ERROR_INVALID_ARGUMENT);
         nkgpu_native_context native_context{};
         native_context.struct_size = sizeof(native_context);
         EXPECT_RESULT(nkgpu_get_native_context(first, &native_context), NKGPU_OK);
@@ -248,6 +257,71 @@ int main() {
             std::fprintf(stderr, "storage capability flags do not match reported limits\n");
             result = __LINE__;
             goto cleanup;
+        }
+
+        const nkgpu_image_format formats[] = {
+            NKGPU_IMAGEFORMAT_R8,
+            NKGPU_IMAGEFORMAT_RGBA8,
+            NKGPU_IMAGEFORMAT_RG8,
+            NKGPU_IMAGEFORMAT_BGRA8,
+            NKGPU_IMAGEFORMAT_R16F,
+            NKGPU_IMAGEFORMAT_RG16F,
+            NKGPU_IMAGEFORMAT_RGBA16F,
+            NKGPU_IMAGEFORMAT_R32F,
+            NKGPU_IMAGEFORMAT_RGBA32F,
+            NKGPU_IMAGEFORMAT_R32_UINT,
+            NKGPU_IMAGEFORMAT_DEPTH16,
+            NKGPU_IMAGEFORMAT_DEPTH24_STENCIL8,
+            NKGPU_IMAGEFORMAT_DEPTH32F,
+        };
+        for (const nkgpu_image_format format : formats) {
+            nkgpu_image_format_support support{};
+            support.struct_size = sizeof(support);
+            EXPECT_RESULT(nkgpu_query_image_format_support(first, format, &support), NKGPU_OK);
+            if (support.sampled > 1 || support.filter > 1 || support.render_target > 1 ||
+                support.blend > 1 || support.multisample > 1 || support.depth_stencil > 1 ||
+                support.storage > 1 || support.filter > support.sampled ||
+                support.blend > support.render_target ||
+                support.multisample > (support.render_target || support.depth_stencil) ||
+                support.storage > features.storage_image) {
+                std::fprintf(stderr, "invalid format support flags for format %u\n", format);
+                result = __LINE__;
+                goto cleanup;
+            }
+            if (format < NKGPU_IMAGEFORMAT_DEPTH16 && support.depth_stencil) {
+                std::fprintf(stderr, "color format reported depth support: %u\n", format);
+                result = __LINE__;
+                goto cleanup;
+            }
+
+            nkgpu_image probe{};
+            nkgpu_image_desc probe_desc{};
+            probe_desc.struct_size = sizeof(probe_desc);
+            probe_desc.width = 1;
+            probe_desc.height = 1;
+            probe_desc.format = format;
+            probe_desc.usage = format >= NKGPU_IMAGEFORMAT_DEPTH16
+                                   ? NKGPU_IMAGE_DEPTH_STENCIL
+                                   : NKGPU_IMAGE_RENDER_TARGET;
+            const uint32_t supported_usage = format >= NKGPU_IMAGEFORMAT_DEPTH16
+                                                  ? support.depth_stencil
+                                                  : support.render_target;
+            const nkgpu_result probe_result =
+                nkgpu_image_create_desc(first, &probe_desc, &probe);
+            if (supported_usage) {
+                if (probe_result != NKGPU_OK) {
+                    std::fprintf(stderr, "supported format %u failed to create: %s\n", format,
+                                 nkgpu_last_error());
+                    result = __LINE__;
+                    goto cleanup;
+                }
+                EXPECT_RESULT(nkgpu_image_destroy(first, probe), NKGPU_OK);
+            } else if (probe_result != NKGPU_ERROR_UNSUPPORTED) {
+                std::fprintf(stderr, "unsupported format %u returned %d\n", format,
+                             probe_result);
+                result = __LINE__;
+                goto cleanup;
+            }
         }
 
         nkgpu_buffer storage_probe{};

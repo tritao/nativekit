@@ -493,6 +493,18 @@ typedef struct nkgpu_image_desc {
     uint32_t dynamic_update;
 } nkgpu_image_desc;
 
+/** Reports the portable operations supported by one image format. */
+typedef struct nkgpu_image_format_support {
+    uint32_t struct_size NK_STRUCT_SIZE;
+    uint32_t sampled;
+    uint32_t filter;
+    uint32_t render_target;
+    uint32_t blend;
+    uint32_t multisample;
+    uint32_t depth_stencil;
+    uint32_t storage;
+} nkgpu_image_format_support;
+
 /** Describes a buffer-to-buffer transfer. */
 typedef struct nkgpu_buffer_copy_desc {
     uint32_t struct_size NK_STRUCT_SIZE;
@@ -828,6 +840,11 @@ NKGPU_API nkgpu_result nkgpu_query_features(nkgpu_renderer renderer,
                                             nkgpu_features *out_features NKGPU_OUT);
 NKGPU_API nkgpu_result nkgpu_query_limits(nkgpu_renderer renderer,
                                           nkgpu_limits *out_limits NKGPU_OUT);
+
+/** Queries backend support for one NativeKit image format. */
+NKGPU_API nkgpu_result nkgpu_query_image_format_support(
+    nkgpu_renderer renderer, nkgpu_image_format format,
+    nkgpu_image_format_support *out_support NKGPU_OUT);
 
 /** Returns opaque native device/context tokens for advanced backend integration. */
 NKGPU_API nkgpu_result nkgpu_get_native_context(nkgpu_renderer renderer,

@@ -9,6 +9,7 @@ const nk_sokol_api *nk_sokol_get_api(void) {
         api.gfx = sg_query_api();
         api.query_features = sg_query_features;
         api.query_limits = sg_query_limits;
+        api.query_pixelformat = sg_query_pixelformat;
         api.query_max_samples = nk_sokol_query_max_samples;
         api.update_buffer = sg_update_buffer;
         api.apply_viewport = sg_apply_viewport;

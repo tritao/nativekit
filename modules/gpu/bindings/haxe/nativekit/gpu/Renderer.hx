@@ -44,6 +44,14 @@ class Renderer {
 		return Limits.fromNative(result.out_limits);
 	}
 
+	/** Returns the portable operations supported by one image format. */
+	public function imageFormatSupport(format:ImageFormat):ImageFormatSupport {
+		ensureLive();
+		var result = NativeKitGpu.nkgpu_query_image_format_support(value, format);
+		GpuResult.check(result.status, "renderer.imageFormatSupport");
+		return ImageFormatSupport.fromNative(result.out_support);
+	}
+
 	public function beginFrame():Void {
 		ensureLive();
 		if (frameActive)
