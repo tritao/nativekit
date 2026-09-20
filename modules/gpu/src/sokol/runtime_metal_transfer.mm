@@ -10,6 +10,18 @@
 #include <cstdint>
 #include <cstring>
 
+#if __has_feature(objc_arc)
+#define NK_MTL_RETAIN(obj) ((void)0)
+#define NK_MTL_RELEASE(obj) ((obj) = nil)
+#else
+#define NK_MTL_RETAIN(obj) [obj retain]
+#define NK_MTL_RELEASE(obj)                                                                        \
+    do {                                                                                           \
+        [obj release];                                                                             \
+        (obj) = nil;                                                                               \
+    } while (0)
+#endif
+
 namespace {
 
 constexpr uint32_t kReadbackCapacity = 128;
@@ -133,8 +145,8 @@ bool ensure_blit(bool &temporary) {
         transfer_command = nil;
         return false;
     }
-    _SG_OBJC_RETAIN(transfer_command);
-    _SG_OBJC_RETAIN(transfer_blit);
+    NK_MTL_RETAIN(transfer_command);
+    NK_MTL_RETAIN(transfer_blit);
     temporary = true;
     return true;
 }
@@ -143,12 +155,12 @@ bool finish_temporary(bool temporary, bool wait) {
     if (!temporary)
         return true;
     [transfer_blit endEncoding];
-    _SG_OBJC_RELEASE(transfer_blit);
+    NK_MTL_RELEASE(transfer_blit);
     [transfer_command commit];
     if (wait)
         [transfer_command waitUntilCompleted];
     const bool success = transfer_command.status != MTLCommandBufferStatusError;
-    _SG_OBJC_RELEASE(transfer_command);
+    NK_MTL_RELEASE(transfer_command);
     return success;
 }
 
@@ -166,8 +178,8 @@ ReadbackSlot *readback_slot(uint32_t token) {
 }
 
 void release_readback(ReadbackSlot &slot) {
-    _SG_OBJC_RELEASE(slot.buffer);
-    _SG_OBJC_RELEASE(slot.command);
+    NK_MTL_RELEASE(slot.buffer);
+    NK_MTL_RELEASE(slot.command);
     slot.size = 0;
     slot.row_pitch = 0;
     slot.width = 0;
@@ -248,7 +260,7 @@ uint32_t metal_buffer_to_image(sg_buffer source, uint32_t source_offset, uint32_
         return 0;
     bool temporary = false;
     if (!ensure_blit(temporary)) {
-        _SG_OBJC_RELEASE(staging);
+        NK_MTL_RELEASE(staging);
         return 0;
     }
     [transfer_blit copyFromBuffer:source_buffer
@@ -266,7 +278,7 @@ uint32_t metal_buffer_to_image(sg_buffer source, uint32_t source_offset, uint32_
                  destinationLevel:mip_level
                 destinationOrigin:MTLOriginMake(x, y, 0)];
     const bool success = finish_temporary(temporary, true);
-    _SG_OBJC_RELEASE(staging);
+    NK_MTL_RELEASE(staging);
     return success ? 1u : 0u;
 }
 
@@ -291,7 +303,7 @@ uint32_t metal_image_to_buffer(sg_image source, uint32_t mip_level, uint32_t lay
         return 0;
     bool temporary = false;
     if (!ensure_blit(temporary)) {
-        _SG_OBJC_RELEASE(staging);
+        NK_MTL_RELEASE(staging);
         return 0;
     }
     [transfer_blit copyFromTexture:source_info.texture
@@ -309,7 +321,7 @@ uint32_t metal_image_to_buffer(sg_image source, uint32_t mip_level, uint32_t lay
                 destinationOffset:destination_offset
                              size:transfer_size];
     const bool success = finish_temporary(temporary, true);
-    _SG_OBJC_RELEASE(staging);
+    NK_MTL_RELEASE(staging);
     return success ? 1u : 0u;
 }
 
@@ -336,7 +348,7 @@ uint32_t metal_readback_begin(sg_image source, uint32_t mip_level, uint32_t laye
         return 0;
     bool temporary = false;
     if (!ensure_blit(temporary)) {
-        _SG_OBJC_RELEASE(staging);
+        NK_MTL_RELEASE(staging);
         return 0;
     }
     [transfer_blit copyFromTexture:source_info.texture
@@ -352,9 +364,9 @@ uint32_t metal_readback_begin(sg_image source, uint32_t mip_level, uint32_t laye
     if (!slot.generation)
         slot.generation = 1;
     slot.buffer = staging;
-    _SG_OBJC_RETAIN(slot.buffer);
+    NK_MTL_RETAIN(slot.buffer);
     slot.command = transfer_command;
-    _SG_OBJC_RETAIN(slot.command);
+    NK_MTL_RETAIN(slot.command);
     slot.size = size;
     slot.row_pitch = row_pitch;
     slot.width = width;
@@ -362,10 +374,10 @@ uint32_t metal_readback_begin(sg_image source, uint32_t mip_level, uint32_t laye
     slot.active = true;
     if (temporary && !finish_temporary(true, false)) {
         release_readback(slot);
-        _SG_OBJC_RELEASE(staging);
+        NK_MTL_RELEASE(staging);
         return 0;
     }
-    _SG_OBJC_RELEASE(staging);
+    NK_MTL_RELEASE(staging);
     return readback_token(index, slot.generation);
 }
 
@@ -422,9 +434,9 @@ int metal_end_pass() {
         return 1;
     if (transfer_blit) {
         [transfer_blit endEncoding];
-        _SG_OBJC_RELEASE(transfer_blit);
+        NK_MTL_RELEASE(transfer_blit);
         [transfer_command commit];
-        _SG_OBJC_RELEASE(transfer_command);
+        NK_MTL_RELEASE(transfer_command);
     }
     transfer_pass_active = false;
     return true;
@@ -445,12 +457,12 @@ extern "C" const nk_sokol_transfer_api *nk_sokol_metal_transfer_get_api(void) {
 extern "C" void nk_sokol_metal_transfer_shutdown(void) {
     if (transfer_blit) {
         [transfer_blit endEncoding];
-        _SG_OBJC_RELEASE(transfer_blit);
+        NK_MTL_RELEASE(transfer_blit);
     }
     if (transfer_command) {
         [transfer_command commit];
         [transfer_command waitUntilCompleted];
-        _SG_OBJC_RELEASE(transfer_command);
+        NK_MTL_RELEASE(transfer_command);
     }
     transfer_pass_active = false;
     for (auto &slot : readbacks) {
