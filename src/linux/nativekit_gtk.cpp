@@ -249,6 +249,7 @@ using GlTexImage2D = void (*)(unsigned int, int, int, int, int, int, unsigned in
 using GlTexParameteri = void (*)(unsigned int, unsigned int, int);
 
 constexpr unsigned int gl_framebuffer = 0x8D40u;
+constexpr unsigned int gl_draw_framebuffer_binding = 0x8CA6u;
 constexpr unsigned int gl_read_framebuffer = 0x8CA8u;
 constexpr unsigned int gl_draw_framebuffer = 0x8CA9u;
 constexpr unsigned int gl_color_attachment0 = 0x8CE0u;
@@ -273,6 +274,8 @@ struct GtkSurfaceResource final : nk::core::Resource {
     uint32_t minor_version = 0;
     uint32_t flags = 0;
     uint32_t share_dependents = 0;
+    int32_t requested_width = 0;
+    int32_t requested_height = 0;
     nk_surface_frame_callback frame_callback = nullptr;
     void *frame_user_data = nullptr;
     guint frame_tick = 0;
@@ -287,6 +290,7 @@ struct GtkSurfaceResource final : nk::core::Resource {
     int32_t render_width = 0;
     int32_t render_height = 0;
     bool render_target_ready = false;
+    std::atomic_bool render_context_in_use = false;
     std::atomic_bool render_completion_pending = false;
     GlBindFramebuffer gl_bind_framebuffer = nullptr;
     GlBindTexture gl_bind_texture = nullptr;
@@ -355,6 +359,7 @@ void create_gtk_render_target(void *user_data) {
     auto *resource = request ? request->resource : nullptr;
     if (!resource || !resource->render_context || request->width <= 0 || request->height <= 0)
         return;
+    resource->render_context_in_use.store(true);
     gdk_gl_context_make_current(resource->render_context);
     unsigned int old_framebuffer = 0;
     unsigned int old_texture = 0;
@@ -388,6 +393,7 @@ void create_gtk_render_target(void *user_data) {
         resource->gl_check_framebuffer_status(gl_framebuffer) == gl_framebuffer_complete;
     resource->gl_bind_framebuffer(gl_framebuffer, 0);
     gdk_gl_context_clear_current();
+    resource->render_context_in_use.store(false);
     if (!complete) {
         if (framebuffer)
             resource->gl_delete_framebuffers(1, &framebuffer);
@@ -428,6 +434,7 @@ void destroy_gtk_render_target(void *user_data) {
     auto *resource = static_cast<GtkSurfaceResource *>(user_data);
     if (!resource || !resource->render_context)
         return;
+    resource->render_context_in_use.store(true);
     gdk_gl_context_make_current(resource->render_context);
     unsigned int framebuffer = 0;
     unsigned int texture = 0;
@@ -444,6 +451,7 @@ void destroy_gtk_render_target(void *user_data) {
     if (texture)
         resource->gl_delete_textures(1, &texture);
     gdk_gl_context_clear_current();
+    resource->render_context_in_use.store(false);
 }
 
 void composite_gtk_render_target(GtkSurfaceResource &resource) {
@@ -452,12 +460,15 @@ void composite_gtk_render_target(GtkSurfaceResource &resource) {
         !resource.gl_blit_framebuffer)
         return;
     int draw_framebuffer = 0;
-    resource.gl_get_integerv(gl_draw_framebuffer, &draw_framebuffer);
+    resource.gl_get_integerv(gl_draw_framebuffer_binding, &draw_framebuffer);
     resource.gl_bind_framebuffer(gl_read_framebuffer, resource.render_framebuffer);
     resource.gl_bind_framebuffer(gl_draw_framebuffer, static_cast<unsigned int>(draw_framebuffer));
     resource.gl_blit_framebuffer(0, 0, resource.render_width, resource.render_height, 0, 0,
-                                 resource.render_width, resource.render_height, gl_color_buffer_bit,
-                                 gl_nearest);
+                                 std::max(1, gtk_widget_get_allocated_width(resource.widget) *
+                                                 gtk_widget_get_scale_factor(resource.widget)),
+                                 std::max(1, gtk_widget_get_allocated_height(resource.widget) *
+                                                 gtk_widget_get_scale_factor(resource.widget)),
+                                 gl_color_buffer_bit, gl_nearest);
     resource.gl_bind_framebuffer(gl_framebuffer, static_cast<unsigned int>(draw_framebuffer));
 }
 #endif
@@ -5086,6 +5097,8 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
             resource->minor_version = options->minor_version;
             resource->flags =
                 options->flags & (NK_SURFACE_DEBUG_CONTEXT | NK_SURFACE_FORWARD_COMPATIBLE);
+            resource->requested_width = options->width;
+            resource->requested_height = options->height;
             resource->shared_surface = std::move(shared);
             resource->widget = nk_gl_area_new();
             g_object_set_data(G_OBJECT(resource->widget), k_accessibility_resource_data,
@@ -5211,8 +5224,18 @@ nk_result NK_CALL nk_surface_set_bounds(nk_handle handle, int32_t x, int32_t y, 
     auto parent = window(resource->parent);
     if (!parent)
         return invalid_handle("parent window");
+    resource->requested_width = width;
+    resource->requested_height = height;
     gtk_fixed_move(GTK_FIXED(parent->container), resource->widget, x, y);
     gtk_widget_set_size_request(resource->widget, width, height);
+#if defined(NK_GTK_THREADED_RENDER)
+    if (nk::core::render_executor_physical()) {
+        GtkAllocation allocation{x, y, width, height};
+        gtk_widget_size_allocate(resource->widget, &allocation);
+        gtk_gl_area_queue_render(GTK_GL_AREA(resource->widget));
+    }
+#endif
+    gtk_widget_queue_resize(resource->widget);
     return NK_OK;
 }
 
@@ -5409,6 +5432,24 @@ nk_result NK_CALL nk_surface_make_current(nk_handle handle) {
     auto resource = surface(handle);
     if (!resource)
         return invalid_handle("graphics surface");
+#if defined(NK_GTK_THREADED_RENDER)
+    if (nk::core::render_executor_physical()) {
+        if (!resource->render_context)
+            return fail(NK_ERROR_INVALID_REQUEST, "GTK threaded surface has no GL context");
+        /* The context is exclusively borrowed by RENDER. When it is idle,
+           briefly let GTK apply pending widget allocation changes, then
+           release the context immediately. */
+        if (!resource->render_context_in_use.load()) {
+            auto *area = GTK_GL_AREA(resource->widget);
+            gtk_gl_area_make_current(area);
+            if (const GError *error = gtk_gl_area_get_error(area))
+                return fail(NK_ERROR_UNKNOWN, error->message);
+            gdk_gl_context_clear_current();
+        }
+        gtk_widget_queue_resize(resource->widget);
+        return NK_OK;
+    }
+#endif
     auto *area = GTK_GL_AREA(resource->widget);
     gtk_gl_area_make_current(area);
     if (const GError *error = gtk_gl_area_get_error(area))
@@ -5438,18 +5479,31 @@ nk_result NK_CALL nk_graphics_bind_frame_target(const nk_surface_frame_target *t
     if (!target || !target->native_context || !target->native_target)
         return NK_ERROR_INVALID_ARGUMENT;
     gdk_gl_context_make_current(reinterpret_cast<GdkGLContext *>(target->native_context));
+    auto resource = surface(static_cast<nk_handle>(target->device.id));
+    if (resource)
+        resource->render_context_in_use.store(true);
     return NK_OK;
 }
 
-nk_result NK_CALL nk_graphics_unbind_frame_target(const nk_surface_frame_target *) {
+nk_result NK_CALL nk_graphics_unbind_frame_target(const nk_surface_frame_target *target) {
     if (nk::core::render_executor_physical())
         gdk_gl_context_clear_current();
+    if (target) {
+        auto resource = surface(static_cast<nk_handle>(target->device.id));
+        if (resource)
+            resource->render_context_in_use.store(false);
+    }
     return NK_OK;
 }
 
-nk_result NK_CALL nk_frame_backend_submit(const nk_surface_frame_target *) {
+nk_result NK_CALL nk_frame_backend_submit(const nk_surface_frame_target *target) {
     if (nk::core::render_executor_physical())
         gdk_gl_context_clear_current();
+    if (target) {
+        auto resource = surface(static_cast<nk_handle>(target->device.id));
+        if (resource)
+            resource->render_context_in_use.store(false);
+    }
     return NK_OK;
 }
 #else
@@ -5530,6 +5584,14 @@ nk_result NK_CALL nk_surface_get_framebuffer_size(nk_handle handle, int32_t *out
     auto resource = surface(handle);
     if (!resource)
         return invalid_handle("graphics surface");
+#if defined(NK_GTK_THREADED_RENDER)
+    if (nk::core::render_executor_physical()) {
+        const int scale = gtk_widget_get_scale_factor(resource->widget);
+        *out_width = resource->requested_width * scale;
+        *out_height = resource->requested_height * scale;
+        return NK_OK;
+    }
+#endif
     const int scale = gtk_widget_get_scale_factor(resource->widget);
     *out_width = gtk_widget_get_allocated_width(resource->widget) * scale;
     *out_height = gtk_widget_get_allocated_height(resource->widget) * scale;
