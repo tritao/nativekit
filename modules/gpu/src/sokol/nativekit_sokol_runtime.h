@@ -49,6 +49,16 @@ int nk_sokol_external_image_resolve(uint32_t image, sg_view *out_view, int32_t *
 
 typedef struct nk_sokol_transfer_api nk_sokol_transfer_api;
 
+/* Transfer callbacks use a third result for a valid operation that the
+ * selected backend cannot express for the requested resource shape. Keep
+ * this distinction out of the public API while allowing the adapter to
+ * report NKGPU_ERROR_UNSUPPORTED instead of collapsing it into UNKNOWN. */
+enum {
+    NK_SOKOL_TRANSFER_FAILED = 0,
+    NK_SOKOL_TRANSFER_OK = 1,
+    NK_SOKOL_TRANSFER_UNSUPPORTED = 2,
+};
+
 struct nk_sokol_transfer_api {
     uint32_t (*buffer_copy)(sg_buffer source, uint32_t source_offset, sg_buffer destination,
                             uint32_t destination_offset, uint32_t size);

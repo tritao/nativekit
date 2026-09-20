@@ -388,6 +388,16 @@ bool offscreen_format(nkgpu_renderer renderer, const nkgpu_features &features,
         if (success && !expect_result(nkgpu_image_copy(renderer, &copy), NKGPU_OK,
                                        "nkgpu_image_copy(offscreen)"))
             success = false;
+        if (success && format == NKGPU_IMAGEFORMAT_DEPTH32F &&
+            nkgpu_query_backend(renderer) == NKGPU_BACKEND_D3D11) {
+            nkgpu_image_copy_desc depth_region_copy = copy;
+            depth_region_copy.width = 1;
+            depth_region_copy.height = 1;
+            if (!expect_result(nkgpu_image_copy(renderer, &depth_region_copy),
+                               NKGPU_ERROR_UNSUPPORTED,
+                               "nkgpu_image_copy(depth subregion, D3D11)"))
+                success = false;
+        }
     }
 
     if (success && can_sample && features.image_readback) {
@@ -401,6 +411,70 @@ bool offscreen_format(nkgpu_renderer renderer, const nkgpu_features &features,
                   "nkgpu_image_destroy(offscreen source)");
     if (!success)
         std::fprintf(stderr, "offscreen format %s failed\n", format_name(format));
+    return success;
+}
+
+bool msaa_resolve(nkgpu_renderer renderer, const nkgpu_features &features) {
+    nkgpu_image_format_support support{};
+    support.struct_size = sizeof(support);
+    if (!expect_result(nkgpu_query_image_format_support(renderer, NKGPU_IMAGEFORMAT_RGBA8,
+                                                        &support),
+                       NKGPU_OK, "nkgpu_query_image_format_support(MSAA)"))
+        return false;
+    if (!features.image_readback || features.max_samples < 2 || !support.multisample)
+        return true;
+
+    const uint32_t sample_count = features.max_samples >= 4 ? 4u : 2u;
+    nkgpu_image_desc multisample_desc{};
+    multisample_desc.struct_size = sizeof(multisample_desc);
+    multisample_desc.width = 4;
+    multisample_desc.height = 4;
+    multisample_desc.format = NKGPU_IMAGEFORMAT_RGBA8;
+    multisample_desc.usage = NKGPU_IMAGE_RENDER_TARGET;
+    multisample_desc.sample_count = sample_count;
+    nkgpu_image multisample_image{};
+    nkgpu_image resolve_image{};
+    if (!expect_result(nkgpu_image_create_desc(renderer, &multisample_desc, &multisample_image),
+                       NKGPU_OK, "nkgpu_image_create_desc(MSAA)"))
+        return false;
+
+    nkgpu_image_desc resolve_desc = multisample_desc;
+    resolve_desc.sample_count = 1;
+    resolve_desc.usage = NKGPU_IMAGE_SAMPLED | NKGPU_IMAGE_RENDER_TARGET;
+    bool success = expect_result(nkgpu_image_create_desc(renderer, &resolve_desc, &resolve_image),
+                                 NKGPU_OK, "nkgpu_image_create_desc(MSAA resolve)");
+    if (success) {
+        nkgpu_render_pass_desc pass{};
+        pass.struct_size = sizeof(pass);
+        pass.color_count = 1;
+        pass.colors[0].image = multisample_image;
+        pass.colors[0].resolve_image = resolve_image;
+        pass.colors[0].action.load_action = NKGPU_LOADACTION_CLEAR;
+        pass.colors[0].action.store_action = NKGPU_STOREACTION_STORE;
+        pass.colors[0].action.clear_color = {0.2f, 0.4f, 0.6f, 1.0f};
+        success = expect_result(nkgpu_frame_begin(renderer), NKGPU_OK,
+                                "nkgpu_frame_begin(MSAA)") &&
+                   expect_result(nkgpu_begin_render_pass(renderer, &pass), NKGPU_OK,
+                                  "nkgpu_begin_render_pass(MSAA)") &&
+                   expect_result(nkgpu_end_pass(renderer), NKGPU_OK, "nkgpu_end_pass(MSAA)") &&
+                   expect_result(nkgpu_end_frame(renderer), NKGPU_OK,
+                                  "nkgpu_end_frame(MSAA)");
+    }
+    if (success) {
+        uint8_t pixel[4]{};
+        const uint8_t expected[] = {51, 102, 153, 255};
+        success = readback(renderer, resolve_image, 0, 0, 1, 1, pixel, sizeof(pixel)) &&
+                  std::memcmp(pixel, expected, sizeof(expected)) == 0;
+        if (!success)
+            std::fprintf(stderr, "MSAA resolve readback mismatch: %u,%u,%u,%u\n", pixel[0],
+                         pixel[1], pixel[2], pixel[3]);
+    }
+    if (resolve_image.id)
+        expect_result(nkgpu_image_destroy(renderer, resolve_image), NKGPU_OK,
+                      "nkgpu_image_destroy(MSAA resolve)");
+    if (multisample_image.id)
+        expect_result(nkgpu_image_destroy(renderer, multisample_image), NKGPU_OK,
+                      "nkgpu_image_destroy(MSAA)");
     return success;
 }
 
@@ -440,6 +514,8 @@ int main() {
     }
 
     const nkgpu_backend backend = nkgpu_query_backend(resources.renderer);
+    if (!msaa_resolve(resources.renderer, features))
+        return 1;
     if (features.timestamps) {
         nkgpu_timestamp timestamp{};
         if (!expect_result(nkgpu_frame_begin(resources.renderer), NKGPU_OK,

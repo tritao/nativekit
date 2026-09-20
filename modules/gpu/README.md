@@ -229,4 +229,6 @@ timing where timer queries or counter samples are available. Unsupported operati
 `NKGPU_ERROR_UNSUPPORTED`, so callers do not need to identify the selected
 backend. Depth-image rectangle readback is supported through staging and
 backend-hidden cropping; D3D11 depth image copies remain whole-subresource
-operations because that backend does not permit depth-stencil source rectangles.
+operations because that backend does not permit depth-stencil source rectangles;
+D3D11 depth subregion image copies report `NKGPU_ERROR_UNSUPPORTED`, while
+full-subresource copies remain available.

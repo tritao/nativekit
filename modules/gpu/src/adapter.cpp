@@ -3490,10 +3490,10 @@ nkgpu_result nkgpu_image_create_desc(nkgpu_renderer r, const nkgpu_image_desc *i
        keep the Sokol resource immutable while retaining dynamic_update in the
        NativeKit-side metadata. */
     native_desc.usage = convert_image_usage(usage, false);
-    /* A render-target image may be selected as either a source or an MSAA
-       resolve destination by a later pass. Creating both view types here keeps
-       the portable descriptor small and avoids a second image kind. */
-    if (usage & NKGPU_IMAGE_RENDER_TARGET)
+    /* Single-sample render targets may be selected as either a source or an
+       MSAA resolve destination by a later pass. Creating both view types here
+       keeps the portable descriptor small and avoids a second image kind. */
+    if ((usage & NKGPU_IMAGE_RENDER_TARGET) && sample_count == 1)
         native_desc.usage.resolve_attachment = true;
     size_t mip_offset = 0;
     for (uint32_t mip = 0; mip < mip_count; ++mip) {
@@ -3548,16 +3548,18 @@ nkgpu_result nkgpu_image_create_desc(nkgpu_renderer r, const nkgpu_image_desc *i
             record_allocation_failure(r);
             return fail(NKGPU_ERROR_OUT_OF_MEMORY, "color attachment view creation failed");
         }
-        view_desc = {};
-        view_desc.resolve_attachment.image = object;
-        if (!make_view(view_desc, image_value.resolve_attachment)) {
-            if (image_value.color_attachment.id)
-                sg_destroy_view(image_value.color_attachment);
-            if (image_value.view.id)
-                sg_destroy_view(image_value.view);
-            sg_destroy_image(object);
-            record_allocation_failure(r);
-            return fail(NKGPU_ERROR_OUT_OF_MEMORY, "resolve attachment view creation failed");
+        if (sample_count == 1) {
+            view_desc = {};
+            view_desc.resolve_attachment.image = object;
+            if (!make_view(view_desc, image_value.resolve_attachment)) {
+                if (image_value.color_attachment.id)
+                    sg_destroy_view(image_value.color_attachment);
+                if (image_value.view.id)
+                    sg_destroy_view(image_value.view);
+                sg_destroy_image(object);
+                record_allocation_failure(r);
+                return fail(NKGPU_ERROR_OUT_OF_MEMORY, "resolve attachment view creation failed");
+            }
         }
     }
     if (usage & NKGPU_IMAGE_STORAGE) {
@@ -3901,11 +3903,14 @@ nkgpu_result nkgpu_image_copy(nkgpu_renderer r, const nkgpu_image_copy_desc *des
         return access;
     if (!renderer->api->transfer->image_copy)
         return fail(NKGPU_ERROR_UNSUPPORTED, "image copies are unavailable");
-    if (!renderer->api->transfer->image_copy(source->value.object, desc->source_mip,
-                                             desc->source_layer, desc->source_x, desc->source_y,
-                                             destination->value.object, desc->destination_mip,
-                                             desc->destination_layer, desc->destination_x,
-                                             desc->destination_y, desc->width, desc->height))
+    const uint32_t result = renderer->api->transfer->image_copy(
+        source->value.object, desc->source_mip, desc->source_layer, desc->source_x,
+        desc->source_y, destination->value.object, desc->destination_mip,
+        desc->destination_layer, desc->destination_x, desc->destination_y, desc->width,
+        desc->height);
+    if (result == NK_SOKOL_TRANSFER_UNSUPPORTED)
+        return fail(NKGPU_ERROR_UNSUPPORTED, "image copy is unsupported for this resource shape");
+    if (!result)
         return fail(NKGPU_ERROR_UNKNOWN, "image copy failed");
     return NKGPU_OK;
 }

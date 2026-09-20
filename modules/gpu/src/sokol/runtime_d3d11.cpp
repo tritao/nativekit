@@ -315,7 +315,7 @@ uint32_t d3d11_image_copy(sg_image source, uint32_t source_mip, uint32_t source_
         if (source_x || source_y || destination_x || destination_y || width != source_info.width ||
             height != source_info.height || width != destination_info.width ||
             height != destination_info.height)
-            return 0;
+            return NK_SOKOL_TRANSFER_UNSUPPORTED;
         const uint32_t source_subresource = subresource(source_info, source_mip, source_layer);
         const uint32_t destination_subresource =
             subresource(destination_info, destination_mip, destination_layer);
