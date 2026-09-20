@@ -74,10 +74,11 @@ TimedViewUpdate run_view(const char *name, RenderPlan &plan,
 void print(const TimedViewUpdate &result) {
     std::printf(
         "%-18s %8.3f ms  view(rebuild=%d geometry=%d instances=%zu visibility=%zu "
-        "materials=%zu culling=%zu batches=%zu visible=%zu culled=%zu)\n",
+        "materials=%zu resources(g=%zu m=%zu) culling=%zu batches=%zu visible=%zu culled=%zu)\n",
         result.name, result.milliseconds, result.render.plan_rebuilt,
         result.render.geometry_rebuilt, result.render.patched_instances,
         result.render.patched_visibility, result.render.patched_materials,
+        result.render.updated_geometry_resources, result.render.updated_material_resources,
         result.render.patched_culling, result.render.rebuilt_batches,
         result.render.visible_items, result.render.culled_items);
 }
@@ -231,26 +232,64 @@ int main() {
     nkscene::SceneView presentation_view;
     auto presentation_plan = nkscene::compile(presentation_snapshot, presentation_view);
     assert(presentation_plan.items().size() == leaf_count - 100);
+    const auto geometry_revision = scene->geometry_store().find(geometry)->revision;
+    std::vector<std::uint64_t> material_revisions;
+    material_revisions.reserve(materials.size());
+    for (const auto material : materials)
+        material_revisions.push_back(scene->material_store().find(material)->revision);
+
+    nkscene::SceneView one_hidden_view = presentation_view;
+    one_hidden_view.set_visibility_override(leaves[1000], false);
+    auto one_hidden_plan = nkscene::compile(presentation_snapshot, presentation_view);
+    auto view_result = run_view("view hide one", one_hidden_plan,
+                                presentation_snapshot, one_hidden_view);
+    assert(!view_result.render.plan_rebuilt);
+    assert(!view_result.render.geometry_rebuilt);
+    assert(view_result.render.patched_instances == 0);
+    assert(view_result.render.patched_visibility == 1);
+    assert(view_result.render.patched_materials == 0);
+    assert(view_result.render.updated_geometry_resources == 0);
+    assert(view_result.render.updated_material_resources == 0);
+    assert(view_result.render.patched_culling == 0);
+    print(view_result);
 
     nkscene::SceneView hidden_view = presentation_view;
     hidden_view.visibility_overrides.reserve(1000);
     for (std::size_t index = 1000; index < 2000; ++index)
         hidden_view.visibility_overrides.push_back({leaves[index], false});
-    auto view_result = run_view("view hide 1000", presentation_plan,
-                                presentation_snapshot, hidden_view);
+    presentation_plan = nkscene::compile(presentation_snapshot, presentation_view);
+    view_result = run_view("view hide 1000", presentation_plan, presentation_snapshot, hidden_view);
     assert(!view_result.render.plan_rebuilt);
     assert(!view_result.render.geometry_rebuilt);
     assert(view_result.render.patched_instances == 0);
     assert(view_result.render.patched_visibility == 1000);
     assert(view_result.render.patched_materials == 0);
+    assert(view_result.render.updated_geometry_resources == 0);
+    assert(view_result.render.updated_material_resources == 0);
+    assert(view_result.render.patched_culling == 0);
+    print(view_result);
+
+    nkscene::SceneView material_view = presentation_view;
+    material_view.set_material_override(leaves[2000], materials[1]);
+    presentation_plan = nkscene::compile(presentation_snapshot, presentation_view);
+    view_result = run_view("view material one", presentation_plan, presentation_snapshot,
+                           material_view);
+    assert(!view_result.render.plan_rebuilt);
+    assert(!view_result.render.geometry_rebuilt);
+    assert(view_result.render.patched_instances == 0);
+    assert(view_result.render.patched_visibility == 0);
+    assert(view_result.render.patched_materials == 1);
+    assert(view_result.render.updated_geometry_resources == 0);
+    assert(view_result.render.updated_material_resources == 0);
     assert(view_result.render.patched_culling == 0);
     print(view_result);
 
     nkscene::SceneView composed_view = hidden_view;
-    composed_view.material_overrides.push_back({leaves[2000], materials[1]});
+    composed_view.set_material_override(leaves[2000], materials[1]);
     composed_view.clip_planes = {
         {{1.0f, 0.0f, 0.0f}, -0.5f, true},
         {{0.0f, 1.0f, 0.0f}, -0.5f, true}};
+    presentation_plan = nkscene::compile(presentation_snapshot, hidden_view);
     view_result = run_view("view composed", presentation_plan, presentation_snapshot,
                            composed_view);
     assert(!view_result.render.plan_rebuilt);
@@ -258,6 +297,8 @@ int main() {
     assert(view_result.render.patched_instances == 0);
     assert(view_result.render.patched_visibility == 0);
     assert(view_result.render.patched_materials == 1);
+    assert(view_result.render.updated_geometry_resources == 0);
+    assert(view_result.render.updated_material_resources == 0);
     assert(view_result.render.patched_culling == 0);
     assert(presentation_plan.clip_planes().size() == 2);
     print(view_result);
@@ -271,8 +312,14 @@ int main() {
     assert(view_result.render.patched_instances == 0);
     assert(view_result.render.patched_visibility == 0);
     assert(view_result.render.patched_materials == 0);
+    assert(view_result.render.updated_geometry_resources == 0);
+    assert(view_result.render.updated_material_resources == 0);
     assert(view_result.render.patched_culling == 0);
     assert(presentation_plan.clip_planes().size() == 2);
     print(view_result);
+
+    assert(scene->geometry_store().find(geometry)->revision == geometry_revision);
+    for (std::size_t index = 0; index < materials.size(); ++index)
+        assert(scene->material_store().find(materials[index])->revision == material_revisions[index]);
     return 0;
 }
