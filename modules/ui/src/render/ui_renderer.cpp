@@ -47,7 +47,7 @@ class UiRendererImpl final : public UiRenderer {
                    const float transform[6], float opacity) override;
     bool drawBoxShadow(float x, float y, float width, float height, const float transform[6],
                        float opacity, const BoxShadowDescriptor &shadow) override;
-    bool uploadAtlases(SkribidiAdapter &adapter, bool include_clean) override;
+    bool uploadAtlases(TextEngine &engine, bool include_clean) override;
     bool drawGlyphs(const PreparedGlyphs &glyphs, float opacity) override;
     bool drawGlyphs(const PreparedGlyphs &glyphs, const float transform[6], float origin_x,
                     float origin_y, float opacity) override;
@@ -206,7 +206,7 @@ struct UiRendererImpl::State {
         paint_images;
     std::unordered_map<uint32_t, PaintImage> images;
     std::unordered_map<uint32_t, CustomEffect> custom_effects;
-    std::unordered_map<const SkribidiAdapter *, SkribidiAdapterStats> text_stats;
+    std::unordered_map<const TextEngine *, TextEngineStats> text_stats;
     UiRendererStats stats{};
     std::string error;
     nk_surface surface = 0;
@@ -2077,8 +2077,8 @@ bool UiRendererImpl::drawBoxShadow(float x, float y, float width, float height,
                      sizeof(uniforms), {}, {}, state_->composite_vertices);
 }
 
-bool UiRendererImpl::uploadAtlases(SkribidiAdapter &adapter, bool include_clean) {
-    for (const auto &upload : adapter.atlas_uploads(include_clean)) {
+bool UiRendererImpl::uploadAtlases(TextEngine &engine, bool include_clean) {
+    for (const auto &upload : engine.atlas_uploads(include_clean)) {
         if (!valid_atlas_upload(upload))
             return fail(*state_, "invalid atlas upload region");
         const uint64_t key = atlas_key(upload.texture, upload.generation);
@@ -2140,13 +2140,13 @@ bool UiRendererImpl::uploadAtlases(SkribidiAdapter &adapter, bool include_clean)
         ++state_->stats.image_uploads;
         state_->stats.uploaded_bytes += uploaded_bytes;
         state_->stats.atlas_uploaded_bytes += uploaded_bytes;
-        if (upload.dirty && !adapter.acknowledge_atlas_upload(upload.texture, upload.dirty_epoch))
+        if (upload.dirty && !engine.acknowledge_atlas_upload(upload.texture, upload.dirty_epoch))
             return fail(*state_, "atlas upload acknowledgement failed");
         if (new_generation)
             retire_atlas_generations(*state_, upload.texture, upload.generation);
     }
-    const SkribidiAdapterStats current = adapter.stats();
-    auto &previous = state_->text_stats[&adapter];
+    const TextEngineStats current = engine.stats();
+    auto &previous = state_->text_stats[&engine];
     state_->stats.text_layout_cache_hits +=
         current.text_layout_cache_hits >= previous.text_layout_cache_hits
             ? current.text_layout_cache_hits - previous.text_layout_cache_hits

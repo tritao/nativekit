@@ -1,4 +1,4 @@
-#include "skribidi_adapter.h"
+#include "text_engine.h"
 
 #include "system_fonts.h"
 
@@ -20,14 +20,14 @@
 
 namespace nkui {
 
-struct SkribidiFontCollection::State {
+struct FontCollection::State {
     skb_font_collection_t *fonts = nullptr;
     std::unordered_set<std::string> system_fonts_loaded;
     std::vector<std::shared_ptr<std::vector<uint8_t>>> font_data;
     uint32_t font_load_count = 0;
 };
 
-struct SkribidiAdapter::State {
+struct TextEngine::State {
     struct RetainedLayout {
         ~RetainedLayout() {
             if (layout)
@@ -44,7 +44,7 @@ struct SkribidiAdapter::State {
         std::vector<skb_range_t> line_ranges;
     };
 
-    std::shared_ptr<SkribidiFontCollection> font_collection;
+    std::shared_ptr<FontCollection> font_collection;
     skb_temp_alloc_t *temporary = nullptr;
     skb_rasterizer_t *rasterizer = nullptr;
     skb_image_atlas_t *atlas = nullptr;
@@ -65,23 +65,23 @@ struct SkribidiAdapter::State {
 
 namespace {
 
-SkribidiAdapter::State::RetainedLayout *find_layout(SkribidiAdapter::State &state,
+TextEngine::State::RetainedLayout *find_layout(TextEngine::State &state,
                                                     TextLayoutId id) {
     const auto found = state.layouts.find(id);
     return found == state.layouts.end() ? nullptr : found->second.get();
 }
 
-const SkribidiAdapter::State::RetainedLayout *find_layout(const SkribidiAdapter::State &state,
+const TextEngine::State::RetainedLayout *find_layout(const TextEngine::State &state,
                                                           TextLayoutId id) {
     const auto found = state.layouts.find(id);
     return found == state.layouts.end() ? nullptr : found->second.get();
 }
 
-SkribidiAdapter::State::RetainedLayout *active_layout(SkribidiAdapter::State &state) {
+TextEngine::State::RetainedLayout *active_layout(TextEngine::State &state) {
     return find_layout(state, state.active_layout_id);
 }
 
-const SkribidiAdapter::State::RetainedLayout *active_layout(const SkribidiAdapter::State &state) {
+const TextEngine::State::RetainedLayout *active_layout(const TextEngine::State &state) {
     return find_layout(state, state.active_layout_id);
 }
 
@@ -91,7 +91,7 @@ namespace {
 
 bool system_font_fallback(skb_font_collection_t *font_collection, const char *, uint8_t script,
                           uint8_t font_family, void *context) {
-    auto *state = static_cast<SkribidiFontCollection::State *>(context);
+    auto *system_fonts_loaded = static_cast<std::unordered_set<std::string> *>(context);
     const uint32_t script_tag = skb_script_to_iso15924_tag(script);
     const bool emoji = font_family == SKB_FONT_FAMILY_EMOJI;
     if (std::getenv("NKUI_DEBUG_GLYPHS"))
@@ -110,7 +110,7 @@ bool system_font_fallback(skb_font_collection_t *font_collection, const char *, 
                 continue;
             const std::string key =
                 std::to_string(static_cast<unsigned>(font_family)) + ":" + font.path;
-            if (!state->system_fonts_loaded.insert(key).second)
+            if (!system_fonts_loaded->insert(key).second)
                 return true;
             if (skb_font_collection_add_font(font_collection, font.path.c_str(), font_family,
                                              nullptr)) {
@@ -205,7 +205,8 @@ void append_quad(const skb_quad_t &quad, const skb_image_t &atlas, PreparedGlyph
 }
 
 struct RenderGlyphContext {
-    SkribidiAdapter::State *state = nullptr;
+    TextEngine::State *state = nullptr;
+    skb_font_collection_t *font_collection = nullptr;
     skb_layout_t *layout = nullptr;
     float origin_x = 0.0f;
     float origin_y = 0.0f;
@@ -234,7 +235,7 @@ bool append_render_glyph(const skb_layout_render_glyph_t *glyph, void *context) 
     }
     const skb_quad_t quad = skb_image_atlas_get_glyph_quad(
         render.state->atlas, render.origin_x + glyph->offset_x, render.origin_y + glyph->offset_y,
-        render.pixel_scale, render.state->font_collection->native_handle(), glyph->font_handle,
+        render.pixel_scale, render.font_collection, glyph->font_handle,
         glyph->glyph_id, glyph->font_size, glyph->color, raster_mode(render.requested_mode));
     if (quad.flags & SKB_QUAD_IS_EMPTY)
         return true;
@@ -263,7 +264,7 @@ bool append_render_glyph(const skb_layout_render_glyph_t *glyph, void *context) 
 }
 
 void atlas_texture_created(skb_image_atlas_t *atlas, uint8_t texture_index, void *context) {
-    auto &state = *static_cast<SkribidiAdapter::State *>(context);
+    auto &state = *static_cast<TextEngine::State *>(context);
     const uint32_t id = (uint32_t(1) << 28) | (uint32_t(state.texture_namespace & 0x0FFF) << 16) |
                         state.next_texture_slot++;
     skb_image_atlas_set_texture_user_data(atlas, texture_index, id);
@@ -271,21 +272,21 @@ void atlas_texture_created(skb_image_atlas_t *atlas, uint8_t texture_index, void
 
 } // namespace
 
-SkribidiFontCollection::SkribidiFontCollection() : state_(new State) {
+FontCollection::FontCollection() : state_(new State) {
     state_->fonts = skb_font_collection_create();
 }
 
-SkribidiFontCollection::~SkribidiFontCollection() {
+FontCollection::~FontCollection() {
     if (state_->fonts)
         skb_font_collection_destroy(state_->fonts);
     delete state_;
 }
 
-bool SkribidiFontCollection::valid() const {
+bool FontCollection::valid() const {
     return state_ && state_->fonts;
 }
 
-bool SkribidiFontCollection::add_font(const char *path, FontFamily family) {
+bool FontCollection::add_font(const char *path, FontFamily family) {
     const uint8_t skb_family =
         family == FontFamily::Emoji ? SKB_FONT_FAMILY_EMOJI : SKB_FONT_FAMILY_DEFAULT;
     if (!path || !skb_font_collection_add_font(state_->fonts, path, skb_family, nullptr))
@@ -294,7 +295,7 @@ bool SkribidiFontCollection::add_font(const char *path, FontFamily family) {
     return true;
 }
 
-bool SkribidiFontCollection::add_font_from_shared_data(
+bool FontCollection::add_font_from_shared_data(
     const char *name, const std::shared_ptr<std::vector<uint8_t>> &data, FontFamily family) {
     const uint8_t skb_family =
         family == FontFamily::Emoji ? SKB_FONT_FAMILY_EMOJI : SKB_FONT_FAMILY_DEFAULT;
@@ -307,28 +308,25 @@ bool SkribidiFontCollection::add_font_from_shared_data(
     return true;
 }
 
-bool SkribidiFontCollection::add_system_fallbacks() {
+bool FontCollection::add_system_fallbacks() {
     if (!valid())
         return false;
-    skb_font_collection_set_on_font_fallback(state_->fonts, system_font_fallback, state_);
+    skb_font_collection_set_on_font_fallback(state_->fonts, system_font_fallback,
+                                             &state_->system_fonts_loaded);
     return true;
 }
 
-uint64_t SkribidiFontCollection::generation() const {
+uint64_t FontCollection::generation() const {
     return valid() ? skb_font_collection_get_generation(state_->fonts) : 0;
 }
 
-uint32_t SkribidiFontCollection::font_load_count() const {
+uint32_t FontCollection::font_load_count() const {
     return state_ ? state_->font_load_count : 0;
 }
 
-skb_font_collection_t *SkribidiFontCollection::native_handle() const {
-    return valid() ? state_->fonts : nullptr;
-}
+TextEngine::TextEngine() : TextEngine(std::make_shared<FontCollection>()) {}
 
-SkribidiAdapter::SkribidiAdapter() : SkribidiAdapter(std::make_shared<SkribidiFontCollection>()) {}
-
-SkribidiAdapter::SkribidiAdapter(std::shared_ptr<SkribidiFontCollection> fonts)
+TextEngine::TextEngine(std::shared_ptr<FontCollection> fonts)
     : state_(new State) {
     state_->font_collection = std::move(fonts);
     state_->temporary = skb_temp_alloc_create(512 * 1024);
@@ -338,7 +336,7 @@ SkribidiAdapter::SkribidiAdapter(std::shared_ptr<SkribidiFontCollection> fonts)
         skb_image_atlas_set_create_texture_callback(state_->atlas, atlas_texture_created, state_);
 }
 
-SkribidiAdapter::~SkribidiAdapter() {
+TextEngine::~TextEngine() {
     state_->layouts.clear();
     if (state_->atlas)
         skb_image_atlas_destroy(state_->atlas);
@@ -349,23 +347,23 @@ SkribidiAdapter::~SkribidiAdapter() {
     delete state_;
 }
 
-bool SkribidiAdapter::valid() const {
+bool TextEngine::valid() const {
     return state_->font_collection && state_->font_collection->valid() && state_->temporary &&
            state_->rasterizer && state_->atlas;
 }
 
-bool SkribidiAdapter::set_atlas_namespace(uint16_t value) {
+bool TextEngine::set_atlas_namespace(uint16_t value) {
     if (!value || value > 0x0FFF || state_->next_texture_slot != 1)
         return false;
     state_->texture_namespace = value;
     return true;
 }
 
-bool SkribidiAdapter::add_font(const char *path, FontFamily family) {
+bool TextEngine::add_font(const char *path, FontFamily family) {
     return state_->font_collection->add_font(path, family);
 }
 
-bool SkribidiAdapter::add_font_from_data(const char *name, const void *data, std::size_t bytes,
+bool TextEngine::add_font_from_data(const char *name, const void *data, std::size_t bytes,
                                          FontFamily family) {
     if (!name || !*name || !data || !bytes || !valid())
         return false;
@@ -374,7 +372,7 @@ bool SkribidiAdapter::add_font_from_data(const char *name, const void *data, std
     return add_font_from_shared_data(name, owned, family);
 }
 
-bool SkribidiAdapter::add_font_from_shared_data(const char *name,
+bool TextEngine::add_font_from_shared_data(const char *name,
                                                 const std::shared_ptr<std::vector<uint8_t>> &data,
                                                 FontFamily family) {
     if (!name || !*name || !data || data->empty() || !valid())
@@ -382,13 +380,13 @@ bool SkribidiAdapter::add_font_from_shared_data(const char *name,
     return state_->font_collection->add_font_from_shared_data(name, data, family);
 }
 
-bool SkribidiAdapter::add_system_fallbacks() {
+bool TextEngine::add_system_fallbacks() {
     if (!valid())
         return false;
     return state_->font_collection->add_system_fallbacks();
 }
 
-bool SkribidiAdapter::measure_intrinsic_utf8(const char *text, const TextLayoutOptions &options,
+bool TextEngine::measure_intrinsic_utf8(const char *text, const TextLayoutOptions &options,
                                              TextIntrinsicMetrics *result) {
     if (!valid() || !text || !std::isfinite(options.font_size) || options.font_size <= 0.0f ||
         !std::isfinite(options.letter_spacing) || !std::isfinite(options.line_height) ||
@@ -407,7 +405,7 @@ bool SkribidiAdapter::measure_intrinsic_utf8(const char *text, const TextLayoutO
     const skb_attribute_t layout_attributes[] = {
         skb_attribute_make_text_wrap(SKB_WRAP_NONE),
         skb_attribute_make_horizontal_align(SKB_ALIGN_START)};
-    const skb_layout_params_t params = {.font_collection = state_->font_collection->native_handle(),
+    const skb_layout_params_t params = {.font_collection = state_->font_collection->state_->fonts,
                                         .layout_width = 1000000.0f,
                                         .layout_attributes =
                                             SKB_ATTRIBUTE_SET_FROM_STATIC_ARRAY(layout_attributes)};
@@ -427,17 +425,17 @@ bool SkribidiAdapter::measure_intrinsic_utf8(const char *text, const TextLayoutO
     return true;
 }
 
-bool SkribidiAdapter::layout_utf8(const char *text, float width, float font_size) {
+bool TextEngine::layout_utf8(const char *text, float width, float font_size) {
     TextLayoutOptions options;
     options.font_size = font_size;
     return layout_utf8(text, width, options);
 }
 
-bool SkribidiAdapter::layout_utf8(const char *text, float width, const TextLayoutOptions &options) {
+bool TextEngine::layout_utf8(const char *text, float width, const TextLayoutOptions &options) {
     return layout_utf8(text, width, options, nullptr);
 }
 
-bool SkribidiAdapter::layout_utf8(const char *text, float width, const TextLayoutOptions &options,
+bool TextEngine::layout_utf8(const char *text, float width, const TextLayoutOptions &options,
                                   TextLayoutResult *result) {
     if (!valid() || !text || !std::isfinite(width) || width <= 0.0f ||
         !std::isfinite(options.font_size) || options.font_size <= 0.0f ||
@@ -485,7 +483,7 @@ bool SkribidiAdapter::layout_utf8(const char *text, float width, const TextLayou
     const skb_attribute_t layout_attributes[] = {
         skb_attribute_make_text_wrap(wrap), skb_attribute_make_horizontal_align(align),
         skb_attribute_make_text_base_direction(base_direction)};
-    const skb_layout_params_t params = {.font_collection = state_->font_collection->native_handle(),
+    const skb_layout_params_t params = {.font_collection = state_->font_collection->state_->fonts,
                                         .layout_width = width,
                                         .layout_attributes =
                                             SKB_ATTRIBUTE_SET_FROM_STATIC_ARRAY(layout_attributes)};
@@ -539,7 +537,7 @@ bool SkribidiAdapter::layout_utf8(const char *text, float width, const TextLayou
     return true;
 }
 
-void SkribidiAdapter::prune_layout_cache(const std::vector<TextLayoutId> &retained_ids,
+void TextEngine::prune_layout_cache(const std::vector<TextLayoutId> &retained_ids,
                                          std::size_t max_entries) {
     const uint64_t font_generation = state_->font_collection->generation();
     const std::unordered_set<TextLayoutId> retained(retained_ids.begin(), retained_ids.end());
@@ -567,24 +565,24 @@ void SkribidiAdapter::prune_layout_cache(const std::vector<TextLayoutId> &retain
     }
 }
 
-bool SkribidiAdapter::has_layout(TextLayoutId id) const {
+bool TextEngine::has_layout(TextLayoutId id) const {
     return id != 0 && find_layout(*state_, id) != nullptr;
 }
 
-bool SkribidiAdapter::prepare_glyphs(float origin_x, float origin_y, float pixel_scale,
+bool TextEngine::prepare_glyphs(float origin_x, float origin_y, float pixel_scale,
                                      GlyphMode mode, PreparedGlyphs &output) {
     return prepare_glyphs_internal(state_->active_layout_id, origin_x, origin_y, pixel_scale, mode,
                                    output, -1, -1, 0.0f, 0.0f);
 }
 
-bool SkribidiAdapter::prepare_glyphs_for_line(uint32_t line_index, float origin_x, float origin_y,
+bool TextEngine::prepare_glyphs_for_line(uint32_t line_index, float origin_x, float origin_y,
                                               float pixel_scale, GlyphMode mode,
                                               PreparedGlyphs &output) {
     return prepare_glyphs_for_line(state_->active_layout_id, line_index, origin_x, origin_y,
                                    pixel_scale, mode, output);
 }
 
-bool SkribidiAdapter::prepare_glyphs_for_line(TextLayoutId id, uint32_t line_index, float origin_x,
+bool TextEngine::prepare_glyphs_for_line(TextLayoutId id, uint32_t line_index, float origin_x,
                                               float origin_y, float pixel_scale, GlyphMode mode,
                                               PreparedGlyphs &output) {
     const auto *layout = find_layout(*state_, id);
@@ -598,13 +596,13 @@ bool SkribidiAdapter::prepare_glyphs_for_line(TextLayoutId id, uint32_t line_ind
 }
 
 std::shared_ptr<const PreparedGlyphs>
-SkribidiAdapter::published_glyphs(TextLayoutId id, float origin_x, float origin_y,
+TextEngine::published_glyphs(TextLayoutId id, float origin_x, float origin_y,
                                   float pixel_scale, GlyphMode mode, GlyphTint tint) {
     return publish_glyphs(id, -1, origin_x, origin_y, pixel_scale, mode, tint);
 }
 
 std::shared_ptr<const PreparedGlyphs>
-SkribidiAdapter::published_glyphs_for_line(TextLayoutId id, uint32_t line_index, float origin_x,
+TextEngine::published_glyphs_for_line(TextLayoutId id, uint32_t line_index, float origin_x,
                                            float origin_y, float pixel_scale, GlyphMode mode,
                                            GlyphTint tint) {
     return publish_glyphs(id, static_cast<int32_t>(line_index), origin_x, origin_y, pixel_scale,
@@ -612,7 +610,7 @@ SkribidiAdapter::published_glyphs_for_line(TextLayoutId id, uint32_t line_index,
 }
 
 std::shared_ptr<const PreparedGlyphs>
-SkribidiAdapter::publish_glyphs(TextLayoutId id, int32_t line_index, float origin_x, float origin_y,
+TextEngine::publish_glyphs(TextLayoutId id, int32_t line_index, float origin_x, float origin_y,
                                 float pixel_scale, GlyphMode mode, GlyphTint tint) {
     const auto *layout = find_layout(*state_, id);
     if (!layout || pixel_scale <= 0.0f)
@@ -679,7 +677,7 @@ SkribidiAdapter::publish_glyphs(TextLayoutId id, int32_t line_index, float origi
     return snapshot;
 }
 
-bool SkribidiAdapter::prepare_glyphs_internal(TextLayoutId id, float origin_x, float origin_y,
+bool TextEngine::prepare_glyphs_internal(TextLayoutId id, float origin_x, float origin_y,
                                               float pixel_scale, GlyphMode mode,
                                               PreparedGlyphs &output, int32_t line_start,
                                               int32_t line_end, float line_x, float line_y) {
@@ -701,6 +699,9 @@ bool SkribidiAdapter::prepare_glyphs_internal(TextLayoutId id, float origin_x, f
     output.mode = mode;
     output.layout_id = id;
     output.layout_generation = skb_layout_get_generation(retained->layout);
+    if (!state_->font_collection || !state_->font_collection->state_ ||
+        !state_->font_collection->state_->fonts)
+        return false;
     if (!skb_layout_prepare_glyphs(retained->layout, state_->atlas, state_->temporary,
                                    state_->rasterizer, pixel_scale, raster_mode(mode)))
         return false;
@@ -717,16 +718,23 @@ bool SkribidiAdapter::prepare_glyphs_internal(TextLayoutId id, float origin_x, f
         }
         std::fprintf(stderr, "\n");
     }
-    RenderGlyphContext render{
-        state_, retained->layout, origin_x - line_x, origin_y - line_y, pixel_scale,
-        mode,   &output,          line_start,        line_end};
+    RenderGlyphContext render{state_,
+                              state_->font_collection->state_->fonts,
+                              retained->layout,
+                              origin_x - line_x,
+                              origin_y - line_y,
+                              pixel_scale,
+                              mode,
+                              &output,
+                              line_start,
+                              line_end};
     if (!skb_layout_iterate_render_glyphs(retained->layout, append_render_glyph, &render))
         return false;
     state_->prepared_batch_count += output.batches.size();
     return true;
 }
 
-bool SkribidiAdapter::prepared_glyphs_current(const PreparedGlyphs &glyphs) const {
+bool TextEngine::prepared_glyphs_current(const PreparedGlyphs &glyphs) const {
     const auto *layout = find_layout(*state_, glyphs.layout_id);
     if (!state_->atlas || !layout ||
         glyphs.layout_generation != skb_layout_get_generation(layout->layout))
@@ -749,7 +757,7 @@ bool SkribidiAdapter::prepared_glyphs_current(const PreparedGlyphs &glyphs) cons
     return true;
 }
 
-TextRect SkribidiAdapter::bounds() const {
+TextRect TextEngine::bounds() const {
     const auto *layout = active_layout(*state_);
     if (!layout)
         return {};
@@ -757,7 +765,7 @@ TextRect SkribidiAdapter::bounds() const {
     return {value.x, value.y, value.width, value.height};
 }
 
-TextPosition SkribidiAdapter::hit_test(float x, float y) const {
+TextPosition TextEngine::hit_test(float x, float y) const {
     const auto *layout = active_layout(*state_);
     if (!layout)
         return {};
@@ -765,7 +773,7 @@ TextPosition SkribidiAdapter::hit_test(float x, float y) const {
     return {value.offset, static_cast<uint8_t>(value.affinity)};
 }
 
-int32_t SkribidiAdapter::offset_from_position(TextPosition position) const {
+int32_t TextEngine::offset_from_position(TextPosition position) const {
     const auto *layout = active_layout(*state_);
     if (!layout)
         return 0;
@@ -774,7 +782,7 @@ int32_t SkribidiAdapter::offset_from_position(TextPosition position) const {
     return skb_layout_get_offset_from_text_position(layout->layout, value);
 }
 
-TextCaret SkribidiAdapter::caret(TextPosition position) const {
+TextCaret TextEngine::caret(TextPosition position) const {
     const auto *layout = active_layout(*state_);
     if (!layout)
         return {};
@@ -784,7 +792,7 @@ TextCaret SkribidiAdapter::caret(TextPosition position) const {
     return {result.x, result.y, result.ascender, result.descender, result.slope, result.direction};
 }
 
-TextPosition SkribidiAdapter::word_start(TextPosition position) const {
+TextPosition TextEngine::word_start(TextPosition position) const {
     const auto *layout = active_layout(*state_);
     if (!layout)
         return {};
@@ -794,7 +802,7 @@ TextPosition SkribidiAdapter::word_start(TextPosition position) const {
     return {result.offset, static_cast<uint8_t>(result.affinity)};
 }
 
-TextPosition SkribidiAdapter::word_end(TextPosition position) const {
+TextPosition TextEngine::word_end(TextPosition position) const {
     const auto *layout = active_layout(*state_);
     if (!layout)
         return {};
@@ -804,22 +812,22 @@ TextPosition SkribidiAdapter::word_end(TextPosition position) const {
     return {result.offset, static_cast<uint8_t>(result.affinity)};
 }
 
-int32_t SkribidiAdapter::next_grapheme(int32_t offset) const {
+int32_t TextEngine::next_grapheme(int32_t offset) const {
     const auto *layout = active_layout(*state_);
     return layout ? skb_layout_get_next_grapheme_offset(layout->layout, offset) : 0;
 }
 
-int32_t SkribidiAdapter::previous_grapheme(int32_t offset) const {
+int32_t TextEngine::previous_grapheme(int32_t offset) const {
     const auto *layout = active_layout(*state_);
     return layout ? skb_layout_get_prev_grapheme_offset(layout->layout, offset) : 0;
 }
 
-int32_t SkribidiAdapter::align_grapheme(int32_t offset) const {
+int32_t TextEngine::align_grapheme(int32_t offset) const {
     const auto *layout = active_layout(*state_);
     return layout ? skb_layout_align_grapheme_offset(layout->layout, offset) : 0;
 }
 
-TextRange SkribidiAdapter::word_range_at(int32_t offset) const {
+TextRange TextEngine::word_range_at(int32_t offset) const {
     const auto *retained = active_layout(*state_);
     if (!retained)
         return {};
@@ -838,7 +846,7 @@ TextRange SkribidiAdapter::word_range_at(int32_t offset) const {
     return {std::min(start.offset, end), std::max(start.offset, end)};
 }
 
-TextRange SkribidiAdapter::line_range_at(int32_t offset) const {
+TextRange TextEngine::line_range_at(int32_t offset) const {
     const auto *retained = active_layout(*state_);
     if (!retained)
         return {};
@@ -857,7 +865,7 @@ TextRange SkribidiAdapter::line_range_at(int32_t offset) const {
     return {std::min(start.offset, end), std::max(start.offset, end)};
 }
 
-int32_t SkribidiAdapter::move_word(int32_t offset, int32_t direction, bool mac_style) const {
+int32_t TextEngine::move_word(int32_t offset, int32_t direction, bool mac_style) const {
     const auto *retained = active_layout(*state_);
     if (!retained || direction == 0)
         return offset;
@@ -929,7 +937,7 @@ int32_t SkribidiAdapter::move_word(int32_t offset, int32_t direction, bool mac_s
     return std::clamp(skb_layout_align_grapheme_offset(layout, next), 0, text_count);
 }
 
-int32_t SkribidiAdapter::move_paragraph(int32_t offset, int32_t direction, bool mac_style) const {
+int32_t TextEngine::move_paragraph(int32_t offset, int32_t direction, bool mac_style) const {
     const auto *retained = active_layout(*state_);
     if (!retained || direction == 0)
         return offset;
@@ -970,7 +978,7 @@ int32_t SkribidiAdapter::move_paragraph(int32_t offset, int32_t direction, bool 
     return previous_start;
 }
 
-std::vector<TextRect> SkribidiAdapter::selection_rects(TextPosition start, TextPosition end) const {
+std::vector<TextRect> TextEngine::selection_rects(TextPosition start, TextPosition end) const {
     std::vector<TextRect> rectangles;
     const auto *layout = active_layout(*state_);
     if (!layout)
@@ -1014,37 +1022,37 @@ std::vector<TextRect> SkribidiAdapter::selection_rects(TextPosition start, TextP
     return normalized;
 }
 
-uint64_t SkribidiAdapter::font_collection_generation() const {
+uint64_t TextEngine::font_collection_generation() const {
     return state_->font_collection ? state_->font_collection->generation() : 0;
 }
 
-uint64_t SkribidiAdapter::layout_generation() const {
+uint64_t TextEngine::layout_generation() const {
     const auto *layout = active_layout(*state_);
     return layout ? skb_layout_get_generation(layout->layout) : 0;
 }
 
-TextLayoutId SkribidiAdapter::active_layout_id() const {
+TextLayoutId TextEngine::active_layout_id() const {
     return active_layout(*state_) ? state_->active_layout_id : 0;
 }
 
-uint32_t SkribidiAdapter::layout_build_count() const {
+uint32_t TextEngine::layout_build_count() const {
     return state_->layout_builds;
 }
 
-uint32_t SkribidiAdapter::atlas_texture_count() const {
+uint32_t TextEngine::atlas_texture_count() const {
     return state_->atlas ? static_cast<uint32_t>(skb_image_atlas_get_texture_count(state_->atlas))
                          : 0;
 }
 
-uint32_t SkribidiAdapter::scale_generation() const {
+uint32_t TextEngine::scale_generation() const {
     return state_->scale_generation;
 }
 
-SkribidiAdapterStats SkribidiAdapter::stats() const {
+TextEngineStats TextEngine::stats() const {
     if (!state_->atlas)
         return {};
     const skb_image_atlas_stats_t atlas_stats = skb_image_atlas_get_stats(state_->atlas);
-    SkribidiAdapterStats result{};
+    TextEngineStats result{};
     result.glyph_cache_misses = atlas_stats.glyph_cache_misses;
     result.glyphs_rasterized = atlas_stats.glyphs_rasterized;
     result.prepared_batch_count = state_->prepared_batch_count;
@@ -1058,11 +1066,11 @@ SkribidiAdapterStats SkribidiAdapter::stats() const {
     return result;
 }
 
-std::vector<AtlasUpload> SkribidiAdapter::pending_atlas_uploads() const {
+std::vector<AtlasUpload> TextEngine::pending_atlas_uploads() const {
     return atlas_uploads(false);
 }
 
-std::vector<AtlasUpload> SkribidiAdapter::atlas_uploads(bool include_clean) const {
+std::vector<AtlasUpload> TextEngine::atlas_uploads(bool include_clean) const {
     std::vector<AtlasUpload> uploads;
     if (!state_->atlas)
         return uploads;
@@ -1089,7 +1097,7 @@ std::vector<AtlasUpload> SkribidiAdapter::atlas_uploads(bool include_clean) cons
     return uploads;
 }
 
-bool SkribidiAdapter::acknowledge_atlas_upload(AtlasTextureId texture, uint64_t dirty_epoch) {
+bool TextEngine::acknowledge_atlas_upload(AtlasTextureId texture, uint64_t dirty_epoch) {
     if (!state_->atlas || !texture.value || !dirty_epoch)
         return false;
     const int count = skb_image_atlas_get_texture_count(state_->atlas);

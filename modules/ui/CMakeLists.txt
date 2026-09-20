@@ -20,7 +20,7 @@ add_library(nativekit_ui ${NK_LIBRARY_TYPE}
     src/layout/clay_layout_backend.cpp
     src/layout/layout_render_compiler.cpp
     src/prepare/nanovg_path.cpp
-    src/prepare/skribidi_adapter.cpp
+    src/prepare/text_engine.cpp
     src/prepare/system_fonts.cpp
     src/render/frame_resources.cpp
     src/render/render_plan_executor.cpp
@@ -153,16 +153,16 @@ if(NK_BUILD_TESTS)
     target_include_directories(nativekit_ui_nanovg_path_test PRIVATE src)
     target_link_libraries(nativekit_ui_nanovg_path_test PRIVATE nkui_nanovg_core)
     add_test(NAME nativekit_ui_nanovg_path COMMAND nativekit_ui_nanovg_path_test)
-    add_executable(nativekit_ui_skribidi_adapter_test
-        tests/skribidi_adapter.cpp
-        src/prepare/skribidi_adapter.cpp
+    add_executable(nativekit_ui_text_engine_test
+        tests/text_engine.cpp
+        src/prepare/text_engine.cpp
         src/prepare/system_fonts.cpp)
-    target_include_directories(nativekit_ui_skribidi_adapter_test PRIVATE src)
-    target_compile_definitions(nativekit_ui_skribidi_adapter_test PRIVATE
+    target_include_directories(nativekit_ui_text_engine_test PRIVATE src)
+    target_compile_definitions(nativekit_ui_text_engine_test PRIVATE
         NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf"
         NKUI_TEST_COLOR_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/NotoColorEmoji-Regular.ttf")
-    target_link_libraries(nativekit_ui_skribidi_adapter_test PRIVATE nkui_skribidi)
-    add_test(NAME nativekit_ui_skribidi_adapter COMMAND nativekit_ui_skribidi_adapter_test)
+    target_link_libraries(nativekit_ui_text_engine_test PRIVATE nkui_skribidi)
+    add_test(NAME nativekit_ui_text_engine COMMAND nativekit_ui_text_engine_test)
     add_executable(nativekit_ui_compositor_test
         tests/compositor.cpp
         src/compositor/compositor.cpp
@@ -184,7 +184,7 @@ if(NK_BUILD_TESTS)
     add_executable(nativekit_ui_layout_engine_test
         tests/layout_engine.cpp
         src/layout/clay_layout_backend.cpp
-        src/prepare/skribidi_adapter.cpp
+        src/prepare/text_engine.cpp
         src/prepare/system_fonts.cpp)
     target_include_directories(nativekit_ui_layout_engine_test PRIVATE
         src "${NK_VENDOR_DIR}/clay")
@@ -209,7 +209,7 @@ if(NK_BUILD_TESTS)
     add_executable(nativekit_ui_layout_invariants_test
         tests/layout_invariants.cpp
         src/layout/clay_layout_backend.cpp
-        src/prepare/skribidi_adapter.cpp
+        src/prepare/text_engine.cpp
         src/prepare/system_fonts.cpp)
     target_include_directories(nativekit_ui_layout_invariants_test PRIVATE
         src "${NK_VENDOR_DIR}/clay")
@@ -223,7 +223,7 @@ if(NK_BUILD_TESTS)
         src/layout/layout_render_compiler.cpp
         src/display_list/display_list.cpp
         src/prepare/nanovg_path.cpp
-        src/prepare/skribidi_adapter.cpp
+        src/prepare/text_engine.cpp
         src/prepare/system_fonts.cpp
     src/render/frame_resources.cpp
     src/render/render_plan_executor.cpp
@@ -307,7 +307,7 @@ if(NK_BUILD_TESTS)
         nativekit_ui_image_pixels_test
         nativekit_ui_nanovg_recorder_test
         nativekit_ui_nanovg_path_test
-        nativekit_ui_skribidi_adapter_test
+        nativekit_ui_text_engine_test
         nativekit_ui_compositor_test
         nativekit_ui_frame_resources_test
         nativekit_ui_layout_engine_test

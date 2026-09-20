@@ -4,7 +4,7 @@
 #include "nativekit_graphics.h"
 #include "display_list/display_list.h"
 #include "prepare/nanovg_path.h"
-#include "prepare/skribidi_adapter.h"
+#include "prepare/text_engine.h"
 
 #include <array>
 #include <cstdint>
@@ -157,7 +157,7 @@ class UiRenderer {
     virtual bool drawBoxShadow(float x, float y, float width, float height,
                                const float transform[6], float opacity,
                                const BoxShadowDescriptor &shadow) = 0;
-    virtual bool uploadAtlases(SkribidiAdapter &adapter, bool include_clean = false) = 0;
+    virtual bool uploadAtlases(TextEngine &engine, bool include_clean = false) = 0;
     virtual bool drawGlyphs(const PreparedGlyphs &glyphs, float opacity = 1.0f) = 0;
     virtual bool drawGlyphs(const PreparedGlyphs &glyphs, const float transform[6], float origin_x,
                             float origin_y, float opacity = 1.0f) = 0;

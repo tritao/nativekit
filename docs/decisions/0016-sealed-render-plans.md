@@ -47,7 +47,7 @@ runtime in the sealed plan.
   immutable objects, so later preparation passes cannot change what a sealed
   frame draws.
 - Sealing cost follows the bindings, not the bytes. Prepared text publishes an
-  immutable snapshot through `SkribidiAdapter::published_glyphs()`, which shares
+  immutable snapshot through `TextEngine::published_glyphs()`, which shares
   one object per layout generation, geometry, scale, and mode and stays valid
   after later preparation passes. Images and paths follow the same rule as their
   producers move to shared immutable data; the API paths still bind borrowed

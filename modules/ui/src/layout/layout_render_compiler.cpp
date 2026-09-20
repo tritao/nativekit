@@ -1,7 +1,7 @@
 #include "layout/layout_render_compiler.h"
 
 #include "prepare/nanovg_path.h"
-#include "prepare/skribidi_adapter.h"
+#include "prepare/text_engine.h"
 
 #include <algorithm>
 #include <array>
@@ -148,7 +148,7 @@ void hash_string(uint64_t &hash, const std::string &value) {
 }
 
 uint64_t primitive_content_generation(const LayoutPrimitive &primitive,
-                                      const SkribidiAdapter *text = nullptr,
+                                      const TextEngine *text = nullptr,
                                       uint64_t glyph_generation = 0) {
     uint64_t hash = kContentHashOffset;
     hash_u32(hash, static_cast<uint32_t>(primitive.kind));
@@ -258,12 +258,12 @@ void LayoutRenderFrame::reset() {
     plan_ = {};
     paths_.clear();
     glyphs_.clear();
-    text_source_ = nullptr;
+    text_engine_source_ = nullptr;
 }
 
-LayoutRenderCompiler::LayoutRenderCompiler() : fonts_(std::make_shared<SkribidiFontCollection>()) {}
+LayoutRenderCompiler::LayoutRenderCompiler() : fonts_(std::make_shared<FontCollection>()) {}
 
-void LayoutRenderCompiler::set_font_collection(std::shared_ptr<SkribidiFontCollection> fonts) {
+void LayoutRenderCompiler::set_font_collection(std::shared_ptr<FontCollection> fonts) {
     fonts_ = std::move(fonts);
 }
 
@@ -287,7 +287,7 @@ bool LayoutRenderCompiler::add_system_fallbacks() {
 bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId main_target,
                                    float pixel_scale, LayoutRenderFrame &out,
                                    LayoutRenderCompileError *error, bool load_existing,
-                                   SkribidiAdapter *text_source,
+                                   TextEngine *text_engine_source,
                                    const CustomPaintPlans *custom_paints,
                                    const RasterPaintNodes *raster_paint_nodes) const {
     if (error)
@@ -297,7 +297,7 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
         return fail(error, 0, "invalid layout render input");
 
     out.reset();
-    out.text_source_ = text_source;
+    out.text_engine_source_ = text_engine_source;
     {
         std::size_t pass_capacity = 1;
         if (custom_paints)
@@ -313,9 +313,9 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
             has_text = has_text || primitive.kind == LayoutPrimitiveKind::Text;
 
         if (has_text) {
-            if (!text_source && !out.text_)
-                out.text_ = std::make_unique<SkribidiAdapter>(fonts_);
-            SkribidiAdapter *text = out.text_adapter();
+            if (!text_engine_source && !out.text_engine_)
+                out.text_engine_ = std::make_unique<TextEngine>(fonts_);
+            TextEngine *text = out.text_engine();
             if (!text || !text->valid())
                 return fail(error, 0, "text renderer is unavailable");
         }
@@ -656,7 +656,7 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                     close_raster_if_last(index);
                     continue;
                 }
-                SkribidiAdapter *text = out.text_adapter();
+                TextEngine *text = out.text_engine();
                 if (!text || primitive.text_style.font_size <= 0.0f ||
                     transient_slot > kMaxTransientSlot)
                     return fail(error, index, "layout text preparation input is invalid");

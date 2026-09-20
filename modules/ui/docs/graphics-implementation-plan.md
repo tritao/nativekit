@@ -43,7 +43,7 @@ editing, rasterization, and CPU atlas packing.
 
 The layout side follows the same boundary: NativeKit exposes `LayoutNode` and
 `LayoutSnapshot`, while Clay is a private implementation detail of
-`LayoutEngine`. The adapter uses Skribidi for intrinsic
+`LayoutEngine`. The text engine uses Skribidi for intrinsic
 text metrics, paragraph line breaking, bidi, and final shaping through Clay's
 generic external text-layout callback. Clay consumes the returned line
 dimensions for box layout and forwards an opaque text-layout ID and line index
@@ -87,7 +87,7 @@ Ownership rules:
 - NanoVG owns only its CPU context and transient path-tessellation state.
 - Skribidi owns layouts, editing state, glyph rasterization, and CPU atlas
   pixels.
-- The Skribidi adapter maps CPU atlas textures to NativeKit image IDs.
+- The text engine maps Skribidi CPU atlas textures to NativeKit image IDs.
 - Haxe owns application state and submits validated semantic transactions.
 - Frame arenas own transient vertices, indices, uniforms, and prepared records.
 
@@ -104,7 +104,7 @@ modules/ui/src/
         validation.*
     prepare/
         nanovg_recorder.*
-        skribidi_adapter.*
+        text_engine.*
         glyph_batcher.*
     compositor/
         compositor.*
@@ -283,8 +283,8 @@ Exit criteria:
 
 ## Phase 3: direct Skribidi glyph batches
 
-1. Add a private Skribidi adapter for font collections, layout caches, layouts,
-   editor state, rasterizer, and image atlas.
+1. Add a private text engine backed by Skribidi for font collections, layout
+   caches, layouts, editor state, rasterizer, and image atlas.
 2. Define semantic text-layout requests containing UTF-8 text, available width,
    locale, scale, font candidates, size, weight, spacing, alignment, and spans.
 3. Cache layouts by text/style/font generation/width/scale.
@@ -318,13 +318,13 @@ Exit criteria:
 1. Let Skribidi continue to own CPU packing and pixels.
 2. Let NativeKit exclusively own corresponding GPU images and views.
 3. Store NativeKit image IDs in atlas texture user data through the private
-   adapter.
+   text engine.
 4. Use R8 images for alpha-mask and SDF atlases and RGBA images for color
    atlases.
 5. Track texture generation, format, dimensions, dirty bounds, and upload
    acknowledgement.
 6. Remove per-update full RGBA conversion and temporary full-atlas allocation.
-7. Use queryable texture generations in the adapter; add explicit lifecycle
+7. Use queryable texture generations in the text engine; add explicit lifecycle
    callbacks only if future replacement/repack behavior needs them.
 8. Keep a correct whole-atlas fallback isolated in the uploader until partial
    region upload is supported by the active backend.

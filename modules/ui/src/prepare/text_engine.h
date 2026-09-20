@@ -1,5 +1,5 @@
-#ifndef NATIVEKIT_UI_SKRIBIDI_ADAPTER_H
-#define NATIVEKIT_UI_SKRIBIDI_ADAPTER_H
+#ifndef NATIVEKIT_UI_TEXT_ENGINE_H
+#define NATIVEKIT_UI_TEXT_ENGINE_H
 
 #include <cstdint>
 #include <cstddef>
@@ -8,8 +8,6 @@
 #include <vector>
 
 #include "layout/layout_types.h"
-
-typedef struct skb_font_collection_t skb_font_collection_t;
 
 namespace nkui {
 
@@ -142,7 +140,7 @@ struct AtlasUpload {
     uint64_t dirty_epoch = 0;
 };
 
-struct SkribidiAdapterStats {
+struct TextEngineStats {
     uint64_t glyph_cache_misses = 0;
     uint64_t glyphs_rasterized = 0;
     uint64_t prepared_batch_count = 0;
@@ -153,12 +151,12 @@ struct SkribidiAdapterStats {
     uint32_t scale_generation = 0;
 };
 
-class SkribidiFontCollection {
+class FontCollection {
   public:
-    SkribidiFontCollection();
-    ~SkribidiFontCollection();
-    SkribidiFontCollection(const SkribidiFontCollection &) = delete;
-    SkribidiFontCollection &operator=(const SkribidiFontCollection &) = delete;
+    FontCollection();
+    ~FontCollection();
+    FontCollection(const FontCollection &) = delete;
+    FontCollection &operator=(const FontCollection &) = delete;
 
     bool valid() const;
     bool add_font(const char *path, FontFamily family = FontFamily::Default);
@@ -168,21 +166,20 @@ class SkribidiFontCollection {
     bool add_system_fallbacks();
     uint64_t generation() const;
     uint32_t font_load_count() const;
-    skb_font_collection_t *native_handle() const;
-    struct State;
 
   private:
+    struct State;
     State *state_ = nullptr;
-    friend class SkribidiAdapter;
+    friend class TextEngine;
 };
 
-class SkribidiAdapter {
+class TextEngine {
   public:
-    SkribidiAdapter();
-    explicit SkribidiAdapter(std::shared_ptr<SkribidiFontCollection> fonts);
-    ~SkribidiAdapter();
-    SkribidiAdapter(const SkribidiAdapter &) = delete;
-    SkribidiAdapter &operator=(const SkribidiAdapter &) = delete;
+    TextEngine();
+    explicit TextEngine(std::shared_ptr<FontCollection> fonts);
+    ~TextEngine();
+    TextEngine(const TextEngine &) = delete;
+    TextEngine &operator=(const TextEngine &) = delete;
 
     bool valid() const;
     bool set_atlas_namespace(uint16_t value);
@@ -246,7 +243,7 @@ class SkribidiAdapter {
     uint32_t layout_build_count() const;
     uint32_t atlas_texture_count() const;
     uint32_t scale_generation() const;
-    SkribidiAdapterStats stats() const;
+    TextEngineStats stats() const;
     std::vector<AtlasUpload> pending_atlas_uploads() const;
     std::vector<AtlasUpload> atlas_uploads(bool include_clean) const;
     bool acknowledge_atlas_upload(AtlasTextureId texture, uint64_t dirty_epoch);

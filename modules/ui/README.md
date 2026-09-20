@@ -131,7 +131,7 @@ Sealing takes an `OwnedFrameResources`: the type shares prepared data as immutab
 objects and retains graphics images, and it cannot hold borrowed bindings or a live
 `SurfaceProducer`, so the callback case is a compile error rather than a rule.
 Prepared text publishes those immutable objects itself through
-`SkribidiAdapter::published_glyphs()`, which returns the same snapshot for the same
+`TextEngine::published_glyphs()`, which returns the same snapshot for the same
 layout generation, geometry, scale, and mode, so sealing cost follows the number of
 bindings rather than the size of the glyph buffers.
 

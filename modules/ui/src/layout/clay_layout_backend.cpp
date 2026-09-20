@@ -1,6 +1,6 @@
 #include "layout/layout_engine.h"
 
-#include "prepare/skribidi_adapter.h"
+#include "prepare/text_engine.h"
 
 #define CLAY_IMPLEMENTATION
 #include "clay.h"
@@ -91,8 +91,8 @@ Clay_TextAlignment clay_alignment(TextAlignment alignment) {
 } // namespace
 
 struct LayoutEngine::Impl {
-    explicit Impl(std::size_t initial_capacity, std::shared_ptr<SkribidiFontCollection> fonts = {})
-        : text(fonts ? std::move(fonts) : std::make_shared<SkribidiFontCollection>()) {
+    explicit Impl(std::size_t initial_capacity, std::shared_ptr<FontCollection> fonts = {})
+        : text(fonts ? std::move(fonts) : std::make_shared<FontCollection>()) {
         initialize_context(initial_capacity);
     }
 
@@ -176,7 +176,7 @@ struct LayoutEngine::Impl {
     std::size_t element_capacity = 0;
     std::vector<char> clay_memory;
     Clay_Context *context = nullptr;
-    SkribidiAdapter text;
+    TextEngine text;
     const std::vector<LayoutNode> *nodes = nullptr;
     std::vector<std::vector<std::size_t>> children;
     std::vector<Clay_ElementId> element_ids;
@@ -1004,7 +1004,7 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
 LayoutEngine::LayoutEngine(std::size_t initial_capacity)
     : impl_(std::make_unique<Impl>(initial_capacity)) {}
 
-LayoutEngine::LayoutEngine(std::shared_ptr<SkribidiFontCollection> fonts,
+LayoutEngine::LayoutEngine(std::shared_ptr<FontCollection> fonts,
                            std::size_t initial_capacity)
     : impl_(std::make_unique<Impl>(initial_capacity, std::move(fonts))) {}
 
@@ -1014,11 +1014,11 @@ bool LayoutEngine::valid() const {
     return impl_ && impl_->valid();
 }
 
-SkribidiAdapter *LayoutEngine::text_adapter() {
+TextEngine *LayoutEngine::text_engine() {
     return impl_ ? &impl_->text : nullptr;
 }
 
-const SkribidiAdapter *LayoutEngine::text_adapter() const {
+const TextEngine *LayoutEngine::text_engine() const {
     return impl_ ? &impl_->text : nullptr;
 }
 

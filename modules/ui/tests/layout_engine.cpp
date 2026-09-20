@@ -1,5 +1,5 @@
 #include "layout/layout_engine.h"
-#include "prepare/skribidi_adapter.h"
+#include "prepare/text_engine.h"
 
 #include <algorithm>
 #include <cmath>
@@ -98,9 +98,9 @@ int main(int argc, char **argv) {
     }
     if (title_line_count != text_layout->lines.size())
         return 12;
-    const uint32_t stable_text_layout_builds = engine.text_adapter()->layout_build_count();
+    const uint32_t stable_text_layout_builds = engine.text_engine()->layout_build_count();
     if (!engine.layout(nodes, 420.0f, 240.0f, 1.0f / 60.0f, snapshot, &error) ||
-        engine.text_adapter()->layout_build_count() != stable_text_layout_builds)
+        engine.text_engine()->layout_build_count() != stable_text_layout_builds)
         return 13;
     panel_item = snapshot.find(3);
     if (!panel_item || snapshot.items.size() != nodes.size())
@@ -314,7 +314,7 @@ int main(int argc, char **argv) {
         snapshot.text_layouts.size() != text_layout_cache_limit + 2)
         return 14;
     for (const auto &layout : snapshot.text_layouts)
-        if (!engine.text_adapter()->has_layout(layout.id))
+        if (!engine.text_engine()->has_layout(layout.id))
             return 15;
 
     std::vector<TextLayoutId> churned_layouts;
@@ -332,12 +332,12 @@ int main(int argc, char **argv) {
             snapshot.text_layouts.size() != 1)
             return 16;
         churned_layouts.push_back(snapshot.text_layouts.front().id);
-        if (!engine.text_adapter()->has_layout(churned_layouts.back()))
+        if (!engine.text_engine()->has_layout(churned_layouts.back()))
             return 17;
     }
     for (std::size_t index = 0; index < churned_layouts.size(); ++index) {
         const bool should_be_retained = index >= 16;
-        if (engine.text_adapter()->has_layout(churned_layouts[index]) != should_be_retained)
+        if (engine.text_engine()->has_layout(churned_layouts[index]) != should_be_retained)
             return 18;
     }
 

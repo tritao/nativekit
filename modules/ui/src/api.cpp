@@ -10,7 +10,7 @@
 #include "layout/layout_engine.h"
 #include "layout/layout_render_compiler.h"
 #include "prepare/nanovg_path.h"
-#include "prepare/skribidi_adapter.h"
+#include "prepare/text_engine.h"
 #if defined(NKUI_ENABLE_SHOWCASE_PRODUCER)
 #include "render/cube_surface_producer.h"
 #endif
@@ -85,9 +85,9 @@ struct ResourceSlot {
     bool externally_alive = true;
     uint32_t display_refs = 0;
     std::vector<FontEntry> fonts;
-    std::shared_ptr<nkui::SkribidiFontCollection> font_collection;
+    std::shared_ptr<nkui::FontCollection> font_collection;
     bool system_fallbacks = false;
-    std::unique_ptr<nkui::SkribidiAdapter> text;
+    std::unique_ptr<nkui::TextEngine> text;
     std::unique_ptr<nkui::SurfaceProducer> surface;
     nk_graphics_image graphics_image{};
     nkui::PreparedGlyphs text_glyphs;
@@ -704,7 +704,7 @@ nkui_result ensure_mutable_font_collection(ResourceSlot &slot) {
     if (slot.font_collection.use_count() == 1)
         return NKUI_OK;
     {
-        auto replacement = std::make_shared<nkui::SkribidiFontCollection>();
+        auto replacement = std::make_shared<nkui::FontCollection>();
         if (!replacement->valid())
             return NKUI_ERROR_OUT_OF_MEMORY;
         for (const auto &font : slot.fonts) {
@@ -735,7 +735,7 @@ nkui_result create_text_layout_locked(nkui_resource fonts, const char *text, flo
         allocate_resource(nkui::ResourceKind::TextLayout, out_layout, &layout_slot);
     if (allocated != NKUI_OK)
         return allocated;
-    layout_slot->text = std::make_unique<nkui::SkribidiAdapter>(shared_fonts);
+    layout_slot->text = std::make_unique<nkui::TextEngine>(shared_fonts);
     bool valid = layout_slot->text->valid() &&
                  layout_slot->text->set_atlas_namespace(static_cast<uint16_t>(out_layout->id));
     valid = valid && layout_slot->text->layout_utf8(text, width, options);
@@ -1243,7 +1243,7 @@ extern "C" nkui_result nkui_font_collection_create(nkui_resource *out_fonts) {
     const auto result = allocate_resource(nkui::ResourceKind::FontCollection, out_fonts, &slot);
     if (result != NKUI_OK)
         return result;
-    slot->font_collection = std::make_shared<nkui::SkribidiFontCollection>();
+    slot->font_collection = std::make_shared<nkui::FontCollection>();
     if (!slot->font_collection->valid()) {
         release_resource_slot(*slot);
         out_fonts->id = 0;
@@ -2482,11 +2482,11 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
     bool sealable = true;
     std::vector<std::shared_ptr<nkui::PreparedPath>> prepared_paths;
     std::vector<std::shared_ptr<nkui::PreparedTexture>> prepared_images;
-    std::vector<nkui::SkribidiAdapter *> text_adapters;
-    std::vector<std::pair<nkui::SkribidiAdapter *, nkui::PreparedGlyphs *>> prepared_texts;
+    std::vector<nkui::TextEngine *> text_engines;
+    std::vector<std::pair<nkui::TextEngine *, nkui::PreparedGlyphs *>> prepared_texts;
     struct OwnedTextBind {
         nkui::ResourceId id{};
-        nkui::SkribidiAdapter *adapter = nullptr;
+        nkui::TextEngine *engine = nullptr;
         float pixel_scale = 1.0f;
         nkui::GlyphMode mode = nkui::GlyphMode::Alpha;
         uint64_t content_generation = 0;
@@ -2692,9 +2692,9 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
                 // baking raster_scale into x/y or replacing the transform with
                 // a correction scales positions but leaves glyph geometry small.
                 command.transform = transform;
-                if (std::find(text_adapters.begin(), text_adapters.end(), layout->text.get()) ==
-                    text_adapters.end())
-                    text_adapters.push_back(layout->text.get());
+                if (std::find(text_engines.begin(), text_engines.end(), layout->text.get()) ==
+                    text_engines.end())
+                    text_engines.push_back(layout->text.get());
             } else if (command.kind == nkui::RenderCommandKind::CompositeTarget &&
                        command.resource.value < (UINT32_C(4) << 28)) {
                 valid = false;
@@ -2744,9 +2744,9 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
     if (!valid)
         return NKUI_ERROR_INVALID_HANDLE;
     for (size_t pass = 0; pass < prepared_texts.size() && valid; ++pass) {
-        auto &[adapter, glyphs] = prepared_texts[pass];
-        if (!adapter->prepared_glyphs_current(*glyphs))
-            valid = adapter->prepare_glyphs(glyphs->origin_x, glyphs->origin_y, glyphs->pixel_scale,
+        auto &[engine, glyphs] = prepared_texts[pass];
+        if (!engine->prepared_glyphs_current(*glyphs))
+            valid = engine->prepare_glyphs(glyphs->origin_x, glyphs->origin_y, glyphs->pixel_scale,
                                             glyphs->mode, *glyphs);
     }
     if (!valid)
@@ -2758,7 +2758,7 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
     for (const auto &bind : owned_text_binds) {
         if (!sealable)
             break;
-        auto snapshot = bind.adapter->published_glyphs(bind.adapter->active_layout_id(), 0.0f, 0.0f,
+        auto snapshot = bind.engine->published_glyphs(bind.engine->active_layout_id(), 0.0f, 0.0f,
                                                        bind.pixel_scale, bind.mode);
         if (!snapshot ||
             !owned_resources.bind_text(bind.id, std::move(snapshot), bind.content_generation))
@@ -2769,8 +2769,8 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
         return NKUI_ERROR_RENDERING;
     if (new_backend && !register_custom_effects(*renderer_slot))
         return NKUI_ERROR_RENDERING;
-    for (auto *adapter : text_adapters)
-        if (!renderer_slot->renderer->uploadAtlases(*adapter, new_backend))
+    for (auto *engine : text_engines)
+        if (!renderer_slot->renderer->uploadAtlases(*engine, new_backend))
             return NKUI_ERROR_RENDERING;
     if (sealable) {
         nkui::RenderPlanSealError seal_error;
@@ -2873,7 +2873,7 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
     nkui::LayoutRenderCompileError compile_error{};
     if (!session_state->compiler.compile(
             session_state->snapshot, compile_target, frame_info->pixel_scale, session_state->frame,
-            &compile_error, load_existing != 0, session_state->engine->text_adapter(),
+            &compile_error, load_existing != 0, session_state->engine->text_engine(),
             &custom_plans, &raster_paint_nodes))
         return NKUI_ERROR_INVALID_TRANSACTION;
 
@@ -2899,8 +2899,8 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
     bool sealable = session_state->frame.sealable();
     std::vector<std::shared_ptr<nkui::PreparedPath>> custom_paths;
     std::vector<std::shared_ptr<nkui::PreparedTexture>> custom_images;
-    std::vector<nkui::SkribidiAdapter *> text_adapters;
-    std::vector<std::pair<nkui::SkribidiAdapter *, nkui::PreparedGlyphs *>> prepared_texts;
+    std::vector<nkui::TextEngine *> text_engines;
+    std::vector<std::pair<nkui::TextEngine *, nkui::PreparedGlyphs *>> prepared_texts;
     uint32_t prepared_slot = 1;
     bool valid = true;
     for (auto &pass : plan.passes) {
@@ -3086,9 +3086,9 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                         sealable = false;
                 }
                 command.resource = prepared_id;
-                if (std::find(text_adapters.begin(), text_adapters.end(), layout->text.get()) ==
-                    text_adapters.end())
-                    text_adapters.push_back(layout->text.get());
+                if (std::find(text_engines.begin(), text_engines.end(), layout->text.get()) ==
+                    text_engines.end())
+                    text_engines.push_back(layout->text.get());
             } else if (command.kind == nkui::RenderCommandKind::CompositeTarget) {
                 if (!nkui::is_resource_id(command.resource, nkui::ResourceKind::RenderTarget)) {
                     valid = false;
@@ -3125,9 +3125,9 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
     }
     if (!valid)
         return NKUI_ERROR_INVALID_HANDLE;
-    for (auto &[adapter, glyphs] : prepared_texts)
-        if (!adapter->prepared_glyphs_current(*glyphs) &&
-            !adapter->prepare_glyphs(glyphs->origin_x, glyphs->origin_y, glyphs->pixel_scale,
+    for (auto &[engine, glyphs] : prepared_texts)
+        if (!engine->prepared_glyphs_current(*glyphs) &&
+            !engine->prepare_glyphs(glyphs->origin_x, glyphs->origin_y, glyphs->pixel_scale,
                                      glyphs->mode, *glyphs))
             return NKUI_ERROR_RENDERING;
     const bool new_backend = !renderer_slot->renderer->valid();
@@ -3135,11 +3135,11 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
         return NKUI_ERROR_RENDERING;
     if (new_backend && !register_custom_effects(*renderer_slot))
         return NKUI_ERROR_RENDERING;
-    if (auto *adapter = session_state->frame.text_adapter())
-        if (!renderer_slot->renderer->uploadAtlases(*adapter, new_backend))
+    if (auto *engine = session_state->frame.text_engine())
+        if (!renderer_slot->renderer->uploadAtlases(*engine, new_backend))
             return NKUI_ERROR_RENDERING;
-    for (auto *adapter : text_adapters)
-        if (!renderer_slot->renderer->uploadAtlases(*adapter, new_backend))
+    for (auto *engine : text_engines)
+        if (!renderer_slot->renderer->uploadAtlases(*engine, new_backend))
             return NKUI_ERROR_RENDERING;
     if (sealable) {
         nkui::RenderPlanSealError seal_error;

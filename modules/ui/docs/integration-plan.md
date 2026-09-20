@@ -56,7 +56,7 @@ authority, and ordinary images bypass NanoVG entirely.
    HarfBuzz, SheenBidi, libunibreak, and BudouX. Do not consume Skribidi's root
    CMake project because it changes global compiler and install settings.
 2. Wrap font collections, rich text, layout cache, editor, and image atlas in
-   `src/text/skribidi_adapter.*`. No `skb_*` type crosses `nativekit_ui.h`.
+   `src/prepare/text_engine.*`. No `skb_*` type crosses `nativekit_ui.h`.
 3. Define a UTF-8 paragraph request containing available width, scale, locale,
    font candidates, size, weight, spacing, alignment, and spans. Return stable
    internal layout IDs plus width, height, and baseline metrics.

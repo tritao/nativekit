@@ -4,7 +4,7 @@
 #include "display_list/display_list.h"
 #include "nativekit_graphics.h"
 #include "prepare/nanovg_path.h"
-#include "prepare/skribidi_adapter.h"
+#include "prepare/text_engine.h"
 
 #include <cstdint>
 #include <memory>

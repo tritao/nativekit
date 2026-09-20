@@ -103,7 +103,7 @@ class RecordingRenderer final : public UiRenderer {
         ++box_shadow_count;
         return true;
     }
-    bool uploadAtlases(SkribidiAdapter &, bool) override { return true; }
+    bool uploadAtlases(TextEngine &, bool) override { return true; }
     bool drawGlyphs(const PreparedGlyphs &, float) override {
         ++text_count;
         return true;
@@ -197,11 +197,11 @@ int main() {
     std::cerr << "NKUI_TEST_FONT_PATH is required\n";
     return 2;
 #else
-    auto shared_fonts = std::make_shared<SkribidiFontCollection>();
+    auto shared_fonts = std::make_shared<FontCollection>();
     if (!shared_fonts->valid() || !shared_fonts->add_font(NKUI_TEST_FONT_PATH) ||
         shared_fonts->font_load_count() != 1)
         return 3;
-    SkribidiAdapter direct_layout(shared_fonts);
+    TextEngine direct_layout(shared_fonts);
     if (!direct_layout.layout_utf8("shared direct layout", 240.0f, 16.0f) ||
         shared_fonts->font_load_count() != 1)
         return 3;
@@ -252,17 +252,17 @@ int main() {
     const ResourceId main_target = make_resource_id(ResourceKind::RenderTarget, 1, 1);
     LayoutRenderFrame frame;
     LayoutRenderCompileError compile_error;
-    const uint32_t layout_builds = engine.text_adapter()->layout_build_count();
+    const uint32_t layout_builds = engine.text_engine()->layout_build_count();
     if (!compiler.compile(snapshot, main_target, 1.5f, frame, &compile_error, false,
-                          engine.text_adapter())) {
+                          engine.text_engine())) {
         std::cerr << (compile_error.message ? compile_error.message : "compile failed") << "\n";
         return 6;
     }
-    if (engine.text_adapter()->layout_build_count() != layout_builds ||
-        frame.text_adapter() != engine.text_adapter() || shared_fonts->font_load_count() != 1)
+    if (engine.text_engine()->layout_build_count() != layout_builds ||
+        frame.text_engine() != engine.text_engine() || shared_fonts->font_load_count() != 1)
         return 6;
     if (frame.plan().passes.size() != 1 || frame.plan().passes.front().commands.size() < 3 ||
-        !frame.text_adapter())
+        !frame.text_engine())
         return 7;
 
     uint32_t path_commands = 0;
@@ -341,14 +341,14 @@ int main() {
             rtl_layout->lines.front().bounds.x <= 1.0f)
             return 14;
         const auto selection =
-            engine.text_adapter()->selection_rects({0, 0}, {rtl_lengths[rtl_index], 0});
+            engine.text_engine()->selection_rects({0, 0}, {rtl_lengths[rtl_index], 0});
         if (selection.empty() ||
             std::abs(selection.front().x - rtl_layout->lines.front().bounds.x) > 0.01f)
             return 14;
 
         LayoutRenderFrame rtl_frame;
         if (!compiler.compile(rtl_snapshot, main_target, 1.0f, rtl_frame, &compile_error, false,
-                              engine.text_adapter()))
+                              engine.text_engine()))
             return 14;
         const auto rtl_command = std::find_if(
             rtl_frame.plan().passes.front().commands.begin(),
@@ -375,7 +375,7 @@ int main() {
         if (world_min_x < expected_min_x - 2.0f || world_max_x > expected_max_x + 2.0f)
             return 14;
     }
-    const uint32_t layout_builds_after_rtl = engine.text_adapter()->layout_build_count();
+    const uint32_t layout_builds_after_rtl = engine.text_engine()->layout_build_count();
 
     // Custom display-list commands join the ordered layout stream at the
     // node marker, before that node's descendants.
@@ -408,7 +408,7 @@ int main() {
     LayoutRenderCompiler::CustomPaintPlans custom_paints{{2, &custom_plan}};
     LayoutRenderFrame ordered_frame;
     if (!compiler.compile(ordered_snapshot, main_target, 1.5f, ordered_frame, &compile_error, false,
-                          engine.text_adapter(), &custom_paints))
+                          engine.text_engine(), &custom_paints))
         return 21;
     const auto &ordered_commands = ordered_frame.plan().passes.front().commands;
     const auto custom_position =
@@ -430,7 +430,7 @@ int main() {
     LayoutRenderCompiler::CustomPaintPlans decorated_paints{{2, &custom_plan}};
     LayoutRenderFrame decorated_frame;
     if (!compiler.compile(snapshot, main_target, 1.5f, decorated_frame, &compile_error, false,
-                          engine.text_adapter(), &decorated_paints))
+                          engine.text_engine(), &decorated_paints))
         return 23;
     const auto &decorated_commands = decorated_frame.plan().passes.front().commands;
     const auto decorated_position =
@@ -445,7 +445,7 @@ int main() {
     LayoutRenderCompiler::RasterPaintNodes raster_paints{2};
     LayoutRenderFrame raster_frame;
     if (!compiler.compile(ordered_snapshot, main_target, 1.5f, raster_frame, &compile_error, false,
-                          engine.text_adapter(), &custom_paints, &raster_paints) ||
+                          engine.text_engine(), &custom_paints, &raster_paints) ||
         raster_frame.plan().passes.size() != 3 ||
         raster_frame.plan().passes[1].kind != RenderPassKind::Raster ||
         raster_frame.plan().passes[1].commands.size() < 2 ||
@@ -463,7 +463,7 @@ int main() {
     LayoutRenderCompiler::RasterPaintNodes subtree_paints{1};
     LayoutRenderFrame subtree_frame;
     if (!compiler.compile(snapshot, main_target, 1.5f, subtree_frame, &compile_error, false,
-                          engine.text_adapter(), nullptr, &subtree_paints) ||
+                          engine.text_engine(), nullptr, &subtree_paints) ||
         subtree_frame.plan().passes.size() != 3 ||
         subtree_frame.plan().passes[1].kind != RenderPassKind::Raster ||
         subtree_frame.plan().passes[1].commands.size() < 2 ||
@@ -477,7 +477,7 @@ int main() {
     LayoutRenderCompiler::RasterPaintNodes nested_raster_paints{1, 2};
     LayoutRenderFrame nested_policy_frame;
     if (!compiler.compile(snapshot, main_target, 1.5f, nested_policy_frame, &compile_error, false,
-                          engine.text_adapter(), nullptr, &nested_raster_paints) ||
+                          engine.text_engine(), nullptr, &nested_raster_paints) ||
         std::count_if(nested_policy_frame.plan().passes.begin(),
                       nested_policy_frame.plan().passes.end(), [](const RenderPass &pass) {
                           return pass.kind == RenderPassKind::Raster;
@@ -493,7 +493,7 @@ int main() {
         return 27;
     LayoutRenderFrame moved_subtree_frame;
     if (!compiler.compile(moved_snapshot, main_target, 1.5f, moved_subtree_frame, &compile_error,
-                          false, engine.text_adapter(), nullptr, &subtree_paints))
+                          false, engine.text_engine(), nullptr, &subtree_paints))
         return 27;
 
     // Custom paint descendants are embedded into the parent's raster target,
@@ -518,9 +518,9 @@ int main() {
     LayoutRenderFrame mixed_frame;
     LayoutRenderFrame moved_mixed_frame;
     if (!compiler.compile(ordered_snapshot, main_target, 1.5f, mixed_frame, &compile_error, false,
-                          engine.text_adapter(), &custom_paints, &raster_paints) ||
+                          engine.text_engine(), &custom_paints, &raster_paints) ||
         !compiler.compile(moved_ordered_snapshot, main_target, 1.5f, moved_mixed_frame,
-                          &compile_error, false, engine.text_adapter(), &moved_custom_paints,
+                          &compile_error, false, engine.text_engine(), &moved_custom_paints,
                           &raster_paints) ||
         mixed_frame.plan().passes.size() != 3 || moved_mixed_frame.plan().passes.size() != 3)
         return 28;
@@ -607,7 +607,7 @@ int main() {
     LayoutRenderCompiler::CustomPaintPlans changed_custom_paints{{2, &changed_custom_plan}};
     LayoutRenderFrame changed_mixed_frame;
     if (!compiler.compile(moved_ordered_snapshot, main_target, 1.5f, changed_mixed_frame,
-                          &compile_error, false, engine.text_adapter(), &changed_custom_paints,
+                          &compile_error, false, engine.text_engine(), &changed_custom_paints,
                           &raster_paints) ||
         !changed_mixed_frame.resources().bind_path(custom_path, mixed_prepared, 0, 1) ||
         !execute_render_plan(mixed_backend, changed_mixed_frame.plan(),
@@ -644,7 +644,7 @@ int main() {
     RenderExecutionError nested_execution_error;
     LayoutRenderFrame nested_mixed_frame;
     if (!compiler.compile(ordered_snapshot, main_target, 1.5f, nested_mixed_frame, &compile_error,
-                          false, engine.text_adapter(), &bounded_paints, &raster_paints) ||
+                          false, engine.text_engine(), &bounded_paints, &raster_paints) ||
         nested_mixed_frame.plan().passes.size() != 4 ||
         nested_mixed_frame.plan().passes[1].kind != RenderPassKind::Raster ||
         nested_mixed_frame.plan().passes[2].kind != RenderPassKind::Draw ||
@@ -659,7 +659,7 @@ int main() {
                                                                  &moved_bounded_custom_plan}};
     LayoutRenderFrame moved_nested_mixed_frame;
     if (!compiler.compile(moved_ordered_snapshot, main_target, 1.5f, moved_nested_mixed_frame,
-                          &compile_error, false, engine.text_adapter(), &moved_bounded_paints,
+                          &compile_error, false, engine.text_engine(), &moved_bounded_paints,
                           &raster_paints) ||
         moved_nested_mixed_frame.plan().passes.size() != 4)
         return 32;
@@ -718,7 +718,7 @@ int main() {
     LayoutRenderCompiler::CustomPaintPlans effect_mask_paints{{2, &effect_mask_plan}};
     LayoutRenderFrame effect_mask_frame;
     if (!compiler.compile(ordered_snapshot, main_target, 1.5f, effect_mask_frame, &compile_error,
-                          false, engine.text_adapter(), &effect_mask_paints, &raster_paints) ||
+                          false, engine.text_engine(), &effect_mask_paints, &raster_paints) ||
         effect_mask_frame.plan().passes.size() != 6 ||
         effect_mask_frame.plan().passes[2].kind != RenderPassKind::Draw ||
         effect_mask_frame.plan().passes[3].kind != RenderPassKind::Effect ||
@@ -745,7 +745,7 @@ int main() {
                                                                          &changed_effect_mask_plan}};
     LayoutRenderFrame changed_effect_mask_frame;
     if (!compiler.compile(ordered_snapshot, main_target, 1.5f, changed_effect_mask_frame,
-                          &compile_error, false, engine.text_adapter(),
+                          &compile_error, false, engine.text_engine(),
                           &changed_effect_mask_paints, &raster_paints) ||
         !changed_effect_mask_frame.resources().bind_path(custom_path, mixed_prepared, 0, 1) ||
         !execute_render_plan(effect_mask_backend, changed_effect_mask_frame.plan(),
@@ -757,7 +757,7 @@ int main() {
 
     LayoutRenderFrame bounded_frame;
     if (!compiler.compile(ordered_snapshot, main_target, 1.5f, bounded_frame, &compile_error, false,
-                          engine.text_adapter(), &bounded_paints) ||
+                          engine.text_engine(), &bounded_paints) ||
         bounded_frame.plan().passes.size() != 2)
         return 23;
     const auto &bounded_pass = bounded_frame.plan().passes[1];
@@ -806,7 +806,7 @@ int main() {
     LayoutRenderCompiler::CustomPaintPlans scaled_effect_paints{{2, &scaled_effect_plan}};
     LayoutRenderFrame scaled_effect_frame;
     if (!compiler.compile(ordered_snapshot, main_target, 1.5f, scaled_effect_frame, &compile_error,
-                          false, engine.text_adapter(), &scaled_effect_paints) ||
+                          false, engine.text_engine(), &scaled_effect_paints) ||
         scaled_effect_frame.plan().passes.size() != 3)
         return 26;
     const auto &scaled_effect = scaled_effect_frame.plan().passes[2];
@@ -1064,19 +1064,19 @@ int main() {
             primitive.color = {0.9f, 0.2f, 0.1f, 1.0f};
     }
     if (!compiler.compile(recolored, main_target, 2.0f, frame, &compile_error, false,
-                          engine.text_adapter()) ||
-        engine.text_adapter()->layout_build_count() != layout_builds_after_rtl)
+                          engine.text_engine()) ||
+        engine.text_engine()->layout_build_count() != layout_builds_after_rtl)
         return 13;
 
-    const auto *text_adapter = frame.text_adapter();
+    const auto *text_engine = frame.text_engine();
     if (button_item->transform.tx != 10.0f || button_item->transform.ty != 6.0f)
         return 13;
     if (!compiler.compile(snapshot, main_target, 1.5f, frame, &compile_error, false,
-                          engine.text_adapter()) ||
-        frame.text_adapter() != text_adapter)
+                          engine.text_engine()) ||
+        frame.text_engine() != text_engine)
         return 15;
     if (!compiler.compile(snapshot, main_target, 1.5f, frame, &compile_error, true,
-                          engine.text_adapter()) ||
+                          engine.text_engine()) ||
         frame.plan().passes.size() != 1 || !frame.plan().passes.front().load_existing)
         return 16;
 

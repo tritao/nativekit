@@ -15,8 +15,8 @@
 
 namespace nkui {
 
-class SkribidiAdapter;
-class SkribidiFontCollection;
+class TextEngine;
+class FontCollection;
 
 struct LayoutRenderCompileError {
     std::size_t primitive_index = 0;
@@ -28,7 +28,7 @@ struct LayoutRenderCompileError {
  *
  * The frame must remain alive until its plan has finished executing because
  * FrameResources deliberately stores non-owning references to prepared data.
- * The text adapter is retained across compilations so atlas state can be
+ * The text engine is retained across compilations so atlas state can be
  * reused by a UI session.
  */
 class LayoutRenderFrame {
@@ -53,9 +53,9 @@ class LayoutRenderFrame {
     void set_sealable(bool value) { sealable_ = value; }
     // A shared source is owned by the layout engine and must outlive this
     // frame and any backend atlas uploads derived from it.
-    SkribidiAdapter *text_adapter() { return text_source_ ? text_source_ : text_.get(); }
-    const SkribidiAdapter *text_adapter() const {
-        return text_source_ ? text_source_ : text_.get();
+    TextEngine *text_engine() { return text_engine_source_ ? text_engine_source_ : text_engine_.get(); }
+    const TextEngine *text_engine() const {
+        return text_engine_source_ ? text_engine_source_ : text_engine_.get();
     }
 
   private:
@@ -67,8 +67,8 @@ class LayoutRenderFrame {
     FrameResources resources_;
     OwnedFrameResources owned_resources_;
     bool sealable_ = true;
-    std::unique_ptr<SkribidiAdapter> text_;
-    SkribidiAdapter *text_source_ = nullptr;
+    std::unique_ptr<TextEngine> text_engine_;
+    TextEngine *text_engine_source_ = nullptr;
     std::vector<std::shared_ptr<PreparedPath>> paths_;
     std::vector<std::unique_ptr<PreparedGlyphs>> glyphs_;
 };
@@ -80,7 +80,7 @@ class LayoutRenderCompiler {
     using RasterPaintNodes = std::unordered_set<uint32_t>;
 
     LayoutRenderCompiler();
-    void set_font_collection(std::shared_ptr<SkribidiFontCollection> fonts);
+    void set_font_collection(std::shared_ptr<FontCollection> fonts);
     bool add_font(const char *path, FontFamily family = FontFamily::Default);
     bool add_font_from_data(const char *name, const void *data, std::size_t bytes,
                             FontFamily family = FontFamily::Default);
@@ -88,12 +88,12 @@ class LayoutRenderCompiler {
 
     bool compile(const LayoutSnapshot &snapshot, ResourceId main_target, float pixel_scale,
                  LayoutRenderFrame &out, LayoutRenderCompileError *error = nullptr,
-                 bool load_existing = false, SkribidiAdapter *text_source = nullptr,
+                 bool load_existing = false, TextEngine *text_engine_source = nullptr,
                  const CustomPaintPlans *custom_paints = nullptr,
                  const RasterPaintNodes *raster_paint_nodes = nullptr) const;
 
   private:
-    std::shared_ptr<SkribidiFontCollection> fonts_;
+    std::shared_ptr<FontCollection> fonts_;
 };
 
 } // namespace nkui
