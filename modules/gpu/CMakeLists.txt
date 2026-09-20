@@ -115,9 +115,36 @@ if(NK_BUILD_TESTS)
     target_include_directories(nativekit_gpu_benchmark PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/bench")
 
+    if(WIN32 OR APPLE)
+        add_executable(nativekit_gpu_transfer_smoke_test tests/transfer_smoke.cpp)
+        target_compile_features(nativekit_gpu_transfer_smoke_test PRIVATE cxx_std_17)
+        target_include_directories(nativekit_gpu_transfer_smoke_test PRIVATE
+            "${PROJECT_SOURCE_DIR}/src")
+        target_link_libraries(nativekit_gpu_transfer_smoke_test PRIVATE NativeKit::gpu
+            NativeKit::nativekit)
+        add_test(NAME nativekit_gpu_transfer_smoke
+            COMMAND $<TARGET_FILE:nativekit_gpu_transfer_smoke_test>)
+        set_tests_properties(nativekit_gpu_transfer_smoke PROPERTIES
+            LABELS "graphics;gpu;transfer"
+            TIMEOUT 30)
+    endif()
+
     if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN AND NK_BACKEND_GTK_AVAILABLE)
         find_program(NKGPU_XVFB_RUN xvfb-run)
         if(NKGPU_XVFB_RUN)
+            add_executable(nativekit_gpu_transfer_smoke_test tests/transfer_smoke.cpp)
+            target_compile_features(nativekit_gpu_transfer_smoke_test PRIVATE cxx_std_17)
+            target_include_directories(nativekit_gpu_transfer_smoke_test PRIVATE
+                "${PROJECT_SOURCE_DIR}/src")
+            target_link_libraries(nativekit_gpu_transfer_smoke_test PRIVATE NativeKit::gpu
+                NativeKit::nativekit)
+            add_test(NAME nativekit_gpu_transfer_smoke
+                COMMAND ${NKGPU_XVFB_RUN} -a $<TARGET_FILE:nativekit_gpu_transfer_smoke_test>)
+            set_tests_properties(nativekit_gpu_transfer_smoke PROPERTIES
+                LABELS "graphics;gpu;transfer"
+                TIMEOUT 30
+                ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
+
             add_executable(nativekit_gpu_contract_smoke_test tests/contract_smoke.cpp)
             target_compile_features(nativekit_gpu_contract_smoke_test PRIVATE cxx_std_17)
             target_compile_definitions(nativekit_gpu_contract_smoke_test PRIVATE NKGPU_TESTING=1)
