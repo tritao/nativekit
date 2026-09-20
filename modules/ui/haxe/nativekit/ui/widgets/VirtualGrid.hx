@@ -7,8 +7,12 @@ import nativekit.ui.core.BuildContext;
 import nativekit.ui.core.Key;
 import nativekit.ui.core.RenderNode;
 import nativekit.ui.core.State;
+import nativekit.ui.core.UiEvent;
+import nativekit.ui.core.UiEventKind;
 import nativekit.ui.core.View;
+import nativekit.ui.semantics.AccessibilityAction;
 import nativekit.ui.semantics.AccessibilityRole;
+import nativekit.ui.semantics.AccessibilityState;
 import nativekit.ui.semantics.Semantics;
 
 /** Fixed-row and fixed-column virtual grid backed by a two-axis ScrollView. */
@@ -22,13 +26,16 @@ class VirtualGrid implements View {
 	public var controller(default, null):ScrollController;
 	final cellBuilder:Int->Int->View;
 	final keyForCell:Null<Int->Int->String>;
+	final onCellActivate:Null<Int->Int->Void>;
+	final cellSelected:Null<Int->Int->Bool>;
 	final fallbackViewportWidth:Float;
 	final fallbackViewportHeight:Float;
 
 	public function new(key:String, rowCount:Int, columnCount:Int, rowHeight:Float,
 			columnWidth:Float, cellBuilder:Int->Int->View, ?viewportStyle:LayoutStyle,
 			?keyForCell:Int->Int->String, ?controller:ScrollController,
-			viewportWidth:Float = 320.0, viewportHeight:Float = 240.0) {
+			viewportWidth:Float = 320.0, viewportHeight:Float = 240.0,
+			?onCellActivate:Int->Int->Void, ?cellSelected:Int->Int->Bool) {
 		if (key == null || key.length == 0 || rowCount < 0 || columnCount < 0 ||
 			rowHeight <= 0.0 || columnWidth <= 0.0 || !finite(rowHeight) ||
 			!finite(columnWidth) || cellBuilder == null || viewportWidth <= 0.0 ||
@@ -41,6 +48,8 @@ class VirtualGrid implements View {
 		this.columnWidth = columnWidth;
 		this.cellBuilder = cellBuilder;
 		this.keyForCell = keyForCell;
+		this.onCellActivate = onCellActivate;
+		this.cellSelected = cellSelected;
 		this.controller = controller == null ? new ScrollController() : controller;
 		this.fallbackViewportWidth = viewportWidth;
 		this.fallbackViewportHeight = viewportHeight;
@@ -68,10 +77,10 @@ class VirtualGrid implements View {
 				var beforeHeight = rowWindow.first * rowHeight;
 				rowViews.push(new KeyedView("before", new Spacer("before-spacer",
 					LayoutAxis.grow(), LayoutAxis.fixed(beforeHeight))));
-				for (row in rowWindow.first...rowWindow.last) {
-					var gridRow = new VirtualGridRow("row", row, rowCount, columnCount,
+			for (row in rowWindow.first...rowWindow.last) {
+				var gridRow = new VirtualGridRow("row", row, rowCount, columnCount,
 						rowHeight, columnWidth, columnWindow.first, columnWindow.last,
-						cellBuilder, keyForCell);
+						cellBuilder, keyForCell, onCellActivate, cellSelected);
 					rowViews.push(new KeyedView('row:$row', gridRow));
 				}
 				var afterHeight = (rowCount - rowWindow.last) * rowHeight;
@@ -122,10 +131,13 @@ private class VirtualGridRow implements View {
 	final lastColumn:Int;
 	final cellBuilder:Int->Int->View;
 	final keyForCell:Null<Int->Int->String>;
+	final onCellActivate:Null<Int->Int->Void>;
+	final cellSelected:Null<Int->Int->Bool>;
 
 	public function new(key:String, rowIndex:Int, rowCount:Int, columnCount:Int,
 			rowHeight:Float, columnWidth:Float, firstColumn:Int, lastColumn:Int,
-			cellBuilder:Int->Int->View, keyForCell:Null<Int->Int->String>) {
+			cellBuilder:Int->Int->View, keyForCell:Null<Int->Int->String>,
+			onCellActivate:Null<Int->Int->Void>, cellSelected:Null<Int->Int->Bool>) {
 		this.key = key;
 		this.rowIndex = rowIndex;
 		this.rowCount = rowCount;
@@ -136,6 +148,8 @@ private class VirtualGridRow implements View {
 		this.lastColumn = lastColumn;
 		this.cellBuilder = cellBuilder;
 		this.keyForCell = keyForCell;
+		this.onCellActivate = onCellActivate;
+		this.cellSelected = cellSelected;
 	}
 
 	public function build(context:BuildContext):RenderNode {
@@ -153,7 +167,8 @@ private class VirtualGridRow implements View {
 				if (cell == null)
 					throw 'VirtualGrid cell builder returned null for $rowIndex,$column';
 				children.push(new KeyedView('cell:$cellKey', new VirtualGridCell("cell", cell,
-					rowCount, columnCount, rowIndex, column, rowHeight, columnWidth)));
+					rowCount, columnCount, rowHeight, columnWidth, rowIndex, column,
+					onCellActivate, cellSelected)));
 			}
 			var afterWidth = (columnCount - lastColumn) * columnWidth;
 			children.push(new KeyedView("after", new Spacer("after-spacer",
@@ -181,9 +196,12 @@ private class VirtualGridCell implements View {
 	final columnIndex:Int;
 	final rowHeight:Float;
 	final columnWidth:Float;
+	final onCellActivate:Null<Int->Int->Void>;
+	final cellSelected:Null<Int->Int->Bool>;
 
 	public function new(key:String, child:View, rowCount:Int, columnCount:Int,
-			rowIndex:Int, columnIndex:Int, rowHeight:Float, columnWidth:Float) {
+			rowHeight:Float, columnWidth:Float, rowIndex:Int, columnIndex:Int,
+			onCellActivate:Null<Int->Int->Void>, cellSelected:Null<Int->Int->Bool>) {
 		this.key = key;
 		this.child = child;
 		this.rowCount = rowCount;
@@ -192,6 +210,8 @@ private class VirtualGridCell implements View {
 		this.columnIndex = columnIndex;
 		this.rowHeight = rowHeight;
 		this.columnWidth = columnWidth;
+		this.onCellActivate = onCellActivate;
+		this.cellSelected = cellSelected;
 	}
 
 	public function build(context:BuildContext):RenderNode {
@@ -205,6 +225,17 @@ private class VirtualGridCell implements View {
 			semantics.columnCount = columnCount;
 			semantics.rowIndex = rowIndex;
 			semantics.columnIndex = columnIndex;
+			if (cellSelected != null && cellSelected(rowIndex, columnIndex))
+				semantics.states |= AccessibilityState.Selected;
+			if (onCellActivate != null) {
+				var callback:Int->Int->Void = cast onCellActivate;
+				semantics.actions = AccessibilityAction.Activate;
+				var activate = function(event:UiEvent) {
+					callback(rowIndex, columnIndex);
+				};
+				node.on(UiEventKind.Click, activate);
+				node.on(UiEventKind.Activate, activate);
+			}
 			node.semantics = semantics;
 			node.add(context.withScope(new Key("content"), function() return child.build(context)));
 			return node;
