@@ -295,6 +295,9 @@ nkscene_result Scene::validate(const Transaction &transaction) const noexcept {
                 } else if constexpr (std::is_same_v<T, SetVisibility>) {
                     if (!value.occurrence.valid() || !exists_after(live, value.occurrence))
                         result = NKS_ERROR_STALE_ID;
+                } else if constexpr (std::is_same_v<T, SetSourceEntity>) {
+                    if (!value.occurrence.valid() || !exists_after(live, value.occurrence))
+                        result = NKS_ERROR_STALE_ID;
                 }
             },
             mutation);
@@ -420,6 +423,20 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
                         record_change(changes, change_indices, value.occurrence,
                                       ChangeDomain::Visibility);
                     }
+                } else if constexpr (std::is_same_v<T, SetSourceEntity>) {
+                    const auto *previous = source_entities.find(value.occurrence);
+                    if (value.source.valid()) {
+                        if (!previous || previous->id != value.source) {
+                            source_entities.insert_or_assign(value.occurrence,
+                                                              SourceEntity{value.source});
+                            record_change(changes, change_indices, value.occurrence,
+                                          ChangeDomain::Source);
+                        }
+                    } else if (previous) {
+                        source_entities.erase(value.occurrence);
+                        record_change(changes, change_indices, value.occurrence,
+                                      ChangeDomain::Source);
+                    }
                 }
             },
             mutation);
@@ -435,6 +452,7 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
         bool material_changed = false;
         bool visibility_changed = false;
         bool bounds_changed = false;
+        bool source_changed = false;
         for (const auto &change : changes.changes) {
             hierarchy_changed = hierarchy_changed ||
                                 has_domain(change.domains, ChangeDomain::Created) ||
@@ -449,6 +467,7 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
             visibility_changed =
                 visibility_changed || has_domain(change.domains, ChangeDomain::Visibility);
             bounds_changed = bounds_changed || has_domain(change.domains, ChangeDomain::Bounds);
+            source_changed = source_changed || has_domain(change.domains, ChangeDomain::Source);
         }
         if (hierarchy_changed)
             ++revision.hierarchy;
@@ -462,6 +481,8 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
             ++revision.visibility;
         if (bounds_changed)
             ++revision.bounds;
+        if (source_changed)
+            ++revision.source;
     }
     changes.scene_revision = revisions.scene;
     changes.revisions = revisions;
@@ -727,6 +748,19 @@ nkscene_result NKS_CALL nkscene_tx_set_visibility(nkscene_transaction handle,
     if (result != NKS_OK)
         return result;
     transaction->add_visibility({occurrence.value}, visible != 0);
+    return NKS_OK;
+}
+
+nkscene_result NKS_CALL nkscene_tx_set_source_entity(
+    nkscene_transaction handle, nkscene_occurrence_id occurrence,
+    nkscene_entity_id source) {
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    std::shared_ptr<nkscene::Transaction> transaction;
+    const auto result = nkscene::require_transaction(handle, transaction);
+    if (result != NKS_OK)
+        return result;
+    transaction->add_source_entity({occurrence.value}, {source.value});
     return NKS_OK;
 }
 

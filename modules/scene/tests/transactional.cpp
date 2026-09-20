@@ -67,14 +67,34 @@ void changes_are_domain_precise() {
     assert(changes.revisions.geometry == 0);
     assert(changes.revisions.material == 0);
     assert(changes.revisions.visibility == 0);
+    assert(changes.revisions.source == 0);
     assert(scene->transforms().find(first)->matrix[12] == 4.0f);
+
+    Transaction source(scene);
+    source.add_source_entity(first, nkscene::EntityId{42});
+    assert(scene->commit(source, changes) == NKS_OK);
+    source.close();
+    assert(changes.changes.size() == 1);
+    assert(changes.changes.front().occurrence == first);
+    assert(changes.changes.front().domains == ChangeDomain::Source);
+    assert(changes.revisions.source == 1);
+    assert(changes.revisions.transform == 1);
+    assert(scene->snapshot().find(first)->source == nkscene::EntityId{42});
+
+    Transaction clear_source(scene);
+    clear_source.add_source_entity(first, nkscene::invalid_entity);
+    assert(scene->commit(clear_source, changes) == NKS_OK);
+    clear_source.close();
+    assert(changes.changes.size() == 1);
+    assert(changes.changes.front().domains == ChangeDomain::Source);
+    assert(scene->snapshot().find(first)->source == nkscene::invalid_entity);
 
     Transaction invalid(scene);
     invalid.add_transform(first, translated(9.0f));
     invalid.add_transform({999999}, translated(10.0f));
     assert(scene->commit(invalid, changes) == NKS_ERROR_STALE_ID);
     assert(scene->transforms().find(first)->matrix[12] == 4.0f);
-    assert(scene->revision() == 2);
+    assert(scene->revision() == 4);
 
     Transaction cycle(scene);
     cycle.add_parent(first, second);

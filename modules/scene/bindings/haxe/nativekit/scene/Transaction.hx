@@ -61,6 +61,15 @@ class Transaction {
 			"transaction.setVisibility");
 	}
 
+	/** Associates an occurrence with a source entity; zero clears the association. */
+	public function setSourceEntity(occurrence:Occurrence, source:haxe.Int64):Void {
+		ensureOpen();
+		var entity = new nkscene_entity_id();
+		entity.set_value(source);
+		check(NativeKitScene.nkscene_tx_set_source_entity(owner.borrow(), occurrence.nativeValue(), entity),
+			"transaction.setSourceEntity");
+	}
+
 	public function commit():Void {
 		ensureOpen();
 		check(NativeKitScene.nkscene_transaction_commit(owner.borrow()), "transaction.commit");

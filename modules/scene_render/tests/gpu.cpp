@@ -95,6 +95,8 @@ int main() {
         configure.add_material(occurrence, material);
         configure.add_geometry(second_occurrence, geometry);
         configure.add_material(second_occurrence, material);
+        configure.add_source_entity(occurrence, nkscene::EntityId{42});
+        configure.add_source_entity(second_occurrence, nkscene::EntityId{84});
         nkscene::LocalTransform first_transform;
         first_transform.matrix[12] = -0.8f;
         configure.add_transform(occurrence, first_transform);
@@ -117,11 +119,12 @@ int main() {
         assert(executor.pick_pixel(plan, scene->snapshot(), options.width, options.height,
                                   16, options.height / 2, &picked) == NKGPU_OK);
         assert(picked.occurrence == occurrence);
-        assert(picked.source == nkscene::EntityId{});
+        assert(picked.source == nkscene::EntityId{42});
         assert(picked.subelement.value == 42);
         assert(executor.pick_pixel(plan, scene->snapshot(), options.width, options.height,
                                   112, options.height / 2, &picked) == NKGPU_OK);
         assert(picked.occurrence == second_occurrence);
+        assert(picked.source == nkscene::EntityId{84});
         assert(picked.subelement.value == 42);
         nkscene::PickResult miss;
         assert(executor.pick_pixel(plan, scene->snapshot(), options.width, options.height, 0, 0,
@@ -143,6 +146,24 @@ int main() {
         assert(stats.geometry_resources_updated == 0);
         assert(stats.instance_records_updated == 1);
         assert(stats.draw_calls == 1);
+
+        Transaction change_source(scene);
+        change_source.add_source_entity(second_occurrence, nkscene::EntityId{142});
+        assert(scene->commit(change_source, changes) == NKS_OK);
+        change_source.close();
+        const auto source_snapshot = scene->snapshot();
+        const auto source_update = nkscene::update(plan, source_snapshot, changes, view);
+        assert(!source_update.plan_rebuilt);
+        assert(source_update.patched_instances == 0);
+        stats = executor.execute(plan, source_snapshot);
+        assert(stats.result == NKGPU_OK);
+        assert(stats.geometry_resources_created == 0);
+        assert(stats.geometry_resources_updated == 0);
+        assert(stats.instance_records_updated == 0);
+        assert(executor.pick_pixel(plan, source_snapshot, options.width, options.height,
+                                  112, options.height / 2, &picked) == NKGPU_OK);
+        assert(picked.occurrence == second_occurrence);
+        assert(picked.source == nkscene::EntityId{142});
 
         auto &updated_material = scene->material_store().create(material);
         updated_material.base_color = {1.0f, 0.3f, 0.2f, 1.0f};

@@ -65,8 +65,14 @@ struct SetVisibility {
     bool visible;
 };
 
+struct SetSourceEntity {
+    OccurrenceId occurrence;
+    EntityId source;
+};
+
 using Mutation = std::variant<CreateOccurrence, DestroyOccurrence, SetParent,
-                              SetTransform, SetGeometry, SetMaterial, SetVisibility>;
+                              SetTransform, SetGeometry, SetMaterial, SetVisibility,
+                              SetSourceEntity>;
 
 class Transaction {
 public:
@@ -92,6 +98,9 @@ public:
     }
     void add_visibility(OccurrenceId id, bool visible) {
         mutations_.emplace_back(SetVisibility{id, visible});
+    }
+    void add_source_entity(OccurrenceId id, EntityId source) {
+        mutations_.emplace_back(SetSourceEntity{id, source});
     }
 
     const std::vector<Mutation> &mutations() const noexcept { return mutations_; }

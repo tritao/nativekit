@@ -32,6 +32,7 @@ using GeometryId = Id<GeometryTag>;
 using MaterialId = Id<MaterialTag>;
 
 constexpr OccurrenceId invalid_occurrence{};
+constexpr EntityId invalid_entity{};
 constexpr GeometryId invalid_geometry{};
 constexpr MaterialId invalid_material{};
 
@@ -126,7 +127,8 @@ enum class ChangeDomain : std::uint32_t {
     Geometry = 1u << 4,
     Material = 1u << 5,
     Visibility = 1u << 6,
-    Bounds = 1u << 7
+    Bounds = 1u << 7,
+    Source = 1u << 8
 };
 
 constexpr ChangeDomain operator|(ChangeDomain lhs, ChangeDomain rhs) noexcept {
@@ -156,6 +158,7 @@ struct RevisionCounters {
     std::uint64_t material = 0;
     std::uint64_t visibility = 0;
     std::uint64_t bounds = 0;
+    std::uint64_t source = 0;
 };
 
 struct ChangeStats {

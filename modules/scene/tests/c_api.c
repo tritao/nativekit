@@ -29,6 +29,8 @@ int main(void) {
     assert(nkscene_tx_set_parent(transaction, second, group) == NKS_OK);
     const nkscene_transform first_transform = translated(-2.0f);
     assert(nkscene_tx_set_transform(transaction, first, &first_transform) == NKS_OK);
+    const nkscene_entity_id first_source = {42};
+    assert(nkscene_tx_set_source_entity(transaction, first, first_source) == NKS_OK);
     assert(nkscene_transaction_commit(transaction) == NKS_OK);
 
     nkscene_snapshot snapshot = {0};
@@ -52,9 +54,11 @@ int main(void) {
             found_first = 1;
             assert(info.parent.value == group.value);
             assert(info.world_transform.matrix[12] == -2.0f);
+            assert(info.source.value == 42);
         } else if (info.occurrence.value == second.value) {
             found_second = 1;
             assert(info.parent.value == group.value);
+            assert(info.source.value == 0);
         }
     }
     assert(found_group && found_first && found_second);

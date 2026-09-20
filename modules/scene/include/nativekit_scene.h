@@ -189,6 +189,9 @@ NKS_API nkscene_result NKS_CALL nkscene_tx_set_material(nkscene_transaction tran
 NKS_API nkscene_result NKS_CALL nkscene_tx_set_visibility(nkscene_transaction transaction,
                                                           nkscene_occurrence_id occurrence,
                                                           uint32_t visible);
+NKS_API nkscene_result NKS_CALL nkscene_tx_set_source_entity(
+    nkscene_transaction transaction, nkscene_occurrence_id occurrence,
+    nkscene_entity_id source);
 
 /* ------------------------------------------------------------------------- */
 /* Snapshots and changes                                                     */
