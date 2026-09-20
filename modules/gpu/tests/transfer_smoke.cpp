@@ -350,12 +350,6 @@ int main() {
     }
 
     const nkgpu_backend backend = nkgpu_query_backend(resources.renderer);
-    if ((backend == NKGPU_BACKEND_D3D11 || backend == NKGPU_BACKEND_METAL) &&
-        !features.timestamps) {
-        std::fprintf(stderr, "native backend does not expose GPU timestamps\n");
-        return 1;
-    }
-
     if (features.timestamps) {
         nkgpu_timestamp timestamp{};
         if (!expect_result(nkgpu_frame_begin(resources.renderer), NKGPU_OK,
