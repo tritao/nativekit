@@ -1,5 +1,5 @@
 #include "nativekit_scene_render.h"
-#include "scene_shader_sources.h"
+#include "scene_shader_sources.hpp"
 
 #include <algorithm>
 #include <array>
@@ -101,22 +101,6 @@ std::vector<DesiredBatch> desired_batches(const RenderPlan &plan) {
             result.push_back(std::move(desired));
     }
     return result;
-}
-
-const char *vertex_shader_source(bool gles) {
-    return gles ? shader_source::scene_vertex_gles : shader_source::scene_vertex_gl;
-}
-
-const char *fragment_shader_source(bool gles) {
-    return gles ? shader_source::scene_fragment_gles : shader_source::scene_fragment_gl;
-}
-
-const char *pick_vertex_shader_source(bool gles) {
-    return gles ? shader_source::pick_vertex_gles : shader_source::pick_vertex_gl;
-}
-
-const char *pick_fragment_shader_source(bool gles) {
-    return gles ? shader_source::pick_fragment_gles : shader_source::pick_fragment_gl;
 }
 
 } // namespace
@@ -287,17 +271,16 @@ bool ensure_pipeline(StateT &state, GpuExecutionStats &stats, bool indexed) {
     if (pipeline.id)
         return true;
 
-    const auto graphics_api = nkgpu_query_graphics_api(state.renderer);
-    const bool gles = graphics_api == NK_GRAPHICS_OPENGL_ES;
-    if (graphics_api != NK_GRAPHICS_OPENGL && !gles)
+    const auto sources = render_internal::scene_shader_sources(
+        nkgpu_query_backend(state.renderer), false);
+    if (!sources.vertex || !sources.fragment)
         return set_failure(state, stats, NKGPU_ERROR_UNSUPPORTED);
 
     nkgpu_result result = NKGPU_OK;
     if (!state.shader.id) {
         nkgpu_shader_builder shader_builder{};
-        result = nkgpu_shader_begin(state.renderer, NKGPU_SHADERLANGUAGE_GLSL,
-                                    vertex_shader_source(gles), fragment_shader_source(gles),
-                                    &shader_builder);
+        result = nkgpu_shader_begin(state.renderer, sources.language, sources.vertex,
+                                    sources.fragment, &shader_builder);
         if (result != NKGPU_OK)
             return set_failure(state, stats, result);
         const auto attribute = [&](std::uint32_t location, const char *name,
@@ -365,17 +348,16 @@ bool ensure_pick_pipeline(StateT &state, GpuExecutionStats &stats, bool indexed)
     if (pipeline.id)
         return true;
 
-    const auto graphics_api = nkgpu_query_graphics_api(state.renderer);
-    const bool gles = graphics_api == NK_GRAPHICS_OPENGL_ES;
-    if (graphics_api != NK_GRAPHICS_OPENGL && !gles)
+    const auto sources = render_internal::scene_shader_sources(
+        nkgpu_query_backend(state.renderer), true);
+    if (!sources.vertex || !sources.fragment)
         return set_failure(state, stats, NKGPU_ERROR_UNSUPPORTED);
 
     nkgpu_result result = NKGPU_OK;
     if (!state.pick_shader.id) {
         nkgpu_shader_builder shader_builder{};
-        result = nkgpu_shader_begin(state.renderer, NKGPU_SHADERLANGUAGE_GLSL,
-                                    pick_vertex_shader_source(gles),
-                                    pick_fragment_shader_source(gles), &shader_builder);
+        result = nkgpu_shader_begin(state.renderer, sources.language, sources.vertex,
+                                    sources.fragment, &shader_builder);
         if (result != NKGPU_OK)
             return set_failure(state, stats, result);
         const auto attribute = [&](std::uint32_t location, const char *name,

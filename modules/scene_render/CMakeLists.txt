@@ -69,7 +69,7 @@ if(NK_BUILD_TESTS)
     add_executable(nativekit_scene_render_tests tests/compiler.cpp)
     target_compile_features(nativekit_scene_render_tests PRIVATE cxx_std_20)
     target_include_directories(nativekit_scene_render_tests PRIVATE
-        src "${PROJECT_SOURCE_DIR}/modules/scene/src")
+        src "${PROJECT_SOURCE_DIR}/modules/scene/src" "${NKSCENE_RENDER_GENERATED_DIR}")
     target_link_libraries(nativekit_scene_render_tests PRIVATE NativeKit::scene_render
         NativeKit::scene)
     add_test(NAME scene_render_compiler COMMAND nativekit_scene_render_tests)
