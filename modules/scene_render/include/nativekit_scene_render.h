@@ -100,6 +100,10 @@ NKSRENDER_API nkscene_result NKS_CALL nkscene_render_plan_get_item_count(
 NKSRENDER_API nkscene_result NKS_CALL nkscene_render_plan_update(
     nkscene_render_plan plan, nkscene_snapshot snapshot, nkscene_change_set changes,
     const nkscene_render_view *view, nkscene_render_update *out_update NK_INOUT);
+/** Refreshes a plan when no scene ChangeSet is available. */
+NKSRENDER_API nkscene_result NKS_CALL nkscene_render_plan_refresh(
+    nkscene_render_plan plan, nkscene_snapshot snapshot, const nkscene_render_view *view,
+    nkscene_render_update *out_update NK_INOUT);
 NKSRENDER_API nkscene_result NKS_CALL nkscene_render_plan_pick(
     nkscene_render_plan plan, nkscene_snapshot snapshot, uint32_t primitive,
     const float world_position[3], float depth, nkscene_render_pick_result *out_result NK_OUT);
@@ -272,6 +276,8 @@ private:
     friend NKSRENDER_API RenderPlan compile(const SceneSnapshot &, const SceneView &);
     friend NKSRENDER_API RenderUpdate update(RenderPlan &, const SceneSnapshot &,
                                              const ChangeSet &, const SceneView &);
+    friend NKSRENDER_API RenderUpdate refresh(RenderPlan &, const SceneSnapshot &,
+                                              const SceneView &);
     friend void render_internal::rebuild_batches(RenderPlan &plan);
     friend void render_internal::build_items(RenderPlan &plan, const SceneSnapshot &snapshot,
                                              const SceneView &view);
@@ -282,6 +288,8 @@ private:
 NKSRENDER_API RenderPlan compile(const SceneSnapshot &snapshot, const SceneView &view);
 NKSRENDER_API RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot,
                                   const ChangeSet &changes, const SceneView &view);
+NKSRENDER_API RenderUpdate refresh(RenderPlan &plan, const SceneSnapshot &snapshot,
+                                   const SceneView &view);
 
 NKSRENDER_API PickResult pick(const RenderPlan &, const SceneSnapshot &,
                               std::uint32_t primitive, Vec3 world_position, float depth);

@@ -50,6 +50,13 @@ class SceneRenderer {
 				planOwner.borrow(), snapshot, changeSet, view, updated);
 			checkScene(updateResult.status, "sceneRenderer.update");
 			lastUpdateValue = updateResult.out_update;
+		} else {
+			var refreshed = new nkscene_render_update();
+			refreshed.set_struct_size(nkscene_render_update.size());
+			var refreshResult = NativeKitSceneRender.nkscene_render_plan_refresh(
+				planOwner.borrow(), snapshot, view, refreshed);
+			checkScene(refreshResult.status, "sceneRenderer.refresh");
+			lastUpdateValue = refreshResult.out_update;
 		}
 
 		var executed = NativeKitSceneRender.nkscene_render_executor_execute(

@@ -75,6 +75,15 @@ int main(void) {
     assert(nkscene_render_executor_get_last_result(executor, &last_result) == NKS_OK);
     assert(last_result == NKGPU_OK);
 
+    nkscene_render_update refresh = {0};
+    refresh.struct_size = sizeof(refresh);
+    view.include_invisible = 1;
+    assert(nkscene_render_plan_refresh(plan, snapshot, &view, &refresh) == NKS_OK);
+    assert(refresh.plan_rebuilt == 1);
+    refresh.struct_size = sizeof(refresh);
+    assert(nkscene_render_plan_refresh(plan, snapshot, &view, &refresh) == NKS_OK);
+    assert(refresh.plan_rebuilt == 0);
+
     nkscene_render_pick_result pick = {0};
     const float world_position[3] = {0.0f, 0.0f, 0.0f};
     assert(nkscene_render_plan_pick(plan, snapshot, 0, world_position, 0.5f, &pick) == NKS_OK);

@@ -161,4 +161,15 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot,
     return result;
 }
 
+RenderUpdate refresh(RenderPlan &plan, const SceneSnapshot &snapshot, const SceneView &view) {
+    RenderUpdate result;
+    if (plan.source_revision() == snapshot.revision() &&
+        plan.view_signature_ == render_internal::view_signature(view))
+        return result;
+
+    plan = compile(snapshot, view);
+    result.plan_rebuilt = true;
+    return result;
+}
+
 } // namespace nkscene

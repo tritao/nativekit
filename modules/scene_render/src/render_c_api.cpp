@@ -128,6 +128,41 @@ nkscene_result NKS_CALL nkscene_render_plan_update(
     return NKS_OK;
 }
 
+nkscene_result NKS_CALL nkscene_render_plan_refresh(
+    nkscene_render_plan plan_handle, nkscene_snapshot snapshot_handle,
+    const nkscene_render_view *view_input, nkscene_render_update *out_update) {
+    if (!out_update)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    if (out_update->struct_size < sizeof(nkscene_render_update))
+        return NKS_ERROR_INVALID_ARGUMENT;
+    nkscene::SceneView view;
+    const auto view_result = copy_view(view_input, view);
+    if (view_result != NKS_OK)
+        return view_result;
+    const auto snapshot = nkscene::resolve_snapshot_handle(snapshot_handle);
+    if (!snapshot)
+        return NKS_ERROR_INVALID_HANDLE;
+
+    auto &state = registry();
+    std::lock_guard lock(state.mutex);
+    const auto plan = state.plans.get(nkscene::unpack_handle(plan_handle));
+    if (!plan)
+        return NKS_ERROR_INVALID_HANDLE;
+    const auto update = nkscene::refresh(*plan, *snapshot, view);
+    *out_update = {};
+    out_update->struct_size = sizeof(nkscene_render_update);
+    out_update->plan_rebuilt = update.plan_rebuilt;
+    out_update->geometry_rebuilt = update.geometry_rebuilt;
+    out_update->patched_instances = update.patched_instances;
+    out_update->patched_visibility = update.patched_visibility;
+    out_update->patched_materials = update.patched_materials;
+    out_update->rebuilt_batches = update.rebuilt_batches;
+    out_update->updated_geometry_resources = update.updated_geometry_resources;
+    out_update->updated_material_resources = update.updated_material_resources;
+    out_update->invalidated_items = update.invalidated_items;
+    return NKS_OK;
+}
+
 nkscene_result NKS_CALL nkscene_render_plan_pick(
     nkscene_render_plan plan_handle, nkscene_snapshot snapshot_handle, uint32_t primitive,
     const float world_position[3], float depth, nkscene_render_pick_result *out_result) {
