@@ -319,7 +319,8 @@ uint32_t d3d11_image_copy(sg_image source, uint32_t source_mip, uint32_t source_
         context()->CopySubresourceRegion(
             destination_info.texture,
             subresource(destination_info, destination_mip, destination_layer), 0, 0, 0,
-            source_info.texture, subresource(source_info, source_mip, source_layer), nullptr);
+            source_info.texture,
+            subresource(source_info, source_mip, source_layer), nullptr);
         return 1;
     }
     D3D11_BOX box{};
@@ -443,10 +444,9 @@ uint32_t d3d11_image_to_buffer(sg_image source, uint32_t mip_level, uint32_t lay
     for (uint32_t row = 0; row < height; ++row) {
         auto *destination_row =
             static_cast<uint8_t *>(mapped_buffer.pData) + static_cast<size_t>(row) * row_pitch;
-        const auto *source_row =
-            static_cast<const uint8_t *>(mapped_texture.pData) +
-            static_cast<size_t>(row + (depth ? y : 0)) * mapped_texture.RowPitch +
-            static_cast<size_t>(depth ? x : 0) * source_info.bytes;
+        const auto *source_row = static_cast<const uint8_t *>(mapped_texture.pData);
+        source_row += static_cast<size_t>(row + (depth ? y : 0)) * mapped_texture.RowPitch;
+        source_row += static_cast<size_t>(depth ? x : 0) * source_info.bytes;
         std::memcpy(destination_row, source_row, tight_pitch);
         if (row_pitch > tight_pitch)
             std::memset(destination_row + tight_pitch, 0, row_pitch - tight_pitch);
