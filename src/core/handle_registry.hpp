@@ -26,7 +26,9 @@ enum class ResourceType : std::uint8_t {
     task,
     http_client,
     http_stream,
-    plugin
+    plugin,
+    menu,
+    menu_item
 };
 
 struct Resource {

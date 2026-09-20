@@ -55,6 +55,7 @@ the equivalent is the native DOM.
 | Shell/open URI | Required | Required | Required | Required | Required | Required |
 | Appearance | Required | Required | Required | Required | Required | Required |
 | Notifications | Required | Required | Required | Required | Required | Platform-specific equivalent |
+| Application menu | Deferred | Deferred | Required | Not applicable | Not applicable | Not applicable |
 | Input + IME | Required | Required | Required | Required | Required | Required |
 | GPU surface | Required | Required | Required | Required | Required | Required |
 | Resource I/O | Required | Required | Required | Required | Required | Required |
@@ -113,6 +114,7 @@ needed; graphics API bits are alternatives within the GPU family.
 | Native window export | `NK_CAP_EXPORT_NATIVE_WINDOW` |
 | Native window wrapping | `NK_CAP_WRAP_NATIVE_WINDOW` |
 | Notifications | `NK_CAP_NOTIFICATION` |
+| Application menu | `NK_CAP_APPLICATION_MENU` |
 | Input + IME | `NK_CAP_INPUT` |
 | Cursor + pointer capture | `NK_CAP_CURSOR`, `NK_CAP_POINTER_CAPTURE` |
 | GPU surface | `NK_CAP_OPENGL_SURFACE`, `NK_CAP_OPENGL_ES_SURFACE`, `NK_CAP_VULKAN_SURFACE`, `NK_CAP_D3D11_SURFACE`, `NK_CAP_METAL_SURFACE` |

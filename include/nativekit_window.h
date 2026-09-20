@@ -114,7 +114,9 @@ enum NK_FLAGS(nk_capabilities) {
     /** The backend can observe native file-system changes. */
     NK_CAP_FILE_WATCH = UINT64_C(1) << 42,
     /** The backend can observe native clipboard changes. */
-    NK_CAP_CLIPBOARD_WATCH = UINT64_C(1) << 43
+    NK_CAP_CLIPBOARD_WATCH = UINT64_C(1) << 43,
+    /** The backend can install a native application menu. */
+    NK_CAP_APPLICATION_MENU = UINT64_C(1) << 44
 #endif
 };
 
@@ -132,6 +134,7 @@ enum NK_FLAGS(nk_capabilities) {
 #define NK_CAP_NATIVE_VIEW (UINT64_C(1) << 41)
 #define NK_CAP_FILE_WATCH (UINT64_C(1) << 42)
 #define NK_CAP_CLIPBOARD_WATCH (UINT64_C(1) << 43)
+#define NK_CAP_APPLICATION_MENU (UINT64_C(1) << 44)
 #endif
 
 /** Discriminator identifying the platform representation in nk_native_window. */

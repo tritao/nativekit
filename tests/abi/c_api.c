@@ -10,6 +10,7 @@
 #include "nativekit_joystick.h"
 #include "nativekit_mobile.h"
 #include "nativekit_monitor.h"
+#include "nativekit_menu.h"
 #include "nativekit_notification.h"
 #include "nativekit_plugin.h"
 #include "nativekit_resource.h"
@@ -56,6 +57,11 @@ _Static_assert(sizeof(nk_clipboard_watch_options) == 24,
                "clipboard-watch options ABI layout is stable");
 _Static_assert(sizeof(nk_clipboard_changed_event) == 16,
                "clipboard-change event ABI layout is stable");
+_Static_assert(sizeof(nk_menu) == sizeof(uint32_t), "menu handles remain four-byte tokens");
+_Static_assert(sizeof(nk_menu_item) == sizeof(uint32_t),
+               "menu item handles remain four-byte tokens");
+_Static_assert(sizeof(nk_menu_item_activated_event) == 24,
+               "menu activation payload layout is stable");
 _Static_assert(sizeof(nk_task) == sizeof(uint32_t), "task handles remain four-byte tokens");
 _Static_assert(sizeof(nk_task_options) == 20, "task options ABI layout is stable");
 _Static_assert(offsetof(nk_task_options, execution_mode) == 4 &&
@@ -79,6 +85,9 @@ _Static_assert(NK_EXECUTOR_PLATFORM == 0 && NK_EXECUTOR_APP == 1 && NK_EXECUTOR_
                "logical executor values are stable");
 _Static_assert(NK_EVENT_PLUGIN_COMPLETE == 1000 && NK_EVENT_PLUGIN_EVENT == 1001,
                "plugin event kinds are stable");
+_Static_assert(NK_EVENT_MENU_ITEM_ACTIVATED == 510 &&
+                   NK_EVENT_APPLICATION_QUIT_REQUESTED == 511,
+               "menu event kinds are stable");
 _Static_assert(NK_ERROR_NOT_FOUND == -12 && NK_ERROR_PAYLOAD_TOO_LARGE == -13 &&
                    NK_ERROR_CANCELLED == -14,
                "plugin result codes are stable");
@@ -483,6 +492,37 @@ int main(void) {
                appearance.color_scheme == NK_COLOR_SCHEME_DARK);
         assert(appearance.high_contrast <= 1);
     }
+    nk_menu_options menu_options = {0};
+    menu_options.struct_size = sizeof(menu_options);
+    menu_options.title = "NativeKit";
+    nk_menu menu = NK_INVALID_HANDLE;
+    assert(nk_menu_create(NULL, &menu) == NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_menu_create(&menu_options, &menu) == NK_OK);
+    nk_menu_item_options file_options = {0};
+    file_options.struct_size = sizeof(file_options);
+    file_options.kind = NK_MENU_ITEM_SUBMENU;
+    file_options.label = "File";
+    nk_menu_item file_item = NK_INVALID_HANDLE;
+    assert(nk_menu_add_item(menu, NK_INVALID_HANDLE, &file_options, &file_item) == NK_OK);
+    nk_menu_item_options command_options = {0};
+    command_options.struct_size = sizeof(command_options);
+    command_options.command_id = 42;
+    command_options.label = "Close";
+    command_options.shortcut.key = NK_KEY_W;
+    command_options.shortcut.modifiers = NK_MENU_MOD_PRIMARY;
+    nk_menu_item command_item = NK_INVALID_HANDLE;
+    assert(nk_menu_add_item(menu, file_item, &command_options, &command_item) == NK_OK);
+    assert(nk_menu_item_set_enabled(command_item, 0) == NK_OK);
+    assert(nk_menu_item_set_enabled(command_item, 1) == NK_OK);
+    assert(nk_menu_item_set_label(command_item, "Close Window") == NK_OK);
+    const nk_result menu_install_result = nk_application_set_menu(menu);
+    if (nk_get_capabilities() & NK_CAP_APPLICATION_MENU)
+        assert(menu_install_result == NK_OK);
+    else
+        assert(menu_install_result == NK_ERROR_UNSUPPORTED);
+    assert(nk_application_set_menu(NK_INVALID_HANDLE) == NK_OK);
+    assert(nk_menu_destroy(menu) == NK_OK);
+    assert(nk_menu_item_set_enabled(command_item, 1) == NK_ERROR_INVALID_HANDLE);
     struct {
         nk_clipboard_files header;
         char path[10];

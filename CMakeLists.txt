@@ -126,6 +126,8 @@ add_library(nativekit ${NK_LIBRARY_TYPE}
     src/core/input.cpp
     src/core/joystick.cpp
     src/core/mobile.cpp
+    src/core/menu.cpp
+    src/core/menu_backend.cpp
     src/core/monitor.cpp
     src/core/plugin.cpp
     src/core/request.cpp
@@ -281,6 +283,7 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
 elseif(APPLE)
     target_sources(nativekit PRIVATE
         src/macos/nativekit_osx.mm
+        src/macos/nativekit_mac_menu.mm
         src/macos/nativekit_mac_joystick.mm)
     target_compile_definitions(nativekit PRIVATE NK_BACKEND_MACOS=1)
     set_target_properties(nativekit PROPERTIES
