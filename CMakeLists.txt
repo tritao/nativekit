@@ -50,6 +50,12 @@ option(NK_GTK_THREADED_RENDER
     "Enable the experimental GTK offscreen render executor (requires a shared GL context)"
     OFF)
 
+if(EMSCRIPTEN AND NK_WEB_THREADED_RENDER)
+    # Shared-memory WebAssembly requires atomics and bulk-memory features on
+    # every object in the final link, including vendored UI libraries.
+    add_compile_options(-pthread)
+endif()
+
 if(WIN32)
     set(_nk_default_sokol_backend d3d11)
 elseif(APPLE)
@@ -186,11 +192,6 @@ endif()
 if(EMSCRIPTEN)
     if(NK_WEB_THREADED_RENDER)
         target_compile_definitions(nativekit PRIVATE NK_WEB_THREADED_RENDER=1)
-        # Every static-library consumer must be compiled with atomics and
-        # bulk-memory enabled as well as the core NativeKit sources.  Without
-        # a transitive compile option, Emscripten accepts the link flags but
-        # rejects consumer objects when shared memory is enabled.
-        target_compile_options(nativekit PUBLIC -pthread)
         target_link_options(nativekit INTERFACE
             "-pthread"
             "-sOFFSCREENCANVAS_SUPPORT=1"
