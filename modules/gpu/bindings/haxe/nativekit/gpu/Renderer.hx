@@ -29,6 +29,22 @@ class Renderer {
 		return value;
 	}
 
+	/** Returns optional backend capabilities through the portable GPU envelope. */
+	public function features():Features {
+		ensureLive();
+		var result = NativeKitGpu.nkgpu_query_features(value);
+		GpuResult.check(result.status, "renderer.features");
+		return Features.fromNative(result.out_features);
+	}
+
+	/** Returns portable resource and binding limits for this renderer. */
+	public function limits():Limits {
+		ensureLive();
+		var result = NativeKitGpu.nkgpu_query_limits(value);
+		GpuResult.check(result.status, "renderer.limits");
+		return Limits.fromNative(result.out_limits);
+	}
+
 	public function beginFrame():Void {
 		ensureLive();
 		if (frameActive)
@@ -217,21 +233,21 @@ class Renderer {
 	public function isDisposed():Bool
 		return disposed;
 
-	@:allow(Buffer, Image, Sampler, Shader, Pipeline, RenderTarget, CommandBuffer, Uniforms)
+	@:allow(Buffer, Image, Sampler, Shader, Pipeline, RenderTarget, Readback, CommandBuffer, Uniforms)
 	function ensureFrame():Void {
 		ensureLive();
 		if (!frameActive)
 			throw "GPU operation requires an active frame";
 	}
 
-	@:allow(Buffer, Image, Sampler, Shader, ShaderBuilder, Pipeline, PipelineBuilder, RenderTarget,
+	@:allow(Buffer, Image, Sampler, Shader, ShaderBuilder, Pipeline, PipelineBuilder, RenderTarget, Readback,
 		CommandBuffer, Uniforms)
 	function ensureLive():Void {
 		if (disposed)
 			throw "GPU renderer has been disposed";
 	}
 
-	@:allow(Buffer, Image, Sampler, Shader, ShaderBuilder, Pipeline, PipelineBuilder, RenderTarget,
+	@:allow(Buffer, Image, Sampler, Shader, ShaderBuilder, Pipeline, PipelineBuilder, RenderTarget, Readback,
 		Uniforms)
 	function registerResource(release:Void->Void):Void {
 		ensureLive();

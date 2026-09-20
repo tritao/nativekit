@@ -43,6 +43,12 @@ enum abstract StoreAction(Int) to Int {
 	var Discard = 2;
 }
 
+enum abstract ReadbackState(Int) to Int {
+	var Pending = 1;
+	var Ready = 2;
+	var Failed = 3;
+}
+
 enum abstract Filter(Int) to Int {
 	var Nearest = 1;
 	var Linear = 2;

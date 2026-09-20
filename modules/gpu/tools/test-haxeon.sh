@@ -44,8 +44,11 @@ fi
     "$module_dir/bindings/haxe/nativekit/gpu/AttachmentAction.hx" \
     "$module_dir/bindings/haxe/nativekit/gpu/CommandBuffer.hx" \
     "$module_dir/bindings/haxe/nativekit/gpu/Enums.hx" \
+    "$module_dir/bindings/haxe/nativekit/gpu/Features.hx" \
     "$module_dir/bindings/haxe/nativekit/gpu/Image.hx" \
+    "$module_dir/bindings/haxe/nativekit/gpu/Limits.hx" \
     "$module_dir/bindings/haxe/nativekit/gpu/Pipeline.hx" \
+    "$module_dir/bindings/haxe/nativekit/gpu/Readback.hx" \
     "$module_dir/bindings/haxe/nativekit/gpu/Renderer.hx" \
     "$module_dir/bindings/haxe/nativekit/gpu/Sampler.hx" \
     "$module_dir/bindings/haxe/nativekit/gpu/Shader.hx" \

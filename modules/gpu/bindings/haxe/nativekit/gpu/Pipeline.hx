@@ -27,6 +27,16 @@ class Pipeline {
 		return new PipelineBuilder(renderer, made.out_builder);
 	}
 
+	/** Begins a compute-only pipeline builder. */
+	public static function beginCompute(renderer:Renderer, shader:Shader):PipelineBuilder {
+		renderer.ensureResourceOperation();
+		if (shader.rendererOwner() != renderer)
+			throw "GPU compute pipeline shader belongs to a different renderer";
+		var made = NativeKitGpu.nkgpu_pipeline_begin_compute(renderer.nativeHandle(), shader.nativeHandle());
+		GpuResult.check(made.status, "pipeline.beginCompute");
+		return new PipelineBuilder(renderer, made.out_builder);
+	}
+
 	public function nativeHandle():nkgpu_pipeline {
 		ensureLive();
 		return value;
@@ -88,6 +98,13 @@ class PipelineBuilder {
 	public function depthStencil(enabled:Bool):PipelineBuilder {
 		ensureLive();
 		GpuResult.check(NativeKitGpu.nkgpu_pipeline_depth_stencil(value, enabled ? 1 : 0), "pipeline.depthStencil");
+		return this;
+	}
+
+	/** Marks this pipeline builder as compute-only. */
+	public function compute():PipelineBuilder {
+		ensureLive();
+		GpuResult.check(NativeKitGpu.nkgpu_pipeline_compute(value), "pipeline.compute");
 		return this;
 	}
 
