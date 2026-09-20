@@ -75,6 +75,10 @@ int main() {
         geometry_resource.subelements.ranges.push_back({0, 1, 42});
         const auto material = scene->reserve_material_id();
         scene->material_store().create(material);
+        const auto selection_material = scene->reserve_material_id();
+        scene->material_store().create(selection_material);
+        const auto hover_material = scene->reserve_material_id();
+        scene->material_store().create(hover_material);
         const auto occurrence = scene->reserve_occurrence_id();
         nkscene::Transaction create(scene);
         create.add_create(occurrence);
@@ -88,7 +92,7 @@ int main() {
         configure.close();
 
         const auto snapshot = scene->snapshot();
-        const auto plan = nkscene::compile(snapshot, {});
+        auto plan = nkscene::compile(snapshot, {});
         nkscene::NativeKitGpuExecutor executor(renderer);
         nkscene::SceneInteraction interaction;
         assert(interaction.request_hover(executor, plan, snapshot, 64, 64, 32, 32) ==
@@ -111,6 +115,32 @@ int main() {
         interaction.apply_pick(picked, nkscene::SelectionMode::Replace);
         assert(interaction.selected().size() == 1);
         assert(interaction.is_selected(occurrence));
+
+        nkscene::SceneView presentation_view;
+        for (const auto selected : interaction.selected())
+            presentation_view.set_selection_material_override(selected, selection_material);
+        const auto hovered = interaction.hovered();
+        assert(hovered.has_value());
+        presentation_view.set_hover_material_override(
+            hovered->occurrence, hover_material);
+        nkscene::ChangeSet no_changes;
+        const auto hover_update = nkscene::update(
+            plan, snapshot, no_changes, presentation_view);
+        assert(!hover_update.plan_rebuilt);
+        assert(hover_update.patched_instances == 0);
+        assert(hover_update.patched_visibility == 0);
+        assert(hover_update.patched_materials == 1);
+        assert(plan.items().front().material == hover_material);
+        assert(executor.execute(plan, snapshot).result == NKGPU_OK);
+
+        presentation_view.clear_hover_material_overrides();
+        const auto selection_update = nkscene::update(
+            plan, snapshot, no_changes, presentation_view);
+        assert(!selection_update.plan_rebuilt);
+        assert(selection_update.patched_instances == 0);
+        assert(selection_update.patched_visibility == 0);
+        assert(selection_update.patched_materials == 1);
+        assert(plan.items().front().material == selection_material);
 
         nkscene::SceneView changed_view;
         changed_view.include_invisible = true;
