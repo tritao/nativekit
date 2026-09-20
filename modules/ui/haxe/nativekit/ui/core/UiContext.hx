@@ -214,7 +214,8 @@ class UiContext {
 			frameNumber++;
 			lastFrameMetrics = new UiFrameMetrics(frameNumber, submittedNodeCount, 0, 0, 0,
 				buildContext.styleResolver.cachedStyleCount, 0, submittedNodeCount, UiDirtyFlag.None,
-				0, 0, 0, 0, 0, 0, Sys.time() - submitStartedAt);
+				0, 0, 0, 0, 0, 0, Sys.time() - submitStartedAt, false, true, 0,
+				submittedNodeCount);
 			lastFrameMetrics.markReusedSubmission();
 			diagnosticStage = 0;
 			return cast root;
@@ -231,7 +232,27 @@ class UiContext {
 			node.syncHitTestPolicy();
 			node.syncSceneRevisions();
 		});
-		var resolved = session.submit(next.layout, frame);
+		var previousById = new Map<Int, RenderNode>();
+		if (root != null)
+			root.walk(function(node) previousById.set(node.id.value, node));
+		var nativeLayoutReused = !styleInvalidation.nativeLayoutRequired;
+		if (nativeLayoutReused)
+			next.walk(function(node) {
+				var previous = previousById.get(node.id.value);
+				var previousResolved:Null<ResolvedLayoutItem> = previous == null ? null : previous.resolved;
+				if (previousResolved == null)
+					nativeLayoutReused = false;
+			});
+		var resolved:Array<ResolvedLayoutItem> = [];
+		if (nativeLayoutReused) {
+			next.walk(function(node) {
+				var previous = previousById.get(node.id.value);
+				var previousResolved:Null<ResolvedLayoutItem> = previous == null ? null : previous.resolved;
+				if (previousResolved != null)
+					resolved.push(previousResolved);
+			});
+		} else
+			resolved = session.submit(next.layout, frame);
 		diagnosticStage = 6;
 		var byId = new Map<Int, ResolvedLayoutItem>();
 		var nodesById = new Map<Int, RenderNode>();
@@ -240,14 +261,30 @@ class UiContext {
 		var resolvedStateRevision = stateStore.revision;
 		var missing = false;
 		var nodeCount = 0;
+		var resolvedGeometryChangedNodes = 0;
+		var resolvedGeometryReusedNodes = 0;
 		diagnosticStage = 7;
 		next.walk(function(node) {
 			nodeCount++;
 			nodesById.set(node.id.value, node);
 			// Geometry is keyed by the exact LayoutNode ID serialized to NativeUI.
-			node.setResolved(byId.get(node.layout.id));
-			if (node.resolved == null)
+			var item = byId.get(node.layout.id);
+			if (item == null) {
 				missing = true;
+				return;
+			}
+			var previous = previousById.get(node.id.value);
+			var previousResolved:Null<ResolvedLayoutItem> = previous == null ? null : previous.resolved;
+			var geometryChanged = previousResolved == null || !sameGeometry(previousResolved, item);
+			if (!geometryChanged && previousResolved != null) {
+				item = previousResolved;
+				resolvedGeometryReusedNodes++;
+			} else
+				resolvedGeometryChangedNodes++;
+			// Geometry objects are retained when unchanged, but resolved callbacks
+			// remain per-submit because widgets use them for same-geometry state
+			// such as caret and composition synchronization.
+			node.setResolved(item);
 		});
 		if (missing) {
 			diagnosticStage = 8;
@@ -259,6 +296,8 @@ class UiContext {
 		var previousFocus = focus.focusedId;
 		focus.rebuild(next);
 		var nextFocus = focus.focusedId;
+		var focusChanged = (previousFocus == null && nextFocus != null) ||
+			(previousFocus != null && (nextFocus == null || !previousFocus.equals(nextFocus)));
 		if (previousFocus != null && (nextFocus == null || !previousFocus.equals(nextFocus)))
 			events.focusEvent(previousFocus, UiEventKind.Blur);
 		root = next;
@@ -287,7 +326,9 @@ class UiContext {
 		submittedBuildKey = cacheKey;
 		submittedTheme = buildContext.theme;
 		submittedStyleSheet = buildContext.styleSheet;
-		if (accessibilityBridge != null)
+		if (accessibilityBridge != null && (styleInvalidation.treeChanged ||
+			styleInvalidation.semanticsInvalidatedNodes > 0 ||
+			resolvedGeometryChangedNodes > 0 || focusChanged))
 			accessibilityBridge.update(next, focus.focusedId);
 		frameNumber++;
 		lastFrameMetrics = new UiFrameMetrics(frameNumber, nodeCount,
@@ -300,7 +341,8 @@ class UiContext {
 			styleInvalidation.textLayoutInvalidatedNodes, styleInvalidation.paintInvalidatedNodes,
 			styleInvalidation.compositeInvalidatedNodes, styleInvalidation.semanticsInvalidatedNodes,
 			styleInvalidation.hitGeometryInvalidatedNodes,
-			Sys.time() - submitStartedAt);
+				Sys.time() - submitStartedAt, !nativeLayoutReused, nativeLayoutReused,
+				resolvedGeometryChangedNodes, resolvedGeometryReusedNodes);
 		diagnosticStage = 0;
 		return next;
 	}
