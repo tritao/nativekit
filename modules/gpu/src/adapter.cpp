@@ -184,6 +184,7 @@ struct Shader {
 struct Pipeline {
     Handle owner = 0;
     sg_pipeline object{};
+    Handle shader = 0;
 };
 struct BufferBuilder {
     Handle owner = 0;
@@ -193,6 +194,7 @@ struct BufferBuilder {
 };
 struct PipelineBuilder {
     Handle owner = 0;
+    Handle shader = 0;
     sg_pipeline_desc desc{};
 };
 struct ShaderBuilder {
@@ -1610,6 +1612,18 @@ static void unpin_resource(uint32_t kind, uint32_t slot_index, bool backend_avai
         }
         break;
     }
+    case ShaderKind: {
+        if (slot_index > shader_pool.slots.size())
+            return;
+        auto &s = shader_pool.slots[slot_index - 1];
+        if (s.pins)
+            --s.pins;
+        if (!s.pins && s.retired && backend_available) {
+            sg_destroy_shader(s.value.object);
+            shader_pool.release(s);
+        }
+        break;
+    }
     case BufferKind: {
         if (slot_index > buffer_pool.slots.size())
             return;
@@ -1681,7 +1695,8 @@ static void destroy_owned(Handle owner, bool backend_available) {
             pipeline_pool.remove(s);
         }
     for (auto &s : shader_pool.slots)
-        if (s.active && s.value.owner == owner) {
+        if ((s.active || s.retired || s.pins) && s.value.owner == owner) {
+            s.pins = 0;
             if (backend_available)
                 sg_destroy_shader(s.value.object);
             record_resource_destroyed(owner);
@@ -2130,7 +2145,7 @@ nkgpu_result nkgpu_shader_destroy(nkgpu_renderer r, nkgpu_shader h) {
     const nkgpu_result ready = prepare_resource_destroy(r, backend_available);
     if (ready != NKGPU_OK)
         return ready;
-    if (backend_available)
+    if (backend_available && !s->pins)
         sg_destroy_shader(s->value.object);
     record_resource_destroyed(r);
     shader_pool.remove(*s);
@@ -2405,6 +2420,7 @@ nkgpu_result nkgpu_pipeline_begin(nkgpu_renderer r, nkgpu_shader shader, uint32_
         return idle;
     PipelineBuilder b{};
     b.owner = r;
+    b.shader = shader;
     b.desc.shader = sh->value.object;
     b.desc.layout.buffers[0].stride = (int)stride;
     b.desc.depth.pixel_format = renderer_pool.get(r)->value.surface_depth_format;
@@ -2434,6 +2450,7 @@ nkgpu_result nkgpu_pipeline_begin_compute(nkgpu_renderer r, nkgpu_shader shader,
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "compute is not supported by this backend");
     PipelineBuilder b{};
     b.owner = r;
+    b.shader = shader;
     b.desc.compute = true;
     b.desc.shader = sh->value.object;
     Handle h = pipeline_builder_pool.add(b);
@@ -2700,12 +2717,13 @@ nkgpu_result nkgpu_pipeline_end(nkgpu_pipeline_builder h, nkgpu_pipeline *out) {
     if (activated != NKGPU_OK)
         return activated;
     sg_pipeline object = sg_make_pipeline(&s->value.desc);
+    const Handle shader = s->value.shader;
     pipeline_builder_pool.remove(*s);
     if (sg_query_pipeline_state(object) != SG_RESOURCESTATE_VALID) {
         record_allocation_failure(owner);
         return fail(NKGPU_ERROR_OUT_OF_MEMORY, "pipeline creation failed");
     }
-    Handle result = pipeline_pool.add(Pipeline{owner, object});
+    Handle result = pipeline_pool.add(Pipeline{owner, object, shader});
     if (!result) {
         sg_destroy_pipeline(object);
         record_allocation_failure(owner);
@@ -4122,6 +4140,11 @@ static bool retain_batch_resource(Batch &batch, uint32_t kind, Handle handle) {
         resolvable = slot && slot->value.owner == batch.owner;
         break;
     }
+    case ShaderKind: {
+        auto *slot = shader_pool.get_retained(handle);
+        resolvable = slot && slot->value.owner == batch.owner;
+        break;
+    }
     case ImageKind: {
         auto *slot = image_pool.get_retained(handle);
         resolvable = slot && slot->value.owner == batch.owner;
@@ -4140,12 +4163,20 @@ static bool retain_batch_resource(Batch &batch, uint32_t kind, Handle handle) {
     for (const auto &retained : batch.retained)
         if (retained.kind == kind && retained.slot == slot_index)
             return true;
+    if (kind == PipelineKind) {
+        const auto &pipeline = pipeline_pool.slots[slot_index - 1].value;
+        if (pipeline.shader && !retain_batch_resource(batch, ShaderKind, pipeline.shader))
+            return false;
+    }
     switch (kind) {
     case BufferKind:
         ++buffer_pool.slots[slot_index - 1].pins;
         break;
     case PipelineKind:
         ++pipeline_pool.slots[slot_index - 1].pins;
+        break;
+    case ShaderKind:
+        ++shader_pool.slots[slot_index - 1].pins;
         break;
     case ImageKind:
         ++image_pool.slots[slot_index - 1].pins;
@@ -4349,6 +4380,13 @@ static void set_retained_active(uint32_t kind, uint32_t slot_index, bool active)
     case PipelineKind:
         if (slot_index <= pipeline_pool.slots.size()) {
             auto &s = pipeline_pool.slots[slot_index - 1];
+            if (s.retired)
+                s.active = active;
+        }
+        break;
+    case ShaderKind:
+        if (slot_index <= shader_pool.slots.size()) {
+            auto &s = shader_pool.slots[slot_index - 1];
             if (s.retired)
                 s.active = active;
         }

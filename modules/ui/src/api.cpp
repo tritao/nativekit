@@ -3242,7 +3242,10 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
         if (!sealed)
             return NKUI_ERROR_OUT_OF_MEMORY;
         if (threaded) {
-            auto *submission = new RenderSubmission{renderer, surface, frame, frame_target,
+            auto *submission = new RenderSubmission{renderer,
+                                                    surface,
+                                                    frame,
+                                                    frame_target,
                                                     std::move(sealed),
                                                     std::move(text_engines),
                                                     std::move(text_engine_owners),
@@ -3674,7 +3677,10 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
         if (threaded) {
             if (session_text_engine)
                 text_engines.push_back(session_text_engine);
-            auto *submission = new RenderSubmission{renderer, surface, frame, frame_target,
+            auto *submission = new RenderSubmission{renderer,
+                                                    surface,
+                                                    frame,
+                                                    frame_target,
                                                     std::move(sealed),
                                                     std::move(text_engines),
                                                     std::move(text_engine_owners),
