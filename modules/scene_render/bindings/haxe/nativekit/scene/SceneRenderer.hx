@@ -8,8 +8,7 @@ import nativekit.gpu.Renderer;
 
 /**
  * Keeps render-plan and NativeKit GPU synchronization behind one explicit
- * render boundary. The scene remains owned by the caller and snapshots are
- * borrowed for the duration of each call.
+ * render boundary. Scene snapshots and change sets are owned by the caller.
  */
 class SceneRenderer {
 	final gpuOwner:Null<Renderer>;
@@ -33,34 +32,36 @@ class SceneRenderer {
 	public static function createHeadless():SceneRenderer
 		return new SceneRenderer(null, new nkgpu_renderer());
 
-	/** Compiles or incrementally updates the plan, then executes it. */
-	public function render(snapshot:nkscene_snapshot, view:nkscene_render_view,
-			?changes:Null<nkscene_change_set>):nkscene_render_execution_stats {
+	/** Compiles, refreshes, or incrementally updates the plan, then executes it. */
+	public function render(snapshot:Snapshot, view:SceneView,
+			?changes:Null<ChangeSet>):nkscene_render_execution_stats {
 		ensureLive();
+		var snapshotValue = snapshot.nativeHandle(),
+			viewValue = view.nativeValue();
 		if (planOwner == null) {
-			var compiled = NativeKitSceneRender.nkscene_render_plan_compile(snapshot, view);
+			var compiled = NativeKitSceneRender.nkscene_render_plan_compile(snapshotValue, viewValue);
 			checkScene(compiled.status, "sceneRenderer.compile");
 			planOwner = compiled.out_plan;
 			lastUpdateValue = null;
 		} else if (changes != null) {
 			var updated = new nkscene_render_update();
 			updated.set_struct_size(nkscene_render_update.size());
-			var changeSet:nkscene_change_set = cast changes;
+			var changeSet = changes.nativeHandle();
 			var updateResult = NativeKitSceneRender.nkscene_render_plan_update(
-				planOwner.borrow(), snapshot, changeSet, view, updated);
+				planOwner.borrow(), snapshotValue, changeSet, viewValue, updated);
 			checkScene(updateResult.status, "sceneRenderer.update");
 			lastUpdateValue = updateResult.out_update;
 		} else {
 			var refreshed = new nkscene_render_update();
 			refreshed.set_struct_size(nkscene_render_update.size());
 			var refreshResult = NativeKitSceneRender.nkscene_render_plan_refresh(
-				planOwner.borrow(), snapshot, view, refreshed);
+				planOwner.borrow(), snapshotValue, viewValue, refreshed);
 			checkScene(refreshResult.status, "sceneRenderer.refresh");
 			lastUpdateValue = refreshResult.out_update;
 		}
 
 		var executed = NativeKitSceneRender.nkscene_render_executor_execute(
-			executor.borrow(), planOwner.borrow(), snapshot);
+			executor.borrow(), planOwner.borrow(), snapshotValue);
 		checkScene(executed.status, "sceneRenderer.execute");
 		GpuResult.check(executed.out_stats.get_result(), "sceneRenderer.execute");
 		return executed.out_stats;
@@ -71,12 +72,12 @@ class SceneRenderer {
 		return lastUpdateValue;
 
 	/** Performs a GPU ID pass and resolves one pixel to scene ownership. */
-	public function pickPixel(snapshot:nkscene_snapshot, width:Int, height:Int, x:Int, y:Int):nkscene_render_pick_result {
+	public function pickPixel(snapshot:Snapshot, width:Int, height:Int, x:Int, y:Int):nkscene_render_pick_result {
 		ensureLive();
 		if (planOwner == null)
 			throw "sceneRenderer.pickPixel requires a compiled render plan";
 		var picked = NativeKitSceneRender.nkscene_render_executor_pick_pixel(
-			executor.borrow(), planOwner.borrow(), snapshot, width, height, x, y);
+			executor.borrow(), planOwner.borrow(), snapshot.nativeHandle(), width, height, x, y);
 		if (picked.status != 0) {
 			var last = NativeKitSceneRender.nkscene_render_executor_get_last_result(executor.borrow());
 			checkScene(last.status, "sceneRenderer.pickPixel");
