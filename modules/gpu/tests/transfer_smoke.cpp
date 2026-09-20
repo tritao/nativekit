@@ -196,6 +196,11 @@ int main() {
     if (!expect_result(nkgpu_buffer_copy(resources.renderer, &buffer_copy), NKGPU_OK,
                        "nkgpu_buffer_copy"))
         return 1;
+    nkgpu_buffer_copy_desc invalid_buffer_copy = buffer_copy;
+    invalid_buffer_copy.size = sizeof(source_data);
+    if (!expect_result(nkgpu_buffer_copy(resources.renderer, &invalid_buffer_copy),
+                       NKGPU_ERROR_INVALID_ARGUMENT, "nkgpu_buffer_copy(out of range)"))
+        return 1;
 
     nkgpu_image_desc image_desc{};
     image_desc.struct_size = sizeof(image_desc);
@@ -243,6 +248,11 @@ int main() {
     if (!expect_result(nkgpu_image_copy(resources.renderer, &image_copy), NKGPU_OK,
                        "nkgpu_image_copy"))
         return 1;
+    nkgpu_image_copy_desc invalid_image_copy = image_copy;
+    invalid_image_copy.width = 3;
+    if (!expect_result(nkgpu_image_copy(resources.renderer, &invalid_image_copy),
+                       NKGPU_ERROR_INVALID_ARGUMENT, "nkgpu_image_copy(out of range)"))
+        return 1;
 
     uint8_t copied_readback_bytes[sizeof(pixels)]{};
     if (!readback(resources.renderer, resources.copied_image, 0, 0, 2, 2, copied_readback_bytes,
@@ -271,6 +281,11 @@ int main() {
     if (!expect_result(nkgpu_image_to_buffer(resources.renderer, &image_to_buffer), NKGPU_OK,
                        "nkgpu_image_to_buffer"))
         return 1;
+    nkgpu_buffer_image_copy_desc invalid_image_to_buffer = image_to_buffer;
+    invalid_image_to_buffer.x = 2;
+    if (!expect_result(nkgpu_image_to_buffer(resources.renderer, &invalid_image_to_buffer),
+                       NKGPU_ERROR_INVALID_ARGUMENT, "nkgpu_image_to_buffer(out of range)"))
+        return 1;
 
     if (!expect_result(
             nkgpu_image_create_desc(resources.renderer, &image_desc, &resources.round_trip_image),
@@ -281,6 +296,16 @@ int main() {
     buffer_to_image.image = resources.round_trip_image;
     if (!expect_result(nkgpu_buffer_to_image(resources.renderer, &buffer_to_image), NKGPU_OK,
                        "nkgpu_buffer_to_image(round trip)"))
+        return 1;
+    nkgpu_buffer_image_copy_desc invalid_buffer_to_image = buffer_to_image;
+    invalid_buffer_to_image.row_pitch = sizeof(uint32_t);
+    if (!expect_result(nkgpu_buffer_to_image(resources.renderer, &invalid_buffer_to_image),
+                       NKGPU_ERROR_INVALID_ARGUMENT, "nkgpu_buffer_to_image(row pitch)"))
+        return 1;
+    invalid_buffer_to_image = buffer_to_image;
+    invalid_buffer_to_image.buffer_offset = sizeof(pixels);
+    if (!expect_result(nkgpu_buffer_to_image(resources.renderer, &invalid_buffer_to_image),
+                       NKGPU_ERROR_INVALID_ARGUMENT, "nkgpu_buffer_to_image(buffer range)"))
         return 1;
 
     uint8_t round_trip_readback_bytes[sizeof(pixels)]{};
@@ -314,6 +339,16 @@ int main() {
         std::fprintf(stderr, "single-pixel R32_UINT readback did not match\n");
         return 1;
     }
+    nkgpu_image_readback_desc invalid_readback{};
+    invalid_readback.struct_size = sizeof(invalid_readback);
+    invalid_readback.image = resources.round_trip_image;
+    invalid_readback.width = 3;
+    invalid_readback.height = 1;
+    nkgpu_readback invalid_readback_handle{};
+    if (!expect_result(nkgpu_readback_begin_image(resources.renderer, &invalid_readback,
+                                                  &invalid_readback_handle),
+                       NKGPU_ERROR_INVALID_ARGUMENT, "nkgpu_readback_begin_image(out of range)"))
+        return 1;
 
     /* OpenGL's current transfer path is intentionally 2D-only; native D3D11
        and Metal paths must also preserve array-layer addressing. */

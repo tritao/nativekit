@@ -3727,6 +3727,41 @@ static uint32_t image_row_pitch(const Image &image, uint32_t width) {
     return bytes && width <= UINT32_MAX / bytes ? width * bytes : 0;
 }
 
+static nkgpu_result validate_buffer_copy(const nkgpu_buffer_copy_desc &desc,
+                                         const Buffer &source, const Buffer &destination) {
+    if (!desc.size || desc.source_offset > source.size ||
+        desc.size > source.size - desc.source_offset ||
+        desc.destination_offset > destination.size ||
+        desc.size > destination.size - desc.destination_offset)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "buffer-copy range is invalid");
+    const uint64_t source_end = static_cast<uint64_t>(desc.source_offset) + desc.size;
+    const uint64_t destination_end = static_cast<uint64_t>(desc.destination_offset) + desc.size;
+    if (desc.source.id == desc.destination.id &&
+        static_cast<uint64_t>(desc.source_offset) < destination_end &&
+        static_cast<uint64_t>(desc.destination_offset) < source_end)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "overlapping self-buffer copy is unsupported");
+    return NKGPU_OK;
+}
+
+static nkgpu_result validate_image_copy(const nkgpu_image_copy_desc &desc, const Image &source,
+                                        const Image &destination) {
+    if (source.format != destination.format || source.sample_count != 1 ||
+        destination.sample_count != 1)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "image-copy formats or samples are incompatible");
+    uint32_t source_width = 0;
+    uint32_t source_height = 0;
+    uint32_t destination_width = 0;
+    uint32_t destination_height = 0;
+    if (!image_region_dimensions(source, desc.source_mip, desc.source_layer, desc.source_x,
+                                 desc.source_y, desc.width, desc.height, source_width,
+                                 source_height) ||
+        !image_region_dimensions(destination, desc.destination_mip, desc.destination_layer,
+                                 desc.destination_x, desc.destination_y, desc.width, desc.height,
+                                 destination_width, destination_height))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "image-copy region is invalid");
+    return NKGPU_OK;
+}
+
 nkgpu_result nkgpu_buffer_copy(nkgpu_renderer r, const nkgpu_buffer_copy_desc *desc) {
     if (!desc || desc->struct_size < sizeof(nkgpu_buffer_copy_desc))
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid buffer-copy descriptor");
@@ -3734,17 +3769,9 @@ nkgpu_result nkgpu_buffer_copy(nkgpu_renderer r, const nkgpu_buffer_copy_desc *d
     auto *destination = buffer_pool.get(desc->destination);
     if (!source || !destination || source->value.owner != r || destination->value.owner != r)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign buffer-copy handle");
-    if (!desc->size || desc->source_offset > source->value.size ||
-        desc->size > source->value.size - desc->source_offset ||
-        desc->destination_offset > destination->value.size ||
-        desc->size > destination->value.size - desc->destination_offset)
-        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "buffer-copy range is invalid");
-    const uint64_t source_end = static_cast<uint64_t>(desc->source_offset) + desc->size;
-    const uint64_t destination_end = static_cast<uint64_t>(desc->destination_offset) + desc->size;
-    if (desc->source.id == desc->destination.id &&
-        static_cast<uint64_t>(desc->source_offset) < destination_end &&
-        static_cast<uint64_t>(desc->destination_offset) < source_end)
-        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "overlapping self-buffer copy is unsupported");
+    const nkgpu_result valid = validate_buffer_copy(*desc, source->value, destination->value);
+    if (valid != NKGPU_OK)
+        return valid;
     Renderer *renderer = nullptr;
     const nkgpu_result access = require_transfer_access(r, &renderer);
     if (access != NKGPU_OK)
@@ -3765,20 +3792,10 @@ nkgpu_result nkgpu_image_copy(nkgpu_renderer r, const nkgpu_image_copy_desc *des
     auto *destination = image_pool.get(desc->destination);
     if (!source || !destination || source->value.owner != r || destination->value.owner != r)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign image-copy handle");
-    if (source->value.format != destination->value.format || source->value.sample_count != 1 ||
-        destination->value.sample_count != 1)
-        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "image-copy formats or samples are incompatible");
-    uint32_t source_width = 0;
-    uint32_t source_height = 0;
-    uint32_t destination_width = 0;
-    uint32_t destination_height = 0;
-    if (!image_region_dimensions(source->value, desc->source_mip, desc->source_layer,
-                                 desc->source_x, desc->source_y, desc->width, desc->height,
-                                 source_width, source_height) ||
-        !image_region_dimensions(destination->value, desc->destination_mip, desc->destination_layer,
-                                 desc->destination_x, desc->destination_y, desc->width,
-                                 desc->height, destination_width, destination_height))
-        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "image-copy region is invalid");
+    const nkgpu_result valid =
+        validate_image_copy(*desc, source->value, destination->value);
+    if (valid != NKGPU_OK)
+        return valid;
     Renderer *renderer = nullptr;
     const nkgpu_result access = require_transfer_access(r, &renderer);
     if (access != NKGPU_OK)
@@ -3797,6 +3814,8 @@ nkgpu_result nkgpu_image_copy(nkgpu_renderer r, const nkgpu_image_copy_desc *des
 static nkgpu_result validate_buffer_image_copy(const nkgpu_buffer_image_copy_desc &desc,
                                                const Buffer &buffer, const Image &image,
                                                uint32_t &row_pitch) {
+    if (image.sample_count != 1)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "buffer-image transfers require single-sample images");
     uint32_t image_width = 0;
     uint32_t image_height = 0;
     if (!image_region_dimensions(image, desc.mip_level, desc.layer, desc.x, desc.y, desc.width,
@@ -3872,6 +3891,8 @@ nkgpu_result nkgpu_readback_begin_image(nkgpu_renderer r, const nkgpu_image_read
     auto *image = image_pool.get(desc->image);
     if (!image || image->value.owner != r)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign readback image");
+    if (image->value.sample_count != 1)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "image readback requires a single-sample image");
     uint32_t image_width = 0;
     uint32_t image_height = 0;
     if (!image_region_dimensions(image->value, desc->mip_level, desc->layer, desc->x, desc->y,
@@ -4485,22 +4506,85 @@ static bool retain_batch_records(Batch &batch, const uint8_t *commands, uint32_t
                 return invalid_batch_record(opcode, offset, "bad dispatch payload");
             break;
         case NKGPU_COMMAND_COPY_BUFFER:
-            if (payload_size != 20 ||
-                !retain_batch_resource(batch, BufferKind, read_u32(payload)) ||
-                !retain_batch_resource(batch, BufferKind, read_u32(payload + 8)))
+            if (payload_size != 20)
                 return invalid_batch_record(opcode, offset, "bad buffer-copy payload");
+            {
+                nkgpu_buffer_copy_desc desc{};
+                desc.struct_size = sizeof(desc);
+                desc.source = nkgpu_buffer{read_u32(payload)};
+                desc.source_offset = read_u32(payload + 4);
+                desc.destination = nkgpu_buffer{read_u32(payload + 8)};
+                desc.destination_offset = read_u32(payload + 12);
+                desc.size = read_u32(payload + 16);
+                auto *source = buffer_pool.get_retained(desc.source);
+                auto *destination = buffer_pool.get_retained(desc.destination);
+                if (!source || !destination || source->value.owner != batch.owner ||
+                    destination->value.owner != batch.owner ||
+                    validate_buffer_copy(desc, source->value, destination->value) != NKGPU_OK)
+                    return invalid_batch_record(opcode, offset, "invalid buffer-copy range");
+                if (!retain_batch_resource(batch, BufferKind, desc.source) ||
+                    !retain_batch_resource(batch, BufferKind, desc.destination))
+                    return invalid_batch_record(opcode, offset, "unusable buffer-copy handle");
+            }
             break;
         case NKGPU_COMMAND_COPY_IMAGE:
-            if (payload_size != 48 || !retain_batch_resource(batch, ImageKind, read_u32(payload)) ||
-                !retain_batch_resource(batch, ImageKind, read_u32(payload + 20)))
+            if (payload_size != 48)
                 return invalid_batch_record(opcode, offset, "bad image-copy payload");
+            {
+                nkgpu_image_copy_desc desc{};
+                desc.struct_size = sizeof(desc);
+                desc.source = nkgpu_image{read_u32(payload)};
+                desc.source_mip = read_u32(payload + 4);
+                desc.source_layer = read_u32(payload + 8);
+                desc.source_x = read_u32(payload + 12);
+                desc.source_y = read_u32(payload + 16);
+                desc.destination = nkgpu_image{read_u32(payload + 20)};
+                desc.destination_mip = read_u32(payload + 24);
+                desc.destination_layer = read_u32(payload + 28);
+                desc.destination_x = read_u32(payload + 32);
+                desc.destination_y = read_u32(payload + 36);
+                desc.width = read_u32(payload + 40);
+                desc.height = read_u32(payload + 44);
+                auto *source = image_pool.get_retained(desc.source);
+                auto *destination = image_pool.get_retained(desc.destination);
+                if (!source || !destination || source->value.owner != batch.owner ||
+                    destination->value.owner != batch.owner ||
+                    validate_image_copy(desc, source->value, destination->value) != NKGPU_OK)
+                    return invalid_batch_record(opcode, offset, "invalid image-copy region");
+                if (!retain_batch_resource(batch, ImageKind, desc.source) ||
+                    !retain_batch_resource(batch, ImageKind, desc.destination))
+                    return invalid_batch_record(opcode, offset, "unusable image-copy handle");
+            }
             break;
         case NKGPU_COMMAND_COPY_BUFFER_TO_IMAGE:
         case NKGPU_COMMAND_COPY_IMAGE_TO_BUFFER:
-            if (payload_size != 40 ||
-                !retain_batch_resource(batch, BufferKind, read_u32(payload)) ||
-                !retain_batch_resource(batch, ImageKind, read_u32(payload + 12)))
+            if (payload_size != 40)
                 return invalid_batch_record(opcode, offset, "bad buffer-image payload");
+            {
+                nkgpu_buffer_image_copy_desc desc{};
+                desc.struct_size = sizeof(desc);
+                desc.buffer = nkgpu_buffer{read_u32(payload)};
+                desc.buffer_offset = read_u32(payload + 4);
+                desc.row_pitch = read_u32(payload + 8);
+                desc.image = nkgpu_image{read_u32(payload + 12)};
+                desc.mip_level = read_u32(payload + 16);
+                desc.layer = read_u32(payload + 20);
+                desc.x = read_u32(payload + 24);
+                desc.y = read_u32(payload + 28);
+                desc.width = read_u32(payload + 32);
+                desc.height = read_u32(payload + 36);
+                auto *buffer = buffer_pool.get_retained(desc.buffer);
+                auto *image = image_pool.get_retained(desc.image);
+                uint32_t row_pitch = 0;
+                if (!buffer || !image || buffer->value.owner != batch.owner ||
+                    image->value.owner != batch.owner ||
+                    validate_buffer_image_copy(desc, buffer->value, image->value, row_pitch) !=
+                        NKGPU_OK)
+                    return invalid_batch_record(opcode, offset, "invalid buffer-image range");
+                if (!retain_batch_resource(batch, BufferKind, desc.buffer) ||
+                    !retain_batch_resource(batch, ImageKind, desc.image))
+                    return invalid_batch_record(opcode, offset, "unusable buffer-image handle");
+            }
             break;
         default:
             return invalid_batch_record(opcode, offset, "unknown opcode");

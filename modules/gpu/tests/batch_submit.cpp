@@ -359,6 +359,11 @@ int main() {
         copy_pass.kind = NKGPU_BATCH_PASS_COPY;
         EXPECT_RESULT(nkgpu_batch_append_pass(batch, &copy_pass), NKGPU_OK);
         std::vector<uint8_t> copy_commands;
+        append_copy_buffer(copy_commands, buffer, 24, buffer, 12, 4);
+        EXPECT_RESULT(nkgpu_batch_append_command(batch, copy_commands.data(),
+                                                 static_cast<uint32_t>(copy_commands.size())),
+                      NKGPU_ERROR_INVALID_ARGUMENT);
+        copy_commands.clear();
         append_copy_buffer(copy_commands, buffer, 0, buffer, 12, 4);
         EXPECT_RESULT(nkgpu_batch_append_command(batch, copy_commands.data(),
                                                  static_cast<uint32_t>(copy_commands.size())),
