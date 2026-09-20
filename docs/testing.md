@@ -57,6 +57,23 @@ Leak detection remains enabled for the core tests. It is disabled only for the
 GTK integration process because GTK, Pango, and Fontconfig retain
 process-lifetime caches outside NativeKit's ownership.
 
+## Render scheduler metrics
+
+The UI backend smoke test exposes cumulative render-scheduler timings when
+`NKUI_RENDER_METRICS=1` is set. This is useful for comparing a physical render
+executor with the aliased/default backend without changing normal test output:
+
+```sh
+LIBGL_ALWAYS_SOFTWARE=1 NKUI_RENDER_METRICS=1 \
+  ctest --test-dir /path/to/build --output-on-failure -V \
+  -R '^nativekit_ui_backend_smoke$'
+```
+
+The diagnostic reports sealed-plan build time, pending-slot latency,
+RENDER-side execution time, and acquire-to-present time in nanoseconds. Values
+are cumulative for the smoke workload; use the same build and test command
+when comparing configurations.
+
 ## Web accessibility test
 
 When Emscripten tests are enabled, `nativekit_web_accessibility` produces a

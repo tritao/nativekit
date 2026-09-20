@@ -11,6 +11,7 @@
 
 #include <chrono>
 #include <condition_variable>
+#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 #include <mutex>
@@ -23,6 +24,29 @@ bool check(bool result, const char *operation) {
         return true;
     std::fprintf(stderr, "backend renderer smoke: %s failed: %s\n", operation, nk_last_error());
     return false;
+}
+
+void print_render_metrics(nkui_renderer renderer) {
+    if (!std::getenv("NKUI_RENDER_METRICS") || !renderer.id)
+        return;
+    nkui_renderer_stats stats{};
+    stats.struct_size = sizeof(stats);
+    if (nkui_renderer_get_stats(renderer, &stats) != NKUI_OK)
+        return;
+    std::fprintf(stderr,
+                 "backend renderer metrics: submissions=%llu executions=%llu replacements=%llu "
+                 "cancellations=%llu failures=%llu build_ns=%llu queue_ns=%llu execution_ns=%llu "
+                 "acquire_present_ns=%llu gpu_frames=%llu\n",
+                 static_cast<unsigned long long>(stats.render_submissions),
+                 static_cast<unsigned long long>(stats.render_submission_executions),
+                 static_cast<unsigned long long>(stats.render_submission_replacements),
+                 static_cast<unsigned long long>(stats.render_submission_cancellations),
+                 static_cast<unsigned long long>(stats.render_submission_failures),
+                 static_cast<unsigned long long>(stats.render_submission_build_ns),
+                 static_cast<unsigned long long>(stats.render_submission_queue_latency_ns),
+                 static_cast<unsigned long long>(stats.render_submission_execution_ns),
+                 static_cast<unsigned long long>(stats.render_submission_acquire_to_present_ns),
+                 static_cast<unsigned long long>(stats.gpu_frames));
 }
 
 bool acquire_surface_frame(nk_window window, nk_surface surface, int32_t &width, int32_t &height,
@@ -1210,6 +1234,7 @@ int main() {
     }
 cleanup:
     nk::core::set_render_surface_api_guard(false);
+    print_render_metrics(renderer);
     if (renderer.id && nkui_renderer_destroy(renderer) != NKUI_OK)
         result = result ? result : 20;
     if (recovery_renderer.id && nkui_renderer_destroy(recovery_renderer) != NKUI_OK)
