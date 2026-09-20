@@ -1,6 +1,7 @@
 #include "nativekit_gpu.h"
 #include "nativekit_graphics.h"
 #include "nativekit_sokol_api.h"
+#include "nativekit_sokol_runtime.h"
 #include "adapter_internal.h"
 #include "core/graphics_image_registry.h"
 #include "core/executor.hpp"
@@ -37,7 +38,8 @@ enum Kind : uint32_t {
     ImageBuilderKind,
     SamplerKind,
     RenderTargetKind,
-    BatchKind
+    BatchKind,
+    ReadbackKind
 };
 using Handle = uint32_t;
 
@@ -143,6 +145,7 @@ struct Renderer {
     RendererState state = RendererState::Ready;
     bool in_pass = false;
     bool compute_pass = false;
+    bool copy_pass = false;
     Handle active_target = 0;
     int32_t pass_width = 0;
     int32_t pass_height = 0;
@@ -236,6 +239,14 @@ struct ImageBuilder {
     uint32_t width = 0;
     uint32_t height = 0;
 };
+struct Readback {
+    Handle owner = 0;
+    uint32_t native = 0;
+    uint32_t size = 0;
+    uint32_t row_pitch = 0;
+    uint32_t width = 0;
+    uint32_t height = 0;
+};
 struct Sampler {
     Handle owner = 0;
     sg_sampler object{};
@@ -287,6 +298,7 @@ static Pool<ImageBuilder, ImageBuilderKind, 16> image_builder_pool;
 static Pool<Sampler, SamplerKind, 256> sampler_pool;
 static Pool<RenderTarget, RenderTargetKind, 128> render_target_pool;
 static Pool<Batch, BatchKind, 64> batch_pool;
+static Pool<Readback, ReadbackKind, 128> readback_pool;
 static Handle active_renderer = 0;
 static Handle selected_renderer = 0;
 static const nk_sokol_api *selected_api = nullptr;
@@ -320,6 +332,7 @@ static void mark_renderer_lost(Handle handle, Renderer &renderer) {
     renderer.state = RendererState::Lost;
     renderer.in_pass = false;
     renderer.compute_pass = false;
+    renderer.copy_pass = false;
     renderer.active_target = 0;
     renderer.pass_width = 0;
     renderer.pass_height = 0;
@@ -476,6 +489,7 @@ static nkgpu_result begin_frame_with_target(Handle handle, const nk_surface_fram
     slot->value.state = RendererState::FrameActive;
     slot->value.in_pass = false;
     slot->value.compute_pass = false;
+    slot->value.copy_pass = false;
     slot->value.active_target = 0;
     slot->value.bindings = {};
     active_renderer = handle;
@@ -849,6 +863,11 @@ static sg_buffer_usage convert_buffer_usage(nkgpu_buffer_usage usage, bool dynam
     result.vertex_buffer = (usage & NKGPU_BUFFER_VERTEX) != 0;
     result.index_buffer = (usage & NKGPU_BUFFER_INDEX) != 0;
     result.storage_buffer = (usage & NKGPU_BUFFER_STORAGE) != 0;
+    /* Sokol needs a bind target even for transfer-only buffers. A vertex
+       target is only the allocation/upload target here; NativeKit transfer
+       operations bind the underlying object to their copy target explicitly. */
+    if (!result.vertex_buffer && !result.index_buffer && !result.storage_buffer)
+        result.vertex_buffer = true;
     const bool write_transient =
         (usage & (NKGPU_BUFFER_UNIFORM | NKGPU_BUFFER_TRANSFER)) != 0 && !dynamic_update && !stream;
     result.immutable = !dynamic_update && !stream && !write_transient;
@@ -1098,9 +1117,12 @@ nkgpu_result nkgpu_query_features(nkgpu_renderer renderer, nkgpu_features *out_f
     features.storage_image = native.compute ? 1u : 0u;
     features.compute = native.compute ? 1u : 0u;
     features.instancing = 1;
-    features.buffer_copy = 0;
-    features.image_copy = 0;
-    features.image_readback = 0;
+    features.buffer_copy =
+        slot->value.api->transfer && slot->value.api->transfer->buffer_copy ? 1u : 0u;
+    features.image_copy =
+        slot->value.api->transfer && slot->value.api->transfer->image_copy ? 1u : 0u;
+    features.image_readback =
+        slot->value.api->transfer && slot->value.api->transfer->readback_begin ? 1u : 0u;
     *out_features = features;
     return NKGPU_OK;
 }
@@ -1538,6 +1560,7 @@ nkgpu_result nkgpu_begin_render_pass(nkgpu_renderer renderer,
     sg_begin_pass(&pass);
     owner->value.in_pass = true;
     owner->value.compute_pass = false;
+    owner->value.copy_pass = false;
     ++owner->value.passes;
     owner->value.active_target = 0;
     owner->value.pass_width = pass_width;
@@ -1681,6 +1704,13 @@ static void destroy_owned(Handle owner, bool backend_available) {
         if ((s.active || s.retired || s.pins) && s.value.owner == owner) {
             s.pins = 0;
             destroy_render_target(s, backend_available);
+        }
+    for (auto &s : readback_pool.slots)
+        if (s.active && s.value.owner == owner) {
+            if (backend_available && selected_api && selected_api->transfer &&
+                selected_api->transfer->readback_destroy)
+                selected_api->transfer->readback_destroy(s.value.native);
+            readback_pool.remove(s);
         }
     for (auto &s : sampler_pool.slots)
         if ((s.active || s.retired || s.pins) && s.value.owner == owner) {
@@ -1949,6 +1979,7 @@ nkgpu_result nkgpu_begin_render_target(nkgpu_renderer renderer, nkgpu_render_tar
     owner->value.state = RendererState::RenderTargetActive;
     owner->value.in_pass = true;
     owner->value.compute_pass = false;
+    owner->value.copy_pass = false;
     ++owner->value.passes;
     owner->value.active_target = handle;
     owner->value.pass_width = target->value.width;
@@ -2936,6 +2967,7 @@ nkgpu_result nkgpu_frame_begin(nkgpu_renderer h) {
     s->value.frame_target = {};
     s->value.in_pass = false;
     s->value.compute_pass = false;
+    s->value.copy_pass = false;
     s->value.active_target = 0;
     s->value.bindings = {};
     active_renderer = h;
@@ -2961,6 +2993,34 @@ nkgpu_result nkgpu_begin_compute_pass(nkgpu_renderer h) {
     sg_begin_pass(&pass);
     renderer->value.in_pass = true;
     renderer->value.compute_pass = true;
+    renderer->value.copy_pass = false;
+    ++renderer->value.passes;
+    renderer->value.active_target = 0;
+    renderer->value.pass_width = 0;
+    renderer->value.pass_height = 0;
+    renderer->value.bindings = {};
+    return NKGPU_OK;
+}
+
+nkgpu_result nkgpu_begin_copy_pass(nkgpu_renderer h) {
+    auto *renderer = renderer_pool.get(h);
+    if (!renderer)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    if (renderer->value.state == RendererState::Lost)
+        return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
+    if (renderer->value.state != RendererState::FrameActive || renderer->value.in_pass ||
+        active_renderer != h)
+        return fail(NKGPU_ERROR_WRONG_STATE, "copy pass requires a frame with no active pass");
+    const nkgpu_result activated = activate_renderer(h);
+    if (activated != NKGPU_OK)
+        return activated;
+    if (!selected_api->transfer ||
+        (!selected_api->transfer->buffer_copy && !selected_api->transfer->image_copy &&
+         !selected_api->transfer->buffer_to_image && !selected_api->transfer->image_to_buffer))
+        return fail(NKGPU_ERROR_UNSUPPORTED, "transfer operations are unavailable");
+    renderer->value.in_pass = true;
+    renderer->value.compute_pass = false;
+    renderer->value.copy_pass = true;
     ++renderer->value.passes;
     renderer->value.active_target = 0;
     renderer->value.pass_width = 0;
@@ -3085,9 +3145,11 @@ nkgpu_result nkgpu_end_pass(nkgpu_renderer h) {
     const nkgpu_result activated = activate_renderer(h);
     if (activated != NKGPU_OK)
         return activated;
-    sg_end_pass();
+    if (!renderer->value.copy_pass)
+        sg_end_pass();
     renderer->value.in_pass = false;
     renderer->value.compute_pass = false;
+    renderer->value.copy_pass = false;
     renderer->value.active_target = 0;
     renderer->value.bindings = {};
     return NKGPU_OK;
@@ -3623,6 +3685,293 @@ nkgpu_result nkgpu_image_destroy(nkgpu_renderer r, nkgpu_image h) {
     image_pool.remove(*s);
     return NKGPU_OK;
 }
+
+static nkgpu_result require_transfer_access(nkgpu_renderer handle, Renderer **out_renderer) {
+    auto *renderer = renderer_pool.get(handle);
+    if (!renderer)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    if (renderer->value.state == RendererState::Lost)
+        return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
+    if (active_renderer && active_renderer != handle)
+        return fail(NKGPU_ERROR_WRONG_STATE, "another renderer has an active frame");
+    if (renderer->value.in_pass && !renderer->value.copy_pass)
+        return fail(NKGPU_ERROR_WRONG_STATE, "transfer requires a copy pass boundary");
+    const nkgpu_result activated = activate_renderer(handle);
+    if (activated != NKGPU_OK)
+        return activated;
+    if (!renderer->value.api->transfer)
+        return fail(NKGPU_ERROR_UNSUPPORTED, "transfer operations are unavailable");
+    if (out_renderer)
+        *out_renderer = &renderer->value;
+    return NKGPU_OK;
+}
+
+static bool image_region_dimensions(const Image &image, uint32_t mip_level, uint32_t layer,
+                                    uint32_t x, uint32_t y, uint32_t width, uint32_t height,
+                                    uint32_t &out_width, uint32_t &out_height) {
+    if (mip_level >= image.mip_count || layer >= image.layer_count || !width || !height)
+        return false;
+    out_width = std::max(1u, image.width >> mip_level);
+    out_height = std::max(1u, image.height >> mip_level);
+    return x <= out_width && y <= out_height && width <= out_width - x &&
+           height <= out_height - y;
+}
+
+static uint32_t image_row_pitch(const Image &image, uint32_t width) {
+    const uint32_t bytes = image_format_bytes(image.format);
+    return bytes && width <= UINT32_MAX / bytes ? width * bytes : 0;
+}
+
+nkgpu_result nkgpu_buffer_copy(nkgpu_renderer r, const nkgpu_buffer_copy_desc *desc) {
+    if (!desc || desc->struct_size < sizeof(nkgpu_buffer_copy_desc))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid buffer-copy descriptor");
+    auto *source = buffer_pool.get(desc->source);
+    auto *destination = buffer_pool.get(desc->destination);
+    if (!source || !destination || source->value.owner != r || destination->value.owner != r)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign buffer-copy handle");
+    if (!desc->size || desc->source_offset > source->value.size ||
+        desc->size > source->value.size - desc->source_offset ||
+        desc->destination_offset > destination->value.size ||
+        desc->size > destination->value.size - desc->destination_offset)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "buffer-copy range is invalid");
+    const uint64_t source_end = static_cast<uint64_t>(desc->source_offset) + desc->size;
+    const uint64_t destination_end = static_cast<uint64_t>(desc->destination_offset) + desc->size;
+    if (desc->source.id == desc->destination.id &&
+        static_cast<uint64_t>(desc->source_offset) < destination_end &&
+        static_cast<uint64_t>(desc->destination_offset) < source_end)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "overlapping self-buffer copy is unsupported");
+    Renderer *renderer = nullptr;
+    const nkgpu_result access = require_transfer_access(r, &renderer);
+    if (access != NKGPU_OK)
+        return access;
+    if (!renderer->api->transfer->buffer_copy)
+        return fail(NKGPU_ERROR_UNSUPPORTED, "buffer copies are unavailable");
+    if (!renderer->api->transfer->buffer_copy(
+            source->value.object, desc->source_offset, destination->value.object,
+            desc->destination_offset, desc->size))
+        return fail(NKGPU_ERROR_UNKNOWN, "buffer copy failed");
+    return NKGPU_OK;
+}
+
+nkgpu_result nkgpu_image_copy(nkgpu_renderer r, const nkgpu_image_copy_desc *desc) {
+    if (!desc || desc->struct_size < sizeof(nkgpu_image_copy_desc))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid image-copy descriptor");
+    auto *source = image_pool.get(desc->source);
+    auto *destination = image_pool.get(desc->destination);
+    if (!source || !destination || source->value.owner != r || destination->value.owner != r)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign image-copy handle");
+    if (source->value.format != destination->value.format || source->value.sample_count != 1 ||
+        destination->value.sample_count != 1)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "image-copy formats or samples are incompatible");
+    uint32_t source_width = 0;
+    uint32_t source_height = 0;
+    uint32_t destination_width = 0;
+    uint32_t destination_height = 0;
+    if (!image_region_dimensions(source->value, desc->source_mip, desc->source_layer,
+                                 desc->source_x, desc->source_y, desc->width, desc->height,
+                                 source_width, source_height) ||
+        !image_region_dimensions(destination->value, desc->destination_mip, desc->destination_layer,
+                                 desc->destination_x, desc->destination_y, desc->width,
+                                 desc->height, destination_width, destination_height))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "image-copy region is invalid");
+    Renderer *renderer = nullptr;
+    const nkgpu_result access = require_transfer_access(r, &renderer);
+    if (access != NKGPU_OK)
+        return access;
+    if (!renderer->api->transfer->image_copy)
+        return fail(NKGPU_ERROR_UNSUPPORTED, "image copies are unavailable");
+    if (!renderer->api->transfer->image_copy(
+            source->value.object, desc->source_mip, desc->source_layer, desc->source_x,
+            desc->source_y, destination->value.object, desc->destination_mip,
+            desc->destination_layer, desc->destination_x, desc->destination_y, desc->width,
+            desc->height))
+        return fail(NKGPU_ERROR_UNKNOWN, "image copy failed");
+    return NKGPU_OK;
+}
+
+static nkgpu_result validate_buffer_image_copy(const nkgpu_buffer_image_copy_desc &desc,
+                                               const Buffer &buffer, const Image &image,
+                                               uint32_t &row_pitch) {
+    uint32_t image_width = 0;
+    uint32_t image_height = 0;
+    if (!image_region_dimensions(image, desc.mip_level, desc.layer, desc.x, desc.y, desc.width,
+                                 desc.height, image_width, image_height))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "buffer-image region is invalid");
+    row_pitch = desc.row_pitch ? desc.row_pitch : image_row_pitch(image, desc.width);
+    const uint32_t tight_pitch = image_row_pitch(image, desc.width);
+    const uint32_t bytes = image_format_bytes(image.format);
+    if (!row_pitch || !tight_pitch || row_pitch < tight_pitch || row_pitch % bytes != 0)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "buffer-image row pitch is invalid");
+    const uint64_t end = static_cast<uint64_t>(desc.buffer_offset) +
+                         static_cast<uint64_t>(row_pitch) * (desc.height - 1) + tight_pitch;
+    if (end > buffer.size)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "buffer-image range exceeds buffer");
+    return NKGPU_OK;
+}
+
+nkgpu_result nkgpu_buffer_to_image(nkgpu_renderer r,
+                                   const nkgpu_buffer_image_copy_desc *desc) {
+    if (!desc || desc->struct_size < sizeof(nkgpu_buffer_image_copy_desc))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid buffer-to-image descriptor");
+    auto *buffer = buffer_pool.get(desc->buffer);
+    auto *image = image_pool.get(desc->image);
+    if (!buffer || !image || buffer->value.owner != r || image->value.owner != r)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign buffer-image handle");
+    uint32_t row_pitch = 0;
+    const nkgpu_result valid = validate_buffer_image_copy(*desc, buffer->value, image->value,
+                                                          row_pitch);
+    if (valid != NKGPU_OK)
+        return valid;
+    Renderer *renderer = nullptr;
+    const nkgpu_result access = require_transfer_access(r, &renderer);
+    if (access != NKGPU_OK)
+        return access;
+    if (!renderer->api->transfer->buffer_to_image)
+        return fail(NKGPU_ERROR_UNSUPPORTED, "buffer-to-image copies are unavailable");
+    if (!renderer->api->transfer->buffer_to_image(
+            buffer->value.object, desc->buffer_offset, row_pitch, image->value.object,
+            desc->mip_level, desc->layer, desc->x, desc->y, desc->width, desc->height))
+        return fail(NKGPU_ERROR_UNKNOWN, "buffer-to-image copy failed");
+    return NKGPU_OK;
+}
+
+nkgpu_result nkgpu_image_to_buffer(nkgpu_renderer r,
+                                   const nkgpu_buffer_image_copy_desc *desc) {
+    if (!desc || desc->struct_size < sizeof(nkgpu_buffer_image_copy_desc))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid image-to-buffer descriptor");
+    auto *buffer = buffer_pool.get(desc->buffer);
+    auto *image = image_pool.get(desc->image);
+    if (!buffer || !image || buffer->value.owner != r || image->value.owner != r)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign buffer-image handle");
+    uint32_t row_pitch = 0;
+    const nkgpu_result valid = validate_buffer_image_copy(*desc, buffer->value, image->value,
+                                                          row_pitch);
+    if (valid != NKGPU_OK)
+        return valid;
+    Renderer *renderer = nullptr;
+    const nkgpu_result access = require_transfer_access(r, &renderer);
+    if (access != NKGPU_OK)
+        return access;
+    if (!renderer->api->transfer->image_to_buffer)
+        return fail(NKGPU_ERROR_UNSUPPORTED, "image-to-buffer copies are unavailable");
+    if (!renderer->api->transfer->image_to_buffer(
+            image->value.object, desc->mip_level, desc->layer, desc->x, desc->y, desc->width,
+            desc->height, buffer->value.object, desc->buffer_offset, row_pitch))
+        return fail(NKGPU_ERROR_UNKNOWN, "image-to-buffer copy failed");
+    return NKGPU_OK;
+}
+
+nkgpu_result nkgpu_readback_begin_image(nkgpu_renderer r,
+                                        const nkgpu_image_readback_desc *desc,
+                                        nkgpu_readback *out) {
+    if (!desc || desc->struct_size < sizeof(nkgpu_image_readback_desc) || !out)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid image readback descriptor");
+    *out = 0;
+    auto *image = image_pool.get(desc->image);
+    if (!image || image->value.owner != r)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign readback image");
+    uint32_t image_width = 0;
+    uint32_t image_height = 0;
+    if (!image_region_dimensions(image->value, desc->mip_level, desc->layer, desc->x, desc->y,
+                                 desc->width, desc->height, image_width, image_height))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "readback region is invalid");
+    const uint32_t row_pitch = image_row_pitch(image->value, desc->width);
+    if (!row_pitch || desc->height > UINT32_MAX / row_pitch)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "readback size is invalid");
+    Renderer *renderer = nullptr;
+    const nkgpu_result access = require_transfer_access(r, &renderer);
+    if (access != NKGPU_OK)
+        return access;
+    if (!renderer->api->transfer->readback_begin)
+        return fail(NKGPU_ERROR_UNSUPPORTED, "image readback is unavailable");
+    const uint32_t native = renderer->api->transfer->readback_begin(
+        image->value.object, desc->mip_level, desc->layer, desc->x, desc->y, desc->width,
+        desc->height);
+    if (!native)
+        return fail(NKGPU_ERROR_UNKNOWN, "image readback allocation failed");
+    Readback value{};
+    value.owner = r;
+    value.native = native;
+    value.size = row_pitch * desc->height;
+    value.row_pitch = row_pitch;
+    value.width = desc->width;
+    value.height = desc->height;
+    const Handle handle = readback_pool.add(value);
+    if (!handle) {
+        renderer->api->transfer->readback_destroy(native);
+        return fail(NKGPU_ERROR_OUT_OF_MEMORY, "readback pool full");
+    }
+    *out = handle;
+    return NKGPU_OK;
+}
+
+nkgpu_result nkgpu_readback_query(nkgpu_renderer r, nkgpu_readback h,
+                                  nkgpu_readback_info *out_info) {
+    auto *readback = readback_pool.get(h);
+    if (!out_info)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "readback output is null");
+    if (out_info->struct_size < sizeof(nkgpu_readback_info))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "readback output is too small");
+    if (!readback || readback->value.owner != r)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign readback");
+    Renderer *renderer = nullptr;
+    const nkgpu_result access = require_transfer_access(r, &renderer);
+    if (access != NKGPU_OK)
+        return access;
+    const nk_sokol_transfer_api *transfer = renderer->api->transfer;
+    if (!transfer->readback_status)
+        return fail(NKGPU_ERROR_UNSUPPORTED, "image readback is unavailable");
+    nkgpu_readback_info info{};
+    info.struct_size = sizeof(info);
+    info.state = transfer->readback_status(readback->value.native);
+    info.size = readback->value.size;
+    info.row_pitch = readback->value.row_pitch;
+    info.width = readback->value.width;
+    info.height = readback->value.height;
+    *out_info = info;
+    return NKGPU_OK;
+}
+
+nkgpu_result nkgpu_readback_read(nkgpu_renderer r, nkgpu_readback h, uint8_t *data,
+                                 uint32_t size, uint32_t *out_size) {
+    if (!data || !out_size)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid readback output");
+    *out_size = 0;
+    auto *readback = readback_pool.get(h);
+    if (!readback || readback->value.owner != r)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign readback");
+    if (size < readback->value.size)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "readback output is too small");
+    Renderer *renderer = nullptr;
+    const nkgpu_result access = require_transfer_access(r, &renderer);
+    if (access != NKGPU_OK)
+        return access;
+    const nk_sokol_transfer_api *transfer = renderer->api->transfer;
+    if (!transfer->readback_status || !transfer->readback_read)
+        return fail(NKGPU_ERROR_UNSUPPORTED, "image readback is unavailable");
+    if (transfer->readback_status(readback->value.native) != NKGPU_READBACK_READY)
+        return fail(NKGPU_ERROR_WRONG_STATE, "readback is not ready");
+    if (!transfer->readback_read(readback->value.native, data, readback->value.size))
+        return fail(NKGPU_ERROR_UNKNOWN, "readback map failed");
+    *out_size = readback->value.size;
+    return NKGPU_OK;
+}
+
+nkgpu_result nkgpu_readback_destroy(nkgpu_renderer r, nkgpu_readback h) {
+    auto *readback = readback_pool.get(h);
+    if (!renderer_pool.get(r) || !readback || readback->value.owner != r)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign readback");
+    bool backend_available = false;
+    const nkgpu_result ready = prepare_resource_destroy(r, backend_available);
+    if (ready != NKGPU_OK)
+        return ready;
+    if (backend_available && selected_api && selected_api->transfer &&
+        selected_api->transfer->readback_destroy)
+        selected_api->transfer->readback_destroy(readback->value.native);
+    readback_pool.remove(*readback);
+    return NKGPU_OK;
+}
+
 nkgpu_result nkgpu_sampler_create(nkgpu_renderer r, nkgpu_filter min_filter,
                                   nkgpu_filter mag_filter, nkgpu_wrap wrap_u, nkgpu_wrap wrap_v,
                                   nkgpu_sampler *out) {
@@ -3840,6 +4189,57 @@ static nkgpu_result submit_command(nkgpu_renderer r, uint32_t opcode, const uint
         return size == 12 ? nkgpu_dispatch(r, read_u32(payload), read_u32(payload + 4),
                                            read_u32(payload + 8))
                           : NKGPU_ERROR_INVALID_ARGUMENT;
+    case NKGPU_COMMAND_COPY_BUFFER: {
+        if (size != 20)
+            return NKGPU_ERROR_INVALID_ARGUMENT;
+        nkgpu_buffer_copy_desc desc{};
+        desc.struct_size = sizeof(desc);
+        desc.source = nkgpu_buffer{read_u32(payload)};
+        desc.source_offset = read_u32(payload + 4);
+        desc.destination = nkgpu_buffer{read_u32(payload + 8)};
+        desc.destination_offset = read_u32(payload + 12);
+        desc.size = read_u32(payload + 16);
+        return nkgpu_buffer_copy(r, &desc);
+    }
+    case NKGPU_COMMAND_COPY_IMAGE: {
+        if (size != 48)
+            return NKGPU_ERROR_INVALID_ARGUMENT;
+        nkgpu_image_copy_desc desc{};
+        desc.struct_size = sizeof(desc);
+        desc.source = nkgpu_image{read_u32(payload)};
+        desc.source_mip = read_u32(payload + 4);
+        desc.source_layer = read_u32(payload + 8);
+        desc.source_x = read_u32(payload + 12);
+        desc.source_y = read_u32(payload + 16);
+        desc.destination = nkgpu_image{read_u32(payload + 20)};
+        desc.destination_mip = read_u32(payload + 24);
+        desc.destination_layer = read_u32(payload + 28);
+        desc.destination_x = read_u32(payload + 32);
+        desc.destination_y = read_u32(payload + 36);
+        desc.width = read_u32(payload + 40);
+        desc.height = read_u32(payload + 44);
+        return nkgpu_image_copy(r, &desc);
+    }
+    case NKGPU_COMMAND_COPY_BUFFER_TO_IMAGE:
+    case NKGPU_COMMAND_COPY_IMAGE_TO_BUFFER: {
+        if (size != 40)
+            return NKGPU_ERROR_INVALID_ARGUMENT;
+        nkgpu_buffer_image_copy_desc desc{};
+        desc.struct_size = sizeof(desc);
+        desc.buffer = nkgpu_buffer{read_u32(payload)};
+        desc.buffer_offset = read_u32(payload + 4);
+        desc.row_pitch = read_u32(payload + 8);
+        desc.image = nkgpu_image{read_u32(payload + 12)};
+        desc.mip_level = read_u32(payload + 16);
+        desc.layer = read_u32(payload + 20);
+        desc.x = read_u32(payload + 24);
+        desc.y = read_u32(payload + 28);
+        desc.width = read_u32(payload + 32);
+        desc.height = read_u32(payload + 36);
+        return opcode == NKGPU_COMMAND_COPY_BUFFER_TO_IMAGE
+                   ? nkgpu_buffer_to_image(r, &desc)
+                   : nkgpu_image_to_buffer(r, &desc);
+    }
     case NKGPU_COMMAND_APPLY_SCISSOR:
         return size == 20 ? nkgpu_apply_scissor(r, read_u32(payload),
                                                 static_cast<int32_t>(read_u32(payload + 4)),
@@ -4081,6 +4481,25 @@ static bool retain_batch_records(Batch &batch, const uint8_t *commands, uint32_t
             if (payload_size != 12)
                 return invalid_batch_record(opcode, offset, "bad dispatch payload");
             break;
+        case NKGPU_COMMAND_COPY_BUFFER:
+            if (payload_size != 20 ||
+                !retain_batch_resource(batch, BufferKind, read_u32(payload)) ||
+                !retain_batch_resource(batch, BufferKind, read_u32(payload + 8)))
+                return invalid_batch_record(opcode, offset, "bad buffer-copy payload");
+            break;
+        case NKGPU_COMMAND_COPY_IMAGE:
+            if (payload_size != 48 ||
+                !retain_batch_resource(batch, ImageKind, read_u32(payload)) ||
+                !retain_batch_resource(batch, ImageKind, read_u32(payload + 20)))
+                return invalid_batch_record(opcode, offset, "bad image-copy payload");
+            break;
+        case NKGPU_COMMAND_COPY_BUFFER_TO_IMAGE:
+        case NKGPU_COMMAND_COPY_IMAGE_TO_BUFFER:
+            if (payload_size != 40 ||
+                !retain_batch_resource(batch, BufferKind, read_u32(payload)) ||
+                !retain_batch_resource(batch, ImageKind, read_u32(payload + 12)))
+                return invalid_batch_record(opcode, offset, "bad buffer-image payload");
+            break;
         default:
             return invalid_batch_record(opcode, offset, "unknown opcode");
         }
@@ -4189,7 +4608,7 @@ nkgpu_result nkgpu_batch_append_pass(nkgpu_batch batch, const nkgpu_batch_pass *
     if (!pass || pass->struct_size < sizeof(nkgpu_batch_pass))
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid batch pass");
     if (pass->kind != NKGPU_BATCH_PASS_WINDOW && pass->kind != NKGPU_BATCH_PASS_TARGET &&
-        pass->kind != NKGPU_BATCH_PASS_COMPUTE)
+        pass->kind != NKGPU_BATCH_PASS_COMPUTE && pass->kind != NKGPU_BATCH_PASS_COPY)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid batch pass kind");
     if (pass->clear > 1)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid batch pass clear flag");
@@ -4308,8 +4727,10 @@ nkgpu_result nkgpu_batch_submit(nkgpu_renderer renderer, nkgpu_batch batch,
             result = nkgpu_begin_window_pass(renderer, pass.width, pass.height, pass.clear);
         else if (pass.kind == NKGPU_BATCH_PASS_TARGET)
             result = nkgpu_begin_target_pass(renderer, nkgpu_render_target{pass.target}, pass.clear);
-        else
+        else if (pass.kind == NKGPU_BATCH_PASS_COMPUTE)
             result = nkgpu_begin_compute_pass(renderer);
+        else
+            result = nkgpu_begin_copy_pass(renderer);
         if (result != NKGPU_OK)
             break;
         if (!pass.commands.empty())
@@ -4391,7 +4812,7 @@ static nkgpu_result end_frame(nkgpu_renderer r, bool present_surface) {
     const nkgpu_result activated = activate_renderer(r);
     if (activated != NKGPU_OK)
         return activated;
-    if (rs->value.in_pass)
+    if (rs->value.in_pass && !rs->value.copy_pass)
         sg_end_pass();
     sg_commit();
     if (!present_surface && rs->value.frame_target.frame != NK_INVALID_HANDLE) {
@@ -4409,6 +4830,7 @@ static nkgpu_result end_frame(nkgpu_renderer r, bool present_surface) {
     rs->value.state = RendererState::Ready;
     rs->value.in_pass = false;
     rs->value.compute_pass = false;
+    rs->value.copy_pass = false;
     rs->value.active_target = 0;
     rs->value.pass_width = 0;
     rs->value.pass_height = 0;

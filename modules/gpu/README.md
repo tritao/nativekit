@@ -184,8 +184,9 @@ stream envelopes, and an opaque native device/context escape hatch. The older
 `nkgpu_render_target_*` functions remain as compatibility wrappers for existing
 callers.
 
-The next slice is reserved for transfer and readback objects. Those additions
-will be gated by the reported capabilities so the normal API remains
-backend-agnostic. The pinned Sokol revision currently has no portable GPU
-copy/readback primitive, so those operations are not emulated as if they were
-GPU-visible.
+NativeKit now layers a private `nk_sokol_transfer_api` beside Sokol's regular
+dispatch table. GLCore and GLES3 expose real buffer/image transfers plus
+fence-backed asynchronous image readback, including tightly packed `R32_UINT`
+rectangles suitable for CAD picking. D3D11 and Metal remain capability-gated
+until their staging-resource implementations are added. The portable surface
+does not expose backend fences or native resource structs.

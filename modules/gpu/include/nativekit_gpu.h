@@ -152,6 +152,8 @@ NKGPU_HANDLE(nkgpu_sampler);
 NKGPU_HANDLE(nkgpu_render_target);
 /** Sealed-submission batch handle returned by nkgpu_batch_begin(). */
 NKGPU_HANDLE(nkgpu_batch);
+/** Asynchronous readback handle returned by nkgpu_readback_begin_image(). */
+NKGPU_HANDLE(nkgpu_readback);
 #undef NKGPU_HANDLE
 #undef NKGPU_HANDLE_ANNOTATION
 
@@ -176,6 +178,16 @@ enum NK_ENUM(nkgpu_result) {
     NKGPU_ERROR_OUT_OF_MEMORY = -6,
     /** The call was made from a thread that does not satisfy the executor it requires. */
     NKGPU_ERROR_WRONG_THREAD = -7,
+    /** The selected backend does not expose the requested optional operation. */
+    NKGPU_ERROR_UNSUPPORTED = -8,
+};
+
+/** State of an asynchronous GPU readback. */
+typedef uint32_t nkgpu_readback_state;
+enum NK_ENUM(nkgpu_readback_state) {
+    NKGPU_READBACK_PENDING = 1,
+    NKGPU_READBACK_READY = 2,
+    NKGPU_READBACK_FAILED = 3,
 };
 
 /** Observable renderer lifecycle state. */
@@ -475,6 +487,70 @@ typedef struct nkgpu_image_desc {
     uint32_t dynamic_update;
 } nkgpu_image_desc;
 
+/** Describes a buffer-to-buffer transfer. */
+typedef struct nkgpu_buffer_copy_desc {
+    uint32_t struct_size NK_STRUCT_SIZE;
+    nkgpu_buffer source;
+    uint32_t source_offset;
+    nkgpu_buffer destination;
+    uint32_t destination_offset;
+    uint32_t size;
+} nkgpu_buffer_copy_desc;
+
+/** Describes a 2D image-region transfer. Coordinates use NativeKit's top-left origin. */
+typedef struct nkgpu_image_copy_desc {
+    uint32_t struct_size NK_STRUCT_SIZE;
+    nkgpu_image source;
+    uint32_t source_mip;
+    uint32_t source_layer;
+    uint32_t source_x;
+    uint32_t source_y;
+    nkgpu_image destination;
+    uint32_t destination_mip;
+    uint32_t destination_layer;
+    uint32_t destination_x;
+    uint32_t destination_y;
+    uint32_t width;
+    uint32_t height;
+} nkgpu_image_copy_desc;
+
+/** Describes a buffer-to-image transfer. Coordinates use NativeKit's top-left origin. */
+typedef struct nkgpu_buffer_image_copy_desc {
+    uint32_t struct_size NK_STRUCT_SIZE;
+    nkgpu_buffer buffer;
+    uint32_t buffer_offset;
+    uint32_t row_pitch;
+    nkgpu_image image;
+    uint32_t mip_level;
+    uint32_t layer;
+    uint32_t x;
+    uint32_t y;
+    uint32_t width;
+    uint32_t height;
+} nkgpu_buffer_image_copy_desc;
+
+/** Describes one asynchronous image readback request. */
+typedef struct nkgpu_image_readback_desc {
+    uint32_t struct_size NK_STRUCT_SIZE;
+    nkgpu_image image;
+    uint32_t mip_level;
+    uint32_t layer;
+    uint32_t x;
+    uint32_t y;
+    uint32_t width;
+    uint32_t height;
+} nkgpu_image_readback_desc;
+
+/** Reports readback state and the tightly packed result layout. */
+typedef struct nkgpu_readback_info {
+    uint32_t struct_size NK_STRUCT_SIZE;
+    nkgpu_readback_state state;
+    uint32_t size;
+    uint32_t row_pitch;
+    uint32_t width;
+    uint32_t height;
+} nkgpu_readback_info;
+
 /** An RGBA clear color used by render-pass actions. */
 typedef struct nkgpu_color {
     float r;
@@ -619,6 +695,14 @@ enum NK_ENUM(nkgpu_command) {
     NKGPU_COMMAND_APPLY_STORAGE_IMAGE = 12,
     /** Dispatch compute workgroups; payload: x, y, and z group counts. */
     NKGPU_COMMAND_DISPATCH = 13,
+    /** Copy a byte range between buffers; payload: source, source offset, destination, destination offset, size. */
+    NKGPU_COMMAND_COPY_BUFFER = 14,
+    /** Copy a 2D image region; payload matches nkgpu_image_copy_desc without struct_size. */
+    NKGPU_COMMAND_COPY_IMAGE = 15,
+    /** Upload a buffer region into an image; payload matches nkgpu_buffer_image_copy_desc without struct_size. */
+    NKGPU_COMMAND_COPY_BUFFER_TO_IMAGE = 16,
+    /** Download an image region into a buffer; payload matches nkgpu_buffer_image_copy_desc without struct_size. */
+    NKGPU_COMMAND_COPY_IMAGE_TO_BUFFER = 17,
 };
 
 /** Current version for the explicitly versioned command-stream envelope. */
@@ -1126,6 +1210,9 @@ NKGPU_API nkgpu_result nkgpu_frame_begin(nkgpu_renderer renderer);
 /** Begins a compute pass inside an active frame. */
 NKGPU_API nkgpu_result nkgpu_begin_compute_pass(nkgpu_renderer renderer);
 
+/** Begins a transfer pass inside an active frame. */
+NKGPU_API nkgpu_result nkgpu_begin_copy_pass(nkgpu_renderer renderer);
+
 /** Begins a window-surface pass inside a frame. */
 NKGPU_API nkgpu_result nkgpu_begin_window_pass(nkgpu_renderer renderer, uint32_t width,
                                                uint32_t height, uint32_t clear);
@@ -1231,6 +1318,45 @@ NKGPU_API nkgpu_result nkgpu_image_update(nkgpu_renderer renderer, nkgpu_image i
 /** Destroys an image and its texture view; the handle becomes invalid. */
 NKGPU_API nkgpu_result nkgpu_image_destroy(nkgpu_renderer renderer, nkgpu_image image);
 
+/* ------------------------------------------------------------------------- */
+/* Transfer and readback APIs                                                */
+/* ------------------------------------------------------------------------- */
+
+/** Copies an arbitrary byte range between buffers. */
+NKGPU_API nkgpu_result nkgpu_buffer_copy(nkgpu_renderer renderer,
+                                         const nkgpu_buffer_copy_desc *desc);
+
+/** Copies a 2D region between compatible images. */
+NKGPU_API nkgpu_result nkgpu_image_copy(nkgpu_renderer renderer,
+                                        const nkgpu_image_copy_desc *desc);
+
+/** Uploads a buffer region into an image. */
+NKGPU_API nkgpu_result nkgpu_buffer_to_image(
+    nkgpu_renderer renderer, const nkgpu_buffer_image_copy_desc *desc);
+
+/** Downloads an image region into a buffer in top-to-bottom row order. */
+NKGPU_API nkgpu_result nkgpu_image_to_buffer(
+    nkgpu_renderer renderer, const nkgpu_buffer_image_copy_desc *desc);
+
+/** Begins an asynchronous readback of an image rectangle. */
+NKGPU_API nkgpu_result nkgpu_readback_begin_image(
+    nkgpu_renderer renderer, const nkgpu_image_readback_desc *desc,
+    nkgpu_readback *out_readback NKGPU_OUT);
+
+/** Polls a readback without exposing backend synchronization objects. */
+NKGPU_API nkgpu_result nkgpu_readback_query(nkgpu_renderer renderer,
+                                             nkgpu_readback readback,
+                                             nkgpu_readback_info *out_info NKGPU_OUT);
+
+/** Copies ready readback bytes into caller-owned memory. */
+NKGPU_API nkgpu_result nkgpu_readback_read(nkgpu_renderer renderer, nkgpu_readback readback,
+                                            uint8_t *data, uint32_t size,
+                                            uint32_t *out_size NKGPU_OUT);
+
+/** Destroys a readback object, whether pending or ready. */
+NKGPU_API nkgpu_result nkgpu_readback_destroy(nkgpu_renderer renderer,
+                                               nkgpu_readback readback);
+
 /**
  * Creates a texture sampler with independent minification and magnification
  * filters and U/V wrap modes.
@@ -1304,6 +1430,8 @@ enum NK_ENUM(nkgpu_batch_pass_kind) {
     NKGPU_BATCH_PASS_TARGET = 2,
     /** A compute pass with no render target. */
     NKGPU_BATCH_PASS_COMPUTE = 3,
+    /** A transfer pass with no render target. */
+    NKGPU_BATCH_PASS_COPY = 4,
 };
 
 /** One render pass recorded into a submission batch. */
@@ -1312,7 +1440,7 @@ typedef struct nkgpu_batch_pass {
     uint32_t struct_size NK_STRUCT_SIZE;
     /** Selects how the pass target fields below are interpreted. */
     nkgpu_batch_pass_kind kind;
-    /** Offscreen target for NKGPU_BATCH_PASS_TARGET; ignored for window/compute passes. */
+    /** Offscreen target for NKGPU_BATCH_PASS_TARGET; ignored for other pass kinds. */
     nkgpu_render_target target;
     /** Non-zero to clear the target at the start of the pass, zero to load it. */
     uint32_t clear;
