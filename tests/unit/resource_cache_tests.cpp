@@ -47,8 +47,7 @@ int main() {
         nk_event event{};
         event.struct_size = sizeof(event);
         assert(nk_poll_event(&event) == NK_OK);
-        if (event.kind == NK_EVENT_RESOURCE_DATA_COMPLETE &&
-            event.request_id == async_request) {
+        if (event.kind == NK_EVENT_RESOURCE_DATA_COMPLETE && event.request_id == async_request) {
             assert(event.result == NK_OK);
             assert(event.data_size == sizeof(test_data) - 1);
             assert(std::string(static_cast<const char *>(event.data), event.data_size) ==
@@ -107,8 +106,7 @@ int main() {
     nk_result load_result = NK_ERROR_UNKNOWN;
     assert(nk_resource_asset_get_result(first, &load_result) == NK_OK && load_result == NK_OK);
     uint64_t size = 0;
-    assert(nk_resource_asset_get_size(first, &size) == NK_OK &&
-           size == sizeof(test_data) - 1);
+    assert(nk_resource_asset_get_size(first, &size) == NK_OK && size == sizeof(test_data) - 1);
 
     uint64_t required = 0;
     assert(nk_resource_asset_copy_data(first, nullptr, &required) == NK_ERROR_BUFFER_TOO_SMALL);

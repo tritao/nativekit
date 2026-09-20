@@ -150,9 +150,7 @@ struct QueuedWorkerTask {
 
 class SignalWorkerPool final {
   public:
-    ~SignalWorkerPool() {
-        shutdown();
-    }
+    ~SignalWorkerPool() { shutdown(); }
 
     nk_result submit(nk::core::WorkerTask run, nk::core::WorkerTask cleanup) noexcept {
         if (!run)
@@ -172,7 +170,8 @@ class SignalWorkerPool final {
             condition_.notify_one();
             return NK_OK;
 #if !NK_ENABLE_NO_EXCEPTIONS
-        } catch (...) {
+        }
+        catch (...) {
             return NK_ERROR_OUT_OF_MEMORY;
         }
 #else
@@ -197,7 +196,8 @@ class SignalWorkerPool final {
             task.reschedule.store(false, std::memory_order_release);
             return NK_OK;
 #if !NK_ENABLE_NO_EXCEPTIONS
-        } catch (...) {
+        }
+        catch (...) {
             return NK_ERROR_OUT_OF_MEMORY;
         }
 #else
@@ -221,8 +221,8 @@ class SignalWorkerPool final {
                 return NK_OK;
             if (state != worker_task_idle)
                 state = task.state.load(std::memory_order_acquire);
-            else if (task.state.compare_exchange_weak(
-                         state, worker_task_queued, std::memory_order_acq_rel))
+            else if (task.state.compare_exchange_weak(state, worker_task_queued,
+                                                      std::memory_order_acq_rel))
                 break;
         }
 
@@ -242,7 +242,7 @@ class SignalWorkerPool final {
         if (stopping_.load(std::memory_order_acquire)) {
             std::uint8_t expected = worker_task_queued;
             if (task.state.compare_exchange_strong(expected, worker_task_idle,
-                                                    std::memory_order_acq_rel))
+                                                   std::memory_order_acq_rel))
                 return NK_ERROR_INVALID_REQUEST;
             return NK_OK;
         }
@@ -251,13 +251,13 @@ class SignalWorkerPool final {
         do {
             task.next.store(head, std::memory_order_relaxed);
         } while (!signal_queue_.compare_exchange_weak(head, &task, std::memory_order_release,
-                                                       std::memory_order_acquire));
+                                                      std::memory_order_acquire));
         condition_.notify_one();
 
         if (stopping_.load(std::memory_order_acquire)) {
             std::uint8_t expected = worker_task_queued;
             if (task.state.compare_exchange_strong(expected, worker_task_idle,
-                                                    std::memory_order_acq_rel))
+                                                   std::memory_order_acq_rel))
                 return NK_ERROR_INVALID_REQUEST;
         }
         return NK_OK;
@@ -313,7 +313,7 @@ class SignalWorkerPool final {
             auto *next = task->next.load(std::memory_order_relaxed);
             std::uint8_t expected = worker_task_queued;
             if (task->state.compare_exchange_strong(expected, worker_task_idle,
-                                                     std::memory_order_acq_rel))
+                                                    std::memory_order_acq_rel))
                 run_cleanup(task->cleanup);
             task = next;
         }
@@ -337,7 +337,8 @@ class SignalWorkerPool final {
             for (unsigned index = 0; index < worker_count; ++index)
                 workers_.emplace_back([this] { run_worker(); });
 #if !NK_ENABLE_NO_EXCEPTIONS
-        } catch (...) {
+        }
+        catch (...) {
             workers_started_.store(false, std::memory_order_release);
             stopping_.store(true, std::memory_order_release);
             condition_.notify_all();
@@ -365,7 +366,7 @@ class SignalWorkerPool final {
     void run_signal_task(nk::core::WorkerTaskState *task) noexcept {
         std::uint8_t expected = worker_task_queued;
         if (!task->state.compare_exchange_strong(expected, worker_task_running,
-                                                  std::memory_order_acq_rel))
+                                                 std::memory_order_acq_rel))
             return;
 
 #if NK_ENABLE_NO_EXCEPTIONS
@@ -377,8 +378,7 @@ class SignalWorkerPool final {
         }
 #endif
         task->state.store(worker_task_idle, std::memory_order_release);
-        if (task->reschedule.exchange(false, std::memory_order_acq_rel) &&
-            schedule(*task) != NK_OK)
+        if (task->reschedule.exchange(false, std::memory_order_acq_rel) && schedule(*task) != NK_OK)
             run_cleanup(task->cleanup);
         run_cleanup(task->cleanup);
     }

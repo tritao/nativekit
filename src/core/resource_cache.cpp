@@ -123,8 +123,8 @@ void publish_asset_load_event(ResourceAssetResource &asset) noexcept {
     if (!entry)
         return;
     const auto state = entry->load_state.load(std::memory_order_acquire);
-    if (state == NK_RESOURCE_ASSET_LOADING || entry->load_request.load(std::memory_order_acquire) ==
-                                                  NK_INVALID_REQUEST_ID ||
+    if (state == NK_RESOURCE_ASSET_LOADING ||
+        entry->load_request.load(std::memory_order_acquire) == NK_INVALID_REQUEST_ID ||
         entry->cancelled.load(std::memory_order_acquire))
         return;
     const auto handle = asset.handle.load(std::memory_order_acquire);
@@ -150,15 +150,15 @@ void publish_entry_load_events(ResourceCacheEntry &entry) noexcept {
     std::vector<std::shared_ptr<ResourceAssetResource>> assets;
     {
         std::lock_guard lock(entry.mutex);
-        entry.assets.erase(
-            std::remove_if(entry.assets.begin(), entry.assets.end(), [&](const auto &weak_asset) {
-                auto asset = weak_asset.lock();
-                if (!asset)
-                    return true;
-                assets.push_back(std::move(asset));
-                return false;
-            }),
-            entry.assets.end());
+        entry.assets.erase(std::remove_if(entry.assets.begin(), entry.assets.end(),
+                                          [&](const auto &weak_asset) {
+                                              auto asset = weak_asset.lock();
+                                              if (!asset)
+                                                  return true;
+                                              assets.push_back(std::move(asset));
+                                              return false;
+                                          }),
+                           entry.assets.end());
     }
     for (const auto &asset : assets)
         publish_asset_load_event(*asset);
@@ -187,14 +187,16 @@ nk_result acquire_asset(const std::shared_ptr<ResourceCacheEntry> &entry,
         publish_asset_load_event(*asset);
         return NK_OK;
 #if !NK_ENABLE_NO_EXCEPTIONS
-    } catch (const std::bad_alloc &) {
+    }
+    catch (const std::bad_alloc &) {
         if (handle != NK_INVALID_HANDLE) {
             asset->handle.store(NK_INVALID_HANDLE, std::memory_order_release);
             (void)nk::core::handles().erase(handle, nk::core::ResourceType::resource_asset);
         }
         nk::core::set_error("could not allocate resource asset handle");
         return NK_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
+    }
+    catch (...) {
         if (handle != NK_INVALID_HANDLE) {
             asset->handle.store(NK_INVALID_HANDLE, std::memory_order_release);
             (void)nk::core::handles().erase(handle, nk::core::ResourceType::resource_asset);
@@ -259,7 +261,8 @@ nk_result read_resource_bytes(const nk_resource *resource, std::vector<std::byte
         } else {
             if (total + read > static_cast<uint64_t>(std::numeric_limits<std::size_t>::max()))
                 return NK_ERROR_OUT_OF_MEMORY;
-            output.insert(output.end(), chunk.begin(), chunk.begin() + static_cast<std::size_t>(read));
+            output.insert(output.end(), chunk.begin(),
+                          chunk.begin() + static_cast<std::size_t>(read));
         }
         total += read;
         if (size_known && total == info.size)
@@ -322,8 +325,8 @@ void resource_cache_load_callback(nk_request_id request, nk_result result, const
             else if (data_size != 0 && !data)
                 load_result = NK_ERROR_UNKNOWN;
             else {
-                auto bytes = std::make_shared<std::vector<std::byte>>(
-                    static_cast<std::size_t>(data_size));
+                auto bytes =
+                    std::make_shared<std::vector<std::byte>>(static_cast<std::size_t>(data_size));
                 if (data_size != 0)
                     std::memcpy(bytes->data(), data, static_cast<std::size_t>(data_size));
                 std::lock_guard lock(entry.mutex);
@@ -331,9 +334,11 @@ void resource_cache_load_callback(nk_request_id request, nk_result result, const
             }
         }
 #if !NK_ENABLE_NO_EXCEPTIONS
-    } catch (const std::bad_alloc &) {
+    }
+    catch (const std::bad_alloc &) {
         load_result = NK_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
+    }
+    catch (...) {
         load_result = NK_ERROR_UNKNOWN;
     }
 #else
@@ -380,87 +385,85 @@ nk_result resource_asset_get_bytes(nk_resource_asset asset,
 extern "C" {
 
 nk_result NK_CALL nk_resource_cache_create(nk_resource_cache *out_cache) {
-    return nk::core::result_boundary("unexpected error while creating a resource cache",
-                                     [&]() -> nk_result {
-        if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
-            return result;
-        if (!out_cache)
-            return invalid_argument("resource cache output is missing");
-        *out_cache = NK_INVALID_HANDLE;
-        auto cache = std::make_shared<ResourceCacheResource>();
-        const auto handle =
-            nk::core::handles().insert(nk::core::ResourceType::resource_cache, cache);
-        if (handle == NK_INVALID_HANDLE) {
-            nk::core::set_error("could not allocate resource cache handle");
-            return NK_ERROR_OUT_OF_MEMORY;
-        }
-        cache->handle.store(handle, std::memory_order_release);
-        *out_cache = handle;
-        return NK_OK;
-    });
+    return nk::core::result_boundary(
+        "unexpected error while creating a resource cache", [&]() -> nk_result {
+            if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+                return result;
+            if (!out_cache)
+                return invalid_argument("resource cache output is missing");
+            *out_cache = NK_INVALID_HANDLE;
+            auto cache = std::make_shared<ResourceCacheResource>();
+            const auto handle =
+                nk::core::handles().insert(nk::core::ResourceType::resource_cache, cache);
+            if (handle == NK_INVALID_HANDLE) {
+                nk::core::set_error("could not allocate resource cache handle");
+                return NK_ERROR_OUT_OF_MEMORY;
+            }
+            cache->handle.store(handle, std::memory_order_release);
+            *out_cache = handle;
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_resource_cache_destroy(nk_resource_cache cache) {
-    return nk::core::result_boundary("unexpected error while destroying a resource cache",
-                                     [&]() -> nk_result {
-        if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
-            return result;
-        auto value = get_cache(cache);
-        if (!value)
-            return NK_ERROR_INVALID_HANDLE;
-        if (const auto result = clear_cache(*value); result != NK_OK)
-            return result;
-        value->handle.store(NK_INVALID_HANDLE, std::memory_order_release);
-        if (!nk::core::handles().erase(cache, nk::core::ResourceType::resource_cache))
-            return NK_ERROR_INVALID_HANDLE;
-        return NK_OK;
-    });
+    return nk::core::result_boundary(
+        "unexpected error while destroying a resource cache", [&]() -> nk_result {
+            if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+                return result;
+            auto value = get_cache(cache);
+            if (!value)
+                return NK_ERROR_INVALID_HANDLE;
+            if (const auto result = clear_cache(*value); result != NK_OK)
+                return result;
+            value->handle.store(NK_INVALID_HANDLE, std::memory_order_release);
+            if (!nk::core::handles().erase(cache, nk::core::ResourceType::resource_cache))
+                return NK_ERROR_INVALID_HANDLE;
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_resource_cache_load(nk_resource_cache cache, const nk_resource *resource,
                                          nk_resource_asset *out_asset) {
-    return nk::core::result_boundary("unexpected error while loading a resource into the cache",
-                                     [&]() -> nk_result {
-        if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+    return nk::core::result_boundary(
+        "unexpected error while loading a resource into the cache", [&]() -> nk_result {
+            if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+                return result;
+            if (!valid_resource(resource) || !out_asset)
+                return invalid_argument("resource cache load arguments are invalid");
+            *out_asset = NK_INVALID_HANDLE;
+            auto value = get_cache(cache);
+            if (!value)
+                return NK_ERROR_INVALID_HANDLE;
+
+            const auto found = value->entries.find(resource->uri);
+            if (found != value->entries.end())
+                return acquire_asset(found->second, out_asset);
+
+            auto entry = make_entry(resource);
+            std::vector<std::byte> data;
+            const auto read_result = read_resource_bytes(resource, data);
+            if (read_result != NK_OK)
+                return read_result;
+            auto bytes = std::make_shared<std::vector<std::byte>>(std::move(data));
+            {
+                std::lock_guard lock(entry->mutex);
+                entry->data = std::move(bytes);
+            }
+            entry->load_result.store(NK_OK, std::memory_order_release);
+            entry->load_state.store(NK_RESOURCE_ASSET_READY, std::memory_order_release);
+            value->entries.emplace(entry->uri, entry);
+            const auto result = acquire_asset(entry, out_asset);
+            if (result != NK_OK)
+                value->entries.erase(entry->uri);
             return result;
-        if (!valid_resource(resource) || !out_asset)
-            return invalid_argument("resource cache load arguments are invalid");
-        *out_asset = NK_INVALID_HANDLE;
-        auto value = get_cache(cache);
-        if (!value)
-            return NK_ERROR_INVALID_HANDLE;
-
-        const auto found = value->entries.find(resource->uri);
-        if (found != value->entries.end())
-            return acquire_asset(found->second, out_asset);
-
-        auto entry = make_entry(resource);
-        std::vector<std::byte> data;
-        const auto read_result = read_resource_bytes(resource, data);
-        if (read_result != NK_OK)
-            return read_result;
-        auto bytes = std::make_shared<std::vector<std::byte>>(std::move(data));
-        {
-            std::lock_guard lock(entry->mutex);
-            entry->data = std::move(bytes);
-        }
-        entry->load_result.store(NK_OK, std::memory_order_release);
-        entry->load_state.store(NK_RESOURCE_ASSET_READY, std::memory_order_release);
-        value->entries.emplace(entry->uri, entry);
-        const auto result = acquire_asset(entry, out_asset);
-        if (result != NK_OK)
-            value->entries.erase(entry->uri);
-        return result;
-    });
+        });
 }
 
-nk_result NK_CALL nk_resource_cache_load_async(nk_resource_cache cache,
-                                               const nk_resource *resource,
+nk_result NK_CALL nk_resource_cache_load_async(nk_resource_cache cache, const nk_resource *resource,
                                                nk_resource_asset *out_asset,
                                                nk_request_id *out_request) {
     return nk::core::result_boundary(
-        "unexpected error while starting an asynchronous resource cache load",
-        [&]() -> nk_result {
+        "unexpected error while starting an asynchronous resource cache load", [&]() -> nk_result {
             if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
                 return result;
             if (!valid_resource(resource) || !out_asset || !out_request)
@@ -474,9 +477,8 @@ nk_result NK_CALL nk_resource_cache_load_async(nk_resource_cache cache,
             const auto found = value->entries.find(resource->uri);
             if (found != value->entries.end()) {
                 const auto result = acquire_asset(found->second, out_asset);
-                if (result == NK_OK &&
-                    found->second->load_state.load(std::memory_order_acquire) ==
-                        NK_RESOURCE_ASSET_LOADING)
+                if (result == NK_OK && found->second->load_state.load(std::memory_order_acquire) ==
+                                           NK_RESOURCE_ASSET_LOADING)
                     *out_request = found->second->load_request.load(std::memory_order_acquire);
                 return result;
             }
@@ -497,7 +499,8 @@ nk_result NK_CALL nk_resource_cache_load_async(nk_resource_cache cache,
 #endif
                 context = std::make_unique<ResourceCacheLoadContext>();
 #if !NK_ENABLE_NO_EXCEPTIONS
-            } catch (const std::bad_alloc &) {
+            }
+            catch (const std::bad_alloc &) {
                 value->entries.erase(entry->uri);
                 discard_asset(*out_asset);
                 *out_asset = NK_INVALID_HANDLE;
@@ -509,9 +512,9 @@ nk_result NK_CALL nk_resource_cache_load_async(nk_resource_cache cache,
 #endif
             context->entry = entry;
             nk_request_id request = NK_INVALID_REQUEST_ID;
-            const auto load_result = nk::core::start_resource_load(
-                resource, &request, resource_cache_load_callback, context.release(),
-                resource_cache_load_cleanup);
+            const auto load_result =
+                nk::core::start_resource_load(resource, &request, resource_cache_load_callback,
+                                              context.release(), resource_cache_load_cleanup);
             if (load_result != NK_OK) {
                 value->entries.erase(entry->uri);
                 discard_asset(*out_asset);
@@ -526,189 +529,189 @@ nk_result NK_CALL nk_resource_cache_load_async(nk_resource_cache cache,
 
 nk_result NK_CALL nk_resource_cache_find(nk_resource_cache cache, const char *uri,
                                          nk_resource_asset *out_asset) {
-    return nk::core::result_boundary("unexpected error while finding a cached resource",
-                                     [&]() -> nk_result {
-        if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
-            return result;
-        if (!uri || !*uri || !out_asset)
-            return invalid_argument("resource cache find arguments are invalid");
-        *out_asset = NK_INVALID_HANDLE;
-        auto value = get_cache(cache);
-        if (!value)
-            return NK_ERROR_INVALID_HANDLE;
-        const auto found = value->entries.find(uri);
-        if (found == value->entries.end()) {
-            nk::core::set_error("resource URI is not present in the cache");
-            return NK_ERROR_INVALID_REQUEST;
-        }
-        return acquire_asset(found->second, out_asset);
-    });
+    return nk::core::result_boundary(
+        "unexpected error while finding a cached resource", [&]() -> nk_result {
+            if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+                return result;
+            if (!uri || !*uri || !out_asset)
+                return invalid_argument("resource cache find arguments are invalid");
+            *out_asset = NK_INVALID_HANDLE;
+            auto value = get_cache(cache);
+            if (!value)
+                return NK_ERROR_INVALID_HANDLE;
+            const auto found = value->entries.find(uri);
+            if (found == value->entries.end()) {
+                nk::core::set_error("resource URI is not present in the cache");
+                return NK_ERROR_INVALID_REQUEST;
+            }
+            return acquire_asset(found->second, out_asset);
+        });
 }
 
 nk_result NK_CALL nk_resource_cache_remove(nk_resource_cache cache, const char *uri) {
-    return nk::core::result_boundary("unexpected error while removing a cached resource",
-                                     [&]() -> nk_result {
-        if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
-            return result;
-        if (!uri || !*uri)
-            return invalid_argument("resource cache remove URI is invalid");
-        auto value = get_cache(cache);
-        if (!value)
-            return NK_ERROR_INVALID_HANDLE;
-        const auto found = value->entries.find(uri);
-        if (found == value->entries.end()) {
-            nk::core::set_error("resource URI is not present in the cache");
-            return NK_ERROR_INVALID_REQUEST;
-        }
-        if (const auto result = cancel_entry_load(found->second); result != NK_OK)
-            return result;
-        value->entries.erase(found);
-        return NK_OK;
-    });
+    return nk::core::result_boundary(
+        "unexpected error while removing a cached resource", [&]() -> nk_result {
+            if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+                return result;
+            if (!uri || !*uri)
+                return invalid_argument("resource cache remove URI is invalid");
+            auto value = get_cache(cache);
+            if (!value)
+                return NK_ERROR_INVALID_HANDLE;
+            const auto found = value->entries.find(uri);
+            if (found == value->entries.end()) {
+                nk::core::set_error("resource URI is not present in the cache");
+                return NK_ERROR_INVALID_REQUEST;
+            }
+            if (const auto result = cancel_entry_load(found->second); result != NK_OK)
+                return result;
+            value->entries.erase(found);
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_resource_cache_clear(nk_resource_cache cache) {
-    return nk::core::result_boundary("unexpected error while clearing a resource cache",
-                                     [&]() -> nk_result {
-        if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
-            return result;
-        auto value = get_cache(cache);
-        if (!value)
-            return NK_ERROR_INVALID_HANDLE;
-        return clear_cache(*value);
-    });
+    return nk::core::result_boundary(
+        "unexpected error while clearing a resource cache", [&]() -> nk_result {
+            if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+                return result;
+            auto value = get_cache(cache);
+            if (!value)
+                return NK_ERROR_INVALID_HANDLE;
+            return clear_cache(*value);
+        });
 }
 
 nk_result NK_CALL nk_resource_cache_get_count(nk_resource_cache cache, uint32_t *out_count) {
-    return nk::core::result_boundary("unexpected error while querying a resource cache",
-                                     [&]() -> nk_result {
-        if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
-            return result;
-        if (!out_count)
-            return invalid_argument("resource cache count output is missing");
-        auto value = get_cache(cache);
-        if (!value)
-            return NK_ERROR_INVALID_HANDLE;
-        if (value->entries.size() > std::numeric_limits<uint32_t>::max())
-            return NK_ERROR_OUT_OF_MEMORY;
-        *out_count = static_cast<uint32_t>(value->entries.size());
-        return NK_OK;
-    });
+    return nk::core::result_boundary(
+        "unexpected error while querying a resource cache", [&]() -> nk_result {
+            if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+                return result;
+            if (!out_count)
+                return invalid_argument("resource cache count output is missing");
+            auto value = get_cache(cache);
+            if (!value)
+                return NK_ERROR_INVALID_HANDLE;
+            if (value->entries.size() > std::numeric_limits<uint32_t>::max())
+                return NK_ERROR_OUT_OF_MEMORY;
+            *out_count = static_cast<uint32_t>(value->entries.size());
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_resource_asset_destroy(nk_resource_asset asset) {
-    return nk::core::result_boundary("unexpected error while destroying a resource asset",
-                                     [&]() -> nk_result {
-        if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
-            return result;
-        auto value = get_asset(asset);
-        if (!value)
-            return NK_ERROR_INVALID_HANDLE;
-        value->handle.store(NK_INVALID_HANDLE, std::memory_order_release);
-        if (!nk::core::handles().erase(asset, nk::core::ResourceType::resource_asset))
-            return NK_ERROR_INVALID_HANDLE;
-        return NK_OK;
-    });
+    return nk::core::result_boundary(
+        "unexpected error while destroying a resource asset", [&]() -> nk_result {
+            if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+                return result;
+            auto value = get_asset(asset);
+            if (!value)
+                return NK_ERROR_INVALID_HANDLE;
+            value->handle.store(NK_INVALID_HANDLE, std::memory_order_release);
+            if (!nk::core::handles().erase(asset, nk::core::ResourceType::resource_asset))
+                return NK_ERROR_INVALID_HANDLE;
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_resource_asset_get_load_state(nk_resource_asset asset,
-                                                    nk_resource_asset_load_state *out_state) {
-    return nk::core::result_boundary("unexpected error while querying a resource asset state",
-                                     [&]() -> nk_result {
-        if (!out_state)
-            return invalid_argument("resource asset load state output is missing");
-        auto value = get_asset(asset);
-        if (!value)
-            return NK_ERROR_INVALID_HANDLE;
-        *out_state = value->entry->load_state.load(std::memory_order_acquire);
-        return NK_OK;
-    });
+                                                   nk_resource_asset_load_state *out_state) {
+    return nk::core::result_boundary(
+        "unexpected error while querying a resource asset state", [&]() -> nk_result {
+            if (!out_state)
+                return invalid_argument("resource asset load state output is missing");
+            auto value = get_asset(asset);
+            if (!value)
+                return NK_ERROR_INVALID_HANDLE;
+            *out_state = value->entry->load_state.load(std::memory_order_acquire);
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_resource_asset_get_result(nk_resource_asset asset, nk_result *out_result) {
-    return nk::core::result_boundary("unexpected error while querying a resource asset result",
-                                     [&]() -> nk_result {
-        if (!out_result)
-            return invalid_argument("resource asset result output is missing");
-        auto value = get_asset(asset);
-        if (!value)
-            return NK_ERROR_INVALID_HANDLE;
-        *out_result = value->entry->load_result.load(std::memory_order_acquire);
-        return NK_OK;
-    });
+    return nk::core::result_boundary(
+        "unexpected error while querying a resource asset result", [&]() -> nk_result {
+            if (!out_result)
+                return invalid_argument("resource asset result output is missing");
+            auto value = get_asset(asset);
+            if (!value)
+                return NK_ERROR_INVALID_HANDLE;
+            *out_result = value->entry->load_result.load(std::memory_order_acquire);
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_resource_asset_get_size(nk_resource_asset asset, uint64_t *out_size) {
-    return nk::core::result_boundary("unexpected error while querying a resource asset size",
-                                     [&]() -> nk_result {
-        if (!out_size)
-            return invalid_argument("resource asset size output is missing");
-        auto value = get_asset(asset);
-        if (!value)
-            return NK_ERROR_INVALID_HANDLE;
-        const auto state = value->entry->load_state.load(std::memory_order_acquire);
-        if (state != NK_RESOURCE_ASSET_READY)
-            return state == NK_RESOURCE_ASSET_LOADING
-                       ? NK_ERROR_INVALID_REQUEST
-                       : value->entry->load_result.load(std::memory_order_acquire);
-        std::lock_guard lock(value->entry->mutex);
-        if (!value->entry->data)
-            return NK_ERROR_UNKNOWN;
-        *out_size = static_cast<uint64_t>(value->entry->data->size());
-        return NK_OK;
-    });
+    return nk::core::result_boundary(
+        "unexpected error while querying a resource asset size", [&]() -> nk_result {
+            if (!out_size)
+                return invalid_argument("resource asset size output is missing");
+            auto value = get_asset(asset);
+            if (!value)
+                return NK_ERROR_INVALID_HANDLE;
+            const auto state = value->entry->load_state.load(std::memory_order_acquire);
+            if (state != NK_RESOURCE_ASSET_READY)
+                return state == NK_RESOURCE_ASSET_LOADING
+                           ? NK_ERROR_INVALID_REQUEST
+                           : value->entry->load_result.load(std::memory_order_acquire);
+            std::lock_guard lock(value->entry->mutex);
+            if (!value->entry->data)
+                return NK_ERROR_UNKNOWN;
+            *out_size = static_cast<uint64_t>(value->entry->data->size());
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_resource_asset_copy_data(nk_resource_asset asset, void *buffer,
-                                               uint64_t *inout_size) {
-    return nk::core::result_boundary("unexpected error while copying a resource asset",
-                                     [&]() -> nk_result {
-        if (!inout_size)
-            return invalid_argument("resource asset data size is missing");
-        auto value = get_asset(asset);
-        if (!value)
-            return NK_ERROR_INVALID_HANDLE;
-        const auto state = value->entry->load_state.load(std::memory_order_acquire);
-        if (state != NK_RESOURCE_ASSET_READY)
-            return state == NK_RESOURCE_ASSET_LOADING
-                       ? NK_ERROR_INVALID_REQUEST
-                       : value->entry->load_result.load(std::memory_order_acquire);
-        std::lock_guard lock(value->entry->mutex);
-        if (!value->entry->data)
-            return NK_ERROR_UNKNOWN;
-        const auto required = static_cast<uint64_t>(value->entry->data->size());
-        if (!buffer || *inout_size < required) {
+                                              uint64_t *inout_size) {
+    return nk::core::result_boundary(
+        "unexpected error while copying a resource asset", [&]() -> nk_result {
+            if (!inout_size)
+                return invalid_argument("resource asset data size is missing");
+            auto value = get_asset(asset);
+            if (!value)
+                return NK_ERROR_INVALID_HANDLE;
+            const auto state = value->entry->load_state.load(std::memory_order_acquire);
+            if (state != NK_RESOURCE_ASSET_READY)
+                return state == NK_RESOURCE_ASSET_LOADING
+                           ? NK_ERROR_INVALID_REQUEST
+                           : value->entry->load_result.load(std::memory_order_acquire);
+            std::lock_guard lock(value->entry->mutex);
+            if (!value->entry->data)
+                return NK_ERROR_UNKNOWN;
+            const auto required = static_cast<uint64_t>(value->entry->data->size());
+            if (!buffer || *inout_size < required) {
+                *inout_size = required;
+                return NK_ERROR_BUFFER_TOO_SMALL;
+            }
+            if (required != 0)
+                std::memcpy(buffer, value->entry->data->data(), value->entry->data->size());
             *inout_size = required;
-            return NK_ERROR_BUFFER_TOO_SMALL;
-        }
-        if (required != 0)
-            std::memcpy(buffer, value->entry->data->data(), value->entry->data->size());
-        *inout_size = required;
-        return NK_OK;
-    });
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_resource_asset_get_uri(nk_resource_asset asset, char *buffer,
-                                             uint32_t *inout_size) {
-    return nk::core::result_boundary("unexpected error while querying a resource asset URI",
-                                     [&]() -> nk_result {
-        if (!inout_size)
-            return invalid_argument("resource asset URI size is missing");
-        auto value = get_asset(asset);
-        if (!value)
-            return NK_ERROR_INVALID_HANDLE;
-        if (value->entry->uri.size() == std::numeric_limits<std::size_t>::max() ||
-            value->entry->uri.size() + 1 > std::numeric_limits<uint32_t>::max())
-            return NK_ERROR_OUT_OF_MEMORY;
-        const auto required = value->entry->uri.size() + 1;
-        if (!buffer || *inout_size < required) {
+                                            uint32_t *inout_size) {
+    return nk::core::result_boundary(
+        "unexpected error while querying a resource asset URI", [&]() -> nk_result {
+            if (!inout_size)
+                return invalid_argument("resource asset URI size is missing");
+            auto value = get_asset(asset);
+            if (!value)
+                return NK_ERROR_INVALID_HANDLE;
+            if (value->entry->uri.size() == std::numeric_limits<std::size_t>::max() ||
+                value->entry->uri.size() + 1 > std::numeric_limits<uint32_t>::max())
+                return NK_ERROR_OUT_OF_MEMORY;
+            const auto required = value->entry->uri.size() + 1;
+            if (!buffer || *inout_size < required) {
+                *inout_size = static_cast<uint32_t>(required);
+                return NK_ERROR_BUFFER_TOO_SMALL;
+            }
+            std::memcpy(buffer, value->entry->uri.c_str(), required);
             *inout_size = static_cast<uint32_t>(required);
-            return NK_ERROR_BUFFER_TOO_SMALL;
-        }
-        std::memcpy(buffer, value->entry->uri.c_str(), required);
-        *inout_size = static_cast<uint32_t>(required);
-        return NK_OK;
-    });
+            return NK_OK;
+        });
 }
 
 } // extern "C"

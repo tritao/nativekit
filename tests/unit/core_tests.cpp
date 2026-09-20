@@ -263,8 +263,7 @@ int main() {
         assert(audio_lifecycle_queue.push(std::move(lifecycle_event)) == NK_OK);
     }
 
-    for (const auto kind : {NK_EVENT_RESOURCE_CACHE_READY,
-                            NK_EVENT_RESOURCE_CACHE_LOAD_FAILED}) {
+    for (const auto kind : {NK_EVENT_RESOURCE_CACHE_READY, NK_EVENT_RESOURCE_CACHE_LOAD_FAILED}) {
         nk::core::EventQueue resource_cache_queue(1);
         nk::core::QueuedEvent resource_cache_occupied;
         resource_cache_occupied.kind = NK_EVENT_WEBVIEW_MESSAGE;
@@ -642,13 +641,13 @@ int main() {
     std::atomic<int> worker_cleanups{0};
     std::mutex worker_mutex;
     std::condition_variable worker_condition;
-    assert(nk::core::submit_worker_task(
-               [&] { worker_runs.fetch_add(1, std::memory_order_relaxed); },
-               [&] {
-                   std::lock_guard lock(worker_mutex);
-                   worker_cleanups.fetch_add(1, std::memory_order_release);
-                   worker_condition.notify_one();
-               }) == NK_OK);
+    assert(
+        nk::core::submit_worker_task([&] { worker_runs.fetch_add(1, std::memory_order_relaxed); },
+                                     [&] {
+                                         std::lock_guard lock(worker_mutex);
+                                         worker_cleanups.fetch_add(1, std::memory_order_release);
+                                         worker_condition.notify_one();
+                                     }) == NK_OK);
     std::unique_lock worker_lock(worker_mutex);
     assert(worker_condition.wait_for(worker_lock, std::chrono::seconds(2), [&] {
         return worker_cleanups.load(std::memory_order_acquire) == 1;

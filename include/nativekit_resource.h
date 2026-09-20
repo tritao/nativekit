@@ -259,8 +259,7 @@ NK_API nk_result NK_CALL nk_resource_drop_event_text(const nk_event *event, cons
 /* ------------------------------------------------------------------------- */
 
 /** Creates an empty URI resource cache. Cache operations are UI-thread-only. */
-NK_API nk_result NK_CALL nk_resource_cache_create(
-    nk_resource_cache *out_cache NK_OUT NK_OWNED);
+NK_API nk_result NK_CALL nk_resource_cache_create(nk_resource_cache *out_cache NK_OUT NK_OWNED);
 /** Cancels pending loads, removes all entries, and destroys a resource cache. */
 NK_API nk_result NK_CALL nk_resource_cache_destroy(nk_resource_cache cache);
 /**
@@ -268,50 +267,51 @@ NK_API nk_result NK_CALL nk_resource_cache_destroy(nk_resource_cache cache);
  * cached entry. The returned asset is an independent owned view; destroying it
  * does not remove the cache entry.
  */
-NK_API nk_result NK_CALL nk_resource_cache_load(
-    nk_resource_cache cache, const nk_resource *resource,
-    nk_resource_asset *out_asset NK_OUT NK_OWNED);
+NK_API nk_result NK_CALL nk_resource_cache_load(nk_resource_cache cache,
+                                                const nk_resource *resource,
+                                                nk_resource_asset *out_asset NK_OUT NK_OWNED);
 /**
  * Starts loading complete readable resource bytes, or joins an existing cache
  * load. A ready or failed entry returns NK_INVALID_REQUEST_ID.
  */
-NK_API nk_result NK_CALL nk_resource_cache_load_async(
-    nk_resource_cache cache, const nk_resource *resource,
-    nk_resource_asset *out_asset NK_OUT NK_OWNED, nk_request_id *out_request NK_OUT);
+NK_API nk_result NK_CALL nk_resource_cache_load_async(nk_resource_cache cache,
+                                                      const nk_resource *resource,
+                                                      nk_resource_asset *out_asset NK_OUT NK_OWNED,
+                                                      nk_request_id *out_request NK_OUT);
 /** Returns an owned asset view for a URI already present in the cache. */
-NK_API nk_result NK_CALL nk_resource_cache_find(
-    nk_resource_cache cache, const char *uri NK_UTF8,
-    nk_resource_asset *out_asset NK_OUT NK_OWNED);
+NK_API nk_result NK_CALL nk_resource_cache_find(nk_resource_cache cache, const char *uri NK_UTF8,
+                                                nk_resource_asset *out_asset NK_OUT NK_OWNED);
 /** Removes one URI entry; existing asset views retain their data. */
 NK_API nk_result NK_CALL nk_resource_cache_remove(nk_resource_cache cache, const char *uri NK_UTF8);
 /** Cancels pending loads and removes every cache entry. */
 NK_API nk_result NK_CALL nk_resource_cache_clear(nk_resource_cache cache);
 /** Returns the number of URI entries currently retained by the cache. */
-NK_API nk_result NK_CALL nk_resource_cache_get_count(
-    nk_resource_cache cache, uint32_t *out_count NK_OUT);
+NK_API nk_result NK_CALL nk_resource_cache_get_count(nk_resource_cache cache,
+                                                     uint32_t *out_count NK_OUT);
 
 /** Releases one caller-owned cached resource asset view; UI-thread-only. */
 NK_API nk_result NK_CALL nk_resource_asset_destroy(nk_resource_asset asset);
 /** Returns the loading state of a cached resource asset; safe from worker threads. */
 NK_API nk_result NK_CALL nk_resource_asset_get_load_state(
     nk_resource_asset asset, nk_resource_asset_load_state *out_state NK_OUT);
-/** Returns the load result, or NK_OK while the asset is ready or loading; safe from worker threads. */
-NK_API nk_result NK_CALL nk_resource_asset_get_result(
-    nk_resource_asset asset, nk_result *out_result NK_OUT);
+/** Returns the load result, or NK_OK while the asset is ready or loading; safe from worker threads.
+ */
+NK_API nk_result NK_CALL nk_resource_asset_get_result(nk_resource_asset asset,
+                                                      nk_result *out_result NK_OUT);
 /** Returns the complete cached byte count once the asset is ready; safe from worker threads. */
-NK_API nk_result NK_CALL nk_resource_asset_get_size(
-    nk_resource_asset asset, uint64_t *out_size NK_OUT);
+NK_API nk_result NK_CALL nk_resource_asset_get_size(nk_resource_asset asset,
+                                                    uint64_t *out_size NK_OUT);
 /**
  * Copies complete cached bytes into a caller-owned buffer. The required size
  * is returned through inout_size, including when the buffer is too small.
  * Safe from worker threads.
  */
-NK_API nk_result NK_CALL nk_resource_asset_copy_data(
-    nk_resource_asset asset, void *buffer, uint64_t *inout_size NK_INOUT);
+NK_API nk_result NK_CALL nk_resource_asset_copy_data(nk_resource_asset asset, void *buffer,
+                                                     uint64_t *inout_size NK_INOUT);
 /** Copies the cached asset URI into a caller-owned UTF-8 buffer; safe from worker threads. */
-NK_API nk_result NK_CALL nk_resource_asset_get_uri(
-    nk_resource_asset asset, char *buffer NK_OUT_BUFFER(inout_size),
-    uint32_t *inout_size NK_INOUT);
+NK_API nk_result NK_CALL nk_resource_asset_get_uri(nk_resource_asset asset,
+                                                   char *buffer NK_OUT_BUFFER(inout_size),
+                                                   uint32_t *inout_size NK_INOUT);
 
 /* ------------------------------------------------------------------------- */
 /* Persisted resource access                                                 */

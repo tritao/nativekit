@@ -138,9 +138,11 @@ void complete_async_file_load(nk_request_id request,
 #endif
         result = read_file(*load, data);
 #if !NK_ENABLE_NO_EXCEPTIONS
-    } catch (const std::bad_alloc &) {
+    }
+    catch (const std::bad_alloc &) {
         result = NK_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
+    }
+    catch (...) {
         result = NK_ERROR_UNKNOWN;
     }
 #else
@@ -382,10 +384,12 @@ nk_result load_resource_async(const struct nk_resource *resource, nk_request_id 
         }
         return NK_OK;
 #if !NK_ENABLE_NO_EXCEPTIONS
-    } catch (const std::bad_alloc &) {
+    }
+    catch (const std::bad_alloc &) {
         nk::core::set_error("could not allocate asynchronous resource load");
         return NK_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
+    }
+    catch (...) {
         nk::core::set_error("could not start asynchronous resource load");
         return NK_ERROR_UNKNOWN;
     }

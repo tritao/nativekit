@@ -354,7 +354,8 @@ enum NK_ENUM(nk_event_kind) {
     NK_EVENT_AUDIO_DEVICE_INTERRUPTION_ENDED = 913,
     /** A playing voice was stopped to admit a higher-priority voice; source is the victim voice. */
     NK_EVENT_AUDIO_VOICE_STOLEN = 914,
-    /** A playing voice was admitted logically but not rendered because its bus was full; source is its voice handle. */
+    /** A playing voice was admitted logically but not rendered because its bus was full; source is
+       its voice handle. */
     NK_EVENT_AUDIO_VOICE_VIRTUALIZED = 915,
     /** A virtualized voice was promoted back to the audio backend; source is its voice handle. */
     NK_EVENT_AUDIO_VOICE_RESUMED = 916,

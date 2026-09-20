@@ -42,8 +42,8 @@ bool string_view(const unsigned char *bytes, std::size_t size, uint32_t offset, 
 
 namespace nk::core {
 
-nk_result register_resource_load(nk_request_id request, ResourceDataHandler handler, void *user_data,
-                                  ResourceDataHandlerCleanup cleanup) noexcept {
+nk_result register_resource_load(nk_request_id request, ResourceDataHandler handler,
+                                 void *user_data, ResourceDataHandlerCleanup cleanup) noexcept {
     if (request == NK_INVALID_REQUEST_ID || (handler == nullptr) != (cleanup == nullptr))
         return NK_ERROR_INVALID_ARGUMENT;
 #if NK_ENABLE_NO_EXCEPTIONS
@@ -57,7 +57,8 @@ nk_result register_resource_load(nk_request_id request, ResourceDataHandler hand
             return NK_ERROR_ALREADY_INITIALIZED;
         return NK_OK;
 #if !NK_ENABLE_NO_EXCEPTIONS
-    } catch (...) {
+    }
+    catch (...) {
         return NK_ERROR_OUT_OF_MEMORY;
     }
 #else
@@ -87,8 +88,7 @@ bool is_resource_load_pending(nk_request_id request) noexcept {
 }
 
 bool dispatch_resource_data_event(const nk_event &event) noexcept {
-    if (event.kind != NK_EVENT_RESOURCE_DATA_COMPLETE ||
-        event.request_id == NK_INVALID_REQUEST_ID)
+    if (event.kind != NK_EVENT_RESOURCE_DATA_COMPLETE || event.request_id == NK_INVALID_REQUEST_ID)
         return false;
     ResourceLoadEntry entry;
     {

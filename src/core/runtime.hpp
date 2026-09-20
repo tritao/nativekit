@@ -20,8 +20,7 @@ HandleRegistry &handles() noexcept;
 nk_result push_event(QueuedEvent event) noexcept;
 nk_request_id next_request_id() noexcept;
 nk_result register_resource_load(nk_request_id request, ResourceDataHandler handler,
-                                  void *user_data,
-                                  ResourceDataHandlerCleanup cleanup) noexcept;
+                                 void *user_data, ResourceDataHandlerCleanup cleanup) noexcept;
 void unregister_resource_load(nk_request_id request) noexcept;
 bool is_resource_load_pending(nk_request_id request) noexcept;
 bool dispatch_resource_data_event(const nk_event &event) noexcept;

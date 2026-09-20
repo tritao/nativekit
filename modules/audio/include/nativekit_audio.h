@@ -163,8 +163,7 @@ typedef struct nk_audio_voice_options {
  * device. Device indices are snapshots and may change when devices are added
  * or removed.
  */
-NKAUDIO_API nk_result NK_CALL nk_audio_device_configure(
-    const nk_audio_device_options *options);
+NKAUDIO_API nk_result NK_CALL nk_audio_device_configure(const nk_audio_device_options *options);
 /** Returns the number of currently enumerated playback devices. */
 NKAUDIO_API nk_result NK_CALL nk_audio_device_get_count(uint32_t *out_count NK_OUT);
 /**
@@ -172,11 +171,12 @@ NKAUDIO_API nk_result NK_CALL nk_audio_device_get_count(uint32_t *out_count NK_O
  * UTF-8 buffer. The required size, including the NUL terminator, is always
  * returned through inout_size.
  */
-NKAUDIO_API nk_result NK_CALL nk_audio_device_get_name(
-    uint32_t index, char *buffer NK_OUT_BUFFER(inout_size), uint32_t *inout_size NK_INOUT);
+NKAUDIO_API nk_result NK_CALL nk_audio_device_get_name(uint32_t index,
+                                                       char *buffer NK_OUT_BUFFER(inout_size),
+                                                       uint32_t *inout_size NK_INOUT);
 /** Returns whether one currently enumerated playback device is the backend default. */
 NKAUDIO_API nk_result NK_CALL nk_audio_device_is_default(uint32_t index,
-                                                          nk_bool *out_default NK_OUT);
+                                                         nk_bool *out_default NK_OUT);
 /** Starts the process-wide audio playback device. */
 NKAUDIO_API nk_result NK_CALL nk_audio_device_start(void);
 /** Stops the process-wide audio playback device without destroying the engine graph. */
@@ -184,8 +184,7 @@ NKAUDIO_API nk_result NK_CALL nk_audio_device_stop(void);
 /** Stops and starts the process-wide audio playback device to recover from an interruption. */
 NKAUDIO_API nk_result NK_CALL nk_audio_device_restart(void);
 /** Returns the current process-wide audio playback device state. */
-NKAUDIO_API nk_result NK_CALL nk_audio_device_get_state(
-    nk_audio_device_state *out_state NK_OUT);
+NKAUDIO_API nk_result NK_CALL nk_audio_device_get_state(nk_audio_device_state *out_state NK_OUT);
 /* ------------------------------------------------------------------------- */
 /* Clip and voice lifetime and transport                                     */
 /* ------------------------------------------------------------------------- */
@@ -195,25 +194,25 @@ NKAUDIO_API nk_result NK_CALL nk_audio_device_get_state(
  * copies the path and validates the source before returning. The clip is
  * stopped and has no playback state; create a voice to play it.
  */
-NKAUDIO_API nk_result NK_CALL nk_audio_clip_create_from_file(
-    const char *path NK_UTF8, nk_audio_clip *out_clip NK_OUT NK_OWNED);
+NKAUDIO_API nk_result NK_CALL
+nk_audio_clip_create_from_file(const char *path NK_UTF8, nk_audio_clip *out_clip NK_OUT NK_OWNED);
 
 /**
  * Creates a reusable clip from encoded audio bytes. NativeKit copies the
  * bytes before returning, so the caller may release its buffer after the
  * call. The source currently supports WAV, FLAC, and MP3.
  */
-NKAUDIO_API nk_result NK_CALL nk_audio_clip_create_from_memory(
-    const void *data NK_BORROWED_BUFFER(data_size), uint64_t data_size,
-    nk_audio_clip *out_clip NK_OUT NK_OWNED);
+NKAUDIO_API nk_result NK_CALL
+nk_audio_clip_create_from_memory(const void *data NK_BORROWED_BUFFER(data_size), uint64_t data_size,
+                                 nk_audio_clip *out_clip NK_OUT NK_OWNED);
 
 /**
  * Creates a reusable clip from a ready asset in the core resource cache.
  * NativeKit retains the immutable encoded bytes; the asset may be destroyed
  * after this call returns.
  */
-NKAUDIO_API nk_result NK_CALL nk_audio_clip_create_from_asset(
-    nk_resource_asset asset, nk_audio_clip *out_clip NK_OUT NK_OWNED);
+NKAUDIO_API nk_result NK_CALL
+nk_audio_clip_create_from_asset(nk_resource_asset asset, nk_audio_clip *out_clip NK_OUT NK_OWNED);
 
 /**
  * Creates a reusable streaming clip from a readable URI resource descriptor.
@@ -228,9 +227,9 @@ NKAUDIO_API nk_result NK_CALL nk_audio_clip_create_from_stream(
 NKAUDIO_API nk_result NK_CALL nk_audio_clip_destroy(nk_audio_clip clip);
 
 /** Creates a stopped independent playback voice from a reusable clip. */
-NKAUDIO_API nk_result NK_CALL nk_audio_voice_create(
-    nk_audio_clip clip, const nk_audio_voice_options *options,
-    nk_audio_voice *out_voice NK_OUT NK_OWNED);
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_create(nk_audio_clip clip,
+                                                    const nk_audio_voice_options *options,
+                                                    nk_audio_voice *out_voice NK_OUT NK_OWNED);
 
 /** Stops and destroys a playback voice, invalidating its handle. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_destroy(nk_audio_voice voice);
@@ -246,14 +245,14 @@ NKAUDIO_API nk_result NK_CALL nk_audio_voice_rewind(nk_audio_voice voice);
  * Schedules a voice to start at an absolute process-wide audio time in PCM
  * frames. Call nk_audio_voice_start() after setting the schedule.
  */
-NKAUDIO_API nk_result NK_CALL nk_audio_voice_schedule_start(
-    nk_audio_voice voice, uint64_t absolute_time_pcm_frames);
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_schedule_start(nk_audio_voice voice,
+                                                            uint64_t absolute_time_pcm_frames);
 /**
  * Schedules a voice to stop at an absolute process-wide audio time in PCM
  * frames. A scheduled stop does not emit a natural-end completion event.
  */
-NKAUDIO_API nk_result NK_CALL nk_audio_voice_schedule_stop(
-    nk_audio_voice voice, uint64_t absolute_time_pcm_frames);
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_schedule_stop(nk_audio_voice voice,
+                                                           uint64_t absolute_time_pcm_frames);
 /** Clears a voice's scheduled start, stop, and fade transitions. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_clear_schedule(nk_audio_voice voice);
 
@@ -261,21 +260,21 @@ NKAUDIO_API nk_result NK_CALL nk_audio_voice_clear_schedule(nk_audio_voice voice
  * Fades a voice over a duration in PCM frames. volume_begin may be
  * NK_AUDIO_VOLUME_CURRENT; volume_end must be finite and non-negative.
  */
-NKAUDIO_API nk_result NK_CALL nk_audio_voice_fade(
-    nk_audio_voice voice, float volume_begin, float volume_end, uint64_t duration_pcm_frames);
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_fade(nk_audio_voice voice, float volume_begin,
+                                                  float volume_end, uint64_t duration_pcm_frames);
 /** Fades a voice starting at an absolute process-wide audio time in PCM frames. */
-NKAUDIO_API nk_result NK_CALL nk_audio_voice_fade_at(
-    nk_audio_voice voice, float volume_begin, float volume_end, uint64_t duration_pcm_frames,
-    uint64_t absolute_start_time_pcm_frames);
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_fade_at(nk_audio_voice voice, float volume_begin,
+                                                     float volume_end, uint64_t duration_pcm_frames,
+                                                     uint64_t absolute_start_time_pcm_frames);
 /** Returns whether a voice is currently playing. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_is_playing(nk_audio_voice voice,
-                                                         nk_bool *out_playing NK_OUT);
+                                                        nk_bool *out_playing NK_OUT);
 /** Returns the asynchronous loading lifecycle state of a voice. */
-NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_load_state(
-    nk_audio_voice voice, nk_audio_voice_load_state *out_state NK_OUT);
+NKAUDIO_API nk_result NK_CALL
+nk_audio_voice_get_load_state(nk_audio_voice voice, nk_audio_voice_load_state *out_state NK_OUT);
 /** Returns whether a voice has reached its end. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_at_end(nk_audio_voice voice,
-                                                     nk_bool *out_at_end NK_OUT);
+                                                    nk_bool *out_at_end NK_OUT);
 /** Sets linear voice gain; zero mutes the voice. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_set_volume(nk_audio_voice voice, float volume);
 /** Returns linear voice gain. */
@@ -284,8 +283,7 @@ NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_volume(nk_audio_voice voice,
 /** Sets stereo voice pan in the range [-1, 1]. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_set_pan(nk_audio_voice voice, float pan);
 /** Returns stereo voice pan in the range [-1, 1]. */
-NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_pan(nk_audio_voice voice,
-                                                     float *out_pan NK_OUT);
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_pan(nk_audio_voice voice, float *out_pan NK_OUT);
 /** Sets voice playback pitch where 1 is the source pitch. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_set_pitch(nk_audio_voice voice, float pitch);
 /** Returns voice playback pitch. */
@@ -298,10 +296,10 @@ NKAUDIO_API nk_result NK_CALL nk_audio_voice_is_looping(nk_audio_voice voice,
                                                         nk_bool *out_looping NK_OUT);
 /** Returns the current voice playback position in seconds. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_time_seconds(nk_audio_voice voice,
-                                                               float *out_seconds NK_OUT);
+                                                              float *out_seconds NK_OUT);
 /** Returns the decoded voice length in seconds. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_length_seconds(nk_audio_voice voice,
-                                                                 float *out_seconds NK_OUT);
+                                                                float *out_seconds NK_OUT);
 
 /* ------------------------------------------------------------------------- */
 /* Spatial audio                                                             */
@@ -325,12 +323,12 @@ NKAUDIO_API nk_result NK_CALL nk_audio_listener_set_world_up(nk_audio_vec3 world
 NKAUDIO_API nk_result NK_CALL nk_audio_listener_get_world_up(nk_audio_vec3 *out_world_up NK_OUT);
 /** Sets the listener's directional attenuation cone in radians and linear gain. */
 NKAUDIO_API nk_result NK_CALL nk_audio_listener_set_cone(float inner_angle_radians,
-                                                          float outer_angle_radians,
-                                                          float outer_gain);
+                                                         float outer_angle_radians,
+                                                         float outer_gain);
 /** Returns the listener's directional attenuation cone. */
-NKAUDIO_API nk_result NK_CALL nk_audio_listener_get_cone(
-    float *out_inner_angle_radians NK_OUT, float *out_outer_angle_radians NK_OUT,
-    float *out_outer_gain NK_OUT);
+NKAUDIO_API nk_result NK_CALL nk_audio_listener_get_cone(float *out_inner_angle_radians NK_OUT,
+                                                         float *out_outer_angle_radians NK_OUT,
+                                                         float *out_outer_gain NK_OUT);
 /** Sets the speed of sound used for Doppler calculations in world units per second. */
 NKAUDIO_API nk_result NK_CALL nk_audio_listener_set_speed_of_sound(float speed);
 /** Returns the speed of sound used for Doppler calculations. */
@@ -338,31 +336,31 @@ NKAUDIO_API nk_result NK_CALL nk_audio_listener_get_speed_of_sound(float *out_sp
 
 /** Enables or disables 3D spatialization for a voice. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_set_spatialization_enabled(nk_audio_voice voice,
-                                                                         nk_bool enabled);
+                                                                        nk_bool enabled);
 /** Returns whether 3D spatialization is enabled for a voice. */
-NKAUDIO_API nk_result NK_CALL nk_audio_voice_is_spatialization_enabled(
-    nk_audio_voice voice, nk_bool *out_enabled NK_OUT);
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_is_spatialization_enabled(nk_audio_voice voice,
+                                                                       nk_bool *out_enabled NK_OUT);
 /** Sets a voice's position in world or listener-relative coordinates. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_set_position(nk_audio_voice voice,
-                                                           nk_audio_vec3 position);
+                                                          nk_audio_vec3 position);
 /** Returns a voice's position. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_position(nk_audio_voice voice,
-                                                           nk_audio_vec3 *out_position NK_OUT);
+                                                          nk_audio_vec3 *out_position NK_OUT);
 /** Sets a voice's forward direction; it must be finite and non-zero. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_set_direction(nk_audio_voice voice,
-                                                            nk_audio_vec3 direction);
+                                                           nk_audio_vec3 direction);
 /** Returns a voice's forward direction. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_direction(nk_audio_voice voice,
-                                                            nk_audio_vec3 *out_direction NK_OUT);
+                                                           nk_audio_vec3 *out_direction NK_OUT);
 /** Sets a voice's velocity in world units per second. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_set_velocity(nk_audio_voice voice,
-                                                           nk_audio_vec3 velocity);
+                                                          nk_audio_vec3 velocity);
 /** Returns a voice's velocity. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_velocity(nk_audio_voice voice,
-                                                           nk_audio_vec3 *out_velocity NK_OUT);
+                                                          nk_audio_vec3 *out_velocity NK_OUT);
 /** Sets the voice's distance attenuation model. */
-NKAUDIO_API nk_result NK_CALL nk_audio_voice_set_attenuation_model(
-    nk_audio_voice voice, nk_audio_attenuation_model model);
+NKAUDIO_API nk_result NK_CALL
+nk_audio_voice_set_attenuation_model(nk_audio_voice voice, nk_audio_attenuation_model model);
 /** Returns the voice's distance attenuation model. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_attenuation_model(
     nk_audio_voice voice, nk_audio_attenuation_model *out_model NK_OUT);
@@ -370,55 +368,55 @@ NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_attenuation_model(
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_set_positioning(nk_audio_voice voice,
                                                              nk_audio_positioning positioning);
 /** Returns the voice's position interpretation. */
-NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_positioning(
-    nk_audio_voice voice, nk_audio_positioning *out_positioning NK_OUT);
+NKAUDIO_API nk_result NK_CALL
+nk_audio_voice_get_positioning(nk_audio_voice voice, nk_audio_positioning *out_positioning NK_OUT);
 /** Sets the distance attenuation rolloff; zero disables falloff progression. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_set_rolloff(nk_audio_voice voice, float rolloff);
 /** Returns the distance attenuation rolloff. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_rolloff(nk_audio_voice voice,
-                                                          float *out_rolloff NK_OUT);
+                                                         float *out_rolloff NK_OUT);
 /** Sets the minimum and maximum gain applied by spatialization. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_set_gain_limits(nk_audio_voice voice, float min_gain,
-                                                              float max_gain);
+                                                             float max_gain);
 /** Returns the minimum and maximum gain applied by spatialization. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_gain_limits(nk_audio_voice voice,
-                                                              float *out_min_gain NK_OUT,
-                                                              float *out_max_gain NK_OUT);
+                                                             float *out_min_gain NK_OUT,
+                                                             float *out_max_gain NK_OUT);
 /** Sets the minimum and maximum distances used by attenuation. */
-NKAUDIO_API nk_result NK_CALL nk_audio_voice_set_distance_limits(
-    nk_audio_voice voice, float min_distance, float max_distance);
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_set_distance_limits(nk_audio_voice voice,
+                                                                 float min_distance,
+                                                                 float max_distance);
 /** Returns the minimum and maximum distances used by attenuation. */
-NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_distance_limits(
-    nk_audio_voice voice, float *out_min_distance NK_OUT, float *out_max_distance NK_OUT);
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_distance_limits(nk_audio_voice voice,
+                                                                 float *out_min_distance NK_OUT,
+                                                                 float *out_max_distance NK_OUT);
 /** Sets the voice's Doppler multiplier; zero disables Doppler pitch shifting. */
-NKAUDIO_API nk_result NK_CALL nk_audio_voice_set_doppler_factor(nk_audio_voice voice,
-                                                                float factor);
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_set_doppler_factor(nk_audio_voice voice, float factor);
 /** Returns the voice's Doppler multiplier. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_doppler_factor(nk_audio_voice voice,
                                                                 float *out_factor NK_OUT);
 /** Sets the voice's directional attenuation cone in radians and linear gain. */
 NKAUDIO_API nk_result NK_CALL nk_audio_voice_set_cone(nk_audio_voice voice,
-                                                       float inner_angle_radians,
-                                                       float outer_angle_radians,
-                                                       float outer_gain);
+                                                      float inner_angle_radians,
+                                                      float outer_angle_radians, float outer_gain);
 /** Returns the voice's directional attenuation cone. */
-NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_cone(
-    nk_audio_voice voice, float *out_inner_angle_radians NK_OUT,
-    float *out_outer_angle_radians NK_OUT, float *out_outer_gain NK_OUT);
+NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_cone(nk_audio_voice voice,
+                                                      float *out_inner_angle_radians NK_OUT,
+                                                      float *out_outer_angle_radians NK_OUT,
+                                                      float *out_outer_gain NK_OUT);
 /** Sets how strongly source direction affects per-channel spatial gain. */
-NKAUDIO_API nk_result NK_CALL nk_audio_voice_set_directional_attenuation_factor(
-    nk_audio_voice voice, float factor);
+NKAUDIO_API nk_result NK_CALL
+nk_audio_voice_set_directional_attenuation_factor(nk_audio_voice voice, float factor);
 /** Returns how strongly source direction affects per-channel spatial gain. */
-NKAUDIO_API nk_result NK_CALL nk_audio_voice_get_directional_attenuation_factor(
-    nk_audio_voice voice, float *out_factor NK_OUT);
+NKAUDIO_API nk_result NK_CALL
+nk_audio_voice_get_directional_attenuation_factor(nk_audio_voice voice, float *out_factor NK_OUT);
 
 /* ------------------------------------------------------------------------- */
 /* Engine timing                                                             */
 /* ------------------------------------------------------------------------- */
 
 /** Returns the process-wide audio engine clock in PCM frames. */
-NKAUDIO_API nk_result NK_CALL nk_audio_get_time_pcm_frames(
-    uint64_t *out_time_pcm_frames NK_OUT);
+NKAUDIO_API nk_result NK_CALL nk_audio_get_time_pcm_frames(uint64_t *out_time_pcm_frames NK_OUT);
 /** Returns the process-wide audio engine sample rate in frames per second. */
 NKAUDIO_API nk_result NK_CALL nk_audio_get_sample_rate(uint32_t *out_sample_rate NK_OUT);
 
