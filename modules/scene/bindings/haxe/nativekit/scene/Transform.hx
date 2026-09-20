@@ -14,6 +14,14 @@ class Transform {
 	public static function identity():Transform
 		return new Transform();
 
+	@:allow(OccurrenceInfo)
+	static function fromNative(value:nkscene_transform):Transform {
+		var result = new Transform();
+		for (index in 0...16)
+			result.value.set_matrix(index, value.get_matrix(index));
+		return result;
+	}
+
 	public function set(index:Int, element:Float):Transform {
 		if (index < 0 || index >= 16)
 			throw "Transform matrix index must be between 0 and 15";

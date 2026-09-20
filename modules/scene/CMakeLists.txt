@@ -29,6 +29,13 @@ if(NK_BUILD_TESTS)
     add_test(NAME scene_transactional COMMAND nativekit_scene_transaction_tests)
     set_tests_properties(scene_transactional PROPERTIES LABELS "scene" TIMEOUT 30)
 
+    add_executable(nativekit_scene_c_api_tests tests/c_api.c)
+    set_target_properties(nativekit_scene_c_api_tests PROPERTIES LINKER_LANGUAGE CXX)
+    target_include_directories(nativekit_scene_c_api_tests PRIVATE include)
+    target_link_libraries(nativekit_scene_c_api_tests PRIVATE NativeKit::scene)
+    add_test(NAME scene_c_api COMMAND nativekit_scene_c_api_tests)
+    set_tests_properties(scene_c_api PROPERTIES LABELS "scene;abi" TIMEOUT 30)
+
     add_executable(nativekit_scene_benchmark bench/benchmark.cpp)
     target_compile_features(nativekit_scene_benchmark PRIVATE cxx_std_20)
     target_include_directories(nativekit_scene_benchmark PRIVATE src)

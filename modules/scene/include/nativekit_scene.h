@@ -102,6 +102,21 @@ typedef struct nkscene_material_data {
     uint32_t flags;
 } nkscene_material_data;
 
+/** Read-only occurrence state captured by a scene snapshot. */
+typedef struct nkscene_snapshot_occurrence {
+    uint32_t struct_size NK_STRUCT_SIZE;
+    nkscene_occurrence_id occurrence;
+    nkscene_entity_id source;
+    nkscene_occurrence_id parent;
+    nkscene_transform local_transform;
+    nkscene_transform world_transform;
+    uint64_t world_transform_revision;
+    nkscene_geometry_id geometry;
+    nkscene_material_id material;
+    uint32_t visible NK_BOOL32;
+    nkscene_bounds bounds;
+} nkscene_snapshot_occurrence;
+
 /* ------------------------------------------------------------------------- */
 /* Result codes                                                              */
 /* ------------------------------------------------------------------------- */
@@ -172,6 +187,11 @@ nkscene_scene_snapshot(nkscene_scene scene, nkscene_snapshot *out_snapshot NK_OU
 NKS_API void NKS_CALL nkscene_snapshot_destroy(nkscene_snapshot snapshot);
 NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_revision(nkscene_snapshot snapshot,
                                                               uint64_t *out_revision NK_OUT);
+NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_occurrence_count(
+    nkscene_snapshot snapshot, uint64_t *out_count NK_OUT);
+NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_occurrence(
+    nkscene_snapshot snapshot, uint64_t index,
+    nkscene_snapshot_occurrence *out_occurrence NK_INOUT);
 NKS_API void NKS_CALL nkscene_change_set_destroy(nkscene_change_set changes);
 NKS_API nkscene_result NKS_CALL nkscene_change_set_get_revision(nkscene_change_set changes,
                                                                 uint64_t *out_revision NK_OUT);

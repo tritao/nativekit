@@ -21,6 +21,8 @@ interface NativeKitScene @target("portable-abi64") @library("nativekit_scene") {
 	extern fn nkscene_scene_destroy(scene: nkscene_scene) -> void;
 	extern fn nkscene_scene_snapshot(scene: nkscene_scene, out_snapshot: ptr<nkscene_snapshot> @out @owned) -> nkscene_result;
 	extern fn nkscene_snapshot_destroy(snapshot: nkscene_snapshot) -> void;
+	extern fn nkscene_snapshot_get_occurrence(snapshot: nkscene_snapshot, index: u64, out_occurrence: ptr<nkscene_snapshot_occurrence> @inout) -> nkscene_result;
+	extern fn nkscene_snapshot_get_occurrence_count(snapshot: nkscene_snapshot, out_count: ptr<u64> @out) -> nkscene_result;
 	extern fn nkscene_snapshot_get_revision(snapshot: nkscene_snapshot, out_revision: ptr<u64> @out) -> nkscene_result;
 	extern fn nkscene_transaction_begin(scene: nkscene_scene, out_transaction: ptr<nkscene_transaction> @out @owned) -> nkscene_result;
 	extern fn nkscene_transaction_cancel(transaction: nkscene_transaction) -> void;
@@ -71,6 +73,22 @@ interface NativeKitScene @target("portable-abi64") @library("nativekit_scene") {
 	}
 	struct nkscene_occurrence_id @layout(8, 8) {
 		value: u64 @offset(0);
+	}
+	/**
+	 * Read-only occurrence state captured by a scene snapshot.
+	 */
+	struct nkscene_snapshot_occurrence @layout(216, 8) {
+		struct_size: u32 @offset(0) @struct_size;
+		occurrence: nkscene_occurrence_id @offset(8);
+		source: nkscene_entity_id @offset(16);
+		parent: nkscene_occurrence_id @offset(24);
+		local_transform: nkscene_transform @offset(32);
+		world_transform: nkscene_transform @offset(96);
+		world_transform_revision: u64 @offset(160);
+		geometry: nkscene_geometry_id @offset(168);
+		material: nkscene_material_id @offset(176);
+		visible: u32 @offset(184);
+		bounds: nkscene_bounds @offset(188);
 	}
 	struct nkscene_subelement_range @layout(12, 4) {
 		first_primitive: u32 @offset(0);

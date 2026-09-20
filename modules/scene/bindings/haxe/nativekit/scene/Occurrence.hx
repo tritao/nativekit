@@ -11,7 +11,7 @@ class Occurrence {
 		this.value = value;
 	}
 
-	@:allow(PickResult)
+	@:allow(PickResult, OccurrenceInfo)
 	static function fromNative(value:nkscene_occurrence_id):Occurrence
 		return new Occurrence(value);
 
