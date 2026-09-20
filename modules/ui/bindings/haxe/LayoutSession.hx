@@ -9,6 +9,7 @@ class LayoutSession {
 	var disposed:Bool;
 	final transaction:LayoutTransaction;
 	final resolved:Array<ResolvedLayoutItem>;
+	var hitPathBytes:Bytes;
 	var measureCallback:Null<nkui_layout_measure_callbackCallback>;
 	var measureFunction:Null<LayoutMeasureCallback>;
 	final measureContents:Map<Int, LayoutContent>;
@@ -20,6 +21,7 @@ class LayoutSession {
 		disposed = false;
 		transaction = new LayoutTransaction();
 		resolved = [];
+		hitPathBytes = Bytes.alloc(64 * 4);
 		measureCallback = null;
 		measureFunction = null;
 		measureContents = new Map();
@@ -79,16 +81,33 @@ class LayoutSession {
 
 	/** Returns the native root-to-target geometric hit path for viewport coordinates. */
 	public function hitTest(x:Float, y:Float):Array<Int> {
-		ensureLive();
-		var result = NativeKitUI.nkui_layout_session_hit_test(value, x, y);
-		UiResult.check(result.status, "layoutSession.hitTest");
-		var bytes:Bytes = result.out_path;
-		if (bytes.length % 4 != 0)
-			throw "Native hit testing returned a truncated node path";
 		var path:Array<Int> = [];
-		for (offset in 0...Std.int(bytes.length / 4))
-			path.push(bytes.getInt32(offset * 4));
+		hitTestInto(x, y, path);
 		return path;
+	}
+
+	/** Fills caller-owned storage with the native root-to-target geometric hit path. */
+	public function hitTestInto(x:Float, y:Float, path:Array<Int>):Void {
+		ensureLive();
+		if (path == null)
+			throw "Native hit-test output storage cannot be null";
+		while (true) {
+			var result = NativeKitUI.nkui_layout_session_hit_test_into(value, x, y, hitPathBytes);
+			var requiredBytes = result.out_count * 4;
+			if (result.status == NativeKitUI.UiStatus.ErrorInvalidArgument &&
+				requiredBytes > hitPathBytes.length) {
+				var capacity = hitPathBytes.length;
+				while (capacity < requiredBytes)
+					capacity *= 2;
+				hitPathBytes = Bytes.alloc(capacity);
+				continue;
+			}
+			UiResult.check(result.status, "layoutSession.hitTestInto");
+			path.resize(0);
+			for (index in 0...result.out_count)
+				path.push(hitPathBytes.getInt32(index * 4));
+			return;
+		}
 	}
 
 	/** Returns cumulative native geometric hit-test traversal counters. */

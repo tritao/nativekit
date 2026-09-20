@@ -246,6 +246,14 @@ if(NK_BUILD_TESTS)
         NKUI_TEST_FONT_PATH="${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
     target_link_libraries(nativekit_ui_layout_session_test PRIVATE NativeKit::ui)
     add_test(NAME nativekit_ui_layout_session COMMAND nativekit_ui_layout_session_test)
+    add_executable(nativekit_ui_hit_test_benchmark
+        bench/hit_test_benchmark.cpp)
+    target_compile_features(nativekit_ui_hit_test_benchmark PRIVATE cxx_std_20)
+    target_link_libraries(nativekit_ui_hit_test_benchmark PRIVATE NativeKit::ui)
+    add_test(NAME nativekit_ui_hit_test_benchmark
+        COMMAND nativekit_ui_hit_test_benchmark)
+    set_tests_properties(nativekit_ui_hit_test_benchmark PROPERTIES
+        LABELS "ui;benchmark" TIMEOUT 30)
     if(TARGET NativeKit::gpu)
         add_executable(nativekit_ui_public_renderer_smoke_test
             tests/public_renderer_smoke.cpp)
@@ -632,6 +640,7 @@ if(NK_BUILD_EXAMPLES)
                 _nkui_layout_session_get_hit_test_stats
                 _nkui_layout_session_get_resolved_items
                 _nkui_layout_session_hit_test
+                _nkui_layout_session_hit_test_into
                 _nkui_layout_session_render_frame
                 _nkui_layout_session_set_custom_paint
                 _nkui_layout_session_set_custom_paint_cache_policy

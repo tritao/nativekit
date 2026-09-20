@@ -194,6 +194,11 @@ struct RendererSlot {
 };
 
 struct LayoutSessionState : std::enable_shared_from_this<LayoutSessionState> {
+    LayoutSessionState() {
+        hit_test_traversal_path.reserve(64);
+        hit_test_candidate_path.reserve(64);
+    }
+
     std::mutex mutex;
     std::unique_ptr<nkui::LayoutEngine> engine;
     nkui::LayoutRenderCompiler compiler;
@@ -201,6 +206,8 @@ struct LayoutSessionState : std::enable_shared_from_this<LayoutSessionState> {
     nkui::LayoutSnapshot snapshot;
     std::unordered_map<uint32_t, nkui_display_list> custom_paints;
     std::unordered_map<uint32_t, nkui_layout_cache_policy> cache_policies;
+    std::vector<uint32_t> hit_test_traversal_path;
+    std::vector<uint32_t> hit_test_candidate_path;
     nkui_layout_hit_test_stats hit_test_stats{};
     nkui_nullable_layout_measure_callback measure_callback = nullptr;
     void *measure_user_data = nullptr;
@@ -1922,7 +1929,6 @@ struct HitTestCandidate {
     bool found = false;
     uint64_t paint_order = 0;
     uint32_t index = nkui::kInvalidLayoutIndex;
-    std::vector<uint32_t> path;
 };
 
 void visit_hit_test(const nkui::LayoutSnapshot &snapshot, uint32_t index, float x, float y,
@@ -1957,23 +1963,36 @@ void visit_hit_test(const nkui::LayoutSnapshot &snapshot, uint32_t index, float 
         candidate.found = true;
         candidate.paint_order = item.paint_order;
         candidate.index = item.index;
-        candidate.path = path;
     }
     path.pop_back();
 }
 
-std::vector<uint32_t> hit_test(const nkui::LayoutSnapshot &snapshot, float x, float y,
-                               HitTestTraversalStats &stats) {
+void build_hit_path(const nkui::LayoutSnapshot &snapshot, const HitTestCandidate &candidate,
+                    std::vector<uint32_t> &path) {
+    path.clear();
+    uint32_t index = candidate.index;
+    while (index != nkui::kInvalidLayoutIndex && index < snapshot.items.size()) {
+        path.push_back(snapshot.items[index].id);
+        index = snapshot.items[index].parent_index;
+    }
+    std::reverse(path.begin(), path.end());
+}
+
+void hit_test(const nkui::LayoutSnapshot &snapshot, float x, float y,
+              std::vector<uint32_t> &path, std::vector<uint32_t> &traversal_path,
+              HitTestTraversalStats &stats) {
+    path.clear();
+    traversal_path.clear();
     const auto root = std::find_if(snapshot.items.begin(), snapshot.items.end(),
                                    [](const nkui::LayoutItem &item) {
                                        return item.parent_index == nkui::kInvalidLayoutIndex;
                                    });
     if (root == snapshot.items.end())
-        return {};
-    std::vector<uint32_t> path;
+        return;
     HitTestCandidate candidate;
-    visit_hit_test(snapshot, root->index, x, y, path, candidate, stats);
-    return candidate.path;
+    visit_hit_test(snapshot, root->index, x, y, traversal_path, candidate, stats);
+    if (candidate.found)
+        build_hit_path(snapshot, candidate, path);
 }
 
 extern "C" nkui_result
@@ -2121,7 +2140,9 @@ extern "C" nkui_result nkui_layout_session_hit_test(nkui_layout_session session,
 
     const auto started = std::chrono::steady_clock::now();
     HitTestTraversalStats traversal_stats;
-    const std::vector<uint32_t> path = hit_test(state->snapshot, x, y, traversal_stats);
+    std::vector<uint32_t> path;
+    std::vector<uint32_t> traversal_path;
+    hit_test(state->snapshot, x, y, path, traversal_path, traversal_stats);
     const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
                              std::chrono::steady_clock::now() - started)
                              .count();
@@ -2147,6 +2168,51 @@ extern "C" nkui_result nkui_layout_session_hit_test(nkui_layout_session session,
     if (required)
         std::memcpy(out_path, path.data(), required);
     *inout_bytes = required;
+    return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_layout_session_hit_test_into(
+    nkui_layout_session session, float x, float y, uint8_t *path, uint32_t path_capacity_bytes,
+    uint32_t *out_count) {
+    if (!out_count || !std::isfinite(x) || !std::isfinite(y) ||
+        path_capacity_bytes % sizeof(uint32_t) != 0)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    if (path_capacity_bytes != 0 && !path)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(layout_sessions_mutex);
+    auto *state = resolve(session);
+    if (!state)
+        return NKUI_ERROR_INVALID_HANDLE;
+    std::lock_guard<std::mutex> session_lock(state->mutex);
+    if (!state->submitted)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+
+    const auto started = std::chrono::steady_clock::now();
+    HitTestTraversalStats traversal_stats;
+    hit_test(state->snapshot, x, y, state->hit_test_candidate_path,
+             state->hit_test_traversal_path, traversal_stats);
+    const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                             std::chrono::steady_clock::now() - started)
+                             .count();
+    ++state->hit_test_stats.hit_test_count;
+    state->hit_test_stats.nodes_visited += traversal_stats.nodes_visited;
+    state->hit_test_stats.subtrees_rejected += traversal_stats.subtrees_rejected;
+    state->hit_test_stats.precise_hit_tests += traversal_stats.precise_hit_tests;
+    state->hit_test_stats.max_nodes_visited =
+        std::max(state->hit_test_stats.max_nodes_visited, traversal_stats.nodes_visited);
+    state->hit_test_stats.hit_test_time_nanoseconds += static_cast<uint64_t>(elapsed);
+
+    const auto &result = state->hit_test_candidate_path;
+    if (result.size() > UINT32_MAX) {
+        *out_count = 0;
+        return NKUI_ERROR_OUT_OF_MEMORY;
+    }
+    *out_count = static_cast<uint32_t>(result.size());
+    const size_t required_bytes = result.size() * sizeof(uint32_t);
+    if (required_bytes > path_capacity_bytes)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    if (required_bytes)
+        std::memcpy(path, result.data(), required_bytes);
     return NKUI_OK;
 }
 

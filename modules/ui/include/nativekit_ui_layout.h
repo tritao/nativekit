@@ -399,6 +399,21 @@ NKUI_API nkui_result NK_CALL nkui_layout_session_hit_test(
     nkui_layout_session session, float x, float y, uint8_t *out_path NK_OUT_BUFFER(inout_bytes),
     uint32_t *inout_bytes NK_INOUT);
 
+/** Executes a geometric hit test into caller-owned reusable storage.
+ *
+ * `path` is a mutable byte buffer containing uint32_t node IDs in
+ * root-to-target order. `path_capacity_bytes` is its capacity in bytes and
+ * must be a multiple of sizeof(uint32_t). `out_count` receives the number of
+ * node IDs written. If the buffer is too small, no IDs are written,
+ * `out_count` receives the required number of IDs, and NKUI_ERROR_INVALID_ARGUMENT
+ * is returned so the caller can grow and retry without a size-query allocation.
+ * A zero-capacity buffer is valid when `path` is NULL.
+ */
+NKUI_API nkui_result NK_CALL nkui_layout_session_hit_test_into(
+    nkui_layout_session session, float x, float y,
+    uint8_t *path NKUI_IN_ARRAY(path_capacity_bytes), uint32_t path_capacity_bytes,
+    uint32_t *out_count NKUI_OUT);
+
 /** Executes the submitted layout through the existing NativeKit renderer.
  *
  * The retained UI surface uses on-demand scheduling; request another frame

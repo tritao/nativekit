@@ -218,6 +218,21 @@ int main() {
         hit_bytes != 2 * sizeof(uint32_t) || hit_path[0] != 1 || hit_path[1] != 2)
         return 56;
 
+    uint32_t hit_path_storage[2] = {};
+    uint32_t hit_count = 0;
+    if (nkui_layout_session_hit_test_into(session, 150.0f, 75.0f,
+                                           reinterpret_cast<uint8_t *>(hit_path_storage),
+                                           sizeof(hit_path_storage), &hit_count) != NKUI_OK ||
+        hit_count != 2 || hit_path_storage[0] != 1 || hit_path_storage[1] != 2)
+        return 59;
+    uint8_t undersized_hit_path[sizeof(uint32_t)] = {};
+    hit_count = 0;
+    if (nkui_layout_session_hit_test_into(session, 150.0f, 75.0f, undersized_hit_path,
+                                           sizeof(undersized_hit_path), &hit_count) !=
+            NKUI_ERROR_INVALID_ARGUMENT ||
+        hit_count != 2)
+        return 60;
+
     auto hidden_hit = bytes;
     const std::size_t hidden_panel_record =
         NKUI_LAYOUT_TRANSACTION_HEADER_BYTES + NKUI_LAYOUT_NODE_RECORD_BYTES;
