@@ -4,6 +4,8 @@
 #error "runtime_d3d11.cpp requires the Sokol D3D11 backend"
 #endif
 
+#include <d3d11.h>
+
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
