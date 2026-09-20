@@ -1245,15 +1245,17 @@ class FrameworkSmoke {
 		largeVirtualStyle.width = LayoutAxis.fixed(256.0);
 		largeVirtualStyle.height = LayoutAxis.fixed(350.0);
 		var largeBuiltRows:Array<Int> = [];
-		var largeVirtualList = new VirtualList("large-virtual-smoke", 10000, 32.0, function(index) {
+		var largeVirtualList = new VirtualList("large-virtual-smoke", 100000, 32.0, function(index) {
 			largeBuiltRows.push(index);
 			return new Text('Row ${index + 1}');
 		}, largeVirtualStyle, null, largeListController, 350.0);
 		context.submit(largeVirtualList, new LayoutFrame(256.0, 350.0));
+		if (largeBuiltRows.length == 0 || largeBuiltRows.length > 16)
+			return 104;
 		largeListController.jumpTo(0.0, 414.0 * 32.0);
 		largeBuiltRows.resize(0);
 		var largeVirtualRoot = context.submit(largeVirtualList, new LayoutFrame(256.0, 350.0));
-		if (largeBuiltRows.length == 0 || largeBuiltRows[0] != 413 ||
+		if (largeBuiltRows.length == 0 || largeBuiltRows.length > 16 || largeBuiltRows[0] != 413 ||
 			largeListController.offsetY != 13248.0)
 			return 103;
 

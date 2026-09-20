@@ -105,6 +105,18 @@ showcase and framework tests live under `modules/ui/examples/ui_haxeon` and
 `modules/ui/tests/haxeon`; generated bindings are checked with
 `modules/ui/tools/check-hxi.sh`.
 
+The fixed-row virtualization path can be measured independently with:
+
+```sh
+HAXEON_DIR=/path/to/realtime-haxe \
+NATIVEKIT_BUILD_DIR=/path/to/build-ui \
+modules/ui/tools/benchmark-haxeon-virtual-list.sh
+```
+
+This runs 10,000- and 100,000-item lists, reports the built row/node window
+and submit time, and fails if the logical item count increases the materialized
+viewport beyond its overscan bound.
+
 For a static or mostly static Haxe tree, `UiContext.submitCached(build, frame,
 cacheKey)` can reuse the previously submitted tree and layout. Reuse is
 invalidated by state, interaction, stylesheet/theme, animation, and gesture
