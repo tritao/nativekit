@@ -4751,8 +4751,7 @@ nkgpu_result nkgpu_batch_append_pass(nkgpu_batch batch, const nkgpu_batch_pass *
     return NKGPU_OK;
 }
 
-nkgpu_result nkgpu_batch_append_render_pass(nkgpu_batch batch,
-                                            const nkgpu_render_pass_desc *desc) {
+nkgpu_result nkgpu_batch_append_render_pass(nkgpu_batch batch, const nkgpu_render_pass_desc *desc) {
     if (!desc)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "batch render-pass descriptor is null");
     nkgpu_batch_pass pass{};
