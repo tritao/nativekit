@@ -22,8 +22,8 @@ MacMenuState state;
 
 NSString *menu_string(const std::string &value) {
     return [[NSString alloc] initWithBytes:value.data()
-                                   length:value.size()
-                                 encoding:NSUTF8StringEncoding];
+                                    length:value.size()
+                                  encoding:NSUTF8StringEncoding];
 }
 
 NSString *shortcut_key(nk_key key) {
@@ -102,8 +102,8 @@ NSMenuItem *add_native_item(const std::shared_ptr<nk::core::MenuItemResource> &i
     } else {
         NSString *title = menu_string(item->label);
         native = [[NSMenuItem alloc] initWithTitle:title ?: @""
-                                             action:@selector(activate:)
-                                      keyEquivalent:@""];
+                                            action:@selector(activate:)
+                                     keyEquivalent:@""];
         [title release];
         [native setTarget:state.target];
         [native setTag:static_cast<NSInteger>(item->handle)];
@@ -177,7 +177,9 @@ nk_result menu_install(const std::shared_ptr<nk::core::MenuResource> &menu) noex
 void menu_detach(const std::shared_ptr<nk::core::MenuResource> &menu) noexcept {
     if (!menu || menu->handle != state.handle)
         return;
-    @autoreleasepool { clear_native_menu(true); }
+    @autoreleasepool {
+        clear_native_menu(true);
+    }
 }
 
 nk_result menu_item_added(const std::shared_ptr<nk::core::MenuResource> &menu,
@@ -218,12 +220,16 @@ nk_result menu_item_changed(const std::shared_ptr<nk::core::MenuResource> &menu,
     const auto found = state.items.find(item->handle);
     if (found == state.items.end())
         return NK_OK;
-    @autoreleasepool { set_native_state(found->second, *item); }
+    @autoreleasepool {
+        set_native_state(found->second, *item);
+    }
     return NK_OK;
 }
 
 void menu_backend_shutdown() noexcept {
-    @autoreleasepool { clear_native_menu(true); }
+    @autoreleasepool {
+        clear_native_menu(true);
+    }
 }
 
 } // namespace nk::backend

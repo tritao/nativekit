@@ -100,7 +100,7 @@ constexpr backend_contract platform_contract() {
             cap(NK_CAP_OPENGL_SURFACE) | cap(NK_CAP_OPENGL_ES_SURFACE) |
                 cap(NK_CAP_VULKAN_SURFACE) | cap(NK_CAP_METAL_SURFACE) | cap(NK_CAP_MOBILE_HOST) |
                 cap(NK_CAP_NATIVE_VIEW) | cap(NK_CAP_FILE_WATCH) | cap(NK_CAP_CLIPBOARD_WATCH) |
-                    cap(NK_CAP_APPLICATION_MENU),
+                cap(NK_CAP_APPLICATION_MENU),
             0, cap(NK_CAP_WEBVIEW)};
 #elif defined(NK_PARITY_BACKEND_MACOS)
     return {"macOS",
@@ -168,10 +168,9 @@ constexpr backend_contract platform_contract() {
                 cap(NK_CAP_SENSORS) | cap(NK_CAP_HAPTICS) | cap(NK_CAP_GAMEPAD_RUMBLE)};
 #else
     return {"fallback stub", cap(NK_CAP_RESOURCE_IO),
-            k_known_capabilities &
-                ~(cap(NK_CAP_RESOURCE_IO) | k_new_system_capabilities | cap(NK_CAP_APPLICATION_MENU)),
-            cap(NK_CAP_APPLICATION_MENU),
-            k_new_system_capabilities};
+            k_known_capabilities & ~(cap(NK_CAP_RESOURCE_IO) | k_new_system_capabilities |
+                                     cap(NK_CAP_APPLICATION_MENU)),
+            cap(NK_CAP_APPLICATION_MENU), k_new_system_capabilities};
 #endif
 }
 
