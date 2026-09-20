@@ -456,7 +456,15 @@ extern "C" const nk_sokol_transfer_api *nk_sokol_metal_transfer_get_api(void) {
 
 extern "C" int nk_sokol_metal_query_max_samples(void) {
     id<MTLDevice> native_device = device();
-    return native_device ? static_cast<int>(native_device.maxSupportedSampleCount) : 1;
+    if (!native_device)
+        return 1;
+    int max_samples = 1;
+    for (NSUInteger samples = 2; samples <= 32; samples *= 2) {
+        if (![native_device supportsTextureSampleCount:samples])
+            break;
+        max_samples = static_cast<int>(samples);
+    }
+    return max_samples;
 }
 
 extern "C" void nk_sokol_metal_transfer_shutdown(void) {
