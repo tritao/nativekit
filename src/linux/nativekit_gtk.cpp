@@ -5653,8 +5653,7 @@ nk_result NK_CALL nk_frame_backend_finish(nk_handle handle, const nk_surface_fra
     return nk_surface_present(handle);
 }
 
-nk_result NK_CALL nk_frame_backend_cancel(nk_handle handle,
-                                          const nk_surface_frame_target *) {
+nk_result NK_CALL nk_frame_backend_cancel(nk_handle handle, const nk_surface_frame_target *) {
 #if defined(NK_GTK_THREADED_RENDER)
     if (nk::core::render_executor_physical()) {
         /* A cancelled offscreen ticket was never handed to GTK's compositor.

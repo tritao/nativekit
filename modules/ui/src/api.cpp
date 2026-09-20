@@ -587,9 +587,8 @@ void NK_CALL finish_render_submission(void *data) {
        next frame acquisition moves any GL context again.  The extra platform
        turn is also harmless for backends whose present operation is already
        synchronous. */
-    if (nk::core::dispatch_to_executor(NK_EXECUTOR_PLATFORM,
-                                        &start_next_render_submission_task, nullptr, nullptr, 0) !=
-        NK_OK)
+    if (nk::core::dispatch_to_executor(NK_EXECUTOR_PLATFORM, &start_next_render_submission_task,
+                                       nullptr, nullptr, 0) != NK_OK)
         (void)start_next_render_submission_on_platform();
 }
 
@@ -778,8 +777,7 @@ bool start_next_render_submission_on_platform() noexcept {
     }
     if (!failed)
         return false;
-    RenderCompletion completion{failed->renderer, failed->frame, false,
-                                failed->acquired_at_ns};
+    RenderCompletion completion{failed->renderer, failed->frame, false, failed->acquired_at_ns};
     cancel_render_completion_on_platform(completion);
     record_render_submission_stat(failed->renderer,
                                   &nkui_renderer_stats::render_submission_failures);
@@ -2981,9 +2979,9 @@ extern "C" nkui_result nkui_renderer_destroy(nkui_renderer renderer) {
            render task that is itself waiting for this lock. */
         execution_lock.unlock();
         lock.unlock();
-        const nk_result queued = nk::core::dispatch_to_render(
-            &run_deferred_renderer_destroy, destroy, &destroy_deferred_renderer,
-            sizeof(DeferredRendererDestroy));
+        const nk_result queued = nk::core::dispatch_to_render(&run_deferred_renderer_destroy,
+                                                              destroy, &destroy_deferred_renderer,
+                                                              sizeof(DeferredRendererDestroy));
         if (queued != NK_OK) {
             /* Keep destruction on the owning thread if the runtime is already
                shutting down and cannot accept another render task. */
@@ -4021,7 +4019,8 @@ extern "C" nkui_result nkui_renderer_render(nkui_renderer renderer, nkui_display
                                             nk_surface surface) {
     int32_t width = 0;
     int32_t height = 0;
-    if (!surface || (!nk::core::render_executor_physical() && nk_surface_make_current(surface) != NK_OK) ||
+    if (!surface ||
+        (!nk::core::render_executor_physical() && nk_surface_make_current(surface) != NK_OK) ||
         nk_surface_get_framebuffer_size(surface, &width, &height) != NK_OK)
         return NKUI_ERROR_INVALID_ARGUMENT;
     const nkui_frame_info frame_info{sizeof(nkui_frame_info),

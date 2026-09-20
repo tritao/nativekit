@@ -3540,8 +3540,7 @@ nk_result NK_CALL nk_frame_backend_finish(nk_handle handle, const nk_surface_fra
     return nk_surface_present(handle);
 }
 
-nk_result NK_CALL nk_frame_backend_cancel(nk_handle handle,
-                                          const nk_surface_frame_target *) {
+nk_result NK_CALL nk_frame_backend_cancel(nk_handle handle, const nk_surface_frame_target *) {
     return nk_surface_present(handle);
 }
 
