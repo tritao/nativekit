@@ -3904,10 +3904,9 @@ nkgpu_result nkgpu_image_copy(nkgpu_renderer r, const nkgpu_image_copy_desc *des
     if (!renderer->api->transfer->image_copy)
         return fail(NKGPU_ERROR_UNSUPPORTED, "image copies are unavailable");
     const uint32_t result = renderer->api->transfer->image_copy(
-        source->value.object, desc->source_mip, desc->source_layer, desc->source_x,
-        desc->source_y, destination->value.object, desc->destination_mip,
-        desc->destination_layer, desc->destination_x, desc->destination_y, desc->width,
-        desc->height);
+        source->value.object, desc->source_mip, desc->source_layer, desc->source_x, desc->source_y,
+        destination->value.object, desc->destination_mip, desc->destination_layer,
+        desc->destination_x, desc->destination_y, desc->width, desc->height);
     if (result == NK_SOKOL_TRANSFER_UNSUPPORTED)
         return fail(NKGPU_ERROR_UNSUPPORTED, "image copy is unsupported for this resource shape");
     if (!result)
