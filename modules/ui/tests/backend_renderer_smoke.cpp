@@ -763,9 +763,16 @@ int main() {
                               "scheduler render surface API ownership"))
             result = 29;
         nkui_renderer_stats scheduler_stats{};
+        const bool context_backend = scheduler_targets[0].api == NK_GRAPHICS_OPENGL ||
+                                     scheduler_targets[0].api == NK_GRAPHICS_OPENGL_ES;
+        const bool shared_native_context =
+            context_backend && scheduler_targets[0].native_context != 0 &&
+            scheduler_targets[0].native_context == scheduler_targets[1].native_context;
         const bool shared_native_device =
             scheduler_targets[0].native_device != 0 &&
             scheduler_targets[0].native_device == scheduler_targets[1].native_device;
+        const bool shared_gpu_runtime =
+            shared_native_context || (!context_backend && shared_native_device);
         if (!result &&
             (!check(nkui_renderer_get_stats(renderer, &scheduler_stats) == NKUI_OK,
                     "read scheduler stats") ||
@@ -779,16 +786,22 @@ int main() {
                  before_scheduler_stats.render_submission_cancellations + 1 ||
              scheduler_stats.render_submission_cancellations >
                  before_scheduler_stats.render_submission_cancellations + 2 ||
-             (shared_native_device && scheduler_stats.render_submission_failures !=
-                                          before_scheduler_stats.render_submission_failures) ||
-             (shared_native_device &&
+             (shared_gpu_runtime && scheduler_stats.render_submission_failures !=
+                                        before_scheduler_stats.render_submission_failures) ||
+             (shared_gpu_runtime &&
               scheduler_stats.gpu_frames != before_scheduler_stats.gpu_frames + 1) ||
-             (shared_native_device &&
+             (shared_gpu_runtime &&
               scheduler_stats.resource_creations < before_scheduler_stats.resource_creations) ||
-             (shared_native_device &&
+             (shared_gpu_runtime &&
               scheduler_stats.surface_recreations != before_scheduler_stats.surface_recreations) ||
-             (!shared_native_device && scheduler_stats.render_submission_failures <
-                                           before_scheduler_stats.render_submission_failures + 1) ||
+             (!shared_gpu_runtime && scheduler_stats.render_submission_failures !=
+                                         before_scheduler_stats.render_submission_failures) ||
+             (!shared_gpu_runtime &&
+              scheduler_stats.gpu_frames != before_scheduler_stats.gpu_frames + 1) ||
+             (!shared_gpu_runtime &&
+              scheduler_stats.resource_creations <= before_scheduler_stats.resource_creations) ||
+             (!shared_gpu_runtime && scheduler_stats.surface_recreations <
+                                         before_scheduler_stats.surface_recreations + 1) ||
              scheduler_stats.render_submission_build_ns <=
                  before_scheduler_stats.render_submission_build_ns ||
              scheduler_stats.render_submission_queue_latency_ns <=
@@ -1065,11 +1078,10 @@ int main() {
             nk::core::set_render_surface_api_guard(true);
             nkgpu_test_forbid_surface_target_queries();
             const nk_surface recovery_surface =
-                shared_native_device ? scheduler_surfaces[1] : surface;
-            const int32_t recovery_width =
-                shared_native_device ? scheduler_width[1] : surface_width;
+                shared_gpu_runtime ? scheduler_surfaces[1] : surface;
+            const int32_t recovery_width = shared_gpu_runtime ? scheduler_width[1] : surface_width;
             const int32_t recovery_height =
-                shared_native_device ? scheduler_height[1] : surface_height;
+                shared_gpu_runtime ? scheduler_height[1] : surface_height;
             const nkui_frame_info recovery_frame{
                 sizeof(recovery_frame),
                 static_cast<float>(scheduler_window_options.width),

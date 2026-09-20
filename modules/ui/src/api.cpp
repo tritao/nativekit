@@ -184,6 +184,7 @@ struct RendererSlot {
     nk_graphics_api backend_api = 0;
     nk_graphics_device backend_device{};
     uint64_t backend_native_device = 0;
+    uint64_t backend_native_context = 0;
     bool active = false;
     nkui::Compositor compositor;
     std::unordered_map<PathCacheKey, PreparedPathCacheEntry, PathCacheKeyHash> paths;
@@ -282,10 +283,17 @@ void discard_stale_renderer(RendererSlot &slot, const nk_surface_frame_target &t
         return;
     const bool was_lost = slot.renderer->lost();
     const bool api_changed = slot.backend_api != target.api;
-    const bool device_changed = slot.backend_native_device && target.native_device
-                                    ? slot.backend_native_device != target.native_device
-                                    : slot.backend_device.id != target.device.id;
-    if (!was_lost && !api_changed && !device_changed)
+    const bool context_backend =
+        target.api == NK_GRAPHICS_OPENGL || target.api == NK_GRAPHICS_OPENGL_ES;
+    const bool context_changed =
+        context_backend && (slot.backend_native_context || target.native_context)
+            ? slot.backend_native_context != target.native_context
+            : false;
+    const bool device_changed =
+        !context_changed && (slot.backend_native_device && target.native_device
+                                 ? slot.backend_native_device != target.native_device
+                                 : slot.backend_device.id != target.device.id);
+    if (!was_lost && !api_changed && !context_changed && !device_changed)
         return;
     const nkui::UiRendererStats old_stats = slot.renderer->stats();
     const nkui::UiGpuStats &old = old_stats.gpu;
@@ -293,9 +301,9 @@ void discard_stale_renderer(RendererSlot &slot, const nk_surface_frame_target &t
     slot.retired_gpu.resource_destructions += old.buffers_live + old.images_live +
                                               old.samplers_live + old.shaders_live +
                                               old.pipelines_live + old.render_targets_live;
-    if (old.device_losses == 0 && (was_lost || api_changed || device_changed))
+    if (old.device_losses == 0 && (was_lost || api_changed || context_changed || device_changed))
         ++slot.retired_gpu.device_losses;
-    if (old.surface_recreations == 0 && (api_changed || device_changed))
+    if (old.surface_recreations == 0 && (api_changed || context_changed || device_changed))
         ++slot.retired_gpu.surface_recreations;
     slot.stats.glyph_uploads += old_stats.glyph_uploads;
     slot.stats.atlas_rebuilds += old_stats.atlas_rebuilds;
@@ -556,6 +564,7 @@ void execute_render_submission(RenderSubmission &submission) {
                     slot->backend_api = submission.frame_target.api;
                     slot->backend_device = submission.frame_target.device;
                     slot->backend_native_device = submission.frame_target.native_device;
+                    slot->backend_native_context = submission.frame_target.native_context;
                 }
                 if (slot->renderer) {
                     new_backend = !slot->renderer->valid();
@@ -2829,6 +2838,7 @@ extern "C" nkui_result nkui_renderer_create(nkui_renderer *out_renderer) {
                 slot.backend_api = 0;
                 slot.backend_device = {};
                 slot.backend_native_device = 0;
+                slot.backend_native_context = 0;
                 slot.custom_effects.clear();
                 slot.registered_custom_effects = 0;
                 slot.active = true;
@@ -2876,6 +2886,7 @@ extern "C" nkui_result nkui_renderer_destroy(nkui_renderer renderer) {
     slot->backend_api = 0;
     slot->backend_device = {};
     slot->backend_native_device = 0;
+    slot->backend_native_context = 0;
     slot->active = false;
     slot->custom_effects.clear();
     slot->registered_custom_effects = 0;
@@ -3078,6 +3089,7 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
         renderer_slot->backend_api = frame_target.api;
         renderer_slot->backend_device = frame_target.device;
         renderer_slot->backend_native_device = frame_target.native_device;
+        renderer_slot->backend_native_context = frame_target.native_context;
     }
     const nkui::ResourceId main_target =
         nkui::make_resource_id(nkui::ResourceKind::RenderTarget, 1, 1);
@@ -3536,6 +3548,7 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
         renderer_slot->backend_api = frame_target.api;
         renderer_slot->backend_device = frame_target.device;
         renderer_slot->backend_native_device = frame_target.native_device;
+        renderer_slot->backend_native_context = frame_target.native_context;
     }
     const nkui::ResourceId main_target =
         nkui::make_resource_id(nkui::ResourceKind::RenderTarget, 1, 1);

@@ -21,9 +21,12 @@
 #include <cstdlib>
 #include <cstring>
 #include <cstdint>
+#include <functional>
+#include <mutex>
 #include <limits>
 #include <new>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -140,6 +143,7 @@ struct Renderer {
     nk_graphics_api graphics_api = 0;
     nk_graphics_device device{};
     uint64_t native_device = 0;
+    uint64_t native_context = 0;
     nk_surface_frame_target context_target{};
     bool has_context_target = false;
     sg_bindings bindings{};
@@ -327,6 +331,14 @@ static bool target_matches_renderer(const Renderer &renderer,
                                     const nk_surface_frame_target &target) {
     if (target.api != renderer.graphics_api)
         return false;
+    /* A GL device identity describes the resource namespace, not the current
+       context. The context owns the Sokol state cache and is part of the
+       renderer identity whenever either side provides it. */
+    const bool context_backend =
+        target.api == NK_GRAPHICS_OPENGL || target.api == NK_GRAPHICS_OPENGL_ES;
+    if (context_backend && (renderer.native_context || target.native_context))
+        return renderer.native_context && target.native_context &&
+               renderer.native_context == target.native_context;
     if (target.native_device && renderer.native_device)
         return target.native_device == renderer.native_device;
     return target.device.id == renderer.device.id;
@@ -592,11 +604,7 @@ static nkgpu_result prepare_resource_destroy(Handle handle, bool &backend_availa
 #define sg_reset_state_cache(...) (runtime_gfx()->reset_state_cache(__VA_ARGS__))
 #define sg_update_buffer(...) (selected_api->update_buffer(__VA_ARGS__))
 
-static const nk_sokol_api *api_for_graphics_api(nk_graphics_api api,
-                                                nk_surface surface = NK_INVALID_HANDLE) {
-#if defined(NK_SOKOL_MULTI_CONTEXT)
-    static nk_surface primary_runtime_surface = NK_INVALID_HANDLE;
-#endif
+static const nk_sokol_api *api_for_graphics_api(nk_graphics_api api, uint64_t native_context = 0) {
     const nk_sokol_api *runtime = nullptr;
 #if defined(NK_SOKOL_RUNTIME_MATRIX)
     switch (api) {
@@ -635,18 +643,68 @@ static const nk_sokol_api *api_for_graphics_api(nk_graphics_api api,
     if (!runtime || !runtime->gfx)
         return nullptr;
 #if defined(NK_SOKOL_MULTI_CONTEXT)
-    if (surface != NK_INVALID_HANDLE) {
-        if (primary_runtime_surface == NK_INVALID_HANDLE)
-            primary_runtime_surface = surface;
-        else if (surface != primary_runtime_surface) {
+    if (native_context) {
+        struct ContextKey {
+            nk_graphics_api api;
+            uint64_t native_context;
+
+            bool operator==(const ContextKey &other) const {
+                return api == other.api && native_context == other.native_context;
+            }
+        };
+        struct ContextKeyHash {
+            size_t operator()(const ContextKey &key) const {
+                const size_t api_hash = std::hash<unsigned>{}(static_cast<unsigned>(key.api));
+                const size_t context_hash = std::hash<uint64_t>{}(key.native_context);
+                return api_hash ^ (context_hash + (api_hash << 6) + (api_hash >> 2));
+            }
+        };
+        static std::unordered_map<ContextKey, const nk_sokol_api *, ContextKeyHash>
+            context_runtimes;
+        static std::mutex context_runtimes_mutex;
+        std::lock_guard lock(context_runtimes_mutex);
+        const ContextKey key{api, native_context};
+        if (const auto found = context_runtimes.find(key); found != context_runtimes.end())
+            return found->second;
+
 #if defined(NK_SOKOL_RUNTIME_MATRIX)
-            runtime = api == NK_GRAPHICS_OPENGL      ? nk_sokol_glcore_secondary_get_api()
-                      : api == NK_GRAPHICS_OPENGL_ES ? nk_sokol_gles3_secondary_get_api()
-                                                     : nullptr;
+        const nk_sokol_api *secondary =
+            api == NK_GRAPHICS_OPENGL      ? nk_sokol_glcore_secondary_get_api()
+            : api == NK_GRAPHICS_OPENGL_ES ? nk_sokol_gles3_secondary_get_api()
+                                           : nullptr;
 #else
-            runtime = nk_sokol_secondary_get_api();
+        const nk_sokol_api *secondary = nk_sokol_secondary_get_api();
 #endif
+        const nk_sokol_api *chosen = nullptr;
+        bool primary_in_use = false;
+        for (const auto &[bound_key, bound_runtime] : context_runtimes) {
+            if (bound_key.api == api && bound_runtime == runtime) {
+                primary_in_use = true;
+                break;
+            }
         }
+        if (!primary_in_use)
+            chosen = runtime;
+        else if (secondary) {
+            bool secondary_in_use = false;
+            for (const auto &[bound_key, bound_runtime] : context_runtimes) {
+                if (bound_key.api == api && bound_runtime == secondary) {
+                    secondary_in_use = true;
+                    break;
+                }
+            }
+            if (!secondary_in_use)
+                chosen = secondary;
+        }
+        /* Never alias an unbound GL context to an existing Sokol runtime:
+           doing so would make resource handles and state-cache ownership
+           ambiguous. The current build exposes one secondary runtime, so a
+           third independent context is rejected until another runtime slot
+           is provisioned. */
+        if (!chosen)
+            return nullptr;
+        context_runtimes.emplace(key, chosen);
+        runtime = chosen;
     }
 #endif
     return runtime;
@@ -1480,7 +1538,7 @@ static nkgpu_result create_renderer_from_target(nk_surface surface,
     if ((target.api == NK_GRAPHICS_D3D11 && (!target.native_device || !target.native_context)) ||
         (target.api == NK_GRAPHICS_METAL && (!target.native_device || !target.native_context)))
         return fail(NKGPU_ERROR_UNKNOWN, "explicit surface target is missing native tokens");
-    const nk_sokol_api *api = api_for_graphics_api(target.api, surface);
+    const nk_sokol_api *api = api_for_graphics_api(target.api, target.native_context);
     if (!api || !api->runtime_acquire || !api->runtime_release || !api->gfx)
         return fail(NKGPU_ERROR_UNKNOWN, "surface graphics backend is unavailable");
     sg_desc desc{};
@@ -1520,6 +1578,7 @@ static nkgpu_result create_renderer_from_target(nk_surface surface,
     renderer_state.graphics_api = target.api;
     renderer_state.device = target.device;
     renderer_state.native_device = target.native_device;
+    renderer_state.native_context = target.native_context;
     renderer_state.context_target = target;
     renderer_state.context_target.frame = NK_INVALID_HANDLE;
     if (!nk::core::render_executor_physical()) {

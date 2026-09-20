@@ -47,7 +47,7 @@ option(NK_WEB_THREADED_RENDER
     "Enable the experimental Web OffscreenCanvas render executor (requires pthread-capable hosting)"
     OFF)
 option(NK_GTK_THREADED_RENDER
-    "Enable the experimental GTK offscreen render executor (requires a shared GL context)"
+    "Enable the experimental GTK offscreen render executor (requires GL context support)"
     OFF)
 
 if(EMSCRIPTEN AND NK_WEB_THREADED_RENDER)

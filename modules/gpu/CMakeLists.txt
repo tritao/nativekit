@@ -32,8 +32,7 @@ if(NK_BUILD_GPU_BACKEND_MATRIX)
     set_target_properties(${target} PROPERTIES
             POSITION_INDEPENDENT_CODE ON
             C_VISIBILITY_PRESET hidden)
-        # OpenGL contexts share textures and programs, but not vertex-array
-        # state. Keep an independent Sokol state cache for each surface
+        # Keep an independent Sokol runtime/state cache for each render
         # context while retaining the existing backend API contract.
         set(secondary_prefix "${symbol_prefix}secondary_")
         add_library(${target}_secondary OBJECT src/sokol/runtime.c src/sokol/api.c)
@@ -76,8 +75,7 @@ else()
         if(NK_SOKOL_BACKEND STREQUAL "d3d11")
             target_sources(nativekit_gpu PRIVATE src/sokol/runtime_d3d11.cpp)
         endif()
-        # OpenGL contexts share textures and programs, but not vertex-array
-        # state. Keep an independent Sokol state cache for each surface
+        # Keep an independent Sokol runtime/state cache for each render
         # context while retaining the existing backend API contract.
         if(NK_SOKOL_BACKEND STREQUAL "glcore" OR NK_SOKOL_BACKEND STREQUAL "gles3")
             add_library(nativekit_gpu_sokol_secondary_objects OBJECT
