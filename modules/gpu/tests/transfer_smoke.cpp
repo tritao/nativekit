@@ -322,6 +322,7 @@ int main() {
         const uint32_t array_pixels[] = {11u, 12u, 21u, 22u, 31u, 32u, 41u, 42u};
         nkgpu_image_desc array_desc = image_desc;
         array_desc.layer_count = 2;
+        array_desc.usage = NKGPU_IMAGE_SAMPLED;
         array_desc.data = reinterpret_cast<const uint8_t *>(array_pixels);
         array_desc.data_size = sizeof(array_pixels);
         if (!expect_result(
