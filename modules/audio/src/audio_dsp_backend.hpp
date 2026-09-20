@@ -26,6 +26,7 @@ struct OscillatorParameters {
     float level = 1.0f;
     std::shared_ptr<const Wavetable> wavetable;
     float detune_cents = 0.0f;
+    float phase = 0.0f;
 };
 
 struct NoiseParameters {
@@ -58,6 +59,7 @@ struct ModulationRoute {
         NK_AUDIO_DSP_MODULATION_DESTINATION_PITCH_SEMITONES;
     nk_audio_dsp_modulation_polarity polarity = NK_AUDIO_DSP_MODULATION_BIPOLAR;
     float amount = 0.0f;
+    uint32_t oscillator_index = NK_AUDIO_DSP_MODULATION_TARGET_ALL;
 };
 
 struct PatchParameters {

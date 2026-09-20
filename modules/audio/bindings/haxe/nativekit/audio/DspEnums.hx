@@ -31,6 +31,8 @@ enum abstract DspModulationDestination(Int) from Int to Int {
 	var PitchSemitones = 0;
 	var FilterCutoffHz = 1;
 	var Amplitude = 2;
+	var OscillatorLevel = 3;
+	var OscillatorPhase = 4;
 }
 
 /** Normalizes a modulation source before its route amount is applied. */
@@ -50,4 +52,8 @@ enum abstract DspParameter(Int) from Int to Int {
 	var NoiseLevel = 6;
 	var FilterCutoffHz = 7;
 	var FilterResonance = 8;
+	var OscillatorWaveform = 9;
+	var OscillatorLevel = 10;
+	var OscillatorDetuneCents = 11;
+	var OscillatorPhase = 12;
 }

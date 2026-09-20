@@ -65,6 +65,12 @@ int main() {
     patch_options.oscillators[0].struct_size = sizeof(patch_options.oscillators[0]);
     patch_options.oscillators[0].waveform = NK_AUDIO_DSP_WAVEFORM_SINE;
     patch_options.oscillators[0].level = 0.75f;
+    patch_options.oscillators[0].phase = 0.125f;
+    patch_options.oscillators[1].struct_size = sizeof(patch_options.oscillators[1]);
+    patch_options.oscillators[1].waveform = NK_AUDIO_DSP_WAVEFORM_TRIANGLE;
+    patch_options.oscillators[1].level = 0.25f;
+    patch_options.oscillators[1].detune_cents = 7.0f;
+    patch_options.oscillator_count = 2;
     patch_options.noise.struct_size = sizeof(patch_options.noise);
     patch_options.noise.level = 0.25f;
     patch_options.envelope.struct_size = sizeof(patch_options.envelope);
@@ -98,7 +104,20 @@ int main() {
     patch_options.routes[2].destination = NK_AUDIO_DSP_MODULATION_DESTINATION_PITCH_SEMITONES;
     patch_options.routes[2].polarity = NK_AUDIO_DSP_MODULATION_BIPOLAR;
     patch_options.routes[2].amount = 1.0f;
-    patch_options.route_count = 3;
+    patch_options.routes[2].oscillator_index = 2;
+    patch_options.routes[3].struct_size = sizeof(patch_options.routes[3]);
+    patch_options.routes[3].source = NK_AUDIO_DSP_MODULATION_SOURCE_LFO;
+    patch_options.routes[3].destination = NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_LEVEL;
+    patch_options.routes[3].polarity = NK_AUDIO_DSP_MODULATION_UNIPOLAR;
+    patch_options.routes[3].amount = 0.25f;
+    patch_options.routes[3].oscillator_index = 2;
+    patch_options.routes[4].struct_size = sizeof(patch_options.routes[4]);
+    patch_options.routes[4].source = NK_AUDIO_DSP_MODULATION_SOURCE_ENVELOPE;
+    patch_options.routes[4].destination = NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_PHASE;
+    patch_options.routes[4].polarity = NK_AUDIO_DSP_MODULATION_BIPOLAR;
+    patch_options.routes[4].amount = 0.05f;
+    patch_options.routes[4].oscillator_index = 1;
+    patch_options.route_count = 5;
 
     auto invalid_patch_options = patch_options;
     invalid_patch_options.route_count = NK_AUDIO_DSP_MAX_MODULATION_ROUTES + 1;
@@ -109,11 +128,32 @@ int main() {
     invalid_patch_options.oscillator_count = NK_AUDIO_DSP_MAX_OSCILLATORS + 1;
     assert(nk_audio_dsp_patch_create(&invalid_patch_options, &invalid_patch) ==
            NK_ERROR_INVALID_ARGUMENT);
+    invalid_patch_options = patch_options;
+    invalid_patch_options.routes[0].oscillator_index = 3;
+    assert(nk_audio_dsp_patch_create(&invalid_patch_options, &invalid_patch) ==
+           NK_ERROR_INVALID_ARGUMENT);
+    invalid_patch_options = patch_options;
+    invalid_patch_options.routes[0].oscillator_index = 2;
+    assert(nk_audio_dsp_patch_create(&invalid_patch_options, &invalid_patch) ==
+           NK_ERROR_INVALID_ARGUMENT);
 
     nk_audio_dsp_patch patch = NK_INVALID_HANDLE;
     assert(nk_audio_dsp_patch_create(&patch_options, &patch) == NK_OK);
     nk_audio_dsp_instrument instrument = NK_INVALID_HANDLE;
     assert(nk_audio_dsp_instrument_create_from_patch(engine, patch, &instrument) == NK_OK);
+    assert(nk_audio_dsp_instrument_set_parameter(instrument,
+                                                 NK_AUDIO_DSP_PARAMETER_OSCILLATOR_LEVEL,
+                                                 0.2f) == NK_ERROR_INVALID_ARGUMENT);
+    float invalid_oscillator_level = 0.0f;
+    assert(nk_audio_dsp_instrument_get_parameter(
+               instrument, NK_AUDIO_DSP_PARAMETER_OSCILLATOR_LEVEL, &invalid_oscillator_level) ==
+           NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_audio_dsp_instrument_set_oscillator_parameter(
+               instrument, 1, NK_AUDIO_DSP_PARAMETER_OSCILLATOR_LEVEL, 0.2f) == NK_OK);
+    float oscillator_level = 0.0f;
+    assert(nk_audio_dsp_instrument_get_oscillator_parameter(
+               instrument, 1, NK_AUDIO_DSP_PARAMETER_OSCILLATOR_LEVEL, &oscillator_level) == NK_OK);
+    assert(oscillator_level == 0.2f);
     nk_audio_dsp_engine second_engine = NK_INVALID_HANDLE;
     assert(nk_audio_dsp_engine_create(&engine_options, &second_engine) == NK_OK);
     nk_audio_dsp_instrument second_instrument = NK_INVALID_HANDLE;
@@ -184,7 +224,16 @@ int main() {
     note_on.voice_id = 1;
     note_on.note = 69;
     note_on.velocity = 1.0f;
-    assert(nk_audio_dsp_engine_render(engine, &target, &note_on, 1) == NK_OK);
+    nk_audio_dsp_event phase_automation{};
+    phase_automation.struct_size = sizeof(phase_automation);
+    phase_automation.kind = NK_AUDIO_DSP_EVENT_PARAMETER;
+    phase_automation.frame_offset = 16;
+    phase_automation.instrument = instrument;
+    phase_automation.parameter = NK_AUDIO_DSP_PARAMETER_OSCILLATOR_PHASE;
+    phase_automation.oscillator_index = 1;
+    phase_automation.value = 0.25f;
+    nk_audio_dsp_event note_on_events[] = {note_on, phase_automation};
+    assert(nk_audio_dsp_engine_render(engine, &target, note_on_events, 2) == NK_OK);
     assert(contains_signal(samples, 64));
 
     nk_audio_dsp_event gain_off{};

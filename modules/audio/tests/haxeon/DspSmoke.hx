@@ -32,6 +32,7 @@ class DspSmoke {
 			wavetable = DspWavetable.fromSamples(samples);
 			var builder = DspPatch.builder();
 			builder.oscillators[0].wavetable = wavetable;
+			builder.oscillators[0].phase = 0.125;
 			var detuned = new DspOscillatorOptions();
 			detuned.waveform = DspWaveform.Triangle;
 			detuned.level = 0.25;
@@ -40,17 +41,23 @@ class DspSmoke {
 			builder.gain = 0.75;
 			builder.lfo.rateHz = 5.0;
 			builder.modulate(DspModulationSource.Lfo, DspModulationDestination.PitchSemitones, 2.0, DspModulationPolarity.Bipolar);
+			builder.modulate(DspModulationSource.Lfo, DspModulationDestination.OscillatorLevel, 0.25, DspModulationPolarity.Unipolar, 2);
+			builder.modulate(DspModulationSource.Envelope, DspModulationDestination.OscillatorPhase, 0.05, DspModulationPolarity.Bipolar, 1);
 			builder.modulate(DspModulationSource.Envelope, DspModulationDestination.FilterCutoffHz, 400.0, DspModulationPolarity.Unipolar);
 			patch = builder.build();
 			instrument = patch.createInstrument(engine);
 			wavetable.dispose();
 			wavetable = null;
+			instrument.setOscillatorParameter(1, DspParameter.OscillatorLevel, 0.2);
+			if (Math.abs(instrument.oscillatorParameter(1, DspParameter.OscillatorLevel) - 0.2) > 0.0001)
+				throw "Haxe DSP oscillator parameter did not round-trip";
 			instrument.setParameter(DspParameter.Gain, 0.5);
 			if (instrument.parameter(DspParameter.Gain) != 0.5)
 				throw "Haxe DSP instrument parameter did not round-trip";
 			var target = new DspRenderTarget(64, 1);
 			engine.render(target, [
 				DspEvent.noteOn(instrument, 7, 69),
+				DspEvent.oscillatorParameter(instrument, 1, DspParameter.OscillatorPhase, 0.25, 16),
 				DspEvent.parameter(instrument, DspParameter.Gain, 0.0, 32)
 			]);
 			var renderedSamples = target.samples;

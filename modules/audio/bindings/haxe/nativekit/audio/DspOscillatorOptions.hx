@@ -11,6 +11,8 @@ class DspOscillatorOptions {
 	public var wavetable:DspWavetable = null;
 	/** Relative tuning in cents; zero preserves the note frequency. */
 	public var detuneCents:Float = 0.0;
+	/** Initial and automatable normalized phase offset. */
+	public var phase:Float = 0.0;
 
 	public function new() {}
 
@@ -22,6 +24,7 @@ class DspOscillatorOptions {
 		result.set_level(level);
 		result.set_wavetable(wavetable == null ? NativeKitAudio.DspWavetableHandle.invalid() : wavetable.nativeHandle());
 		result.set_detune_cents(detuneCents);
+		result.set_phase(phase);
 		return result;
 	}
 }

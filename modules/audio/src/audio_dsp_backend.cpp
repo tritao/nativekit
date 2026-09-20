@@ -98,6 +98,7 @@ struct Voice::Impl {
         daisysp::WavetableOscillator wavetable_oscillator;
         std::shared_ptr<const Wavetable> wavetable;
         float detune_cents = 0.0f;
+        float phase = 0.0f;
     };
 
     std::array<OscillatorVoice, NK_AUDIO_DSP_MAX_OSCILLATORS> oscillators;
@@ -136,6 +137,7 @@ void Voice::init(uint32_t sample_rate) noexcept {
         oscillator.wavetable_oscillator.Init(static_cast<float>(sample_rate));
         oscillator.wavetable.reset();
         oscillator.detune_cents = 0.0f;
+        oscillator.phase = 0.0f;
     }
     impl_->lfo.Init(static_cast<float>(sample_rate));
     impl_->lfo.SetAmp(1.0f);
@@ -174,6 +176,7 @@ void Voice::set_parameters(const PatchParameters &parameters) noexcept {
         const auto &parameters_oscillator = parameters.oscillators[index];
         voice_oscillator.wavetable = parameters_oscillator.wavetable;
         voice_oscillator.detune_cents = parameters_oscillator.detune_cents;
+        voice_oscillator.phase = parameters_oscillator.phase;
         voice_oscillator.wavetable_oscillator.SetTables(
             voice_oscillator.wavetable ? voice_oscillator.wavetable->tables() : nullptr,
             voice_oscillator.wavetable ? voice_oscillator.wavetable->table_count() : 0);
@@ -257,9 +260,20 @@ float Voice::process() noexcept {
         }
     }
 
-    auto pitch_offset = 0.0f;
+    std::array<float, NK_AUDIO_DSP_MAX_OSCILLATORS> pitch_offsets{};
+    std::array<float, NK_AUDIO_DSP_MAX_OSCILLATORS> level_offsets{};
+    std::array<float, NK_AUDIO_DSP_MAX_OSCILLATORS> phase_offsets{};
     auto filter_offset = 0.0f;
     auto amplitude_offset = 0.0f;
+    const auto add_oscillator_route = [&](std::array<float, NK_AUDIO_DSP_MAX_OSCILLATORS> &values,
+                                          const ModulationRoute &route, float value) {
+        if (route.oscillator_index == NK_AUDIO_DSP_MODULATION_TARGET_ALL) {
+            for (uint32_t oscillator = 0; oscillator < impl_->oscillator_count; ++oscillator)
+                values[oscillator] += value;
+        } else if (route.oscillator_index <= impl_->oscillator_count) {
+            values[route.oscillator_index - 1] += value;
+        }
+    };
     for (uint32_t index = 0; index < impl_->route_count; ++index) {
         const auto &route = impl_->routes[index];
         auto source_value =
@@ -272,7 +286,7 @@ float Voice::process() noexcept {
             source_value = 2.0f * source_value - 1.0f;
         switch (route.destination) {
         case NK_AUDIO_DSP_MODULATION_DESTINATION_PITCH_SEMITONES:
-            pitch_offset += route.amount * source_value;
+            add_oscillator_route(pitch_offsets, route, route.amount * source_value);
             break;
         case NK_AUDIO_DSP_MODULATION_DESTINATION_FILTER_CUTOFF_HZ:
             filter_offset += route.amount * source_value;
@@ -280,26 +294,36 @@ float Voice::process() noexcept {
         case NK_AUDIO_DSP_MODULATION_DESTINATION_AMPLITUDE:
             amplitude_offset += route.amount * source_value;
             break;
+        case NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_LEVEL:
+            add_oscillator_route(level_offsets, route, route.amount * source_value);
+            break;
+        case NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_PHASE:
+            add_oscillator_route(phase_offsets, route, route.amount * source_value);
+            break;
         default:
             break;
         }
     }
 
     auto frequency = impl_->base_frequency;
-    if (pitch_offset != 0.0f)
-        frequency *= std::pow(2.0f, pitch_offset / 12.0f);
     float sample = 0.0f;
     for (uint32_t index = 0; index < impl_->oscillator_count; ++index) {
         auto &oscillator = impl_->oscillators[index];
+        auto oscillator_frequency = frequency;
+        if (pitch_offsets[index] != 0.0f)
+            oscillator_frequency *= std::pow(2.0f, pitch_offsets[index] / 12.0f);
         const auto detuned_frequency = clamp_frequency(
-            frequency * std::pow(2.0f, oscillator.detune_cents / 1200.0f), impl_->sample_rate);
+            oscillator_frequency * std::pow(2.0f, oscillator.detune_cents / 1200.0f),
+            impl_->sample_rate);
         oscillator.wavetable_oscillator.SetFreq(detuned_frequency);
+        const auto phase_offset = oscillator.phase + phase_offsets[index];
+        const auto level = std::max(0.0f, 1.0f + level_offsets[index]);
         if (oscillator.wavetable) {
-            sample += oscillator.wavetable_oscillator.Process();
+            sample += oscillator.wavetable_oscillator.Process(phase_offset) * level;
         } else {
-            if (pitch_offset != 0.0f)
+            if (pitch_offsets[index] != 0.0f)
                 oscillator.oscillator.SetFreq(detuned_frequency);
-            sample += oscillator.oscillator.Process();
+            sample += oscillator.oscillator.Process(phase_offset) * level;
         }
     }
     sample += impl_->noise.Process() * impl_->noise_level;

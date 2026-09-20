@@ -36,8 +36,8 @@ class DspPatchBuilder {
 	/** Convenience form of addRoute(). */
 	public function modulate(source:DspModulationSource,
 		destination:DspModulationDestination, amount:Float,
-		?polarity:DspModulationPolarity):DspPatchBuilder {
-		return addRoute(new DspModulationRoute(source, destination, amount, polarity));
+		?polarity:DspModulationPolarity, oscillatorIndex:Int = 0):DspPatchBuilder {
+		return addRoute(new DspModulationRoute(source, destination, amount, polarity, oscillatorIndex));
 	}
 
 	/** Materializes the current builder state into an immutable native patch. */

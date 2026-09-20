@@ -2,6 +2,7 @@
 interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depends("NativeKit") {
 	const NK_AUDIO_DSP_MAX_MODULATION_ROUTES = 8;
 	const NK_AUDIO_DSP_MAX_OSCILLATORS = 4;
+	const NK_AUDIO_DSP_MODULATION_TARGET_ALL = 0;
 	/**
 	 * Distance attenuation model applied by a spatialized voice.
 	 */
@@ -137,6 +138,14 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		 * Relative linear output-gain amount around the patch gain.
 		 */
 		NK_AUDIO_DSP_MODULATION_DESTINATION_AMPLITUDE = 2;
+		/**
+		 * Relative linear level for the targeted oscillator sources.
+		 */
+		NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_LEVEL = 3;
+		/**
+		 * Non-accumulating normalized phase offset for the targeted oscillator sources.
+		 */
+		NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_PHASE = 4;
 	}
 	/**
 	 * Normalization applied to a modulation source before amount scaling.
@@ -159,7 +168,7 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		NK_AUDIO_DSP_MODULATION_SOURCE_ENVELOPE = 1;
 	}
 	/**
-	 * Instrument parameters accepted by nk_audio_dsp_instrument_set_parameter.
+	 * Instrument parameter identifiers; oscillator-specific values require a source index.
 	 */
 	enum nk_audio_dsp_parameter : u32 {
 		NK_AUDIO_DSP_PARAMETER_WAVEFORM = 0;
@@ -180,6 +189,22 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		 * State-variable low-pass resonance in the inclusive range [0, 1].
 		 */
 		NK_AUDIO_DSP_PARAMETER_FILTER_RESONANCE = 8;
+		/**
+		 * Per-source waveform; the event oscillator index selects the source.
+		 */
+		NK_AUDIO_DSP_PARAMETER_OSCILLATOR_WAVEFORM = 9;
+		/**
+		 * Per-source linear level in the inclusive range [0, 1].
+		 */
+		NK_AUDIO_DSP_PARAMETER_OSCILLATOR_LEVEL = 10;
+		/**
+		 * Per-source tuning offset in cents.
+		 */
+		NK_AUDIO_DSP_PARAMETER_OSCILLATOR_DETUNE_CENTS = 11;
+		/**
+		 * Per-source normalized phase offset in the inclusive range [0, 1].
+		 */
+		NK_AUDIO_DSP_PARAMETER_OSCILLATOR_PHASE = 12;
 	}
 	/**
 	 * Built-in pitched oscillator shapes.
@@ -642,9 +667,17 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 */
 	extern fn nk_audio_dsp_instrument_destroy(instrument: nk_audio_dsp_instrument) -> nk_result;
 	/**
+	 * Reads one oscillator-specific parameter.
+	 */
+	extern fn nk_audio_dsp_instrument_get_oscillator_parameter(instrument: nk_audio_dsp_instrument, oscillator_index: u32, parameter: nk_audio_dsp_parameter, out_value: ptr<f32> @out) -> nk_result;
+	/**
 	 * Reads one current instrument parameter.
 	 */
 	extern fn nk_audio_dsp_instrument_get_parameter(instrument: nk_audio_dsp_instrument, parameter: nk_audio_dsp_parameter, out_value: ptr<f32> @out) -> nk_result;
+	/**
+	 * Sets one oscillator-specific parameter between render calls.
+	 */
+	extern fn nk_audio_dsp_instrument_set_oscillator_parameter(instrument: nk_audio_dsp_instrument, oscillator_index: u32, parameter: nk_audio_dsp_parameter, value: f32) -> nk_result;
 	/**
 	 * Sets one instrument parameter between render calls.
 	 */
@@ -1184,9 +1217,17 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		parameter: nk_audio_dsp_parameter @offset(28);
 		value: f32 @offset(32);
 		/**
+		 * Zero-based oscillator source for oscillator-specific parameters.
+		 */
+		oscillator_index: u32 @offset(36);
+		/**
+		 * Reserved; set to zero.
+		 */
+		reserved: u32 @offset(40);
+		/**
 		 * Reserved for compatible extensions; set all elements to zero.
 		 */
-		reserved2: array<u64, 2> @offset(40);
+		reserved2: array<u64, 1> @offset(48);
 	}
 	/**
 	 * Filter component in a reusable patch.
@@ -1282,7 +1323,7 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	/**
 	 * One generic source-to-destination modulation route.
 	 */
-	struct nk_audio_dsp_modulation_route_options @layout(32, 8) {
+	struct nk_audio_dsp_modulation_route_options @layout(32, 4) {
 		/**
 		 * Set to sizeof(nk_audio_dsp_modulation_route_options) before use.
 		 */
@@ -1304,9 +1345,17 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		 */
 		amount: f32 @offset(16);
 		/**
-		 * Reserved for compatible extensions; set all elements to zero.
+		 * One-based oscillator target for oscillator destinations; zero targets all.
 		 */
-		reserved2: array<u64, 1> @offset(24);
+		oscillator_index: u32 @offset(20);
+		/**
+		 * Reserved; set to zero.
+		 */
+		reserved: u32 @offset(24);
+		/**
+		 * Reserved for compatible extensions; set to zero.
+		 */
+		reserved2: u32 @offset(28);
 	}
 	/**
 	 * White-noise source component in a reusable patch.
@@ -1354,6 +1403,10 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		 */
 		detune_cents: f32 @offset(16);
 		/**
+		 * Initial and automatable normalized phase offset in the range [0, 1].
+		 */
+		phase: f32 @offset(20);
+		/**
 		 * Reserved for compatible extensions; set all elements to zero.
 		 */
 		reserved2: array<u64, 1> @offset(24);
@@ -1361,8 +1414,10 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	/**
 	 * Immutable reusable DSP patch. Components are evaluated in source, envelope,
 	 * modulation, filter, and output-gain order. Modulation amounts use the
-	 * destination's units: semitones for pitch, Hz for filter cutoff, and linear
-	 * relative gain for amplitude.
+	 * destination's units: semitones for pitch, Hz for filter cutoff, linear
+	 * relative gain for amplitude and oscillator level, and normalized cycles for
+	 * oscillator phase. Oscillator destinations may target one source using a
+	 * one-based index or all sources with NK_AUDIO_DSP_MODULATION_TARGET_ALL.
 	 */
 	struct nk_audio_dsp_patch_options @layout(568, 8) {
 		/**

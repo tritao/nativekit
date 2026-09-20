@@ -95,7 +95,11 @@ enum NK_ENUM(nk_audio_dsp_modulation_destination) {
     /** Cutoff offset in Hz. */
     NK_AUDIO_DSP_MODULATION_DESTINATION_FILTER_CUTOFF_HZ = 1,
     /** Relative linear output-gain amount around the patch gain. */
-    NK_AUDIO_DSP_MODULATION_DESTINATION_AMPLITUDE = 2
+    NK_AUDIO_DSP_MODULATION_DESTINATION_AMPLITUDE = 2,
+    /** Relative linear level for the targeted oscillator sources. */
+    NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_LEVEL = 3,
+    /** Non-accumulating normalized phase offset for the targeted oscillator sources. */
+    NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_PHASE = 4
 };
 
 /** Normalization applied to a modulation source before amount scaling. */
@@ -107,13 +111,16 @@ enum NK_ENUM(nk_audio_dsp_modulation_polarity) {
     NK_AUDIO_DSP_MODULATION_UNIPOLAR = 1
 };
 
+/** One-based oscillator target; zero targets all oscillator sources. */
+enum { NK_AUDIO_DSP_MODULATION_TARGET_ALL = 0 };
+
 /** Maximum number of fixed, ABI-safe modulation routes in one patch. */
 enum { NK_AUDIO_DSP_MAX_MODULATION_ROUTES = 8 };
 
 /** Maximum number of independently tuned pitched sources in one patch. */
 enum { NK_AUDIO_DSP_MAX_OSCILLATORS = 4 };
 
-/** Instrument parameters accepted by nk_audio_dsp_instrument_set_parameter. */
+/** Instrument parameter identifiers; oscillator-specific values require a source index. */
 typedef uint32_t nk_audio_dsp_parameter;
 enum NK_ENUM(nk_audio_dsp_parameter) {
     NK_AUDIO_DSP_PARAMETER_WAVEFORM = 0,
@@ -127,7 +134,15 @@ enum NK_ENUM(nk_audio_dsp_parameter) {
     /** State-variable low-pass cutoff in Hz; zero bypasses the filter. */
     NK_AUDIO_DSP_PARAMETER_FILTER_CUTOFF_HZ = 7,
     /** State-variable low-pass resonance in the inclusive range [0, 1]. */
-    NK_AUDIO_DSP_PARAMETER_FILTER_RESONANCE = 8
+    NK_AUDIO_DSP_PARAMETER_FILTER_RESONANCE = 8,
+    /** Per-source waveform; the event oscillator index selects the source. */
+    NK_AUDIO_DSP_PARAMETER_OSCILLATOR_WAVEFORM = 9,
+    /** Per-source linear level in the inclusive range [0, 1]. */
+    NK_AUDIO_DSP_PARAMETER_OSCILLATOR_LEVEL = 10,
+    /** Per-source tuning offset in cents. */
+    NK_AUDIO_DSP_PARAMETER_OSCILLATOR_DETUNE_CENTS = 11,
+    /** Per-source normalized phase offset in the inclusive range [0, 1]. */
+    NK_AUDIO_DSP_PARAMETER_OSCILLATOR_PHASE = 12
 };
 
 /* ------------------------------------------------------------------------- */
@@ -146,6 +161,8 @@ typedef struct nk_audio_dsp_oscillator_options {
     nk_audio_dsp_wavetable wavetable;
     /** Relative tuning in cents; zero preserves the note frequency. */
     float detune_cents;
+    /** Initial and automatable normalized phase offset in the range [0, 1]. */
+    float phase;
     /** Reserved for compatible extensions; set all elements to zero. */
     uint64_t reserved2[1];
 } nk_audio_dsp_oscillator_options;
@@ -220,15 +237,21 @@ typedef struct nk_audio_dsp_modulation_route_options {
     nk_audio_dsp_modulation_polarity polarity;
     /** Signed destination-unit amount. */
     float amount;
-    /** Reserved for compatible extensions; set all elements to zero. */
-    uint64_t reserved2[1];
+    /** One-based oscillator target for oscillator destinations; zero targets all. */
+    uint32_t oscillator_index;
+    /** Reserved; set to zero. */
+    uint32_t reserved;
+    /** Reserved for compatible extensions; set to zero. */
+    uint32_t reserved2;
 } nk_audio_dsp_modulation_route_options;
 
 /**
  * Immutable reusable DSP patch. Components are evaluated in source, envelope,
  * modulation, filter, and output-gain order. Modulation amounts use the
- * destination's units: semitones for pitch, Hz for filter cutoff, and linear
- * relative gain for amplitude.
+ * destination's units: semitones for pitch, Hz for filter cutoff, linear
+ * relative gain for amplitude and oscillator level, and normalized cycles for
+ * oscillator phase. Oscillator destinations may target one source using a
+ * one-based index or all sources with NK_AUDIO_DSP_MODULATION_TARGET_ALL.
  */
 typedef struct nk_audio_dsp_patch_options {
     /** Set to sizeof(nk_audio_dsp_patch_options) before use. */
@@ -340,8 +363,12 @@ typedef struct nk_audio_dsp_event {
     /** Parameter ID and value for PARAMETER. */
     nk_audio_dsp_parameter parameter;
     float value;
+    /** Zero-based oscillator source for oscillator-specific parameters. */
+    uint32_t oscillator_index;
+    /** Reserved; set to zero. */
+    uint32_t reserved;
     /** Reserved for compatible extensions; set all elements to zero. */
-    uint64_t reserved2[2];
+    uint64_t reserved2[1];
 } nk_audio_dsp_event;
 
 /* ------------------------------------------------------------------------- */
@@ -390,9 +417,17 @@ NKAUDIO_API nk_result NK_CALL nk_audio_dsp_instrument_destroy(nk_audio_dsp_instr
 /** Sets one instrument parameter between render calls. */
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_instrument_set_parameter(
     nk_audio_dsp_instrument instrument, nk_audio_dsp_parameter parameter, float value);
+/** Sets one oscillator-specific parameter between render calls. */
+NKAUDIO_API nk_result NK_CALL nk_audio_dsp_instrument_set_oscillator_parameter(
+    nk_audio_dsp_instrument instrument, uint32_t oscillator_index, nk_audio_dsp_parameter parameter,
+    float value);
 /** Reads one current instrument parameter. */
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_instrument_get_parameter(
     nk_audio_dsp_instrument instrument, nk_audio_dsp_parameter parameter, float *out_value NK_OUT);
+/** Reads one oscillator-specific parameter. */
+NKAUDIO_API nk_result NK_CALL nk_audio_dsp_instrument_get_oscillator_parameter(
+    nk_audio_dsp_instrument instrument, uint32_t oscillator_index, nk_audio_dsp_parameter parameter,
+    float *out_value NK_OUT);
 
 /* ------------------------------------------------------------------------- */
 /* Rendering                                                                 */
