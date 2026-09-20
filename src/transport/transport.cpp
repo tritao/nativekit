@@ -14,7 +14,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <cctype>
-#include <cstdio>
 #include <cstring>
 #include <deque>
 #include <limits>
@@ -241,14 +240,6 @@ bool socket_interrupted(int error) noexcept {
     return error == EINTR;
 #endif
 }
-
-#if defined(_WIN32)
-void transport_debug(const char *message, int value = 0) noexcept {
-    std::fprintf(stderr, "nativekit transport: %s (%d, wsa=%d)\n", message, value,
-                 WSAGetLastError());
-    std::fflush(stderr);
-}
-#endif
 
 void close_socket(socket_type socket) noexcept {
     if (socket == invalid_socket)
@@ -672,13 +663,8 @@ nk_result create_listener_socket(const TransportOptions &options, socket_type &o
     const std::string service = std::to_string(options.port);
     addrinfo *addresses = nullptr;
     const char *host = options.host.empty() ? nullptr : options.host.c_str();
-    const int address_result = getaddrinfo(host, service.c_str(), &hints, &addresses);
-    if (address_result != 0) {
-#if defined(_WIN32)
-        transport_debug("listener getaddrinfo failed", address_result);
-#endif
+    if (getaddrinfo(host, service.c_str(), &hints, &addresses) != 0)
         return NK_TRANSPORT_ERROR_DNS;
-    }
 
     nk_result result = NK_TRANSPORT_ERROR_CONNECTION;
     for (addrinfo *address = addresses; address; address = address->ai_next) {
@@ -693,11 +679,7 @@ nk_result create_listener_socket(const TransportOptions &options, socket_type &o
         }
         if (::bind(socket, address->ai_addr,
                    static_cast<socket_length_type>(address->ai_addrlen)) != 0) {
-            const auto error = socket_error();
-#if defined(_WIN32)
-            transport_debug("listener bind failed", error);
-#endif
-            result = map_bind_error(error);
+            result = map_bind_error(socket_error());
             close_socket(socket);
             continue;
         }
@@ -1595,21 +1577,8 @@ nk_result NK_CALL nk_transport_listen(const nk_transport_options *options,
             return fail(NK_ERROR_INVALID_ARGUMENT, "listener output is null");
         *out_listener = NK_INVALID_HANDLE;
         TransportOptions copied;
-        if (!copy_options(options, copied, true)) {
-#if defined(_WIN32)
-            if (options) {
-                std::fprintf(stderr,
-                             "nativekit transport: invalid listener options size=%u/%zu "
-                             "kind=%u flags=%u reserved0=%u reserved=%llu,%llu\n",
-                             options->struct_size, sizeof(*options), options->kind, options->flags,
-                             options->reserved0,
-                             static_cast<unsigned long long>(options->reserved[0]),
-                             static_cast<unsigned long long>(options->reserved[1]));
-                std::fflush(stderr);
-            }
-#endif
+        if (!copy_options(options, copied, true))
             return fail(NK_ERROR_INVALID_ARGUMENT, "listener options are invalid");
-        }
         auto listener = std::make_shared<ListenerResource>();
         listener->options = std::move(copied);
         listener->generation = nk::core::runtime_generation();
