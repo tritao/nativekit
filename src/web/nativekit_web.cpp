@@ -3505,6 +3505,8 @@ nk_result NK_CALL nk_graphics_bind_frame_target(const nk_surface_frame_target *t
 #if defined(NK_WEB_THREADED_RENDER)
     if (!target || !target->native_context)
         return NK_ERROR_INVALID_ARGUMENT;
+    if (!nk_executor_is_current(NK_EXECUTOR_RENDER))
+        return NK_ERROR_WRONG_THREAD;
     return nk::web::make_context_current(
                static_cast<EMSCRIPTEN_WEBGL_CONTEXT_HANDLE>(target->native_context))
                ? NK_OK

@@ -5594,6 +5594,8 @@ nk_result NK_CALL nk_graphics_bind_frame_target(const nk_surface_frame_target *t
         return NK_OK;
     if (!target || !target->native_context || !target->native_target)
         return NK_ERROR_INVALID_ARGUMENT;
+    if (!nk_executor_is_current(NK_EXECUTOR_RENDER))
+        return NK_ERROR_WRONG_THREAD;
     auto *context = reinterpret_cast<GdkGLContext *>(target->native_context);
     gtk_render_context_busy.store(true);
     if (gdk_gl_context_get_current() != context) {

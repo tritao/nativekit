@@ -138,6 +138,9 @@ int main(void) {
     nk_window window = NK_INVALID_HANDLE;
     assert(nk_window_create(&window_options, &window) == NK_OK);
 
+    nk_window shared_window = NK_INVALID_HANDLE;
+    assert(nk_window_create(&window_options, &shared_window) == NK_OK);
+
     nk_surface_options surface_options = {0};
     surface_options.struct_size = sizeof(surface_options);
     surface_options.flags = NK_SURFACE_DEPTH | NK_SURFACE_STENCIL;
@@ -146,6 +149,11 @@ int main(void) {
     surface_options.height = 120;
     nk_surface surface = NK_INVALID_HANDLE;
     assert(nk_surface_create(window, &surface_options, &surface) == NK_OK);
+
+    nk_surface_options shared_surface_options = surface_options;
+    shared_surface_options.share_surface = surface;
+    nk_surface shared_surface = NK_INVALID_HANDLE;
+    assert(nk_surface_create(shared_window, &shared_surface_options, &shared_surface) == NK_OK);
 
     acquire_frame(window, surface);
     nk_surface_frame_target target = {0};
@@ -161,7 +169,21 @@ int main(void) {
     assert(target.native_present_target != 0);
     assert(nk_surface_present(surface) == NK_OK);
 
+    acquire_frame(shared_window, shared_surface);
+    nk_surface_frame_target shared_target = {0};
+    shared_target.struct_size = sizeof(shared_target);
+    assert(nk_surface_get_frame_target(shared_surface, &shared_target) == NK_OK);
+    assert(shared_target.api == NK_GRAPHICS_D3D11);
+    assert(shared_target.device.id == target.device.id);
+    assert(shared_target.native_device == target.native_device);
+    assert(shared_target.native_context == target.native_context);
+    assert(shared_target.native_target != 0);
+    assert(shared_target.native_depth_stencil_target != 0);
+    assert(shared_target.native_present_target != 0);
+    assert(nk_surface_present(shared_surface) == NK_OK);
+
     run_d3d11_frame_ticket(surface, 240, 140);
+    run_d3d11_frame_ticket(shared_surface, 260, 150);
 
     assert(nk_surface_set_bounds(surface, 12, 16, 200, 100) == NK_OK);
     acquire_frame(window, surface);
@@ -172,6 +194,8 @@ int main(void) {
     assert(nk_surface_present(surface) == NK_OK);
 
     assert(nk_surface_destroy(surface) == NK_OK);
+    assert(nk_surface_destroy(shared_surface) == NK_OK);
+    assert(nk_window_destroy(shared_window) == NK_OK);
     assert(nk_window_destroy(window) == NK_OK);
     nk_shutdown();
     return 0;

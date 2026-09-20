@@ -5302,7 +5302,12 @@ nk_result NK_CALL nk_frame_backend_submit(const nk_surface_frame_target *target)
     return NK_OK;
 }
 
-nk_result NK_CALL nk_graphics_bind_frame_target(const nk_surface_frame_target *) {
+nk_result NK_CALL nk_graphics_bind_frame_target(const nk_surface_frame_target *target) {
+    if (!target || target->api != NK_GRAPHICS_METAL || !target->native_device ||
+        !target->native_context)
+        return NK_ERROR_INVALID_ARGUMENT;
+    if (!nk_executor_is_current(NK_EXECUTOR_RENDER))
+        return NK_ERROR_WRONG_THREAD;
     return NK_OK;
 }
 
