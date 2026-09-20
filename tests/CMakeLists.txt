@@ -130,6 +130,12 @@ target_include_directories(nativekit_wasm_host_allocator_test PRIVATE ${PROJECT_
 add_test(NAME wasm_host_allocator COMMAND nativekit_wasm_host_allocator_test)
 
 if(EMSCRIPTEN)
+    add_executable(nativekit_web_frame_backend integration/web_frame_backend.cpp)
+    target_compile_features(nativekit_web_frame_backend PRIVATE cxx_std_17)
+    target_include_directories(nativekit_web_frame_backend PRIVATE "${PROJECT_SOURCE_DIR}/src")
+    target_link_libraries(nativekit_web_frame_backend PRIVATE NativeKit::nativekit)
+    set_target_properties(nativekit_web_frame_backend PROPERTIES SUFFIX ".html"
+        LINKER_LANGUAGE CXX)
     add_executable(nativekit_web_tasks integration/web_tasks.c)
     target_compile_features(nativekit_web_tasks PRIVATE c_std_11)
     target_link_libraries(nativekit_web_tasks PRIVATE NativeKit::nativekit)

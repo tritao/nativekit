@@ -1486,10 +1486,19 @@ nkgpu_result nkgpu_test_lose_after_frames(nkgpu_renderer renderer, uint32_t fram
     return NKGPU_OK;
 }
 
-void nkgpu_test_lose_all_after_frames(uint32_t frames) {
+static void apply_test_loss_to_all(void *data) {
+    const uint32_t frames = *static_cast<const uint32_t *>(data);
     for (auto &slot : renderer_pool.slots)
         if (slot.active && slot.value.state != RendererState::Lost)
             slot.value.test_frames_before_loss = frames;
+}
+
+void nkgpu_test_lose_all_after_frames(uint32_t frames) {
+    if (nk::core::render_executor_physical() && !nk_executor_is_current(NK_EXECUTOR_RENDER)) {
+        (void)nk::core::dispatch_to_render_sync(&apply_test_loss_to_all, &frames, sizeof(frames));
+        return;
+    }
+    apply_test_loss_to_all(&frames);
 }
 
 void nkgpu_test_invalidate_all(void) {
@@ -1640,6 +1649,10 @@ static nkgpu_result create_renderer_from_target(nk_surface surface,
 nkgpu_result nkgpu_renderer_create(nk_surface surface, nkgpu_renderer *out) {
     if (!surface || !out)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid renderer arguments");
+    if (nk::core::render_executor_physical())
+        return fail(NKGPU_ERROR_WRONG_THREAD,
+                    "physical render backends require an acquired frame target; use "
+                    "nkgpu_renderer_create_for_frame_target on RENDER");
     /* Explicit APIs initialize against the surface-owned device without
        acquiring a presentation image. The first frame prepares its target. */
     nk_surface_frame_target target{};

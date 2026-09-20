@@ -6,6 +6,7 @@
 #include "testing.h"
 
 #include <chrono>
+#include <atomic>
 #include <cstdio>
 #include <cstring>
 #include <thread>
@@ -65,6 +66,8 @@ void run_physical_contract(void *user_data) {
     nkgpu_pipeline pipeline{};
     nkgpu_buffer buffer{};
     nkgpu_batch batch{};
+    std::atomic<nkgpu_result> wrong_thread_result{NKGPU_OK};
+    std::thread wrong_thread;
     const uint8_t vertices[] = {0, 0, 0, 0};
     const bool gles = task.target.api == NK_GRAPHICS_OPENGL_ES;
     const char *vertex_source =
@@ -90,6 +93,22 @@ void run_physical_contract(void *user_data) {
               NKGPU_OK);
     CHECK_GPU(nkgpu_renderer_create_for_frame_target(task.surface, &task.target, &second),
               NKGPU_OK);
+
+    /* Every pool mutation, including render-target allocation, belongs to
+       RENDER.  Exercise the rejection before any GPU state is active so a
+       failed worker call cannot leave a partially inserted pool slot. */
+    wrong_thread = std::thread([&] {
+        nkgpu_render_target ignored{};
+        wrong_thread_result = nkgpu_render_target_create(first, 8, 8, 0, &ignored);
+    });
+    wrong_thread.join();
+    if (wrong_thread_result.load() != NKGPU_ERROR_WRONG_THREAD) {
+        std::fprintf(stderr, "worker render-target allocation returned %d\n",
+                     wrong_thread_result.load());
+        task.result = __LINE__;
+        goto physical_cleanup;
+    }
+
     CHECK_GPU(nkgpu_end_frame(first), NKGPU_ERROR_WRONG_STATE);
     CHECK_GPU(nkgpu_frame_begin_with_target(first, &task.target), NKGPU_OK);
     CHECK_GPU(nkgpu_frame_begin_with_target(second, &task.target), NKGPU_ERROR_WRONG_STATE);
@@ -154,6 +173,8 @@ void run_physical_contract(void *user_data) {
     CHECK_GPU(nkgpu_frame_begin_with_target(second, &task.target), NKGPU_ERROR_DEVICE_LOST);
 
 physical_cleanup:
+    if (wrong_thread.joinable())
+        wrong_thread.join();
     if (batch.id)
         (void)nkgpu_batch_destroy(batch);
     if (buffer.id && first.id)

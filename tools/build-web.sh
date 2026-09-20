@@ -35,6 +35,7 @@ emcmake cmake -S "$repo_dir" -B "$build_dir" -G Ninja \
 
 web_targets=(
     nativekit_ui_c_api
+    nativekit_web_frame_backend
     nativekit_platform_parity
     nativekit_web_accessibility
     nativekit_web_system_equivalents
@@ -59,6 +60,7 @@ else
     echo "  Haxeon UI artifact: skipped"
 fi
 echo "  $build_dir/tests/nativekit_platform_parity.html"
+echo "  $build_dir/tests/nativekit_web_frame_backend.html"
 echo "  $build_dir/tests/nativekit_web_accessibility.html"
 echo "  $build_dir/tests/nativekit_web_system_equivalents.html"
 echo

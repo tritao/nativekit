@@ -5,6 +5,8 @@ repo_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 artifact_dir=${NATIVEKIT_WEB_ARTIFACT_DIR:-"$repo_dir/build-web/modules/ui"}
 build_dir=${NATIVEKIT_WEB_BUILD_DIR:-"$repo_dir/build-web"}
 browser=${NK_WEB_BROWSER:-}
+frame_only=${NATIVEKIT_WEB_FRAME_ONLY:-OFF}
+cross_origin_isolated=${NATIVEKIT_WEB_CROSS_ORIGIN_ISOLATED:-OFF}
 
 if [[ ! -f "$artifact_dir/nativekit_ui_c_api.html" ]]; then
     echo "Web artifact is missing. Run tools/build-web.sh first." >&2
@@ -42,12 +44,19 @@ cleanup() {
 }
 trap cleanup EXIT
 
-python3 -m http.server "$http_port" --bind 127.0.0.1 --directory "$build_dir" \
-    >"$temp_dir/http.log" 2>&1 &
+server_args=(python3 "$repo_dir/tools/web_server.py" --port "$http_port" --directory "$build_dir")
+if [[ "$cross_origin_isolated" == "ON" || "$cross_origin_isolated" == "1" ]]; then
+    server_args+=(--cross-origin-isolated)
+fi
+"${server_args[@]}" >"$temp_dir/http.log" 2>&1 &
 http_pid=$!
 
 artifact_rel=$(realpath --relative-to="$build_dir" "$artifact_dir")
-page_url="http://127.0.0.1:${http_port}/${artifact_rel}/nativekit_ui_c_api.html?smoke"
+if [[ "$frame_only" == "ON" || "$frame_only" == "1" ]]; then
+    page_url="http://127.0.0.1:${http_port}/tests/nativekit_web_frame_backend.html?smoke"
+else
+    page_url="http://127.0.0.1:${http_port}/${artifact_rel}/nativekit_ui_c_api.html?smoke"
+fi
 "$browser" --headless=new --no-sandbox --disable-dev-shm-usage --disable-gpu \
     --enable-unsafe-swiftshader --no-first-run --user-data-dir="$temp_dir/profile" \
     --remote-debugging-port="$debug_port" --remote-allow-origins='*' \
@@ -72,14 +81,17 @@ if [[ "$debug_ready" != 1 ]]; then
     exit 1
 fi
 
-if ! python3 "$repo_dir/tools/web_smoke.py" --debug-port "$debug_port" --page-url "$page_url"; then
-    cat "$temp_dir/browser.log" >&2 || true
-    cat "$temp_dir/http.log" >&2 || true
-    exit 1
+if [[ "$frame_only" != "ON" && "$frame_only" != "1" ]]; then
+    if ! python3 "$repo_dir/tools/web_smoke.py" --debug-port "$debug_port" --page-url "$page_url"; then
+        cat "$temp_dir/browser.log" >&2 || true
+        cat "$temp_dir/http.log" >&2 || true
+        exit 1
+    fi
 fi
 
 for test_artifact in \
     "$build_dir/tests/nativekit_platform_parity.html" \
+    "$build_dir/tests/nativekit_web_frame_backend.html" \
     "$build_dir/tests/nativekit_web_accessibility.html" \
     "$build_dir/tests/nativekit_web_system_equivalents.html"; do
     if [[ ! -f "$test_artifact" ]]; then
@@ -88,13 +100,22 @@ for test_artifact in \
     fi
 done
 
-python3 "$repo_dir/tools/web_dataset_smoke.py" \
-    --debug-port "$debug_port" --page-url "$page_url" \
-    --test-page "http://127.0.0.1:${http_port}/tests/nativekit_platform_parity.html" \
-    --dataset-key nativekitPlatformParity \
-    --test-page "http://127.0.0.1:${http_port}/tests/nativekit_web_accessibility.html" \
-    --dataset-key nativekitAccessibilityResult \
-    --test-page "http://127.0.0.1:${http_port}/tests/nativekit_web_system_equivalents.html" \
-    --dataset-key nativekitSystemResult \
-    --test-page "http://127.0.0.1:${http_port}/tests/nativekit_web_system_equivalents.html?orientation-smoke" \
-    --dataset-key nativekitSystemResult
+if [[ "$frame_only" == "ON" || "$frame_only" == "1" ]]; then
+    python3 "$repo_dir/tools/web_dataset_smoke.py" \
+        --debug-port "$debug_port" --page-url "$page_url" \
+        --test-page "$page_url" \
+        --dataset-key nativekitFrameBackendResult
+else
+    python3 "$repo_dir/tools/web_dataset_smoke.py" \
+        --debug-port "$debug_port" --page-url "$page_url" \
+        --test-page "http://127.0.0.1:${http_port}/tests/nativekit_platform_parity.html" \
+        --dataset-key nativekitPlatformParity \
+        --test-page "http://127.0.0.1:${http_port}/tests/nativekit_web_frame_backend.html" \
+        --dataset-key nativekitFrameBackendResult \
+        --test-page "http://127.0.0.1:${http_port}/tests/nativekit_web_accessibility.html" \
+        --dataset-key nativekitAccessibilityResult \
+        --test-page "http://127.0.0.1:${http_port}/tests/nativekit_web_system_equivalents.html" \
+        --dataset-key nativekitSystemResult \
+        --test-page "http://127.0.0.1:${http_port}/tests/nativekit_web_system_equivalents.html?orientation-smoke" \
+        --dataset-key nativekitSystemResult
+fi

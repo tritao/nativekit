@@ -65,6 +65,15 @@ jobs:
             build-web/tests/
           if-no-files-found: error
           retention-days: 1
+      - name: Upload threaded Web frame-backend build
+        uses: actions/upload-artifact@v7
+        with:
+          name: web-build-threaded
+          path: |
+            build-web-threaded/modules/ui/
+            build-web-threaded/tests/
+          if-no-files-found: error
+          retention-days: 1
 
   test:
     needs: build
@@ -79,12 +88,26 @@ jobs:
           name: web-build
           path: build-web
 
+      - name: Download threaded Web frame-backend build
+        uses: actions/download-artifact@v8
+        with:
+          name: web-build-threaded
+          path: build-web-threaded
+
       - name: Install Chrome
         uses: browser-actions/setup-chrome@v2
         with:
           chrome-version: stable
 
       - name: Run browser smoke and conformance test
+        run: ./tools/test-web.sh
+
+      - name: Run threaded Web frame-backend lifecycle test
+        env:
+          NATIVEKIT_WEB_BUILD_DIR: build-web-threaded
+          NATIVEKIT_WEB_ARTIFACT_DIR: build-web-threaded/modules/ui
+          NATIVEKIT_WEB_FRAME_ONLY: ON
+          NATIVEKIT_WEB_CROSS_ORIGIN_ISOLATED: ON
         run: ./tools/test-web.sh
 
       - name: Run Haxeon browser smoke test
