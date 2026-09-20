@@ -114,6 +114,7 @@ struct Voice::Impl {
     float filter_resonance = 0.0f;
     LfoParameters lfo_parameters;
     std::array<ModulationRoute, NK_AUDIO_DSP_MAX_MODULATION_ROUTES> routes{};
+    std::array<uint32_t, NK_AUDIO_DSP_MAX_OSCILLATORS> oscillator_order{};
     uint32_t route_count = 0;
     uint32_t oscillator_count = 0;
     float base_frequency = 440.0f;
@@ -153,6 +154,7 @@ void Voice::init(uint32_t sample_rate) noexcept {
     impl_->lfo.SetFreq(0.0f);
     impl_->lfo.Reset(0.0f);
     impl_->routes = {};
+    impl_->oscillator_order = {};
     impl_->route_count = 0;
     impl_->oscillator_count = 0;
     impl_->base_frequency = 440.0f;
@@ -191,6 +193,28 @@ void Voice::set_parameters(const PatchParameters &parameters) noexcept {
     impl_->lfo_parameters = parameters.lfo;
     impl_->routes = parameters.routes;
     impl_->route_count = parameters.route_count;
+    std::array<bool, NK_AUDIO_DSP_MAX_OSCILLATORS> emitted{};
+    for (uint32_t position = 0; position < impl_->oscillator_count; ++position) {
+        for (uint32_t candidate = 0; candidate < impl_->oscillator_count; ++candidate) {
+            if (emitted[candidate])
+                continue;
+            auto ready = true;
+            for (uint32_t route_index = 0; route_index < impl_->route_count; ++route_index) {
+                const auto &route = impl_->routes[route_index];
+                if (route.source == NK_AUDIO_DSP_MODULATION_SOURCE_OSCILLATOR &&
+                    route.oscillator_index == candidate + 1 &&
+                    !emitted[route.source_oscillator_index - 1]) {
+                    ready = false;
+                    break;
+                }
+            }
+            if (ready) {
+                impl_->oscillator_order[position] = candidate;
+                emitted[candidate] = true;
+                break;
+            }
+        }
+    }
     set_waveform(impl_->lfo, parameters.lfo.waveform);
     impl_->lfo.SetAmp(1.0f);
     impl_->lfo.SetFreq(parameters.lfo.rate_hz);
@@ -263,6 +287,7 @@ float Voice::process() noexcept {
     std::array<float, NK_AUDIO_DSP_MAX_OSCILLATORS> pitch_offsets{};
     std::array<float, NK_AUDIO_DSP_MAX_OSCILLATORS> level_offsets{};
     std::array<float, NK_AUDIO_DSP_MAX_OSCILLATORS> phase_offsets{};
+    std::array<float, NK_AUDIO_DSP_MAX_OSCILLATORS> frequency_offsets{};
     auto filter_offset = 0.0f;
     auto amplitude_offset = 0.0f;
     const auto add_oscillator_route = [&](std::array<float, NK_AUDIO_DSP_MAX_OSCILLATORS> &values,
@@ -276,6 +301,8 @@ float Voice::process() noexcept {
     };
     for (uint32_t index = 0; index < impl_->route_count; ++index) {
         const auto &route = impl_->routes[index];
+        if (route.source == NK_AUDIO_DSP_MODULATION_SOURCE_OSCILLATOR)
+            continue;
         auto source_value =
             route.source == NK_AUDIO_DSP_MODULATION_SOURCE_LFO ? lfo_value : envelope;
         if (route.polarity == NK_AUDIO_DSP_MODULATION_UNIPOLAR &&
@@ -300,6 +327,9 @@ float Voice::process() noexcept {
         case NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_PHASE:
             add_oscillator_route(phase_offsets, route, route.amount * source_value);
             break;
+        case NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_FREQUENCY_HZ:
+            add_oscillator_route(frequency_offsets, route, route.amount * source_value);
+            break;
         default:
             break;
         }
@@ -307,24 +337,42 @@ float Voice::process() noexcept {
 
     auto frequency = impl_->base_frequency;
     float sample = 0.0f;
-    for (uint32_t index = 0; index < impl_->oscillator_count; ++index) {
+    std::array<float, NK_AUDIO_DSP_MAX_OSCILLATORS> oscillator_outputs{};
+    for (uint32_t position = 0; position < impl_->oscillator_count; ++position) {
+        const auto index = impl_->oscillator_order[position];
         auto &oscillator = impl_->oscillators[index];
+        for (uint32_t route_index = 0; route_index < impl_->route_count; ++route_index) {
+            const auto &route = impl_->routes[route_index];
+            if (route.source != NK_AUDIO_DSP_MODULATION_SOURCE_OSCILLATOR ||
+                route.oscillator_index != index + 1)
+                continue;
+            auto source_value = oscillator_outputs[route.source_oscillator_index - 1];
+            if (route.polarity == NK_AUDIO_DSP_MODULATION_UNIPOLAR)
+                source_value = 0.5f * (source_value + 1.0f);
+            if (route.destination == NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_PHASE)
+                phase_offsets[index] += route.amount * source_value;
+            else if (route.destination ==
+                     NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_FREQUENCY_HZ)
+                frequency_offsets[index] += route.amount * source_value;
+        }
         auto oscillator_frequency = frequency;
         if (pitch_offsets[index] != 0.0f)
             oscillator_frequency *= std::pow(2.0f, pitch_offsets[index] / 12.0f);
-        const auto detuned_frequency = clamp_frequency(
-            oscillator_frequency * std::pow(2.0f, oscillator.detune_cents / 1200.0f),
-            impl_->sample_rate);
+        oscillator_frequency *= std::pow(2.0f, oscillator.detune_cents / 1200.0f);
+        const auto detuned_frequency =
+            clamp_frequency(oscillator_frequency + frequency_offsets[index], impl_->sample_rate);
         oscillator.wavetable_oscillator.SetFreq(detuned_frequency);
+        oscillator.oscillator.SetFreq(detuned_frequency);
         const auto phase_offset = oscillator.phase + phase_offsets[index];
         const auto level = std::max(0.0f, 1.0f + level_offsets[index]);
+        auto oscillator_output = 0.0f;
         if (oscillator.wavetable) {
-            sample += oscillator.wavetable_oscillator.Process(phase_offset) * level;
+            oscillator_output = oscillator.wavetable_oscillator.Process(phase_offset) * level;
         } else {
-            if (pitch_offsets[index] != 0.0f)
-                oscillator.oscillator.SetFreq(detuned_frequency);
-            sample += oscillator.oscillator.Process(phase_offset) * level;
+            oscillator_output = oscillator.oscillator.Process(phase_offset) * level;
         }
+        oscillator_outputs[index] = oscillator_output;
+        sample += oscillator_output;
     }
     sample += impl_->noise.Process() * impl_->noise_level;
     if (impl_->filter_type == NK_AUDIO_DSP_FILTER_SVF_LOW_PASS && impl_->filter_cutoff_hz > 0.0f) {

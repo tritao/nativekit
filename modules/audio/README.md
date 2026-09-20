@@ -49,16 +49,21 @@ destinations.
 Patches now also contain one optional LFO and up to eight typed modulation
 routes. Routes connect the LFO or the amplitude envelope to global pitch,
 filter cutoff (Hz), relative amplitude, or a selected oscillator's pitch,
-level, or normalized phase. A route target of zero applies an oscillator
-destination to every source; non-zero targets are one-based oscillator source
-indices. LFO routes can preserve their bipolar range or be mapped to [0, 1];
-envelope routes are naturally unipolar and can be centered when a bipolar
-destination is useful. `RETRIGGER` resets the LFO phase on each note-on, while
-`FREE_RUNNING` preserves phase across note-ons on the same live voice.
-Modulation is evaluated per sample inside the voice, so tracker note and
+level, phase, or frequency. A route target of zero applies a control-source
+oscillator destination to every source; non-zero targets are one-based
+oscillator source indices. LFO routes can preserve their bipolar range or be
+mapped to [0, 1]; envelope routes are naturally unipolar and can be centered
+when a bipolar destination is useful. `RETRIGGER` resets the LFO phase on each
+note-on, while `FREE_RUNNING` preserves phase across note-ons on the same live
+voice. Modulation is evaluated per sample inside the voice, so tracker note and
 automation timing stays sample-accurate without exposing DaisySP types through
-the ABI. Oscillator phase offsets are non-accumulating, which makes them safe
-for both slow modulation and future audio-rate phase-modulation routes.
+the ABI.
+
+Oscillator outputs can also be modulation sources. These audio-rate operator
+routes require a specific one-based source and target oscillator and can add
+frequency in Hz (FM) or normalized phase cycles (PM). The patch validator
+topologically orders operators and rejects self-routes and cycles, so source
+outputs are deterministic and never depend on route declaration order.
 
 The first API slice supports WAV, FLAC, and MP3 playback from native filesystem
 paths, cached URI assets, or caller-provided encoded memory.
@@ -227,10 +232,12 @@ The Haxe facade also exposes the standalone DSP renderer through `DspEngine`,
 `DspPatchBuilder`, `DspInstrument`, `DspEvent`, and `DspRenderTarget`. Build an
 immutable patch from typed oscillator, noise, envelope, filter, LFO, and
 modulation-route options, create independent instruments from it, then render
-interleaved float blocks into a managed `haxe.io.Bytes` buffer. `DspEvent`
-provides note-on, note-off, global parameter, and oscillator-specific
-parameter automation constructors; events are validated for frame ordering in
-Haxe and applied natively at their exact sample offsets. Use
+interleaved float blocks into a managed `haxe.io.Bytes` buffer. Use
+`DspPatchBuilder.operatorModulate()` for audio-rate oscillator-to-oscillator
+FM/PM routes. `DspEvent` provides note-on, note-off, global parameter, and
+oscillator-specific parameter automation constructors; events are validated
+for frame ordering in Haxe and applied natively at their exact sample offsets.
+Use
 `DspInstrument.setOscillatorParameter()` and `oscillatorParameter()` for
 between-block source edits. Patches are copied into instruments, so a patch can
 be disposed after instrument creation and reused to create additional

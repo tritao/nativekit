@@ -36,8 +36,18 @@ class DspPatchBuilder {
 	/** Convenience form of addRoute(). */
 	public function modulate(source:DspModulationSource,
 		destination:DspModulationDestination, amount:Float,
-		?polarity:DspModulationPolarity, oscillatorIndex:Int = 0):DspPatchBuilder {
-		return addRoute(new DspModulationRoute(source, destination, amount, polarity, oscillatorIndex));
+		?polarity:DspModulationPolarity, oscillatorIndex:Int = 0,
+		sourceOscillatorIndex:Int = 0):DspPatchBuilder {
+		return addRoute(new DspModulationRoute(source, destination, amount, polarity, oscillatorIndex,
+			sourceOscillatorIndex));
+	}
+
+	/** Convenience form for one oscillator operator routing into another. */
+	public function operatorModulate(sourceOscillatorIndex:Int,
+		destination:DspModulationDestination, targetOscillatorIndex:Int,
+		amount:Float, ?polarity:DspModulationPolarity):DspPatchBuilder {
+		return modulate(DspModulationSource.Oscillator, destination, amount, polarity,
+			targetOscillatorIndex, sourceOscillatorIndex);
 	}
 
 	/** Materializes the current builder state into an immutable native patch. */

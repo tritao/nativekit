@@ -20,10 +20,11 @@ enum abstract DspLfoMode(Int) from Int to Int {
 	var FreeRunning = 1;
 }
 
-/** Sources available to a generic modulation route. */
+/** Sources available to a generic modulation route, including audio-rate operators. */
 enum abstract DspModulationSource(Int) from Int to Int {
 	var Lfo = 0;
 	var Envelope = 1;
+	var Oscillator = 2;
 }
 
 /** Destinations available to a generic modulation route. */
@@ -33,6 +34,7 @@ enum abstract DspModulationDestination(Int) from Int to Int {
 	var Amplitude = 2;
 	var OscillatorLevel = 3;
 	var OscillatorPhase = 4;
+	var OscillatorFrequencyHz = 5;
 }
 
 /** Normalizes a modulation source before its route amount is applied. */

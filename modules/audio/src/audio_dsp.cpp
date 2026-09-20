@@ -6,6 +6,7 @@
 #include "core/handle_registry.hpp"
 #include "core/runtime.hpp"
 
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <memory>
@@ -27,8 +28,8 @@ constexpr uint32_t max_wavetable_samples = 4096;
 constexpr nk_audio_dsp_capabilities builtin_capabilities =
     NK_AUDIO_DSP_CAPABILITY_OSCILLATOR | NK_AUDIO_DSP_CAPABILITY_NOISE |
     NK_AUDIO_DSP_CAPABILITY_WAVETABLE | NK_AUDIO_DSP_CAPABILITY_ENVELOPE |
-    NK_AUDIO_DSP_CAPABILITY_LFO | NK_AUDIO_DSP_CAPABILITY_FILTER |
-    NK_AUDIO_DSP_CAPABILITY_MODULATION;
+    NK_AUDIO_DSP_CAPABILITY_LFO | NK_AUDIO_DSP_CAPABILITY_FILTER | NK_AUDIO_DSP_CAPABILITY_FM |
+    NK_AUDIO_DSP_CAPABILITY_PHASE_MODULATION | NK_AUDIO_DSP_CAPABILITY_MODULATION;
 
 using DspParameters = nk::audio_dsp::PatchParameters;
 
@@ -149,7 +150,8 @@ bool valid_lfo_mode(nk_audio_dsp_lfo_mode mode) {
 
 bool valid_modulation_source(nk_audio_dsp_modulation_source source) {
     return source == NK_AUDIO_DSP_MODULATION_SOURCE_LFO ||
-           source == NK_AUDIO_DSP_MODULATION_SOURCE_ENVELOPE;
+           source == NK_AUDIO_DSP_MODULATION_SOURCE_ENVELOPE ||
+           source == NK_AUDIO_DSP_MODULATION_SOURCE_OSCILLATOR;
 }
 
 bool valid_modulation_destination(nk_audio_dsp_modulation_destination destination) {
@@ -157,7 +159,8 @@ bool valid_modulation_destination(nk_audio_dsp_modulation_destination destinatio
            destination == NK_AUDIO_DSP_MODULATION_DESTINATION_FILTER_CUTOFF_HZ ||
            destination == NK_AUDIO_DSP_MODULATION_DESTINATION_AMPLITUDE ||
            destination == NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_LEVEL ||
-           destination == NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_PHASE;
+           destination == NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_PHASE ||
+           destination == NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_FREQUENCY_HZ;
 }
 
 bool valid_modulation_polarity(nk_audio_dsp_modulation_polarity polarity) {
@@ -176,7 +179,52 @@ bool valid_oscillator_target(uint32_t oscillator_index) {
 bool modulation_destination_targets_oscillator(nk_audio_dsp_modulation_destination destination) {
     return destination == NK_AUDIO_DSP_MODULATION_DESTINATION_PITCH_SEMITONES ||
            destination == NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_LEVEL ||
-           destination == NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_PHASE;
+           destination == NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_PHASE ||
+           destination == NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_FREQUENCY_HZ;
+}
+
+bool valid_operator_destination(nk_audio_dsp_modulation_destination destination) {
+    return destination == NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_PHASE ||
+           destination == NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_FREQUENCY_HZ;
+}
+
+bool valid_operator_routing(const DspParameters &parameters) {
+    std::array<std::array<bool, NK_AUDIO_DSP_MAX_OSCILLATORS>, NK_AUDIO_DSP_MAX_OSCILLATORS>
+        edges{};
+    std::array<uint32_t, NK_AUDIO_DSP_MAX_OSCILLATORS> incoming{};
+    for (uint32_t index = 0; index < parameters.route_count; ++index) {
+        const auto &route = parameters.routes[index];
+        if (route.source != NK_AUDIO_DSP_MODULATION_SOURCE_OSCILLATOR)
+            continue;
+        const auto source = route.source_oscillator_index - 1;
+        const auto target = route.oscillator_index - 1;
+        if (source >= parameters.oscillator_count || target >= parameters.oscillator_count ||
+            source == target || !valid_operator_destination(route.destination))
+            return false;
+        if (!edges[source][target]) {
+            edges[source][target] = true;
+            ++incoming[target];
+        }
+    }
+
+    std::array<bool, NK_AUDIO_DSP_MAX_OSCILLATORS> removed{};
+    for (uint32_t count = 0; count < parameters.oscillator_count; ++count) {
+        uint32_t next = NK_AUDIO_DSP_MAX_OSCILLATORS;
+        for (uint32_t candidate = 0; candidate < parameters.oscillator_count; ++candidate) {
+            if (!removed[candidate] && incoming[candidate] == 0) {
+                next = candidate;
+                break;
+            }
+        }
+        if (next == NK_AUDIO_DSP_MAX_OSCILLATORS)
+            return false;
+        removed[next] = true;
+        for (uint32_t target = 0; target < parameters.oscillator_count; ++target) {
+            if (edges[next][target])
+                --incoming[target];
+        }
+    }
+    return true;
 }
 
 bool valid_wavetable_sample_count(uint32_t sample_count) {
@@ -221,10 +269,16 @@ bool valid_patch_parameters(const DspParameters &parameters) {
             (route.oscillator_index != NK_AUDIO_DSP_MODULATION_TARGET_ALL &&
              route.oscillator_index > parameters.oscillator_count) ||
             (!modulation_destination_targets_oscillator(route.destination) &&
-             route.oscillator_index != NK_AUDIO_DSP_MODULATION_TARGET_ALL))
+             route.oscillator_index != NK_AUDIO_DSP_MODULATION_TARGET_ALL) ||
+            (route.source == NK_AUDIO_DSP_MODULATION_SOURCE_OSCILLATOR &&
+             (route.source_oscillator_index == 0 ||
+              route.source_oscillator_index > parameters.oscillator_count ||
+              route.oscillator_index == NK_AUDIO_DSP_MODULATION_TARGET_ALL)) ||
+            (route.source != NK_AUDIO_DSP_MODULATION_SOURCE_OSCILLATOR &&
+             route.source_oscillator_index != 0))
             return false;
     }
-    return true;
+    return valid_operator_routing(parameters);
 }
 
 bool valid_filter_cutoff(float cutoff_hz, uint32_t sample_rate) {
@@ -325,6 +379,7 @@ nk_result normalize_patch_options(const nk_audio_dsp_patch_options *input, DspPa
         output.routes[index].polarity = route.polarity;
         output.routes[index].amount = route.amount;
         output.routes[index].oscillator_index = route.oscillator_index;
+        output.routes[index].source_oscillator_index = route.source_oscillator_index;
     }
     if (!valid_patch_parameters(output))
         return invalid_argument("audio DSP patch parameters are invalid");

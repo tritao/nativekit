@@ -60,6 +60,7 @@ struct ModulationRoute {
     nk_audio_dsp_modulation_polarity polarity = NK_AUDIO_DSP_MODULATION_BIPOLAR;
     float amount = 0.0f;
     uint32_t oscillator_index = NK_AUDIO_DSP_MODULATION_TARGET_ALL;
+    uint32_t source_oscillator_index = 0;
 };
 
 struct PatchParameters {

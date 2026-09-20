@@ -84,7 +84,9 @@ enum NK_ENUM(nk_audio_dsp_lfo_mode) {
 typedef uint32_t nk_audio_dsp_modulation_source;
 enum NK_ENUM(nk_audio_dsp_modulation_source) {
     NK_AUDIO_DSP_MODULATION_SOURCE_LFO = 0,
-    NK_AUDIO_DSP_MODULATION_SOURCE_ENVELOPE = 1
+    NK_AUDIO_DSP_MODULATION_SOURCE_ENVELOPE = 1,
+    /** Audio-rate output from one oscillator source. */
+    NK_AUDIO_DSP_MODULATION_SOURCE_OSCILLATOR = 2
 };
 
 /** Destinations that can receive a patch modulation route. */
@@ -99,15 +101,17 @@ enum NK_ENUM(nk_audio_dsp_modulation_destination) {
     /** Relative linear level for the targeted oscillator sources. */
     NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_LEVEL = 3,
     /** Non-accumulating normalized phase offset for the targeted oscillator sources. */
-    NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_PHASE = 4
+    NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_PHASE = 4,
+    /** Audio-rate frequency offset in Hz for the targeted oscillator source. */
+    NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_FREQUENCY_HZ = 5
 };
 
 /** Normalization applied to a modulation source before amount scaling. */
 typedef uint32_t nk_audio_dsp_modulation_polarity;
 enum NK_ENUM(nk_audio_dsp_modulation_polarity) {
-    /** Preserve a bipolar LFO, or center a unipolar envelope around zero. */
+    /** Preserve a bipolar LFO/oscillator, or center a unipolar envelope around zero. */
     NK_AUDIO_DSP_MODULATION_BIPOLAR = 0,
-    /** Map a bipolar LFO to [0, 1], while preserving an envelope's [0, 1]. */
+    /** Map a bipolar LFO/oscillator to [0, 1], while preserving an envelope's [0, 1]. */
     NK_AUDIO_DSP_MODULATION_UNIPOLAR = 1
 };
 
@@ -239,8 +243,8 @@ typedef struct nk_audio_dsp_modulation_route_options {
     float amount;
     /** One-based oscillator target for oscillator destinations; zero targets all. */
     uint32_t oscillator_index;
-    /** Reserved; set to zero. */
-    uint32_t reserved;
+    /** One-based oscillator source index when source is OSCILLATOR; otherwise zero. */
+    uint32_t source_oscillator_index;
     /** Reserved for compatible extensions; set to zero. */
     uint32_t reserved2;
 } nk_audio_dsp_modulation_route_options;
@@ -248,10 +252,13 @@ typedef struct nk_audio_dsp_modulation_route_options {
 /**
  * Immutable reusable DSP patch. Components are evaluated in source, envelope,
  * modulation, filter, and output-gain order. Modulation amounts use the
- * destination's units: semitones for pitch, Hz for filter cutoff, linear
- * relative gain for amplitude and oscillator level, and normalized cycles for
- * oscillator phase. Oscillator destinations may target one source using a
- * one-based index or all sources with NK_AUDIO_DSP_MODULATION_TARGET_ALL.
+ * destination's units: semitones for pitch, Hz for filter cutoff and
+ * oscillator frequency, linear relative gain for amplitude and oscillator
+ * level, and normalized cycles for oscillator phase. LFO and envelope routes
+ * may target one source using a one-based index or all sources with
+ * NK_AUDIO_DSP_MODULATION_TARGET_ALL. Oscillator-source routes are audio-rate
+ * operator routes and require one specific source and target; cycles are
+ * rejected.
  */
 typedef struct nk_audio_dsp_patch_options {
     /** Set to sizeof(nk_audio_dsp_patch_options) before use. */
