@@ -74,6 +74,15 @@ int main(void) {
     pump_until_frames(&state, first_count + 1);
     pump_until_size(&state, 480, 320);
     assert(nk_surface_set_frame_callback(surface, NULL, NULL) == NK_OK);
+    /* The frame ticket carries the backend context even though GTK is still
+       aliased.  A future shared-context bridge must bind this snapshot on
+       RENDER without querying the GtkGLArea again. */
+    nk_surface_frame frame = NK_INVALID_HANDLE;
+    nk_surface_frame_target target = {0};
+    target.struct_size = sizeof(target);
+    assert(nk_surface_acquire_frame(surface, &frame, &target) == NK_OK);
+    assert(frame != NK_INVALID_HANDLE && target.frame == frame && target.native_context != 0);
+    assert(nk_surface_cancel_frame(frame) == NK_OK);
     assert(nk_surface_destroy(surface) == NK_OK);
     assert(nk_surface_set_frame_callback(surface, on_frame, &state) == NK_ERROR_INVALID_HANDLE);
     assert(nk_window_destroy(window) == NK_OK);

@@ -5275,6 +5275,11 @@ nk_result NK_CALL nk_surface_get_frame_target(nk_handle handle,
     target.width = width;
     target.height = height;
     target.native_target = static_cast<uint64_t>(static_cast<uint32_t>(framebuffer));
+    /* Keep the current GDK context in the immutable ticket.  GTK remains
+       aliased today, but a future offscreen/shared-context bridge must be able
+       to bind the context on RENDER without rediscovering the surface. */
+    auto *area = GTK_GL_AREA(resource->widget);
+    target.native_context = reinterpret_cast<uint64_t>(gtk_gl_area_get_context(area));
     auto device_surface = resource.get();
     while (device_surface->shared_surface)
         device_surface = device_surface->shared_surface.get();

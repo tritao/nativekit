@@ -3412,6 +3412,10 @@ nk_result NK_CALL nk_surface_get_frame_target(nk_handle handle,
     target.width = surface->framebuffer_width;
     target.height = surface->framebuffer_height;
     target.device.id = surface->handle;
+    /* The context handle is part of the frame snapshot so an opt-in
+       OffscreenCanvas backend can bind it on RENDER without calling back into
+       the surface API.  The default browser backend remains aliased. */
+    target.native_context = static_cast<uint64_t>(surface->context());
     nk::core::write_surface_frame_target(out_target, target);
     return NK_OK;
 }
