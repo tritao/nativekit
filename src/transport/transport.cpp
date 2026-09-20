@@ -1428,8 +1428,9 @@ void ListenerResource::run() noexcept {
             sockaddr_storage peer{};
             socket_length_type peer_size = sizeof(peer);
 #if defined(_WIN32)
-            const int count = ::recvfrom(socket, reinterpret_cast<char *>(probe.data()), 1,
-                                         MSG_PEEK, reinterpret_cast<sockaddr *>(&peer), &peer_size);
+            const int count = ::recvfrom(socket, reinterpret_cast<char *>(probe.data()),
+                                         static_cast<int>(probe.size()), MSG_PEEK,
+                                         reinterpret_cast<sockaddr *>(&peer), &peer_size);
 #else
             const ssize_t count = ::recvfrom(socket, probe.data(), probe.size(), MSG_PEEK,
                                              reinterpret_cast<sockaddr *>(&peer), &peer_size);
