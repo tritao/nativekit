@@ -85,17 +85,17 @@ the configured GPU backend.
 
 `nativekit_gpu_contract_smoke` covers shader-language validation, renderer
 ownership, renderer cleanup, the lost-state contract, injected allocation and
-present failures, and repeated retained `GraphicsImage` use after render-target
+present failures, and repeated retained `GraphicsImage` use after generic image
 and renderer destruction. `nativekit_gpu_batch_submit` covers multi-pass batch
 replay, the sealed/immutable contract, retained resources outliving caller
 destruction, deferred resource destruction, handle and record validation, and
 batch ownership. `nativekit_ui_stress` runs a seeded 120-frame UI
 render sequence with changing DPR, surface bounds, and short-lived offscreen
-targets; its live-resource limits catch unbounded growth. The public UI renderer
+images; its live-resource limits catch unbounded growth. The public UI renderer
 smoke also checks fractional/integer scale atlas behavior and text bounds.
 `modules/gpu/tools/test-haxeon.sh` compiles and runs the Haxe wrappers, including
-wrong-renderer checks, resource disposal, drawing into an offscreen target, and
-the retained `GraphicsImage` lifetime. `modules/gpu/tools/check-hxi.sh` checks
+wrong-renderer checks, resource disposal, generic render/copy passes, and the
+retained `GraphicsImage` lifetime. `modules/gpu/tools/check-hxi.sh` checks
 the generated binding contract. The UI C API Showcase smoke test remains the
 end-to-end UI rendering check.
 

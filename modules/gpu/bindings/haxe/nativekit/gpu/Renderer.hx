@@ -10,6 +10,7 @@ class Renderer {
 	var value:nkgpu_renderer;
 	var disposed:Bool = false;
 	var frameActive:Bool = false;
+	var passActive:Bool = false;
 	var activeRenderTarget:Null<RenderTarget> = null;
 
 	private function new(surface:Surface, value:nkgpu_renderer) {
@@ -34,6 +35,7 @@ class Renderer {
 			throw "GPU frame is already active";
 		GpuResult.check(NativeKitGpu.nkgpu_begin_frame(value), "renderer.beginFrame");
 		frameActive = true;
+		passActive = true;
 	}
 
 	public function endFrame():Void {
@@ -44,6 +46,109 @@ class Renderer {
 			throw "End the active GPU render target before ending its pass";
 		GpuResult.check(NativeKitGpu.nkgpu_end_frame(value), "renderer.endFrame");
 		frameActive = false;
+		passActive = false;
+	}
+
+	/** Begins a frame that will contain explicit render, compute, or copy passes. */
+	public function beginPassFrame():Void {
+		ensureLive();
+		if (frameActive)
+			throw "GPU frame is already active";
+		GpuResult.check(NativeKitGpu.nkgpu_frame_begin(value), "renderer.beginPassFrame");
+		frameActive = true;
+		passActive = false;
+	}
+
+	/** Begins a generic render pass inside an explicit pass frame. */
+	public function beginRenderPass(desc:RenderPassDesc):Void {
+		ensureLive();
+		if (!frameActive || passActive)
+			throw "GPU render pass requires a frame without an active pass";
+		if (desc == null)
+			throw "GPU render-pass descriptor must not be null";
+		GpuResult.check(NativeKitGpu.nkgpu_begin_render_pass(value, desc.nativeValue()),
+			"renderer.beginRenderPass");
+		passActive = true;
+	}
+
+	/** Begins a compute pass inside an explicit pass frame. */
+	public function beginComputePass():Void {
+		ensureLive();
+		if (!frameActive || passActive)
+			throw "GPU compute pass requires a frame without an active pass";
+		GpuResult.check(NativeKitGpu.nkgpu_begin_compute_pass(value), "renderer.beginComputePass");
+		passActive = true;
+	}
+
+	/** Begins a transfer pass inside an explicit pass frame. */
+	public function beginCopyPass():Void {
+		ensureLive();
+		if (!frameActive || passActive)
+			throw "GPU copy pass requires a frame without an active pass";
+		GpuResult.check(NativeKitGpu.nkgpu_begin_copy_pass(value), "renderer.beginCopyPass");
+		passActive = true;
+	}
+
+	/** Ends the active generic render, compute, or copy pass. */
+	public function endPass():Void {
+		ensureFrame();
+		if (!passActive || activeRenderTarget != null)
+			throw "GPU pass is not active";
+		GpuResult.check(NativeKitGpu.nkgpu_end_pass(value), "renderer.endPass");
+		passActive = false;
+	}
+
+	/** Dispatches compute workgroups in the active compute pass. */
+	public function dispatch(x:Int, y:Int = 1, z:Int = 1):Void {
+		ensureFrame();
+		if (x <= 0 || y <= 0 || z <= 0)
+			throw "GPU dispatch dimensions must be positive";
+		GpuResult.check(NativeKitGpu.nkgpu_dispatch(value, x, y, z), "renderer.dispatch");
+	}
+
+	/** Copies a byte range between buffers in the active copy pass. */
+	public function copyBuffer(source:Buffer, destination:Buffer, size:Int,
+		sourceOffset:Int = 0, destinationOffset:Int = 0):Void {
+		ensureFrame();
+		source.ensureLive();
+		destination.ensureLive();
+		if (source.rendererOwner() != this || destination.rendererOwner() != this || size <= 0 ||
+			sourceOffset < 0 || destinationOffset < 0)
+			throw "GPU buffer-copy arguments are invalid";
+		var desc = new nkgpu_buffer_copy_desc();
+		desc.set_struct_size(24);
+		desc.set_source(source.nativeHandle());
+		desc.set_source_offset(sourceOffset);
+		desc.set_destination(destination.nativeHandle());
+		desc.set_destination_offset(destinationOffset);
+		desc.set_size(size);
+		GpuResult.check(NativeKitGpu.nkgpu_buffer_copy(value, desc), "renderer.copyBuffer");
+	}
+
+	/** Copies a 2D image region in the active copy pass. */
+	public function copyImage(source:Image, destination:Image, width:Int, height:Int,
+		sourceX:Int = 0, sourceY:Int = 0, destinationX:Int = 0, destinationY:Int = 0):Void {
+		ensureFrame();
+		source.ensureLive();
+		destination.ensureLive();
+		if (source.rendererOwner() != this || destination.rendererOwner() != this || width <= 0 ||
+			height <= 0 || sourceX < 0 || sourceY < 0 || destinationX < 0 || destinationY < 0)
+			throw "GPU image-copy arguments are invalid";
+		var desc = new nkgpu_image_copy_desc();
+		desc.set_struct_size(52);
+		desc.set_source(source.nativeHandle());
+		desc.set_source_mip(0);
+		desc.set_source_layer(0);
+		desc.set_source_x(sourceX);
+		desc.set_source_y(sourceY);
+		desc.set_destination(destination.nativeHandle());
+		desc.set_destination_mip(0);
+		desc.set_destination_layer(0);
+		desc.set_destination_x(destinationX);
+		desc.set_destination_y(destinationY);
+		desc.set_width(width);
+		desc.set_height(height);
+		GpuResult.check(NativeKitGpu.nkgpu_image_copy(value, desc), "renderer.copyImage");
 	}
 
 	@:allow(RenderTarget)
@@ -56,6 +161,7 @@ class Renderer {
 		GpuResult.check(NativeKitGpu.nkgpu_begin_render_target(value, target.nativeHandle(), clear ? 1 : 0),
 			"renderer.beginRenderTarget");
 		frameActive = true;
+		passActive = true;
 		activeRenderTarget = target;
 	}
 
@@ -66,6 +172,7 @@ class Renderer {
 			throw "GPU render target is not active";
 		GpuResult.check(NativeKitGpu.nkgpu_end_render_target(value), "renderer.endRenderTarget");
 		frameActive = false;
+		passActive = false;
 		activeRenderTarget = null;
 	}
 

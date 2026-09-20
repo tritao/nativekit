@@ -4,6 +4,43 @@ package nativekit.gpu;
 enum abstract BufferUsage(Int) to Int {
 	var Vertex = 1;
 	var Index = 2;
+	var Storage = 4;
+	var Uniform = 8;
+	var Transfer = 16;
+}
+
+enum abstract ImageFormat(Int) to Int {
+	var R8 = 1;
+	var Rgba8 = 2;
+	var Rg8 = 3;
+	var Bgra8 = 4;
+	var R16f = 5;
+	var Rg16f = 6;
+	var Rgba16f = 7;
+	var R32f = 8;
+	var Rgba32f = 9;
+	var R32Uint = 10;
+	var Depth16 = 11;
+	var Depth24Stencil8 = 12;
+	var Depth32f = 13;
+}
+
+enum abstract ImageUsage(Int) to Int {
+	var Sampled = 1;
+	var RenderTarget = 2;
+	var DepthStencil = 4;
+	var Storage = 8;
+}
+
+enum abstract LoadAction(Int) to Int {
+	var Load = 1;
+	var Clear = 2;
+	var Discard = 3;
+}
+
+enum abstract StoreAction(Int) to Int {
+	var Store = 1;
+	var Discard = 2;
 }
 
 enum abstract Filter(Int) to Int {
@@ -25,6 +62,7 @@ enum abstract IndexType(Int) to Int {
 enum abstract ShaderStage(Int) to Int {
 	var Vertex = 1;
 	var Fragment = 2;
+	var Compute = 3;
 }
 
 enum abstract ShaderLanguage(Int) to Int {
