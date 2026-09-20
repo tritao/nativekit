@@ -233,26 +233,34 @@ constexpr const char *k_accessibility_resource_data = "nativekit-surface-resourc
 
 #if defined(NK_GTK_THREADED_RENDER)
 using GlBindFramebuffer = void (*)(unsigned int, unsigned int);
+using GlBindRenderbuffer = void (*)(unsigned int, unsigned int);
 using GlBindTexture = void (*)(unsigned int, unsigned int);
 using GlBlitFramebuffer = void (*)(int, int, int, int, int, int, int, int, unsigned int,
                                    unsigned int);
 using GlCheckFramebufferStatus = unsigned int (*)(unsigned int);
 using GlDeleteFramebuffers = void (*)(int, const unsigned int *);
+using GlDeleteRenderbuffers = void (*)(int, const unsigned int *);
 using GlDeleteTextures = void (*)(int, const unsigned int *);
+using GlFramebufferRenderbuffer = void (*)(unsigned int, unsigned int, unsigned int, unsigned int);
 using GlFramebufferTexture2D = void (*)(unsigned int, unsigned int, unsigned int, unsigned int,
                                         int);
 using GlGenFramebuffers = void (*)(int, unsigned int *);
+using GlGenRenderbuffers = void (*)(int, unsigned int *);
 using GlGenTextures = void (*)(int, unsigned int *);
 using GlGetIntegerv = void (*)(unsigned int, int *);
+using GlRenderbufferStorage = void (*)(unsigned int, unsigned int, int, int);
 using GlTexImage2D = void (*)(unsigned int, int, int, int, int, int, unsigned int, unsigned int,
                               const void *);
 using GlTexParameteri = void (*)(unsigned int, unsigned int, int);
 
 constexpr unsigned int gl_framebuffer = 0x8D40u;
+constexpr unsigned int gl_renderbuffer = 0x8D41u;
 constexpr unsigned int gl_draw_framebuffer_binding = 0x8CA6u;
 constexpr unsigned int gl_read_framebuffer = 0x8CA8u;
 constexpr unsigned int gl_draw_framebuffer = 0x8CA9u;
 constexpr unsigned int gl_color_attachment0 = 0x8CE0u;
+constexpr unsigned int gl_depth_stencil_attachment = 0x821Au;
+constexpr unsigned int gl_depth24_stencil8 = 0x88F0u;
 constexpr unsigned int gl_framebuffer_complete = 0x8CD5u;
 constexpr unsigned int gl_texture_2d = 0x0DE1u;
 constexpr unsigned int gl_rgba = 0x1908u;
@@ -286,6 +294,7 @@ struct GtkSurfaceResource final : nk::core::Resource {
     GdkGLContext *render_context = nullptr;
     std::mutex render_target_mutex;
     uint32_t render_framebuffer = 0;
+    uint32_t render_depth_stencil = 0;
     uint32_t render_texture = 0;
     int32_t render_width = 0;
     int32_t render_height = 0;
@@ -293,15 +302,20 @@ struct GtkSurfaceResource final : nk::core::Resource {
     std::atomic_bool render_context_in_use = false;
     std::atomic_bool render_completion_pending = false;
     GlBindFramebuffer gl_bind_framebuffer = nullptr;
+    GlBindRenderbuffer gl_bind_renderbuffer = nullptr;
     GlBindTexture gl_bind_texture = nullptr;
     GlBlitFramebuffer gl_blit_framebuffer = nullptr;
     GlCheckFramebufferStatus gl_check_framebuffer_status = nullptr;
     GlDeleteFramebuffers gl_delete_framebuffers = nullptr;
+    GlDeleteRenderbuffers gl_delete_renderbuffers = nullptr;
     GlDeleteTextures gl_delete_textures = nullptr;
+    GlFramebufferRenderbuffer gl_framebuffer_renderbuffer = nullptr;
     GlFramebufferTexture2D gl_framebuffer_texture_2d = nullptr;
     GlGenFramebuffers gl_gen_framebuffers = nullptr;
+    GlGenRenderbuffers gl_gen_renderbuffers = nullptr;
     GlGenTextures gl_gen_textures = nullptr;
     GlGetIntegerv gl_get_integerv = nullptr;
+    GlRenderbufferStorage gl_renderbuffer_storage = nullptr;
     GlTexImage2D gl_tex_image_2d = nullptr;
     GlTexParameteri gl_tex_parameteri = nullptr;
 #endif
@@ -337,18 +351,26 @@ bool load_gtk_gl_proc(nk_handle surface, const char *name, Function &out) {
 
 bool load_gtk_offscreen_procs(GtkSurfaceResource &resource) {
     return load_gtk_gl_proc(resource.handle, "glBindFramebuffer", resource.gl_bind_framebuffer) &&
+           load_gtk_gl_proc(resource.handle, "glBindRenderbuffer", resource.gl_bind_renderbuffer) &&
            load_gtk_gl_proc(resource.handle, "glBindTexture", resource.gl_bind_texture) &&
            load_gtk_gl_proc(resource.handle, "glBlitFramebuffer", resource.gl_blit_framebuffer) &&
            load_gtk_gl_proc(resource.handle, "glCheckFramebufferStatus",
                             resource.gl_check_framebuffer_status) &&
            load_gtk_gl_proc(resource.handle, "glDeleteFramebuffers",
                             resource.gl_delete_framebuffers) &&
+           load_gtk_gl_proc(resource.handle, "glDeleteRenderbuffers",
+                            resource.gl_delete_renderbuffers) &&
            load_gtk_gl_proc(resource.handle, "glDeleteTextures", resource.gl_delete_textures) &&
+           load_gtk_gl_proc(resource.handle, "glFramebufferRenderbuffer",
+                            resource.gl_framebuffer_renderbuffer) &&
            load_gtk_gl_proc(resource.handle, "glFramebufferTexture2D",
                             resource.gl_framebuffer_texture_2d) &&
            load_gtk_gl_proc(resource.handle, "glGenFramebuffers", resource.gl_gen_framebuffers) &&
+           load_gtk_gl_proc(resource.handle, "glGenRenderbuffers", resource.gl_gen_renderbuffers) &&
            load_gtk_gl_proc(resource.handle, "glGenTextures", resource.gl_gen_textures) &&
            load_gtk_gl_proc(resource.handle, "glGetIntegerv", resource.gl_get_integerv) &&
+           load_gtk_gl_proc(resource.handle, "glRenderbufferStorage",
+                            resource.gl_renderbuffer_storage) &&
            load_gtk_gl_proc(resource.handle, "glTexImage2D", resource.gl_tex_image_2d) &&
            load_gtk_gl_proc(resource.handle, "glTexParameteri", resource.gl_tex_parameteri);
 }
@@ -370,22 +392,28 @@ void create_gtk_render_target(void *user_data) {
         context_owner->render_context_in_use.store(true);
     gdk_gl_context_make_current(resource->render_context);
     unsigned int old_framebuffer = 0;
+    unsigned int old_depth_stencil = 0;
     unsigned int old_texture = 0;
     {
         std::lock_guard lock(resource->render_target_mutex);
         old_framebuffer = resource->render_framebuffer;
+        old_depth_stencil = resource->render_depth_stencil;
         old_texture = resource->render_texture;
         resource->render_framebuffer = 0;
+        resource->render_depth_stencil = 0;
         resource->render_texture = 0;
         resource->render_target_ready = false;
     }
     if (old_framebuffer)
         resource->gl_delete_framebuffers(1, &old_framebuffer);
+    if (old_depth_stencil)
+        resource->gl_delete_renderbuffers(1, &old_depth_stencil);
     if (old_texture)
         resource->gl_delete_textures(1, &old_texture);
 
     unsigned int texture = 0;
     unsigned int framebuffer = 0;
+    unsigned int depth_stencil = 0;
     resource->gl_gen_textures(1, &texture);
     resource->gl_bind_texture(gl_texture_2d, texture);
     resource->gl_tex_parameteri(gl_texture_2d, gl_texture_min_filter, gl_linear);
@@ -397,6 +425,13 @@ void create_gtk_render_target(void *user_data) {
     resource->gl_bind_framebuffer(gl_framebuffer, framebuffer);
     resource->gl_framebuffer_texture_2d(gl_framebuffer, gl_color_attachment0, gl_texture_2d,
                                         texture, 0);
+    resource->gl_gen_renderbuffers(1, &depth_stencil);
+    resource->gl_bind_renderbuffer(gl_renderbuffer, depth_stencil);
+    resource->gl_renderbuffer_storage(gl_renderbuffer, gl_depth24_stencil8, request->width,
+                                      request->height);
+    resource->gl_framebuffer_renderbuffer(gl_framebuffer, gl_depth_stencil_attachment,
+                                          gl_renderbuffer, depth_stencil);
+    resource->gl_bind_renderbuffer(gl_renderbuffer, 0);
     const bool complete =
         resource->gl_check_framebuffer_status(gl_framebuffer) == gl_framebuffer_complete;
     resource->gl_bind_framebuffer(gl_framebuffer, 0);
@@ -406,6 +441,8 @@ void create_gtk_render_target(void *user_data) {
     if (!complete) {
         if (framebuffer)
             resource->gl_delete_framebuffers(1, &framebuffer);
+        if (depth_stencil)
+            resource->gl_delete_renderbuffers(1, &depth_stencil);
         if (texture)
             resource->gl_delete_textures(1, &texture);
         return;
@@ -413,6 +450,7 @@ void create_gtk_render_target(void *user_data) {
     {
         std::lock_guard lock(resource->render_target_mutex);
         resource->render_framebuffer = framebuffer;
+        resource->render_depth_stencil = depth_stencil;
         resource->render_texture = texture;
         resource->render_width = request->width;
         resource->render_height = request->height;
@@ -448,17 +486,22 @@ void destroy_gtk_render_target(void *user_data) {
         context_owner->render_context_in_use.store(true);
     gdk_gl_context_make_current(resource->render_context);
     unsigned int framebuffer = 0;
+    unsigned int depth_stencil = 0;
     unsigned int texture = 0;
     {
         std::lock_guard lock(resource->render_target_mutex);
         framebuffer = resource->render_framebuffer;
+        depth_stencil = resource->render_depth_stencil;
         texture = resource->render_texture;
         resource->render_framebuffer = 0;
+        resource->render_depth_stencil = 0;
         resource->render_texture = 0;
         resource->render_target_ready = false;
     }
     if (framebuffer)
         resource->gl_delete_framebuffers(1, &framebuffer);
+    if (depth_stencil)
+        resource->gl_delete_renderbuffers(1, &depth_stencil);
     if (texture)
         resource->gl_delete_textures(1, &texture);
     gdk_gl_context_clear_current();
@@ -5077,11 +5120,9 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
                 (options->api != NK_GRAPHICS_OPENGL && options->api != NK_GRAPHICS_OPENGL_ES))
                 return fail(NK_ERROR_INVALID_ARGUMENT, "invalid graphics surface options");
 #if defined(NK_GTK_THREADED_RENDER)
-            if (nk::core::render_executor_physical() &&
-                ((options->flags & (NK_SURFACE_DEPTH | NK_SURFACE_STENCIL)) ||
-                 options->api != NK_GRAPHICS_OPENGL))
+            if (nk::core::render_executor_physical() && options->api != NK_GRAPHICS_OPENGL)
                 return fail(NK_ERROR_UNSUPPORTED,
-                            "threaded GTK surfaces currently require desktop OpenGL color targets");
+                            "threaded GTK surfaces currently require desktop OpenGL targets");
 #endif
             *out_surface = NK_INVALID_HANDLE;
             auto parent = window(parent_handle);
@@ -5666,6 +5707,7 @@ nk_result NK_CALL nk_surface_get_frame_target(nk_handle handle,
         {
             std::lock_guard lock(resource->render_target_mutex);
             target.native_target = resource->render_framebuffer;
+            target.native_depth_stencil_target = resource->render_depth_stencil;
             target.native_present_target = resource->render_texture;
         }
         target.native_context = reinterpret_cast<uint64_t>(resource->render_context);

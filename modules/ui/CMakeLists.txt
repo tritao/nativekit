@@ -291,6 +291,22 @@ if(NK_BUILD_TESTS)
             endif()
         endif()
     endif()
+    if(NK_GTK_THREADED_RENDER AND UNIX AND NOT APPLE AND NOT ANDROID)
+        add_executable(nativekit_ui_gtk_threaded_stencil_test
+            tests/gtk_threaded_stencil.cpp)
+        target_link_libraries(nativekit_ui_gtk_threaded_stencil_test PRIVATE
+            NativeKit::nativekit)
+        find_program(NKUI_GTK_THREADED_XVFB_RUN xvfb-run)
+        if(NKUI_GTK_THREADED_XVFB_RUN)
+            add_test(NAME nativekit_ui_gtk_threaded_stencil
+                COMMAND ${NKUI_GTK_THREADED_XVFB_RUN} -a
+                    $<TARGET_FILE:nativekit_ui_gtk_threaded_stencil_test>)
+            set_tests_properties(nativekit_ui_gtk_threaded_stencil PROPERTIES
+                LABELS "graphics;ui"
+                TIMEOUT 15
+                ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
+        endif()
+    endif()
     find_program(NKUI_BACKEND_XVFB_RUN xvfb-run)
     if(NKUI_BACKEND_XVFB_RUN AND TARGET nativekit_ui_public_renderer_smoke_test)
         add_test(NAME nativekit_ui_public_renderer_smoke
@@ -327,7 +343,8 @@ if(NK_BUILD_TESTS)
         nativekit_ui_layout_render_compiler_test
         nativekit_ui_layout_session_test
         nativekit_ui_public_renderer_smoke_test
-        nativekit_ui_session_render_smoke_test)
+        nativekit_ui_session_render_smoke_test
+        nativekit_ui_gtk_threaded_stencil_test)
         if(TARGET ${target})
             target_compile_features(${target} PRIVATE cxx_std_20)
         endif()

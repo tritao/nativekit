@@ -42,13 +42,13 @@ offscreen target. Surfaces on different windows, or with incompatible context
 options, remain independent and use the existing fallback behavior.
 
 `NK_GTK_THREADED_RENDER=ON` enables the first bridge implementation. NativeKit
-keeps the `GtkGLArea` on the GTK thread, creates a color-only offscreen FBO and
-texture on `RENDER`, and lets the GTK render signal blit the completed texture
-into the widget's framebuffer. The frame callback is scheduled from the GTK
-tick callback rather than the GL render signal, so RENDER can bind the retained
-context without racing GTK's compositor. The first bridge is deliberately
-desktop-OpenGL/color-only; depth/stencil and GLES surfaces remain on the
-default build until equivalent offscreen bindings are added.
+keeps the `GtkGLArea` on the GTK thread, creates an offscreen RGBA FBO with a
+depth-stencil renderbuffer on `RENDER`, and lets the GTK render signal blit the
+completed color texture into the widget's framebuffer. The frame callback is
+scheduled from the GTK tick callback rather than the GL render signal, so
+RENDER can bind the retained context without racing GTK's compositor. The
+bridge supports desktop OpenGL depth/stencil targets; GLES surfaces remain on
+the default build until equivalent offscreen bindings are added.
 
 Until that option is enabled, GTK remains an aliased executor and live
 `SurfaceProducer` callbacks are allowed on the normal inline path.
