@@ -883,7 +883,8 @@ static nkgpu_result validate_pipeline_capabilities(const sg_pipeline_desc &desc)
             return fail(NKGPU_ERROR_UNSUPPORTED, "pipeline color format does not support MSAA");
     }
     if (desc.depth.pixel_format != SG_PIXELFORMAT_NONE) {
-        const sg_pixelformat_info support = selected_api->query_pixelformat(desc.depth.pixel_format);
+        const sg_pixelformat_info support =
+            selected_api->query_pixelformat(desc.depth.pixel_format);
         if (!support.depth)
             return fail(NKGPU_ERROR_UNSUPPORTED, "pipeline depth format is unavailable");
         if (desc.sample_count > 1 && !support.msaa)
@@ -3125,7 +3126,8 @@ nkgpu_result nkgpu_apply_pipeline(nkgpu_renderer r, nkgpu_pipeline h) {
         if (p->value.desc.color_count != static_cast<int>(rs->value.pass_color_count) ||
             p->value.desc.sample_count != static_cast<int>(rs->value.pass_sample_count) ||
             p->value.desc.depth.pixel_format != rs->value.pass_depth_format)
-            return fail(NKGPU_ERROR_INVALID_ARGUMENT, "pipeline targets do not match the active pass");
+            return fail(NKGPU_ERROR_INVALID_ARGUMENT,
+                        "pipeline targets do not match the active pass");
         for (int index = 0; index < p->value.desc.color_count; ++index) {
             if (p->value.desc.colors[index].pixel_format != rs->value.pass_color_formats[index])
                 return fail(NKGPU_ERROR_INVALID_ARGUMENT,
@@ -4641,7 +4643,8 @@ static bool retain_batch_render_pass(Batch &batch, const nkgpu_render_pass_desc 
                 resolve->value.width != color->value.width ||
                 resolve->value.height != color->value.height || resolve->value.sample_count != 1 ||
                 color->value.sample_count <= 1) {
-                fail(NKGPU_ERROR_INVALID_ARGUMENT, "batch render-pass resolve image is incompatible");
+                fail(NKGPU_ERROR_INVALID_ARGUMENT,
+                     "batch render-pass resolve image is incompatible");
                 return false;
             }
         }
