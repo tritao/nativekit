@@ -61,6 +61,7 @@ import nativekit.ui.core.UiKey;
 import nativekit.ui.core.UiModifier;
 import nativekit.ui.core.UiTouchData;
 import nativekit.ui.core.WidgetId;
+import nativekit.ui.core.View;
 import nativekit.ui.semantics.AccessibilityAction;
 import nativekit.ui.semantics.AccessibilityBridge;
 import nativekit.ui.semantics.AccessibilityRole;
@@ -80,6 +81,8 @@ import nativekit.ui.widgets.LayeredImageView;
 import nativekit.ui.widgets.LayeredImageView.ImageLayer;
 import nativekit.ui.widgets.NineSliceView;
 import nativekit.ui.widgets.KeyedView;
+import nativekit.ui.widgets.ListView;
+import nativekit.ui.widgets.ListViewModel;
 import nativekit.ui.widgets.Padding;
 import nativekit.ui.widgets.ProgressBar;
 import nativekit.ui.widgets.Dialog;
@@ -1375,7 +1378,51 @@ class FrameworkSmoke {
 		if (largeBuiltRows.length == 0 || largeBuiltRows.length > 16 || largeBuiltRows[0] != 413 ||
 			largeListController.offsetY != 13248.0)
 			return 103;
-
+		var modelBuiltRows:Array<Int> = [];
+		var modelSelection = -1;
+		var model = new SmokeListModel(100000, modelBuiltRows);
+		var modelController = new ScrollController();
+		var modelStyle = new LayoutStyle();
+		modelStyle.width = LayoutAxis.fixed(256.0);
+		modelStyle.height = LayoutAxis.fixed(120.0);
+		var modelList = new ListView("model-list-smoke", model, modelStyle,
+			modelController, 120.0, -1, function(index) { modelSelection = index; });
+		var modelRoot = context.submit(modelList, new LayoutFrame(256.0, 120.0));
+		var modelSemantics:Semantics = cast modelRoot.semantics;
+		var firstModelExtentCalls = model.extentCalls;
+		if (modelSemantics.role != AccessibilityRole.Collection || modelSemantics.setSize != 100000 ||
+			modelBuiltRows.length == 0 || modelBuiltRows.length > 16 || firstModelExtentCalls != 100000 ||
+			modelBuiltRows[0] != 0 || modelController.maxScrollY <= 0.0)
+			return 160;
+		modelController.jumpTo(0.0, model.offsetBefore(50000));
+		modelBuiltRows.resize(0);
+		modelRoot = context.submit(modelList, new LayoutFrame(256.0, 120.0));
+		if (modelBuiltRows.length == 0 || modelBuiltRows.length > 16 || modelBuiltRows[0] != 49999 ||
+			model.extentCalls != firstModelExtentCalls)
+			return 161;
+		if (!modelList.select(50000) || modelList.selectedIndex != 50000 || modelSelection != 50000)
+			return 162;
+		modelRoot = context.submit(modelList, new LayoutFrame(256.0, 120.0));
+		var selectedModelItem:Null<RenderNode> = null;
+		modelRoot.walk(function(node) {
+			var nodeSemantics:Null<Semantics> = node.semantics;
+			if (nodeSemantics != null && nodeSemantics.role == AccessibilityRole.CollectionItem &&
+				nodeSemantics.positionInSet == 50001)
+				selectedModelItem = node;
+		});
+		if (selectedModelItem == null)
+			return 163;
+		var selectedModelSemantics:Null<Semantics> = selectedModelItem.semantics;
+		if (selectedModelSemantics == null ||
+			(selectedModelSemantics.states & AccessibilityState.Selected) == 0)
+			return 164;
+		if (!context.focusWidget(selectedModelItem.id))
+			return 166;
+		context.key(UiEventKind.KeyDown, UiKey.Down);
+		if (modelList.selectedIndex != 50001 || modelSelection != 50001)
+			return 167;
+		if (!modelList.scrollTo(0) || modelController.offsetY != 0.0)
+			return 165;
 		// Exercise the session capacity and the framework as one realistic,
 		// nested settings tree. The custom painter sits between ordinary text
 		// siblings inside the clipped, scrollable content.
@@ -3210,4 +3257,42 @@ class FrameworkSmoke {
 
 	static inline function near(left:Float, right:Float):Bool
 		return Math.abs(left - right) < 0.00001;
+}
+
+private class SmokeListModel implements ListViewModel {
+	final itemCount:Int;
+	final builtRows:Array<Int>;
+	public var extentCalls:Int;
+
+	public function new(itemCount:Int, builtRows:Array<Int>) {
+		this.itemCount = itemCount;
+		this.builtRows = builtRows;
+		extentCalls = 0;
+	}
+
+	public function count():Int
+		return itemCount;
+
+	public function keyAt(index:Int):String
+		return 'model-item:$index';
+
+	public function extentAt(index:Int):Float {
+		extentCalls++;
+		return 20.0 + (index % 3) * 4.0;
+	}
+
+	public function buildItem(index:Int):View {
+		builtRows.push(index);
+		return new Text('Model row $index');
+	}
+
+	public function revision():Int
+		return 1;
+
+	public function offsetBefore(index:Int):Float {
+		var result = 0.0;
+		for (item in 0...index)
+			result += 20.0 + (item % 3) * 4.0;
+		return result;
+	}
 }
