@@ -499,10 +499,9 @@ extern "C" int nk_sokol_d3d11_query_max_samples(void) {
     int max_samples = 1;
     for (UINT samples = 2; samples <= 32; samples *= 2) {
         UINT quality_levels = 0;
-        if (FAILED(native_device->CheckMultisampleQualityLevels(
-                                                               DXGI_FORMAT_R8G8B8A8_UNORM, samples,
-                                                               &quality_levels)) ||
-            !quality_levels)
+        const HRESULT result = native_device->CheckMultisampleQualityLevels(
+            DXGI_FORMAT_R8G8B8A8_UNORM, samples, &quality_levels);
+        if (FAILED(result) || !quality_levels)
             break;
         max_samples = static_cast<int>(samples);
     }
