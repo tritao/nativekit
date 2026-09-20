@@ -858,6 +858,8 @@ typedef struct nkgpu_features {
     uint32_t image_readback;
     uint32_t buffer_readback;
     uint32_t timestamps;
+    uint32_t buffer_to_image;
+    uint32_t image_to_buffer;
 } nkgpu_features;
 
 /** Reports portable resource and binding limits for one renderer. */

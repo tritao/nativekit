@@ -1402,7 +1402,7 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	/**
 	 * Reports optional backend features through a backend-agnostic envelope.
 	 */
-	struct nkgpu_features @layout(48, 4) {
+	struct nkgpu_features @layout(56, 4) {
 		struct_size: u32 @offset(0) @struct_size;
 		mrt_count: u32 @offset(4);
 		max_samples: u32 @offset(8);
@@ -1415,6 +1415,8 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		image_readback: u32 @offset(36);
 		buffer_readback: u32 @offset(40);
 		timestamps: u32 @offset(44);
+		buffer_to_image: u32 @offset(48);
+		image_to_buffer: u32 @offset(52);
 	}
 	/**
 	 * Describes a 2D image-region transfer. Coordinates use NativeKit's top-left origin.

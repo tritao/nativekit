@@ -19,6 +19,31 @@
         }                                                                                          \
     } while (0)
 
+static uint32_t image_format_bytes(nkgpu_image_format format) {
+    switch (format) {
+    case NKGPU_IMAGEFORMAT_R8:
+        return 1;
+    case NKGPU_IMAGEFORMAT_RG8:
+    case NKGPU_IMAGEFORMAT_R16F:
+    case NKGPU_IMAGEFORMAT_DEPTH16:
+        return 2;
+    case NKGPU_IMAGEFORMAT_RGBA8:
+    case NKGPU_IMAGEFORMAT_BGRA8:
+    case NKGPU_IMAGEFORMAT_RG16F:
+    case NKGPU_IMAGEFORMAT_R32F:
+    case NKGPU_IMAGEFORMAT_R32_UINT:
+    case NKGPU_IMAGEFORMAT_DEPTH24_STENCIL8:
+    case NKGPU_IMAGEFORMAT_DEPTH32F:
+        return 4;
+    case NKGPU_IMAGEFORMAT_RGBA16F:
+        return 8;
+    case NKGPU_IMAGEFORMAT_RGBA32F:
+        return 16;
+    default:
+        return 0;
+    }
+}
+
 int main() {
     if (!nkgpu_test_generation_exhaustion())
         return 1;
@@ -246,7 +271,8 @@ int main() {
             features.storage_buffer > 1 || features.storage_image > 1 || features.compute > 1 ||
             features.instancing > 1 || features.buffer_copy > 1 || features.image_copy > 1 ||
             features.image_readback > 1 || features.buffer_readback > 1 ||
-            features.timestamps > 1) {
+            features.timestamps > 1 || features.buffer_to_image > 1 ||
+            features.image_to_buffer > 1) {
             result = __LINE__;
             goto cleanup;
         }
@@ -260,6 +286,27 @@ int main() {
             result = __LINE__;
             goto cleanup;
         }
+
+        nkgpu_image_desc invalid_cube_desc{};
+        invalid_cube_desc.struct_size = sizeof(invalid_cube_desc);
+        invalid_cube_desc.width = 1;
+        invalid_cube_desc.height = 1;
+        invalid_cube_desc.format = NKGPU_IMAGEFORMAT_RGBA8;
+        invalid_cube_desc.usage = NKGPU_IMAGE_SAMPLED;
+        invalid_cube_desc.type = NKGPU_IMAGETYPE_CUBE;
+        invalid_cube_desc.layer_count = 5;
+        nkgpu_image invalid_cube{};
+        EXPECT_RESULT(nkgpu_image_create_desc(first, &invalid_cube_desc, &invalid_cube),
+                      NKGPU_ERROR_INVALID_ARGUMENT);
+        invalid_cube_desc.type = NKGPU_IMAGETYPE_CUBE_ARRAY;
+        invalid_cube_desc.layer_count = 7;
+        EXPECT_RESULT(nkgpu_image_create_desc(first, &invalid_cube_desc, &invalid_cube),
+                      NKGPU_ERROR_INVALID_ARGUMENT);
+        invalid_cube_desc.type = NKGPU_IMAGETYPE_CUBE;
+        invalid_cube_desc.layer_count = 6;
+        invalid_cube_desc.usage = NKGPU_IMAGE_SAMPLED | NKGPU_IMAGE_RENDER_TARGET;
+        EXPECT_RESULT(nkgpu_image_create_desc(first, &invalid_cube_desc, &invalid_cube),
+                      NKGPU_ERROR_UNSUPPORTED);
 
         const nkgpu_image_format formats[] = {
             NKGPU_IMAGEFORMAT_R8,
@@ -323,6 +370,52 @@ int main() {
                              probe_result);
                 result = __LINE__;
                 goto cleanup;
+            }
+
+            const uint32_t bytes = image_format_bytes(format);
+            if (support.sampled && bytes &&
+                (format < NKGPU_IMAGEFORMAT_DEPTH16 || support.depth_stencil)) {
+                uint8_t sampled_data[16]{};
+                nkgpu_image sampled_probe{};
+                nkgpu_image_desc sampled_desc{};
+                sampled_desc.struct_size = sizeof(sampled_desc);
+                sampled_desc.width = 1;
+                sampled_desc.height = 1;
+                sampled_desc.format = format;
+                sampled_desc.usage = NKGPU_IMAGE_SAMPLED;
+                if (format >= NKGPU_IMAGEFORMAT_DEPTH16)
+                    sampled_desc.usage |= NKGPU_IMAGE_DEPTH_STENCIL;
+                if (format < NKGPU_IMAGEFORMAT_DEPTH16) {
+                    sampled_desc.data = sampled_data;
+                    sampled_desc.data_size = bytes;
+                }
+                const nkgpu_result sampled_result =
+                    nkgpu_image_create_desc(first, &sampled_desc, &sampled_probe);
+                if (sampled_result != NKGPU_OK) {
+                    std::fprintf(stderr, "sampled format %u failed to create: %s\n", format,
+                                 nkgpu_last_error());
+                    result = __LINE__;
+                    goto cleanup;
+                }
+                EXPECT_RESULT(nkgpu_image_destroy(first, sampled_probe), NKGPU_OK);
+            }
+            if (support.storage && format < NKGPU_IMAGEFORMAT_DEPTH16) {
+                nkgpu_image storage_probe_for_format{};
+                nkgpu_image_desc storage_desc{};
+                storage_desc.struct_size = sizeof(storage_desc);
+                storage_desc.width = 1;
+                storage_desc.height = 1;
+                storage_desc.format = format;
+                storage_desc.usage = NKGPU_IMAGE_STORAGE;
+                const nkgpu_result storage_result =
+                    nkgpu_image_create_desc(first, &storage_desc, &storage_probe_for_format);
+                if (storage_result != NKGPU_OK) {
+                    std::fprintf(stderr, "storage format %u failed to create: %s\n", format,
+                                 nkgpu_last_error());
+                    result = __LINE__;
+                    goto cleanup;
+                }
+                EXPECT_RESULT(nkgpu_image_destroy(first, storage_probe_for_format), NKGPU_OK);
             }
         }
 

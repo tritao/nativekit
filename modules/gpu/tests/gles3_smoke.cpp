@@ -110,7 +110,10 @@ int main() {
         features.mrt_count > NKGPU_MAX_COLOR_ATTACHMENTS || !features.max_samples ||
         !limits.max_texture_size || !limits.max_array_layers || !limits.max_vertex_attributes ||
         !limits.max_texture_bindings || features.storage_buffer > 1 ||
-        features.storage_image > 1 || features.compute > 1) {
+        features.storage_image > 1 || features.compute > 1 || features.instancing > 1 ||
+        features.buffer_copy > 1 || features.image_copy > 1 || features.image_readback > 1 ||
+        features.buffer_readback > 1 || features.timestamps > 1 || features.buffer_to_image > 1 ||
+        features.image_to_buffer > 1) {
         std::fprintf(stderr, "GLES3 capability envelope is inconsistent\n");
         return 4;
     }

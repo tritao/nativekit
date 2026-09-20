@@ -163,13 +163,26 @@ bool buffer_readback(nkgpu_renderer renderer, nkgpu_buffer buffer, uint32_t offs
 
 uint32_t format_bytes(nkgpu_image_format format) {
     switch (format) {
+    case NKGPU_IMAGEFORMAT_R8:
+        return 1;
+    case NKGPU_IMAGEFORMAT_RG8:
+        return 2;
     case NKGPU_IMAGEFORMAT_RGBA8:
+    case NKGPU_IMAGEFORMAT_BGRA8:
+    case NKGPU_IMAGEFORMAT_RG16F:
     case NKGPU_IMAGEFORMAT_R32F:
     case NKGPU_IMAGEFORMAT_R32_UINT:
+    case NKGPU_IMAGEFORMAT_DEPTH24_STENCIL8:
     case NKGPU_IMAGEFORMAT_DEPTH32F:
         return 4;
+    case NKGPU_IMAGEFORMAT_R16F:
+        return 2;
     case NKGPU_IMAGEFORMAT_RGBA16F:
         return 8;
+    case NKGPU_IMAGEFORMAT_RGBA32F:
+        return 16;
+    case NKGPU_IMAGEFORMAT_DEPTH16:
+        return 2;
     default:
         return 0;
     }
@@ -181,14 +194,30 @@ bool is_depth_format(nkgpu_image_format format) {
 
 const char *format_name(nkgpu_image_format format) {
     switch (format) {
+    case NKGPU_IMAGEFORMAT_R8:
+        return "R8";
+    case NKGPU_IMAGEFORMAT_RG8:
+        return "RG8";
     case NKGPU_IMAGEFORMAT_RGBA8:
         return "RGBA8";
+    case NKGPU_IMAGEFORMAT_BGRA8:
+        return "BGRA8";
+    case NKGPU_IMAGEFORMAT_R16F:
+        return "R16F";
+    case NKGPU_IMAGEFORMAT_RG16F:
+        return "RG16F";
     case NKGPU_IMAGEFORMAT_RGBA16F:
         return "RGBA16F";
     case NKGPU_IMAGEFORMAT_R32F:
         return "R32F";
+    case NKGPU_IMAGEFORMAT_RGBA32F:
+        return "RGBA32F";
     case NKGPU_IMAGEFORMAT_R32_UINT:
         return "R32_UINT";
+    case NKGPU_IMAGEFORMAT_DEPTH16:
+        return "DEPTH16";
+    case NKGPU_IMAGEFORMAT_DEPTH24_STENCIL8:
+        return "DEPTH24_STENCIL8";
     case NKGPU_IMAGEFORMAT_DEPTH32F:
         return "DEPTH32F";
     default:
@@ -212,10 +241,10 @@ bool offscreen_format(nkgpu_renderer renderer, const nkgpu_features &features,
     const uint32_t width = 2;
     const uint32_t height = 2;
     const uint32_t bytes = format_bytes(format);
-    uint8_t initial_data[32]{};
+    uint8_t initial_data[128]{};
     for (uint32_t index = 0; index < width * height * bytes; ++index)
         initial_data[index] = static_cast<uint8_t>(0x20u + index);
-    uint8_t expected_bytes[32]{};
+    uint8_t expected_bytes[128]{};
     if (can_render && depth) {
         const uint32_t depth_bits = 0x3f800000u;
         for (uint32_t offset = 0; offset < width * height * bytes; offset += sizeof(depth_bits))
@@ -273,7 +302,7 @@ bool offscreen_format(nkgpu_renderer renderer, const nkgpu_features &features,
     }
 
     auto check_readback = [&](nkgpu_image image, const char *stage) {
-        uint8_t readback_bytes[32]{};
+        uint8_t readback_bytes[128]{};
         if (readback(renderer, image, 0, 0, width, height, readback_bytes,
                      width * height * bytes) &&
             std::memcmp(readback_bytes, expected_bytes, width * height * bytes) == 0)
@@ -288,6 +317,55 @@ bool offscreen_format(nkgpu_renderer renderer, const nkgpu_features &features,
     };
     if (success && can_render && can_sample && features.image_readback)
         success = check_readback(source, "source");
+    if (success && can_render && depth && features.image_readback) {
+        uint32_t depth_pixel = 0;
+        const uint32_t expected_depth_bits = 0x3f800000u;
+        if (!readback(renderer, source, 1, 1, 1, 1, reinterpret_cast<uint8_t *>(&depth_pixel),
+                      sizeof(depth_pixel)) ||
+            depth_pixel != expected_depth_bits) {
+            std::fprintf(stderr,
+                         "offscreen format %s depth rectangle readback mismatch: %08x != %08x\n",
+                         format_name(format), depth_pixel, expected_depth_bits);
+            success = false;
+        }
+    }
+    if (success && can_render && depth && features.image_to_buffer && features.buffer_readback) {
+        nkgpu_buffer depth_buffer{};
+        nkgpu_buffer_desc depth_buffer_desc{};
+        depth_buffer_desc.struct_size = sizeof(depth_buffer_desc);
+        depth_buffer_desc.size = bytes;
+        depth_buffer_desc.usage = NKGPU_BUFFER_TRANSFER;
+        if (!expect_result(nkgpu_buffer_create_desc(renderer, &depth_buffer_desc, &depth_buffer),
+                           NKGPU_OK, "nkgpu_buffer_create_desc(depth readback)")) {
+            success = false;
+        } else {
+            nkgpu_buffer_image_copy_desc depth_copy{};
+            depth_copy.struct_size = sizeof(depth_copy);
+            depth_copy.buffer = depth_buffer;
+            depth_copy.image = source;
+            depth_copy.x = 1;
+            depth_copy.y = 1;
+            depth_copy.width = 1;
+            depth_copy.height = 1;
+            const nkgpu_result depth_copy_result = nkgpu_image_to_buffer(renderer, &depth_copy);
+            if (depth_copy_result == NKGPU_OK) {
+                uint32_t depth_pixel = 0;
+                if (!buffer_readback(renderer, depth_buffer, 0, bytes,
+                                     reinterpret_cast<uint8_t *>(&depth_pixel), bytes) ||
+                    depth_pixel != 0x3f800000u) {
+                    std::fprintf(stderr, "offscreen format %s depth buffer rectangle mismatch\n",
+                                 format_name(format));
+                    success = false;
+                }
+            } else if (depth_copy_result != NKGPU_ERROR_UNSUPPORTED) {
+                std::fprintf(stderr, "offscreen format %s depth image-to-buffer returned %d: %s\n",
+                             format_name(format), depth_copy_result, nkgpu_last_error());
+                success = false;
+            }
+            expect_result(nkgpu_buffer_destroy(renderer, depth_buffer), NKGPU_OK,
+                          "nkgpu_buffer_destroy(depth readback)");
+        }
+    }
 
     if (success && features.image_copy) {
         nkgpu_image_desc destination_desc = desc;
@@ -356,7 +434,7 @@ int main() {
     if (!expect_result(nkgpu_query_features(resources.renderer, &features), NKGPU_OK,
                        "nkgpu_query_features") ||
         !features.buffer_copy || !features.image_copy || !features.image_readback ||
-        !features.buffer_readback) {
+        !features.buffer_readback || !features.buffer_to_image || !features.image_to_buffer) {
         std::fprintf(stderr, "the selected GPU backend does not expose transfer operations\n");
         return 1;
     }
@@ -376,6 +454,9 @@ int main() {
             return 1;
         if (!expect_result(nkgpu_timestamp_end(resources.renderer, timestamp), NKGPU_OK,
                            "nkgpu_timestamp_end"))
+            return 1;
+        if (!expect_result(nkgpu_timestamp_end(resources.renderer, timestamp),
+                           NKGPU_ERROR_WRONG_STATE, "nkgpu_timestamp_end(repeated)"))
             return 1;
         if (!expect_result(nkgpu_end_pass(resources.renderer), NKGPU_OK,
                            "nkgpu_end_pass(timestamp)"))
@@ -401,6 +482,16 @@ int main() {
         }
         if (!expect_result(nkgpu_timestamp_destroy(resources.renderer, timestamp), NKGPU_OK,
                            "nkgpu_timestamp_destroy"))
+            return 1;
+        nkgpu_timestamp_info stale_timestamp_info{};
+        stale_timestamp_info.struct_size = sizeof(stale_timestamp_info);
+        if (!expect_result(nkgpu_timestamp_query(resources.renderer, timestamp,
+                                                 &stale_timestamp_info),
+                           NKGPU_ERROR_INVALID_HANDLE, "nkgpu_timestamp_query(stale)"))
+            return 1;
+        nkgpu_timestamp outside_timestamp{};
+        if (!expect_result(nkgpu_timestamp_begin(resources.renderer, &outside_timestamp),
+                           NKGPU_ERROR_WRONG_STATE, "nkgpu_timestamp_begin(outside pass)"))
             return 1;
     }
 
@@ -680,9 +771,15 @@ int main() {
     }
 
     const nkgpu_image_format offscreen_formats[] = {
+        NKGPU_IMAGEFORMAT_R8,
+        NKGPU_IMAGEFORMAT_RG8,
         NKGPU_IMAGEFORMAT_RGBA8,
+        NKGPU_IMAGEFORMAT_BGRA8,
+        NKGPU_IMAGEFORMAT_R16F,
+        NKGPU_IMAGEFORMAT_RG16F,
         NKGPU_IMAGEFORMAT_RGBA16F,
         NKGPU_IMAGEFORMAT_R32F,
+        NKGPU_IMAGEFORMAT_RGBA32F,
         NKGPU_IMAGEFORMAT_R32_UINT,
         NKGPU_IMAGEFORMAT_DEPTH32F,
     };

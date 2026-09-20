@@ -1207,6 +1207,10 @@ nkgpu_result nkgpu_query_features(nkgpu_renderer renderer, nkgpu_features *out_f
         slot->value.api->transfer && slot->value.api->transfer->readback_begin ? 1u : 0u;
     features.buffer_readback =
         slot->value.api->transfer && slot->value.api->transfer->readback_begin_buffer ? 1u : 0u;
+    features.buffer_to_image =
+        slot->value.api->transfer && slot->value.api->transfer->buffer_to_image ? 1u : 0u;
+    features.image_to_buffer =
+        slot->value.api->transfer && slot->value.api->transfer->image_to_buffer ? 1u : 0u;
     features.timestamps = slot->value.api->transfer &&
                                   slot->value.api->transfer->timestamp_supported &&
                                   slot->value.api->transfer->timestamp_supported() &&
