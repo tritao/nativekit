@@ -85,8 +85,7 @@ _Static_assert(NK_EXECUTOR_PLATFORM == 0 && NK_EXECUTOR_APP == 1 && NK_EXECUTOR_
                "logical executor values are stable");
 _Static_assert(NK_EVENT_PLUGIN_COMPLETE == 1000 && NK_EVENT_PLUGIN_EVENT == 1001,
                "plugin event kinds are stable");
-_Static_assert(NK_EVENT_MENU_ITEM_ACTIVATED == 510 &&
-                   NK_EVENT_APPLICATION_QUIT_REQUESTED == 511,
+_Static_assert(NK_EVENT_MENU_ITEM_ACTIVATED == 510 && NK_EVENT_APPLICATION_QUIT_REQUESTED == 511,
                "menu event kinds are stable");
 _Static_assert(NK_ERROR_NOT_FOUND == -12 && NK_ERROR_PAYLOAD_TOO_LARGE == -13 &&
                    NK_ERROR_CANCELLED == -14,

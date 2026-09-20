@@ -29,8 +29,8 @@ bool valid_role(nk_menu_item_role role) {
 }
 
 bool valid_shortcut(const nk_menu_shortcut &shortcut) {
-    constexpr nk_menu_modifiers known = NK_MENU_MOD_PRIMARY | NK_MENU_MOD_SHIFT |
-                                         NK_MENU_MOD_ALT | NK_MENU_MOD_CONTROL;
+    constexpr nk_menu_modifiers known =
+        NK_MENU_MOD_PRIMARY | NK_MENU_MOD_SHIFT | NK_MENU_MOD_ALT | NK_MENU_MOD_CONTROL;
     if (shortcut.key == NK_KEY_UNKNOWN)
         return shortcut.modifiers == 0;
     return (shortcut.modifiers & ~known) == 0;
@@ -42,9 +42,9 @@ bool valid_menu_options(const nk_menu_options *options) {
 }
 
 bool valid_item_options(const nk_menu_item_options *options) {
-    if (!options || options->struct_size < sizeof(*options) ||
-        !valid_kind(options->kind) || !valid_role(options->role) ||
-        !nk::platform::valid_utf8(options->label) || !valid_shortcut(options->shortcut))
+    if (!options || options->struct_size < sizeof(*options) || !valid_kind(options->kind) ||
+        !valid_role(options->role) || !nk::platform::valid_utf8(options->label) ||
+        !valid_shortcut(options->shortcut))
         return false;
     if (options->kind == NK_MENU_ITEM_SEPARATOR)
         return options->role == NK_MENU_ROLE_NONE && options->command_id == 0;
@@ -101,13 +101,12 @@ void menu_item_activated(nk_menu_item handle) noexcept {
             if (owner)
                 (void)backend::menu_item_changed(owner, resource);
         }
-        nk_menu_item_activated_event payload{resource->command_id, handle,
-                                             static_cast<nk_bool>(
-                                                 (resource->flags & NK_MENU_ITEM_CHECKED) != 0),
-                                             0};
+        nk_menu_item_activated_event payload{
+            resource->command_id, handle,
+            static_cast<nk_bool>((resource->flags & NK_MENU_ITEM_CHECKED) != 0), 0};
         QueuedEvent event;
         event.kind = resource->role == NK_MENU_ROLE_QUIT ? NK_EVENT_APPLICATION_QUIT_REQUESTED
-                                                          : NK_EVENT_MENU_ITEM_ACTIVATED;
+                                                         : NK_EVENT_MENU_ITEM_ACTIVATED;
         event.source = handle;
         event.data.resize(sizeof(payload));
         std::memcpy(event.data.data(), &payload, sizeof(payload));
@@ -177,8 +176,8 @@ nk_result NK_CALL nk_menu_add_item(nk_menu menu_handle, nk_menu_item parent,
         resource->menu = menu_handle;
         resource->parent = parent;
         resource->kind = options->kind;
-        resource->flags = options->flags &
-                          (NK_MENU_ITEM_DISABLED | NK_MENU_ITEM_CHECKED | NK_MENU_ITEM_HIDDEN);
+        resource->flags =
+            options->flags & (NK_MENU_ITEM_DISABLED | NK_MENU_ITEM_CHECKED | NK_MENU_ITEM_HIDDEN);
         resource->role = options->role;
         resource->command_id = options->command_id;
         resource->label = options->label ? options->label : "";
@@ -205,131 +204,139 @@ nk_result NK_CALL nk_menu_add_item(nk_menu menu_handle, nk_menu_item parent,
 }
 
 nk_result NK_CALL nk_menu_item_remove(nk_menu_item handle) {
-    return nk::core::result_boundary("unexpected error while removing menu item", [&]() -> nk_result {
-        if (const auto result = enter_ui(); result != NK_OK)
-            return result;
-        const auto resource = item(handle);
-        if (!resource)
-            return nk::core::fail(NK_ERROR_INVALID_HANDLE, "invalid or stale menu item handle");
-        const auto owner = menu(resource->menu);
-        if (!owner)
-            return nk::core::fail(NK_ERROR_INVALID_HANDLE, "menu item owner is no longer valid");
-        std::shared_ptr<nk::core::MenuItemResource> parent_resource;
-        if (resource->parent) {
-            parent_resource = item(resource->parent);
-            if (!parent_resource)
-                return nk::core::fail(NK_ERROR_INVALID_HANDLE, "invalid menu parent item");
-        }
-        auto &siblings = parent_resource ? parent_resource->children : owner->children;
-        siblings.erase(std::remove(siblings.begin(), siblings.end(), handle), siblings.end());
-        erase_item_tree(handle, owner);
-        return NK_OK;
-    });
+    return nk::core::result_boundary(
+        "unexpected error while removing menu item", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            const auto resource = item(handle);
+            if (!resource)
+                return nk::core::fail(NK_ERROR_INVALID_HANDLE, "invalid or stale menu item handle");
+            const auto owner = menu(resource->menu);
+            if (!owner)
+                return nk::core::fail(NK_ERROR_INVALID_HANDLE,
+                                      "menu item owner is no longer valid");
+            std::shared_ptr<nk::core::MenuItemResource> parent_resource;
+            if (resource->parent) {
+                parent_resource = item(resource->parent);
+                if (!parent_resource)
+                    return nk::core::fail(NK_ERROR_INVALID_HANDLE, "invalid menu parent item");
+            }
+            auto &siblings = parent_resource ? parent_resource->children : owner->children;
+            siblings.erase(std::remove(siblings.begin(), siblings.end(), handle), siblings.end());
+            erase_item_tree(handle, owner);
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_application_set_menu(nk_menu handle) {
-    return nk::core::result_boundary("unexpected error while installing application menu", [&]() -> nk_result {
-        if (const auto result = enter_ui(); result != NK_OK)
-            return result;
-        if (handle == active_menu)
-            return NK_OK;
-        std::shared_ptr<nk::core::MenuResource> next;
-        if (handle) {
-            next = menu(handle);
-            if (!next)
-                return nk::core::fail(NK_ERROR_INVALID_HANDLE, "invalid or stale menu handle");
-        }
-        if (next) {
-            if (const auto result = nk::backend::menu_install(next); result != NK_OK)
+    return nk::core::result_boundary(
+        "unexpected error while installing application menu", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
                 return result;
-        } else if (active_menu) {
-            nk::backend::menu_detach(menu(active_menu));
-        }
-        if (active_menu && active_menu != handle)
-            nk::backend::menu_detach(menu(active_menu));
-        active_menu = handle;
-        return NK_OK;
-    });
+            if (handle == active_menu)
+                return NK_OK;
+            std::shared_ptr<nk::core::MenuResource> next;
+            if (handle) {
+                next = menu(handle);
+                if (!next)
+                    return nk::core::fail(NK_ERROR_INVALID_HANDLE, "invalid or stale menu handle");
+            }
+            if (next) {
+                if (const auto result = nk::backend::menu_install(next); result != NK_OK)
+                    return result;
+            } else if (active_menu) {
+                nk::backend::menu_detach(menu(active_menu));
+            }
+            if (active_menu && active_menu != handle)
+                nk::backend::menu_detach(menu(active_menu));
+            active_menu = handle;
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_menu_item_set_label(nk_menu_item handle, const char *label) {
-    return nk::core::result_boundary("unexpected error while setting menu item label", [&]() -> nk_result {
-        if (const auto result = enter_ui(); result != NK_OK)
-            return result;
-        const auto resource = item(handle);
-        const auto owner = resource ? menu(resource->menu) : nullptr;
-        if (!resource || !owner)
-            return nk::core::fail(NK_ERROR_INVALID_HANDLE, "invalid or stale menu item handle");
-        if (!nk::platform::valid_utf8(label) || !label || !*label)
-            return nk::core::fail(NK_ERROR_INVALID_ARGUMENT, "invalid menu item label");
-        resource->label = label;
-        return nk::backend::menu_item_changed(owner, resource);
-    });
+    return nk::core::result_boundary(
+        "unexpected error while setting menu item label", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            const auto resource = item(handle);
+            const auto owner = resource ? menu(resource->menu) : nullptr;
+            if (!resource || !owner)
+                return nk::core::fail(NK_ERROR_INVALID_HANDLE, "invalid or stale menu item handle");
+            if (!nk::platform::valid_utf8(label) || !label || !*label)
+                return nk::core::fail(NK_ERROR_INVALID_ARGUMENT, "invalid menu item label");
+            resource->label = label;
+            return nk::backend::menu_item_changed(owner, resource);
+        });
 }
 
 nk_result NK_CALL nk_menu_item_set_enabled(nk_menu_item handle, nk_bool enabled) {
-    return nk::core::result_boundary("unexpected error while setting menu item enabled state", [&]() -> nk_result {
-        if (const auto result = enter_ui(); result != NK_OK)
-            return result;
-        const auto resource = item(handle);
-        const auto owner = resource ? menu(resource->menu) : nullptr;
-        if (!resource || !owner)
-            return nk::core::fail(NK_ERROR_INVALID_HANDLE, "invalid or stale menu item handle");
-        if (enabled)
-            resource->flags &= ~NK_MENU_ITEM_DISABLED;
-        else
-            resource->flags |= NK_MENU_ITEM_DISABLED;
-        return nk::backend::menu_item_changed(owner, resource);
-    });
+    return nk::core::result_boundary(
+        "unexpected error while setting menu item enabled state", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            const auto resource = item(handle);
+            const auto owner = resource ? menu(resource->menu) : nullptr;
+            if (!resource || !owner)
+                return nk::core::fail(NK_ERROR_INVALID_HANDLE, "invalid or stale menu item handle");
+            if (enabled)
+                resource->flags &= ~NK_MENU_ITEM_DISABLED;
+            else
+                resource->flags |= NK_MENU_ITEM_DISABLED;
+            return nk::backend::menu_item_changed(owner, resource);
+        });
 }
 
 nk_result NK_CALL nk_menu_item_set_checked(nk_menu_item handle, nk_bool checked) {
-    return nk::core::result_boundary("unexpected error while setting menu item checked state", [&]() -> nk_result {
-        if (const auto result = enter_ui(); result != NK_OK)
-            return result;
-        const auto resource = item(handle);
-        const auto owner = resource ? menu(resource->menu) : nullptr;
-        if (!resource || !owner)
-            return nk::core::fail(NK_ERROR_INVALID_HANDLE, "invalid or stale menu item handle");
-        if (resource->kind != NK_MENU_ITEM_CHECKBOX && resource->kind != NK_MENU_ITEM_RADIO)
-            return nk::core::fail(NK_ERROR_INVALID_ARGUMENT, "only checkable menu items have a state");
-        if (checked)
-            resource->flags |= NK_MENU_ITEM_CHECKED;
-        else
-            resource->flags &= ~NK_MENU_ITEM_CHECKED;
-        return nk::backend::menu_item_changed(owner, resource);
-    });
+    return nk::core::result_boundary(
+        "unexpected error while setting menu item checked state", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            const auto resource = item(handle);
+            const auto owner = resource ? menu(resource->menu) : nullptr;
+            if (!resource || !owner)
+                return nk::core::fail(NK_ERROR_INVALID_HANDLE, "invalid or stale menu item handle");
+            if (resource->kind != NK_MENU_ITEM_CHECKBOX && resource->kind != NK_MENU_ITEM_RADIO)
+                return nk::core::fail(NK_ERROR_INVALID_ARGUMENT,
+                                      "only checkable menu items have a state");
+            if (checked)
+                resource->flags |= NK_MENU_ITEM_CHECKED;
+            else
+                resource->flags &= ~NK_MENU_ITEM_CHECKED;
+            return nk::backend::menu_item_changed(owner, resource);
+        });
 }
 
 nk_result NK_CALL nk_menu_item_set_visible(nk_menu_item handle, nk_bool visible) {
-    return nk::core::result_boundary("unexpected error while setting menu item visibility", [&]() -> nk_result {
-        if (const auto result = enter_ui(); result != NK_OK)
-            return result;
-        const auto resource = item(handle);
-        const auto owner = resource ? menu(resource->menu) : nullptr;
-        if (!resource || !owner)
-            return nk::core::fail(NK_ERROR_INVALID_HANDLE, "invalid or stale menu item handle");
-        if (visible)
-            resource->flags &= ~NK_MENU_ITEM_HIDDEN;
-        else
-            resource->flags |= NK_MENU_ITEM_HIDDEN;
-        return nk::backend::menu_item_changed(owner, resource);
-    });
+    return nk::core::result_boundary(
+        "unexpected error while setting menu item visibility", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            const auto resource = item(handle);
+            const auto owner = resource ? menu(resource->menu) : nullptr;
+            if (!resource || !owner)
+                return nk::core::fail(NK_ERROR_INVALID_HANDLE, "invalid or stale menu item handle");
+            if (visible)
+                resource->flags &= ~NK_MENU_ITEM_HIDDEN;
+            else
+                resource->flags |= NK_MENU_ITEM_HIDDEN;
+            return nk::backend::menu_item_changed(owner, resource);
+        });
 }
 
 nk_result NK_CALL nk_menu_item_set_shortcut(nk_menu_item handle, const nk_menu_shortcut *shortcut) {
-    return nk::core::result_boundary("unexpected error while setting menu item shortcut", [&]() -> nk_result {
-        if (const auto result = enter_ui(); result != NK_OK)
-            return result;
-        const auto resource = item(handle);
-        const auto owner = resource ? menu(resource->menu) : nullptr;
-        if (!resource || !owner)
-            return nk::core::fail(NK_ERROR_INVALID_HANDLE, "invalid or stale menu item handle");
-        if (!shortcut || !valid_shortcut(*shortcut))
-            return nk::core::fail(NK_ERROR_INVALID_ARGUMENT, "invalid menu item shortcut");
-        resource->shortcut = *shortcut;
-        return nk::backend::menu_item_changed(owner, resource);
-    });
+    return nk::core::result_boundary(
+        "unexpected error while setting menu item shortcut", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            const auto resource = item(handle);
+            const auto owner = resource ? menu(resource->menu) : nullptr;
+            if (!resource || !owner)
+                return nk::core::fail(NK_ERROR_INVALID_HANDLE, "invalid or stale menu item handle");
+            if (!shortcut || !valid_shortcut(*shortcut))
+                return nk::core::fail(NK_ERROR_INVALID_ARGUMENT, "invalid menu item shortcut");
+            resource->shortcut = *shortcut;
+            return nk::backend::menu_item_changed(owner, resource);
+        });
 }
-
 }
