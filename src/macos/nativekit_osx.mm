@@ -26,6 +26,7 @@
 #include "core/frame_request.hpp"
 #include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
+#include "core/menu_internal.hpp"
 #include "core/runtime.hpp"
 #include "core/system_internal.hpp"
 #include "core/resource_events.hpp"
@@ -3784,6 +3785,7 @@ void pump_events() noexcept {
 }
 
 void shutdown() noexcept {
+    nk::backend::menu_backend_shutdown();
     nk::macos_joystick::shutdown();
     NSMutableArray<NSString *> *notification_identifiers = [NSMutableArray array];
     {
@@ -3838,6 +3840,7 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
            NK_CAP_KEEP_AWAKE | NK_CAP_DISPLAY_ORIENTATION | NK_CAP_ACCESSIBILITY |
            NK_CAP_RESOURCE_SHARING | NK_CAP_WRAP_NATIVE_WINDOW | NK_CAP_SURFACE_FRAME_CALLBACK |
            NK_CAP_WINDOW_CUSTOM_DECORATIONS | NK_CAP_GAMEPAD_RUMBLE |
+           NK_CAP_APPLICATION_MENU |
            nk::core::optional_capabilities();
 }
 

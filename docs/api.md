@@ -165,6 +165,24 @@ applied. Repeated native notifications that do not change the observed flags do
 not produce duplicate state events. On GTK, an attention request is tracked by
 `NK_WINDOW_STATE_ATTENTION_REQUESTED` until the window becomes active.
 
+## Application menus
+
+Include `nativekit_menu.h` to build a declarative application menu tree. Menu
+and item handles are UI-thread resources owned by NativeKit; labels are copied
+as UTF-8, and removing a menu item recursively invalidates its descendants.
+Set the process menu with `nk_application_set_menu()`. macOS renders this tree
+as `NSApp.mainMenu` and reports command activation through
+`NK_EVENT_MENU_ITEM_ACTIVATED`; a Quit-role item uses
+`NK_EVENT_APPLICATION_QUIT_REQUESTED`. The `NK_CAP_APPLICATION_MENU` bit must
+be checked before installation. Other backends currently retain and validate
+the model but return `NK_ERROR_UNSUPPORTED` when native installation is
+requested.
+
+Shortcut modifiers are portable: `NK_MENU_MOD_PRIMARY` maps to Command on
+macOS and Control on other desktop backends. Standard roles let a backend use
+platform conventions for About, Preferences, editing commands, window
+commands, and Quit without exposing native selectors in the public ABI.
+
 ## Events and payloads
 
 `nk_poll_event()` returns events in FIFO order. An empty queue is not an error: it
@@ -198,6 +216,8 @@ and consumers must not assume one exists. Current payloads are:
 | `NK_EVENT_NOTIFICATION_ACTIVATED` | none | notification ID | optional platform action identifier |
 | `NK_EVENT_NOTIFICATION_DISMISSED` | none | notification ID | empty; platform reason may be in `flags` |
 | `NK_EVENT_NOTIFICATION_FAILED` | none | notification ID | diagnostic text |
+| `NK_EVENT_MENU_ITEM_ACTIVATED` | menu item | none | `nk_menu_item_activated_event` |
+| `NK_EVENT_APPLICATION_QUIT_REQUESTED` | menu item | none | `nk_menu_item_activated_event` |
 | `NK_EVENT_MOBILE_HOST_GEOMETRY_CHANGED` | mobile host | none | `nk_mobile_host_geometry` |
 | `NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE` | none | clipboard read ID | `nk_resource_list` |
 | `NK_EVENT_RESOURCE_OPENED` | mobile host | none | `nk_resource_list` |

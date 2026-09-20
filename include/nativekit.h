@@ -296,6 +296,10 @@ enum NK_ENUM(nk_event_kind) {
     NK_EVENT_NOTIFICATION_DISMISSED = 502,
     /** A notification could not be shown or completed. */
     NK_EVENT_NOTIFICATION_FAILED = 503,
+    /** The user activated an application menu item. */
+    NK_EVENT_MENU_ITEM_ACTIVATED = 510,
+    /** The user requested that the application terminate. */
+    NK_EVENT_APPLICATION_QUIT_REQUESTED = 511,
     /** The attached mobile host geometry or insets changed. */
     NK_EVENT_MOBILE_HOST_GEOMETRY_CHANGED = 600,
     /** A graphics surface became ready for rendering. */
