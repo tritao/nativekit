@@ -505,7 +505,8 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
             [&](const RenderPlan &custom_plan, std::size_t primitive_index,
                 ResourceId destination_target, std::size_t destination_pass,
                 const std::array<float, 6> *command_transform = nullptr,
-                const LayoutRect *clip_override = nullptr) -> bool {
+                const LayoutRect *clip_override = nullptr,
+                uint32_t cache_revision = 0) -> bool {
             const auto &primitive = snapshot.primitives[primitive_index];
             std::unordered_map<uint32_t, ResourceId> remapped_targets;
             for (const auto &pass : custom_plan.passes) {
@@ -542,6 +543,7 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
             options.has_command_transform = command_transform != nullptr;
             if (command_transform)
                 options.command_transform = *command_transform;
+            options.cache_revision = cache_revision;
             RenderPlanEmbedError embed_error;
             if (!append_embedded_render_plan(custom_plan, options, out.plan_, &embed_error))
                 return fail(error, primitive_index,
@@ -557,6 +559,11 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
             if (!composite_content_slot)
                 return fail(error, primitive_index, "custom render-target limit exceeded");
             const auto &primitive = snapshot.primitives[primitive_index];
+            const auto *scene_item = snapshot.find(primitive.node_id);
+            const uint32_t content_revision =
+                scene_item ? scene_item->content_revision : primitive.content_revision;
+            const uint32_t composite_revision =
+                scene_item ? scene_item->composite_revision : primitive.composite_revision;
             const ResourceId content_target = make_resource_id(
                 ResourceKind::RenderTarget, 1, static_cast<uint16_t>(composite_content_slot--));
             RenderPass content_pass;
@@ -576,7 +583,8 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
             out.plan_.passes.push_back(std::move(content_pass));
             const std::size_t content_pass_index = out.plan_.passes.size() - 1;
             if (!append_custom_plan(content_plan, primitive_index, content_target,
-                                    content_pass_index, content_command_transform, clip_override))
+                                    content_pass_index, content_command_transform, clip_override,
+                                    content_revision))
                 return false;
 
             const RenderPlan *composite_plan =
@@ -594,7 +602,8 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                 destination_pass = current_main_pass;
             }
             return append_custom_plan(*composite_plan, primitive_index, destination_target,
-                                      destination_pass, command_transform, clip_override);
+                                      destination_pass, command_transform, clip_override,
+                                      composite_revision);
         };
         const auto append_custom_for_primitive = [&](std::size_t primitive_index) -> bool {
             if (!custom_paints)
@@ -605,6 +614,9 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
             const auto found = custom_paints->find(primitive.node_id);
             if (found == custom_paints->end() || !found->second)
                 return true;
+            const auto *scene_item = snapshot.find(primitive.node_id);
+            const uint32_t content_revision =
+                scene_item ? scene_item->content_revision : primitive.content_revision;
             const bool has_composite =
                 custom_composites && custom_composites->contains(primitive.node_id);
             if (active_raster_root != no_raster_root) {
@@ -620,7 +632,8 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                         clips.empty() ? nullptr : &local_clip);
                 return append_custom_plan(*found->second, primitive_index, active_raster_target,
                                           current_main_pass, &root.world_to_cache,
-                                          clips.empty() ? nullptr : &local_clip);
+                                          clips.empty() ? nullptr : &local_clip,
+                                          content_revision);
             }
             const bool raster =
                 raster_paint_nodes && raster_paint_nodes->contains(primitive.node_id);
@@ -630,7 +643,8 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                                                     raster);
             if (!raster)
                 return append_custom_plan(*found->second, primitive_index, main_target,
-                                          current_main_pass);
+                                          current_main_pass, nullptr, nullptr,
+                                          content_revision);
             if (transient_target_slot > std::numeric_limits<uint16_t>::max())
                 return fail(error, primitive_index, "raster cache target limit exceeded");
             const ResourceId raster_target = make_resource_id(
@@ -641,7 +655,8 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
             out.plan_.passes.push_back(std::move(raster_pass));
             const std::size_t raster_pass_index = out.plan_.passes.size() - 1;
             if (!append_custom_plan(*found->second, primitive_index, raster_target,
-                                    raster_pass_index))
+                                    raster_pass_index, nullptr, nullptr,
+                                    content_revision))
                 return false;
             out.plan_.dependencies.push_back({raster_target, main_target});
             RenderPass continuation;

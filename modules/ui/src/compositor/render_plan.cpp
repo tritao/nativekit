@@ -8,6 +8,24 @@
 namespace nkui {
 namespace {
 
+constexpr uint64_t kRevisionHashOffset = UINT64_C(1469598103934665603);
+constexpr uint64_t kRevisionHashPrime = UINT64_C(1099511628211);
+
+void hash_revision_u32(uint64_t &hash, uint32_t value) {
+    for (uint32_t shift = 0; shift < 32; shift += 8) {
+        hash ^= static_cast<uint8_t>(value >> shift);
+        hash *= kRevisionHashPrime;
+    }
+}
+
+uint64_t revisioned_cache_key(uint64_t key, uint32_t revision) {
+    if (!revision)
+        return key;
+    uint64_t hash = key ? key : kRevisionHashOffset;
+    hash_revision_u32(hash, revision);
+    return hash ? hash : 1;
+}
+
 bool same_resource(ResourceId left, ResourceId right) {
     return left.value == right.value;
 }
@@ -332,6 +350,8 @@ bool append_embedded_render_plan(const RenderPlan &source, const RenderPlanEmbed
         if (source_pass.target.value == options.source_main_target.value) {
             for (auto command : source_pass.commands) {
                 command.resource = remap_embedding_resource(command.resource, options);
+                command.content_generation =
+                    revisioned_cache_key(command.content_generation, options.cache_revision);
                 place_main_command(command, options);
                 command.custom_payload = true;
                 destination.passes[destination_main_index].commands.push_back(std::move(command));
@@ -340,6 +360,7 @@ bool append_embedded_render_plan(const RenderPlan &source, const RenderPlanEmbed
         }
 
         RenderPass pass = source_pass;
+        pass.cache_key = revisioned_cache_key(pass.cache_key, options.cache_revision);
         pass.target = remap_embedding_resource(pass.target, options);
         pass.input_target = remap_embedding_resource(pass.input_target, options);
         float target_origin_delta_x = 0.0f;
@@ -377,6 +398,8 @@ bool append_embedded_render_plan(const RenderPlan &source, const RenderPlanEmbed
             return fail_embed("embedded render-pass parameters are too large");
         for (auto &command : pass.commands) {
             command.resource = remap_embedding_resource(command.resource, options);
+            command.content_generation =
+                revisioned_cache_key(command.content_generation, options.cache_revision);
             if (has_bounded_target) {
                 // Bounded pass commands are local to the source target origin.
                 // Rebase them when embedding moves that origin in the parent.
