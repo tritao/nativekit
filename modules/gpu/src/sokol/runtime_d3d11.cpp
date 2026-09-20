@@ -318,8 +318,8 @@ uint32_t d3d11_image_copy(sg_image source, uint32_t source_mip, uint32_t source_
             return 0;
         context()->CopySubresourceRegion(
             destination_info.texture,
-            subresource(destination_info, destination_mip, destination_layer), 0, 0, 0,
-            source_info.texture,
+            subresource(destination_info, destination_mip, destination_layer),
+            0, 0, 0, source_info.texture,
             subresource(source_info, source_mip, source_layer), nullptr);
         return 1;
     }
