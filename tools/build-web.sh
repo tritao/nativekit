@@ -10,6 +10,7 @@ haxeon_target=${NKUI_HAXEON_TARGET:-wasm32}
 exception_mode=${NATIVEKIT_HAXEON_EXCEPTION_MODE:-legacy}
 bundle_fonts=${NKUI_HAXEON_BUNDLE_FONTS:-OFF}
 subset_fonts=${NKUI_HAXEON_SUBSET_FONTS:-ON}
+threaded_render=${NATIVEKIT_WEB_THREADED_RENDER:-OFF}
 
 if [[ ! -f "$emsdk_dir/emsdk_env.sh" ]]; then
     echo "Emscripten is not installed. Run tools/setup-web.sh first." >&2
@@ -29,6 +30,7 @@ emcmake cmake -S "$repo_dir" -B "$build_dir" -G Ninja \
     -DNKUI_HAXEON_MEMORY_STATS="$memory_stats" \
     -DNKUI_HAXEON_BUNDLE_FONTS="$bundle_fonts" \
     -DNKUI_HAXEON_SUBSET_FONTS="$subset_fonts" \
+    -DNK_WEB_THREADED_RENDER="$threaded_render" \
     -DNK_SOKOL_BACKEND=gles3
 
 web_targets=(

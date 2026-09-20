@@ -2333,6 +2333,10 @@ bool create_webgl_context(const char *selector, const WebGLContextOptions &optio
     attributes.enableExtensionsByDefault = true;
     attributes.majorVersion = 2;
     attributes.minorVersion = 0;
+    attributes.explicitSwapControl = options.explicit_swap;
+    attributes.renderViaOffscreenBackBuffer = options.render_via_offscreen_backbuffer;
+    if (options.proxy_context_to_main_thread >= 0)
+        attributes.proxyContextToMainThread = options.proxy_context_to_main_thread;
     const auto context = emscripten_webgl_create_context(selector, &attributes);
     if (context <= 0)
         return false;
@@ -2352,6 +2356,14 @@ void destroy_webgl_context(EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context) noexcept {
 bool make_context_current(EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context) noexcept {
     return context > 0 &&
            emscripten_webgl_make_context_current(context) == EMSCRIPTEN_RESULT_SUCCESS;
+}
+
+bool clear_context_current() noexcept {
+    return emscripten_webgl_make_context_current(0) == EMSCRIPTEN_RESULT_SUCCESS;
+}
+
+bool commit_context_frame() noexcept {
+    return emscripten_webgl_commit_frame() == EMSCRIPTEN_RESULT_SUCCESS;
 }
 
 bool request_fullscreen(const char *selector) noexcept {

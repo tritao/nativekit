@@ -14,6 +14,7 @@
 
 #include "core/boundary.hpp"
 #include "core/error.hpp"
+#include "core/executor.hpp"
 #include "core/frame_request.hpp"
 #include "core/frame_backend.hpp"
 #include "core/graphics_frame_target.hpp"
@@ -99,12 +100,45 @@ struct WebAccessibilityNode {
 
 struct WebGLContextResource {
     EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context = 0;
+    bool render_owned = false;
 
     ~WebGLContextResource() {
-        if (context)
-            nk::web::destroy_webgl_context(context);
+        if (!context)
+            return;
+        const auto context_handle = context;
+        context = 0;
+        if (render_owned && nk::core::render_executor_physical()) {
+            struct DestroyRequest {
+                EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context = 0;
+            } request{context_handle};
+            const auto destroy = [](void *data) {
+                auto *request = static_cast<DestroyRequest *>(data);
+                nk::web::destroy_webgl_context(request->context);
+            };
+            if (nk::core::dispatch_to_render_sync(destroy, &request, sizeof(request)) == NK_OK)
+                return;
+        }
+        /* During final runtime teardown the render executor has already
+           stopped. Emscripten still accepts destruction from the browser
+           thread, which is the last-resort cleanup for an unowned context. */
+        nk::web::destroy_webgl_context(context_handle);
     }
 };
+
+struct WebGLCreateRequest {
+    std::string selector;
+    nk::web::WebGLContextOptions options{};
+    EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context = 0;
+    bool success = false;
+};
+
+void create_webgl_context_on_render(void *data) {
+    auto *request = static_cast<WebGLCreateRequest *>(data);
+    if (!request)
+        return;
+    request->success = nk::web::create_webgl_context(request->selector.c_str(), request->options,
+                                                     &request->context);
+}
 
 template <typename T> std::vector<std::byte> bytes_of(const T &value) {
     const auto *first = reinterpret_cast<const std::byte *>(&value);
@@ -1823,8 +1857,12 @@ EM_BOOL frame_loop(double, void *user_data) {
     if (!surface->frame_requests.should_draw())
         return EM_FALSE;
     auto window = get_window(surface->parent);
-    if (!window || !nk::web::make_context_current(surface->context()))
+    if (!window)
         return EM_FALSE;
+#if !defined(NK_WEB_THREADED_RENDER)
+    if (!nk::web::make_context_current(surface->context()))
+        return EM_FALSE;
+#endif
     sync_canvas_size(*window);
     surface->frame_requests.begin_frame();
     nk::core::callback_boundary([&] {
@@ -2708,6 +2746,13 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
             window->selector = window->owned_canvas
                                    ? "#nativekit-window-" + std::to_string(window->handle)
                                    : nk::web::canvas_selector();
+#if defined(NK_WEB_THREADED_RENDER)
+            if (window->owned_canvas) {
+                nk::core::handles().erase(handle, nk::core::ResourceType::window);
+                return unsupported(
+                    "threaded Web rendering requires one pre-existing canvas selector");
+            }
+#endif
             if (!nk::web::create_canvas(window->selector.c_str(), window->owned_canvas,
                                         options->width, options->height) ||
                 !nk::web::set_canvas_size(window->selector.c_str(), options->width,
@@ -2965,6 +3010,12 @@ nk_result NK_CALL nk_surface_create(nk_handle window_handle, const nk_surface_op
             context_options.alpha = (options->flags & NK_SURFACE_ALPHA) != 0;
             context_options.depth = (options->flags & NK_SURFACE_DEPTH) != 0;
             context_options.stencil = (options->flags & NK_SURFACE_STENCIL) != 0;
+#if defined(NK_WEB_THREADED_RENDER)
+            context_options.explicit_swap = true;
+            context_options.render_via_offscreen_backbuffer = true;
+            context_options.proxy_context_to_main_thread =
+                EMSCRIPTEN_WEBGL_CONTEXT_PROXY_FALLBACK;
+#endif
             std::shared_ptr<WebGLContextResource> graphics = window->graphics;
             if (options->share_surface != NK_INVALID_HANDLE) {
                 auto shared_surface = get_surface(options->share_surface);
@@ -2976,14 +3027,32 @@ nk_result NK_CALL nk_surface_create(nk_handle window_handle, const nk_surface_op
             }
             if (!graphics) {
                 EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context = 0;
-                if (!nk::web::create_webgl_context(window->selector.c_str(), context_options,
-                                                   &context)) {
+                bool created = false;
+#if defined(NK_WEB_THREADED_RENDER)
+                WebGLCreateRequest request{};
+                request.selector = window->selector;
+                request.options = context_options;
+                created = nk::core::dispatch_to_render_sync(
+                              &create_webgl_context_on_render, &request, sizeof(request)) == NK_OK &&
+                          request.success;
+                context = request.context;
+#else
+                created = nk::web::create_webgl_context(window->selector.c_str(), context_options,
+                                                        &context);
+#endif
+                if (!created) {
                     nk::core::set_error(
                         "could not create a WebGL2 context for the NativeKit canvas");
                     return NK_ERROR_UNKNOWN;
                 }
                 graphics = std::make_shared<WebGLContextResource>();
                 graphics->context = context;
+                graphics->render_owned =
+#if defined(NK_WEB_THREADED_RENDER)
+                    true;
+#else
+                    false;
+#endif
                 window->graphics = graphics;
             }
             auto surface = std::make_shared<WebSurfaceResource>();
@@ -3240,7 +3309,16 @@ nk_result NK_CALL nk_surface_make_current(nk_handle handle) {
     auto surface = get_surface(handle);
     if (!surface)
         return invalid_handle("invalid web surface handle");
+#if defined(NK_WEB_THREADED_RENDER)
+    /* The OffscreenCanvas context is pinned to RENDER. Acquisition only needs
+       the platform-side size snapshot; RENDER binds the context from the
+       immutable frame target. */
+    if (!surface->context())
+        return NK_ERROR_INVALID_REQUEST;
+    return NK_OK;
+#else
     return nk::web::make_context_current(surface->context()) ? NK_OK : NK_ERROR_UNKNOWN;
+#endif
 }
 
 nk_result NK_CALL nk_surface_present(nk_handle handle) {
@@ -3424,16 +3502,39 @@ nk_result NK_CALL nk_surface_get_proc_address(nk_handle, const char *, nk_graphi
     return unsupported("WebGL functions are linked by Emscripten and have no proc-address table");
 }
 
-nk_result NK_CALL nk_graphics_bind_frame_target(const nk_surface_frame_target *) {
+nk_result NK_CALL nk_graphics_bind_frame_target(const nk_surface_frame_target *target) {
+#if defined(NK_WEB_THREADED_RENDER)
+    if (!target || !target->native_context)
+        return NK_ERROR_INVALID_ARGUMENT;
+    return nk::web::make_context_current(static_cast<EMSCRIPTEN_WEBGL_CONTEXT_HANDLE>(
+                                             target->native_context))
+               ? NK_OK
+               : NK_ERROR_UNKNOWN;
+#else
+    (void)target;
     return NK_OK;
+#endif
 }
 
-nk_result NK_CALL nk_graphics_unbind_frame_target(const nk_surface_frame_target *) {
+nk_result NK_CALL nk_graphics_unbind_frame_target(const nk_surface_frame_target *target) {
+#if defined(NK_WEB_THREADED_RENDER)
+    (void)target;
+    return nk::web::clear_context_current() ? NK_OK : NK_ERROR_UNKNOWN;
+#else
+    (void)target;
     return NK_OK;
+#endif
 }
 
-nk_result NK_CALL nk_frame_backend_submit(const nk_surface_frame_target *) {
+nk_result NK_CALL nk_frame_backend_submit(const nk_surface_frame_target *target) {
+#if defined(NK_WEB_THREADED_RENDER)
+    if (!target || !target->native_context)
+        return NK_ERROR_INVALID_ARGUMENT;
+    return nk::web::commit_context_frame() ? NK_OK : NK_ERROR_UNKNOWN;
+#else
+    (void)target;
     return NK_OK;
+#endif
 }
 
 nk_result NK_CALL nk_frame_backend_finish(nk_handle handle, const nk_surface_frame_target *) {

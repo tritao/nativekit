@@ -13,6 +13,13 @@
 #include <thread>
 #include <utility>
 
+#if defined(NK_BACKEND_WEB) && defined(NK_WEB_THREADED_RENDER)
+#include "nativekit_web_config.h"
+
+#include <emscripten/threading.h>
+#include <pthread.h>
+#endif
+
 namespace {
 
 std::mutex executor_mutex;
@@ -28,7 +35,12 @@ std::mutex render_task_mutex;
 std::condition_variable render_task_condition;
 std::condition_variable render_started_condition;
 std::deque<nk::core::AppTask> render_tasks;
+#if defined(NK_BACKEND_WEB) && defined(NK_WEB_THREADED_RENDER)
+pthread_t render_thread{};
+bool render_thread_joinable = false;
+#else
 std::thread render_thread;
+#endif
 bool render_started = false;
 bool render_accepting = false;
 bool render_stopping = false;
@@ -41,7 +53,7 @@ constexpr std::size_t app_task_byte_capacity = 4u * 1024u * 1024u;
 std::size_t pending_task_bytes = 0;
 
 constexpr bool physical_render_backend =
-#if defined(NK_BACKEND_GTK) || defined(NK_BACKEND_WEB)
+#if defined(NK_BACKEND_GTK) || (defined(NK_BACKEND_WEB) && !defined(NK_WEB_THREADED_RENDER))
     false;
 #else
     true;
@@ -129,7 +141,38 @@ nk_result start_render_executor() noexcept {
         render_accepting = true;
         render_task_bytes = 0;
     }
+#if defined(NK_BACKEND_WEB) && defined(NK_WEB_THREADED_RENDER)
+    pthread_attr_t attributes;
+    if (pthread_attr_init(&attributes) != 0) {
+        std::lock_guard lock(render_task_mutex);
+        render_accepting = false;
+        return NK_ERROR_UNKNOWN;
+    }
+    /* The canvas must be transferred before the worker creates its WebGL
+       context.  The selector string is held by the generated configuration
+       header for the lifetime of the process. */
+    if (emscripten_pthread_attr_settransferredcanvases(&attributes,
+                                                       NK_WEB_CANVAS_SELECTOR) != 0) {
+        pthread_attr_destroy(&attributes);
+        std::lock_guard lock(render_task_mutex);
+        render_accepting = false;
+        return NK_ERROR_UNSUPPORTED;
+    }
+    const auto thread_entry = [](void *) -> void * {
+        render_loop();
+        return nullptr;
+    };
+    const int created = pthread_create(&render_thread, &attributes, thread_entry, nullptr);
+    pthread_attr_destroy(&attributes);
+    if (created != 0) {
+        std::lock_guard lock(render_task_mutex);
+        render_accepting = false;
+        return NK_ERROR_UNKNOWN;
+    }
+    render_thread_joinable = true;
+#else
     render_thread = std::thread(render_loop);
+#endif
     std::unique_lock lock(render_task_mutex);
     render_started_condition.wait(lock, [] { return render_started; });
     {
@@ -144,14 +187,26 @@ void stop_render_executor() noexcept {
         return;
     {
         std::lock_guard lock(render_task_mutex);
+#if defined(NK_BACKEND_WEB) && defined(NK_WEB_THREADED_RENDER)
+        if (!render_accepting && !render_thread_joinable)
+#else
         if (!render_accepting && !render_thread.joinable())
+#endif
             return;
         render_accepting = false;
         render_stopping = true;
     }
     render_task_condition.notify_all();
+#if defined(NK_BACKEND_WEB) && defined(NK_WEB_THREADED_RENDER)
+    if (render_thread_joinable) {
+        pthread_join(render_thread, nullptr);
+        render_thread = {};
+        render_thread_joinable = false;
+    }
+#else
     if (render_thread.joinable())
         render_thread.join();
+#endif
     std::lock_guard lock(executor_mutex);
     render_executor_exclusive = false;
 }
@@ -320,6 +375,52 @@ nk_result dispatch_to_render(nk_task_fn fn, void *user_data, void (*cleanup)(voi
         render_task_bytes += bytes;
     }
     render_task_condition.notify_one();
+    return NK_OK;
+}
+
+namespace {
+
+struct SynchronousRenderTask {
+    std::mutex mutex;
+    std::condition_variable condition;
+    nk_task_fn fn = nullptr;
+    void *user_data = nullptr;
+    bool completed = false;
+};
+
+void run_synchronous_render_task(void *user_data) {
+    auto *task = static_cast<SynchronousRenderTask *>(user_data);
+    if (!task)
+        return;
+    if (task->fn)
+        nk::core::callback_boundary([&] { task->fn(task->user_data); });
+    {
+        std::lock_guard lock(task->mutex);
+        task->completed = true;
+    }
+    task->condition.notify_one();
+}
+
+} // namespace
+
+nk_result dispatch_to_render_sync(nk_task_fn fn, void *user_data, std::size_t bytes) noexcept {
+    if (!fn) {
+        set_error("nk_task_fn is null");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    if (executor_current() == NK_EXECUTOR_RENDER || executor_satisfies(NK_EXECUTOR_RENDER)) {
+        nk::core::callback_boundary([&] { fn(user_data); });
+        return NK_OK;
+    }
+    SynchronousRenderTask task;
+    task.fn = fn;
+    task.user_data = user_data;
+    const nk_result queued = dispatch_to_render(&run_synchronous_render_task, &task, nullptr,
+                                                bytes == 0 ? sizeof(task) : bytes);
+    if (queued != NK_OK)
+        return queued;
+    std::unique_lock lock(task.mutex);
+    task.condition.wait(lock, [&] { return task.completed; });
     return NK_OK;
 }
 

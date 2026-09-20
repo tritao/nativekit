@@ -43,6 +43,9 @@ set(NK_SCENE_SANITIZER "" CACHE STRING
     "Sanitizer set for the retained scene and scene tests (for example address,undefined or thread)")
 set_property(CACHE NK_SCENE_SANITIZER PROPERTY STRINGS "" address,undefined thread)
 option(NK_ENABLE_WEBVIEW2 "Enable the Windows WebView2 backend" ON)
+option(NK_WEB_THREADED_RENDER
+    "Enable the experimental Web OffscreenCanvas render executor (requires pthread-capable hosting)"
+    OFF)
 
 if(WIN32)
     set(_nk_default_sokol_backend d3d11)
@@ -178,6 +181,16 @@ if(NOT NK_BUILD_SHARED OR EMSCRIPTEN)
 endif()
 
 if(EMSCRIPTEN)
+    if(NK_WEB_THREADED_RENDER)
+        target_compile_definitions(nativekit PRIVATE NK_WEB_THREADED_RENDER=1)
+        target_compile_options(nativekit PRIVATE -pthread)
+        target_link_options(nativekit INTERFACE
+            "-pthread"
+            "-sOFFSCREENCANVAS_SUPPORT=1"
+            "-sOFFSCREEN_FRAMEBUFFER=1"
+            "-sPTHREAD_POOL_SIZE=1"
+            "-sPTHREAD_POOL_DELAY_LOAD=0")
+    endif()
     set(NK_WEB_CANVAS_SELECTOR "#canvas" CACHE STRING
         "CSS selector for the canvas used by NativeKit's browser backend")
     configure_file(src/web/config.h.in

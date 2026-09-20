@@ -156,6 +156,9 @@ struct WebGLContextOptions {
     bool depth = false;
     bool stencil = false;
     bool debug = false;
+    bool explicit_swap = false;
+    bool render_via_offscreen_backbuffer = false;
+    int proxy_context_to_main_thread = -1;
 };
 
 const char *canvas_selector() noexcept;
@@ -201,6 +204,8 @@ bool create_webgl_context(const char *selector, const WebGLContextOptions &optio
                           EMSCRIPTEN_WEBGL_CONTEXT_HANDLE *out_context) noexcept;
 void destroy_webgl_context(EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context) noexcept;
 bool make_context_current(EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context) noexcept;
+bool clear_context_current() noexcept;
+bool commit_context_frame() noexcept;
 
 bool request_fullscreen(const char *selector) noexcept;
 bool exit_fullscreen() noexcept;
