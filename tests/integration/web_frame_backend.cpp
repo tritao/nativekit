@@ -26,8 +26,8 @@ struct FrameProbe {
 
 void run_frame_probe(void *data) {
     auto &probe = *static_cast<FrameProbe *>(data);
-    probe.render_executor = !nk::core::render_executor_physical() ||
-                           nk::core::executor_current() == NK_EXECUTOR_RENDER;
+    probe.render_executor =
+        !nk::core::render_executor_physical() || nk::core::executor_current() == NK_EXECUTOR_RENDER;
     nk::core::reset_render_surface_api_violations();
     nk::core::set_render_surface_api_guard(true);
     probe.bind = nk_graphics_bind_frame_target(&probe.target);
@@ -45,10 +45,9 @@ bool run_frame(nk_window window, nk_surface surface, bool cancel, int32_t width,
     nk_surface_frame frame = NK_INVALID_HANDLE;
     nk_surface_frame_target target{};
     target.struct_size = sizeof(target);
-    if (nk_surface_acquire_frame(surface, &frame, &target) != NK_OK ||
-        frame == NK_INVALID_HANDLE || target.frame != frame ||
-        target.api != NK_GRAPHICS_OPENGL_ES || target.width <= 0 || target.height <= 0 ||
-        !target.device.id || !target.native_context) {
+    if (nk_surface_acquire_frame(surface, &frame, &target) != NK_OK || frame == NK_INVALID_HANDLE ||
+        target.frame != frame || target.api != NK_GRAPHICS_OPENGL_ES || target.width <= 0 ||
+        target.height <= 0 || !target.device.id || !target.native_context) {
         if (frame != NK_INVALID_HANDLE)
             (void)nk_surface_cancel_frame(frame);
         return false;
@@ -65,8 +64,8 @@ bool run_frame(nk_window window, nk_surface surface, bool cancel, int32_t width,
         return false;
     }
 
-    const nk_result closed = cancel ? nk_surface_cancel_frame(frame)
-                                    : nk_surface_present_frame(frame);
+    const nk_result closed =
+        cancel ? nk_surface_cancel_frame(frame) : nk_surface_present_frame(frame);
     if (closed != NK_OK)
         return false;
     return nk_window_set_bounds(window, 0, 0, width, height) == NK_OK;
@@ -121,10 +120,12 @@ int main() {
     nk_shutdown();
 
 #ifdef __EMSCRIPTEN__
+    // clang-format off
     EM_ASM({
         document.documentElement.dataset.nativekitFrameBackendResult =
             $0 === 0 ? "passed" : "failed";
     }, result);
+    // clang-format on
 #endif
     return result;
 }

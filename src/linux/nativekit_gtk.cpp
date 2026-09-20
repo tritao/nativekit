@@ -2251,9 +2251,8 @@ void run_gtk_frame_callback(void *user_data) {
     const auto callback = resource.frame_callback;
     if (!resource.widget || !callback || !nk::core::is_runtime_generation(resource.generation))
         return;
-    nk::core::callback_boundary([&] {
-        callback(resource.handle, task->width, task->height, resource.frame_user_data);
-    });
+    nk::core::callback_boundary(
+        [&] { callback(resource.handle, task->width, task->height, resource.frame_user_data); });
 }
 
 void destroy_gtk_frame_callback(void *user_data) noexcept {
@@ -2286,8 +2285,7 @@ gboolean on_surface_tick(GtkWidget *widget, GdkFrameClock *, gpointer data) {
     if (nk::core::render_executor_physical()) {
         const int scale = gtk_widget_get_scale_factor(widget);
         auto *task = new (std::nothrow) GtkFrameCallbackTask{
-            surface(resource->handle),
-            gtk_widget_get_allocated_width(widget) * scale,
+            surface(resource->handle), gtk_widget_get_allocated_width(widget) * scale,
             gtk_widget_get_allocated_height(widget) * scale};
         if (!task ||
             nk::core::dispatch_to_executor(NK_EXECUTOR_PLATFORM, &run_gtk_frame_callback, task,
