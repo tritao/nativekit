@@ -114,6 +114,7 @@ import nativekit.ui.widgets.Toggle;
 import nativekit.ui.widgets.Tooltip;
 import nativekit.ui.widgets.Utf8Text;
 import nativekit.ui.widgets.VirtualList;
+import nativekit.ui.widgets.VirtualViewport;
 import nativekit.ui.widgets.WindowChrome;
 import nativekit.ui.theme.Theme;
 import nativekit.ui.theme.ThemeTokens;
@@ -1219,6 +1220,16 @@ class FrameworkSmoke {
 		context.key(UiEventKind.KeyDown, UiKey.Home);
 		if (scrollView.controller.offsetY != 0.0)
 			return 245;
+		var emptyViewport = new VirtualViewport(0, 32.0, 350.0, 0.0);
+		var topViewport = new VirtualViewport(100000, 32.0, 350.0, 0.0);
+		var middleViewport = new VirtualViewport(100000, 32.0, 350.0, 414.0 * 32.0);
+		var bottomViewport = new VirtualViewport(100000, 32.0, 350.0, 100000.0 * 32.0);
+		if (emptyViewport.count != 0 || topViewport.first != 0 || topViewport.last != 12 ||
+			!topViewport.contains(0) || topViewport.contains(12) ||
+			middleViewport.first != 413 || middleViewport.last != 426 ||
+			bottomViewport.first != 99988 || bottomViewport.last != 100000 ||
+			!bottomViewport.contains(99999) || bottomViewport.contains(99987))
+			return 247;
 		var builtRows:Array<Int> = [];
 		var listController = new ScrollController();
 		var virtualStyle = new LayoutStyle();
