@@ -344,6 +344,14 @@ NKUI_API nkui_result NK_CALL nkui_layout_session_get_hit_test_stats(
 /** Clears all custom-paint display lists attached to the session. */
 NKUI_API nkui_result NK_CALL nkui_layout_session_clear_custom_paints(nkui_layout_session session);
 
+/** Clears the retained content display list for one custom-visual node. */
+NKUI_API nkui_result NK_CALL nkui_layout_session_clear_custom_paint(
+    nkui_layout_session session, uint32_t node_id);
+
+/** Clears the retained composite metadata display list for one custom-visual node. */
+NKUI_API nkui_result NK_CALL nkui_layout_session_clear_custom_paint_composite(
+    nkui_layout_session session, uint32_t node_id);
+
 /**
  * Associates a retained display list with a custom-visual node from the most
  * recently submitted tree. The session retains the list until it is replaced,
