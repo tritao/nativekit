@@ -8,13 +8,25 @@
 #include <string>
 #include <unordered_map>
 
+@interface NKMenuActionTarget : NSObject
+- (void)activate:(id)sender;
+@end
+
+@implementation NKMenuActionTarget
+- (void)activate:(id)sender {
+    if (![sender isKindOfClass:[NSMenuItem class]])
+        return;
+    nk::core::menu_item_activated(static_cast<nk_menu_item>([(NSMenuItem *)sender tag]));
+}
+@end
+
 namespace {
 
 struct MacMenuState {
     nk_menu handle = NK_INVALID_HANDLE;
-    NSMenu *menu = nil;
-    NSMenu *previous = nil;
-    id target = nil;
+    __strong NSMenu *menu = nil;
+    __strong NSMenu *previous = nil;
+    __strong id target = nil;
     std::unordered_map<nk_menu_item, NSMenuItem *> items;
 };
 
@@ -33,23 +45,26 @@ NSString *shortcut_key(nk_key key) {
         return [[NSString alloc] initWithFormat:@"%c", static_cast<int>(key)];
     switch (key) {
     case NK_KEY_SPACE:
-        return [@" " retain];
+        return @" ";
     case NK_KEY_TAB:
-        return [@"\t" retain];
+        return @"\t";
     case NK_KEY_ENTER:
-        return [@"\r" retain];
+        return @"\r";
     case NK_KEY_ESCAPE:
-        return [@"\033" retain];
+        return @"\033";
     case NK_KEY_BACKSPACE:
-        return [@"\b" retain];
+        return @"\b";
     case NK_KEY_LEFT:
-        return [[NSString alloc] initWithFormat:@"%C", NSLeftArrowFunctionKey];
+        return
+            [[NSString alloc] initWithFormat:@"%C", static_cast<unichar>(NSLeftArrowFunctionKey)];
     case NK_KEY_RIGHT:
-        return [[NSString alloc] initWithFormat:@"%C", NSRightArrowFunctionKey];
+        return
+            [[NSString alloc] initWithFormat:@"%C", static_cast<unichar>(NSRightArrowFunctionKey)];
     case NK_KEY_UP:
-        return [[NSString alloc] initWithFormat:@"%C", NSUpArrowFunctionKey];
+        return [[NSString alloc] initWithFormat:@"%C", static_cast<unichar>(NSUpArrowFunctionKey)];
     case NK_KEY_DOWN:
-        return [[NSString alloc] initWithFormat:@"%C", NSDownArrowFunctionKey];
+        return
+            [[NSString alloc] initWithFormat:@"%C", static_cast<unichar>(NSDownArrowFunctionKey)];
     default:
         return nil;
     }
@@ -68,22 +83,9 @@ NSEventModifierFlags shortcut_modifiers(nk_menu_modifiers modifiers) {
     return result;
 }
 
-@interface NKMenuActionTarget : NSObject
-- (void)activate:(id)sender;
-@end
-
-@implementation NKMenuActionTarget
-- (void)activate:(id)sender {
-    if (![sender isKindOfClass:[NSMenuItem class]])
-        return;
-    nk::core::menu_item_activated(static_cast<nk_menu_item>([(NSMenuItem *)sender tag]));
-}
-@end
-
 void set_native_state(NSMenuItem *native, const nk::core::MenuItemResource &item) {
     NSString *title = menu_string(item.label);
     [native setTitle:title ?: @""];
-    [title release];
     [native setEnabled:(item.flags & NK_MENU_ITEM_DISABLED) == 0];
     [native setHidden:(item.flags & NK_MENU_ITEM_HIDDEN) != 0];
     [native setState:(item.flags & NK_MENU_ITEM_CHECKED) ? NSControlStateValueOn
@@ -91,7 +93,6 @@ void set_native_state(NSMenuItem *native, const nk::core::MenuItemResource &item
     NSString *key = shortcut_key(item.shortcut.key);
     [native setKeyEquivalent:key ?: @""];
     [native setKeyEquivalentModifierMask:shortcut_modifiers(item.shortcut.modifiers)];
-    [key release];
 }
 
 NSMenuItem *add_native_item(const std::shared_ptr<nk::core::MenuItemResource> &item,
@@ -104,17 +105,14 @@ NSMenuItem *add_native_item(const std::shared_ptr<nk::core::MenuItemResource> &i
         native = [[NSMenuItem alloc] initWithTitle:title ?: @""
                                             action:@selector(activate:)
                                      keyEquivalent:@""];
-        [title release];
         [native setTarget:state.target];
         [native setTag:static_cast<NSInteger>(item->handle)];
         set_native_state(native, *item);
         if (item->kind == NK_MENU_ITEM_SUBMENU) {
             NSString *submenu_title = menu_string(item->label);
             NSMenu *submenu = [[NSMenu alloc] initWithTitle:submenu_title ?: @""];
-            [submenu_title release];
             [submenu setAutoenablesItems:NO];
             [native setSubmenu:submenu];
-            [submenu release];
         }
     }
     [parent addItem:native];
@@ -128,8 +126,6 @@ NSMenuItem *add_native_item(const std::shared_ptr<nk::core::MenuItemResource> &i
                 add_native_item(resource, submenu);
         }
     }
-    if (item->kind != NK_MENU_ITEM_SEPARATOR)
-        [native release];
     return native;
 }
 
@@ -139,10 +135,10 @@ void clear_native_menu(bool restore) {
     if (restore && NSApp.mainMenu == state.menu)
         [NSApp setMainMenu:state.previous];
     state.items.clear();
-    [state.menu release];
-    [state.previous release];
-    [state.target release];
-    state = {};
+    state.menu = nil;
+    state.previous = nil;
+    state.target = nil;
+    state.handle = NK_INVALID_HANDLE;
 }
 
 } // namespace
@@ -159,9 +155,8 @@ nk_result menu_install(const std::shared_ptr<nk::core::MenuResource> &menu) noex
         state.handle = menu->handle;
         NSString *menu_title = menu_string(menu->title);
         state.menu = [[NSMenu alloc] initWithTitle:menu_title ?: @""];
-        [menu_title release];
         [state.menu setAutoenablesItems:NO];
-        state.previous = [NSApp.mainMenu retain];
+        state.previous = NSApp.mainMenu;
         state.target = [[NKMenuActionTarget alloc] init];
         for (const auto child : menu->children) {
             const auto resource = std::static_pointer_cast<nk::core::MenuItemResource>(
