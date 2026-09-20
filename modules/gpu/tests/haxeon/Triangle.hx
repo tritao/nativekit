@@ -17,6 +17,7 @@ import nativekit.gpu.Enums.ImageFormat;
 import nativekit.gpu.Enums.ImageUsage;
 import nativekit.gpu.Enums.IndexType;
 import nativekit.gpu.Enums.LoadAction;
+import nativekit.gpu.Enums.ReadbackState;
 import nativekit.gpu.Enums.ShaderStage;
 import nativekit.gpu.Enums.ShaderLanguage;
 import nativekit.gpu.Enums.StoreAction;
@@ -26,6 +27,7 @@ import nativekit.gpu.Enums.Wrap;
 import nativekit.gpu.Image;
 import nativekit.gpu.ImageDesc;
 import nativekit.gpu.Pipeline;
+import nativekit.gpu.Readback;
 import nativekit.gpu.RenderPassDesc;
 import nativekit.gpu.Renderer;
 import nativekit.gpu.Sampler;
@@ -125,6 +127,63 @@ class Triangle {
 				commandBuffer.applyUniform2f(0, -0.90 + x * 0.095, -0.90 + y * 0.095);
 				commandBuffer.draw(0, 6, 1);
 			}
+		}
+	}
+
+	static function exerciseOptionalFeatures(renderer:Renderer):Void {
+		var features = renderer.features();
+		var limits = renderer.limits();
+		if (features.mrtCount < 1 || limits.maxTextureSize <= 0 || limits.maxColorAttachments < 1)
+			throw "GPU capability envelope returned invalid limits";
+
+		if (features.imageReadback) {
+			var readbackDesc = new ImageDesc(1, 1, ImageFormat.Rgba8,
+				ImageUsage.Sampled | ImageUsage.RenderTarget);
+			var readbackImage = Image.create(renderer, readbackDesc);
+			var readbackPass = new RenderPassDesc();
+			var readbackAction = new AttachmentAction(LoadAction.Clear, StoreAction.Store);
+			readbackAction.clearAlpha = 1.0;
+			readbackPass.color(readbackImage, readbackAction);
+			renderer.beginPassFrame();
+			renderer.beginRenderPass(readbackPass);
+			renderer.endPass();
+			renderer.endFrame();
+			var readback = Readback.begin(readbackImage, 0, 0, 1, 1);
+			var info = readback.query();
+			var polls = 0;
+			while (info.state == ReadbackState.Pending && polls < 1000) {
+				info = readback.query();
+				polls += 1;
+			}
+			if (info.state != ReadbackState.Ready || info.size != 4 || info.rowPitch != 4)
+				throw "GPU image readback did not become a packed RGBA8 result";
+			var pixel = Bytes.alloc(info.size);
+			var readSize = readback.read(pixel);
+			if (readSize != 4 || pixel.get(3) != 255)
+				throw "GPU image readback returned an invalid packed pixel";
+			readback.dispose();
+			readbackImage.dispose();
+		}
+
+		if (features.compute && features.storageBuffer) {
+			var computeSource = NativeKitGpu.nkgpu_query_graphics_api(renderer.nativeHandle()) == GraphicsApi.OpenglEs
+				? "#version 310 es\nlayout(local_size_x=1, local_size_y=1, local_size_z=1) in; layout(std430, binding=0) buffer Data { uint value[]; }; void main(){ value[0] = 1u; }"
+				: "#version 430\nlayout(local_size_x=1, local_size_y=1, local_size_z=1) in; layout(std430, binding=0) buffer Data { uint value[]; }; void main(){ value[0] = 1u; }";
+			var computeShader = Shader.beginCompute(renderer, ShaderLanguage.Glsl, computeSource)
+				.storageBuffer(0, ShaderStage.Compute)
+				.build();
+			var computePipeline = Pipeline.beginCompute(renderer, computeShader).compute().build();
+			var computeBuffer = Buffer.create(renderer, new BufferDesc(4, BufferUsage.Storage));
+			renderer.beginPassFrame();
+			renderer.beginComputePass();
+			computePipeline.apply();
+			computeBuffer.applyStorage(0);
+			renderer.dispatch(1, 1, 1);
+			renderer.endPass();
+			renderer.endFrame();
+			computeBuffer.dispose();
+			computePipeline.dispose();
+			computeShader.dispose();
 		}
 	}
 
@@ -238,6 +297,7 @@ class Triangle {
 				renderer.endFrame();
 				transferSource.dispose();
 				transferDestination.dispose();
+				exerciseOptionalFeatures(renderer);
 				targetColor.dispose();
 				targetDepth.dispose();
 				ready = true;

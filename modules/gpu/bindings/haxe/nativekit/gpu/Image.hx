@@ -103,7 +103,7 @@ class Image {
 	public function isDisposed():Bool
 		return disposed;
 
-	@:allow(CommandBuffer, Renderer)
+	@:allow(CommandBuffer, Renderer, Readback)
 	function rendererOwner():Renderer
 		return renderer;
 

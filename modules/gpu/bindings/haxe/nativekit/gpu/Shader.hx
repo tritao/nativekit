@@ -2,6 +2,7 @@ package nativekit.gpu;
 
 import nativekit.gpu.Enums.ShaderStage;
 import nativekit.gpu.Enums.ShaderLanguage;
+import nativekit.gpu.Enums.ImageFormat;
 import nativekit.gpu.Enums.UniformType;
 
 /** Renderer-owned shader resource. */
@@ -32,6 +33,15 @@ class Shader {
 		var made = NativeKitGpu.nkgpu_shader_begin(renderer.nativeHandle(), language,
 			vertexSource, fragmentSource);
 		GpuResult.check(made.status, "shader.begin");
+		return new ShaderBuilder(renderer, made.out_builder);
+	}
+
+	/** Begins a compute-only shader builder. */
+	public static function beginCompute(renderer:Renderer, language:ShaderLanguage,
+		computeSource:String):ShaderBuilder {
+		renderer.ensureResourceOperation();
+		var made = NativeKitGpu.nkgpu_shader_begin_compute(renderer.nativeHandle(), language, computeSource);
+		GpuResult.check(made.status, "shader.beginCompute");
 		return new ShaderBuilder(renderer, made.out_builder);
 	}
 
@@ -110,6 +120,28 @@ class ShaderBuilder {
 		if (viewSlot < 0 || samplerSlot < 0)
 			throw "GPU texture slots must be non-negative";
 		GpuResult.check(NativeKitGpu.nkgpu_shader_texture(value, viewSlot, samplerSlot, stage, name), "shader.texture");
+		return this;
+	}
+
+	/** Describes a storage-buffer resource for a compute or graphics stage. */
+	public function storageBuffer(viewSlot:Int, stage:ShaderStage = ShaderStage.Compute,
+		readonly:Bool = false):ShaderBuilder {
+		ensureLive();
+		if (viewSlot < 0)
+			throw "GPU storage-buffer slot must be non-negative";
+		GpuResult.check(NativeKitGpu.nkgpu_shader_storage_buffer(value, viewSlot, stage,
+			readonly ? 1 : 0), "shader.storageBuffer");
+		return this;
+	}
+
+	/** Describes a compute storage-image resource and its access format. */
+	public function storageImage(viewSlot:Int, format:ImageFormat,
+		writeonly:Bool = false):ShaderBuilder {
+		ensureLive();
+		if (viewSlot < 0)
+			throw "GPU storage-image slot must be non-negative";
+		GpuResult.check(NativeKitGpu.nkgpu_shader_storage_image(value, viewSlot, format,
+			writeonly ? 1 : 0), "shader.storageImage");
 		return this;
 	}
 
