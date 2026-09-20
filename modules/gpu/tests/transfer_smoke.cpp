@@ -215,6 +215,14 @@ bool offscreen_format(nkgpu_renderer renderer, const nkgpu_features &features,
     uint8_t initial_data[32]{};
     for (uint32_t index = 0; index < width * height * bytes; ++index)
         initial_data[index] = static_cast<uint8_t>(0x20u + index);
+    uint8_t expected_bytes[32]{};
+    if (can_render && depth) {
+        const uint32_t depth_bits = 0x3f800000u;
+        for (uint32_t offset = 0; offset < width * height * bytes; offset += sizeof(depth_bits))
+            std::memcpy(expected_bytes + offset, &depth_bits, sizeof(depth_bits));
+    } else if (!can_render) {
+        std::memcpy(expected_bytes, initial_data, width * height * bytes);
+    }
 
     nkgpu_image_usage usage = 0;
     if (can_sample)
@@ -290,8 +298,11 @@ bool offscreen_format(nkgpu_renderer renderer, const nkgpu_features &features,
     if (success && can_sample && features.image_readback) {
         uint8_t readback_bytes[32]{};
         if (!readback(renderer, destination.id ? destination : source, 0, 0, width, height,
-                      readback_bytes, width * height * bytes))
+                      readback_bytes, width * height * bytes) ||
+            std::memcmp(readback_bytes, expected_bytes, width * height * bytes) != 0) {
+            std::fprintf(stderr, "offscreen format %s readback mismatch\n", format_name(format));
             success = false;
+        }
     }
     if (destination.id)
         expect_result(nkgpu_image_destroy(renderer, destination), NKGPU_OK,
@@ -335,6 +346,13 @@ int main() {
         !features.buffer_copy || !features.image_copy || !features.image_readback ||
         !features.buffer_readback) {
         std::fprintf(stderr, "the selected GPU backend does not expose transfer operations\n");
+        return 1;
+    }
+
+    const nkgpu_backend backend = nkgpu_query_backend(resources.renderer);
+    if ((backend == NKGPU_BACKEND_D3D11 || backend == NKGPU_BACKEND_METAL) &&
+        !features.timestamps) {
+        std::fprintf(stderr, "native backend does not expose GPU timestamps\n");
         return 1;
     }
 
@@ -594,7 +612,6 @@ int main() {
 
     /* OpenGL's current transfer path is intentionally 2D-only; native D3D11
        and Metal paths must also preserve array-layer addressing. */
-    const nkgpu_backend backend = nkgpu_query_backend(resources.renderer);
     if (backend == NKGPU_BACKEND_D3D11 || backend == NKGPU_BACKEND_METAL) {
         const uint32_t array_pixels[] = {11u, 12u, 21u, 22u, 31u, 32u, 41u, 42u};
         nkgpu_image_desc array_desc = image_desc;

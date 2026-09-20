@@ -229,7 +229,7 @@ int main() {
         nkgpu_native_context native_context{};
         native_context.struct_size = sizeof(native_context);
         EXPECT_RESULT(nkgpu_get_native_context(first, &native_context), NKGPU_OK);
-        if (!native_context.backend) {
+        if (!native_context.backend || native_context.backend != nkgpu_query_backend(first)) {
             result = __LINE__;
             goto cleanup;
         }

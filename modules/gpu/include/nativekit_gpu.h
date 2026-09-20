@@ -873,7 +873,13 @@ typedef struct nkgpu_limits {
     uint32_t max_cube_size;
 } nkgpu_limits;
 
-/** Opaque backend tokens for advanced native integration. */
+/**
+ * Opaque backend tokens for advanced native integration.
+ *
+ * The tokens are borrowed and remain valid only while the renderer is alive.
+ * They may be zero when a backend does not expose the corresponding token.
+ * NativeKit retains ownership; callers must not release them through NativeKit.
+ */
 typedef struct nkgpu_native_context {
     uint32_t struct_size NK_STRUCT_SIZE;
     nkgpu_backend backend;
@@ -891,7 +897,7 @@ NKGPU_API nkgpu_result
 nkgpu_query_image_format_support(nkgpu_renderer renderer, nkgpu_image_format format,
                                  nkgpu_image_format_support *out_support NKGPU_OUT);
 
-/** Returns opaque native device/context tokens for advanced backend integration. */
+/** Returns borrowed opaque native device/context tokens for advanced backend integration. */
 NKGPU_API nkgpu_result nkgpu_get_native_context(nkgpu_renderer renderer,
                                                 nkgpu_native_context *out_context NKGPU_OUT);
 

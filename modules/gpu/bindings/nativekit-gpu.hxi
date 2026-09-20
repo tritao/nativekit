@@ -890,7 +890,7 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_frame_begin(renderer: nkgpu_renderer) -> nkgpu_result;
 	/**
-	 * Returns opaque native device/context tokens for advanced backend integration.
+	 * Returns borrowed opaque native device/context tokens for advanced backend integration.
 	 */
 	extern fn nkgpu_get_native_context(renderer: nkgpu_renderer, out_context: ptr<nkgpu_native_context> @out) -> nkgpu_result;
 	/**
@@ -1498,6 +1498,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	}
 	/**
 	 * Opaque backend tokens for advanced native integration.
+	 *
+	 * The tokens are borrowed and remain valid only while the renderer is alive.
+	 * They may be zero when a backend does not expose the corresponding token.
+	 * NativeKit retains ownership; callers must not release them through NativeKit.
 	 */
 	struct nkgpu_native_context @layout(24, 8) {
 		struct_size: u32 @offset(0) @struct_size;
