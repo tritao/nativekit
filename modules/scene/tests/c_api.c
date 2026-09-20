@@ -75,6 +75,18 @@ int main(void) {
     assert(nkscene_snapshot_get_occurrence_page(snapshot, count, &page) == NKS_OK);
     assert(page.count == 0);
 
+    uint64_t source_count = 0;
+    assert(nkscene_snapshot_get_source_occurrence_count(
+               snapshot, first_source, &source_count) == NKS_OK);
+    assert(source_count == 1);
+    nkscene_occurrence_id source_occurrence = {0};
+    assert(nkscene_snapshot_get_source_occurrence(
+               snapshot, first_source, 0, &source_occurrence) == NKS_OK);
+    assert(source_occurrence.value == first.value);
+    assert(nkscene_snapshot_get_source_occurrence(
+               snapshot, first_source, source_count, &source_occurrence) ==
+           NKS_ERROR_INVALID_ARGUMENT);
+
     nkscene_snapshot_destroy(snapshot);
     nkscene_scene_destroy(scene);
     return 0;

@@ -197,6 +197,7 @@ public:
     std::uint64_t revision() const noexcept;
     const RevisionCounters &revisions() const noexcept;
     std::span<const SnapshotOccurrence> occurrences() const noexcept;
+    std::span<const OccurrenceId> occurrences_for_source(EntityId source) const noexcept;
     const SnapshotOccurrence *find(OccurrenceId id) const noexcept;
     std::span<const GeometryResource> geometries() const noexcept;
     std::span<const MaterialResource> materials() const noexcept;

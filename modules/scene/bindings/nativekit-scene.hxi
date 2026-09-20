@@ -26,6 +26,8 @@ interface NativeKitScene @target("portable-abi64") @library("nativekit_scene") {
 	extern fn nkscene_snapshot_get_occurrence_count(snapshot: nkscene_snapshot, out_count: ptr<u64> @out) -> nkscene_result;
 	extern fn nkscene_snapshot_get_occurrence_page(snapshot: nkscene_snapshot, start_index: u64, out_page: ptr<nkscene_snapshot_occurrence_page> @inout) -> nkscene_result;
 	extern fn nkscene_snapshot_get_revision(snapshot: nkscene_snapshot, out_revision: ptr<u64> @out) -> nkscene_result;
+	extern fn nkscene_snapshot_get_source_occurrence(snapshot: nkscene_snapshot, source: nkscene_entity_id, index: u64, out_occurrence: ptr<nkscene_occurrence_id> @out) -> nkscene_result;
+	extern fn nkscene_snapshot_get_source_occurrence_count(snapshot: nkscene_snapshot, source: nkscene_entity_id, out_count: ptr<u64> @out) -> nkscene_result;
 	extern fn nkscene_transaction_begin(scene: nkscene_scene, out_transaction: ptr<nkscene_transaction> @out @owned) -> nkscene_result;
 	extern fn nkscene_transaction_cancel(transaction: nkscene_transaction) -> void;
 	extern fn nkscene_transaction_commit(transaction: nkscene_transaction) -> nkscene_result;

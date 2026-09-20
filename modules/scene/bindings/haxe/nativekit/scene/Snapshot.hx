@@ -9,6 +9,7 @@ class Snapshot {
 	var occurrenceCache:Null<Array<OccurrenceInfo>> = null;
 	var occurrenceIndex:Null<Map<String, OccurrenceInfo>> = null;
 	var childrenIndex:Null<Map<String, Array<Occurrence>>> = null;
+	var sourceOccurrenceIndex:Null<Map<String, Array<Occurrence>>> = null;
 
 	@:allow(Scene)
 	private function new(owner:Ownednkscene_snapshot) {
@@ -64,6 +65,32 @@ class Snapshot {
 		ensureOccurrenceCache();
 		var result = childrenIndex.get(key(parent));
 		return result == null ? [] : result.copy();
+	}
+
+	/** Returns cached occurrences associated with one source entity. */
+	public function occurrencesForSource(source:haxe.Int64):Array<Occurrence> {
+		ensureLive();
+		if (sourceOccurrenceIndex == null)
+			sourceOccurrenceIndex = new Map();
+		var sourceKey = haxe.Int64.toStr(source),
+			cached = sourceOccurrenceIndex.get(sourceKey);
+		if (cached != null)
+			return cached;
+
+		var entity = new nkscene_entity_id();
+		entity.set_value(source);
+		var countResult = NativeKitScene.nkscene_snapshot_get_source_occurrence_count(
+			owner.borrow(), entity);
+		check(countResult.status, "snapshot.sourceOccurrenceCount");
+		var result:Array<Occurrence> = [];
+		for (index in 0...haxe.Int64.toInt(countResult.out_count)) {
+		var value = NativeKitScene.nkscene_snapshot_get_source_occurrence(
+				owner.borrow(), entity, index);
+			check(value.status, "snapshot.sourceOccurrence");
+			result.push(Occurrence.fromNative(value.out_occurrence));
+		}
+		sourceOccurrenceIndex.set(sourceKey, result);
+		return result;
 	}
 
 	public function dispose():Void {

@@ -62,22 +62,14 @@ class SourceEntityFilter {
 
 	/** Applies the current source rules to matching occurrences in a snapshot. */
 	public function apply(snapshot:Snapshot, policy:SceneViewPolicy):SceneViewPolicy {
-		for (info in snapshot.occurrences()) {
-			var source = info.sourceValue(),
-				visibilityIndex = sourceIndex(visibilitySources, source),
-				materialIndex = sourceIndex(materialSources, source);
-			if (visibilityIndex >= 0)
-				policy.setVisibility(info.occurrence(), visibilityValues[visibilityIndex]);
-			if (materialIndex >= 0)
-				policy.setMaterial(info.occurrence(), materialValues[materialIndex]);
+		for (index in 0...visibilitySources.length) {
+			for (occurrence in snapshot.occurrencesForSource(visibilitySources[index]))
+				policy.setVisibility(occurrence, visibilityValues[index]);
+		}
+		for (index in 0...materialSources.length) {
+			for (occurrence in snapshot.occurrencesForSource(materialSources[index]))
+				policy.setMaterial(occurrence, materialValues[index]);
 		}
 		return policy;
-	}
-
-	static function sourceIndex(sources:Array<haxe.Int64>, source:haxe.Int64):Int {
-		for (index in 0...sources.length)
-			if (sources[index] == source)
-				return index;
-		return -1;
 	}
 }

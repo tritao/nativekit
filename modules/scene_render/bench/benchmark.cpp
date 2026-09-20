@@ -326,16 +326,14 @@ constexpr std::size_t source_count = 500;
     const nkscene::EntityId hidden_source{84};
     std::size_t material_source_count = 0;
     std::size_t hidden_source_count = 0;
-    for (const auto &occurrence : presentation_snapshot.occurrences()) {
-        if (occurrence.source == material_source) {
-            source_view.set_material_override(occurrence.occurrence, materials[2]);
-            ++material_source_count;
-        }
-        if (occurrence.source == hidden_source) {
-            source_view.set_visibility_override(occurrence.occurrence, false);
-            if (occurrence.visible)
-                ++hidden_source_count;
-        }
+    for (const auto occurrence : presentation_snapshot.occurrences_for_source(material_source)) {
+        source_view.set_material_override(occurrence, materials[2]);
+        ++material_source_count;
+    }
+    for (const auto occurrence : presentation_snapshot.occurrences_for_source(hidden_source)) {
+        source_view.set_visibility_override(occurrence, false);
+        if (const auto *info = presentation_snapshot.find(occurrence); info && info->visible)
+            ++hidden_source_count;
     }
     assert(material_source_count > 0);
     assert(hidden_source_count > 0);

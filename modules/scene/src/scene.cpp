@@ -19,6 +19,7 @@ namespace nkscene {
 struct SceneSnapshot::State {
     RevisionCounters revisions;
     std::vector<SnapshotOccurrence> occurrences;
+    std::unordered_map<EntityId, std::vector<OccurrenceId>> occurrences_by_source;
     std::vector<GeometryResource> geometries;
     std::vector<MaterialResource> materials;
 };
@@ -37,6 +38,13 @@ const RevisionCounters &SceneSnapshot::revisions() const noexcept {
 
 std::span<const SnapshotOccurrence> SceneSnapshot::occurrences() const noexcept {
     return state_->occurrences;
+}
+
+std::span<const OccurrenceId> SceneSnapshot::occurrences_for_source(EntityId source) const noexcept {
+    const auto found = state_->occurrences_by_source.find(source);
+    return found == state_->occurrences_by_source.end()
+        ? std::span<const OccurrenceId>{}
+        : std::span<const OccurrenceId>{found->second};
 }
 
 const SnapshotOccurrence *SceneSnapshot::find(OccurrenceId id) const noexcept {
@@ -227,6 +235,9 @@ SceneSnapshot Scene::snapshot() const {
               [](const SnapshotOccurrence &lhs, const SnapshotOccurrence &rhs) {
                   return lhs.occurrence.value < rhs.occurrence.value;
               });
+    state->occurrences_by_source.reserve(state->occurrences.size());
+    for (const auto &occurrence : state->occurrences)
+        state->occurrences_by_source[occurrence.source].push_back(occurrence.occurrence);
     geometries.for_each([&](GeometryId, const GeometryResource &resource) {
         state->geometries.push_back(resource);
     });
@@ -856,6 +867,36 @@ nkscene_result NKS_CALL nkscene_snapshot_get_occurrence_page(
         nkscene::copy_snapshot_occurrence(
             occurrences[static_cast<std::size_t>(start_index) + index],
             out_page->occurrences[index]);
+    return NKS_OK;
+}
+
+nkscene_result NKS_CALL nkscene_snapshot_get_source_occurrence_count(
+    nkscene_snapshot snapshot, nkscene_entity_id source, uint64_t *out_count) {
+    if (!out_count)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    const auto value = state.snapshots.get(nkscene::unpack_handle(snapshot));
+    if (!value)
+        return NKS_ERROR_INVALID_HANDLE;
+    *out_count = value->occurrences_for_source({source.value}).size();
+    return NKS_OK;
+}
+
+nkscene_result NKS_CALL nkscene_snapshot_get_source_occurrence(
+    nkscene_snapshot snapshot, nkscene_entity_id source, uint64_t index,
+    nkscene_occurrence_id *out_occurrence) {
+    if (!out_occurrence)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    const auto value = state.snapshots.get(nkscene::unpack_handle(snapshot));
+    if (!value)
+        return NKS_ERROR_INVALID_HANDLE;
+    const auto occurrences = value->occurrences_for_source({source.value});
+    if (index >= occurrences.size())
+        return NKS_ERROR_INVALID_ARGUMENT;
+    *out_occurrence = {occurrences[static_cast<std::size_t>(index)].value};
     return NKS_OK;
 }
 
