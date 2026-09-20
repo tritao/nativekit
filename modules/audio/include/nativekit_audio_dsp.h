@@ -47,7 +47,9 @@ enum NK_FLAGS(nk_audio_dsp_capabilities) {
     /** Frequency or phase modulation. */
     NK_AUDIO_DSP_CAPABILITY_FM = 1u << 6,
     /** Phase modulation. */
-    NK_AUDIO_DSP_CAPABILITY_PHASE_MODULATION = 1u << 7
+    NK_AUDIO_DSP_CAPABILITY_PHASE_MODULATION = 1u << 7,
+    /** Generic patch modulation sources and destinations. */
+    NK_AUDIO_DSP_CAPABILITY_MODULATION = 1u << 8
 };
 
 /** Built-in pitched oscillator shapes. */
@@ -65,6 +67,45 @@ enum NK_ENUM(nk_audio_dsp_filter_type) {
     NK_AUDIO_DSP_FILTER_NONE = 0,
     NK_AUDIO_DSP_FILTER_SVF_LOW_PASS = 1
 };
+
+/** LFO phase behavior when a voice receives NOTE_ON. */
+typedef uint32_t nk_audio_dsp_lfo_mode;
+enum NK_ENUM(nk_audio_dsp_lfo_mode) {
+    /** Reset the LFO phase to its patch phase on every NOTE_ON. */
+    NK_AUDIO_DSP_LFO_RETRIGGER = 0,
+    /** Keep the LFO phase when a live voice receives another NOTE_ON. */
+    NK_AUDIO_DSP_LFO_FREE_RUNNING = 1
+};
+
+/** Sources that can feed a patch modulation route. */
+typedef uint32_t nk_audio_dsp_modulation_source;
+enum NK_ENUM(nk_audio_dsp_modulation_source) {
+    NK_AUDIO_DSP_MODULATION_SOURCE_LFO = 0,
+    NK_AUDIO_DSP_MODULATION_SOURCE_ENVELOPE = 1
+};
+
+/** Destinations that can receive a patch modulation route. */
+typedef uint32_t nk_audio_dsp_modulation_destination;
+enum NK_ENUM(nk_audio_dsp_modulation_destination) {
+    /** Signed pitch offset in semitones. */
+    NK_AUDIO_DSP_MODULATION_DESTINATION_PITCH_SEMITONES = 0,
+    /** Cutoff offset in Hz. */
+    NK_AUDIO_DSP_MODULATION_DESTINATION_FILTER_CUTOFF_HZ = 1,
+    /** Relative linear output-gain amount around the patch gain. */
+    NK_AUDIO_DSP_MODULATION_DESTINATION_AMPLITUDE = 2
+};
+
+/** Normalization applied to a modulation source before amount scaling. */
+typedef uint32_t nk_audio_dsp_modulation_polarity;
+enum NK_ENUM(nk_audio_dsp_modulation_polarity) {
+    /** Preserve a bipolar LFO, or center a unipolar envelope around zero. */
+    NK_AUDIO_DSP_MODULATION_BIPOLAR = 0,
+    /** Map a bipolar LFO to [0, 1], while preserving an envelope's [0, 1]. */
+    NK_AUDIO_DSP_MODULATION_UNIPOLAR = 1
+};
+
+/** Maximum number of fixed, ABI-safe modulation routes in one patch. */
+enum { NK_AUDIO_DSP_MAX_MODULATION_ROUTES = 8 };
 
 /** Instrument parameters accepted by nk_audio_dsp_instrument_set_parameter. */
 typedef uint32_t nk_audio_dsp_parameter;
@@ -141,9 +182,43 @@ typedef struct nk_audio_dsp_filter_options {
     uint64_t reserved2[2];
 } nk_audio_dsp_filter_options;
 
+/** Low-frequency oscillator component in a reusable patch. */
+typedef struct nk_audio_dsp_lfo_options {
+    /** Set to sizeof(nk_audio_dsp_lfo_options) before use. */
+    uint32_t struct_size NK_STRUCT_SIZE;
+    /** Built-in LFO shape. */
+    nk_audio_dsp_waveform waveform;
+    /** Phase behavior for voices receiving NOTE_ON. */
+    nk_audio_dsp_lfo_mode mode;
+    /** LFO frequency in Hz; zero disables LFO motion. */
+    float rate_hz;
+    /** Initial/retrigger phase normalized to [0, 1]. */
+    float phase;
+    /** Reserved for compatible extensions; set all elements to zero. */
+    uint64_t reserved2[1];
+} nk_audio_dsp_lfo_options;
+
+/** One generic source-to-destination modulation route. */
+typedef struct nk_audio_dsp_modulation_route_options {
+    /** Set to sizeof(nk_audio_dsp_modulation_route_options) before use. */
+    uint32_t struct_size NK_STRUCT_SIZE;
+    /** Route source. */
+    nk_audio_dsp_modulation_source source;
+    /** Route destination. */
+    nk_audio_dsp_modulation_destination destination;
+    /** Source normalization mode. */
+    nk_audio_dsp_modulation_polarity polarity;
+    /** Signed destination-unit amount. */
+    float amount;
+    /** Reserved for compatible extensions; set all elements to zero. */
+    uint64_t reserved2[1];
+} nk_audio_dsp_modulation_route_options;
+
 /**
  * Immutable reusable DSP patch. Components are evaluated in source, envelope,
- * filter, and output-gain order.
+ * modulation, filter, and output-gain order. Modulation amounts use the
+ * destination's units: semitones for pitch, Hz for filter cutoff, and linear
+ * relative gain for amplitude.
  */
 typedef struct nk_audio_dsp_patch_options {
     /** Set to sizeof(nk_audio_dsp_patch_options) before use. */
@@ -158,6 +233,14 @@ typedef struct nk_audio_dsp_patch_options {
     nk_audio_dsp_filter_options filter;
     /** Linear output gain; zero is silent. */
     float gain;
+    /** Optional low-frequency oscillator used by modulation routes. */
+    nk_audio_dsp_lfo_options lfo;
+    /** Fixed modulation route storage; only route_count entries are active. */
+    nk_audio_dsp_modulation_route_options routes[NK_AUDIO_DSP_MAX_MODULATION_ROUTES];
+    /** Number of active modulation routes. */
+    uint32_t route_count;
+    /** Reserved; set to zero. */
+    uint32_t reserved;
     /** Reserved for compatible extensions; set all elements to zero. */
     uint64_t reserved2[2];
 } nk_audio_dsp_patch_options;

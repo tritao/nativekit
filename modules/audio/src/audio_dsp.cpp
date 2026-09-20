@@ -24,7 +24,8 @@ constexpr uint32_t max_block_size = 65536;
 constexpr uint32_t max_voice_count = 4096;
 constexpr nk_audio_dsp_capabilities builtin_capabilities =
     NK_AUDIO_DSP_CAPABILITY_OSCILLATOR | NK_AUDIO_DSP_CAPABILITY_NOISE |
-    NK_AUDIO_DSP_CAPABILITY_ENVELOPE | NK_AUDIO_DSP_CAPABILITY_FILTER;
+    NK_AUDIO_DSP_CAPABILITY_ENVELOPE | NK_AUDIO_DSP_CAPABILITY_LFO |
+    NK_AUDIO_DSP_CAPABILITY_FILTER | NK_AUDIO_DSP_CAPABILITY_MODULATION;
 
 using DspParameters = nk::audio_dsp::PatchParameters;
 
@@ -125,6 +126,26 @@ bool valid_filter_type(nk_audio_dsp_filter_type type) {
     return type == NK_AUDIO_DSP_FILTER_NONE || type == NK_AUDIO_DSP_FILTER_SVF_LOW_PASS;
 }
 
+bool valid_lfo_mode(nk_audio_dsp_lfo_mode mode) {
+    return mode == NK_AUDIO_DSP_LFO_RETRIGGER || mode == NK_AUDIO_DSP_LFO_FREE_RUNNING;
+}
+
+bool valid_modulation_source(nk_audio_dsp_modulation_source source) {
+    return source == NK_AUDIO_DSP_MODULATION_SOURCE_LFO ||
+           source == NK_AUDIO_DSP_MODULATION_SOURCE_ENVELOPE;
+}
+
+bool valid_modulation_destination(nk_audio_dsp_modulation_destination destination) {
+    return destination == NK_AUDIO_DSP_MODULATION_DESTINATION_PITCH_SEMITONES ||
+           destination == NK_AUDIO_DSP_MODULATION_DESTINATION_FILTER_CUTOFF_HZ ||
+           destination == NK_AUDIO_DSP_MODULATION_DESTINATION_AMPLITUDE;
+}
+
+bool valid_modulation_polarity(nk_audio_dsp_modulation_polarity polarity) {
+    return polarity == NK_AUDIO_DSP_MODULATION_BIPOLAR ||
+           polarity == NK_AUDIO_DSP_MODULATION_UNIPOLAR;
+}
+
 bool valid_nonnegative_finite(float value) {
     return std::isfinite(value) && value >= 0.0f;
 }
@@ -145,7 +166,21 @@ bool valid_patch_parameters(const DspParameters &parameters) {
            std::isfinite(parameters.filter.resonance) && parameters.filter.resonance >= 0.0f &&
            parameters.filter.resonance <= 1.0f &&
            (parameters.filter.type != NK_AUDIO_DSP_FILTER_NONE ||
-            parameters.filter.cutoff_hz == 0.0f);
+            parameters.filter.cutoff_hz == 0.0f) &&
+           valid_waveform(parameters.lfo.waveform) && valid_lfo_mode(parameters.lfo.mode) &&
+           valid_nonnegative_finite(parameters.lfo.rate_hz) &&
+           std::isfinite(parameters.lfo.phase) && parameters.lfo.phase >= 0.0f &&
+           parameters.lfo.phase <= 1.0f &&
+           parameters.route_count <= NK_AUDIO_DSP_MAX_MODULATION_ROUTES && [&parameters]() {
+               for (uint32_t index = 0; index < parameters.route_count; ++index) {
+                   const auto &route = parameters.routes[index];
+                   if (!valid_modulation_source(route.source) ||
+                       !valid_modulation_destination(route.destination) ||
+                       !valid_modulation_polarity(route.polarity) || !std::isfinite(route.amount))
+                       return false;
+               }
+               return true;
+           }();
 }
 
 bool valid_filter_cutoff(float cutoff_hz, uint32_t sample_rate) {
@@ -200,8 +235,11 @@ nk_result normalize_patch_options(const nk_audio_dsp_patch_options *input, DspPa
     if (input->oscillator.struct_size < sizeof(nk_audio_dsp_oscillator_options) ||
         input->noise.struct_size < sizeof(nk_audio_dsp_noise_options) ||
         input->envelope.struct_size < sizeof(nk_audio_dsp_envelope_options) ||
-        input->filter.struct_size < sizeof(nk_audio_dsp_filter_options))
+        input->filter.struct_size < sizeof(nk_audio_dsp_filter_options) ||
+        input->lfo.struct_size < sizeof(nk_audio_dsp_lfo_options))
         return invalid_argument("audio DSP patch component options are missing or too small");
+    if (input->route_count > NK_AUDIO_DSP_MAX_MODULATION_ROUTES)
+        return invalid_argument("audio DSP patch has too many modulation routes");
     output.oscillator.waveform = input->oscillator.waveform;
     output.oscillator.level = input->oscillator.level;
     output.noise.level = input->noise.level;
@@ -213,6 +251,20 @@ nk_result normalize_patch_options(const nk_audio_dsp_patch_options *input, DspPa
     output.filter.cutoff_hz = input->filter.cutoff_hz;
     output.filter.resonance = input->filter.resonance;
     output.gain = input->gain;
+    output.lfo.waveform = input->lfo.waveform;
+    output.lfo.mode = input->lfo.mode;
+    output.lfo.rate_hz = input->lfo.rate_hz;
+    output.lfo.phase = input->lfo.phase;
+    output.route_count = input->route_count;
+    for (uint32_t index = 0; index < output.route_count; ++index) {
+        const auto &route = input->routes[index];
+        if (route.struct_size < sizeof(nk_audio_dsp_modulation_route_options))
+            return invalid_argument("audio DSP modulation route is missing or too small");
+        output.routes[index].source = route.source;
+        output.routes[index].destination = route.destination;
+        output.routes[index].polarity = route.polarity;
+        output.routes[index].amount = route.amount;
+    }
     if (!valid_patch_parameters(output))
         return invalid_argument("audio DSP patch parameters are invalid");
     return NK_OK;
@@ -400,12 +452,16 @@ nk_result apply_event(DspEngineResource &engine, const nk_audio_dsp_event &event
             nk::core::set_error("audio DSP voice limit reached");
             return NK_ERROR_QUEUE_FULL;
         }
-        voice->clear();
+        const auto instrument_changed = voice->instrument.get() != instrument.get();
+        if (!voice->active)
+            voice->clear();
         voice->instrument = std::move(instrument);
         voice->voice_id = event.voice_id;
         voice->note = event.note;
         voice->velocity = event.velocity;
         voice->active = true;
+        if (instrument_changed)
+            voice->parameters_version = 0;
         sync_voice_parameters(*voice);
         voice->backend.note_on(event.note, event.velocity);
         return NK_OK;

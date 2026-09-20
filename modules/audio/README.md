@@ -32,7 +32,17 @@ more instruments with `nk_audio_dsp_instrument_create_from_patch()`. Instruments
 copy the patch at creation and remain independently automatable through the
 existing parameter events. The legacy flat instrument options are retained as a
 migration path while the patch model grows to include wavetables and
-modulation routing.
+additional modulation sources and destinations.
+
+Patches now also contain one optional LFO and up to eight typed modulation
+routes. Routes connect the LFO or the amplitude envelope to pitch (semitones),
+filter cutoff (Hz), or relative amplitude. LFO routes can preserve their
+bipolar range or be mapped to [0, 1]; envelope routes are naturally unipolar
+and can be centered when a bipolar destination is useful. `RETRIGGER` resets
+the LFO phase on each note-on, while `FREE_RUNNING` preserves phase across
+note-ons on the same live voice. Modulation is evaluated per sample inside
+the voice, so tracker note and automation timing stays sample-accurate without
+exposing DaisySP types through the ABI.
 
 The first API slice supports WAV, FLAC, and MP3 playback from native filesystem
 paths, cached URI assets, or caller-provided encoded memory.

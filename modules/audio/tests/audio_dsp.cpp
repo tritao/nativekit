@@ -52,7 +52,9 @@ int main() {
     assert((capabilities & NK_AUDIO_DSP_CAPABILITY_OSCILLATOR) != 0);
     assert((capabilities & NK_AUDIO_DSP_CAPABILITY_NOISE) != 0);
     assert((capabilities & NK_AUDIO_DSP_CAPABILITY_ENVELOPE) != 0);
+    assert((capabilities & NK_AUDIO_DSP_CAPABILITY_LFO) != 0);
     assert((capabilities & NK_AUDIO_DSP_CAPABILITY_FILTER) != 0);
+    assert((capabilities & NK_AUDIO_DSP_CAPABILITY_MODULATION) != 0);
 
     nk_audio_dsp_patch_options patch_options{};
     patch_options.struct_size = sizeof(patch_options);
@@ -71,6 +73,34 @@ int main() {
     patch_options.filter.cutoff_hz = 1200.0f;
     patch_options.filter.resonance = 0.5f;
     patch_options.gain = 0.5f;
+    patch_options.lfo.struct_size = sizeof(patch_options.lfo);
+    patch_options.lfo.waveform = NK_AUDIO_DSP_WAVEFORM_SQUARE;
+    patch_options.lfo.mode = NK_AUDIO_DSP_LFO_RETRIGGER;
+    patch_options.lfo.rate_hz = 1000.0f;
+    patch_options.lfo.phase = 0.0f;
+    patch_options.route_count = 1;
+    patch_options.routes[0].struct_size = sizeof(patch_options.routes[0]);
+    patch_options.routes[0].source = NK_AUDIO_DSP_MODULATION_SOURCE_LFO;
+    patch_options.routes[0].destination = NK_AUDIO_DSP_MODULATION_DESTINATION_AMPLITUDE;
+    patch_options.routes[0].polarity = NK_AUDIO_DSP_MODULATION_UNIPOLAR;
+    patch_options.routes[0].amount = 1.0f;
+    patch_options.routes[1].struct_size = sizeof(patch_options.routes[1]);
+    patch_options.routes[1].source = NK_AUDIO_DSP_MODULATION_SOURCE_ENVELOPE;
+    patch_options.routes[1].destination = NK_AUDIO_DSP_MODULATION_DESTINATION_FILTER_CUTOFF_HZ;
+    patch_options.routes[1].polarity = NK_AUDIO_DSP_MODULATION_UNIPOLAR;
+    patch_options.routes[1].amount = 300.0f;
+    patch_options.routes[2].struct_size = sizeof(patch_options.routes[2]);
+    patch_options.routes[2].source = NK_AUDIO_DSP_MODULATION_SOURCE_LFO;
+    patch_options.routes[2].destination = NK_AUDIO_DSP_MODULATION_DESTINATION_PITCH_SEMITONES;
+    patch_options.routes[2].polarity = NK_AUDIO_DSP_MODULATION_BIPOLAR;
+    patch_options.routes[2].amount = 1.0f;
+    patch_options.route_count = 3;
+
+    auto invalid_patch_options = patch_options;
+    invalid_patch_options.route_count = NK_AUDIO_DSP_MAX_MODULATION_ROUTES + 1;
+    nk_audio_dsp_patch invalid_patch = NK_INVALID_HANDLE;
+    assert(nk_audio_dsp_patch_create(&invalid_patch_options, &invalid_patch) ==
+           NK_ERROR_INVALID_ARGUMENT);
 
     nk_audio_dsp_patch patch = NK_INVALID_HANDLE;
     assert(nk_audio_dsp_patch_create(&patch_options, &patch) == NK_OK);
@@ -167,11 +197,73 @@ int main() {
     assert(nk_audio_dsp_engine_render(engine, &target, nullptr, 0) == NK_OK);
     assert(all_silent(samples, 64));
 
+    auto free_running_options = patch_options;
+    free_running_options.oscillator.waveform = NK_AUDIO_DSP_WAVEFORM_SQUARE;
+    free_running_options.filter.type = NK_AUDIO_DSP_FILTER_NONE;
+    free_running_options.filter.cutoff_hz = 0.0f;
+    free_running_options.gain = 1.0f;
+    free_running_options.lfo.mode = NK_AUDIO_DSP_LFO_FREE_RUNNING;
+    free_running_options.lfo.rate_hz = 12000.0f;
+    free_running_options.route_count = 1;
+    free_running_options.routes[0].destination = NK_AUDIO_DSP_MODULATION_DESTINATION_AMPLITUDE;
+    free_running_options.routes[0].polarity = NK_AUDIO_DSP_MODULATION_UNIPOLAR;
+    free_running_options.routes[0].amount = -1.0f;
+    nk_audio_dsp_patch free_running_patch = NK_INVALID_HANDLE;
+    assert(nk_audio_dsp_patch_create(&free_running_options, &free_running_patch) == NK_OK);
+    nk_audio_dsp_instrument free_running_instrument = NK_INVALID_HANDLE;
+    assert(nk_audio_dsp_instrument_create_from_patch(engine, free_running_patch,
+                                                     &free_running_instrument) == NK_OK);
+    assert(nk_audio_dsp_patch_destroy(free_running_patch) == NK_OK);
+
+    target.frame_count = 1;
+    target.sample_count = 1;
+    nk_audio_dsp_event free_running_note_on = note_on;
+    free_running_note_on.instrument = free_running_instrument;
+    free_running_note_on.voice_id = 2;
+    assert(nk_audio_dsp_engine_render(engine, &target, &free_running_note_on, 1) == NK_OK);
+    assert(all_silent(samples, 1));
+    assert(nk_audio_dsp_engine_render(engine, &target, nullptr, 0) == NK_OK);
+    assert(all_silent(samples, 1));
+    assert(nk_audio_dsp_engine_render(engine, &target, nullptr, 0) == NK_OK);
+    assert(contains_signal(samples, 1));
+    assert(nk_audio_dsp_engine_render(engine, &target, &free_running_note_on, 1) == NK_OK);
+    assert(contains_signal(samples, 1));
+    nk_audio_dsp_event free_running_note_off{};
+    free_running_note_off.struct_size = sizeof(free_running_note_off);
+    free_running_note_off.kind = NK_AUDIO_DSP_EVENT_NOTE_OFF;
+    free_running_note_off.frame_offset = 0;
+    free_running_note_off.voice_id = 2;
+    assert(nk_audio_dsp_engine_render(engine, &target, &free_running_note_off, 1) == NK_OK);
+    assert(nk_audio_dsp_engine_render(engine, &target, nullptr, 0) == NK_OK);
+    assert(all_silent(samples, 1));
+
+    auto retrigger_options = free_running_options;
+    retrigger_options.lfo.mode = NK_AUDIO_DSP_LFO_RETRIGGER;
+    nk_audio_dsp_patch retrigger_patch = NK_INVALID_HANDLE;
+    assert(nk_audio_dsp_patch_create(&retrigger_options, &retrigger_patch) == NK_OK);
+    nk_audio_dsp_instrument retrigger_instrument = NK_INVALID_HANDLE;
+    assert(nk_audio_dsp_instrument_create_from_patch(engine, retrigger_patch,
+                                                     &retrigger_instrument) == NK_OK);
+    assert(nk_audio_dsp_patch_destroy(retrigger_patch) == NK_OK);
+    nk_audio_dsp_event retrigger_note_on = free_running_note_on;
+    retrigger_note_on.instrument = retrigger_instrument;
+    retrigger_note_on.voice_id = 3;
+    assert(nk_audio_dsp_engine_render(engine, &target, &retrigger_note_on, 1) == NK_OK);
+    assert(all_silent(samples, 1));
+    assert(nk_audio_dsp_engine_render(engine, &target, nullptr, 0) == NK_OK);
+    assert(all_silent(samples, 1));
+    assert(nk_audio_dsp_engine_render(engine, &target, nullptr, 0) == NK_OK);
+    assert(contains_signal(samples, 1));
+    assert(nk_audio_dsp_engine_render(engine, &target, &retrigger_note_on, 1) == NK_OK);
+    assert(all_silent(samples, 1));
+
     assert(nk_audio_dsp_engine_reset(engine) == NK_OK);
     assert(nk_audio_dsp_instrument_destroy(instrument) == NK_OK);
     assert(nk_audio_dsp_instrument_destroy(instrument) == NK_ERROR_INVALID_HANDLE);
     assert(nk_audio_dsp_instrument_destroy(legacy_instrument) == NK_OK);
     assert(nk_audio_dsp_instrument_destroy(second_instrument) == NK_OK);
+    assert(nk_audio_dsp_instrument_destroy(free_running_instrument) == NK_OK);
+    assert(nk_audio_dsp_instrument_destroy(retrigger_instrument) == NK_OK);
     assert(nk_audio_dsp_engine_destroy(second_engine) == NK_OK);
     assert(nk_audio_dsp_engine_destroy(engine) == NK_OK);
     assert(nk_audio_dsp_engine_destroy(engine) == NK_ERROR_INVALID_HANDLE);

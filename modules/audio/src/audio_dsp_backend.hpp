@@ -2,6 +2,7 @@
 
 #include "nativekit_audio_dsp.h"
 
+#include <array>
 #include <cstdint>
 #include <memory>
 
@@ -29,12 +30,30 @@ struct FilterParameters {
     float resonance = 0.0f;
 };
 
+struct LfoParameters {
+    nk_audio_dsp_waveform waveform = NK_AUDIO_DSP_WAVEFORM_SINE;
+    nk_audio_dsp_lfo_mode mode = NK_AUDIO_DSP_LFO_RETRIGGER;
+    float rate_hz = 0.0f;
+    float phase = 0.0f;
+};
+
+struct ModulationRoute {
+    nk_audio_dsp_modulation_source source = NK_AUDIO_DSP_MODULATION_SOURCE_LFO;
+    nk_audio_dsp_modulation_destination destination =
+        NK_AUDIO_DSP_MODULATION_DESTINATION_PITCH_SEMITONES;
+    nk_audio_dsp_modulation_polarity polarity = NK_AUDIO_DSP_MODULATION_BIPOLAR;
+    float amount = 0.0f;
+};
+
 struct PatchParameters {
     OscillatorParameters oscillator;
     NoiseParameters noise;
     EnvelopeParameters envelope;
     FilterParameters filter;
     float gain = 1.0f;
+    LfoParameters lfo;
+    std::array<ModulationRoute, NK_AUDIO_DSP_MAX_MODULATION_ROUTES> routes{};
+    uint32_t route_count = 0;
 };
 
 /** Private backend-neutral voice boundary; DaisySP types stay in the .cpp. */
