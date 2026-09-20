@@ -64,9 +64,9 @@ class Timestamp {
 /** Snapshot of a timestamp query's state and elapsed GPU time. */
 class TimestampInfo {
 	public final state:TimestampState;
-	public final nanoseconds:Int;
+	public final nanoseconds:haxe.Int64;
 
-	private function new(state:TimestampState, nanoseconds:Int) {
+	private function new(state:TimestampState, nanoseconds:haxe.Int64) {
 		this.state = state;
 		this.nanoseconds = nanoseconds;
 	}

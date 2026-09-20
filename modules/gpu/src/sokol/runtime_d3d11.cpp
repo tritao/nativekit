@@ -191,6 +191,8 @@ bool create_staging_texture(const ImageInfo &source, uint32_t width, uint32_t he
     desc.BindFlags = 0;
     desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
     desc.MiscFlags = 0;
+    if (source.format == DXGI_FORMAT_R32_TYPELESS)
+        desc.Format = DXGI_FORMAT_R32_FLOAT;
     return SUCCEEDED(device()->CreateTexture2D(&desc, nullptr, out));
 }
 
@@ -620,6 +622,10 @@ void d3d11_timestamp_destroy(uint32_t token) {
         release_timestamp(*slot);
 }
 
+int d3d11_timestamp_supported() {
+    return device() && context() ? 1 : 0;
+}
+
 uint32_t d3d11_readback_status(uint32_t token) {
     ReadbackSlot *slot = readback_slot(token);
     if (!slot || !slot->query || !context())
@@ -692,6 +698,7 @@ const nk_sokol_transfer_api transfer_api = {
     d3d11_readback_read,    d3d11_readback_destroy,     d3d11_begin_pass,
     d3d11_end_pass,         d3d11_timestamp_begin,      d3d11_timestamp_end,
     d3d11_timestamp_status, d3d11_timestamp_elapsed_ns, d3d11_timestamp_destroy,
+    d3d11_timestamp_supported,
 };
 
 } // namespace

@@ -21,6 +21,7 @@ import nativekit.gpu.Enums.ReadbackState;
 import nativekit.gpu.Enums.ShaderStage;
 import nativekit.gpu.Enums.ShaderLanguage;
 import nativekit.gpu.Enums.StoreAction;
+import nativekit.gpu.Enums.TimestampState;
 import nativekit.gpu.Enums.UniformType;
 import nativekit.gpu.Enums.VertexFormat;
 import nativekit.gpu.Enums.Wrap;
@@ -33,6 +34,7 @@ import nativekit.gpu.Renderer;
 import nativekit.gpu.Sampler;
 import nativekit.gpu.Shader;
 import nativekit.gpu.Surface;
+import nativekit.gpu.Timestamp;
 import haxe.io.Bytes;
 
 class Triangle {
@@ -167,6 +169,46 @@ class Triangle {
 			readbackImage.dispose();
 		}
 
+		if (features.bufferReadback) {
+			var bufferDesc = new BufferDesc(8, BufferUsage.Transfer);
+			bufferDesc.dynamicUpdate = true;
+			var buffer = Buffer.create(renderer, bufferDesc);
+			var expected = Bytes.alloc(8);
+			for (index in 0...8)
+				expected.set(index, 11 + index * 11);
+			buffer.update(0, expected);
+			var readback = Readback.beginBuffer(buffer, 2, 4);
+			var info = readback.query();
+			var polls = 0;
+			while (info.state == ReadbackState.Pending && polls < 1000) {
+				info = readback.query();
+				polls += 1;
+			}
+			if (info.state != ReadbackState.Ready || info.size != 4 || info.rowPitch != 4)
+				throw "GPU buffer readback did not become a packed range";
+			var actual = Bytes.alloc(info.size);
+			if (readback.read(actual) != 4 || actual.get(0) != 33 || actual.get(3) != 66)
+				throw "GPU buffer readback returned the wrong range";
+			readback.dispose();
+			buffer.dispose();
+		}
+
+		if (features.timestamps) {
+			renderer.beginFrame();
+			var timestamp = Timestamp.begin(renderer);
+			timestamp.end();
+			renderer.endFrame();
+			var timestampInfo = timestamp.query();
+			var timestampPolls = 0;
+			while (timestampInfo.state == TimestampState.Pending && timestampPolls < 1000) {
+				timestampInfo = timestamp.query();
+				timestampPolls += 1;
+			}
+			if (timestampInfo.state != TimestampState.Ready)
+				throw "GPU timestamp did not become ready";
+			timestamp.dispose();
+		}
+
 		if (features.compute && features.storageBuffer) {
 			var computeSource = NativeKitGpu.nkgpu_query_graphics_api(renderer.nativeHandle()) == GraphicsApi.OpenglEs
 				? "#version 310 es\nlayout(local_size_x=1, local_size_y=1, local_size_z=1) in; layout(std430, binding=0) buffer Data { uint value[]; }; void main(){ value[0] = 1u; }"
@@ -183,6 +225,21 @@ class Triangle {
 			renderer.dispatch(1, 1, 1);
 			renderer.endPass();
 			renderer.endFrame();
+			if (features.bufferReadback) {
+				var computeReadback = Readback.beginBuffer(computeBuffer, 0, 4);
+				var computeInfo = computeReadback.query();
+				var computePolls = 0;
+				while (computeInfo.state == ReadbackState.Pending && computePolls < 1000) {
+					computeInfo = computeReadback.query();
+					computePolls += 1;
+				}
+				var computeBytes = Bytes.alloc(computeInfo.size > 0 ? computeInfo.size : 4);
+				if (computeInfo.state != ReadbackState.Ready || computeInfo.size != 4 ||
+					computeReadback.read(computeBytes) != 4 || computeBytes.get(0) != 1 ||
+					computeBytes.get(1) != 0 || computeBytes.get(2) != 0 || computeBytes.get(3) != 0)
+					throw "GPU compute buffer readback returned the wrong value";
+				computeReadback.dispose();
+			}
 			computeBuffer.dispose();
 			computePipeline.dispose();
 			computeShader.dispose();

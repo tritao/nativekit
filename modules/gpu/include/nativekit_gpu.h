@@ -493,11 +493,11 @@ enum NK_ENUM(nkgpu_image_type) {
     NKGPU_IMAGETYPE_2D = 1,
     NKGPU_IMAGETYPE_ARRAY = 2,
     NKGPU_IMAGETYPE_CUBE = 3,
-    /** Cube arrays are represented as groups of six array layers. */
+    /** Cube arrays use groups of six array layers and portable array sampling metadata. */
     NKGPU_IMAGETYPE_CUBE_ARRAY = 4,
 };
 
-/** Descriptor for a 2D, array, cube, or cube-array image. */
+/** Descriptor for a 2D, array, cube, or cube-array image. Cube arrays are portable six-layer groups. */
 typedef struct nkgpu_image_desc {
     uint32_t struct_size NK_STRUCT_SIZE;
     uint32_t width;
@@ -1129,7 +1129,7 @@ NKGPU_API nkgpu_result nkgpu_shader_texture(nkgpu_shader_builder builder, uint32
                                             uint32_t sampler_slot, nkgpu_shader_stage stage,
                                             const char *name NKGPU_UTF8);
 
-/** Describes a filtering texture binding with an explicit image shape. */
+/** Describes a filtering texture binding with an explicit image shape. Cube arrays use array sampling. */
 NKGPU_API nkgpu_result nkgpu_shader_texture_type(nkgpu_shader_builder builder, uint32_t view_slot,
                                                  uint32_t sampler_slot, nkgpu_shader_stage stage,
                                                  nkgpu_image_type image_type,

@@ -78,6 +78,7 @@ struct nk_sokol_transfer_api {
     uint32_t (*timestamp_status)(uint32_t timestamp);
     uint64_t (*timestamp_elapsed_ns)(uint32_t timestamp);
     void (*timestamp_destroy)(uint32_t timestamp);
+    int (*timestamp_supported)(void);
 };
 
 const nk_sokol_transfer_api *nk_sokol_transfer_get_api(void);

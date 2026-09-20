@@ -870,6 +870,14 @@ static void nk_sokol_timestamp_destroy(uint32_t timestamp) {
 #endif
 }
 
+static int nk_sokol_timestamp_supported(void) {
+#if defined(NK_SOKOL_BACKEND_GLCORE)
+    return 1;
+#else
+    return 0;
+#endif
+}
+
 static const nk_sokol_transfer_api transfer_api = {
     nk_sokol_buffer_copy,
     nk_sokol_image_copy,
@@ -890,7 +898,9 @@ static const nk_sokol_transfer_api transfer_api = {
     nk_sokol_timestamp_status,
     nk_sokol_timestamp_elapsed_ns,
     nk_sokol_timestamp_destroy,
+    nk_sokol_timestamp_supported,
 #else
+    0,
     0,
     0,
     0,

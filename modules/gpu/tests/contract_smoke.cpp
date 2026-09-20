@@ -744,6 +744,46 @@ int main() {
                 NKGPU_OK);
             EXPECT_RESULT(nkgpu_end_frame(first), NKGPU_OK);
 
+            if (features.buffer_readback) {
+                nkgpu_buffer_readback_desc compute_readback_desc{};
+                compute_readback_desc.struct_size = sizeof(compute_readback_desc);
+                compute_readback_desc.buffer = compute_buffer;
+                compute_readback_desc.offset = 0;
+                compute_readback_desc.size = sizeof(compute_value);
+                EXPECT_RESULT(nkgpu_readback_begin_buffer(first, &compute_readback_desc,
+                                                          &transfer_readback),
+                              NKGPU_OK);
+                nkgpu_readback_info compute_readback_info{};
+                compute_readback_info.struct_size = sizeof(compute_readback_info);
+                const auto readback_deadline =
+                    std::chrono::steady_clock::now() + std::chrono::seconds(5);
+                while (std::chrono::steady_clock::now() < readback_deadline) {
+                    EXPECT_RESULT(nkgpu_readback_query(first, transfer_readback,
+                                                       &compute_readback_info),
+                                  NKGPU_OK);
+                    if (compute_readback_info.state != NKGPU_READBACK_PENDING)
+                        break;
+                    std::this_thread::yield();
+                }
+                if (compute_readback_info.state != NKGPU_READBACK_READY ||
+                    compute_readback_info.size != sizeof(compute_value)) {
+                    result = __LINE__;
+                    goto cleanup;
+                }
+                uint32_t compute_result = 0;
+                uint32_t compute_result_size = 0;
+                EXPECT_RESULT(nkgpu_readback_read(first, transfer_readback,
+                                                  reinterpret_cast<uint8_t *>(&compute_result),
+                                                  sizeof(compute_result), &compute_result_size),
+                              NKGPU_OK);
+                if (compute_result_size != sizeof(compute_result) || compute_result != 8) {
+                    result = __LINE__;
+                    goto cleanup;
+                }
+                EXPECT_RESULT(nkgpu_readback_destroy(first, transfer_readback), NKGPU_OK);
+                transfer_readback = {};
+            }
+
             EXPECT_RESULT(nkgpu_buffer_destroy(first, compute_buffer), NKGPU_OK);
             EXPECT_RESULT(nkgpu_pipeline_destroy(first, compute_pipeline), NKGPU_OK);
             EXPECT_RESULT(nkgpu_shader_destroy(first, compute_shader), NKGPU_OK);

@@ -1207,12 +1207,15 @@ nkgpu_result nkgpu_query_features(nkgpu_renderer renderer, nkgpu_features *out_f
         slot->value.api->transfer && slot->value.api->transfer->readback_begin ? 1u : 0u;
     features.buffer_readback =
         slot->value.api->transfer && slot->value.api->transfer->readback_begin_buffer ? 1u : 0u;
-    features.timestamps = slot->value.api->transfer && slot->value.api->transfer->timestamp_begin &&
-                                  slot->value.api->transfer->timestamp_end &&
-                                  slot->value.api->transfer->timestamp_status &&
-                                  slot->value.api->transfer->timestamp_elapsed_ns
-                              ? 1u
-                              : 0u;
+    features.timestamps =
+        slot->value.api->transfer && slot->value.api->transfer->timestamp_supported &&
+                slot->value.api->transfer->timestamp_supported() &&
+                slot->value.api->transfer->timestamp_begin &&
+                slot->value.api->transfer->timestamp_end &&
+                slot->value.api->transfer->timestamp_status &&
+                slot->value.api->transfer->timestamp_elapsed_ns
+            ? 1u
+            : 0u;
     *out_features = features;
     return NKGPU_OK;
 }
@@ -4135,7 +4138,10 @@ nkgpu_result nkgpu_timestamp_begin(nkgpu_renderer r, nkgpu_timestamp *out) {
     const nkgpu_result pass = require_active_pass(r);
     if (pass != NKGPU_OK)
         return pass;
-    if (!renderer || !renderer->api->transfer || !renderer->api->transfer->timestamp_begin)
+    if (!renderer || !renderer->api->transfer ||
+        !renderer->api->transfer->timestamp_supported ||
+        !renderer->api->transfer->timestamp_supported() ||
+        !renderer->api->transfer->timestamp_begin)
         return fail(NKGPU_ERROR_UNSUPPORTED, "GPU timestamps are unavailable");
     const uint32_t native = renderer->api->transfer->timestamp_begin();
     if (!native)
@@ -4185,7 +4191,8 @@ nkgpu_result nkgpu_timestamp_query(nkgpu_renderer r, nkgpu_timestamp h,
     if (access != NKGPU_OK)
         return access;
     const nk_sokol_transfer_api *transfer = renderer->api->transfer;
-    if (!transfer || !transfer->timestamp_status || !transfer->timestamp_elapsed_ns)
+    if (!transfer || !transfer->timestamp_supported || !transfer->timestamp_supported() ||
+        !transfer->timestamp_status || !transfer->timestamp_elapsed_ns)
         return fail(NKGPU_ERROR_UNSUPPORTED, "GPU timestamps are unavailable");
     nkgpu_timestamp_info info{};
     info.struct_size = sizeof(info);

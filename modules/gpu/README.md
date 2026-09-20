@@ -189,8 +189,8 @@ queries, while Metal uses blit encoders and shared readback buffers. The
 portable surface does not expose backend fences or native resource structs. The
 WebGL build uses WebGL2 staging and synchronous readback, so it exposes the
 same transfer/readback operations but does not promise native asynchronous
-completion semantics. Desktop GLCore also exposes opaque timestamp queries for
-GPU duration measurements; unsupported backends report that capability as
+completion semantics. GLCore, D3D11, and Metal expose opaque timestamp queries
+when the runtime provides them; unsupported backends report that capability as
 unavailable.
 
 ## Current GPU API
@@ -215,12 +215,13 @@ pointer-bearing native batch records.
 Use `nkgpu_image_desc.type` for 2D, array, cube, and cube-array image shapes,
 and retain the image shape in shader binding metadata with
 `nkgpu_shader_texture_type()`. Cube-array resources use six-layer groups in
-the portable descriptor while preserving the array-layer data layout.
+the portable descriptor and are sampled as array textures, preserving the
+array-layer data layout without requiring a backend-specific cube-array view.
 
 Query `nkgpu_features` and `nkgpu_limits` before optional compute, storage,
 transfer, readback, or timestamp work. `nkgpu_readback_begin_buffer()` is the
 portable path for asynchronous storage-buffer results, and
 `nkgpu_timestamp_begin()` / `nkgpu_timestamp_end()` provide backend-hidden GPU
-timing where timer queries are available. Unsupported operations return
+timing where timer queries or counter samples are available. Unsupported operations return
 `NKGPU_ERROR_UNSUPPORTED`, so callers do not need to identify the selected
 backend.

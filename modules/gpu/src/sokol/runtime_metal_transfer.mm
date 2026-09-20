@@ -48,6 +48,16 @@ struct ReadbackSlot {
 };
 
 ReadbackSlot readbacks[kReadbackCapacity];
+
+struct TimestampSlot {
+    uint32_t generation = 0;
+    id<MTLCounterSampleBuffer> samples = nil;
+    uint64_t nanoseconds = 0;
+    bool active = false;
+    bool ended = false;
+};
+
+TimestampSlot timestamps[kReadbackCapacity];
 bool transfer_pass_active = false;
 id<MTLCommandBuffer> transfer_command = nil;
 id<MTLBlitCommandEncoder> transfer_blit = nil;
@@ -191,6 +201,49 @@ void release_readback(ReadbackSlot &slot) {
     slot.generation = (slot.generation % 0xFFFFu) + 1u;
     if (!slot.generation)
         slot.generation = 1;
+}
+
+uint32_t timestamp_token(uint32_t index, uint32_t generation) {
+    return (generation << 16) | (index + 1u);
+}
+
+TimestampSlot *timestamp_slot(uint32_t token) {
+    const uint32_t encoded_index = token & 0xFFFFu;
+    const uint32_t generation = token >> 16;
+    if (!encoded_index || encoded_index > kReadbackCapacity || !generation)
+        return nullptr;
+    TimestampSlot &slot = timestamps[encoded_index - 1u];
+    return slot.active && slot.generation == generation ? &slot : nullptr;
+}
+
+void release_timestamp(TimestampSlot &slot) {
+    NK_MTL_RELEASE(slot.samples);
+    slot.nanoseconds = 0;
+    slot.active = false;
+    slot.ended = false;
+    slot.generation = (slot.generation % 0xFFFFu) + 1u;
+    if (!slot.generation)
+        slot.generation = 1;
+}
+
+id<MTLCounterSet> timestamp_counter_set() {
+    id<MTLDevice> native_device = device();
+    if (!native_device)
+        return nil;
+    if (@available(macOS 10.15, iOS 14.0, tvOS 14.0, *)) {
+        for (id<MTLCounterSet> set in native_device.counterSets) {
+            if ([set.name rangeOfString:@"timestamp" options:NSCaseInsensitiveSearch].location !=
+                NSNotFound)
+                return set;
+        }
+    }
+    return nil;
+}
+
+int metal_timestamp_supported() {
+    if (@available(macOS 10.15, iOS 14.0, tvOS 14.0, *))
+        return timestamp_counter_set() ? 1 : 0;
+    return 0;
 }
 
 uint32_t metal_buffer_copy(sg_buffer source, uint32_t source_offset, sg_buffer destination,
@@ -433,6 +486,93 @@ uint32_t metal_readback_begin_buffer(sg_buffer source, uint32_t offset, uint32_t
     return readback_token(index, slot.generation);
 }
 
+uint32_t metal_timestamp_begin() {
+    if (!metal_timestamp_supported())
+        return 0;
+    id<MTLCommandEncoder> encoder = nil;
+    if (const void *native = sg_mtl_render_command_encoder())
+        encoder = (__bridge id<MTLCommandEncoder>)native;
+    else if (const void *native = sg_mtl_compute_command_encoder())
+        encoder = (__bridge id<MTLCommandEncoder>)native;
+    id<MTLCounterSet> counter_set = timestamp_counter_set();
+    if (!encoder || !counter_set || !device())
+        return 0;
+
+    uint32_t index = kReadbackCapacity;
+    for (uint32_t i = 0; i < kReadbackCapacity; ++i) {
+        if (!timestamps[i].active) {
+            index = i;
+            break;
+        }
+    }
+    if (index == kReadbackCapacity)
+        return 0;
+
+    MTLCounterSampleBufferDescriptor *descriptor =
+        [[MTLCounterSampleBufferDescriptor alloc] init];
+    descriptor.counterSet = counter_set;
+    descriptor.sampleCount = 2;
+    descriptor.storageMode = MTLStorageModeShared;
+    NSError *error = nil;
+    id<MTLCounterSampleBuffer> samples =
+        [device() newCounterSampleBufferWithDescriptor:descriptor error:&error];
+    NK_MTL_RELEASE(descriptor);
+    if (!samples)
+        return 0;
+    [encoder sampleCountersInBuffer:samples atSampleIndex:0 withBarrier:NO];
+
+    TimestampSlot &slot = timestamps[index];
+    if (!slot.generation)
+        slot.generation = 1;
+    slot.samples = samples;
+    slot.nanoseconds = 0;
+    slot.active = true;
+    slot.ended = false;
+    return timestamp_token(index, slot.generation);
+}
+
+int metal_timestamp_end(uint32_t token) {
+    TimestampSlot *slot = timestamp_slot(token);
+    if (!slot || slot->ended)
+        return 0;
+    id<MTLCommandEncoder> encoder = nil;
+    if (const void *native = sg_mtl_render_command_encoder())
+        encoder = (__bridge id<MTLCommandEncoder>)native;
+    else if (const void *native = sg_mtl_compute_command_encoder())
+        encoder = (__bridge id<MTLCommandEncoder>)native;
+    if (!encoder)
+        return 0;
+    [encoder sampleCountersInBuffer:slot->samples atSampleIndex:1 withBarrier:NO];
+    slot->ended = true;
+    return 1;
+}
+
+uint32_t metal_timestamp_status(uint32_t token) {
+    TimestampSlot *slot = timestamp_slot(token);
+    if (!slot || !slot->ended || !slot->samples)
+        return kReadbackPending;
+    NSData *resolved = [slot->samples resolveCounterRange:NSMakeRange(0, 2)];
+    if (!resolved)
+        return kReadbackPending;
+    if (resolved.length < sizeof(MTLCounterResultTimestamp) * 2)
+        return kReadbackFailed;
+    const auto *results = static_cast<const MTLCounterResultTimestamp *>(resolved.bytes);
+    if (results[1].timestamp < results[0].timestamp)
+        return kReadbackFailed;
+    slot->nanoseconds = results[1].timestamp - results[0].timestamp;
+    return kReadbackReady;
+}
+
+uint64_t metal_timestamp_elapsed_ns(uint32_t token) {
+    TimestampSlot *slot = timestamp_slot(token);
+    return slot ? slot->nanoseconds : 0;
+}
+
+void metal_timestamp_destroy(uint32_t token) {
+    if (TimestampSlot *slot = timestamp_slot(token))
+        release_timestamp(*slot);
+}
+
 uint32_t metal_readback_status(uint32_t token) {
     ReadbackSlot *slot = readback_slot(token);
     if (!slot || !slot->command)
@@ -499,6 +639,8 @@ const nk_sokol_transfer_api transfer_api = {
     metal_readback_begin, metal_readback_begin_buffer, metal_readback_status,
     metal_readback_size,  metal_readback_row_pitch,
     metal_readback_read,  metal_readback_destroy, metal_begin_pass,      metal_end_pass,
+    metal_timestamp_begin, metal_timestamp_end, metal_timestamp_status,
+    metal_timestamp_elapsed_ns, metal_timestamp_destroy, metal_timestamp_supported,
 };
 
 } // namespace
@@ -538,4 +680,7 @@ extern "C" void nk_sokol_metal_transfer_shutdown(void) {
             release_readback(slot);
         }
     }
+    for (auto &slot : timestamps)
+        if (slot.active)
+            release_timestamp(slot);
 }
