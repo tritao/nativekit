@@ -3678,7 +3678,7 @@ nkgpu_result nkgpu_image_destroy(nkgpu_renderer r, nkgpu_image h) {
 }
 
 nkgpu_result nkgpu_image_get_graphics_image(nkgpu_renderer r, nkgpu_image h,
-                                             nk_graphics_image *out) {
+                                            nk_graphics_image *out) {
     auto *renderer = renderer_pool.get(r);
     auto *image = image_pool.get(h);
     if (!renderer || !image || image->value.owner != r)

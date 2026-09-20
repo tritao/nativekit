@@ -1377,8 +1377,7 @@ NKGPU_API nkgpu_result nkgpu_image_destroy(nkgpu_renderer renderer, nkgpu_image 
  * Dynamic images cannot be published because updates may replace their native
  * storage.
  */
-NKGPU_API nkgpu_result nkgpu_image_get_graphics_image(nkgpu_renderer renderer,
-                                                      nkgpu_image image,
+NKGPU_API nkgpu_result nkgpu_image_get_graphics_image(nkgpu_renderer renderer, nkgpu_image image,
                                                       nk_graphics_image *out_image NKGPU_OUT);
 
 /* ------------------------------------------------------------------------- */
