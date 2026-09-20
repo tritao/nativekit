@@ -9,6 +9,8 @@ import nativekit.ui.widgets.ListView;
 import nativekit.ui.widgets.ListViewModel;
 import nativekit.ui.widgets.ScrollController;
 import nativekit.ui.widgets.Text;
+import nativekit.ui.widgets.TreeView;
+import nativekit.ui.widgets.TreeViewModel;
 import nativekit.ui.widgets.VirtualList;
 
 /** Measures the Haxe virtual-list boundary without materializing the dataset. */
@@ -28,7 +30,8 @@ class VirtualListBenchmark {
 		var fonts = FontCollection.create();
 		fonts.add(fontPath);
 		var valid = run(fonts, 10000) && run(fonts, 100000) &&
-			runModel(fonts, 10000) && runModel(fonts, 100000);
+			runModel(fonts, 10000) && runModel(fonts, 100000) &&
+			runTree(fonts, 100000);
 		fonts.dispose();
 		return valid ? 0 : 1;
 	}
@@ -160,6 +163,69 @@ class VirtualListBenchmark {
 		context.dispose();
 		return valid && model.extentCalls == itemCount;
 	}
+
+	static function runTree(fonts:FontCollection, itemCount:Int):Bool {
+		var controller = new ScrollController();
+		var style = new LayoutStyle();
+		style.width = LayoutAxis.fixed(viewportWidth);
+		style.height = LayoutAxis.fixed(viewportHeight);
+		var builtKeys:Array<String> = [];
+		var model = new BenchmarkTreeModel(itemCount, builtKeys);
+		var context = new UiContext(LayoutSession.create(), fonts);
+		var tree = new TreeView('tree-$itemCount', model, style, controller, viewportHeight);
+		var frame = new LayoutFrame(viewportWidth, viewportHeight);
+		var firstStart = Sys.time();
+		context.submit(tree, frame);
+		var firstSeconds = Sys.time() - firstStart;
+		var firstRows = builtKeys.length;
+		var maxExpectedRows = Std.int(Math.ceil(viewportHeight / 24.0)) + 4;
+		var valid = firstRows > 0 && firstRows <= maxExpectedRows &&
+			model.extentCalls == itemCount;
+
+		var totalSeconds = 0.0;
+		var totalRows = 0;
+		var totalNodes = 0;
+		var maxRows = 0;
+		var maxNodes = 0;
+		var maxScroll = controller.maxScrollY;
+		for (sample in 0...samples) {
+			var fraction = samples <= 1 ? 0.0 : sample / (samples - 1);
+			controller.jumpTo(0.0, maxScroll * fraction);
+			builtKeys.resize(0);
+			var start = Sys.time();
+			context.submit(tree, frame);
+			var elapsed = Sys.time() - start;
+			var rowCount = builtKeys.length;
+			var frameMetrics = context.frameMetrics;
+			var nodeCount = frameMetrics == null ? 0 : frameMetrics.nodeCount;
+			if (rowCount == 0 || rowCount > maxExpectedRows || nodeCount <= 0)
+				valid = false;
+			if (fraction == 0.0 && (builtKeys.length == 0 || builtKeys[0] != "root:0"))
+				valid = false;
+			if (fraction == 1.0 &&
+				(builtKeys.length == 0 || builtKeys[builtKeys.length - 1] != 'root:${itemCount - 1}'))
+				valid = false;
+			totalSeconds += elapsed;
+			totalRows += rowCount;
+			totalNodes += nodeCount;
+			if (rowCount > maxRows)
+				maxRows = rowCount;
+			if (nodeCount > maxNodes)
+				maxNodes = nodeCount;
+		}
+
+		var averageRows = totalRows / samples;
+		var averageNodes = totalNodes / samples;
+		var averageMicros = totalSeconds * 1000000.0 / samples;
+		Sys.println('tree_items=$itemCount first_rows=$firstRows ' +
+			'avg_rows=$averageRows max_rows=$maxRows ' +
+			'avg_nodes=$averageNodes max_nodes=$maxNodes ' +
+			'extent_calls=${model.extentCalls} child_calls=${model.childCalls} ' +
+			'first_us=${firstSeconds * 1000000.0} avg_us=$averageMicros');
+
+		context.dispose();
+		return valid && model.extentCalls == itemCount;
+	}
 }
 
 private class BenchmarkListModel implements ListViewModel {
@@ -187,6 +253,52 @@ private class BenchmarkListModel implements ListViewModel {
 	public function buildItem(index:Int):View {
 		builtRows.push(index);
 		return new Text('Row $index');
+	}
+
+	public function revision():Int
+		return 1;
+}
+
+private class BenchmarkTreeModel implements TreeViewModel {
+	final itemCount:Int;
+	final builtKeys:Array<String>;
+	public var extentCalls:Int;
+	public var childCalls:Int;
+
+	public function new(itemCount:Int, builtKeys:Array<String>) {
+		this.itemCount = itemCount;
+		this.builtKeys = builtKeys;
+		extentCalls = 0;
+		childCalls = 0;
+	}
+
+	public function rootCount():Int
+		return itemCount;
+
+	public function rootKeyAt(index:Int):String
+		return 'root:$index';
+
+	public function childCount(parentKey:String):Int {
+		childCalls++;
+		return 0;
+	}
+
+	public function childKeyAt(parentKey:String, index:Int):String
+		return '$parentKey:child:$index';
+
+	public function initiallyExpanded(key:String):Bool
+		return false;
+
+	public function extentAt(key:String):Float {
+		extentCalls++;
+		var separator = key.indexOf(":");
+		var index:Int = cast Std.parseInt(key.substr(separator + 1));
+		return 24.0 + (index % 2) * 8.0;
+	}
+
+	public function buildItem(key:String):View {
+		builtKeys.push(key);
+		return new Text(key);
 	}
 
 	public function revision():Int

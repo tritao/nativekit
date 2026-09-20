@@ -117,6 +117,8 @@ import nativekit.ui.widgets.TableColumn;
 import nativekit.ui.widgets.TableView;
 import nativekit.ui.widgets.Toggle;
 import nativekit.ui.widgets.Tooltip;
+import nativekit.ui.widgets.TreeView;
+import nativekit.ui.widgets.TreeViewModel;
 import nativekit.ui.widgets.Utf8Text;
 import nativekit.ui.widgets.VirtualGrid;
 import nativekit.ui.widgets.VirtualList;
@@ -1423,6 +1425,41 @@ class FrameworkSmoke {
 			return 167;
 		if (!modelList.scrollTo(0) || modelController.offsetY != 0.0)
 			return 165;
+		var treeBuiltKeys:Array<String> = [];
+		var treeSelection:String = "";
+		var treeExpansionKey:String = "";
+		var treeExpansionValue = false;
+		var treeModel = new SmokeTreeModel(treeBuiltKeys);
+		var treeController = new ScrollController();
+		var treeStyle = new LayoutStyle();
+		treeStyle.width = LayoutAxis.fixed(256.0);
+		treeStyle.height = LayoutAxis.fixed(120.0);
+		var tree = new TreeView("tree-smoke", treeModel, treeStyle, treeController, 120.0,
+			null, null, function(nodeKey) { treeSelection = nodeKey; }, null,
+			function(nodeKey, expanded) {
+				treeExpansionKey = nodeKey;
+				treeExpansionValue = expanded;
+			});
+		var treeRoot = context.submit(tree, new LayoutFrame(256.0, 120.0));
+		var treeSemantics:Semantics = cast treeRoot.semantics;
+		if (treeSemantics.role != AccessibilityRole.Tree || treeSemantics.setSize <= 100000 ||
+			treeBuiltKeys.length == 0 || treeBuiltKeys.length > 16 ||
+			treeBuiltKeys[0] != "root:0" || !tree.isExpanded("root:0"))
+			return 168;
+		if (!tree.select("root:0:child:2") || treeSelection != "root:0:child:2")
+			return 169;
+		if (!tree.scrollTo("root:0:child:2") || treeController.offsetY <= 0.0)
+			return 170;
+		if (!tree.setExpanded("root:0", false) || treeExpansionKey != "root:0" || treeExpansionValue)
+			return 171;
+		tree.scrollTo("root:0");
+		treeBuiltKeys.resize(0);
+		treeRoot = context.submit(tree, new LayoutFrame(256.0, 120.0));
+		if (treeBuiltKeys.length == 0 || treeBuiltKeys[0] != "root:0" ||
+			tree.isExpanded("root:0"))
+			return 172;
+		if (!tree.toggleExpanded("root:0") || !tree.isExpanded("root:0"))
+			return 173;
 		// Exercise the session capacity and the framework as one realistic,
 		// nested settings tree. The custom painter sits between ordinary text
 		// siblings inside the clipped, scrollable content.
@@ -3295,4 +3332,37 @@ private class SmokeListModel implements ListViewModel {
 			result += 20.0 + (item % 3) * 4.0;
 		return result;
 	}
+}
+
+private class SmokeTreeModel implements TreeViewModel {
+	final builtKeys:Array<String>;
+
+	public function new(builtKeys:Array<String>)
+		this.builtKeys = builtKeys;
+
+	public function rootCount():Int
+		return 100000;
+
+	public function rootKeyAt(index:Int):String
+		return 'root:$index';
+
+	public function childCount(parentKey:String):Int
+		return parentKey == "root:0" ? 3 : 0;
+
+	public function childKeyAt(parentKey:String, index:Int):String
+		return '$parentKey:child:$index';
+
+	public function initiallyExpanded(key:String):Bool
+		return key == "root:0";
+
+	public function extentAt(key:String):Float
+		return key.indexOf(":child:") >= 0 ? 28.0 : 24.0;
+
+	public function buildItem(key:String):View {
+		builtKeys.push(key);
+		return new Text(key);
+	}
+
+	public function revision():Int
+		return 1;
 }
