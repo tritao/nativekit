@@ -773,6 +773,8 @@ int main() {
             scheduler_targets[0].native_device == scheduler_targets[1].native_device;
         const bool shared_gpu_runtime =
             shared_native_context || (!context_backend && shared_native_device);
+        const bool independent_gl_contexts = context_backend && !shared_native_context;
+        const bool supports_target_switch = shared_gpu_runtime || independent_gl_contexts;
         if (!result &&
             (!check(nkui_renderer_get_stats(renderer, &scheduler_stats) == NKUI_OK,
                     "read scheduler stats") ||
@@ -794,14 +796,19 @@ int main() {
               scheduler_stats.resource_creations < before_scheduler_stats.resource_creations) ||
              (shared_gpu_runtime &&
               scheduler_stats.surface_recreations != before_scheduler_stats.surface_recreations) ||
-             (!shared_gpu_runtime && scheduler_stats.render_submission_failures !=
-                                         before_scheduler_stats.render_submission_failures) ||
-             (!shared_gpu_runtime &&
+             (supports_target_switch && scheduler_stats.render_submission_failures !=
+                                            before_scheduler_stats.render_submission_failures) ||
+             (supports_target_switch &&
               scheduler_stats.gpu_frames != before_scheduler_stats.gpu_frames + 1) ||
-             (!shared_gpu_runtime &&
+             (supports_target_switch &&
               scheduler_stats.resource_creations <= before_scheduler_stats.resource_creations) ||
-             (!shared_gpu_runtime && scheduler_stats.surface_recreations <
-                                         before_scheduler_stats.surface_recreations + 1) ||
+             (independent_gl_contexts && scheduler_stats.surface_recreations <
+                                             before_scheduler_stats.surface_recreations + 1) ||
+             (!supports_target_switch &&
+              scheduler_stats.render_submission_failures <
+                  before_scheduler_stats.render_submission_failures + 1) ||
+             (!supports_target_switch &&
+              scheduler_stats.gpu_frames != before_scheduler_stats.gpu_frames) ||
              scheduler_stats.render_submission_build_ns <=
                  before_scheduler_stats.render_submission_build_ns ||
              scheduler_stats.render_submission_queue_latency_ns <=
