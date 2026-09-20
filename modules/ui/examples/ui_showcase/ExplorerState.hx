@@ -26,6 +26,8 @@ class ExplorerState {
 	public var textDiagnostics:Null<TextEditorDiagnostics> = null;
 	public var textLastClipboardAction:String = "No clipboard command requested";
 	public var textLastSubmit:String = "No editor submitted yet";
+	/** Translation applied to the retained rendering stress preview. */
+	public var retainedLayerOffset:Float = 0.0;
 	public var textArabicValue:String = "مرحبا بالعالم";
 	public var textHebrewValue:String = "שלום עולם";
 	public var textJapaneseValue:String = "こんにちは世界";

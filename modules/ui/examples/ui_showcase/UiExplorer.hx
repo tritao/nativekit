@@ -33,6 +33,8 @@ import nativekit.ui.core.View;
 import nativekit.ui.animation.AnimationController;
 import nativekit.ui.animation.SpringController;
 import nativekit.ui.theme.Theme;
+import nativekit.ui.style.StyleSelector;
+import nativekit.ui.style.StyleValue;
 import nativekit.ui.widgets.Button;
 import nativekit.ui.widgets.Column;
 import nativekit.ui.widgets.DefaultTextStyle;
@@ -149,6 +151,9 @@ class UiExplorer {
 		this.staticSubmitReuse = staticSubmitReuse == true;
 		context = new UiContext(null, fonts, makeTheme(state.lightTheme));
 		EffectsPage.installStyles(this);
+		context.buildContext.styleSheet.rule(StyleSelector.key("retained-layer"), [
+			StyleValue.opacity(0.86)
+		]);
 		renderer = Renderer.create();
 		width = INITIAL_WIDTH;
 		height = INITIAL_HEIGHT;
@@ -539,6 +544,10 @@ class UiExplorer {
 	/** Returns the most recent submit/render metrics for the inspector and smoke runs. */
 	public function latestFrameMetrics():Null<UiFrameMetrics>
 		return context.frameMetrics;
+
+	/** Returns native renderer counters captured through the latest presented frame. */
+	public function latestRendererStats():RendererStats
+		return renderer.stats();
 
 	/** Prints a compact real-workload style/cache sample for profiling smoke runs. */
 	public function printStats():Void {
