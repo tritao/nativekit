@@ -17,6 +17,14 @@ class UiFrameMetrics {
 	public final compositeInvalidatedNodes:Int;
 	public final semanticsInvalidatedNodes:Int;
 	public final hitGeometryInvalidatedNodes:Int;
+	/** Whether this submit rebuilt the native layout/render snapshot. */
+	public final nativeLayoutSubmitted:Bool;
+	/** Whether the previous native layout/render snapshot was reused. */
+	public final nativeLayoutReused:Bool;
+	/** Nodes whose resolved geometry changed and notified geometry consumers. */
+	public final resolvedGeometryChangedNodes:Int;
+	/** Nodes whose previous resolved geometry object was retained. */
+	public final resolvedGeometryReusedNodes:Int;
 	public final submitSeconds:Float;
 	public var paintedNodes(default, null):Int;
 	public var paintSkippedNodes(default, null):Int;
@@ -33,7 +41,10 @@ class UiFrameMetrics {
 			paintInvalidatedNodes:Int, compositeInvalidatedNodes:Int,
 			semanticsInvalidatedNodes:Int,
 			hitGeometryInvalidatedNodes:Int,
-			submitSeconds:Float) {
+			submitSeconds:Float, nativeLayoutSubmitted:Bool = true,
+			nativeLayoutReused:Bool = false,
+			resolvedGeometryChangedNodes:Int = 0,
+			resolvedGeometryReusedNodes:Int = 0) {
 		this.frameNumber = frameNumber;
 		this.nodeCount = nodeCount;
 		this.styleResolutions = styleResolutions;
@@ -49,6 +60,10 @@ class UiFrameMetrics {
 		this.compositeInvalidatedNodes = compositeInvalidatedNodes;
 		this.semanticsInvalidatedNodes = semanticsInvalidatedNodes;
 		this.hitGeometryInvalidatedNodes = hitGeometryInvalidatedNodes;
+		this.nativeLayoutSubmitted = nativeLayoutSubmitted;
+		this.nativeLayoutReused = nativeLayoutReused;
+		this.resolvedGeometryChangedNodes = resolvedGeometryChangedNodes;
+		this.resolvedGeometryReusedNodes = resolvedGeometryReusedNodes;
 		this.submitSeconds = submitSeconds;
 		paintedNodes = 0;
 		paintSkippedNodes = 0;

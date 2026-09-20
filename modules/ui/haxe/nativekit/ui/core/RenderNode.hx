@@ -383,32 +383,151 @@ class RenderNode {
 		geometryRevision = previous.geometryRevision;
 		compositeRevision = previous.compositeRevision;
 		invalidationFlags = UiDirtyFlag.None;
+		var contentChanged = false;
+		var geometryChanged = false;
+		var compositeChanged = false;
 		if (diff.changed) {
 			invalidationFlags = UiDirtyFlag.NeedsStyle | UiDirtyFlag.fromStyleImpact(diff.impact);
 			if ((diff.impact & (StyleImpact.Paint | StyleImpact.TextLayout)) != 0)
-				contentRevision++;
+				contentChanged = true;
 			if ((diff.impact & (StyleImpact.Layout | StyleImpact.TextLayout |
 				StyleImpact.HitGeometry)) != 0)
-				geometryRevision++;
+				geometryChanged = true;
 			if ((diff.impact & StyleImpact.Composite) != 0)
-				compositeRevision++;
+				compositeChanged = true;
 		}
+
+		var rawFlags = layoutInputDiffFlags(previous);
+		invalidationFlags |= rawFlags;
+		if ((rawFlags & (UiDirtyFlag.NeedsPaint | UiDirtyFlag.NeedsTextLayout)) != 0)
+			contentChanged = true;
+		if ((rawFlags & (UiDirtyFlag.NeedsLayout | UiDirtyFlag.NeedsTextLayout |
+			UiDirtyFlag.NeedsHitGeometry)) != 0)
+			geometryChanged = true;
+		if ((rawFlags & UiDirtyFlag.NeedsComposite) != 0)
+			compositeChanged = true;
 
 		// Text and external intrinsic content are not represented by computed
 		// style, so classify them explicitly as both content and geometry.
 		if (layout.visualKind != previous.layout.visualKind || layout.text != previous.layout.text ||
 			layout.measureVersion != previous.layout.measureVersion ||
 			layout.intrinsicContent != previous.layout.intrinsicContent) {
-			contentRevision++;
-			geometryRevision++;
+			contentChanged = true;
+			geometryChanged = true;
 			invalidationFlags |= UiDirtyFlag.NeedsTextLayout | UiDirtyFlag.NeedsLayout |
 				UiDirtyFlag.NeedsPaint;
 		}
 
 		if (hitTestSelf != previous.hitTestSelf || hitTestBehavior != previous.hitTestBehavior) {
-			geometryRevision++;
+			geometryChanged = true;
 			invalidationFlags |= UiDirtyFlag.NeedsHitGeometry;
 		}
+		if (!sameSemantics(semantics, previous.semantics) || enabled != previous.enabled ||
+			focusable != previous.focusable || focusTrap != previous.focusTrap ||
+			tabIndex != previous.tabIndex)
+			invalidationFlags |= UiDirtyFlag.NeedsSemantics;
+		if (contentChanged)
+			contentRevision++;
+		if (geometryChanged)
+			geometryRevision++;
+		if (compositeChanged)
+			compositeRevision++;
+	}
+
+	/** Classifies concrete LayoutNode mutations that bypass computed styles. */
+	function layoutInputDiffFlags(previous:RenderNode):Int {
+		var before = previous.layout;
+		var after = layout;
+		var flags = 0;
+		var beforeStyle = before.style;
+		var afterStyle = layout.style;
+		if (!sameAxis(beforeStyle.width, afterStyle.width) ||
+			!sameAxis(beforeStyle.height, afterStyle.height) ||
+			beforeStyle.aspectRatio != afterStyle.aspectRatio ||
+			beforeStyle.direction != afterStyle.direction ||
+			beforeStyle.childAlignX != afterStyle.childAlignX ||
+			beforeStyle.childAlignY != afterStyle.childAlignY ||
+			beforeStyle.childDistribution != afterStyle.childDistribution ||
+			beforeStyle.positioning != afterStyle.positioning ||
+			beforeStyle.wrapMode != afterStyle.wrapMode ||
+			beforeStyle.rowGap != afterStyle.rowGap || beforeStyle.columnGap != afterStyle.columnGap ||
+			beforeStyle.alignSelf != afterStyle.alignSelf ||
+			beforeStyle.positionX != afterStyle.positionX || beforeStyle.positionY != afterStyle.positionY ||
+			!sameInsets(beforeStyle.padding, afterStyle.padding) ||
+			beforeStyle.childGap != afterStyle.childGap)
+			flags |= UiDirtyFlag.NeedsLayout;
+		if (beforeStyle.zIndex != afterStyle.zIndex ||
+			beforeStyle.clipToParent != afterStyle.clipToParent ||
+			!sameColor(beforeStyle.background, afterStyle.background) ||
+			beforeStyle.radiusTopLeft != afterStyle.radiusTopLeft ||
+			beforeStyle.radiusTopRight != afterStyle.radiusTopRight ||
+			beforeStyle.radiusBottomRight != afterStyle.radiusBottomRight ||
+			beforeStyle.radiusBottomLeft != afterStyle.radiusBottomLeft ||
+			beforeStyle.clipHorizontal != afterStyle.clipHorizontal ||
+			beforeStyle.clipVertical != afterStyle.clipVertical ||
+			beforeStyle.visible != afterStyle.visible ||
+			!sameColor(before.textColor, after.textColor))
+			flags |= UiDirtyFlag.NeedsPaint;
+		if (beforeStyle.zIndex != afterStyle.zIndex ||
+			beforeStyle.clipToParent != afterStyle.clipToParent ||
+			beforeStyle.clipHorizontal != afterStyle.clipHorizontal ||
+			beforeStyle.clipVertical != afterStyle.clipVertical ||
+			beforeStyle.visible != afterStyle.visible)
+			flags |= UiDirtyFlag.NeedsHitGeometry;
+		if (!sameTransform(beforeStyle.transform, afterStyle.transform) ||
+			beforeStyle.transformOriginX != afterStyle.transformOriginX ||
+			beforeStyle.transformOriginY != afterStyle.transformOriginY) {
+			flags |= UiDirtyFlag.NeedsComposite | UiDirtyFlag.NeedsHitGeometry;
+		}
+		if (!sameTextStyle(before.textStyle, after.textStyle) ||
+			!sameParagraphStyle(before.paragraphStyle, after.paragraphStyle))
+			flags |= UiDirtyFlag.NeedsTextLayout | UiDirtyFlag.NeedsPaint | UiDirtyFlag.NeedsLayout;
+		return flags;
+	}
+
+	static function sameAxis(left:LayoutAxis, right:LayoutAxis):Bool
+		return left == right || (left != null && right != null && left.sizing == right.sizing &&
+			left.value == right.value && left.min == right.min && left.max == right.max &&
+			left.growWeight == right.growWeight);
+
+	static function sameInsets(left:Insets, right:Insets):Bool
+		return left == right || (left != null && right != null && left.left == right.left &&
+			left.top == right.top && left.right == right.right && left.bottom == right.bottom);
+
+	static function sameColor(left:Color, right:Color):Bool
+		return left == right || (left != null && right != null && left.red == right.red &&
+			left.green == right.green && left.blue == right.blue && left.alpha == right.alpha);
+
+	static function sameTransform(left:Transform2D, right:Transform2D):Bool
+		return left == right || (left != null && right != null && left.a == right.a &&
+			left.b == right.b && left.c == right.c && left.d == right.d &&
+			left.tx == right.tx && left.ty == right.ty);
+
+	static function sameTextStyle(left:TextStyle, right:TextStyle):Bool
+		return left == right || (left != null && right != null && left.font == right.font &&
+			left.fontSize == right.fontSize && left.letterSpacing == right.letterSpacing);
+
+	static function sameParagraphStyle(left:ParagraphStyle, right:ParagraphStyle):Bool
+		return left == right || (left != null && right != null && left.wrap == right.wrap &&
+			left.alignment == right.alignment && left.lineHeight == right.lineHeight &&
+			left.direction == right.direction);
+
+	static function sameSemantics(left:Null<Semantics>, right:Null<Semantics>):Bool {
+		if (left == right)
+			return true;
+		if (left == null || right == null)
+			return false;
+		return left.role == right.role && left.label == right.label && left.value == right.value &&
+			left.states == right.states && left.actions == right.actions &&
+			left.numericValue == right.numericValue && left.numericMinimum == right.numericMinimum &&
+			left.numericMaximum == right.numericMaximum && left.textStart == right.textStart &&
+			left.documentLength == right.documentLength && left.selectionStart == right.selectionStart &&
+			left.selectionEnd == right.selectionEnd && left.setSize == right.setSize &&
+			left.positionInSet == right.positionInSet && left.rowCount == right.rowCount &&
+			left.columnCount == right.columnCount && left.rowIndex == right.rowIndex &&
+			left.columnIndex == right.columnIndex && left.rowSpan == right.rowSpan &&
+			left.columnSpan == right.columnSpan && left.hierarchyLevel == right.hierarchyLevel &&
+			left.orientation == right.orientation;
 	}
 
 	@:allow(nativekit.ui.core.EventDispatcher)

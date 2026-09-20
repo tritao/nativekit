@@ -2471,6 +2471,7 @@ class FrameworkSmoke {
 		var transformGeometry:ResolvedLayoutItem = cast transformRoot.resolved;
 		var transformMetrics:Null<UiFrameMetrics> = context.frameMetrics;
 		if (transformMetrics == null || transformMetrics.layoutInvalidatedNodes != 0 ||
+			!transformMetrics.nativeLayoutSubmitted || transformMetrics.nativeLayoutReused ||
 			transformMetrics.compositeInvalidatedNodes <= 0 ||
 			transformMetrics.hitGeometryInvalidatedNodes <= 0 ||
 			transformGeometry.width != transformWidth ||
@@ -2490,9 +2491,14 @@ class FrameworkSmoke {
 			opacityRoot.compositeRevision <= transformRoot.compositeRevision ||
 			!UiDirtyFlag.contains(opacityRoot.invalidationFlags, UiDirtyFlag.NeedsComposite) ||
 			UiDirtyFlag.contains(opacityRoot.invalidationFlags, UiDirtyFlag.NeedsHitGeometry)) {
-			Sys.println('revision opacity check failed content=${opacityRoot.contentRevision}/${transformRoot.contentRevision} geometry=${opacityRoot.geometryRevision}/${transformRoot.geometryRevision} composite=${opacityRoot.compositeRevision}/${transformRoot.compositeRevision} flags=${opacityRoot.invalidationFlags}');
-			return 242;
-		}
+				Sys.println('revision opacity check failed content=${opacityRoot.contentRevision}/${transformRoot.contentRevision} geometry=${opacityRoot.geometryRevision}/${transformRoot.geometryRevision} composite=${opacityRoot.compositeRevision}/${transformRoot.compositeRevision} flags=${opacityRoot.invalidationFlags}');
+				return 242;
+			}
+		var opacityMetrics:Null<UiFrameMetrics> = context.frameMetrics;
+		if (opacityMetrics == null || opacityMetrics.nativeLayoutSubmitted ||
+			!opacityMetrics.nativeLayoutReused || opacityMetrics.resolvedGeometryChangedNodes != 0 ||
+			opacityMetrics.resolvedGeometryReusedNodes != 1)
+			return 243;
 		context.setStyleSheet(new StyleSheet("Application"));
 		var spring = new SpringController(0.0, 180.0, 24.0, 1.0, 0.001,
 			context.animations);
