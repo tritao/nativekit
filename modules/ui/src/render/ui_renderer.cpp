@@ -754,7 +754,7 @@ void destroy_cached_effect(UiRendererImpl::State &state,
 
 void destroy_cached_raster(UiRendererImpl::State &state,
                            UiRendererImpl::State::EffectCacheEntry &entry) {
-    const bool alive = entry.target.handle.id != 0;
+    const bool alive = entry.target.color.id != 0;
     destroy_target(state, entry.target);
     if (alive && state.stats.gpu_resources)
         --state.stats.gpu_resources;
@@ -1851,7 +1851,7 @@ bool UiRendererImpl::beginRasterPass(ResourceId target_id, uint64_t cache_key, i
     auto found = state_->raster_cache.find(cache_key);
     if (found != state_->raster_cache.end() &&
         (found->second.target.width != width || found->second.target.height != height ||
-         !found->second.target.handle.id || !found->second.target.image.id)) {
+         !found->second.target.color.id || !found->second.target.image.id)) {
         destroy_cached_raster(*state_, found->second);
         state_->raster_cache.erase(found);
         found = state_->raster_cache.end();
