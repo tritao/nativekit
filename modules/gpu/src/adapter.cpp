@@ -1093,8 +1093,10 @@ nkgpu_result nkgpu_query_features(nkgpu_renderer renderer, nkgpu_features *out_f
         selected_api->query_max_samples
             ? static_cast<uint32_t>(std::max(1, selected_api->query_max_samples()))
             : 1u;
-    features.storage_buffer = native.compute ? 1u : 0u;
-    features.storage_image = native.compute ? 1u : 0u;
+    features.storage_buffer =
+        native.compute && native_limits.max_storage_buffer_bindings_per_stage > 0 ? 1u : 0u;
+    features.storage_image =
+        native.compute && native_limits.max_storage_image_bindings_per_stage > 0 ? 1u : 0u;
     features.compute = native.compute ? 1u : 0u;
     features.instancing = 1;
     features.buffer_copy =

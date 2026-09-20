@@ -1494,7 +1494,7 @@ enum NK_ENUM(nkgpu_batch_pass_kind) {
     NKGPU_BATCH_PASS_RENDER = 5,
 };
 
-/** One render pass recorded into a submission batch. */
+/** One window, render, compute, or copy pass recorded into a submission batch. */
 typedef struct nkgpu_batch_pass {
     /** Set to sizeof(nkgpu_batch_pass) or a larger compatible size. */
     uint32_t struct_size NK_STRUCT_SIZE;
@@ -1527,11 +1527,12 @@ typedef struct nkgpu_batch_pass {
 NKGPU_API nkgpu_result nkgpu_batch_begin(nkgpu_renderer renderer, nkgpu_batch *out_batch NKGPU_OUT);
 
 /**
- * Appends one render pass to a batch.
+ * Appends one pass to a batch.
  *
  * Passes are replayed in append order. A window pass requires positive
  * `width`/`height`; a target pass requires a render target owned by the batch's
- * renderer. The target is retained by the batch.
+ * renderer; a render pass requires `render_pass`; compute and copy passes have
+ * no target fields. Referenced resources are retained by the batch.
  */
 NKGPU_API nkgpu_result nkgpu_batch_append_pass(nkgpu_batch batch, const nkgpu_batch_pass *pass);
 
