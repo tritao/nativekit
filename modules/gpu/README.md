@@ -129,11 +129,11 @@ and can be reset and reused without reallocating each frame. The immediate calls
 remain available for simple rendering and debugging.
 
 `nkgpu_batch_*` builds the same packed records into a sealed submission: the
-batch records an ordered list of window or offscreen passes, pins every resource
-the passes and records reference, and replays them as one frame. Recording does
-not touch GPU state, so a batch can be built while another frame is active, and a
-sealed batch can be submitted more than once. Retained handles stay valid after
-the caller destroys its own references, and deferred backend destruction runs
+batch records an ordered list of window, render, compute, or copy passes, pins
+every resource the passes and records reference, and replays them as one frame.
+Recording does not touch GPU state, so a batch can be built while another frame
+is active, and a sealed batch can be submitted more than once. Retained handles
+stay valid after the caller destroys its own references, and deferred backend destruction runs
 when the last batch holding them is destroyed. Submission ends the frame with
 deferred presentation, leaving presentation to the surface owner, and is the
 seam that later moves onto the render executor (ADR 0017).

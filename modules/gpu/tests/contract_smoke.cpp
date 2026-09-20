@@ -240,6 +240,16 @@ int main() {
             result = __LINE__;
             goto cleanup;
         }
+        const bool storage_buffer_supported =
+            features.compute != 0 && limits.max_storage_buffer_bindings > 0;
+        const bool storage_image_supported =
+            features.compute != 0 && limits.max_storage_image_bindings > 0;
+        if ((features.storage_buffer != 0) != storage_buffer_supported ||
+            (features.storage_image != 0) != storage_image_supported) {
+            std::fprintf(stderr, "storage capability flags do not match reported limits\n");
+            result = __LINE__;
+            goto cleanup;
+        }
 
         const uint8_t transfer_pixels[] = {
             1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0,
@@ -446,7 +456,7 @@ int main() {
         EXPECT_RESULT(nkgpu_end_pass(first), NKGPU_OK);
         EXPECT_RESULT(nkgpu_end_frame(first), NKGPU_OK);
 
-        if (features.compute) {
+        if (features.compute && features.storage_buffer) {
             const char *compute_source =
                 nkgpu_query_graphics_api(first) == NK_GRAPHICS_OPENGL_ES
                     ? "#version 310 es\n"

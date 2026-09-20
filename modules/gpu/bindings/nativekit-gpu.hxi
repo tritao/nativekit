@@ -673,11 +673,12 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_batch_append_command_stream(batch: nkgpu_batch, desc: ptr<const<nkgpu_command_stream_desc>>) -> nkgpu_result;
 	/**
-	 * Appends one render pass to a batch.
+	 * Appends one pass to a batch.
 	 *
 	 * Passes are replayed in append order. A window pass requires positive
 	 * `width`/`height`; a target pass requires a render target owned by the batch's
-	 * renderer. The target is retained by the batch.
+	 * renderer; a render pass requires `render_pass`; compute and copy passes have
+	 * no target fields. Referenced resources are retained by the batch.
 	 */
 	extern fn nkgpu_batch_append_pass(batch: nkgpu_batch, pass: ptr<const<nkgpu_batch_pass>>) -> nkgpu_result;
 	/**
@@ -1258,7 +1259,7 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		clear_stencil: u32 @offset(28);
 	}
 	/**
-	 * One render pass recorded into a submission batch.
+	 * One window, render, compute, or copy pass recorded into a submission batch.
 	 */
 	struct nkgpu_batch_pass @layout(32, 8) {
 		/**
