@@ -76,11 +76,11 @@ extern "C" {
  * when multiple runtimes are compiled into the library.
  *
  * The renderer alternates between Ready, a window frame, and active render
- * passes. Begin operations require Ready or a frame with no active pass. A
- * standalone offscreen pass must end with nkgpu_end_render_target(); a pass
- * inside a window frame must end with nkgpu_end_pass(). These end operations
- * are not interchangeable. Drawing and binding operations require an active
- * pass. Resource creation and destruction require no active pass, except image
+ * passes. Begin operations require Ready or a frame with no active pass. New
+ * offscreen work uses nkgpu_frame_begin(), nkgpu_begin_render_pass(),
+ * nkgpu_end_pass(), and nkgpu_end_frame(); nkgpu_begin_frame() remains the
+ * convenience path for a window pass. Drawing and binding operations require
+ * an active pass. Resource creation and destruction require no active pass, except image
  * and sampler creation and image updates, which may also occur inside the
  * active renderer's pass for streaming texture workloads. Destroying an idle
  * renderer invalidates all of its remaining resources and unfinished builders;
@@ -1369,6 +1369,17 @@ NKGPU_API nkgpu_result nkgpu_image_update(nkgpu_renderer renderer, nkgpu_image i
 
 /** Destroys an image and its texture view; the handle becomes invalid. */
 NKGPU_API nkgpu_result nkgpu_image_destroy(nkgpu_renderer renderer, nkgpu_image image);
+
+/**
+ * Publishes a sampled image through NativeKit's cross-module graphics-image
+ * registry. The returned handle is borrowed from the image and remains valid
+ * while the image is alive; retain it before keeping it beyond that lifetime.
+ * Dynamic images cannot be published because updates may replace their native
+ * storage.
+ */
+NKGPU_API nkgpu_result nkgpu_image_get_graphics_image(nkgpu_renderer renderer,
+                                                      nkgpu_image image,
+                                                      nk_graphics_image *out_image NKGPU_OUT);
 
 /* ------------------------------------------------------------------------- */
 /* Transfer and readback APIs                                                */

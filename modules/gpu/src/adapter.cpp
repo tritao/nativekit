@@ -203,6 +203,7 @@ struct Image {
     uint32_t layer_count = 1;
     bool dynamic_update = false;
     bool external = false;
+    nk_graphics_image external_image{};
     std::vector<uint8_t> pixels;
     sg_view storage_image{};
     sg_view color_attachment{};
@@ -1363,8 +1364,14 @@ static void destroy_image_backend(Image &image) {
         sg_destroy_view(image.resolve_attachment);
     if (image.color_attachment.id)
         sg_destroy_view(image.color_attachment);
-    if (image.view.id)
+    if (image.external_image.id) {
+        nk_graphics_image_release(image.external_image);
+        image.external_image = {};
+        image.object = {};
+        image.view = {};
+    } else if (image.view.id) {
         sg_destroy_view(image.view);
+    }
     if (image.object.id)
         sg_destroy_image(image.object);
     image = {};
@@ -2978,7 +2985,7 @@ nkgpu_result nkgpu_begin_compute_pass(nkgpu_renderer h) {
     if (activated != NKGPU_OK)
         return activated;
     if (!selected_api->query_features().compute)
-        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "compute is not supported by this backend");
+        return fail(NKGPU_ERROR_UNSUPPORTED, "compute is not supported by this backend");
     sg_pass pass{};
     pass.compute = true;
     sg_begin_pass(&pass);
@@ -3667,6 +3674,46 @@ nkgpu_result nkgpu_image_destroy(nkgpu_renderer r, nkgpu_image h) {
     }
     record_resource_destroyed(r);
     image_pool.remove(*s);
+    return NKGPU_OK;
+}
+
+nkgpu_result nkgpu_image_get_graphics_image(nkgpu_renderer r, nkgpu_image h,
+                                             nk_graphics_image *out) {
+    auto *renderer = renderer_pool.get(r);
+    auto *image = image_pool.get(h);
+    if (!renderer || !image || image->value.owner != r)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign image");
+    if (!out)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "graphics-image output is null");
+    if (image->value.dynamic_update || !image->value.view.id ||
+        !(image->value.usage & NKGPU_IMAGE_SAMPLED) || image->value.layer_count != 1 ||
+        image->value.sample_count != 1)
+        return fail(NKGPU_ERROR_UNSUPPORTED, "image cannot be published as a graphics image");
+    const nkgpu_result idle = require_idle_renderer(r);
+    if (idle != NKGPU_OK)
+        return idle;
+    const nkgpu_result activated = activate_renderer(r);
+    if (activated != NKGPU_OK)
+        return activated;
+    if (!image->value.external_image.id) {
+        if (!renderer->value.api->external_image_create)
+            return fail(NKGPU_ERROR_UNSUPPORTED, "backend cannot publish graphics images");
+        const uint32_t backend_image = renderer->value.api->external_image_create(
+            image->value.object, image->value.view, static_cast<int32_t>(image->value.width),
+            static_cast<int32_t>(image->value.height));
+        if (!backend_image)
+            return fail(NKGPU_ERROR_UNKNOWN, "Sokol sampled image registry is full");
+        const nk_result registered = nk_core_graphics_image_register(
+            renderer->value.graphics_api, renderer->value.device,
+            static_cast<int32_t>(image->value.width), static_cast<int32_t>(image->value.height),
+            renderer->value.api, backend_image, release_graphics_image,
+            &image->value.external_image);
+        if (registered != NK_OK) {
+            renderer->value.api->external_image_release(backend_image);
+            return fail(NKGPU_ERROR_UNKNOWN, "NativeKit graphics image registration failed");
+        }
+    }
+    *out = image->value.external_image;
     return NKGPU_OK;
 }
 

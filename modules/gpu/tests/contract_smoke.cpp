@@ -60,6 +60,7 @@ int main() {
     nkgpu_image descriptor_depth{};
     nkgpu_image descriptor_mipped{};
     nkgpu_image dynamic_image{};
+    nkgpu_image published_image{};
     nkgpu_image transfer_image{};
     nkgpu_image transfer_image_second{};
     nkgpu_shader compute_shader{};
@@ -68,6 +69,7 @@ int main() {
     nkgpu_pipeline_builder compute_pipeline_builder{};
     nkgpu_readback transfer_readback{};
     nk_graphics_image retained_image{};
+    nk_graphics_image published_graphics_image{};
     nk_graphics_image foreign_image{};
     const uint8_t buffer_data[] = {0, 0, 0, 0};
     bool gles = false;
@@ -373,6 +375,10 @@ int main() {
         dynamic_desc.data_size = sizeof(dynamic_pixels);
         dynamic_desc.dynamic_update = 1;
         EXPECT_RESULT(nkgpu_image_create_desc(first, &dynamic_desc, &dynamic_image), NKGPU_OK);
+        nk_graphics_image dynamic_graphics_image{};
+        EXPECT_RESULT(nkgpu_image_get_graphics_image(first, dynamic_image,
+                                                     &dynamic_graphics_image),
+                      NKGPU_ERROR_UNSUPPORTED);
         const uint8_t updated_pixel[] = {255, 0, 0, 255};
         EXPECT_RESULT(nkgpu_image_update(first, dynamic_image, 0, 0, 1, 1, updated_pixel, 4),
                       NKGPU_OK);
@@ -386,6 +392,29 @@ int main() {
         EXPECT_RESULT(nkgpu_image_create_desc(first, &color_desc, &descriptor_color), NKGPU_OK);
         EXPECT_RESULT(nkgpu_image_create_desc(first, &color_desc, &descriptor_color_second),
                       NKGPU_OK);
+        nk_graphics_image descriptor_graphics_image{};
+        EXPECT_RESULT(nkgpu_image_get_graphics_image(first, descriptor_color,
+                                                     &descriptor_graphics_image), NKGPU_OK);
+        nk_graphics_image_info descriptor_graphics_info{};
+        descriptor_graphics_info.struct_size = sizeof(descriptor_graphics_info);
+        EXPECT_RESULT(nk_graphics_image_get_info(descriptor_graphics_image,
+                                                 &descriptor_graphics_info), NK_OK);
+        if (descriptor_graphics_info.width != 16 || descriptor_graphics_info.height != 16) {
+            result = __LINE__;
+            goto cleanup;
+        }
+        nkgpu_image_desc published_desc = color_desc;
+        EXPECT_RESULT(nkgpu_image_create_desc(first, &published_desc, &published_image), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_image_get_graphics_image(first, published_image,
+                                                     &published_graphics_image), NKGPU_OK);
+        EXPECT_RESULT(nk_graphics_image_retain(published_graphics_image), NK_OK);
+        EXPECT_RESULT(nkgpu_image_destroy(first, published_image), NKGPU_OK);
+        published_image = {};
+        nk_graphics_image_info published_info{};
+        published_info.struct_size = sizeof(published_info);
+        EXPECT_RESULT(nk_graphics_image_get_info(published_graphics_image, &published_info), NK_OK);
+        EXPECT_RESULT(nk_graphics_image_release(published_graphics_image), NK_OK);
+        published_graphics_image = {};
 
         nkgpu_image_desc depth_desc{};
         depth_desc.struct_size = sizeof(depth_desc);
@@ -701,6 +730,8 @@ cleanup:
         nkgpu_image_destroy(first, descriptor_color);
     if (dynamic_image.id)
         nkgpu_image_destroy(first, dynamic_image);
+    if (published_image.id)
+        nkgpu_image_destroy(first, published_image);
     if (descriptor_mipped.id)
         nkgpu_image_destroy(first, descriptor_mipped);
     if (transfer_image_second.id)
@@ -721,6 +752,8 @@ cleanup:
         nkgpu_shader_destroy(first, compute_shader);
     if (retained_image.id)
         nk_graphics_image_release(retained_image);
+    if (published_graphics_image.id)
+        nk_graphics_image_release(published_graphics_image);
     if (foreign_image.id)
         nk_graphics_image_release(foreign_image);
     if (first.id) {
