@@ -26,6 +26,16 @@
 #define NKGPU_API __attribute__((visibility("default")))
 #endif
 
+#if defined(_MSC_VER)
+#define NKGPU_DEPRECATED(message) __declspec(deprecated(message))
+#elif defined(__cplusplus) && defined(__clang__)
+#define NKGPU_DEPRECATED(message) [[deprecated(message)]]
+#elif defined(__GNUC__) || defined(__clang__)
+#define NKGPU_DEPRECATED(message) __attribute__((deprecated(message)))
+#else
+#define NKGPU_DEPRECATED(message)
+#endif
+
 /* ------------------------------------------------------------------------- */
 /* Binding annotations                                                       */
 /* ------------------------------------------------------------------------- */
@@ -863,29 +873,32 @@ NKGPU_API nkgpu_result nkgpu_begin_render_pass(nkgpu_renderer renderer,
                                                const nkgpu_render_pass_desc *desc);
 
 /** Creates a sampled RGBA8 offscreen target, optionally with depth/stencil storage. */
-NKGPU_API nkgpu_result nkgpu_render_target_create(nkgpu_renderer renderer, uint32_t width,
-                                                  uint32_t height, uint32_t depth_stencil,
-                                                  nkgpu_render_target *out_target NKGPU_OUT);
+NKGPU_API NKGPU_DEPRECATED("use nkgpu_image_create_desc and nkgpu_begin_render_pass")
+nkgpu_result nkgpu_render_target_create(nkgpu_renderer renderer, uint32_t width,
+                                        uint32_t height, uint32_t depth_stencil,
+                                        nkgpu_render_target *out_target NKGPU_OUT);
 
 /** Returns a borrowed generic image handle for the target's sampled color attachment. */
-NKGPU_API nkgpu_result nkgpu_render_target_get_image(nkgpu_renderer renderer,
-                                                     nkgpu_render_target target,
-                                                     nk_graphics_image *out_image NKGPU_OUT);
+NKGPU_API NKGPU_DEPRECATED("use the image handle returned by nkgpu_image_create_desc")
+nkgpu_result nkgpu_render_target_get_image(nkgpu_renderer renderer, nkgpu_render_target target,
+                                           nk_graphics_image *out_image NKGPU_OUT);
 
 /** Destroys a render target; imported image references remain valid until released. */
-NKGPU_API nkgpu_result nkgpu_render_target_destroy(nkgpu_renderer renderer,
-                                                   nkgpu_render_target target);
+NKGPU_API NKGPU_DEPRECATED("use nkgpu_image_destroy")
+nkgpu_result nkgpu_render_target_destroy(nkgpu_renderer renderer, nkgpu_render_target target);
 
 /**
  * Begins drawing to an offscreen target without presenting the window surface.
  * `clear` must be zero or one; one clears the color attachment. The renderer
  * must be idle. Pair with nkgpu_end_render_target() before any other pass.
  */
-NKGPU_API nkgpu_result nkgpu_begin_render_target(nkgpu_renderer renderer,
-                                                 nkgpu_render_target target, uint32_t clear);
+NKGPU_API NKGPU_DEPRECATED("use nkgpu_begin_render_pass")
+nkgpu_result nkgpu_begin_render_target(nkgpu_renderer renderer, nkgpu_render_target target,
+                                       uint32_t clear);
 
 /** Ends and commits the active offscreen target pass without presenting. */
-NKGPU_API nkgpu_result nkgpu_end_render_target(nkgpu_renderer renderer);
+NKGPU_API NKGPU_DEPRECATED("use nkgpu_end_pass")
+nkgpu_result nkgpu_end_render_target(nkgpu_renderer renderer);
 
 /* ------------------------------------------------------------------------- */
 /* Buffer APIs                                                               */
@@ -1218,8 +1231,9 @@ NKGPU_API nkgpu_result nkgpu_begin_window_pass(nkgpu_renderer renderer, uint32_t
                                                uint32_t height, uint32_t clear);
 
 /** Begins an offscreen target pass inside a frame. */
-NKGPU_API nkgpu_result nkgpu_begin_target_pass(nkgpu_renderer renderer, nkgpu_render_target target,
-                                               uint32_t clear);
+NKGPU_API NKGPU_DEPRECATED("use nkgpu_begin_render_pass")
+nkgpu_result nkgpu_begin_target_pass(nkgpu_renderer renderer, nkgpu_render_target target,
+                                     uint32_t clear);
 
 /** Ends the active pass while keeping the frame open. */
 NKGPU_API nkgpu_result nkgpu_end_pass(nkgpu_renderer renderer);

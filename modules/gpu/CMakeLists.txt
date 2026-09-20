@@ -64,7 +64,8 @@ if(NK_BUILD_GPU_BACKEND_MATRIX)
         "${NK_SOKOL_MATRIX_GLES3_LIBRARY}")
 else()
     if(NK_SOKOL_BACKEND STREQUAL "metal")
-        target_sources(nativekit_gpu PRIVATE src/sokol/runtime_metal.mm src/sokol/api.c)
+        target_sources(nativekit_gpu PRIVATE src/sokol/runtime_metal.mm
+            src/sokol/runtime_metal_transfer.mm src/sokol/api.c)
         set_target_properties(nativekit_gpu PROPERTIES
             OBJCXX_STANDARD 17
             OBJCXX_STANDARD_REQUIRED YES)
@@ -72,6 +73,9 @@ else()
             $<$<COMPILE_LANGUAGE:OBJCXX>:-fblocks>)
     else()
         target_sources(nativekit_gpu PRIVATE src/sokol/runtime.c src/sokol/api.c)
+        if(NK_SOKOL_BACKEND STREQUAL "d3d11")
+            target_sources(nativekit_gpu PRIVATE src/sokol/runtime_d3d11.cpp)
+        endif()
         # OpenGL contexts share textures and programs, but not vertex-array
         # state. Keep an independent Sokol state cache for each surface
         # context while retaining the existing backend API contract.
