@@ -10,6 +10,9 @@ class SceneView {
 	var materialOverrides:Array<nkscene_render_material_override> = [];
 	var selectionOverrides:Array<nkscene_render_material_override> = [];
 	var hoverOverrides:Array<nkscene_render_material_override> = [];
+	var isolatedSources:Array<nkscene_entity_id> = [];
+	var sourceVisibilityOverrides:Array<nkscene_render_source_visibility_override> = [];
+	var sourceMaterialOverrides:Array<nkscene_render_source_material_override> = [];
 	var clipPlanes:Array<nkscene_render_clip_plane> = [];
 
 	public function new() {
@@ -104,6 +107,73 @@ class SceneView {
 		return this;
 	}
 
+	/** Adds or replaces a source-level visibility rule. */
+	public function setSourceVisibility(source:haxe.Int64, visible:Bool):SceneView {
+		for (override in sourceVisibilityOverrides) {
+			if (override.get_source().get_value() == source) {
+				override.set_visible(visible ? 1 : 0);
+				value.set_source_visibility_overrides(sourceVisibilityOverrides);
+				return this;
+			}
+		}
+		var override = new nkscene_render_source_visibility_override();
+		var sourceValue = new nkscene_entity_id();
+		sourceValue.set_value(source);
+		override.set_source(sourceValue);
+		override.set_visible(visible ? 1 : 0);
+		sourceVisibilityOverrides.push(override);
+		value.set_source_visibility_overrides(sourceVisibilityOverrides);
+		return this;
+	}
+
+	/** Adds or replaces a source-level base material rule. */
+	public function setSourceMaterial(source:haxe.Int64, material:Material):SceneView {
+		for (override in sourceMaterialOverrides) {
+			if (override.get_source().get_value() == source) {
+				override.set_material(material.id());
+				value.set_source_material_overrides(sourceMaterialOverrides);
+				return this;
+			}
+		}
+		var override = new nkscene_render_source_material_override();
+		var sourceValue = new nkscene_entity_id();
+		sourceValue.set_value(source);
+		override.set_source(sourceValue);
+		override.set_material(material.id());
+		sourceMaterialOverrides.push(override);
+		value.set_source_material_overrides(sourceMaterialOverrides);
+		return this;
+	}
+
+	/** Adds or removes a source from the declarative isolation set. */
+	public function setIsolatedSource(source:haxe.Int64, isolated:Bool):SceneView {
+		for (index in 0...isolatedSources.length) {
+			if (isolatedSources[index].get_value() == source) {
+				if (!isolated)
+					isolatedSources.splice(index, 1);
+				value.set_isolated_sources(isolatedSources);
+				return this;
+			}
+		}
+		if (isolated) {
+			var sourceValue = new nkscene_entity_id();
+			sourceValue.set_value(source);
+			isolatedSources.push(sourceValue);
+		}
+		value.set_isolated_sources(isolatedSources);
+		return this;
+	}
+
+	public function clearSourceFilter():SceneView {
+		isolatedSources.resize(0);
+		sourceVisibilityOverrides.resize(0);
+		sourceMaterialOverrides.resize(0);
+		value.set_isolated_sources(isolatedSources);
+		value.set_source_visibility_overrides(sourceVisibilityOverrides);
+		value.set_source_material_overrides(sourceMaterialOverrides);
+		return this;
+	}
+
 	public function clearSelectionOverrides():SceneView {
 		selectionOverrides.resize(0);
 		value.set_selection_overrides(selectionOverrides);
@@ -121,10 +191,16 @@ class SceneView {
 		materialOverrides.resize(0);
 		selectionOverrides.resize(0);
 		hoverOverrides.resize(0);
+		isolatedSources.resize(0);
+		sourceVisibilityOverrides.resize(0);
+		sourceMaterialOverrides.resize(0);
 		value.set_visibility_overrides(visibilityOverrides);
 		value.set_material_overrides(materialOverrides);
 		value.set_selection_overrides(selectionOverrides);
 		value.set_hover_overrides(hoverOverrides);
+		value.set_isolated_sources(isolatedSources);
+		value.set_source_visibility_overrides(sourceVisibilityOverrides);
+		value.set_source_material_overrides(sourceMaterialOverrides);
 		return this;
 	}
 
@@ -174,6 +250,15 @@ class SceneView {
 
 	public function hoverOverrideCount():Int
 		return hoverOverrides.length;
+
+	public function isolatedSourceCount():Int
+		return isolatedSources.length;
+
+	public function sourceVisibilityOverrideCount():Int
+		return sourceVisibilityOverrides.length;
+
+	public function sourceMaterialOverrideCount():Int
+		return sourceMaterialOverrides.length;
 
 	public function clipPlaneCount():Int
 		return clipPlanes.length;

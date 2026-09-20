@@ -50,6 +50,16 @@ typedef struct nkscene_render_material_override {
     nkscene_material_id material;
 } nkscene_render_material_override;
 
+typedef struct nkscene_render_source_visibility_override {
+    nkscene_entity_id source;
+    uint32_t visible NK_BOOL32;
+} nkscene_render_source_visibility_override;
+
+typedef struct nkscene_render_source_material_override {
+    nkscene_entity_id source;
+    nkscene_material_id material;
+} nkscene_render_source_material_override;
+
 typedef struct nkscene_render_clip_plane {
     float normal[3];
     float distance;
@@ -80,6 +90,14 @@ typedef struct nkscene_render_view {
     const nkscene_render_material_override *hover_overrides
         NK_BORROWED_ARRAY(hover_override_count);
     uint32_t hover_override_count;
+    const nkscene_entity_id *isolated_sources NK_BORROWED_ARRAY(isolated_source_count);
+    uint32_t isolated_source_count;
+    const nkscene_render_source_visibility_override *source_visibility_overrides
+        NK_BORROWED_ARRAY(source_visibility_override_count);
+    uint32_t source_visibility_override_count;
+    const nkscene_render_source_material_override *source_material_overrides
+        NK_BORROWED_ARRAY(source_material_override_count);
+    uint32_t source_material_override_count;
 } nkscene_render_view;
 
 typedef struct nkscene_render_update {
@@ -241,6 +259,16 @@ struct MaterialOverride {
     MaterialId material;
 };
 
+struct SourceVisibilityOverride {
+    EntityId source;
+    bool visible = true;
+};
+
+struct SourceMaterialOverride {
+    EntityId source;
+    MaterialId material;
+};
+
 struct ClipPlane {
     std::array<float, 3> normal{0.0f, 0.0f, 1.0f};
     float distance = 0.0f;
@@ -269,6 +297,12 @@ struct SceneView {
     std::vector<MaterialOverride> selection_material_overrides;
     /** Hover material layer, above selection and base material overrides. */
     std::vector<MaterialOverride> hover_material_overrides;
+    /** Source entities retained by isolation filters, including their ancestors. */
+    std::vector<EntityId> isolated_sources;
+    /** Source-level visibility rules below explicit occurrence overrides. */
+    std::vector<SourceVisibilityOverride> source_visibility_overrides;
+    /** Source-level base material rules below occurrence and interaction layers. */
+    std::vector<SourceMaterialOverride> source_material_overrides;
     /** Optional world-to-clip transform used for bounds culling and rendering. */
     SceneCamera camera;
     /** Conservative occurrence-level sectioning planes. */
@@ -294,6 +328,34 @@ struct SceneView {
 
     void set_hover_material_override(OccurrenceId occurrence, MaterialId material) {
         set_material_override_in(hover_material_overrides, occurrence, material);
+    }
+
+    void set_isolated_source(EntityId source, bool isolated) {
+        const auto found = std::find(isolated_sources.begin(), isolated_sources.end(), source);
+        if (isolated && found == isolated_sources.end())
+            isolated_sources.push_back(source);
+        else if (!isolated && found != isolated_sources.end())
+            isolated_sources.erase(found);
+    }
+
+    void set_source_visibility_override(EntityId source, bool visible) {
+        const auto found = std::find_if(
+            source_visibility_overrides.begin(), source_visibility_overrides.end(),
+            [source](const auto &value) { return value.source == source; });
+        if (found != source_visibility_overrides.end())
+            found->visible = visible;
+        else
+            source_visibility_overrides.push_back({source, visible});
+    }
+
+    void set_source_material_override(EntityId source, MaterialId material) {
+        const auto found = std::find_if(
+            source_material_overrides.begin(), source_material_overrides.end(),
+            [source](const auto &value) { return value.source == source; });
+        if (found != source_material_overrides.end())
+            found->material = material;
+        else
+            source_material_overrides.push_back({source, material});
     }
 
     void clear_selection_material_overrides() noexcept {

@@ -84,6 +84,14 @@ interface NativeKitSceneRender @target("portable-abi64") @library("nativekit_sce
 		origin: array<f32, 3> @offset(0);
 		direction: array<f32, 3> @offset(12);
 	}
+	struct nkscene_render_source_material_override @layout(16, 8) {
+		source: nkscene_entity_id @offset(0);
+		material: nkscene_material_id @offset(8);
+	}
+	struct nkscene_render_source_visibility_override @layout(16, 8) {
+		source: nkscene_entity_id @offset(0);
+		visible: u32 @offset(8);
+	}
 	struct nkscene_render_spatial_occurrence @layout(8, 8) {
 		occurrence: nkscene_occurrence_id @offset(0);
 	}
@@ -102,7 +110,7 @@ interface NativeKitSceneRender @target("portable-abi64") @library("nativekit_sce
 		visible_items: u64 @offset(80);
 		culled_items: u64 @offset(88);
 	}
-	struct nkscene_render_view @layout(168, 8) {
+	struct nkscene_render_view @layout(216, 8) {
 		struct_size: u32 @offset(0) @struct_size;
 		root: nkscene_occurrence_id @offset(8);
 		include_invisible: u32 @offset(16);
@@ -117,6 +125,12 @@ interface NativeKitSceneRender @target("portable-abi64") @library("nativekit_sce
 		selection_override_count: u32 @offset(144);
 		hover_overrides: ptr<const<nkscene_render_material_override>> @offset(152) @borrowed @length_field("hover_override_count");
 		hover_override_count: u32 @offset(160);
+		isolated_sources: ptr<const<nkscene_entity_id>> @offset(168) @borrowed @length_field("isolated_source_count");
+		isolated_source_count: u32 @offset(176);
+		source_visibility_overrides: ptr<const<nkscene_render_source_visibility_override>> @offset(184) @borrowed @length_field("source_visibility_override_count");
+		source_visibility_override_count: u32 @offset(192);
+		source_material_overrides: ptr<const<nkscene_render_source_material_override>> @offset(200) @borrowed @length_field("source_material_override_count");
+		source_material_override_count: u32 @offset(208);
 	}
 	struct nkscene_render_visibility_override @layout(16, 8) {
 		occurrence: nkscene_occurrence_id @offset(0);

@@ -252,8 +252,10 @@ class Main {
 			sourceUpdate = sceneRenderer.lastUpdate();
 		if (sourceFilter.visibilityRuleCount() != 1
 			|| sourceFilter.materialRuleCount() != 1
-			|| sourceView.visibilityOverrideCount() != 1
-			|| sourceView.materialOverrideCount() != 1
+			|| sourceView.visibilityOverrideCount() != 0
+			|| sourceView.materialOverrideCount() != 0
+			|| sourceView.sourceVisibilityOverrideCount() != 1
+			|| sourceView.sourceMaterialOverrideCount() != 1
 			|| sourceUpdate == null
 			|| sourceUpdate.get_plan_rebuilt() != 0
 			|| haxe.Int64.toInt(sourceUpdate.get_patched_visibility()) != 1
@@ -261,6 +263,26 @@ class Main {
 			|| haxe.Int64.toInt(sourceUpdate.get_updated_geometry_resources()) != 0
 			|| haxe.Int64.toInt(sourceUpdate.get_updated_material_resources()) != 0
 			|| haxe.Int64.toInt(sourceExecution.get_commands()) != 1) return 30;
+		var isolationFilter = new SourceEntityFilter().isolateSource(haxe.Int64.ofInt(42)),
+			isolationPolicy = new SceneViewPolicy().applySourceFilter(snapshot, isolationFilter),
+			isolationView = new SceneView().setRoot(group).setViewProjection(Transform.identity())
+			.applyPolicy(isolationPolicy),
+			isolationRenderer = SceneRenderer.createHeadless(),
+			isolationBaseView = new SceneView().setRoot(group).setViewProjection(Transform.identity()),
+			isolationBaseExecution = isolationRenderer.render(snapshot, isolationBaseView),
+			isolationExecution = isolationRenderer.render(snapshot, isolationView),
+			isolationUpdate = isolationRenderer.lastUpdate();
+		if (isolationFilter.isolationRuleCount() != 1
+			|| isolationPolicy.isolationRuleCount() != 1
+			|| isolationView.isolatedSourceCount() != 1
+			|| isolationView.visibilityOverrideCount() != 0
+			|| isolationView.sourceVisibilityOverrideCount() != 0
+			|| isolationUpdate == null
+			|| isolationUpdate.get_plan_rebuilt() != 0
+			|| haxe.Int64.toInt(isolationUpdate.get_patched_visibility()) != 1
+			|| haxe.Int64.toInt(isolationExecution.get_commands()) != 1
+			|| haxe.Int64.toInt(isolationBaseExecution.get_commands()) != 2) return 31;
+		isolationRenderer.dispose();
 		var clippedView = new SceneView().setRoot(group).setViewProjection(Transform.identity())
 			.addClipPlane(1.0, 0.0, 0.0, 0.0),
 			clippedExecution = sceneRenderer.render(snapshot, clippedView),

@@ -326,12 +326,10 @@ constexpr std::size_t source_count = 500;
     const nkscene::EntityId hidden_source{84};
     std::size_t material_source_count = 0;
     std::size_t hidden_source_count = 0;
-    for (const auto occurrence : presentation_snapshot.occurrences_for_source(material_source)) {
-        source_view.set_material_override(occurrence, materials[2]);
-        ++material_source_count;
-    }
+    source_view.set_source_material_override(material_source, materials[2]);
+    material_source_count = presentation_snapshot.occurrences_for_source(material_source).size();
+    source_view.set_source_visibility_override(hidden_source, false);
     for (const auto occurrence : presentation_snapshot.occurrences_for_source(hidden_source)) {
-        source_view.set_visibility_override(occurrence, false);
         if (const auto *info = presentation_snapshot.find(occurrence); info && info->visible)
             ++hidden_source_count;
     }
@@ -347,6 +345,31 @@ constexpr std::size_t source_count = 500;
     assert(view_result.render.updated_geometry_resources == 0);
     assert(view_result.render.updated_material_resources == 0);
     assert(view_result.render.patched_culling == 0);
+    print(view_result);
+
+    nkscene::SceneView isolation_view = presentation_view;
+    isolation_view.isolated_sources.push_back(material_source);
+    std::size_t visible_before_isolation = 0;
+    std::size_t retained_by_isolation = 0;
+    for (const auto &occurrence : presentation_snapshot.occurrences()) {
+        if (!occurrence.geometry.valid() || !occurrence.visible)
+            continue;
+        ++visible_before_isolation;
+        if (occurrence.source == material_source)
+            ++retained_by_isolation;
+    }
+    auto isolation_plan = nkscene::compile(presentation_snapshot, presentation_view);
+    view_result = run_view("view source isolate", isolation_plan, presentation_snapshot,
+                           isolation_view);
+    assert(!view_result.render.plan_rebuilt);
+    assert(!view_result.render.geometry_rebuilt);
+    assert(view_result.render.patched_instances == 0);
+    assert(view_result.render.patched_visibility ==
+           visible_before_isolation - retained_by_isolation);
+    assert(view_result.render.patched_materials == 0);
+    assert(view_result.render.updated_geometry_resources == 0);
+    assert(view_result.render.updated_material_resources == 0);
+    assert(view_result.render.visible_items == retained_by_isolation);
     print(view_result);
 
     assert(scene->geometry_store().find(geometry)->revision == geometry_revision);

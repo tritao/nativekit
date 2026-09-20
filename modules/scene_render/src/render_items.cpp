@@ -3,6 +3,7 @@
 #include <array>
 #include <functional>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace nkscene::render_internal {
 
@@ -72,10 +73,41 @@ EffectiveState effective_state(const SceneSnapshot &snapshot, const SceneView &v
     for (const auto &override : view.visibility_overrides)
         visibility_overrides[override.occurrence] = override.visible;
 
+    std::unordered_map<EntityId, bool> source_visibility_overrides;
+    source_visibility_overrides.reserve(view.source_visibility_overrides.size());
+    for (const auto &override : view.source_visibility_overrides)
+        source_visibility_overrides[override.source] = override.visible;
+
+    std::unordered_set<OccurrenceId> isolated_keep;
+    if (!view.isolated_sources.empty()) {
+        for (const auto source : view.isolated_sources) {
+            for (const auto occurrence_id : snapshot.occurrences_for_source(source)) {
+                auto current = occurrence_id;
+                while (current.valid()) {
+                    if (!isolated_keep.insert(current).second)
+                        break;
+                    const auto *occurrence = snapshot.find(current);
+                    if (!occurrence || !occurrence->parent.valid())
+                        break;
+                    current = occurrence->parent;
+                }
+            }
+        }
+    }
+
     std::unordered_map<OccurrenceId, MaterialId> material_overrides;
     material_overrides.reserve(view.material_overrides.size() +
                                view.selection_material_overrides.size() +
                                view.hover_material_overrides.size());
+    for (const auto &occurrence : occurrences) {
+        const auto found = std::find_if(
+            view.source_material_overrides.begin(), view.source_material_overrides.end(),
+            [&occurrence](const auto &override) {
+                return override.source == occurrence.source;
+            });
+        if (found != view.source_material_overrides.end())
+            result.material[occurrence.occurrence] = found->material;
+    }
     const auto apply_material_layer = [&material_overrides](
                                           const auto &overrides) {
         for (const auto &override : overrides)
@@ -97,9 +129,14 @@ EffectiveState effective_state(const SceneSnapshot &snapshot, const SceneView &v
             return;
         visited.emplace(start, true);
         const auto override_found = visibility_overrides.find(start);
-        const bool local_visible = override_found != visibility_overrides.end()
-                                       ? override_found->second
-                                       : (view.include_invisible || occurrence->visible);
+        const auto source_override_found = source_visibility_overrides.find(occurrence->source);
+        bool local_visible = view.include_invisible || occurrence->visible;
+        if (source_override_found != source_visibility_overrides.end())
+            local_visible = source_override_found->second;
+        if (override_found != visibility_overrides.end())
+            local_visible = override_found->second;
+        if (!view.isolated_sources.empty() && !isolated_keep.contains(start))
+            local_visible = false;
         const bool visible = parent_visible && local_visible;
         if (selected) {
             result.in_view[start] = true;
@@ -152,6 +189,19 @@ std::uint64_t view_signature(const SceneView &view) noexcept {
     add(view.hover_material_overrides.size());
     for (const auto &override : view.hover_material_overrides) {
         add(override.occurrence.value);
+        add(override.material.value);
+    }
+    add(view.isolated_sources.size());
+    for (const auto source : view.isolated_sources)
+        add(source.value);
+    add(view.source_visibility_overrides.size());
+    for (const auto &override : view.source_visibility_overrides) {
+        add(override.source.value);
+        add(override.visible ? 1 : 0);
+    }
+    add(view.source_material_overrides.size());
+    for (const auto &override : view.source_material_overrides) {
+        add(override.source.value);
         add(override.material.value);
     }
     add(view.camera.enabled ? 1 : 0);
