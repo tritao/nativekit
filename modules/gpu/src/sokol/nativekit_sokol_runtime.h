@@ -11,6 +11,7 @@
 #define nk_sokol_runtime_acquire NK_SOKOL_RUNTIME_CAT(NK_SOKOL_RUNTIME_PREFIX, acquire)
 #define nk_sokol_runtime_is_compatible NK_SOKOL_RUNTIME_CAT(NK_SOKOL_RUNTIME_PREFIX, is_compatible)
 #define nk_sokol_runtime_release NK_SOKOL_RUNTIME_CAT(NK_SOKOL_RUNTIME_PREFIX, release)
+#define nk_sokol_query_max_samples NK_SOKOL_RUNTIME_CAT(NK_SOKOL_RUNTIME_PREFIX, query_max_samples)
 #define nk_sokol_external_image_create                                                             \
     NK_SOKOL_RUNTIME_CAT(NK_SOKOL_RUNTIME_PREFIX, external_image_create)
 #define nk_sokol_external_image_release                                                            \
@@ -37,6 +38,7 @@ int nk_sokol_runtime_acquire(const sg_desc *desc, nk_graphics_device device,
 int nk_sokol_runtime_is_compatible(const sg_desc *desc, nk_graphics_device device,
                                    uint64_t native_device);
 void nk_sokol_runtime_release(void);
+int nk_sokol_query_max_samples(void);
 
 /* Shared, retained sampled images used to bridge Sokol producers to consumers. */
 uint32_t nk_sokol_external_image_create(sg_image image, sg_view view, int32_t width,
@@ -76,9 +78,11 @@ const nk_sokol_transfer_api *nk_sokol_transfer_get_api(void);
 #if defined(NK_SOKOL_BACKEND_D3D11)
 const nk_sokol_transfer_api *nk_sokol_d3d11_transfer_get_api(void);
 void nk_sokol_d3d11_transfer_shutdown(void);
+int nk_sokol_d3d11_query_max_samples(void);
 #elif defined(NK_SOKOL_BACKEND_METAL)
 const nk_sokol_transfer_api *nk_sokol_metal_transfer_get_api(void);
 void nk_sokol_metal_transfer_shutdown(void);
+int nk_sokol_metal_query_max_samples(void);
 #endif
 
 #ifdef __cplusplus

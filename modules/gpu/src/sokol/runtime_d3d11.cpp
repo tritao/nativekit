@@ -492,6 +492,21 @@ extern "C" const nk_sokol_transfer_api *nk_sokol_d3d11_transfer_get_api(void) {
     return &transfer_api;
 }
 
+extern "C" int nk_sokol_d3d11_query_max_samples(void) {
+    ID3D11Device *native_device = device();
+    if (!native_device)
+        return 1;
+    int max_samples = 1;
+    for (UINT samples = 2; samples <= 32; samples *= 2) {
+        UINT quality_levels = 0;
+        if (FAILED(native_device->CheckMultisampleQualityLevels(
+                DXGI_FORMAT_R8G8B8A8_UNORM, samples, &quality_levels)) || !quality_levels)
+            break;
+        max_samples = static_cast<int>(samples);
+    }
+    return max_samples;
+}
+
 extern "C" void nk_sokol_d3d11_transfer_shutdown(void) {
     if (context())
         context()->Flush();

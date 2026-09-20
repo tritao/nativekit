@@ -26,13 +26,25 @@ static int runtime_sample_count;
 static uint64_t runtime_device;
 static nk_sokol_external_image_slot external_images[NK_SOKOL_EXTERNAL_IMAGE_CAPACITY];
 
-#if defined(_SOKOL_ANY_GL) && !defined(__EMSCRIPTEN__)
+#ifndef GL_MAX_SAMPLES
+#define GL_MAX_SAMPLES 0x8D57
+#endif
+
+#if defined(__EMSCRIPTEN__) && defined(_SOKOL_ANY_GL)
+extern void glGetBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, void *data);
+#endif
+
+#if defined(_SOKOL_ANY_GL)
 enum { NK_SOKOL_READBACK_CAPACITY = 128 };
 
 typedef struct nk_sokol_readback_slot {
     uint32_t generation;
+#if defined(__EMSCRIPTEN__)
+    uint8_t *data;
+#else
     uint32_t pbo;
     void *fence;
+#endif
     uint32_t size;
     uint32_t row_pitch;
     uint32_t width;
@@ -110,12 +122,17 @@ static nk_sokol_readback_slot *readback_slot(uint32_t token) {
 static void readback_release(nk_sokol_readback_slot *slot) {
     if (!slot)
         return;
+#if defined(__EMSCRIPTEN__)
+    free(slot->data);
+    slot->data = 0;
+#else
     if (slot->fence)
         glDeleteSync(slot->fence);
     if (slot->pbo)
         glDeleteBuffers(1, &slot->pbo);
     slot->fence = 0;
     slot->pbo = 0;
+#endif
     slot->size = 0;
     slot->row_pitch = 0;
     slot->width = 0;
@@ -397,6 +414,18 @@ static uint32_t nk_sokol_buffer_to_image(sg_buffer source, uint32_t source_offse
     GLint old_unpack_buffer = 0;
     glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &old_unpack_buffer);
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, source_buffer);
+#if defined(__EMSCRIPTEN__)
+    uint8_t *buffer_data = (uint8_t *)malloc(source_size);
+    if (!buffer_data) {
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, (GLuint)old_unpack_buffer);
+        free(temporary);
+        sg_reset_state_cache();
+        return 0;
+    }
+    glGetBufferSubData(GL_PIXEL_UNPACK_BUFFER, (GLintptr)source_offset,
+                       (GLsizeiptr)source_size, buffer_data);
+    const uint8_t *mapped = buffer_data;
+#else
     const uint8_t *mapped = (const uint8_t *)glMapBufferRange(
         GL_PIXEL_UNPACK_BUFFER, (GLintptr)source_offset, (GLsizeiptr)source_size, GL_MAP_READ_BIT);
     if (!mapped) {
@@ -405,10 +434,14 @@ static uint32_t nk_sokol_buffer_to_image(sg_buffer source, uint32_t source_offse
         sg_reset_state_cache();
         return 0;
     }
+#endif
     for (uint32_t row = 0; row < height; ++row) {
         memcpy(temporary + (size_t)row * tight_row, mapped + (size_t)(height - row - 1) * row_pitch,
                tight_row);
     }
+#if defined(__EMSCRIPTEN__)
+    free(buffer_data);
+#else
     const GLboolean unmapped = glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
     if (!unmapped || glGetError() != GL_NO_ERROR) {
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, (GLuint)old_unpack_buffer);
@@ -416,6 +449,7 @@ static uint32_t nk_sokol_buffer_to_image(sg_buffer source, uint32_t source_offse
         sg_reset_state_cache();
         return 0;
     }
+#endif
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
     glBindTexture(target, texture);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -522,6 +556,42 @@ static uint32_t nk_sokol_readback_begin(sg_image source, uint32_t mip_level, uin
     nk_sokol_readback_slot *slot = &readbacks[index];
     if (!slot->generation)
         slot->generation = 1;
+#if defined(__EMSCRIPTEN__)
+    slot->data = (uint8_t *)malloc(size);
+    if (!slot->data)
+        return 0;
+    clear_gl_errors();
+    GLint old_read_framebuffer = 0;
+    GLuint framebuffer = 0;
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &old_read_framebuffer);
+    glGenFramebuffers(1, &framebuffer);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
+    glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, target, texture,
+                           (GLint)mip_level);
+    const GLenum status = glCheckFramebufferStatus(GL_READ_FRAMEBUFFER);
+    if (status == GL_FRAMEBUFFER_COMPLETE) {
+        const GLint gl_y = (GLint)image_height - (GLint)y - (GLint)height;
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+        glReadPixels((GLint)x, gl_y, (GLsizei)width, (GLsizei)height, format, type, slot->data);
+        glPixelStorei(GL_PACK_ALIGNMENT, 4);
+        for (uint32_t row = 0; row < height / 2; ++row) {
+            uint8_t *top = slot->data + (size_t)row * row_pitch;
+            uint8_t *bottom = slot->data + (size_t)(height - row - 1) * row_pitch;
+            for (uint32_t byte = 0; byte < row_pitch; ++byte) {
+                const uint8_t value = top[byte];
+                top[byte] = bottom[byte];
+                bottom[byte] = value;
+            }
+        }
+    }
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)old_read_framebuffer);
+    glDeleteFramebuffers(1, &framebuffer);
+    if (status != GL_FRAMEBUFFER_COMPLETE || glGetError() != GL_NO_ERROR) {
+        readback_release(slot);
+        sg_reset_state_cache();
+        return 0;
+    }
+#else
     clear_gl_errors();
     GLint old_read_framebuffer = 0;
     GLint old_pack_buffer = 0;
@@ -551,6 +621,7 @@ static uint32_t nk_sokol_readback_begin(sg_image source, uint32_t mip_level, uin
         sg_reset_state_cache();
         return 0;
     }
+#endif
     slot->size = (uint32_t)size;
     slot->row_pitch = row_pitch;
     slot->width = width;
@@ -562,6 +633,9 @@ static uint32_t nk_sokol_readback_begin(sg_image source, uint32_t mip_level, uin
 
 static uint32_t nk_sokol_readback_status(uint32_t token) {
     nk_sokol_readback_slot *slot = readback_slot(token);
+#if defined(__EMSCRIPTEN__)
+    return slot && slot->data ? 2 : 3;
+#else
     if (!slot || !slot->fence)
         return 3;
     const GLenum status = glClientWaitSync(slot->fence, GL_SYNC_FLUSH_COMMANDS_BIT, 0);
@@ -570,6 +644,7 @@ static uint32_t nk_sokol_readback_status(uint32_t token) {
     if (status == GL_TIMEOUT_EXPIRED)
         return 1;
     return 3;
+#endif
 }
 
 static uint32_t nk_sokol_readback_size(uint32_t token) {
@@ -586,6 +661,10 @@ static int nk_sokol_readback_read(uint32_t token, void *destination, uint32_t si
     nk_sokol_readback_slot *slot = readback_slot(token);
     if (!slot || !destination || size < slot->size || nk_sokol_readback_status(token) != 2)
         return 0;
+#if defined(__EMSCRIPTEN__)
+    memcpy(destination, slot->data, slot->size);
+    return 1;
+#else
     GLint old_pack_buffer = 0;
     glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &old_pack_buffer);
     glBindBuffer(GL_PIXEL_PACK_BUFFER, slot->pbo);
@@ -603,6 +682,7 @@ static int nk_sokol_readback_read(uint32_t token, void *destination, uint32_t si
     glBindBuffer(GL_PIXEL_PACK_BUFFER, (GLuint)old_pack_buffer);
     sg_reset_state_cache();
     return unmapped != 0 && glGetError() == GL_NO_ERROR;
+#endif
 }
 
 static void nk_sokol_readback_destroy(uint32_t token) {
@@ -708,7 +788,7 @@ void nk_sokol_runtime_release(void) {
         return;
     --runtime_references;
     if (!runtime_references) {
-#if defined(_SOKOL_ANY_GL) && !defined(__EMSCRIPTEN__)
+#if defined(_SOKOL_ANY_GL)
         for (uint32_t i = 0; i < NK_SOKOL_READBACK_CAPACITY; ++i)
             if (readbacks[i].active)
                 readback_release(&readbacks[i]);
@@ -723,6 +803,20 @@ void nk_sokol_runtime_release(void) {
         runtime_sample_count = 0;
         runtime_device = 0;
     }
+}
+
+int nk_sokol_query_max_samples(void) {
+#if defined(SOKOL_D3D11)
+    return nk_sokol_d3d11_query_max_samples();
+#elif defined(SOKOL_METAL)
+    return nk_sokol_metal_query_max_samples();
+#elif defined(_SOKOL_ANY_GL)
+    GLint samples = 1;
+    glGetIntegerv(GL_MAX_SAMPLES, &samples);
+    return samples > 0 ? samples : 1;
+#else
+    return 1;
+#endif
 }
 
 uint32_t nk_sokol_external_image_create(sg_image image, sg_view view, int32_t width,

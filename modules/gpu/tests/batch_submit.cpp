@@ -139,7 +139,10 @@ int main() {
     nkgpu_pipeline pipeline{};
     nkgpu_buffer buffer{};
     nkgpu_render_target target{};
+    nkgpu_image general_color{};
+    nkgpu_image general_depth{};
     nkgpu_batch batch{};
+    nkgpu_batch general_batch{};
     nkgpu_shader textured_shader{};
     nkgpu_pipeline textured_pipeline{};
     nkgpu_buffer textured_buffer{};
@@ -481,6 +484,49 @@ int main() {
     EXPECT_RESULT(nkgpu_batch_seal(batch), NKGPU_OK);
     EXPECT_RESULT(nkgpu_batch_submit(renderer, batch), NKGPU_OK);
 
+    /* General attachment-based render passes are reusable batch passes too. */
+    {
+        nkgpu_image_desc color_desc{};
+        color_desc.struct_size = sizeof(color_desc);
+        color_desc.width = 16;
+        color_desc.height = 16;
+        color_desc.format = NKGPU_IMAGEFORMAT_RGBA8;
+        color_desc.usage = NKGPU_IMAGE_RENDER_TARGET;
+        EXPECT_RESULT(nkgpu_image_create_desc(renderer, &color_desc, &general_color), NKGPU_OK);
+
+        nkgpu_image_desc depth_desc{};
+        depth_desc.struct_size = sizeof(depth_desc);
+        depth_desc.width = 16;
+        depth_desc.height = 16;
+        depth_desc.format = NKGPU_IMAGEFORMAT_DEPTH24_STENCIL8;
+        depth_desc.usage = NKGPU_IMAGE_DEPTH_STENCIL;
+        EXPECT_RESULT(nkgpu_image_create_desc(renderer, &depth_desc, &general_depth), NKGPU_OK);
+
+        nkgpu_batch_pass pass{};
+        pass.struct_size = sizeof(pass);
+        pass.kind = NKGPU_BATCH_PASS_RENDER;
+        pass.render_pass.struct_size = sizeof(pass.render_pass);
+        pass.render_pass.color_count = 1;
+        pass.render_pass.colors[0].image = general_color;
+        pass.render_pass.colors[0].action.load_action = NKGPU_LOADACTION_CLEAR;
+        pass.render_pass.colors[0].action.store_action = NKGPU_STOREACTION_STORE;
+        pass.render_pass.colors[0].action.clear_color = {0.2f, 0.3f, 0.4f, 1.0f};
+        pass.render_pass.depth_stencil = general_depth;
+        pass.render_pass.depth_stencil_action.load_action = NKGPU_LOADACTION_CLEAR;
+        pass.render_pass.depth_stencil_action.store_action = NKGPU_STOREACTION_STORE;
+        pass.render_pass.depth_stencil_action.clear_depth = 1.0f;
+        EXPECT_RESULT(nkgpu_batch_begin(renderer, &general_batch), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_batch_append_pass(general_batch, &pass), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_batch_seal(general_batch), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_batch_submit(renderer, general_batch), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_batch_destroy(general_batch), NKGPU_OK);
+        general_batch = {};
+        EXPECT_RESULT(nkgpu_image_destroy(renderer, general_depth), NKGPU_OK);
+        general_depth = {};
+        EXPECT_RESULT(nkgpu_image_destroy(renderer, general_color), NKGPU_OK);
+        general_color = {};
+    }
+
     /*
      * Records may reference an external graphics image. The batch retains it
      * through the core handle, so the texture outlives both the target it came
@@ -514,8 +560,14 @@ int main() {
         EXPECT_RESULT(nkgpu_shader_begin(renderer, NKGPU_SHADERLANGUAGE_GLSL, vertex_source,
                                          fragment_source, &shader_builder),
                       NKGPU_OK);
-        EXPECT_RESULT(nkgpu_shader_texture(shader_builder, 0, 0, NKGPU_SHADERSTAGE_FRAGMENT, "tex"),
-                      NKGPU_OK);
+        nkgpu_shader_binding_desc sampled_binding{};
+        sampled_binding.struct_size = sizeof(sampled_binding);
+        sampled_binding.kind = NKGPU_SHADERBINDING_SAMPLED_IMAGE;
+        sampled_binding.stage = NKGPU_SHADERSTAGE_FRAGMENT;
+        sampled_binding.slot = 0;
+        sampled_binding.secondary_slot = 0;
+        sampled_binding.name = "tex";
+        EXPECT_RESULT(nkgpu_shader_binding(shader_builder, &sampled_binding), NKGPU_OK);
         EXPECT_RESULT(nkgpu_shader_end(shader_builder, &textured_shader), NKGPU_OK);
         nkgpu_pipeline_builder pipeline_builder{};
         EXPECT_RESULT(
@@ -740,6 +792,8 @@ cleanup:
     nkgpu_test_allow_surface_target_queries();
     if (batch.id)
         nkgpu_batch_destroy(batch);
+    if (general_batch.id)
+        nkgpu_batch_destroy(general_batch);
     if (retained_image.id)
         nk_graphics_image_release(retained_image);
     if (renderer.id) {
@@ -762,6 +816,10 @@ cleanup:
         nkgpu_sampler_destroy(renderer, sampler);
     if (target.id && renderer.id)
         nkgpu_render_target_destroy(renderer, target);
+    if (general_depth.id && renderer.id)
+        nkgpu_image_destroy(renderer, general_depth);
+    if (general_color.id && renderer.id)
+        nkgpu_image_destroy(renderer, general_color);
     if (renderer.id)
         nkgpu_renderer_destroy(renderer);
     if (surface_created)

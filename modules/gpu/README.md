@@ -189,4 +189,7 @@ dispatch table. GLCore and GLES3 expose real buffer/image transfers plus
 fence-backed asynchronous image readback, including tightly packed `R32_UINT`
 rectangles suitable for CAD picking. D3D11 uses staging resources and event
 queries, while Metal uses blit encoders and shared readback buffers. The
-portable surface does not expose backend fences or native resource structs.
+portable surface does not expose backend fences or native resource structs. The
+WebGL build uses WebGL2 staging and synchronous readback, so it exposes the
+same transfer/readback operations but does not promise native asynchronous
+completion semantics.

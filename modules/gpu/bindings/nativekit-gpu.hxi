@@ -44,6 +44,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		 * A transfer pass with no render target.
 		 */
 		NKGPU_BATCH_PASS_COPY = 4;
+		/**
+		 * A general attachment-based render pass.
+		 */
+		NKGPU_BATCH_PASS_RENDER = 5;
 	}
 	/**
 	 * Blend factors accepted by generic pipeline state.
@@ -356,6 +360,27 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		 * The selected backend does not expose the requested optional operation.
 		 */
 		NKGPU_ERROR_UNSUPPORTED = -8;
+	}
+	/**
+	 * Kind of resource described by nkgpu_shader_binding().
+	 */
+	enum nkgpu_shader_binding_kind : u32 {
+		/**
+		 * A sampled image and its paired sampler.
+		 */
+		NKGPU_SHADERBINDING_SAMPLED_IMAGE = 1;
+		/**
+		 * A uniform/constant block.
+		 */
+		NKGPU_SHADERBINDING_UNIFORM_BLOCK = 2;
+		/**
+		 * A read-only or read-write storage buffer.
+		 */
+		NKGPU_SHADERBINDING_STORAGE_BUFFER = 3;
+		/**
+		 * A compute storage image.
+		 */
+		NKGPU_SHADERBINDING_STORAGE_IMAGE = 4;
 	}
 	/**
 	 * Source language accepted by the shader creation functions.
@@ -1087,6 +1112,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_shader_begin_compute(renderer: nkgpu_renderer, language: nkgpu_shader_language, compute_source: utf8, out_builder: ptr<nkgpu_shader_builder> @out) -> nkgpu_result;
 	/**
+	 * Adds generalized resource metadata to a shader builder.
+	 */
+	extern fn nkgpu_shader_binding(builder: nkgpu_shader_builder, desc: ptr<const<nkgpu_shader_binding_desc>>) -> nkgpu_result;
+	/**
 	 * Creates a shader from NUL-terminated vertex and fragment shader source.
 	 *
 	 * `language` must match the renderer backend: GLSL for OpenGL, HLSL5 for D3D11,
@@ -1211,7 +1240,7 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	/**
 	 * One render pass recorded into a submission batch.
 	 */
-	struct nkgpu_batch_pass @layout(24, 4) {
+	struct nkgpu_batch_pass @layout(228, 4) {
 		/**
 		 * Set to sizeof(nkgpu_batch_pass) or a larger compatible size.
 		 */
@@ -1236,6 +1265,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		 * Framebuffer height for NKGPU_BATCH_PASS_WINDOW; ignored for target/compute passes.
 		 */
 		height: u32 @offset(20);
+		/**
+		 * General attachments for NKGPU_BATCH_PASS_RENDER.
+		 */
+		render_pass: nkgpu_render_pass_desc @offset(24);
 	}
 	/**
 	 * Blend configuration for one color attachment.
@@ -1455,6 +1488,21 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		surface_recreations: u64 @offset(128);
 		device_losses: u64 @offset(136);
 		failed_allocations: u64 @offset(144);
+	}
+	/**
+	 * General shader resource metadata retained by the shader builder.
+	 */
+	struct nkgpu_shader_binding_desc @layout(48, 8) {
+		struct_size: u32 @offset(0) @struct_size;
+		kind: nkgpu_shader_binding_kind @offset(4);
+		stage: nkgpu_shader_stage @offset(8);
+		slot: u32 @offset(12);
+		secondary_slot: u32 @offset(16);
+		size: u32 @offset(20);
+		format: nkgpu_image_format @offset(24);
+		readonly: u32 @offset(28);
+		writeonly: u32 @offset(32);
+		name: utf8 @offset(40);
 	}
 	/**
 	 * Operations applied to one stencil face.

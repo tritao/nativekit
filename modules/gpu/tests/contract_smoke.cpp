@@ -229,7 +229,8 @@ int main() {
         unsupported_stream.version = 99;
         EXPECT_RESULT(nkgpu_submit_command_stream(first, &unsupported_stream),
                       NKGPU_ERROR_INVALID_ARGUMENT);
-        if (!features.mrt_count || !features.instancing || !features.buffer_copy ||
+        if (!features.mrt_count || !features.max_samples || !features.instancing ||
+            !features.buffer_copy ||
             !features.image_copy || !features.image_readback || !limits.max_texture_size ||
             !limits.max_color_attachments) {
             result = __LINE__;
@@ -428,8 +429,12 @@ int main() {
             EXPECT_RESULT(nkgpu_shader_begin_compute(first, NKGPU_SHADERLANGUAGE_GLSL,
                                                      compute_source, &compute_shader_builder),
                           NKGPU_OK);
-            EXPECT_RESULT(nkgpu_shader_storage_buffer(compute_shader_builder, 0,
-                                                      NKGPU_SHADERSTAGE_COMPUTE, 0),
+            nkgpu_shader_binding_desc storage_binding{};
+            storage_binding.struct_size = sizeof(storage_binding);
+            storage_binding.kind = NKGPU_SHADERBINDING_STORAGE_BUFFER;
+            storage_binding.stage = NKGPU_SHADERSTAGE_COMPUTE;
+            storage_binding.slot = 0;
+            EXPECT_RESULT(nkgpu_shader_binding(compute_shader_builder, &storage_binding),
                           NKGPU_OK);
             EXPECT_RESULT(nkgpu_shader_end(compute_shader_builder, &compute_shader), NKGPU_OK);
             compute_shader_builder = {};
