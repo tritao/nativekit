@@ -1286,6 +1286,10 @@ bool TransportResource::write_socket() noexcept {
         const auto error = sent < 0 ? socket_error() : 0;
         lock.lock();
         if (sent > 0) {
+#if defined(_WIN32)
+            if (options.kind == NK_TRANSPORT_UDP)
+                transport_debug("udp sent", sent);
+#endif
             outgoing_offset += static_cast<std::size_t>(sent);
             if (outgoing_offset == chunk.size()) {
                 outgoing_bytes -= chunk.size();
@@ -1456,6 +1460,9 @@ void ListenerResource::run() noexcept {
             }
             if (ready == 0)
                 continue;
+#if defined(_WIN32)
+            transport_debug("udp listener ready", ready);
+#endif
             std::array<uint8_t, 1> probe{};
             sockaddr_storage peer{};
             socket_length_type peer_size = sizeof(peer);
@@ -1472,6 +1479,9 @@ void ListenerResource::run() noexcept {
                 emit_failure(NK_TRANSPORT_ERROR_CONNECTION);
                 return;
             }
+#if defined(_WIN32)
+            transport_debug("udp listener peek", count);
+#endif
             auto transport = std::make_shared<TransportResource>();
             transport->options = options;
             transport->generation = generation;
