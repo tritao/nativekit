@@ -53,21 +53,21 @@ std::uint32_t decode_pick_id(const std::array<std::uint8_t, 4> &pixel) {
         (static_cast<std::uint32_t>(pixel[2]) << 16);
 }
 
-const RenderItem *find_item(const RenderPlan &plan, OccurrenceId occurrence) {
-    const auto items = plan.items();
-    const auto found = std::find_if(items.begin(), items.end(), [&](const RenderItem &item) {
-        return item.occurrence == occurrence;
-    });
-    return found == items.end() ? nullptr : &*found;
-}
-
 std::vector<DesiredBatch> desired_batches(const RenderPlan &plan) {
     std::vector<DesiredBatch> result;
+    std::unordered_map<OccurrenceId, std::size_t> item_indices;
+    item_indices.reserve(plan.items().size());
+    for (std::size_t index = 0; index < plan.items().size(); ++index)
+        item_indices.emplace(plan.items()[index].occurrence, index);
+
     for (const auto &batch : plan.batches()) {
         DesiredBatch desired{{batch.geometry, batch.material}};
         const auto transforms = plan.transforms();
         for (const auto occurrence : batch.instances) {
-            const auto *item = find_item(plan, occurrence);
+            const auto item_index = item_indices.find(occurrence);
+            const auto *item = item_index == item_indices.end()
+                ? nullptr
+                : &plan.items()[item_index->second];
             if (!item || has_render_flag(item->flags, RenderFlags::Hidden) ||
                 item->transformIndex >= transforms.size())
                 continue;

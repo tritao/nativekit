@@ -58,6 +58,19 @@ if(NK_BUILD_TESTS)
                 LABELS "scene;render;graphics;gpu"
                 TIMEOUT 30
                 ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
+
+            add_executable(nativekit_scene_render_gpu_benchmark tests/gpu_benchmark.cpp)
+            target_compile_features(nativekit_scene_render_gpu_benchmark PRIVATE cxx_std_20)
+            target_include_directories(nativekit_scene_render_gpu_benchmark PRIVATE
+                src "${PROJECT_SOURCE_DIR}/modules/scene/src")
+            target_link_libraries(nativekit_scene_render_gpu_benchmark PRIVATE NativeKit::scene_render
+                NativeKit::scene NativeKit::gpu NativeKit::nativekit)
+            add_test(NAME scene_render_gpu_benchmark
+                COMMAND ${NKSRENDER_XVFB_RUN} -a $<TARGET_FILE:nativekit_scene_render_gpu_benchmark>)
+            set_tests_properties(scene_render_gpu_benchmark PROPERTIES
+                LABELS "scene;render;graphics;gpu;benchmark"
+                TIMEOUT 60
+                ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
         endif()
     endif()
 endif()
