@@ -1056,8 +1056,7 @@ nkgpu_result nkgpu_renderer_get_stats(nkgpu_renderer renderer, nkgpu_renderer_st
             ++stats.images_live;
             const uint64_t bytes = resource.value.pixels.size();
             stats.image_bytes += bytes;
-            if (resource.value.usage &
-                (NKGPU_IMAGE_RENDER_TARGET | NKGPU_IMAGE_DEPTH_STENCIL)) {
+            if (resource.value.usage & (NKGPU_IMAGE_RENDER_TARGET | NKGPU_IMAGE_DEPTH_STENCIL)) {
                 ++stats.render_targets_live;
                 stats.render_target_bytes += bytes;
             }
@@ -4476,8 +4475,7 @@ nkgpu_result nkgpu_batch_append_pass(nkgpu_batch batch, const nkgpu_batch_pass *
     if (!pass || pass->struct_size < offsetof(nkgpu_batch_pass, render_pass))
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid batch pass");
     if (pass->kind != NKGPU_BATCH_PASS_WINDOW && pass->kind != NKGPU_BATCH_PASS_COMPUTE &&
-        pass->kind != NKGPU_BATCH_PASS_COPY &&
-        pass->kind != NKGPU_BATCH_PASS_RENDER)
+        pass->kind != NKGPU_BATCH_PASS_COPY && pass->kind != NKGPU_BATCH_PASS_RENDER)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid batch pass kind");
     if (pass->kind != NKGPU_BATCH_PASS_RENDER && pass->clear > 1)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid batch pass clear flag");
