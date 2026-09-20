@@ -117,6 +117,18 @@ typedef struct nkscene_snapshot_occurrence {
     nkscene_bounds bounds;
 } nkscene_snapshot_occurrence;
 
+enum {
+    NKS_SCENE_SNAPSHOT_OCCURRENCE_PAGE_CAPACITY = 64u
+};
+
+/** Fixed-size page used to transfer snapshot occurrences across the C ABI. */
+typedef struct nkscene_snapshot_occurrence_page {
+    uint32_t struct_size NK_STRUCT_SIZE;
+    uint64_t start_index;
+    uint32_t count;
+    nkscene_snapshot_occurrence occurrences[NKS_SCENE_SNAPSHOT_OCCURRENCE_PAGE_CAPACITY];
+} nkscene_snapshot_occurrence_page;
+
 /* ------------------------------------------------------------------------- */
 /* Result codes                                                              */
 /* ------------------------------------------------------------------------- */
@@ -192,6 +204,9 @@ NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_occurrence_count(
 NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_occurrence(
     nkscene_snapshot snapshot, uint64_t index,
     nkscene_snapshot_occurrence *out_occurrence NK_INOUT);
+NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_occurrence_page(
+    nkscene_snapshot snapshot, uint64_t start_index,
+    nkscene_snapshot_occurrence_page *out_page NK_INOUT);
 NKS_API void NKS_CALL nkscene_change_set_destroy(nkscene_change_set changes);
 NKS_API nkscene_result NKS_CALL nkscene_change_set_get_revision(nkscene_change_set changes,
                                                                 uint64_t *out_revision NK_OUT);

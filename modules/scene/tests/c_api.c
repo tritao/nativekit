@@ -61,6 +61,16 @@ int main(void) {
     assert(nkscene_snapshot_get_occurrence(snapshot, count, &info) ==
            NKS_ERROR_INVALID_ARGUMENT);
 
+    nkscene_snapshot_occurrence_page page = {0};
+    page.struct_size = sizeof(page);
+    assert(nkscene_snapshot_get_occurrence_page(snapshot, 0, &page) == NKS_OK);
+    assert(page.start_index == 0);
+    assert(page.count == count);
+    assert(page.occurrences[0].occurrence.value == group.value);
+    assert(page.occurrences[1].parent.value == group.value);
+    assert(nkscene_snapshot_get_occurrence_page(snapshot, count, &page) == NKS_OK);
+    assert(page.count == 0);
+
     nkscene_snapshot_destroy(snapshot);
     nkscene_scene_destroy(scene);
     return 0;

@@ -6,6 +6,9 @@ import NativeKitScene;
 class Snapshot {
 	final owner:Ownednkscene_snapshot;
 	var disposed:Bool = false;
+	var occurrenceCache:Null<Array<OccurrenceInfo>> = null;
+	var occurrenceIndex:Null<Map<String, OccurrenceInfo>> = null;
+	var childrenIndex:Null<Map<String, Array<Occurrence>>> = null;
 
 	@:allow(Scene)
 	private function new(owner:Ownednkscene_snapshot) {
@@ -35,6 +38,12 @@ class Snapshot {
 		ensureLive();
 		if (index < 0)
 			throw "Snapshot occurrence index cannot be negative";
+		var cached = occurrenceCache;
+		if (cached != null) {
+			if (index >= cached.length)
+				throw "Snapshot occurrence index is out of range";
+			return cached[index];
+		}
 		var value = new nkscene_snapshot_occurrence();
 		value.set_struct_size(nkscene_snapshot_occurrence.size());
 		var result = NativeKitScene.nkscene_snapshot_get_occurrence(owner.borrow(), index, value);
@@ -43,28 +52,18 @@ class Snapshot {
 	}
 
 	public function occurrences():Array<OccurrenceInfo> {
-		var result:Array<OccurrenceInfo> = [];
-		var count = occurrenceCount();
-		for (index in 0...count)
-			result.push(occurrenceAt(index));
-		return result;
+		return ensureOccurrenceCache();
 	}
 
 	public function find(occurrence:Occurrence):Null<OccurrenceInfo> {
-		for (info in occurrences())
-			if (info.occurrence().equals(occurrence))
-				return info;
-		return null;
+		ensureOccurrenceCache();
+		return occurrenceIndex.get(key(occurrence));
 	}
 
 	public function children(parent:Occurrence):Array<Occurrence> {
-		var result:Array<Occurrence> = [];
-		for (info in occurrences()) {
-			var candidate = info.parent();
-			if (candidate != null && candidate.equals(parent))
-				result.push(info.occurrence());
-		}
-		return result;
+		ensureOccurrenceCache();
+		var result = childrenIndex.get(key(parent));
+		return result == null ? [] : result.copy();
 	}
 
 	public function dispose():Void {
@@ -86,4 +85,49 @@ class Snapshot {
 		if (status != NativeKitSceneConstants.NKS_OK)
 			throw '$operation failed with NativeKit scene status $status';
 	}
+
+	function ensureOccurrenceCache():Array<OccurrenceInfo> {
+		var result = occurrenceCache;
+		if (result != null)
+			return result;
+
+		result = [];
+		var byValue:Map<String, OccurrenceInfo> = new Map(),
+			byParent:Map<String, Array<Occurrence>> = new Map(),
+			count = occurrenceCount(),
+			pageSize = NativeKitSceneConstants.NKS_SCENE_SNAPSHOT_OCCURRENCE_PAGE_CAPACITY,
+			page = new nkscene_snapshot_occurrence_page();
+		page.set_struct_size(nkscene_snapshot_occurrence_page.size());
+		var offset = 0;
+		while (offset < count) {
+			var pageResult = NativeKitScene.nkscene_snapshot_get_occurrence_page(
+				owner.borrow(), offset, page);
+			check(pageResult.status, "snapshot.occurrencePage");
+			var pageCount = page.get_count();
+			if (pageCount <= 0 || pageCount > pageSize || pageCount > count - offset)
+				throw "Snapshot occurrence page returned an invalid count";
+			for (index in 0...pageCount) {
+				var info = new OccurrenceInfo(page.get_occurrences(index));
+				result.push(info);
+				byValue.set(key(info.occurrence()), info);
+				var parent = info.parent();
+				if (parent != null) {
+					var children = byParent.get(key(parent));
+					if (children == null) {
+						children = [];
+						byParent.set(key(parent), children);
+					}
+					children.push(info.occurrence());
+				}
+			}
+			offset += pageCount;
+		}
+		occurrenceCache = result;
+		occurrenceIndex = byValue;
+		childrenIndex = byParent;
+		return result;
+	}
+
+	static function key(occurrence:Occurrence):String
+		return haxe.Int64.toStr(occurrence.stableValue());
 }

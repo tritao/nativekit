@@ -798,6 +798,33 @@ nkscene_result NKS_CALL nkscene_snapshot_get_occurrence(
     return NKS_OK;
 }
 
+nkscene_result NKS_CALL nkscene_snapshot_get_occurrence_page(
+    nkscene_snapshot snapshot, uint64_t start_index,
+    nkscene_snapshot_occurrence_page *out_page) {
+    if (!out_page || out_page->struct_size < sizeof(nkscene_snapshot_occurrence_page))
+        return NKS_ERROR_INVALID_ARGUMENT;
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    const auto value = state.snapshots.get(nkscene::unpack_handle(snapshot));
+    if (!value)
+        return NKS_ERROR_INVALID_HANDLE;
+    const auto occurrences = value->occurrences();
+    out_page->start_index = start_index;
+    if (start_index >= occurrences.size()) {
+        out_page->count = 0;
+        return NKS_OK;
+    }
+    const auto remaining = occurrences.size() - static_cast<std::size_t>(start_index);
+    const auto count = std::min<std::size_t>(
+        remaining, NKS_SCENE_SNAPSHOT_OCCURRENCE_PAGE_CAPACITY);
+    out_page->count = static_cast<uint32_t>(count);
+    for (std::size_t index = 0; index < count; ++index)
+        nkscene::copy_snapshot_occurrence(
+            occurrences[static_cast<std::size_t>(start_index) + index],
+            out_page->occurrences[index]);
+    return NKS_OK;
+}
+
 void NKS_CALL nkscene_change_set_destroy(nkscene_change_set changes) {
     auto &state = nkscene::registry();
     std::lock_guard lock(state.mutex);

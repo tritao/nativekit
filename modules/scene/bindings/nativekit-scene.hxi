@@ -9,6 +9,7 @@ interface NativeKitScene @target("portable-abi64") @library("nativekit_scene") {
 	const NKS_MATERIAL_DOUBLE_SIDED = 2;
 	const NKS_MATERIAL_OPAQUE = 1;
 	const NKS_OK = 0;
+	const NKS_SCENE_SNAPSHOT_OCCURRENCE_PAGE_CAPACITY = 64;
 	extern fn nkscene_change_set_destroy(changes: nkscene_change_set) -> void;
 	extern fn nkscene_change_set_get_revision(changes: nkscene_change_set, out_revision: ptr<u64> @out) -> nkscene_result;
 	extern fn nkscene_geometry_create(scene: nkscene_scene, out_geometry: ptr<nkscene_geometry_id> @out) -> nkscene_result;
@@ -23,6 +24,7 @@ interface NativeKitScene @target("portable-abi64") @library("nativekit_scene") {
 	extern fn nkscene_snapshot_destroy(snapshot: nkscene_snapshot) -> void;
 	extern fn nkscene_snapshot_get_occurrence(snapshot: nkscene_snapshot, index: u64, out_occurrence: ptr<nkscene_snapshot_occurrence> @inout) -> nkscene_result;
 	extern fn nkscene_snapshot_get_occurrence_count(snapshot: nkscene_snapshot, out_count: ptr<u64> @out) -> nkscene_result;
+	extern fn nkscene_snapshot_get_occurrence_page(snapshot: nkscene_snapshot, start_index: u64, out_page: ptr<nkscene_snapshot_occurrence_page> @inout) -> nkscene_result;
 	extern fn nkscene_snapshot_get_revision(snapshot: nkscene_snapshot, out_revision: ptr<u64> @out) -> nkscene_result;
 	extern fn nkscene_transaction_begin(scene: nkscene_scene, out_transaction: ptr<nkscene_transaction> @out @owned) -> nkscene_result;
 	extern fn nkscene_transaction_cancel(transaction: nkscene_transaction) -> void;
@@ -89,6 +91,15 @@ interface NativeKitScene @target("portable-abi64") @library("nativekit_scene") {
 		material: nkscene_material_id @offset(176);
 		visible: u32 @offset(184);
 		bounds: nkscene_bounds @offset(188);
+	}
+	/**
+	 * Fixed-size page used to transfer snapshot occurrences across the C ABI.
+	 */
+	struct nkscene_snapshot_occurrence_page @layout(13848, 8) {
+		struct_size: u32 @offset(0) @struct_size;
+		start_index: u64 @offset(8);
+		count: u32 @offset(16);
+		occurrences: array<nkscene_snapshot_occurrence, 64> @offset(24);
 	}
 	struct nkscene_subelement_range @layout(12, 4) {
 		first_primitive: u32 @offset(0);
