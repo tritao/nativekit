@@ -578,7 +578,11 @@ static const nk_sokol_transfer_api transfer_api = {
     nk_sokol_readback_row_pitch,
     nk_sokol_readback_read,
     nk_sokol_readback_destroy,
+    0,
+    0,
 };
+#elif defined(SOKOL_D3D11) || defined(SOKOL_METAL)
+/* Native transfer callbacks live in the backend-specific translation unit. */
 #else
 static const nk_sokol_transfer_api transfer_api = {};
 #endif
@@ -664,6 +668,10 @@ void nk_sokol_runtime_release(void) {
         for (uint32_t i = 0; i < NK_SOKOL_READBACK_CAPACITY; ++i)
             if (readbacks[i].active)
                 readback_release(&readbacks[i]);
+#elif defined(SOKOL_D3D11)
+        nk_sokol_d3d11_transfer_shutdown();
+#elif defined(SOKOL_METAL)
+        nk_sokol_metal_transfer_shutdown();
 #endif
         sg_shutdown();
         runtime_color_format = 0;
@@ -726,5 +734,11 @@ int nk_sokol_external_image_resolve(uint32_t token, sg_view *out_view, int32_t *
 }
 
 const nk_sokol_transfer_api *nk_sokol_transfer_get_api(void) {
+#if defined(SOKOL_D3D11)
+    return nk_sokol_d3d11_transfer_get_api();
+#elif defined(SOKOL_METAL)
+    return nk_sokol_metal_transfer_get_api();
+#else
     return &transfer_api;
+#endif
 }

@@ -3018,6 +3018,8 @@ nkgpu_result nkgpu_begin_copy_pass(nkgpu_renderer h) {
         (!selected_api->transfer->buffer_copy && !selected_api->transfer->image_copy &&
          !selected_api->transfer->buffer_to_image && !selected_api->transfer->image_to_buffer))
         return fail(NKGPU_ERROR_UNSUPPORTED, "transfer operations are unavailable");
+    if (selected_api->transfer->begin_pass && !selected_api->transfer->begin_pass())
+        return fail(NKGPU_ERROR_UNKNOWN, "transfer pass could not be started");
     renderer->value.in_pass = true;
     renderer->value.compute_pass = false;
     renderer->value.copy_pass = true;
@@ -3145,6 +3147,9 @@ nkgpu_result nkgpu_end_pass(nkgpu_renderer h) {
     const nkgpu_result activated = activate_renderer(h);
     if (activated != NKGPU_OK)
         return activated;
+    if (renderer->value.copy_pass && renderer->value.api->transfer &&
+        renderer->value.api->transfer->end_pass && !renderer->value.api->transfer->end_pass())
+        return fail(NKGPU_ERROR_UNKNOWN, "transfer pass could not be completed");
     if (!renderer->value.copy_pass)
         sg_end_pass();
     renderer->value.in_pass = false;
@@ -4812,6 +4817,9 @@ static nkgpu_result end_frame(nkgpu_renderer r, bool present_surface) {
     const nkgpu_result activated = activate_renderer(r);
     if (activated != NKGPU_OK)
         return activated;
+    if (rs->value.in_pass && rs->value.copy_pass && rs->value.api->transfer &&
+        rs->value.api->transfer->end_pass && !rs->value.api->transfer->end_pass())
+        return fail(NKGPU_ERROR_UNKNOWN, "transfer pass could not be completed");
     if (rs->value.in_pass && !rs->value.copy_pass)
         sg_end_pass();
     sg_commit();

@@ -70,9 +70,18 @@ struct nk_sokol_transfer_api {
     uint32_t (*readback_row_pitch)(uint32_t readback);
     int (*readback_read)(uint32_t readback, void *destination, uint32_t size);
     void (*readback_destroy)(uint32_t readback);
+    int (*begin_pass)(void);
+    int (*end_pass)(void);
 };
 
 const nk_sokol_transfer_api *nk_sokol_transfer_get_api(void);
+#if defined(NK_SOKOL_BACKEND_D3D11)
+const nk_sokol_transfer_api *nk_sokol_d3d11_transfer_get_api(void);
+void nk_sokol_d3d11_transfer_shutdown(void);
+#elif defined(NK_SOKOL_BACKEND_METAL)
+const nk_sokol_transfer_api *nk_sokol_metal_transfer_get_api(void);
+void nk_sokol_metal_transfer_shutdown(void);
+#endif
 
 #ifdef __cplusplus
 }

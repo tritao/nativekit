@@ -187,6 +187,6 @@ callers.
 NativeKit now layers a private `nk_sokol_transfer_api` beside Sokol's regular
 dispatch table. GLCore and GLES3 expose real buffer/image transfers plus
 fence-backed asynchronous image readback, including tightly packed `R32_UINT`
-rectangles suitable for CAD picking. D3D11 and Metal remain capability-gated
-until their staging-resource implementations are added. The portable surface
-does not expose backend fences or native resource structs.
+rectangles suitable for CAD picking. D3D11 uses staging resources and event
+queries, while Metal uses blit encoders and shared readback buffers. The
+portable surface does not expose backend fences or native resource structs.
