@@ -654,31 +654,33 @@ int main() {
                                       scheduler_window_options.height, &scheduler_surfaces[index]) ==
                                   NKGPU_OK;
             } else {
-                /* Keep the stress test within the backend's shared-device or
-                   shared-context runtime: the second surface uses a distinct
-                   target but shares surface zero's graphics resources. */
-                nk_surface_options shared_options{};
-                shared_options.struct_size = sizeof(shared_options);
-                shared_options.api = scheduler_targets[0].api;
-                shared_options.flags =
-                    shared_options.api == NK_GRAPHICS_OPENGL
-                        ? NK_SURFACE_FORWARD_COMPATIBLE
-                        : (shared_options.api == NK_GRAPHICS_D3D11 ||
-                                   shared_options.api == NK_GRAPHICS_METAL
-                               ? NK_SURFACE_DEPTH | NK_SURFACE_STENCIL
-                               : 0);
-                shared_options.major_version =
-                    (shared_options.api == NK_GRAPHICS_OPENGL ||
-                     shared_options.api == NK_GRAPHICS_OPENGL_ES)
-                        ? 3
-                        : 0;
-                shared_options.minor_version =
-                    shared_options.api == NK_GRAPHICS_OPENGL ? 3 : 0;
-                shared_options.width = scheduler_window_options.width;
-                shared_options.height = scheduler_window_options.height;
-                shared_options.share_surface = scheduler_surfaces[0];
-                surface_created = nk_surface_create(scheduler_windows[index], &shared_options,
-                                                     &scheduler_surfaces[index]) == NK_OK;
+                const nk_graphics_api api = scheduler_targets[0].api;
+                if (api == NK_GRAPHICS_OPENGL || api == NK_GRAPHICS_OPENGL_ES) {
+                    /* Keep the GL stress test within the provisioned runtime:
+                       the second surface uses a distinct target but shares
+                       surface zero's context/share group. */
+                    nk_surface_options shared_options{};
+                    shared_options.struct_size = sizeof(shared_options);
+                    shared_options.flags = api == NK_GRAPHICS_OPENGL
+                                               ? NK_SURFACE_FORWARD_COMPATIBLE
+                                               : 0;
+                    shared_options.api = api;
+                    shared_options.major_version = 3;
+                    shared_options.minor_version = api == NK_GRAPHICS_OPENGL ? 3 : 0;
+                    shared_options.width = scheduler_window_options.width;
+                    shared_options.height = scheduler_window_options.height;
+                    shared_options.share_surface = scheduler_surfaces[0];
+                    surface_created = nk_surface_create(scheduler_windows[index], &shared_options,
+                                                         &scheduler_surfaces[index]) == NK_OK;
+                } else {
+                    /* Explicit backends own their device/swapchain setup;
+                       create a second target through the public factory and
+                       let the scheduler classify cross-device switching. */
+                    surface_created = nkgpu_surface_create_for_api(
+                                          scheduler_windows[index], api, scheduler_window_options.width,
+                                          scheduler_window_options.height,
+                                          &scheduler_surfaces[index]) == NKGPU_OK;
+                }
             }
             if (!check(surface_created, "create scheduler stress surface") ||
                 !wait_surface_ready(scheduler_windows[index], scheduler_surfaces[index],
