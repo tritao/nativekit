@@ -390,6 +390,7 @@ int main() {
     LayoutPrimitive custom_marker;
     custom_marker.kind = LayoutPrimitiveKind::Custom;
     custom_marker.node_id = 2;
+    custom_marker.content_revision = 1;
     custom_marker.bounds = button_item->bounds;
     custom_marker.transform = button_item->transform;
     ordered_snapshot.primitives.insert(label_primitive, custom_marker);
@@ -678,6 +679,31 @@ int main() {
                              {main_target, subtree_frame_target}, &subtree_execution_error) ||
         revision_backend.raster_cache_hits != 1)
         return 128;
+
+    // Custom display-list plans use the owning layout item's retained content
+    // revision even when the display-list command stream itself is unchanged.
+    LayoutSnapshot custom_content_snapshot = ordered_snapshot;
+    const auto custom_content_item = std::find_if(
+        custom_content_snapshot.items.begin(), custom_content_snapshot.items.end(),
+        [](const LayoutItem &item) { return item.id == 2; });
+    if (custom_content_item == custom_content_snapshot.items.end())
+        return 130;
+    custom_content_item->content_revision = 2;
+    LayoutRenderFrame custom_content_frame;
+    if (!compiler.compile(custom_content_snapshot, main_target, 1.5f, custom_content_frame,
+                          &compile_error, false, engine.text_engine(), &custom_paints,
+                          &raster_paints) ||
+        !custom_content_frame.resources().bind_path(custom_path, mixed_prepared, 0, 1))
+        return 130;
+    RecordingRenderer custom_revision_backend;
+    if (!mixed_frame.resources().bind_path(custom_path, mixed_prepared, 0, 1) ||
+        !execute_render_plan(custom_revision_backend, mixed_frame.plan(), mixed_frame.resources(),
+                             {main_target, subtree_frame_target}, &subtree_execution_error) ||
+        !execute_render_plan(custom_revision_backend, custom_content_frame.plan(),
+                             custom_content_frame.resources(),
+                             {main_target, subtree_frame_target}, &subtree_execution_error) ||
+        custom_revision_backend.raster_cache_hits != 0)
+        return 130;
 
     std::vector<LayoutNode> composite_changed_nodes = nodes;
     composite_changed_nodes[0].composite_revision = 9;
