@@ -191,8 +191,11 @@ bool create_staging_texture(const ImageInfo &source, uint32_t width, uint32_t he
     desc.BindFlags = 0;
     desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
     desc.MiscFlags = 0;
+    /* Preserve typeless depth resources for CopySubresourceRegion. The depth
+       view remains D32_FLOAT, while the staging copy must use the same
+       resource format to preserve the underlying R32 depth bits. */
     if (source.format == DXGI_FORMAT_R32_TYPELESS)
-        desc.Format = DXGI_FORMAT_R32_FLOAT;
+        desc.Format = source.desc.Format;
     return SUCCEEDED(device()->CreateTexture2D(&desc, nullptr, out));
 }
 
