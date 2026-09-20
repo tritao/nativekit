@@ -16,6 +16,62 @@
 
 namespace nkscene {
 
+struct SceneSnapshot::State {
+    RevisionCounters revisions;
+    std::vector<SnapshotOccurrence> occurrences;
+    std::vector<GeometryResource> geometries;
+    std::vector<MaterialResource> materials;
+};
+
+SceneSnapshot::SceneSnapshot() : state_(std::make_shared<State>()) {}
+
+SceneSnapshot::SceneSnapshot(std::shared_ptr<const State> state) : state_(std::move(state)) {}
+
+std::uint64_t SceneSnapshot::revision() const noexcept { return state_->revisions.scene; }
+
+const RevisionCounters &SceneSnapshot::revisions() const noexcept {
+    return state_->revisions;
+}
+
+std::span<const SnapshotOccurrence> SceneSnapshot::occurrences() const noexcept {
+    return state_->occurrences;
+}
+
+const SnapshotOccurrence *SceneSnapshot::find(OccurrenceId id) const noexcept {
+    const auto found = std::lower_bound(
+        state_->occurrences.begin(), state_->occurrences.end(), id,
+        [](const SnapshotOccurrence &occurrence, OccurrenceId value) {
+            return occurrence.occurrence.value < value.value;
+        });
+    return found == state_->occurrences.end() || found->occurrence != id ? nullptr : &*found;
+}
+
+std::span<const GeometryResource> SceneSnapshot::geometries() const noexcept {
+    return state_->geometries;
+}
+
+std::span<const MaterialResource> SceneSnapshot::materials() const noexcept {
+    return state_->materials;
+}
+
+const GeometryResource *SceneSnapshot::find_geometry(GeometryId id) const noexcept {
+    const auto found = std::lower_bound(
+        state_->geometries.begin(), state_->geometries.end(), id,
+        [](const GeometryResource &resource, GeometryId value) {
+            return resource.id.value < value.value;
+        });
+    return found == state_->geometries.end() || found->id != id ? nullptr : &*found;
+}
+
+const MaterialResource *SceneSnapshot::find_material(MaterialId id) const noexcept {
+    const auto found = std::lower_bound(
+        state_->materials.begin(), state_->materials.end(), id,
+        [](const MaterialResource &resource, MaterialId value) {
+            return resource.id.value < value.value;
+        });
+    return found == state_->materials.end() || found->id != id ? nullptr : &*found;
+}
+
 namespace {
 
 bool transform_equal(const LocalTransform &lhs, const LocalTransform &rhs) noexcept {
@@ -146,6 +202,51 @@ bool Scene::exists_after(const std::unordered_map<OccurrenceId, bool> &live,
                          OccurrenceId id) const noexcept {
     const auto found = live.find(id);
     return found == live.end() ? occurrences.contains(id) : found->second;
+}
+
+SceneSnapshot Scene::snapshot() const {
+    auto state = std::make_shared<SceneSnapshot::State>();
+    state->revisions = revisions;
+    state->occurrences.reserve(occurrences.size());
+    occurrences.for_each([&](OccurrenceId id, OccurrenceHandle) {
+        SnapshotOccurrence occurrence;
+        occurrence.occurrence = id;
+        if (const auto *source = source_entities.find(id))
+            occurrence.source = source->id;
+        occurrence.parent = hierarchy.parent(id);
+        if (const auto *local = local_transforms.find(id))
+            occurrence.local_transform = *local;
+        if (const auto *world = world_transforms_.find(id))
+            occurrence.world_transform = *world;
+        if (const auto *geometry = geometry_refs.find(id))
+            occurrence.geometry = geometry->id;
+        if (const auto *material = material_refs.find(id))
+            occurrence.material = material->id;
+        if (const auto *visibility = visibilities_.find(id))
+            occurrence.visible = visibility->visible;
+        if (const auto *bound = bounds.find(id))
+            occurrence.bounds = *bound;
+        state->occurrences.push_back(occurrence);
+    });
+    std::sort(state->occurrences.begin(), state->occurrences.end(),
+              [](const SnapshotOccurrence &lhs, const SnapshotOccurrence &rhs) {
+                  return lhs.occurrence.value < rhs.occurrence.value;
+              });
+    geometries.for_each([&](GeometryId, const GeometryResource &resource) {
+        state->geometries.push_back(resource);
+    });
+    std::sort(state->geometries.begin(), state->geometries.end(),
+              [](const GeometryResource &lhs, const GeometryResource &rhs) {
+                  return lhs.id.value < rhs.id.value;
+              });
+    materials.for_each([&](MaterialId, const MaterialResource &resource) {
+        state->materials.push_back(resource);
+    });
+    std::sort(state->materials.begin(), state->materials.end(),
+              [](const MaterialResource &lhs, const MaterialResource &rhs) {
+                  return lhs.id.value < rhs.id.value;
+              });
+    return SceneSnapshot(std::move(state));
 }
 
 nkscene_result Scene::validate(const Transaction &transaction) const noexcept {

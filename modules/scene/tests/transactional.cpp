@@ -126,11 +126,39 @@ void shared_resources_do_not_follow_instance_transforms() {
     assert(scene->world_transforms().find(occurrences.front())->revision != 0);
 }
 
+void snapshots_are_immutable() {
+    auto scene = std::make_shared<Scene>();
+    const auto occurrence = scene->reserve_occurrence_id();
+    Transaction create(scene);
+    create.add_create(occurrence);
+    nkscene::ChangeSet changes;
+    assert(scene->commit(create, changes) == NKS_OK);
+    create.close();
+
+    Transaction move(scene);
+    move.add_transform(occurrence, translated(3.0f));
+    assert(scene->commit(move, changes) == NKS_OK);
+    move.close();
+    const auto before = scene->snapshot();
+    assert(before.revision() == scene->revision());
+    assert(before.occurrences().size() == 1);
+    assert(before.find(occurrence)->world_transform.transform.matrix[12] == 3.0f);
+
+    Transaction move_again(scene);
+    move_again.add_transform(occurrence, translated(7.0f));
+    assert(scene->commit(move_again, changes) == NKS_OK);
+    move_again.close();
+    assert(scene->snapshot().find(occurrence)->world_transform.transform.matrix[12] == 7.0f);
+    assert(before.find(occurrence)->world_transform.transform.matrix[12] == 3.0f);
+    assert(before.revision() != scene->revision());
+}
+
 } // namespace
 
 int main() {
     component_store_is_dense_and_sparse();
     changes_are_domain_precise();
     shared_resources_do_not_follow_instance_transforms();
+    snapshots_are_immutable();
     return 0;
 }

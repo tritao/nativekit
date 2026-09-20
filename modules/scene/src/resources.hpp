@@ -2,40 +2,10 @@
 
 #include "ids.hpp"
 
-#include <array>
 #include <cstddef>
-#include <cstdint>
 #include <unordered_map>
-#include <vector>
 
 namespace nkscene {
-
-struct Bounds {
-    std::array<float, 3> minimum{0.0f, 0.0f, 0.0f};
-    std::array<float, 3> maximum{0.0f, 0.0f, 0.0f};
-    bool valid = false;
-};
-
-struct GeometryPayload {
-    std::vector<std::byte> bytes;
-};
-
-struct SubelementTable {
-    std::vector<std::uint32_t> offsets;
-};
-
-struct GeometryResource {
-    GeometryId id;
-    std::uint64_t revision = 1;
-    Bounds bounds;
-    GeometryPayload payload;
-    SubelementTable subelements;
-};
-
-struct MaterialResource {
-    MaterialId id;
-    std::uint64_t revision = 1;
-};
 
 class GeometryStore {
 public:
@@ -59,6 +29,12 @@ public:
     }
 
     std::size_t size() const noexcept { return resources.size(); }
+
+    template<class Fn>
+    void for_each(Fn &&fn) const {
+        for (const auto &[id, resource] : resources)
+            fn(id, resource);
+    }
 
 private:
     std::unordered_map<GeometryId, GeometryResource> resources;
@@ -86,6 +62,12 @@ public:
     }
 
     std::size_t size() const noexcept { return resources.size(); }
+
+    template<class Fn>
+    void for_each(Fn &&fn) const {
+        for (const auto &[id, resource] : resources)
+            fn(id, resource);
+    }
 
 private:
     std::unordered_map<MaterialId, MaterialResource> resources;

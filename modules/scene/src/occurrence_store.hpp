@@ -60,6 +60,12 @@ public:
     bool contains(OccurrenceId id) const noexcept { return by_id.contains(id); }
     std::size_t size() const noexcept { return by_id.size(); }
 
+    template<class Fn>
+    void for_each(Fn &&fn) const {
+        for (const auto &[id, handle] : by_id)
+            fn(id, handle);
+    }
+
 private:
     struct Slot {
         OccurrenceId id;

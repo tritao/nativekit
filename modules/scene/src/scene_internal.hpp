@@ -24,6 +24,7 @@ public:
     bool contains(OccurrenceId id) const noexcept { return occurrences.contains(id); }
 
     nkscene_result commit(const Transaction &transaction, ChangeSet &changes);
+    SceneSnapshot snapshot() const;
 
     std::uint64_t revision() const noexcept { return revisions.scene; }
     const RevisionCounters &revision_counters() const noexcept { return revisions; }

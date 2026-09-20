@@ -28,6 +28,13 @@ if(NK_BUILD_TESTS)
     target_link_libraries(nativekit_scene_transaction_tests PRIVATE NativeKit::scene)
     add_test(NAME scene_transactional COMMAND nativekit_scene_transaction_tests)
     set_tests_properties(scene_transactional PROPERTIES LABELS "scene" TIMEOUT 30)
+
+    add_executable(nativekit_scene_benchmark bench/benchmark.cpp)
+    target_compile_features(nativekit_scene_benchmark PRIVATE cxx_std_20)
+    target_include_directories(nativekit_scene_benchmark PRIVATE src)
+    target_link_libraries(nativekit_scene_benchmark PRIVATE NativeKit::scene)
+    add_test(NAME scene_benchmark COMMAND nativekit_scene_benchmark)
+    set_tests_properties(scene_benchmark PROPERTIES LABELS "scene;benchmark" TIMEOUT 30)
 endif()
 
 install(TARGETS nativekit_scene EXPORT NativeKitTargets
