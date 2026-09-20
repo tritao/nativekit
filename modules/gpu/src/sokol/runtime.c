@@ -422,8 +422,8 @@ static uint32_t nk_sokol_buffer_to_image(sg_buffer source, uint32_t source_offse
         sg_reset_state_cache();
         return 0;
     }
-    glGetBufferSubData(GL_PIXEL_UNPACK_BUFFER, (GLintptr)source_offset,
-                       (GLsizeiptr)source_size, buffer_data);
+    glGetBufferSubData(GL_PIXEL_UNPACK_BUFFER, (GLintptr)source_offset, (GLsizeiptr)source_size,
+                       buffer_data);
     const uint8_t *mapped = buffer_data;
 #else
     const uint8_t *mapped = (const uint8_t *)glMapBufferRange(
