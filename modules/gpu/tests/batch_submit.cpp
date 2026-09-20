@@ -568,6 +568,9 @@ int main() {
         sampled_binding.secondary_slot = 0;
         sampled_binding.name = "tex";
         EXPECT_RESULT(nkgpu_shader_binding(shader_builder, &sampled_binding), NKGPU_OK);
+        nkgpu_shader_binding_desc sampler_binding = sampled_binding;
+        sampler_binding.kind = NKGPU_SHADERBINDING_SAMPLER;
+        EXPECT_RESULT(nkgpu_shader_binding(shader_builder, &sampler_binding), NKGPU_OK);
         EXPECT_RESULT(nkgpu_shader_end(shader_builder, &textured_shader), NKGPU_OK);
         nkgpu_pipeline_builder pipeline_builder{};
         EXPECT_RESULT(

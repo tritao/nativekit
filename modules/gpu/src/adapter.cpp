@@ -2613,6 +2613,22 @@ nkgpu_result nkgpu_shader_binding(nkgpu_shader_builder h, const nkgpu_shader_bin
         return nkgpu_shader_storage_buffer(h, desc->slot, desc->stage, desc->readonly);
     case NKGPU_SHADERBINDING_STORAGE_IMAGE:
         return nkgpu_shader_storage_image(h, desc->slot, desc->format, desc->writeonly);
+    case NKGPU_SHADERBINDING_SAMPLER: {
+        auto *s = shader_builder_pool.get(h);
+        sg_shader_stage converted{};
+        if (!s || desc->slot >= SG_MAX_SAMPLER_BINDSLOTS ||
+            !convert_shader_stage(desc->stage, converted))
+            return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid shader sampler binding");
+        const nkgpu_result idle = require_idle_renderer(s->value.owner);
+        if (idle != NKGPU_OK)
+            return idle;
+        auto &binding = s->value.desc.samplers[desc->slot];
+        binding.stage = converted;
+        binding.sampler_type = SG_SAMPLERTYPE_FILTERING;
+        binding.hlsl_register_s_n = static_cast<uint8_t>(desc->slot);
+        binding.msl_sampler_n = static_cast<uint8_t>(desc->slot);
+        return NKGPU_OK;
+    }
     default:
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "unknown shader binding kind");
     }
