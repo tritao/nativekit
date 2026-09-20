@@ -1004,8 +1004,7 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
 LayoutEngine::LayoutEngine(std::size_t initial_capacity)
     : impl_(std::make_unique<Impl>(initial_capacity)) {}
 
-LayoutEngine::LayoutEngine(std::shared_ptr<FontCollection> fonts,
-                           std::size_t initial_capacity)
+LayoutEngine::LayoutEngine(std::shared_ptr<FontCollection> fonts, std::size_t initial_capacity)
     : impl_(std::make_unique<Impl>(initial_capacity, std::move(fonts))) {}
 
 LayoutEngine::~LayoutEngine() = default;

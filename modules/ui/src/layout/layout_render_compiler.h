@@ -53,7 +53,9 @@ class LayoutRenderFrame {
     void set_sealable(bool value) { sealable_ = value; }
     // A shared source is owned by the layout engine and must outlive this
     // frame and any backend atlas uploads derived from it.
-    TextEngine *text_engine() { return text_engine_source_ ? text_engine_source_ : text_engine_.get(); }
+    TextEngine *text_engine() {
+        return text_engine_source_ ? text_engine_source_ : text_engine_.get();
+    }
     const TextEngine *text_engine() const {
         return text_engine_source_ ? text_engine_source_ : text_engine_.get();
     }

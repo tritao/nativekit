@@ -431,7 +431,7 @@ void task_run_impl(Task &task, TaskManager &manager, const std::shared_ptr<Task>
         task.emit_progress(std::move(progress), output.progress_count);
     if (task.is_cancelled()) {
         task.emit_terminal(NK_TASK_STATE_CANCELLED, NK_ERROR_CANCELLED, std::move(result_payload),
-                      output.result_count);
+                           output.result_count);
         return;
     }
     if (step_result == NK_TASK_STEP_FAILED) {
@@ -439,12 +439,12 @@ void task_run_impl(Task &task, TaskManager &manager, const std::shared_ptr<Task>
                                  ? NK_ERROR_UNKNOWN
                                  : output.result;
         task.emit_terminal(NK_TASK_STATE_FAILED, failure, std::move(result_payload),
-                      output.result_count);
+                           output.result_count);
         return;
     }
     if (step_result == NK_TASK_STEP_COMPLETE) {
         task.emit_terminal(NK_TASK_STATE_COMPLETED, NK_OK, std::move(result_payload),
-                      output.result_count);
+                           output.result_count);
         return;
     }
     if (step_result != NK_TASK_STEP_YIELD) {

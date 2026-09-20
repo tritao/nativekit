@@ -33,7 +33,8 @@ nk_result WorkerPool::start(std::size_t worker_count, std::size_t queue_capacity
         for (std::size_t index = 0; index < worker_count; ++index)
             workers_.emplace_back([this] { worker_loop(); });
 #if !NK_ENABLE_NO_EXCEPTIONS
-    } catch (const std::bad_alloc &) {
+    }
+    catch (const std::bad_alloc &) {
         accepting_ = false;
         stopping_ = true;
         lock.unlock();
@@ -44,7 +45,8 @@ nk_result WorkerPool::start(std::size_t worker_count, std::size_t queue_capacity
         workers_.clear();
         queue_capacity_ = 0;
         return NK_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
+    }
+    catch (...) {
         accepting_ = false;
         stopping_ = true;
         lock.unlock();

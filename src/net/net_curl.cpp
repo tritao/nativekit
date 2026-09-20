@@ -216,9 +216,9 @@ std::size_t write_callback_impl(char *data, std::size_t size, std::size_t count,
             return 0;
         }
         if (!request.condition.wait_until(lock, request.deadline, [&] {
-            return request.canceled.load(std::memory_order_acquire) || request.stream_closed ||
-                   request.available < request.request.stream_buffer_size;
-        })) {
+                return request.canceled.load(std::memory_order_acquire) || request.stream_closed ||
+                       request.available < request.request.stream_buffer_size;
+            })) {
             request.timed_out.store(true, std::memory_order_release);
             return 0;
         }

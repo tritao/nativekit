@@ -120,10 +120,12 @@ nk_result dispatch_to_executor(nk_executor executor, nk_task_fn fn, void *user_d
         pending_tasks.push_back(AppTask{executor, fn, user_data, cleanup, bytes});
         pending_task_bytes += bytes;
 #if !NK_ENABLE_NO_EXCEPTIONS
-    } catch (const std::bad_alloc &) {
+    }
+    catch (const std::bad_alloc &) {
         set_error("out of memory while queuing application work");
         return NK_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
+    }
+    catch (...) {
         set_error("unexpected error while queuing application work");
         return NK_ERROR_UNKNOWN;
     }

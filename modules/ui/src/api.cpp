@@ -2747,7 +2747,7 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
         auto &[engine, glyphs] = prepared_texts[pass];
         if (!engine->prepared_glyphs_current(*glyphs))
             valid = engine->prepare_glyphs(glyphs->origin_x, glyphs->origin_y, glyphs->pixel_scale,
-                                            glyphs->mode, *glyphs);
+                                           glyphs->mode, *glyphs);
     }
     if (!valid)
         return NKUI_ERROR_RENDERING;
@@ -2759,7 +2759,7 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
         if (!sealable)
             break;
         auto snapshot = bind.engine->published_glyphs(bind.engine->active_layout_id(), 0.0f, 0.0f,
-                                                       bind.pixel_scale, bind.mode);
+                                                      bind.pixel_scale, bind.mode);
         if (!snapshot ||
             !owned_resources.bind_text(bind.id, std::move(snapshot), bind.content_generation))
             sealable = false;
@@ -2873,8 +2873,8 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
     nkui::LayoutRenderCompileError compile_error{};
     if (!session_state->compiler.compile(
             session_state->snapshot, compile_target, frame_info->pixel_scale, session_state->frame,
-            &compile_error, load_existing != 0, session_state->engine->text_engine(),
-            &custom_plans, &raster_paint_nodes))
+            &compile_error, load_existing != 0, session_state->engine->text_engine(), &custom_plans,
+            &raster_paint_nodes))
         return NKUI_ERROR_INVALID_TRANSACTION;
 
     if (has_backdrop)
@@ -3128,7 +3128,7 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
     for (auto &[engine, glyphs] : prepared_texts)
         if (!engine->prepared_glyphs_current(*glyphs) &&
             !engine->prepare_glyphs(glyphs->origin_x, glyphs->origin_y, glyphs->pixel_scale,
-                                     glyphs->mode, *glyphs))
+                                    glyphs->mode, *glyphs))
             return NKUI_ERROR_RENDERING;
     const bool new_backend = !renderer_slot->renderer->valid();
     if (new_backend && !renderer_slot->renderer->initialize())

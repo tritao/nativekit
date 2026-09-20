@@ -65,14 +65,13 @@ struct TextEngine::State {
 
 namespace {
 
-TextEngine::State::RetainedLayout *find_layout(TextEngine::State &state,
-                                                    TextLayoutId id) {
+TextEngine::State::RetainedLayout *find_layout(TextEngine::State &state, TextLayoutId id) {
     const auto found = state.layouts.find(id);
     return found == state.layouts.end() ? nullptr : found->second.get();
 }
 
 const TextEngine::State::RetainedLayout *find_layout(const TextEngine::State &state,
-                                                          TextLayoutId id) {
+                                                     TextLayoutId id) {
     const auto found = state.layouts.find(id);
     return found == state.layouts.end() ? nullptr : found->second.get();
 }
@@ -235,8 +234,8 @@ bool append_render_glyph(const skb_layout_render_glyph_t *glyph, void *context) 
     }
     const skb_quad_t quad = skb_image_atlas_get_glyph_quad(
         render.state->atlas, render.origin_x + glyph->offset_x, render.origin_y + glyph->offset_y,
-        render.pixel_scale, render.font_collection, glyph->font_handle,
-        glyph->glyph_id, glyph->font_size, glyph->color, raster_mode(render.requested_mode));
+        render.pixel_scale, render.font_collection, glyph->font_handle, glyph->glyph_id,
+        glyph->font_size, glyph->color, raster_mode(render.requested_mode));
     if (quad.flags & SKB_QUAD_IS_EMPTY)
         return true;
 
@@ -295,8 +294,9 @@ bool FontCollection::add_font(const char *path, FontFamily family) {
     return true;
 }
 
-bool FontCollection::add_font_from_shared_data(
-    const char *name, const std::shared_ptr<std::vector<uint8_t>> &data, FontFamily family) {
+bool FontCollection::add_font_from_shared_data(const char *name,
+                                               const std::shared_ptr<std::vector<uint8_t>> &data,
+                                               FontFamily family) {
     const uint8_t skb_family =
         family == FontFamily::Emoji ? SKB_FONT_FAMILY_EMOJI : SKB_FONT_FAMILY_DEFAULT;
     if (!name || !*name || !data || data->empty() || !valid() ||
@@ -326,8 +326,7 @@ uint32_t FontCollection::font_load_count() const {
 
 TextEngine::TextEngine() : TextEngine(std::make_shared<FontCollection>()) {}
 
-TextEngine::TextEngine(std::shared_ptr<FontCollection> fonts)
-    : state_(new State) {
+TextEngine::TextEngine(std::shared_ptr<FontCollection> fonts) : state_(new State) {
     state_->font_collection = std::move(fonts);
     state_->temporary = skb_temp_alloc_create(512 * 1024);
     state_->rasterizer = skb_rasterizer_create(nullptr);
@@ -364,7 +363,7 @@ bool TextEngine::add_font(const char *path, FontFamily family) {
 }
 
 bool TextEngine::add_font_from_data(const char *name, const void *data, std::size_t bytes,
-                                         FontFamily family) {
+                                    FontFamily family) {
     if (!name || !*name || !data || !bytes || !valid())
         return false;
     auto owned = std::make_shared<std::vector<uint8_t>>(static_cast<const uint8_t *>(data),
@@ -373,8 +372,8 @@ bool TextEngine::add_font_from_data(const char *name, const void *data, std::siz
 }
 
 bool TextEngine::add_font_from_shared_data(const char *name,
-                                                const std::shared_ptr<std::vector<uint8_t>> &data,
-                                                FontFamily family) {
+                                           const std::shared_ptr<std::vector<uint8_t>> &data,
+                                           FontFamily family) {
     if (!name || !*name || !data || data->empty() || !valid())
         return false;
     return state_->font_collection->add_font_from_shared_data(name, data, family);
@@ -387,7 +386,7 @@ bool TextEngine::add_system_fallbacks() {
 }
 
 bool TextEngine::measure_intrinsic_utf8(const char *text, const TextLayoutOptions &options,
-                                             TextIntrinsicMetrics *result) {
+                                        TextIntrinsicMetrics *result) {
     if (!valid() || !text || !std::isfinite(options.font_size) || options.font_size <= 0.0f ||
         !std::isfinite(options.letter_spacing) || !std::isfinite(options.line_height) ||
         options.line_height < 0.0f)
@@ -436,7 +435,7 @@ bool TextEngine::layout_utf8(const char *text, float width, const TextLayoutOpti
 }
 
 bool TextEngine::layout_utf8(const char *text, float width, const TextLayoutOptions &options,
-                                  TextLayoutResult *result) {
+                             TextLayoutResult *result) {
     if (!valid() || !text || !std::isfinite(width) || width <= 0.0f ||
         !std::isfinite(options.font_size) || options.font_size <= 0.0f ||
         !std::isfinite(options.letter_spacing) || !std::isfinite(options.line_height) ||
@@ -538,7 +537,7 @@ bool TextEngine::layout_utf8(const char *text, float width, const TextLayoutOpti
 }
 
 void TextEngine::prune_layout_cache(const std::vector<TextLayoutId> &retained_ids,
-                                         std::size_t max_entries) {
+                                    std::size_t max_entries) {
     const uint64_t font_generation = state_->font_collection->generation();
     const std::unordered_set<TextLayoutId> retained(retained_ids.begin(), retained_ids.end());
 
@@ -569,22 +568,22 @@ bool TextEngine::has_layout(TextLayoutId id) const {
     return id != 0 && find_layout(*state_, id) != nullptr;
 }
 
-bool TextEngine::prepare_glyphs(float origin_x, float origin_y, float pixel_scale,
-                                     GlyphMode mode, PreparedGlyphs &output) {
+bool TextEngine::prepare_glyphs(float origin_x, float origin_y, float pixel_scale, GlyphMode mode,
+                                PreparedGlyphs &output) {
     return prepare_glyphs_internal(state_->active_layout_id, origin_x, origin_y, pixel_scale, mode,
                                    output, -1, -1, 0.0f, 0.0f);
 }
 
 bool TextEngine::prepare_glyphs_for_line(uint32_t line_index, float origin_x, float origin_y,
-                                              float pixel_scale, GlyphMode mode,
-                                              PreparedGlyphs &output) {
+                                         float pixel_scale, GlyphMode mode,
+                                         PreparedGlyphs &output) {
     return prepare_glyphs_for_line(state_->active_layout_id, line_index, origin_x, origin_y,
                                    pixel_scale, mode, output);
 }
 
 bool TextEngine::prepare_glyphs_for_line(TextLayoutId id, uint32_t line_index, float origin_x,
-                                              float origin_y, float pixel_scale, GlyphMode mode,
-                                              PreparedGlyphs &output) {
+                                         float origin_y, float pixel_scale, GlyphMode mode,
+                                         PreparedGlyphs &output) {
     const auto *layout = find_layout(*state_, id);
     if (!layout || line_index >= layout->result.lines.size() ||
         line_index >= layout->line_ranges.size())
@@ -595,23 +594,25 @@ bool TextEngine::prepare_glyphs_for_line(TextLayoutId id, uint32_t line_index, f
                                    range.end, line.bounds.x, line.bounds.y);
 }
 
-std::shared_ptr<const PreparedGlyphs>
-TextEngine::published_glyphs(TextLayoutId id, float origin_x, float origin_y,
-                                  float pixel_scale, GlyphMode mode, GlyphTint tint) {
+std::shared_ptr<const PreparedGlyphs> TextEngine::published_glyphs(TextLayoutId id, float origin_x,
+                                                                   float origin_y,
+                                                                   float pixel_scale,
+                                                                   GlyphMode mode, GlyphTint tint) {
     return publish_glyphs(id, -1, origin_x, origin_y, pixel_scale, mode, tint);
 }
 
 std::shared_ptr<const PreparedGlyphs>
 TextEngine::published_glyphs_for_line(TextLayoutId id, uint32_t line_index, float origin_x,
-                                           float origin_y, float pixel_scale, GlyphMode mode,
-                                           GlyphTint tint) {
+                                      float origin_y, float pixel_scale, GlyphMode mode,
+                                      GlyphTint tint) {
     return publish_glyphs(id, static_cast<int32_t>(line_index), origin_x, origin_y, pixel_scale,
                           mode, tint);
 }
 
-std::shared_ptr<const PreparedGlyphs>
-TextEngine::publish_glyphs(TextLayoutId id, int32_t line_index, float origin_x, float origin_y,
-                                float pixel_scale, GlyphMode mode, GlyphTint tint) {
+std::shared_ptr<const PreparedGlyphs> TextEngine::publish_glyphs(TextLayoutId id,
+                                                                 int32_t line_index, float origin_x,
+                                                                 float origin_y, float pixel_scale,
+                                                                 GlyphMode mode, GlyphTint tint) {
     const auto *layout = find_layout(*state_, id);
     if (!layout || pixel_scale <= 0.0f)
         return {};
@@ -678,9 +679,9 @@ TextEngine::publish_glyphs(TextLayoutId id, int32_t line_index, float origin_x, 
 }
 
 bool TextEngine::prepare_glyphs_internal(TextLayoutId id, float origin_x, float origin_y,
-                                              float pixel_scale, GlyphMode mode,
-                                              PreparedGlyphs &output, int32_t line_start,
-                                              int32_t line_end, float line_x, float line_y) {
+                                         float pixel_scale, GlyphMode mode, PreparedGlyphs &output,
+                                         int32_t line_start, int32_t line_end, float line_x,
+                                         float line_y) {
     const auto *retained = find_layout(*state_, id);
     if (!retained || pixel_scale <= 0.0f)
         return false;
