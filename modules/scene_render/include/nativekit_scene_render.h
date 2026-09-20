@@ -33,6 +33,7 @@ extern "C" {
 #endif
 
 typedef uint32_t nkscene_render_plan NK_HANDLE NK_HANDLE_DESTROY(nkscene_render_plan_destroy);
+typedef uint32_t nkscene_render_executor NK_HANDLE NK_HANDLE_DESTROY(nkscene_render_executor_destroy);
 
 typedef struct nkscene_render_visibility_override {
     nkscene_occurrence_id occurrence;
@@ -77,6 +78,19 @@ typedef struct nkscene_render_pick_result {
     float depth;
 } nkscene_render_pick_result;
 
+typedef struct nkscene_render_execution_stats {
+    uint32_t struct_size NK_STRUCT_SIZE;
+    nkgpu_result result;
+    uint64_t geometry_resources_created;
+    uint64_t geometry_resources_updated;
+    uint64_t material_resources_created;
+    uint64_t material_resources_updated;
+    uint64_t instance_buffers_created;
+    uint64_t instance_records_updated;
+    uint64_t commands;
+    uint64_t draw_calls;
+} nkscene_render_execution_stats;
+
 NKSRENDER_API nkscene_result NKS_CALL nkscene_render_plan_compile(
     nkscene_snapshot snapshot, const nkscene_render_view *view,
     nkscene_render_plan *out_plan NK_OUT NK_OWNED);
@@ -89,6 +103,24 @@ NKSRENDER_API nkscene_result NKS_CALL nkscene_render_plan_update(
 NKSRENDER_API nkscene_result NKS_CALL nkscene_render_plan_pick(
     nkscene_render_plan plan, nkscene_snapshot snapshot, uint32_t primitive,
     const float world_position[3], float depth, nkscene_render_pick_result *out_result NK_OUT);
+/**
+ * Creates an executor bound to a GPU renderer. Pass a zero renderer for the
+ * headless resource and command path. The renderer must outlive the executor.
+ */
+NKSRENDER_API nkscene_result NKS_CALL nkscene_render_executor_create(
+    nkgpu_renderer renderer, nkscene_render_executor *out_executor NK_OUT NK_OWNED);
+NKSRENDER_API void NKS_CALL nkscene_render_executor_destroy(nkscene_render_executor executor);
+/** Executes a plan and reports resource, instance, command, and draw counters. */
+NKSRENDER_API nkscene_result NKS_CALL nkscene_render_executor_execute(
+    nkscene_render_executor executor, nkscene_render_plan plan, nkscene_snapshot snapshot,
+    nkscene_render_execution_stats *out_stats NK_OUT);
+NKSRENDER_API nkscene_result NKS_CALL nkscene_render_executor_get_last_result(
+    nkscene_render_executor executor, nkgpu_result *out_result NK_OUT);
+/** Runs the GPU ID pass and resolves one pixel to scene ownership. */
+NKSRENDER_API nkscene_result NKS_CALL nkscene_render_executor_pick_pixel(
+    nkscene_render_executor executor, nkscene_render_plan plan, nkscene_snapshot snapshot,
+    uint32_t width, uint32_t height, uint32_t x, uint32_t y,
+    nkscene_render_pick_result *out_result NK_OUT);
 
 #ifdef __cplusplus
 }

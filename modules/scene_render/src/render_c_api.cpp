@@ -12,6 +12,7 @@ namespace {
 struct RenderRegistry {
     std::mutex mutex;
     nkscene::HandleTable<nkscene::RenderPlan> plans;
+    nkscene::HandleTable<nkscene::NativeKitGpuExecutor> executors;
 };
 
 RenderRegistry &registry() {
@@ -155,6 +156,103 @@ nkscene_result NKS_CALL nkscene_render_plan_pick(
     out_result->world_position[2] = result.worldPosition.z;
     out_result->depth = result.depth;
     return NKS_OK;
+}
+
+nkscene_result NKS_CALL nkscene_render_executor_create(
+    nkgpu_renderer renderer, nkscene_render_executor *out_executor) {
+    if (!out_executor)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    *out_executor = 0;
+    auto executor = std::make_shared<nkscene::NativeKitGpuExecutor>(renderer);
+    auto &state = registry();
+    std::lock_guard lock(state.mutex);
+    const auto handle = state.executors.create(std::move(executor));
+    if (!handle.valid())
+        return NKS_ERROR_OUT_OF_MEMORY;
+    *out_executor = nkscene::pack_handle(handle);
+    return NKS_OK;
+}
+
+void NKS_CALL nkscene_render_executor_destroy(nkscene_render_executor executor) {
+    auto &state = registry();
+    std::lock_guard lock(state.mutex);
+    state.executors.remove(nkscene::unpack_handle(executor));
+}
+
+nkscene_result NKS_CALL nkscene_render_executor_execute(
+    nkscene_render_executor executor_handle, nkscene_render_plan plan_handle,
+    nkscene_snapshot snapshot_handle, nkscene_render_execution_stats *out_stats) {
+    if (!out_stats)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    if (out_stats->struct_size < sizeof(nkscene_render_execution_stats))
+        return NKS_ERROR_INVALID_ARGUMENT;
+    const auto snapshot = nkscene::resolve_snapshot_handle(snapshot_handle);
+    if (!snapshot)
+        return NKS_ERROR_INVALID_HANDLE;
+
+    auto &state = registry();
+    std::lock_guard lock(state.mutex);
+    const auto executor = state.executors.get(nkscene::unpack_handle(executor_handle));
+    const auto plan = state.plans.get(nkscene::unpack_handle(plan_handle));
+    if (!executor || !plan)
+        return NKS_ERROR_INVALID_HANDLE;
+
+    const auto stats = executor->execute(*plan, *snapshot);
+    *out_stats = {};
+    out_stats->struct_size = sizeof(nkscene_render_execution_stats);
+    out_stats->result = stats.result;
+    out_stats->geometry_resources_created = stats.geometry_resources_created;
+    out_stats->geometry_resources_updated = stats.geometry_resources_updated;
+    out_stats->material_resources_created = stats.material_resources_created;
+    out_stats->material_resources_updated = stats.material_resources_updated;
+    out_stats->instance_buffers_created = stats.instance_buffers_created;
+    out_stats->instance_records_updated = stats.instance_records_updated;
+    out_stats->commands = stats.commands;
+    out_stats->draw_calls = stats.draw_calls;
+    return NKS_OK;
+}
+
+nkscene_result NKS_CALL nkscene_render_executor_get_last_result(
+    nkscene_render_executor executor_handle, nkgpu_result *out_result) {
+    if (!out_result)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    auto &state = registry();
+    std::lock_guard lock(state.mutex);
+    const auto executor = state.executors.get(nkscene::unpack_handle(executor_handle));
+    if (!executor)
+        return NKS_ERROR_INVALID_HANDLE;
+    *out_result = executor->last_result();
+    return NKS_OK;
+}
+
+nkscene_result NKS_CALL nkscene_render_executor_pick_pixel(
+    nkscene_render_executor executor_handle, nkscene_render_plan plan_handle,
+    nkscene_snapshot snapshot_handle, uint32_t width, uint32_t height, uint32_t x, uint32_t y,
+    nkscene_render_pick_result *out_result) {
+    if (!out_result)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    const auto snapshot = nkscene::resolve_snapshot_handle(snapshot_handle);
+    if (!snapshot)
+        return NKS_ERROR_INVALID_HANDLE;
+
+    auto &state = registry();
+    std::lock_guard lock(state.mutex);
+    const auto executor = state.executors.get(nkscene::unpack_handle(executor_handle));
+    const auto plan = state.plans.get(nkscene::unpack_handle(plan_handle));
+    if (!executor || !plan)
+        return NKS_ERROR_INVALID_HANDLE;
+
+    nkscene::PickResult result;
+    const auto gpu_result = executor->pick_pixel(*plan, *snapshot, width, height, x, y, &result);
+    *out_result = {};
+    out_result->occurrence.value = result.occurrence.value;
+    out_result->source.value = result.source.value;
+    out_result->subelement = result.subelement.value;
+    out_result->world_position[0] = result.worldPosition.x;
+    out_result->world_position[1] = result.worldPosition.y;
+    out_result->world_position[2] = result.worldPosition.z;
+    out_result->depth = result.depth;
+    return gpu_result == NKGPU_OK ? NKS_OK : NKS_ERROR_INVALID_STATE;
 }
 
 } // extern "C"

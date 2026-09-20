@@ -1,0 +1,7 @@
+{
+  "interface": "NativeKitSceneRender",
+  "typeNames": {
+    "nkgpu_renderer": "NativeKitGpu.nkgpu_renderer",
+    "nkgpu_result": "NativeKitGpu.GpuStatus"
+  }
+}

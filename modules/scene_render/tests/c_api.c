@@ -61,6 +61,20 @@ int main(void) {
     assert(nkscene_render_plan_get_item_count(plan, &item_count) == NKS_OK);
     assert(item_count == 1);
 
+    nkgpu_renderer renderer = {0};
+    nkscene_render_executor executor = 0;
+    assert(nkscene_render_executor_create(renderer, &executor) == NKS_OK);
+    nkscene_render_execution_stats execution = {0};
+    execution.struct_size = sizeof(execution);
+    assert(nkscene_render_executor_execute(executor, plan, snapshot, &execution) == NKS_OK);
+    assert(execution.result == NKGPU_OK);
+    assert(execution.geometry_resources_created == 1);
+    assert(execution.commands == 1);
+    assert(execution.draw_calls == 1);
+    nkgpu_result last_result = NKGPU_ERROR_UNKNOWN;
+    assert(nkscene_render_executor_get_last_result(executor, &last_result) == NKS_OK);
+    assert(last_result == NKGPU_OK);
+
     nkscene_render_pick_result pick = {0};
     const float world_position[3] = {0.0f, 0.0f, 0.0f};
     assert(nkscene_render_plan_pick(plan, snapshot, 0, world_position, 0.5f, &pick) == NKS_OK);
@@ -93,6 +107,8 @@ int main(void) {
 
     nkscene_render_plan_destroy(plan);
     assert(nkscene_render_plan_get_item_count(plan, &item_count) == NKS_ERROR_INVALID_HANDLE);
+    nkscene_render_executor_destroy(executor);
+    assert(nkscene_render_executor_get_last_result(executor, &last_result) == NKS_ERROR_INVALID_HANDLE);
     nkscene_snapshot_destroy(snapshot);
     assert(nkscene_snapshot_get_revision(snapshot, &revision) == NKS_ERROR_INVALID_HANDLE);
     nkscene_change_set_destroy(changes);

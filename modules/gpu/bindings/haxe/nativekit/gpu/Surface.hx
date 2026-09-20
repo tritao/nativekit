@@ -1,5 +1,6 @@
 package nativekit.gpu;
 
+import NativeKitWindow;
 import NativeKit.GraphicsApi;
 
 /** Owns a GPU-adapter surface associated with a NativeKit window. */
