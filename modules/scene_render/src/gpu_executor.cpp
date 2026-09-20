@@ -212,8 +212,8 @@ bool ensure_pipeline(StateT &state, GpuExecutionStats &stats, bool indexed) {
     if (pipeline.id)
         return true;
 
-    const auto sources = render_internal::scene_shader_sources(
-        nkgpu_query_backend(state.renderer), false);
+    const auto sources =
+        render_internal::scene_shader_sources(nkgpu_query_backend(state.renderer), false);
     if (!sources.vertex || !sources.fragment)
         return set_failure(state, stats, NKGPU_ERROR_UNSUPPORTED);
 
@@ -274,8 +274,8 @@ bool ensure_pick_pipeline(StateT &state, GpuExecutionStats &stats, bool indexed)
     if (pipeline.id)
         return true;
 
-    const auto sources = render_internal::scene_shader_sources(
-        nkgpu_query_backend(state.renderer), true);
+    const auto sources =
+        render_internal::scene_shader_sources(nkgpu_query_backend(state.renderer), true);
     if (!sources.vertex || !sources.fragment)
         return set_failure(state, stats, NKGPU_ERROR_UNSUPPORTED);
 
