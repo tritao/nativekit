@@ -25,6 +25,12 @@ struct TimedUpdate {
     RenderUpdate render;
 };
 
+struct TimedViewUpdate {
+    const char *name;
+    double milliseconds;
+    RenderUpdate render;
+};
+
 nkscene::LocalTransform translated(float x) {
     nkscene::LocalTransform transform;
     transform.matrix[12] = x;
@@ -54,6 +60,26 @@ void print(const TimedUpdate &result) {
         result.render.patched_instances,
         result.render.patched_visibility, result.render.patched_materials,
         result.render.rebuilt_batches);
+}
+
+TimedViewUpdate run_view(const char *name, RenderPlan &plan,
+                         const nkscene::SceneSnapshot &snapshot,
+                         const nkscene::SceneView &view) {
+    const auto start = Clock::now();
+    const auto render = nkscene::refresh(plan, snapshot, view);
+    const auto elapsed = std::chrono::duration<double, std::milli>(Clock::now() - start);
+    return {name, elapsed.count(), render};
+}
+
+void print(const TimedViewUpdate &result) {
+    std::printf(
+        "%-18s %8.3f ms  view(rebuild=%d geometry=%d instances=%zu visibility=%zu "
+        "materials=%zu culling=%zu batches=%zu visible=%zu culled=%zu)\n",
+        result.name, result.milliseconds, result.render.plan_rebuilt,
+        result.render.geometry_rebuilt, result.render.patched_instances,
+        result.render.patched_visibility, result.render.patched_materials,
+        result.render.patched_culling, result.render.rebuilt_batches,
+        result.render.visible_items, result.render.culled_items);
 }
 
 } // namespace
@@ -200,5 +226,53 @@ int main() {
     assert(stats.geometry_resources_created == 1);
     assert(stats.material_resources_created == materials.size());
     assert(stats.commands == leaf_count - 1000);
+
+    const auto presentation_snapshot = scene->snapshot();
+    nkscene::SceneView presentation_view;
+    auto presentation_plan = nkscene::compile(presentation_snapshot, presentation_view);
+    assert(presentation_plan.items().size() == leaf_count - 100);
+
+    nkscene::SceneView hidden_view = presentation_view;
+    hidden_view.visibility_overrides.reserve(1000);
+    for (std::size_t index = 1000; index < 2000; ++index)
+        hidden_view.visibility_overrides.push_back({leaves[index], false});
+    auto view_result = run_view("view hide 1000", presentation_plan,
+                                presentation_snapshot, hidden_view);
+    assert(!view_result.render.plan_rebuilt);
+    assert(!view_result.render.geometry_rebuilt);
+    assert(view_result.render.patched_instances == 0);
+    assert(view_result.render.patched_visibility == 1000);
+    assert(view_result.render.patched_materials == 0);
+    assert(view_result.render.patched_culling == 0);
+    print(view_result);
+
+    nkscene::SceneView composed_view = hidden_view;
+    composed_view.material_overrides.push_back({leaves[2000], materials[1]});
+    composed_view.clip_planes = {
+        {{1.0f, 0.0f, 0.0f}, -0.5f, true},
+        {{0.0f, 1.0f, 0.0f}, -0.5f, true}};
+    view_result = run_view("view composed", presentation_plan, presentation_snapshot,
+                           composed_view);
+    assert(!view_result.render.plan_rebuilt);
+    assert(!view_result.render.geometry_rebuilt);
+    assert(view_result.render.patched_instances == 0);
+    assert(view_result.render.patched_visibility == 0);
+    assert(view_result.render.patched_materials == 1);
+    assert(view_result.render.patched_culling == 0);
+    assert(presentation_plan.clip_planes().size() == 2);
+    print(view_result);
+
+    nkscene::SceneView disabled_plane_view = composed_view;
+    disabled_plane_view.clip_planes.push_back({{1.0f, 0.0f, 0.0f}, -100.0f, false});
+    view_result = run_view("view disabled plane", presentation_plan, presentation_snapshot,
+                           disabled_plane_view);
+    assert(!view_result.render.plan_rebuilt);
+    assert(!view_result.render.geometry_rebuilt);
+    assert(view_result.render.patched_instances == 0);
+    assert(view_result.render.patched_visibility == 0);
+    assert(view_result.render.patched_materials == 0);
+    assert(view_result.render.patched_culling == 0);
+    assert(presentation_plan.clip_planes().size() == 2);
+    print(view_result);
     return 0;
 }
