@@ -171,12 +171,15 @@ Include `nativekit_menu.h` to build a declarative application menu tree. Menu
 and item handles are UI-thread resources owned by NativeKit; labels are copied
 as UTF-8, and removing a menu item recursively invalidates its descendants.
 Set the process menu with `nk_application_set_menu()`. macOS renders this tree
-as `NSApp.mainMenu` and reports command activation through
-`NK_EVENT_MENU_ITEM_ACTIVATED`; a Quit-role item uses
-`NK_EVENT_APPLICATION_QUIT_REQUESTED`. The `NK_CAP_APPLICATION_MENU` bit must
-be checked before installation. Other backends currently retain and validate
-the model but return `NK_ERROR_UNSUPPORTED` when native installation is
-requested.
+as `NSApp.mainMenu`; Linux exports it through GTK `GMenu`/`GAction` models so
+GNOME, KDE, and other desktop integrations can present the menu when their
+shell supports it. GTK application windows retain an in-window menubar when
+the desktop shell does not consume the exported menubar. Both backends report
+command activation through `NK_EVENT_MENU_ITEM_ACTIVATED`; a Quit-role item
+uses `NK_EVENT_APPLICATION_QUIT_REQUESTED`. The `NK_CAP_APPLICATION_MENU` bit
+must be checked before installation. Other backends currently retain and
+validate the model but return `NK_ERROR_UNSUPPORTED` when native installation
+is requested.
 
 On macOS, a non-empty menu title creates the first application menu in the
 menubar. Root-level items with a standard role are placed in that application

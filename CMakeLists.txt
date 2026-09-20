@@ -301,6 +301,7 @@ elseif(TARGET PkgConfig::GTK3)
     set(NK_BACKEND_GTK_AVAILABLE TRUE)
     target_sources(nativekit PRIVATE
         src/linux/nativekit_gtk.cpp
+        src/linux/nativekit_gtk_menu.cpp
         src/linux/nativekit_linux_joystick.cpp)
     target_link_libraries(nativekit PRIVATE PkgConfig::GTK3 ${CMAKE_DL_LIBS})
     target_compile_definitions(nativekit PRIVATE NK_BACKEND_GTK=1)

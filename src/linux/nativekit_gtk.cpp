@@ -11,6 +11,7 @@
 #include "nativekit_view.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
+#include "linux/nativekit_gtk_menu.hpp"
 
 #include "core/boundary.hpp"
 #include "core/error.hpp"
@@ -1579,6 +1580,8 @@ bool ensure_gtk() {
     gtk_initialized = gtk_init_check(&argc, &argv) != FALSE;
     if (!gtk_initialized)
         nk::core::set_error("GTK could not connect to a display");
+    if (gtk_initialized)
+        (void)nk::backend::menu_backend_initialize();
     return gtk_initialized;
 }
 
@@ -3552,6 +3555,7 @@ void shutdown() noexcept {
         monitor_added_signal = 0;
         monitor_removed_signal = 0;
     }
+    menu_backend_shutdown();
     nk::core::handles().clear();
     pump_events();
 }
@@ -3570,7 +3574,7 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
         NK_CAP_APPLICATION_PATH | NK_CAP_APPLICATION_STORAGE | NK_CAP_SYSTEM_FONTS |
         NK_CAP_DISPLAY_ORIENTATION | NK_CAP_ACCESSIBILITY | NK_CAP_WRAP_NATIVE_WINDOW |
         NK_CAP_SURFACE_FRAME_CALLBACK | NK_CAP_WINDOW_CUSTOM_DECORATIONS | NK_CAP_NATIVE_VIEW |
-        NK_CAP_FILE_WATCH | NK_CAP_CLIPBOARD_WATCH;
+        NK_CAP_FILE_WATCH | NK_CAP_CLIPBOARD_WATCH | NK_CAP_APPLICATION_MENU;
 #if defined(NK_HAS_WEBKITGTK)
     capabilities |= NK_CAP_WEBVIEW;
 #endif
@@ -3606,7 +3610,10 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
         resource->resizable = (options->flags & NK_WINDOW_RESIZABLE) != 0;
         resource->decorated = (options->flags & NK_WINDOW_BORDERLESS) == 0;
         resource->generation = nk::core::runtime_generation();
-        resource->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+        if (auto *application = nk::backend::menu_backend_application())
+            resource->window = gtk_application_window_new(application);
+        else
+            resource->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
         resource->im_context = gtk_im_multicontext_new();
         g_object_add_weak_pointer(G_OBJECT(resource->window),
                                   reinterpret_cast<gpointer *>(&resource->window));

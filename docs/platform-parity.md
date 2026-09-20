@@ -55,7 +55,7 @@ the equivalent is the native DOM.
 | Shell/open URI | Required | Required | Required | Required | Required | Required |
 | Appearance | Required | Required | Required | Required | Required | Required |
 | Notifications | Required | Required | Required | Required | Required | Platform-specific equivalent |
-| Application menu | Deferred | Deferred | Required | Not applicable | Not applicable | Not applicable |
+| Application menu | Required | Deferred | Required | Not applicable | Not applicable | Not applicable |
 | Input + IME | Required | Required | Required | Required | Required | Required |
 | GPU surface | Required | Required | Required | Required | Required | Required |
 | Resource I/O | Required | Required | Required | Required | Required | Required |
@@ -154,7 +154,7 @@ each milestone lands, the following gaps remain explicitly `Deferred`:
 
 | Backend | Required or equivalent today | Deferred today |
 |---|---|---|
-| Linux/GTK | Windows, WebView, URI resource and message dialogs, clipboard and clipboard watching, file watching, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, custom window decorations, GPU, resource sharing via URI clipboard, resource I/O, monitors, joystick and evdev rumble, native export, X11 and Wayland native wrapping, accessibility, surface frame callbacks | — |
+| Linux/GTK | Windows, WebView, URI resource and message dialogs, clipboard and clipboard watching, file watching, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, custom window decorations, GPU, resource sharing via URI clipboard, resource I/O, monitors, joystick and evdev rumble, native export, X11 and Wayland native wrapping, accessibility, application menus through GTK GMenu/GAction export, surface frame callbacks | — |
 | Windows | Windows, WebView when WebView2 is available, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, custom window decorations, D3D11, resource sharing via URI clipboard, resource I/O, accessibility, monitors, joystick and XInput rumble, native export, Win32 native wrapping, surface frame callbacks | file and clipboard watching |
 | macOS | Windows, WebView, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, custom window decorations, Metal, resource sharing via `NSSharingServicePicker`, resource I/O, accessibility, monitors, joystick, native export, Cocoa native wrapping, surface frame callbacks | file and clipboard watching |
 | Android | Mobile host, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, GLES/Vulkan, resource sharing, resource I/O, joystick, sensors, system haptics, controller rumble, accessibility, surface frame callbacks, APK installation path, system fonts | sandbox file watching and clipboard watching |
