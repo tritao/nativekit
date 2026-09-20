@@ -16,6 +16,7 @@ void build_items(RenderPlan &plan, const SceneSnapshot &snapshot, const SceneVie
         item.occurrence = occurrence.occurrence;
         item.geometry = occurrence.geometry;
         item.material = occurrence.material;
+        item.pickId = static_cast<std::uint32_t>(plan.items_.size() + 1);
         item.transformIndex = transform_index;
         item.flags = RenderFlags::Opaque;
         if (!occurrence.visible)

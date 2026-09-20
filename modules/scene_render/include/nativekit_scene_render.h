@@ -73,6 +73,7 @@ struct RenderItem {
     OccurrenceId occurrence;
     GeometryId geometry;
     MaterialId material;
+    std::uint32_t pickId = 0;
     std::uint32_t transformIndex = 0;
     RenderFlags flags = RenderFlags::Opaque;
 };
@@ -184,6 +185,10 @@ public:
     nkgpu_result last_result() const noexcept;
 
     GpuExecutionStats execute(const RenderPlan &, const SceneSnapshot &);
+    /** Renders an ID-only pass and resolves one pixel to scene ownership. */
+    nkgpu_result pick_pixel(const RenderPlan &, const SceneSnapshot &, std::uint32_t width,
+                            std::uint32_t height, std::uint32_t x, std::uint32_t y,
+                            PickResult *out_result);
     std::span<const GpuCommand> commands() const noexcept;
 
 private:

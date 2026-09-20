@@ -82,13 +82,23 @@ int main() {
 
         Transaction create(scene);
         const auto occurrence = scene->reserve_occurrence_id();
+        const auto second_occurrence = scene->reserve_occurrence_id();
         create.add_create(occurrence);
+        create.add_create(second_occurrence);
         ChangeSet changes;
         assert(scene->commit(create, changes) == NKS_OK);
         create.close();
         Transaction configure(scene);
         configure.add_geometry(occurrence, geometry);
         configure.add_material(occurrence, material);
+        configure.add_geometry(second_occurrence, geometry);
+        configure.add_material(second_occurrence, material);
+        nkscene::LocalTransform first_transform;
+        first_transform.matrix[12] = -0.8f;
+        configure.add_transform(occurrence, first_transform);
+        nkscene::LocalTransform second_transform;
+        second_transform.matrix[12] = 0.8f;
+        configure.add_transform(second_occurrence, second_transform);
         assert(scene->commit(configure, changes) == NKS_OK);
         configure.close();
 
@@ -100,6 +110,20 @@ int main() {
         assert(stats.geometry_resources_created == 1);
         assert(stats.instance_buffers_created == 1);
         assert(stats.draw_calls == 1);
+
+        nkscene::PickResult picked;
+        assert(executor.pick_pixel(plan, scene->snapshot(), options.width, options.height,
+                                  16, options.height / 2, &picked) == NKGPU_OK);
+        assert(picked.occurrence == occurrence);
+        assert(picked.source == nkscene::EntityId{});
+        assert(picked.subelement.valid());
+        assert(executor.pick_pixel(plan, scene->snapshot(), options.width, options.height,
+                                  112, options.height / 2, &picked) == NKGPU_OK);
+        assert(picked.occurrence == second_occurrence);
+        nkscene::PickResult miss;
+        assert(executor.pick_pixel(plan, scene->snapshot(), options.width, options.height, 0, 0,
+                                  &miss) == NKGPU_OK);
+        assert(!miss.occurrence.valid());
 
         nkscene::LocalTransform transform;
         transform.matrix[12] = 0.25f;
