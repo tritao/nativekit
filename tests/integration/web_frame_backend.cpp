@@ -94,8 +94,10 @@ int main() {
     init.struct_size = sizeof(init);
     init.api_version = NK_API_VERSION;
     const nk_result initialized = nk_init(&init);
-    if (initialized != NK_OK)
+    if (initialized != NK_OK) {
+        report_frame_backend_stage(100 - static_cast<int>(initialized));
         return 100 - static_cast<int>(initialized);
+    }
     report_frame_backend_stage(100);
 
     nk_window_options window_options{};
