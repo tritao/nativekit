@@ -109,6 +109,12 @@ class SceneInteraction {
 	public function applySelection(view:SceneView, highlight:Material):SceneView
 		return view.applySelection(selectionSet(), highlight);
 
+	/** Applies the current hover as a higher-priority material layer. */
+	public function applyHover(view:SceneView, highlight:Material):SceneView {
+		var pick = hovered();
+		return view.applyHover(pick == null ? null : pick.occurrence(), highlight);
+	}
+
 	public function isSelected(occurrence:Occurrence):Bool {
 		ensureLive();
 		var result = NativeKitSceneInteraction.nkscene_interaction_is_selected(

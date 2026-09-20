@@ -73,9 +73,17 @@ EffectiveState effective_state(const SceneSnapshot &snapshot, const SceneView &v
         visibility_overrides[override.occurrence] = override.visible;
 
     std::unordered_map<OccurrenceId, MaterialId> material_overrides;
-    material_overrides.reserve(view.material_overrides.size());
-    for (const auto &override : view.material_overrides)
-        material_overrides[override.occurrence] = override.material;
+    material_overrides.reserve(view.material_overrides.size() +
+                               view.selection_material_overrides.size() +
+                               view.hover_material_overrides.size());
+    const auto apply_material_layer = [&material_overrides](
+                                          const auto &overrides) {
+        for (const auto &override : overrides)
+            material_overrides[override.occurrence] = override.material;
+    };
+    apply_material_layer(view.material_overrides);
+    apply_material_layer(view.selection_material_overrides);
+    apply_material_layer(view.hover_material_overrides);
     for (const auto &[occurrence, material] : material_overrides)
         if (result.material.contains(occurrence))
             result.material[occurrence] = material;
@@ -133,6 +141,16 @@ std::uint64_t view_signature(const SceneView &view) noexcept {
     }
     add(view.material_overrides.size());
     for (const auto &override : view.material_overrides) {
+        add(override.occurrence.value);
+        add(override.material.value);
+    }
+    add(view.selection_material_overrides.size());
+    for (const auto &override : view.selection_material_overrides) {
+        add(override.occurrence.value);
+        add(override.material.value);
+    }
+    add(view.hover_material_overrides.size());
+    for (const auto &override : view.hover_material_overrides) {
         add(override.occurrence.value);
         add(override.material.value);
     }

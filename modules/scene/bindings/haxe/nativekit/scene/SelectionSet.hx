@@ -41,6 +41,6 @@ class SelectionSet {
 	@:allow(SceneView)
 	function apply(view:SceneView, material:Material):Void {
 		for (occurrence in entries)
-			view.setMaterial(occurrence, material);
+			view.setSelectionMaterial(occurrence, material);
 	}
 }

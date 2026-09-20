@@ -74,6 +74,12 @@ typedef struct nkscene_render_view {
     nkscene_render_camera camera;
     const nkscene_render_clip_plane *clip_planes NK_BORROWED_ARRAY(clip_plane_count);
     uint32_t clip_plane_count;
+    const nkscene_render_material_override *selection_overrides
+        NK_BORROWED_ARRAY(selection_override_count);
+    uint32_t selection_override_count;
+    const nkscene_render_material_override *hover_overrides
+        NK_BORROWED_ARRAY(hover_override_count);
+    uint32_t hover_override_count;
 } nkscene_render_view;
 
 typedef struct nkscene_render_update {
@@ -208,6 +214,7 @@ NKSRENDER_API nkscene_result NKS_CALL nkscene_render_executor_pick_pixel_poll(
 #include "nativekit_scene.hpp"
 
 #include <array>
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <span>
@@ -256,11 +263,58 @@ struct SceneView {
     bool include_invisible = false;
     /** Later entries replace earlier entries for the same occurrence. */
     std::vector<VisibilityOverride> visibility_overrides;
+    /** Base presentation material overrides. */
     std::vector<MaterialOverride> material_overrides;
+    /** Selection material layer, below hover material overrides. */
+    std::vector<MaterialOverride> selection_material_overrides;
+    /** Hover material layer, above selection and base material overrides. */
+    std::vector<MaterialOverride> hover_material_overrides;
     /** Optional world-to-clip transform used for bounds culling and rendering. */
     SceneCamera camera;
     /** Conservative occurrence-level sectioning planes. */
     std::vector<ClipPlane> clip_planes;
+
+    void set_visibility_override(OccurrenceId occurrence, bool visible) {
+        const auto found = std::find_if(
+            visibility_overrides.begin(), visibility_overrides.end(),
+            [occurrence](const auto &value) { return value.occurrence == occurrence; });
+        if (found != visibility_overrides.end())
+            found->visible = visible;
+        else
+            visibility_overrides.push_back({occurrence, visible});
+    }
+
+    void set_material_override(OccurrenceId occurrence, MaterialId material) {
+        set_material_override_in(material_overrides, occurrence, material);
+    }
+
+    void set_selection_material_override(OccurrenceId occurrence, MaterialId material) {
+        set_material_override_in(selection_material_overrides, occurrence, material);
+    }
+
+    void set_hover_material_override(OccurrenceId occurrence, MaterialId material) {
+        set_material_override_in(hover_material_overrides, occurrence, material);
+    }
+
+    void clear_selection_material_overrides() noexcept {
+        selection_material_overrides.clear();
+    }
+
+    void clear_hover_material_overrides() noexcept {
+        hover_material_overrides.clear();
+    }
+
+private:
+    static void set_material_override_in(std::vector<MaterialOverride> &overrides,
+                                         OccurrenceId occurrence, MaterialId material) {
+        const auto found = std::find_if(
+            overrides.begin(), overrides.end(),
+            [occurrence](const auto &value) { return value.occurrence == occurrence; });
+        if (found != overrides.end())
+            found->material = material;
+        else
+            overrides.push_back({occurrence, material});
+    }
 };
 
 enum class RenderFlags : std::uint32_t {

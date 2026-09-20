@@ -2,6 +2,7 @@
 
 #include "scene_internal.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <memory>
 #include <vector>
@@ -143,6 +144,8 @@ void selection_presentation_50k() {
     scene->material_store().create(base_material);
     const auto highlight_material = scene->reserve_material_id();
     scene->material_store().create(highlight_material);
+    const auto hover_material = scene->reserve_material_id();
+    scene->material_store().create(hover_material);
 
     std::vector<nkscene::OccurrenceId> occurrences;
     occurrences.reserve(count);
@@ -173,7 +176,10 @@ void selection_presentation_50k() {
     interaction.select(occurrences[12345], SelectionMode::Replace);
     auto selected_view = view;
     for (const auto occurrence : interaction.selected())
-        selected_view.material_overrides.push_back({occurrence, highlight_material});
+        selected_view.set_selection_material_override(occurrence, highlight_material);
+    selected_view.set_selection_material_override(occurrences[12345], hover_material);
+    selected_view.set_selection_material_override(occurrences[12345], highlight_material);
+    assert(selected_view.selection_material_overrides.size() == 1);
     const auto update = nkscene::update(plan, snapshot, changes, selected_view);
 
     assert(!update.plan_rebuilt);
@@ -184,6 +190,31 @@ void selection_presentation_50k() {
     assert(update.updated_geometry_resources == 0);
     assert(update.updated_material_resources == 0);
     assert(update.rebuilt_batches != 0);
+
+    const auto selected_item = std::find_if(
+        plan.items().begin(), plan.items().end(), [&](const auto &item) {
+            return item.occurrence == occurrences[12345];
+        });
+    assert(selected_item != plan.items().end());
+    assert(selected_item->material == highlight_material);
+
+    auto hovered_view = selected_view;
+    hovered_view.set_hover_material_override(occurrences[12345], hover_material);
+    hovered_view.set_hover_material_override(occurrences[12345], hover_material);
+    assert(hovered_view.hover_material_overrides.size() == 1);
+    const auto hover_update = nkscene::update(plan, snapshot, changes, hovered_view);
+    assert(!hover_update.plan_rebuilt);
+    assert(hover_update.patched_instances == 0);
+    assert(hover_update.patched_visibility == 0);
+    assert(hover_update.patched_materials == 1);
+    assert(selected_item->material == hover_material);
+
+    const auto selection_update = nkscene::update(plan, snapshot, changes, selected_view);
+    assert(!selection_update.plan_rebuilt);
+    assert(selection_update.patched_instances == 0);
+    assert(selection_update.patched_visibility == 0);
+    assert(selection_update.patched_materials == 1);
+    assert(selected_item->material == highlight_material);
 }
 
 } // namespace

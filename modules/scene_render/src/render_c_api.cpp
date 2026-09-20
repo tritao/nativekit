@@ -25,11 +25,22 @@ RenderRegistry &registry() {
 nkscene_result copy_view(const nkscene_render_view *input, nkscene::SceneView &output) {
     if (!input)
         return NKS_OK;
-    if (input->struct_size < sizeof(nkscene_render_view))
+    constexpr auto legacy_size = offsetof(nkscene_render_view, selection_overrides);
+    if (input->struct_size < legacy_size)
         return NKS_ERROR_INVALID_ARGUMENT;
+    const bool has_selection_overrides = input->struct_size >=
+        offsetof(nkscene_render_view, selection_override_count) +
+        sizeof(input->selection_override_count);
+    const bool has_hover_overrides = input->struct_size >=
+        offsetof(nkscene_render_view, hover_override_count) +
+        sizeof(input->hover_override_count);
     if ((input->visibility_override_count != 0 && !input->visibility_overrides) ||
         (input->material_override_count != 0 && !input->material_overrides) ||
-        (input->clip_plane_count != 0 && !input->clip_planes))
+        (input->clip_plane_count != 0 && !input->clip_planes) ||
+        (has_selection_overrides && input->selection_override_count != 0 &&
+         !input->selection_overrides) ||
+        (has_hover_overrides && input->hover_override_count != 0 &&
+         !input->hover_overrides))
         return NKS_ERROR_INVALID_ARGUMENT;
 
     output.root = {input->root.value};
@@ -43,6 +54,22 @@ nkscene_result copy_view(const nkscene_render_view *input, nkscene::SceneView &o
     for (uint32_t index = 0; index < input->material_override_count; ++index) {
         const auto &value = input->material_overrides[index];
         output.material_overrides.push_back({{value.occurrence.value}, {value.material.value}});
+    }
+    if (has_selection_overrides) {
+        output.selection_material_overrides.reserve(input->selection_override_count);
+        for (uint32_t index = 0; index < input->selection_override_count; ++index) {
+            const auto &value = input->selection_overrides[index];
+            output.selection_material_overrides.push_back(
+                {{value.occurrence.value}, {value.material.value}});
+        }
+    }
+    if (has_hover_overrides) {
+        output.hover_material_overrides.reserve(input->hover_override_count);
+        for (uint32_t index = 0; index < input->hover_override_count; ++index) {
+            const auto &value = input->hover_overrides[index];
+            output.hover_material_overrides.push_back(
+                {{value.occurrence.value}, {value.material.value}});
+        }
     }
     output.clip_planes.reserve(input->clip_plane_count);
     for (uint32_t index = 0; index < input->clip_plane_count; ++index) {

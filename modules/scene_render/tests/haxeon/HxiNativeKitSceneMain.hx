@@ -119,7 +119,22 @@ class Main {
 		var interactionView = new SceneView().setRoot(group);
 		interaction.applySelection(interactionView, highlight);
 		if (interaction.selectionSet().count() != 1
-			|| interactionView.materialOverrideCount() != 1)
+			|| interactionView.materialOverrideCount() != 1
+			|| interactionView.selectionOverrideCount() != 1)
+			return 27;
+		interaction.select(first, SelectionMode.Add);
+		interaction.applySelection(interactionView, highlight);
+		if (interactionView.selectionOverrideCount() != 2)
+			return 27;
+		interaction.select(second, SelectionMode.Toggle);
+		interaction.applySelection(interactionView, highlight);
+		if (interactionView.selectionOverrideCount() != 1
+			|| interactionView.materialOverrideCount() != 1
+			|| interactionView.hoverOverrideCount() != 0)
+			return 27;
+		interaction.applyHover(interactionView, highlight);
+		if (interactionView.selectionOverrideCount() != 1
+			|| interactionView.hoverOverrideCount() != 0)
 			return 27;
 		interaction.dispose();
 		var spatialIndex = SpatialIndex.create(snapshot),
@@ -198,6 +213,7 @@ class Main {
 			materialUpdate = sceneRenderer.lastUpdate();
 		if (selection.count() != 1
 			|| materialView.materialOverrideCount() != 1
+			|| materialView.selectionOverrideCount() != 1
 			|| materialUpdate == null
 			|| materialUpdate.get_plan_rebuilt() != 0
 			|| haxe.Int64.toInt(materialUpdate.get_patched_visibility()) != 1

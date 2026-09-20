@@ -8,6 +8,8 @@ class SceneView {
 	final value:nkscene_render_view;
 	var visibilityOverrides:Array<nkscene_render_visibility_override> = [];
 	var materialOverrides:Array<nkscene_render_material_override> = [];
+	var selectionOverrides:Array<nkscene_render_material_override> = [];
+	var hoverOverrides:Array<nkscene_render_material_override> = [];
 	var clipPlanes:Array<nkscene_render_clip_plane> = [];
 
 	public function new() {
@@ -66,6 +68,14 @@ class SceneView {
 	}
 
 	public function setVisibility(occurrence:Occurrence, visible:Bool):SceneView {
+		var stable = occurrence.stableValue();
+		for (override in visibilityOverrides) {
+			if (override.get_occurrence().get_value() == stable) {
+				override.set_visible(visible ? 1 : 0);
+				value.set_visibility_overrides(visibilityOverrides);
+				return this;
+			}
+		}
 		var override = new nkscene_render_visibility_override();
 		override.set_occurrence(occurrence.nativeValue());
 		override.set_visible(visible ? 1 : 0);
@@ -75,19 +85,46 @@ class SceneView {
 	}
 
 	public function setMaterial(occurrence:Occurrence, material:Material):SceneView {
-		var override = new nkscene_render_material_override();
-		override.set_occurrence(occurrence.nativeValue());
-		override.set_material(material.id());
-		materialOverrides.push(override);
+		setMaterialOverride(materialOverrides, occurrence, material);
 		value.set_material_overrides(materialOverrides);
+		return this;
+	}
+
+	@:allow(SelectionSet)
+	function setSelectionMaterial(occurrence:Occurrence, material:Material):SceneView {
+		setMaterialOverride(selectionOverrides, occurrence, material);
+		value.set_selection_overrides(selectionOverrides);
+		return this;
+	}
+
+	@:allow(SceneInteraction)
+	function setHoverMaterial(occurrence:Occurrence, material:Material):SceneView {
+		setMaterialOverride(hoverOverrides, occurrence, material);
+		value.set_hover_overrides(hoverOverrides);
+		return this;
+	}
+
+	public function clearSelectionOverrides():SceneView {
+		selectionOverrides.resize(0);
+		value.set_selection_overrides(selectionOverrides);
+		return this;
+	}
+
+	public function clearHoverOverrides():SceneView {
+		hoverOverrides.resize(0);
+		value.set_hover_overrides(hoverOverrides);
 		return this;
 	}
 
 	public function clearOverrides():SceneView {
 		visibilityOverrides.resize(0);
 		materialOverrides.resize(0);
+		selectionOverrides.resize(0);
+		hoverOverrides.resize(0);
 		value.set_visibility_overrides(visibilityOverrides);
 		value.set_material_overrides(materialOverrides);
+		value.set_selection_overrides(selectionOverrides);
+		value.set_hover_overrides(hoverOverrides);
 		return this;
 	}
 
@@ -97,7 +134,16 @@ class SceneView {
 	}
 
 	public function applySelection(selection:SelectionSet, highlight:Material):SceneView {
+		clearSelectionOverrides();
 		selection.apply(this, highlight);
+		return this;
+	}
+
+	/** Replaces the hover layer; hover takes precedence over selection. */
+	public function applyHover(occurrence:Null<Occurrence>, highlight:Material):SceneView {
+		clearHoverOverrides();
+		if (occurrence != null)
+			setHoverMaterial(occurrence, highlight);
 		return this;
 	}
 
@@ -107,11 +153,23 @@ class SceneView {
 	public function materialOverrideValues():Array<nkscene_render_material_override>
 		return materialOverrides.copy();
 
+	public function selectionOverrideValues():Array<nkscene_render_material_override>
+		return selectionOverrides.copy();
+
+	public function hoverOverrideValues():Array<nkscene_render_material_override>
+		return hoverOverrides.copy();
+
 	public function visibilityOverrideCount():Int
 		return visibilityOverrides.length;
 
 	public function materialOverrideCount():Int
-		return materialOverrides.length;
+		return materialOverrides.length + selectionOverrides.length + hoverOverrides.length;
+
+	public function selectionOverrideCount():Int
+		return selectionOverrides.length;
+
+	public function hoverOverrideCount():Int
+		return hoverOverrides.length;
 
 	public function clipPlaneCount():Int
 		return clipPlanes.length;
@@ -119,4 +177,19 @@ class SceneView {
 	@:allow(SceneRenderer)
 	function nativeValue():nkscene_render_view
 		return value;
+
+	function setMaterialOverride(overrides:Array<nkscene_render_material_override>,
+			occurrence:Occurrence, material:Material):Void {
+		var stable = occurrence.stableValue(), materialValue = material.id();
+		for (override in overrides) {
+			if (override.get_occurrence().get_value() == stable) {
+				override.set_material(materialValue);
+				return;
+			}
+		}
+		var override = new nkscene_render_material_override();
+		override.set_occurrence(occurrence.nativeValue());
+		override.set_material(materialValue);
+		overrides.push(override);
+	}
 }
