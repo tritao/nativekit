@@ -151,8 +151,8 @@ nk_result start_render_executor() noexcept {
     /* The canvas must be transferred before the worker creates its WebGL
        context.  The selector string is held by the generated configuration
        header for the lifetime of the process. */
-    if (emscripten_pthread_attr_settransferredcanvases(&attributes,
-                                                       NK_WEB_CANVAS_SELECTOR) != 0) {
+    if (emscripten_pthread_attr_settransferredcanvases(
+            &attributes, NK_WEB_CANVAS_SELECTOR) != 0) {
         pthread_attr_destroy(&attributes);
         std::lock_guard lock(render_task_mutex);
         render_accepting = false;

@@ -3013,8 +3013,7 @@ nk_result NK_CALL nk_surface_create(nk_handle window_handle, const nk_surface_op
 #if defined(NK_WEB_THREADED_RENDER)
             context_options.explicit_swap = true;
             context_options.render_via_offscreen_backbuffer = true;
-            context_options.proxy_context_to_main_thread =
-                EMSCRIPTEN_WEBGL_CONTEXT_PROXY_FALLBACK;
+            context_options.proxy_context_to_main_thread = EMSCRIPTEN_WEBGL_CONTEXT_PROXY_FALLBACK;
 #endif
             std::shared_ptr<WebGLContextResource> graphics = window->graphics;
             if (options->share_surface != NK_INVALID_HANDLE) {
@@ -3032,8 +3031,8 @@ nk_result NK_CALL nk_surface_create(nk_handle window_handle, const nk_surface_op
                 WebGLCreateRequest request{};
                 request.selector = window->selector;
                 request.options = context_options;
-                created = nk::core::dispatch_to_render_sync(
-                              &create_webgl_context_on_render, &request, sizeof(request)) == NK_OK &&
+                created = nk::core::dispatch_to_render_sync(&create_webgl_context_on_render,
+                                                            &request, sizeof(request)) == NK_OK &&
                           request.success;
                 context = request.context;
 #else
@@ -3506,8 +3505,8 @@ nk_result NK_CALL nk_graphics_bind_frame_target(const nk_surface_frame_target *t
 #if defined(NK_WEB_THREADED_RENDER)
     if (!target || !target->native_context)
         return NK_ERROR_INVALID_ARGUMENT;
-    return nk::web::make_context_current(static_cast<EMSCRIPTEN_WEBGL_CONTEXT_HANDLE>(
-                                             target->native_context))
+    return nk::web::make_context_current(
+               static_cast<EMSCRIPTEN_WEBGL_CONTEXT_HANDLE>(target->native_context))
                ? NK_OK
                : NK_ERROR_UNKNOWN;
 #else
