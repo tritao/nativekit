@@ -41,7 +41,7 @@ void run_frame_probe(void *data) {
     probe.surface_api_violations = nk::core::render_surface_api_violations();
 }
 
-bool run_frame(nk_window window, nk_surface surface, bool cancel, int32_t width, int32_t height) {
+int run_frame(nk_window window, nk_surface surface, bool cancel, int32_t width, int32_t height) {
     nk_surface_frame frame = NK_INVALID_HANDLE;
     nk_surface_frame_target target{};
     target.struct_size = sizeof(target);
@@ -50,25 +50,27 @@ bool run_frame(nk_window window, nk_surface surface, bool cancel, int32_t width,
         target.height <= 0 || !target.device.id || !target.native_context) {
         if (frame != NK_INVALID_HANDLE)
             (void)nk_surface_cancel_frame(frame);
-        return false;
+        return 10;
     }
 
     FrameProbe probe{frame, target};
     if (nk::core::dispatch_to_render_sync(&run_frame_probe, &probe, sizeof(probe)) != NK_OK) {
         (void)nk_surface_cancel_frame(frame);
-        return false;
+        return 20;
     }
     if (!probe.render_executor || probe.bind != NK_OK || probe.submit != NK_OK ||
         probe.unbind != NK_OK || probe.surface_api_violations != 0) {
         (void)nk_surface_cancel_frame(frame);
-        return false;
+        return 30 + (!probe.render_executor ? 1 : 0) + (probe.bind != NK_OK ? 2 : 0) +
+               (probe.submit != NK_OK ? 4 : 0) + (probe.unbind != NK_OK ? 8 : 0) +
+               (probe.surface_api_violations != 0 ? 16 : 0);
     }
 
     const nk_result closed =
         cancel ? nk_surface_cancel_frame(frame) : nk_surface_present_frame(frame);
     if (closed != NK_OK)
-        return false;
-    return nk_window_set_bounds(window, 0, 0, width, height) == NK_OK;
+        return 40;
+    return nk_window_set_bounds(window, 0, 0, width, height) == NK_OK ? 0 : 50;
 }
 
 } // namespace
@@ -106,8 +108,10 @@ int main() {
            ticket close path and makes shutdown begin with no open frame. */
         const int32_t sizes[][2] = {{320, 240}, {480, 270}, {640, 360}, {320, 240}};
         for (size_t index = 0; index < sizeof(sizes) / sizeof(sizes[0]); ++index) {
-            if (!run_frame(window, surface, index == 1, sizes[index][0], sizes[index][1])) {
-                result = 4;
+            const int frame_result =
+                run_frame(window, surface, index == 1, sizes[index][0], sizes[index][1]);
+            if (frame_result != 0) {
+                result = frame_result;
                 break;
             }
         }
@@ -123,7 +127,7 @@ int main() {
     // clang-format off
     EM_ASM({
         document.documentElement.dataset.nativekitFrameBackendResult =
-            $0 === 0 ? "passed" : "failed";
+            $0 === 0 ? "passed" : "failed-" + $0;
     }, result);
     // clang-format on
 #endif
