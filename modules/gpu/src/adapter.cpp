@@ -1088,10 +1088,10 @@ nkgpu_result nkgpu_query_features(nkgpu_renderer renderer, nkgpu_features *out_f
     features.struct_size = sizeof(features);
     const sg_limits native_limits = selected_api->query_limits();
     features.mrt_count = static_cast<uint32_t>(native_limits.max_color_attachments);
-    features.max_samples = selected_api->query_max_samples
-                               ? static_cast<uint32_t>(
-                                     std::max(1, selected_api->query_max_samples()))
-                               : 1u;
+    features.max_samples =
+        selected_api->query_max_samples
+            ? static_cast<uint32_t>(std::max(1, selected_api->query_max_samples()))
+            : 1u;
     features.storage_buffer = native.compute ? 1u : 0u;
     features.storage_image = native.compute ? 1u : 0u;
     features.compute = native.compute ? 1u : 0u;
@@ -2216,8 +2216,8 @@ nkgpu_result nkgpu_buffer_update(nkgpu_renderer r, nkgpu_buffer h, uint32_t offs
     std::vector<uint8_t> next_pixels = s->value.pixels;
     memcpy(next_pixels.data() + offset, data, size);
     auto *owner = renderer_pool.get(r);
-    const bool same_frame = s->value.has_update_frame &&
-                            s->value.last_update_frame == owner->value.frames;
+    const bool same_frame =
+        s->value.has_update_frame && s->value.last_update_frame == owner->value.frames;
     if (same_frame) {
         /* Sokol permits one persistent update per resource per frame. If the
            caller submits another update before the frame advances, replace the
@@ -2521,8 +2521,7 @@ nkgpu_result nkgpu_shader_storage_image(nkgpu_shader_builder h, uint32_t view_sl
     return NKGPU_OK;
 }
 
-nkgpu_result nkgpu_shader_binding(nkgpu_shader_builder h,
-                                  const nkgpu_shader_binding_desc *desc) {
+nkgpu_result nkgpu_shader_binding(nkgpu_shader_builder h, const nkgpu_shader_binding_desc *desc) {
     if (!desc || desc->struct_size < sizeof(nkgpu_shader_binding_desc))
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid shader binding descriptor");
     switch (desc->kind) {
@@ -4572,8 +4571,7 @@ static bool retain_batch_render_pass(Batch &batch, const nkgpu_render_pass_desc 
     for (uint32_t index = 0; index < desc.color_count; ++index) {
         const nkgpu_color_attachment &attachment = desc.colors[index];
         auto *color = image_pool.get_retained(attachment.image);
-        if (!color || color->value.owner != batch.owner ||
-            !color->value.color_attachment.id ||
+        if (!color || color->value.owner != batch.owner || !color->value.color_attachment.id ||
             !(color->value.usage & NKGPU_IMAGE_RENDER_TARGET) ||
             !valid_attachment_action(attachment.action)) {
             fail(NKGPU_ERROR_INVALID_HANDLE, "invalid batch render-pass color attachment");
@@ -4636,8 +4634,7 @@ static bool retain_batch_render_pass(Batch &batch, const nkgpu_render_pass_desc 
             return false;
         }
     }
-    if (desc.depth_stencil.id &&
-        !retain_batch_resource(batch, ImageKind, desc.depth_stencil)) {
+    if (desc.depth_stencil.id && !retain_batch_resource(batch, ImageKind, desc.depth_stencil)) {
         fail(NKGPU_ERROR_INVALID_HANDLE, "batch render-pass depth image cannot be retained");
         return false;
     }
@@ -4658,8 +4655,7 @@ nkgpu_result nkgpu_batch_append_pass(nkgpu_batch batch, const nkgpu_batch_pass *
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid batch pass kind");
     if (pass->kind != NKGPU_BATCH_PASS_RENDER && pass->clear > 1)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid batch pass clear flag");
-    if (pass->kind == NKGPU_BATCH_PASS_RENDER &&
-        pass->struct_size < sizeof(nkgpu_batch_pass))
+    if (pass->kind == NKGPU_BATCH_PASS_RENDER && pass->struct_size < sizeof(nkgpu_batch_pass))
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "batch render pass descriptor is too small");
     BatchPass recorded{};
     recorded.kind = pass->kind;
