@@ -18,6 +18,7 @@
 #include "nativekit_system.h"
 #include "nativekit_time.h"
 #include "nativekit_task.h"
+#include "nativekit_transport.h"
 #include "nativekit_vulkan.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
@@ -85,6 +86,10 @@ _Static_assert(NK_EXECUTOR_PLATFORM == 0 && NK_EXECUTOR_APP == 1 && NK_EXECUTOR_
                "logical executor values are stable");
 _Static_assert(NK_EVENT_PLUGIN_COMPLETE == 1000 && NK_EVENT_PLUGIN_EVENT == 1001,
                "plugin event kinds are stable");
+_Static_assert(NK_EVENT_TRANSPORT_CONNECTED == 950 && NK_EVENT_TRANSPORT_FAILED == 955,
+               "transport event kinds are stable");
+_Static_assert(sizeof(nk_transport) == sizeof(uint32_t) && sizeof(nk_listener) == sizeof(uint32_t),
+               "transport handles remain four-byte tokens");
 _Static_assert(NK_EVENT_MENU_ITEM_ACTIVATED == 510 && NK_EVENT_APPLICATION_QUIT_REQUESTED == 511,
                "menu event kinds are stable");
 _Static_assert(NK_ERROR_NOT_FOUND == -12 && NK_ERROR_PAYLOAD_TOO_LARGE == -13 &&

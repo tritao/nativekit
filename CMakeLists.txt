@@ -145,6 +145,7 @@ add_library(nativekit ${NK_LIBRARY_TYPE}
     src/core/vulkan.cpp
     src/core/window_extensions.cpp
     src/net/net.cpp
+    src/transport/transport.cpp
 )
 add_library(NativeKit::nativekit ALIAS nativekit)
 
@@ -340,7 +341,7 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS" OR APPLE)
         OBJCXX_STANDARD_REQUIRED YES)
 elseif(WIN32)
     target_sources(nativekit PRIVATE src/net/net_winhttp.cpp)
-    target_link_libraries(nativekit PRIVATE winhttp)
+    target_link_libraries(nativekit PRIVATE winhttp ws2_32)
 elseif(UNIX)
     if(NK_USE_SYSTEM_CURL)
         find_package(CURL QUIET)

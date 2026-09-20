@@ -330,6 +330,18 @@ enum NK_ENUM(nk_event_kind) {
     NK_EVENT_PLUGIN_COMPLETE = 1000,
     /** A plugin emitted an unsolicited notification. */
     NK_EVENT_PLUGIN_EVENT = 1001,
+    /** A stream or datagram transport finished connecting. */
+    NK_EVENT_TRANSPORT_CONNECTED = 950,
+    /** A listener accepted or created a transport; inspect its payload. */
+    NK_EVENT_TRANSPORT_ACCEPTED = 951,
+    /** A transport has bytes available through nk_transport_receive(). */
+    NK_EVENT_TRANSPORT_DATA = 952,
+    /** A transport send queue has become writable again. */
+    NK_EVENT_TRANSPORT_WRITABLE = 953,
+    /** A transport was closed, either by the peer or by NativeKit. */
+    NK_EVENT_TRANSPORT_CLOSED = 954,
+    /** A transport failed; inspect event.result for the transport error. */
+    NK_EVENT_TRANSPORT_FAILED = 955,
     /** A native task reported copied progress data. */
     NK_EVENT_TASK_PROGRESS = 1100,
     /** A native task completed successfully with copied result data. */

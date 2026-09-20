@@ -44,7 +44,7 @@ bool valid_event_struct(const nk_event *event) {
 namespace nk::core {
 
 nk_capabilities optional_capabilities() noexcept {
-    return nk::net::capabilities();
+    return nk::net::capabilities() | nk::transport::capabilities();
 }
 
 nk_result require_ui_thread() noexcept {
@@ -205,6 +205,7 @@ void NK_CALL nk_shutdown(void) {
        while the dedicated executor was stopping. */
     nk::core::clear_frame_tickets();
     nk::net::shutdown();
+    nk::transport::shutdown();
     /* Plugins observe a complete teardown before their runtime disappears. */
     nk::core::plugins_shutdown();
     nk::core::clear_app_tasks();

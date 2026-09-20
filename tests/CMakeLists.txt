@@ -48,6 +48,12 @@ target_include_directories(nativekit_worker_pool_tests PRIVATE ${PROJECT_SOURCE_
 target_link_libraries(nativekit_worker_pool_tests PRIVATE NativeKit::nativekit)
 add_test(NAME worker_pool COMMAND nativekit_worker_pool_tests)
 
+add_executable(nativekit_transport_contract_test unit/transport_contract.cpp)
+target_compile_features(nativekit_transport_contract_test PRIVATE cxx_std_17)
+target_link_libraries(nativekit_transport_contract_test PRIVATE NativeKit::nativekit)
+add_test(NAME transport_contract COMMAND nativekit_transport_contract_test)
+set_tests_properties(transport_contract PROPERTIES LABELS "network" TIMEOUT 30)
+
 if(NK_NET_BACKEND_CURL)
     add_executable(nativekit_net_contract_test unit/net_contract.cpp)
     target_compile_features(nativekit_net_contract_test PRIVATE cxx_std_17)

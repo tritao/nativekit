@@ -48,3 +48,8 @@ nk_result clipboard_watch_start(const nk_clipboard_watch_options *options,
                                 nk_clipboard_watch *out_watch) noexcept;
 nk_result clipboard_watch_stop(nk_clipboard_watch watch) noexcept;
 } // namespace nk::backend
+
+namespace nk::transport {
+nk_capabilities capabilities() noexcept;
+void shutdown() noexcept;
+} // namespace nk::transport

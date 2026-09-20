@@ -53,7 +53,7 @@ constexpr mask k_known_capabilities =
     cap(NK_CAP_HTTP_STREAMING) | cap(NK_CAP_SURFACE_FRAME_CALLBACK) |
     cap(NK_CAP_WINDOW_CUSTOM_DECORATIONS) | cap(NK_CAP_SENSORS) | cap(NK_CAP_HAPTICS) |
     cap(NK_CAP_GAMEPAD_RUMBLE) | cap(NK_CAP_NATIVE_VIEW) | cap(NK_CAP_FILE_WATCH) |
-    cap(NK_CAP_CLIPBOARD_WATCH) | cap(NK_CAP_APPLICATION_MENU);
+    cap(NK_CAP_CLIPBOARD_WATCH) | cap(NK_CAP_APPLICATION_MENU) | cap(NK_CAP_TRANSPORT);
 
 constexpr mask k_new_system_capabilities =
     cap(NK_CAP_SYSTEM_INFO) | cap(NK_CAP_APPLICATION_PATH) | cap(NK_CAP_APPLICATION_STORAGE) |
@@ -201,7 +201,7 @@ struct capability_name {
     nk_capabilities value;
 };
 
-constexpr std::array<capability_name, 44> k_capability_names = {{
+constexpr std::array<capability_name, 45> k_capability_names = {{
     {"WINDOW", NK_CAP_WINDOW},
     {"WEBVIEW", NK_CAP_WEBVIEW},
     {"CLIPBOARD", NK_CAP_CLIPBOARD},
@@ -246,6 +246,7 @@ constexpr std::array<capability_name, 44> k_capability_names = {{
     {"FILE_WATCH", NK_CAP_FILE_WATCH},
     {"CLIPBOARD_WATCH", NK_CAP_CLIPBOARD_WATCH},
     {"APPLICATION_MENU", NK_CAP_APPLICATION_MENU},
+    {"TRANSPORT", NK_CAP_TRANSPORT},
 }};
 
 std::string_view trim(std::string_view value) {

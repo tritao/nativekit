@@ -116,7 +116,9 @@ enum NK_FLAGS(nk_capabilities) {
     /** The backend can observe native clipboard changes. */
     NK_CAP_CLIPBOARD_WATCH = UINT64_C(1) << 43,
     /** The backend can install a native application menu. */
-    NK_CAP_APPLICATION_MENU = UINT64_C(1) << 44
+    NK_CAP_APPLICATION_MENU = UINT64_C(1) << 44,
+    /** The backend supports general TCP, UDP, local, or WebSocket transports. */
+    NK_CAP_TRANSPORT = UINT64_C(1) << 45
 #endif
 };
 
@@ -135,6 +137,7 @@ enum NK_FLAGS(nk_capabilities) {
 #define NK_CAP_FILE_WATCH (UINT64_C(1) << 42)
 #define NK_CAP_CLIPBOARD_WATCH (UINT64_C(1) << 43)
 #define NK_CAP_APPLICATION_MENU (UINT64_C(1) << 44)
+#define NK_CAP_TRANSPORT (UINT64_C(1) << 45)
 #endif
 
 /** Discriminator identifying the platform representation in nk_native_window. */
