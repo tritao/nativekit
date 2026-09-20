@@ -47,6 +47,12 @@ static uint32_t image_format_bytes(nkgpu_image_format format) {
 int main() {
     if (!nkgpu_test_generation_exhaustion())
         return 1;
+#if defined(NK_GTK_THREADED_RENDER)
+    /* This suite exercises the legacy inline GPU API.  GTK threaded mode
+       intentionally makes GPU ownership render-executor-only; the physical
+       frame-target path is covered by the threaded UI/backend tests. */
+    return 77;
+#endif
     nk_init_options init{};
     init.struct_size = sizeof(init);
     init.api_version = NK_API_VERSION;

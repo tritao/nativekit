@@ -226,10 +226,29 @@ if(NK_BUILD_TESTS)
                 LABELS "graphics;gpu;cubemap"
                 TIMEOUT 120
                 ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1;NO_AT_BRIDGE=1")
-
+            if(NK_GTK_THREADED_RENDER)
+                add_executable(nativekit_gpu_frame_target_smoke_test tests/frame_target_smoke.cpp)
+                target_compile_features(nativekit_gpu_frame_target_smoke_test PRIVATE cxx_std_17)
+                target_compile_definitions(nativekit_gpu_frame_target_smoke_test PRIVATE
+                    NKGPU_TESTING=1 NK_GTK_THREADED_RENDER=1)
+                target_include_directories(nativekit_gpu_frame_target_smoke_test PRIVATE src
+                    "${PROJECT_SOURCE_DIR}/src")
+                target_link_libraries(nativekit_gpu_frame_target_smoke_test PRIVATE NativeKit::gpu
+                    NativeKit::nativekit)
+                add_test(NAME nativekit_gpu_frame_target_smoke
+                    COMMAND ${NKGPU_XVFB_RUN} -a $<TARGET_FILE:nativekit_gpu_frame_target_smoke_test>)
+                set_tests_properties(nativekit_gpu_frame_target_smoke PROPERTIES
+                    LABELS "graphics;gpu"
+                    TIMEOUT 15
+                    ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
+            endif()
             add_executable(nativekit_gpu_contract_smoke_test tests/contract_smoke.cpp)
             target_compile_features(nativekit_gpu_contract_smoke_test PRIVATE cxx_std_17)
             target_compile_definitions(nativekit_gpu_contract_smoke_test PRIVATE NKGPU_TESTING=1)
+            if(NK_GTK_THREADED_RENDER)
+                target_compile_definitions(nativekit_gpu_contract_smoke_test PRIVATE
+                    NK_GTK_THREADED_RENDER=1)
+            endif()
             if(NK_BUILD_GPU_BACKEND_MATRIX)
                 target_compile_definitions(nativekit_gpu_contract_smoke_test PRIVATE
                     NK_GPU_TEST_BACKEND_MATRIX=1)
@@ -241,11 +260,16 @@ if(NK_BUILD_TESTS)
                 COMMAND ${NKGPU_XVFB_RUN} -a $<TARGET_FILE:nativekit_gpu_contract_smoke_test>)
             set_tests_properties(nativekit_gpu_contract_smoke PROPERTIES
                 LABELS "graphics;gpu"
+                SKIP_RETURN_CODE 77
                 TIMEOUT 120
                 ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1;NO_AT_BRIDGE=1")
             add_executable(nativekit_gpu_batch_submit_test tests/batch_submit.cpp)
             target_compile_features(nativekit_gpu_batch_submit_test PRIVATE cxx_std_17)
             target_compile_definitions(nativekit_gpu_batch_submit_test PRIVATE NKGPU_TESTING=1)
+            if(NK_GTK_THREADED_RENDER)
+                target_compile_definitions(nativekit_gpu_batch_submit_test PRIVATE
+                    NK_GTK_THREADED_RENDER=1)
+            endif()
             target_include_directories(nativekit_gpu_batch_submit_test PRIVATE src
                 "${PROJECT_SOURCE_DIR}/src")
             target_link_libraries(nativekit_gpu_batch_submit_test PRIVATE NativeKit::gpu
@@ -260,6 +284,7 @@ if(NK_BUILD_TESTS)
                 COMMAND ${NKGPU_XVFB_RUN} -a $<TARGET_FILE:nativekit_gpu_batch_submit_test>)
             set_tests_properties(nativekit_gpu_batch_submit PROPERTIES
                 LABELS "graphics;gpu"
+                SKIP_RETURN_CODE 77
                 TIMEOUT 120
                 ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1;NO_AT_BRIDGE=1")
         endif()

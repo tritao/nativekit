@@ -767,7 +767,7 @@ int main() {
             retained_submissions_ok =
                 retained_submissions_ok &&
                 wait_render_submission_executions(
-                    renderer, before_retained_stats.render_submission_executions + 2) &&
+                    renderer, before_retained_stats.render_submission_executions + 1) &&
                 wait_surface_frame_state(surface, false);
             const uint64_t violations = nk::core::render_surface_api_violations();
             nk::core::set_render_surface_api_guard(false);
@@ -780,9 +780,10 @@ int main() {
                     before_retained_stats.render_submissions +
                         published_task.published_images.size() &&
                 after_retained_stats.render_submission_replacements >=
-                    before_retained_stats.render_submission_replacements + 2 &&
+                    before_retained_stats.render_submission_replacements +
+                        published_task.published_images.size() - 1 &&
                 after_retained_stats.render_submission_executions ==
-                    before_retained_stats.render_submission_executions + 2 &&
+                    before_retained_stats.render_submission_executions + 1 &&
                 after_retained_stats.render_submission_failures ==
                     before_retained_stats.render_submission_failures;
         }

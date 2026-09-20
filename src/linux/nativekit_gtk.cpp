@@ -2233,6 +2233,34 @@ gboolean on_pointer_crossing(GtkWidget *, GdkEventCrossing *crossing, gpointer d
     return FALSE;
 }
 
+#if defined(NK_GTK_THREADED_RENDER)
+std::shared_ptr<GtkSurfaceResource> surface(nk_handle handle);
+
+struct GtkFrameCallbackTask {
+    std::shared_ptr<GtkSurfaceResource> resource;
+    int32_t width = 0;
+    int32_t height = 0;
+};
+
+void run_gtk_frame_callback(void *user_data) {
+    auto *task = static_cast<GtkFrameCallbackTask *>(user_data);
+    if (!task || !task->resource)
+        return;
+    auto &resource = *task->resource;
+    resource.frame_render_scheduled = false;
+    const auto callback = resource.frame_callback;
+    if (!resource.widget || !callback || !nk::core::is_runtime_generation(resource.generation))
+        return;
+    nk::core::callback_boundary([&] {
+        callback(resource.handle, task->width, task->height, resource.frame_user_data);
+    });
+}
+
+void destroy_gtk_frame_callback(void *user_data) noexcept {
+    delete static_cast<GtkFrameCallbackTask *>(user_data);
+}
+#endif
+
 gboolean on_surface_tick(GtkWidget *widget, GdkFrameClock *, gpointer data) {
     auto *resource = static_cast<GtkSurfaceResource *>(data);
     if (!resource || !nk::core::is_runtime_generation(resource->generation) ||
@@ -2249,23 +2277,24 @@ gboolean on_surface_tick(GtkWidget *widget, GdkFrameClock *, gpointer data) {
 #if defined(NK_GTK_THREADED_RENDER)
     if (nk::core::render_executor_physical() && nk::core::surface_frame_open(resource->handle))
         return G_SOURCE_CONTINUE;
+    if (nk::core::render_executor_physical() && resource->frame_render_scheduled)
+        return G_SOURCE_CONTINUE;
 #endif
     resource->frame_requests.begin_frame();
     resource->frame_render_scheduled = true;
 #if defined(NK_GTK_THREADED_RENDER)
     if (nk::core::render_executor_physical()) {
-        const auto callback = resource->frame_callback;
-        void *user_data = resource->frame_user_data;
         const int scale = gtk_widget_get_scale_factor(widget);
-        nk::core::callback_boundary([&] {
-            if (callback && nk::core::is_runtime_generation(resource->generation))
-                callback(resource->handle, gtk_widget_get_allocated_width(widget) * scale,
-                         gtk_widget_get_allocated_height(widget) * scale, user_data);
-        });
-        resource->frame_render_scheduled = false;
-        if (!resource->frame_requests.continuous() && !resource->frame_requests.pending()) {
-            resource->frame_tick = 0;
-            return G_SOURCE_REMOVE;
+        auto *task = new (std::nothrow) GtkFrameCallbackTask{
+            surface(resource->handle),
+            gtk_widget_get_allocated_width(widget) * scale,
+            gtk_widget_get_allocated_height(widget) * scale};
+        if (!task ||
+            nk::core::dispatch_to_executor(NK_EXECUTOR_PLATFORM, &run_gtk_frame_callback, task,
+                                           &destroy_gtk_frame_callback, sizeof(*task)) != NK_OK) {
+            delete task;
+            resource->frame_render_scheduled = false;
+            resource->frame_requests.request();
         }
         return G_SOURCE_CONTINUE;
     }

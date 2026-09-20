@@ -175,6 +175,13 @@ bool check_rgba8_readback(nkgpu_renderer renderer, nkgpu_image image,
 } // namespace
 
 int main() {
+#if defined(NK_GTK_THREADED_RENDER)
+    /* Batch construction/submission must run on RENDER when GTK is split.
+       Keep this legacy inline suite skipped here rather than violating the
+       executor ownership contract; frame-target submission is covered by the
+       threaded backend smoke tests. */
+    return 77;
+#endif
     nk_init_options init{};
     init.struct_size = sizeof(init);
     init.api_version = NK_API_VERSION;

@@ -368,6 +368,18 @@ int main(void) {
         assert(nk_surface_get_framebuffer_size(surface, &framebuffer_width, &framebuffer_height) ==
                NK_OK);
         assert(framebuffer_width > 0 && framebuffer_height > 0);
+#if defined(NK_GTK_THREADED_RENDER)
+        /* GTK threaded mode keeps the GL context exclusively on RENDER;
+           make_current() only applies allocation changes on PLATFORM.  The
+           frame-target contract, rather than raw GL calls on this thread, is
+           the supported validation here. */
+        nk_surface_frame_target threaded_target = {0};
+        threaded_target.struct_size = sizeof(threaded_target);
+        assert(nk_surface_get_frame_target(surface, &threaded_target) == NK_OK);
+        assert(threaded_target.api == NK_GRAPHICS_OPENGL);
+        assert(threaded_target.width > 0 && threaded_target.height > 0);
+        assert(threaded_target.native_context != 0 && threaded_target.native_target != 0);
+#else
         nk_graphics_proc generic_proc = NULL;
         clear_color_proc clear_color = NULL;
         clear_proc clear = NULL;
@@ -383,6 +395,7 @@ int main(void) {
         unsigned char pixel[4] = {0, 0, 0, 0};
         read_pixels(0, 0, 1, 1, 0x1908u, 0x1401u, pixel); /* GL_RGBA, GL_UNSIGNED_BYTE */
         assert(pixel[0] > 200 && pixel[1] < 20 && pixel[2] < 20);
+#endif
 
         nk_surface_options shared_options = surface_options;
         shared_options.share_surface = surface;

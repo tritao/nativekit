@@ -160,6 +160,10 @@ if(NK_BACKEND_GTK_AVAILABLE)
         if(TARGET PkgConfig::WEBKITGTK)
             add_executable(nativekit_gtk_integration integration/gtk_create_destroy.c)
             target_link_libraries(nativekit_gtk_integration PRIVATE NativeKit::nativekit PkgConfig::GTK3)
+            if(NK_GTK_THREADED_RENDER)
+                target_compile_definitions(nativekit_gtk_integration PRIVATE
+                    NK_GTK_THREADED_RENDER=1)
+            endif()
             set_target_properties(nativekit_gtk_integration PROPERTIES LINKER_LANGUAGE CXX)
             add_test(NAME gtk_create_destroy
                 COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_integration>)
