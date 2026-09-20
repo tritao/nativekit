@@ -193,8 +193,8 @@ int main(void) {
     assert(target.width > 0 && target.height > 0);
     assert(nk_surface_present(surface) == NK_OK);
 
-    assert(nk_surface_destroy(surface) == NK_OK);
     assert(nk_surface_destroy(shared_surface) == NK_OK);
+    assert(nk_surface_destroy(surface) == NK_OK);
     assert(nk_window_destroy(shared_window) == NK_OK);
     assert(nk_window_destroy(window) == NK_OK);
     nk_shutdown();
