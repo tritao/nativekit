@@ -312,11 +312,19 @@ class Triangle {
 				transferSource.dispose();
 				transferDestination.dispose();
 				encodeBatched(commandBuffer, pipeline, buffer, indexBuffer, image, sampler);
+				var renderBatch = renderer.batch().renderPass(pass).seal();
+				var renderFrame = surface.acquireFrame();
+				renderBatch.submit(renderFrame);
+				renderFrame.present();
+				renderBatch.dispose();
 				var sealedBatch = renderer.batch().windowPass(800, 600).commands(commandBuffer).seal();
 				var batchMutationRejected = false;
 				try sealedBatch.copyPass() catch (_:Dynamic) batchMutationRejected = true;
 				if (!batchMutationRejected)
 					throw "GPU sealed batch accepted a new pass";
+				var windowFrame = surface.acquireFrame();
+				sealedBatch.submit(windowFrame);
+				windowFrame.present();
 				sealedBatch.dispose();
 				exerciseOptionalFeatures(renderer);
 				targetColor.dispose();

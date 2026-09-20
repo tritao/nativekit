@@ -195,10 +195,19 @@ completion semantics.
 Build render work from generic `nkgpu_image_desc` resources and
 `nkgpu_render_pass_desc` attachment descriptions. A frame may contain window,
 render, compute, and copy passes; sealed batches can retain and replay the same
-command records. Use `nkgpu_image_get_graphics_image()` when a sampled image
+command records. `nkgpu_batch_append_render_pass()` is the binding-friendly
+form for general attachment passes. Surface frame acquisition and presentation
+remain separate from render submission: acquire an immutable frame target on the
+platform executor, submit the sealed batch on the render executor, then present
+or cancel the frame. Use `nkgpu_image_get_graphics_image()` when a sampled image
 crosses into the UI compositor or another NativeKit module. The returned
 graphics-image handle is borrowed from the image and must be retained before
 outliving it.
+
+The Haxe binding exposes the same flow as `Surface.acquireFrame()`,
+`Batch.submit(frame)`, and `SurfaceFrame.present()` or `cancel()`. Generic
+render passes use `Batch.renderPass()` without requiring callers to construct
+pointer-bearing native batch records.
 
 Query `nkgpu_features` and `nkgpu_limits` before optional compute, storage,
 transfer, or readback work. Unsupported operations return

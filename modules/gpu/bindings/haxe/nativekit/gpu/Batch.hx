@@ -35,6 +35,16 @@ class Batch {
 		return this;
 	}
 
+	/** Appends a general attachment-based render pass to this batch. */
+	public function renderPass(desc:RenderPassDesc):Batch {
+		ensureMutable();
+		if (desc == null)
+			throw "GPU batch render-pass descriptor must not be null";
+		GpuResult.check(NativeKitGpu.nkgpu_batch_append_render_pass(value, desc.nativeValue()),
+			"batch.renderPass");
+		return this;
+	}
+
 	/** Appends a copy/transfer pass to this batch. */
 	public function copyPass():Batch {
 		appendPass(BatchPassKind.Copy, 0, 0, false);
@@ -61,13 +71,19 @@ class Batch {
 	}
 
 	/** Replays a sealed batch against the renderer's current surface frame. */
-	public function submit():Void {
+	public function submit(?frame:SurfaceFrame):Void {
 		ensureLive();
 		if (!sealed)
 			throw "GPU batch must be sealed before submission";
 		renderer.ensureResourceOperation();
-		GpuResult.check(NativeKitGpu.nkgpu_batch_submit(renderer.nativeHandle(), value, null),
-			"batch.submit");
+		if (frame == null)
+			GpuResult.check(NativeKitGpu.nkgpu_batch_submit(renderer.nativeHandle(), value, null),
+				"batch.submit");
+		else {
+			frame.ensureRenderer(renderer);
+			GpuResult.check(NativeKitGpu.nkgpu_batch_submit(renderer.nativeHandle(), value,
+				frame.nativeTarget()), "batch.submit");
+		}
 	}
 
 	public function dispose():Void {

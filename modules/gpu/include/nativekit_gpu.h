@@ -1536,6 +1536,16 @@ NKGPU_API nkgpu_result nkgpu_batch_begin(nkgpu_renderer renderer, nkgpu_batch *o
 NKGPU_API nkgpu_result nkgpu_batch_append_pass(nkgpu_batch batch, const nkgpu_batch_pass *pass);
 
 /**
+ * Appends a general attachment-based render pass to a batch.
+ *
+ * This is the binding-friendly form of nkgpu_batch_append_pass(): the
+ * descriptor is copied immediately and no pointer-bearing batch-pass record
+ * needs to be constructed by the caller.
+ */
+NKGPU_API nkgpu_result nkgpu_batch_append_render_pass(nkgpu_batch batch,
+                                                      const nkgpu_render_pass_desc *desc);
+
+/**
  * Appends packed command records to the batch's most recent pass.
  *
  * The byte stream uses the same little-endian record format as
