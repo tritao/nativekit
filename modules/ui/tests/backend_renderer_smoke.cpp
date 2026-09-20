@@ -669,10 +669,10 @@ int main() {
             }
             bool surface_created = false;
             if (index == 0) {
-                surface_created = nkgpu_surface_create(
-                                      scheduler_windows[index], scheduler_window_options.width,
-                                      scheduler_window_options.height, &scheduler_surfaces[index]) ==
-                                  NKGPU_OK;
+                surface_created =
+                    nkgpu_surface_create(scheduler_windows[index], scheduler_window_options.width,
+                                         scheduler_window_options.height,
+                                         &scheduler_surfaces[index]) == NKGPU_OK;
             } else {
                 const nk_graphics_api api = scheduler_targets[0].api;
                 if (api == NK_GRAPHICS_OPENGL || api == NK_GRAPHICS_OPENGL_ES) {
@@ -681,9 +681,8 @@ int main() {
                        surface zero's context/share group. */
                     nk_surface_options shared_options{};
                     shared_options.struct_size = sizeof(shared_options);
-                    shared_options.flags = api == NK_GRAPHICS_OPENGL
-                                               ? NK_SURFACE_FORWARD_COMPATIBLE
-                                               : 0;
+                    shared_options.flags =
+                        api == NK_GRAPHICS_OPENGL ? NK_SURFACE_FORWARD_COMPATIBLE : 0;
                     shared_options.api = api;
                     shared_options.major_version = 3;
                     shared_options.minor_version = api == NK_GRAPHICS_OPENGL ? 3 : 0;
@@ -691,15 +690,16 @@ int main() {
                     shared_options.height = scheduler_window_options.height;
                     shared_options.share_surface = scheduler_surfaces[0];
                     surface_created = nk_surface_create(scheduler_windows[index], &shared_options,
-                                                         &scheduler_surfaces[index]) == NK_OK;
+                                                        &scheduler_surfaces[index]) == NK_OK;
                 } else {
                     /* Explicit backends own their device/swapchain setup;
                        create a second target through the public factory and
                        let the scheduler classify cross-device switching. */
-                    surface_created = nkgpu_surface_create_for_api(
-                                          scheduler_windows[index], api, scheduler_window_options.width,
-                                          scheduler_window_options.height,
-                                          &scheduler_surfaces[index]) == NKGPU_OK;
+                    surface_created =
+                        nkgpu_surface_create_for_api(scheduler_windows[index], api,
+                                                     scheduler_window_options.width,
+                                                     scheduler_window_options.height,
+                                                     &scheduler_surfaces[index]) == NKGPU_OK;
                 }
             }
             if (!check(surface_created, "create scheduler stress surface") ||
@@ -875,11 +875,10 @@ int main() {
                 result = 29;
             nk_event_release(&completion_event);
         }
-        if (!result &&
-            (!wait_render_submission_executions(
-                 renderer, before_scheduler_stats.render_submission_executions + 2) ||
-             !wait_surface_frame_state(scheduler_surfaces[0], false) ||
-             !wait_surface_frame_state(scheduler_surfaces[1], false)))
+        if (!result && (!wait_render_submission_executions(
+                            renderer, before_scheduler_stats.render_submission_executions + 2) ||
+                        !wait_surface_frame_state(scheduler_surfaces[0], false) ||
+                        !wait_surface_frame_state(scheduler_surfaces[1], false)))
             result = 29;
         const uint64_t scheduler_surface_call_violations =
             nk::core::render_surface_api_violations();
@@ -918,9 +917,8 @@ int main() {
               scheduler_stats.gpu_frames != before_scheduler_stats.gpu_frames + 2) ||
              (shared_gpu_runtime &&
               scheduler_stats.resource_creations < before_scheduler_stats.resource_creations) ||
-             (shared_native_context &&
-              scheduler_stats.surface_recreations <
-                  before_scheduler_stats.surface_recreations + 1) ||
+             (shared_native_context && scheduler_stats.surface_recreations <
+                                           before_scheduler_stats.surface_recreations + 1) ||
              (supports_target_switch && scheduler_stats.render_submission_failures !=
                                             before_scheduler_stats.render_submission_failures) ||
              (supports_target_switch &&
@@ -942,7 +940,7 @@ int main() {
                  before_scheduler_stats.render_submission_execution_ns ||
              scheduler_stats.render_submission_acquire_to_present_ns <=
                  before_scheduler_stats.render_submission_acquire_to_present_ns ||
-            scheduler_stats.render_submission_executions !=
+             scheduler_stats.render_submission_executions !=
                  before_scheduler_stats.render_submission_executions + 2)) {
             std::fprintf(
                 stderr,

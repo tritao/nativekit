@@ -1552,8 +1552,7 @@ nkgpu_result nkgpu_surface_destroy(nk_surface s) {
 }
 static nkgpu_result create_renderer_from_target(nk_surface surface,
                                                 const nk_surface_frame_target &target,
-                                                nkgpu_renderer *out,
-                                                bool render_thread_owned) {
+                                                nkgpu_renderer *out, bool render_thread_owned) {
     if (!surface || !out)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid renderer arguments");
     if (active_renderer)
@@ -5286,8 +5285,7 @@ nkgpu_result nkgpu_batch_append_pass(nkgpu_batch batch, const nkgpu_batch_pass *
     auto *renderer = renderer_pool.get(slot->value.owner);
     if (!renderer)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "batch owner is stale");
-    const nkgpu_result executor =
-        require_renderer_executor(slot->value.owner, renderer->value);
+    const nkgpu_result executor = require_renderer_executor(slot->value.owner, renderer->value);
     if (executor != NKGPU_OK)
         return executor;
     if (slot->value.sealed)
@@ -5339,8 +5337,7 @@ nkgpu_result nkgpu_batch_append_command(nkgpu_batch batch, const uint8_t *comman
     auto *renderer = renderer_pool.get(slot->value.owner);
     if (!renderer)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "batch owner is stale");
-    const nkgpu_result executor =
-        require_renderer_executor(slot->value.owner, renderer->value);
+    const nkgpu_result executor = require_renderer_executor(slot->value.owner, renderer->value);
     if (executor != NKGPU_OK)
         return executor;
     if (slot->value.sealed)
@@ -5382,8 +5379,7 @@ nkgpu_result nkgpu_batch_seal(nkgpu_batch batch) {
     auto *renderer = renderer_pool.get(slot->value.owner);
     if (!renderer)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "batch owner is stale");
-    const nkgpu_result executor =
-        require_renderer_executor(slot->value.owner, renderer->value);
+    const nkgpu_result executor = require_renderer_executor(slot->value.owner, renderer->value);
     if (executor != NKGPU_OK)
         return executor;
     if (slot->value.sealed)
@@ -5508,8 +5504,7 @@ nkgpu_result nkgpu_batch_destroy(nkgpu_batch batch) {
     auto *renderer = renderer_pool.get(slot->value.owner);
     if (!renderer)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "batch owner is stale");
-    const nkgpu_result executor =
-        require_renderer_executor(slot->value.owner, renderer->value);
+    const nkgpu_result executor = require_renderer_executor(slot->value.owner, renderer->value);
     if (executor != NKGPU_OK)
         return executor;
     release_batch_retention(slot->value, 0);
