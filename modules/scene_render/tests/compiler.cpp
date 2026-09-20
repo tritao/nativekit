@@ -256,6 +256,20 @@ void scene_views_are_hierarchy_aware() {
     assert(scene->revision_counters().material == before.revisions().material);
     assert(scene->material_store().find(material_two)->revision == 1);
 
+    nkscene::SceneView composed_view = full_view;
+    composed_view.visibility_overrides.push_back({leaf, false});
+    composed_view.material_overrides.push_back({leaf, material_two});
+    plan = nkscene::compile(before, full_view);
+    const auto composed_update = nkscene::refresh(plan, before, composed_view);
+    assert(!composed_update.plan_rebuilt);
+    assert(composed_update.patched_visibility == 1);
+    assert(composed_update.patched_materials == 1);
+    assert(composed_update.patched_culling == 0);
+    assert(plan.items().size() == 2);
+    assert(nkscene::has_render_flag(find_item(plan, leaf)->flags,
+                                    nkscene::RenderFlags::Hidden));
+    assert(find_item(plan, leaf)->material == material_two);
+
     plan = nkscene::compile(before, full_view);
     Transaction hide_parent(scene);
     hide_parent.add_visibility(group, false);
@@ -395,6 +409,30 @@ void scene_view_clip_planes_are_incremental() {
     assert(!cleared.plan_rebuilt);
     assert(cleared.patched_culling == 0);
     assert(cleared.visible_items == 2);
+
+    auto disabled_view = relaxed_view;
+    disabled_view.clip_planes.push_back({{1.0f, 0.0f, 0.0f}, -100.0f, false});
+    const auto disabled = nkscene::refresh(plan, snapshot, disabled_view);
+    assert(!disabled.plan_rebuilt);
+    assert(disabled.patched_culling == 0);
+    assert(disabled.visible_items == 2);
+    assert(plan.clip_planes().empty());
+
+    disabled_view.clip_planes.push_back({{1.0f, 0.0f, 0.0f}, -1.0f, true});
+    const auto multiple = nkscene::refresh(plan, snapshot, disabled_view);
+    assert(!multiple.plan_rebuilt);
+    assert(multiple.patched_culling == 1);
+    assert(multiple.visible_items == 1);
+    assert(multiple.culled_items == 1);
+    assert(plan.clip_planes().size() == 1);
+
+    disabled_view.clip_planes.push_back({{0.0f, 1.0f, 0.0f}, -1.0f, true});
+    const auto second_multiple = nkscene::refresh(plan, snapshot, disabled_view);
+    assert(!second_multiple.plan_rebuilt);
+    assert(second_multiple.patched_culling == 1);
+    assert(second_multiple.visible_items == 0);
+    assert(second_multiple.culled_items == 2);
+    assert(plan.clip_planes().size() == 2);
 }
 
 } // namespace
