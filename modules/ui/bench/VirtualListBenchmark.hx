@@ -4,6 +4,9 @@ import LayoutFrame;
 import LayoutSession;
 import LayoutStyle;
 import nativekit.ui.core.UiContext;
+import nativekit.ui.core.View;
+import nativekit.ui.widgets.ListView;
+import nativekit.ui.widgets.ListViewModel;
 import nativekit.ui.widgets.ScrollController;
 import nativekit.ui.widgets.Text;
 import nativekit.ui.widgets.VirtualList;
@@ -24,7 +27,8 @@ class VirtualListBenchmark {
 
 		var fonts = FontCollection.create();
 		fonts.add(fontPath);
-		var valid = run(fonts, 10000) && run(fonts, 100000);
+		var valid = run(fonts, 10000) && run(fonts, 100000) &&
+			runModel(fonts, 10000) && runModel(fonts, 100000);
 		fonts.dispose();
 		return valid ? 0 : 1;
 	}
@@ -92,4 +96,99 @@ class VirtualListBenchmark {
 		context.dispose();
 		return valid;
 	}
+
+	static function runModel(fonts:FontCollection, itemCount:Int):Bool {
+		var controller = new ScrollController();
+		var style = new LayoutStyle();
+		style.width = LayoutAxis.fixed(viewportWidth);
+		style.height = LayoutAxis.fixed(viewportHeight);
+		var builtRows:Array<Int> = [];
+		var model = new BenchmarkListModel(itemCount, builtRows);
+		var context = new UiContext(LayoutSession.create(), fonts);
+		var list = new ListView('model-list-$itemCount', model, style, controller,
+			viewportHeight);
+		var frame = new LayoutFrame(viewportWidth, viewportHeight);
+		var firstStart = Sys.time();
+		context.submit(list, frame);
+		var firstSeconds = Sys.time() - firstStart;
+		var firstRows = builtRows.length;
+		var maxExpectedRows = Std.int(Math.ceil(viewportHeight / 20.0)) + 4;
+		var valid = firstRows > 0 && firstRows <= maxExpectedRows &&
+			model.extentCalls == itemCount;
+
+		var totalSeconds = 0.0;
+		var totalRows = 0;
+		var totalNodes = 0;
+		var maxRows = 0;
+		var maxNodes = 0;
+		var maxScroll = controller.maxScrollY;
+		for (sample in 0...samples) {
+			var fraction = samples <= 1 ? 0.0 : sample / (samples - 1);
+			controller.jumpTo(0.0, maxScroll * fraction);
+			builtRows.resize(0);
+			var start = Sys.time();
+			context.submit(list, frame);
+			var elapsed = Sys.time() - start;
+			var rowCount = builtRows.length;
+			var frameMetrics = context.frameMetrics;
+			var nodeCount = frameMetrics == null ? 0 : frameMetrics.nodeCount;
+			if (rowCount == 0 || rowCount > maxExpectedRows || nodeCount <= 0)
+				valid = false;
+			if (fraction == 0.0 && (builtRows.length == 0 || builtRows[0] != 0))
+				valid = false;
+			if (fraction == 1.0 &&
+				(builtRows.length == 0 || builtRows[builtRows.length - 1] != itemCount - 1))
+				valid = false;
+			totalSeconds += elapsed;
+			totalRows += rowCount;
+			totalNodes += nodeCount;
+			if (rowCount > maxRows)
+				maxRows = rowCount;
+			if (nodeCount > maxNodes)
+				maxNodes = nodeCount;
+		}
+
+		var averageRows = totalRows / samples;
+		var averageNodes = totalNodes / samples;
+		var averageMicros = totalSeconds * 1000000.0 / samples;
+		Sys.println('model_items=$itemCount first_rows=$firstRows ' +
+			'avg_rows=$averageRows max_rows=$maxRows ' +
+			'avg_nodes=$averageNodes max_nodes=$maxNodes ' +
+			'extent_calls=${model.extentCalls} first_us=${firstSeconds * 1000000.0} ' +
+			'avg_us=$averageMicros');
+
+		context.dispose();
+		return valid && model.extentCalls == itemCount;
+	}
+}
+
+private class BenchmarkListModel implements ListViewModel {
+	final itemCount:Int;
+	final builtRows:Array<Int>;
+	public var extentCalls:Int;
+
+	public function new(itemCount:Int, builtRows:Array<Int>) {
+		this.itemCount = itemCount;
+		this.builtRows = builtRows;
+		extentCalls = 0;
+	}
+
+	public function count():Int
+		return itemCount;
+
+	public function keyAt(index:Int):String
+		return 'benchmark-item:$index';
+
+	public function extentAt(index:Int):Float {
+		extentCalls++;
+		return 20.0 + (index % 3) * 4.0;
+	}
+
+	public function buildItem(index:Int):View {
+		builtRows.push(index);
+		return new Text('Row $index');
+	}
+
+	public function revision():Int
+		return 1;
 }
