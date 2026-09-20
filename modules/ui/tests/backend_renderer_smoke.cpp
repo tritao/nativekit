@@ -501,6 +501,12 @@ int main() {
         result = 6;
         goto cleanup;
     }
+    if (nk::core::render_executor_physical() &&
+        !check(nkgpu_bind_frame_target(&setup_target) == NKGPU_ERROR_WRONG_THREAD,
+               "reject platform frame-target binding")) {
+        result = 6;
+        goto cleanup;
+    }
 
     setup_task.surface = surface;
     setup_task.target = setup_target;
