@@ -83,7 +83,8 @@ void resource_lifecycle_is_cache_safe() {
     configure.close();
 
     const auto view = nkscene::SceneView{};
-    const auto plan = nkscene::compile(scene->snapshot(), view);
+    auto plan = nkscene::compile(scene->snapshot(), view);
+    ChangeSet no_changes;
     nkscene::NativeKitGpuExecutor executor;
     auto stats = executor.execute(plan, scene->snapshot());
     assert(stats.result == NKGPU_OK);
@@ -92,6 +93,10 @@ void resource_lifecycle_is_cache_safe() {
 
     auto &non_indexed = scene->geometry_store().create(geometry);
     non_indexed.payload.indices.clear();
+    auto update = nkscene::update(plan, scene->snapshot(), no_changes, view);
+    assert(!update.plan_rebuilt);
+    assert(update.updated_geometry_resources == 1);
+    assert(update.updated_material_resources == 0);
     stats = executor.execute(plan, scene->snapshot());
     assert(stats.result == NKGPU_OK);
     assert(stats.geometry_resources_created == 0);
@@ -99,6 +104,10 @@ void resource_lifecycle_is_cache_safe() {
 
     auto &indexed = scene->geometry_store().create(geometry);
     indexed.payload.indices = {0, 1, 2};
+    update = nkscene::update(plan, scene->snapshot(), no_changes, view);
+    assert(!update.plan_rebuilt);
+    assert(update.updated_geometry_resources == 1);
+    assert(update.updated_material_resources == 0);
     stats = executor.execute(plan, scene->snapshot());
     assert(stats.result == NKGPU_OK);
     assert(stats.geometry_resources_created == 0);
@@ -106,6 +115,10 @@ void resource_lifecycle_is_cache_safe() {
 
     const auto vertices = indexed.payload.vertices;
     assert(scene->geometry_store().destroy(geometry));
+    update = nkscene::update(plan, scene->snapshot(), no_changes, view);
+    assert(update.plan_rebuilt);
+    assert(update.invalidated_items == 1);
+    assert(plan.items().empty());
     stats = executor.execute(plan, scene->snapshot());
     assert(stats.result == NKGPU_OK);
     assert(stats.geometry_resources_created == 0);
@@ -114,22 +127,66 @@ void resource_lifecycle_is_cache_safe() {
     auto &restored_geometry = scene->geometry_store().create(geometry);
     restored_geometry.payload.vertices = vertices;
     restored_geometry.payload.indices.clear();
+    plan = nkscene::compile(scene->snapshot(), view);
+    assert(plan.items().size() == 1);
     stats = executor.execute(plan, scene->snapshot());
     assert(stats.result == NKGPU_OK);
     assert(stats.geometry_resources_created == 1);
     assert(stats.geometry_resources_updated == 0);
 
+    scene->material_store().create(material);
+    update = nkscene::update(plan, scene->snapshot(), no_changes, view);
+    assert(!update.plan_rebuilt);
+    assert(update.updated_geometry_resources == 0);
+    assert(update.updated_material_resources == 1);
+    stats = executor.execute(plan, scene->snapshot());
+    assert(stats.result == NKGPU_OK);
+    assert(stats.material_resources_created == 0);
+    assert(stats.material_resources_updated == 1);
+
     assert(scene->material_store().destroy(material));
+    update = nkscene::update(plan, scene->snapshot(), no_changes, view);
+    assert(update.plan_rebuilt);
+    assert(update.invalidated_items == 1);
+    assert(plan.items().empty());
     stats = executor.execute(plan, scene->snapshot());
     assert(stats.result == NKGPU_OK);
     assert(stats.material_resources_created == 0);
     assert(stats.material_resources_updated == 0);
 
     scene->material_store().create(material);
+    plan = nkscene::compile(scene->snapshot(), view);
     stats = executor.execute(plan, scene->snapshot());
     assert(stats.result == NKGPU_OK);
     assert(stats.material_resources_created == 1);
     assert(stats.material_resources_updated == 0);
+
+    const auto missing_geometry = scene->reserve_geometry_id();
+    Transaction invalid_geometry(scene);
+    invalid_geometry.add_geometry(occurrence, missing_geometry);
+    assert(scene->commit(invalid_geometry, changes) == NKS_OK);
+    invalid_geometry.close();
+    update = nkscene::update(plan, scene->snapshot(), changes, view);
+    assert(update.plan_rebuilt);
+    assert(update.invalidated_items == 1);
+    assert(plan.items().empty());
+
+    Transaction restore_geometry(scene);
+    restore_geometry.add_geometry(occurrence, geometry);
+    assert(scene->commit(restore_geometry, changes) == NKS_OK);
+    restore_geometry.close();
+    plan = nkscene::compile(scene->snapshot(), view);
+    assert(plan.items().size() == 1);
+
+    const auto missing_material = scene->reserve_material_id();
+    Transaction invalid_material(scene);
+    invalid_material.add_material(occurrence, missing_material);
+    assert(scene->commit(invalid_material, changes) == NKS_OK);
+    invalid_material.close();
+    update = nkscene::update(plan, scene->snapshot(), changes, view);
+    assert(update.plan_rebuilt);
+    assert(update.invalidated_items == 1);
+    assert(plan.items().empty());
 }
 
 void scene_views_are_hierarchy_aware() {

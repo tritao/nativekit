@@ -107,6 +107,9 @@ struct RenderUpdate {
     std::size_t patched_visibility = 0;
     std::size_t patched_materials = 0;
     std::size_t rebuilt_batches = 0;
+    std::size_t updated_geometry_resources = 0;
+    std::size_t updated_material_resources = 0;
+    std::size_t invalidated_items = 0;
 };
 
 struct Vec3 {
@@ -161,6 +164,8 @@ private:
     std::vector<RenderItem> items_;
     std::vector<WorldTransform> transforms_;
     std::vector<InstanceBatch> batches_;
+    std::unordered_map<GeometryId, std::uint64_t> geometry_revisions_;
+    std::unordered_map<MaterialId, std::uint64_t> material_revisions_;
     std::size_t compile_count_ = 0;
 
     friend NKSRENDER_API RenderPlan compile(const SceneSnapshot &, const SceneView &);

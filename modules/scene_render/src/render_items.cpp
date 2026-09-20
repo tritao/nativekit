@@ -99,7 +99,10 @@ void build_items(RenderPlan &plan, const SceneSnapshot &snapshot, const SceneVie
     plan.items_.reserve(snapshot.occurrences().size());
     plan.transforms_.reserve(snapshot.occurrences().size());
     for (const auto &occurrence : snapshot.occurrences()) {
-        if (!occurrence.geometry.valid() || !state.in_view.at(occurrence.occurrence))
+        if (!occurrence.geometry.valid() || !occurrence.material.valid() ||
+            !snapshot.find_geometry(occurrence.geometry) ||
+            !snapshot.find_material(occurrence.material) ||
+            !state.in_view.at(occurrence.occurrence))
             continue;
         const auto transform_index = static_cast<std::uint32_t>(plan.transforms_.size());
         plan.transforms_.push_back(occurrence.world_transform);
