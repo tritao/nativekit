@@ -35,6 +35,17 @@ int main(void) {
     assert(target.native_present_target != 0);
     assert(nk_surface_cancel_frame(frame) == NK_OK);
 
+    nk_surface second_surface = NK_INVALID_HANDLE;
+    assert(nk_surface_create(window, &surface_options, &second_surface) == NK_OK);
+    nk_surface second_frame = NK_INVALID_HANDLE;
+    nk_surface_frame_target second_target = {0};
+    second_target.struct_size = sizeof(second_target);
+    assert(nk_surface_acquire_frame(second_surface, &second_frame, &second_target) == NK_OK);
+    assert(second_target.native_context == target.native_context);
+    assert(second_target.native_target != 0);
+    assert(nk_surface_cancel_frame(second_frame) == NK_OK);
+
+    assert(nk_surface_destroy(second_surface) == NK_OK);
     assert(nk_surface_destroy(surface) == NK_OK);
     assert(nk_window_destroy(window) == NK_OK);
     nk_shutdown();

@@ -34,9 +34,12 @@ tiny texture composite  <--- completion
 
 The bridge must keep the GTK callback as a compositor-only operation. It must
 not call `nk_surface_*` from `RENDER`, and it must synchronize context/resource
-destruction with the GTK main loop. The existing `share_surface` context path
-is useful groundwork, but it is not this bridge: a shared `GtkGLArea` still
-owns a widget callback and does not provide an independent offscreen target.
+destruction with the GTK main loop. GTK3 does not expose a public setter for
+attaching a newly-created `GdkGLContext` to an existing share group, so the
+threaded path automatically groups compatible surfaces on the same window
+under the first surface's context. Each surface still owns an independent
+offscreen target. Surfaces on different windows, or with incompatible context
+options, remain independent and use the existing fallback behavior.
 
 `NK_GTK_THREADED_RENDER=ON` enables the first bridge implementation. NativeKit
 keeps the `GtkGLArea` on the GTK thread, creates a color-only offscreen FBO and

@@ -319,6 +319,12 @@ struct GtkSurfaceResource final : nk::core::Resource {
 };
 
 #if defined(NK_GTK_THREADED_RENDER)
+GtkSurfaceResource *gtk_render_context_owner(GtkSurfaceResource *resource) {
+    while (resource && resource->shared_surface)
+        resource = resource->shared_surface.get();
+    return resource;
+}
+
 template <typename Function>
 bool load_gtk_gl_proc(nk_handle surface, const char *name, Function &out) {
     nk_graphics_proc proc = nullptr;
@@ -359,7 +365,9 @@ void create_gtk_render_target(void *user_data) {
     auto *resource = request ? request->resource : nullptr;
     if (!resource || !resource->render_context || request->width <= 0 || request->height <= 0)
         return;
-    resource->render_context_in_use.store(true);
+    auto *context_owner = gtk_render_context_owner(resource);
+    if (context_owner)
+        context_owner->render_context_in_use.store(true);
     gdk_gl_context_make_current(resource->render_context);
     unsigned int old_framebuffer = 0;
     unsigned int old_texture = 0;
@@ -393,7 +401,8 @@ void create_gtk_render_target(void *user_data) {
         resource->gl_check_framebuffer_status(gl_framebuffer) == gl_framebuffer_complete;
     resource->gl_bind_framebuffer(gl_framebuffer, 0);
     gdk_gl_context_clear_current();
-    resource->render_context_in_use.store(false);
+    if (context_owner)
+        context_owner->render_context_in_use.store(false);
     if (!complete) {
         if (framebuffer)
             resource->gl_delete_framebuffers(1, &framebuffer);
@@ -434,7 +443,9 @@ void destroy_gtk_render_target(void *user_data) {
     auto *resource = static_cast<GtkSurfaceResource *>(user_data);
     if (!resource || !resource->render_context)
         return;
-    resource->render_context_in_use.store(true);
+    auto *context_owner = gtk_render_context_owner(resource);
+    if (context_owner)
+        context_owner->render_context_in_use.store(true);
     gdk_gl_context_make_current(resource->render_context);
     unsigned int framebuffer = 0;
     unsigned int texture = 0;
@@ -451,7 +462,8 @@ void destroy_gtk_render_target(void *user_data) {
     if (texture)
         resource->gl_delete_textures(1, &texture);
     gdk_gl_context_clear_current();
-    resource->render_context_in_use.store(false);
+    if (context_owner)
+        context_owner->render_context_in_use.store(false);
 }
 
 void composite_gtk_render_target(GtkSurfaceResource &resource) {
@@ -5081,6 +5093,28 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
             auto shared = options->share_surface ? surface(options->share_surface) : nullptr;
             if (options->share_surface && !shared)
                 return invalid_handle("shared graphics surface");
+#if defined(NK_GTK_THREADED_RENDER)
+            /* GTK3 does not expose a public setter for attaching a newly
+               created GdkGLContext to an existing share group. In the
+               threaded path, reuse the first compatible surface context on
+               this window instead. Each surface still owns its own offscreen
+               target, while all GPU work stays in one Sokol context/runtime. */
+            if (!shared && nk::core::render_executor_physical()) {
+                for (const auto candidate_handle : parent->surfaces) {
+                    auto candidate = surface(candidate_handle);
+                    if (!candidate || candidate->api != options->api ||
+                        candidate->major_version != options->major_version ||
+                        candidate->minor_version != options->minor_version ||
+                        candidate->flags != (options->flags & (NK_SURFACE_DEBUG_CONTEXT |
+                                                               NK_SURFACE_FORWARD_COMPATIBLE)))
+                        continue;
+                    while (candidate->shared_surface)
+                        candidate = candidate->shared_surface;
+                    shared = std::move(candidate);
+                    break;
+                }
+            }
+#endif
             if (shared &&
                 (shared->api != options->api || shared->major_version != options->major_version ||
                  shared->minor_version != options->minor_version ||
@@ -5115,6 +5149,12 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
             gtk_gl_area_set_has_depth_buffer(area, (options->flags & NK_SURFACE_DEPTH) != 0);
             gtk_gl_area_set_has_stencil_buffer(area, (options->flags & NK_SURFACE_STENCIL) != 0);
             gtk_widget_set_size_request(resource->widget, options->width, options->height);
+            g_signal_connect(resource->widget, "create-context",
+                             G_CALLBACK(on_surface_create_context), resource.get());
+            g_signal_connect(resource->widget, "render", G_CALLBACK(on_surface_render),
+                             resource.get());
+            g_signal_connect(resource->widget, "resize", G_CALLBACK(on_surface_resize),
+                             resource.get());
             gtk_fixed_put(GTK_FIXED(parent->container), resource->widget, options->x, options->y);
             resource->handle =
                 nk::core::handles().insert(nk::core::ResourceType::surface, resource);
@@ -5125,12 +5165,6 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
             if (resource->shared_surface)
                 ++resource->shared_surface->share_dependents;
             parent->surfaces.push_back(resource->handle);
-            g_signal_connect(resource->widget, "create-context",
-                             G_CALLBACK(on_surface_create_context), resource.get());
-            g_signal_connect(resource->widget, "render", G_CALLBACK(on_surface_render),
-                             resource.get());
-            g_signal_connect(resource->widget, "resize", G_CALLBACK(on_surface_resize),
-                             resource.get());
             if ((options->flags & NK_SURFACE_HIDDEN) == 0)
                 gtk_widget_show(resource->widget);
             gtk_widget_realize(resource->widget);
@@ -5439,7 +5473,8 @@ nk_result NK_CALL nk_surface_make_current(nk_handle handle) {
         /* The context is exclusively borrowed by RENDER. When it is idle,
            briefly let GTK apply pending widget allocation changes, then
            release the context immediately. */
-        if (!resource->render_context_in_use.load()) {
+        auto *context_owner = gtk_render_context_owner(resource.get());
+        if (!context_owner || !context_owner->render_context_in_use.load()) {
             auto *area = GTK_GL_AREA(resource->widget);
             gtk_gl_area_make_current(area);
             if (const GError *error = gtk_gl_area_get_error(area))
@@ -5480,8 +5515,11 @@ nk_result NK_CALL nk_graphics_bind_frame_target(const nk_surface_frame_target *t
         return NK_ERROR_INVALID_ARGUMENT;
     gdk_gl_context_make_current(reinterpret_cast<GdkGLContext *>(target->native_context));
     auto resource = surface(static_cast<nk_handle>(target->device.id));
-    if (resource)
-        resource->render_context_in_use.store(true);
+    if (resource) {
+        auto *context_owner = gtk_render_context_owner(resource.get());
+        if (context_owner)
+            context_owner->render_context_in_use.store(true);
+    }
     return NK_OK;
 }
 
@@ -5490,8 +5528,11 @@ nk_result NK_CALL nk_graphics_unbind_frame_target(const nk_surface_frame_target 
         gdk_gl_context_clear_current();
     if (target) {
         auto resource = surface(static_cast<nk_handle>(target->device.id));
-        if (resource)
-            resource->render_context_in_use.store(false);
+        if (resource) {
+            auto *context_owner = gtk_render_context_owner(resource.get());
+            if (context_owner)
+                context_owner->render_context_in_use.store(false);
+        }
     }
     return NK_OK;
 }
@@ -5501,8 +5542,11 @@ nk_result NK_CALL nk_frame_backend_submit(const nk_surface_frame_target *target)
         gdk_gl_context_clear_current();
     if (target) {
         auto resource = surface(static_cast<nk_handle>(target->device.id));
-        if (resource)
-            resource->render_context_in_use.store(false);
+        if (resource) {
+            auto *context_owner = gtk_render_context_owner(resource.get());
+            if (context_owner)
+                context_owner->render_context_in_use.store(false);
+        }
     }
     return NK_OK;
 }
