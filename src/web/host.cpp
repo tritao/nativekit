@@ -1,7 +1,6 @@
 #include "web/host.h"
 
 #include "core/event_queue.hpp"
-#include "core/executor.hpp"
 #include "core/runtime.hpp"
 #include "core/resource_events.hpp"
 #include "nativekit_web_config.h"
@@ -25,27 +24,7 @@
 #define NK_WEB_CANVAS_SELECTOR "#canvas"
 #endif
 
-#if defined(NK_WEB_THREADED_RENDER)
-extern "C" int nk_web_set_offscreen_canvas_size(int width, int height);
-#endif
-
 namespace {
-
-#if defined(NK_WEB_THREADED_RENDER)
-struct CanvasResizeRequest {
-    std::string selector;
-    nk::web::CanvasSize size{};
-    bool success = false;
-};
-
-void resize_canvas_on_render(void *data) {
-    auto *request = static_cast<CanvasResizeRequest *>(data);
-    if (!request)
-        return;
-    request->success = nk_web_set_offscreen_canvas_size(request->size.framebuffer_width,
-                                                        request->size.framebuffer_height) != 0;
-}
-#endif
 
 struct HostState {
     std::string selector;
@@ -301,19 +280,6 @@ EM_JS(void, nk_web_set_canvas_css_size, (const char *selector, int width, int he
     if (canvas) {
         canvas.style.width = width + "px";
         canvas.style.height = height + "px";
-    }
-});
-
-EM_JS(int, nk_web_set_offscreen_canvas_size, (int width, int height), {
-    const canvas = typeof Module !== "undefined" ? Module.canvas : null;
-    if (!canvas || width <= 0 || height <= 0)
-        return 0;
-    try {
-        canvas.width = width;
-        canvas.height = height;
-        return canvas.width === width && canvas.height === height ? 1 : 0;
-    } catch (error) {
-        return 0;
     }
 });
 
@@ -2224,19 +2190,12 @@ void set_canvas_mouse_passthrough(const char *selector, bool enabled) noexcept {
 }
 
 bool set_canvas_framebuffer_size(const char *selector, const CanvasSize &size) noexcept {
-#if defined(NK_WEB_THREADED_RENDER)
-    if (nk::core::render_executor_physical() && !nk_executor_is_current(NK_EXECUTOR_RENDER)) {
-        CanvasResizeRequest request;
-        request.selector = selector ? selector : "";
-        request.size = size;
-        if (nk::core::dispatch_to_render_sync(&resize_canvas_on_render, &request,
-                                              sizeof(request)) != NK_OK)
-            return false;
-        return request.success;
-    }
-#endif
-    return emscripten_set_canvas_element_size(selector, size.framebuffer_width,
-                                              size.framebuffer_height) == EMSCRIPTEN_RESULT_SUCCESS;
+    const auto result = emscripten_set_canvas_element_size(selector, size.framebuffer_width,
+                                                           size.framebuffer_height);
+    /* A transferred OffscreenCanvas queues the pixel-size update on RENDER and
+       reports EMSCRIPTEN_RESULT_DEFERRED to PLATFORM. That is a successful
+       handoff; treating it as failure prevents threaded Web window creation. */
+    return result == EMSCRIPTEN_RESULT_SUCCESS || result == EMSCRIPTEN_RESULT_DEFERRED;
 }
 
 bool set_canvas_visible(const char *selector, bool visible) noexcept {
