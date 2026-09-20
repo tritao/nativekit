@@ -1169,7 +1169,8 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_shader_texture(builder: nkgpu_shader_builder, view_slot: u32, sampler_slot: u32, stage: nkgpu_shader_stage, name: utf8) -> nkgpu_result;
 	/**
-	 * Describes a filtering texture binding with an explicit image shape. Cube arrays use array sampling.
+	 * Describes a filtering texture binding with an explicit image shape.
+	 * Cube arrays use array sampling.
 	 */
 	extern fn nkgpu_shader_texture_type(builder: nkgpu_shader_builder, view_slot: u32, sampler_slot: u32, stage: nkgpu_shader_stage, image_type: nkgpu_image_type, name: utf8) -> nkgpu_result;
 	/**
@@ -1434,7 +1435,8 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		height: u32 @offset(48);
 	}
 	/**
-	 * Descriptor for a 2D, array, cube, or cube-array image. Cube arrays are portable six-layer groups.
+	 * Descriptor for a 2D, array, cube, or cube-array image.
+	 * Cube arrays are portable six-layer groups.
 	 */
 	struct nkgpu_image_desc @layout(56, 8) {
 		struct_size: u32 @offset(0) @struct_size;

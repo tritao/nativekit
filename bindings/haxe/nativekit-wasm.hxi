@@ -620,6 +620,10 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 * The backend can install a native application menu.
 		 */
 		NK_CAP_APPLICATION_MENU = 17592186044416;
+		/**
+		 * The backend supports general TCP, UDP, local, or WebSocket transports.
+		 */
+		NK_CAP_TRANSPORT = 35184372088832;
 	}
 	/**
 	 * Flags carried by nk_clipboard_changed_event.
@@ -1048,6 +1052,30 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 * A plugin emitted an unsolicited notification.
 		 */
 		NK_EVENT_PLUGIN_EVENT = 1001;
+		/**
+		 * A stream or datagram transport finished connecting.
+		 */
+		NK_EVENT_TRANSPORT_CONNECTED = 950;
+		/**
+		 * A listener accepted or created a transport; inspect its payload.
+		 */
+		NK_EVENT_TRANSPORT_ACCEPTED = 951;
+		/**
+		 * A transport has bytes available through nk_transport_receive().
+		 */
+		NK_EVENT_TRANSPORT_DATA = 952;
+		/**
+		 * A transport send queue has become writable again.
+		 */
+		NK_EVENT_TRANSPORT_WRITABLE = 953;
+		/**
+		 * A transport was closed, either by the peer or by NativeKit.
+		 */
+		NK_EVENT_TRANSPORT_CLOSED = 954;
+		/**
+		 * A transport failed; inspect event.result for the transport error.
+		 */
+		NK_EVENT_TRANSPORT_FAILED = 955;
 		/**
 		 * A native task reported copied progress data.
 		 */
