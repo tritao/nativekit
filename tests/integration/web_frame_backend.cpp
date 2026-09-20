@@ -81,8 +81,9 @@ int main() {
     nk_init_options init{};
     init.struct_size = sizeof(init);
     init.api_version = NK_API_VERSION;
-    if (nk_init(&init) != NK_OK)
-        return 1;
+    const nk_result initialized = nk_init(&init);
+    if (initialized != NK_OK)
+        return 100 - static_cast<int>(initialized);
 
     nk_window_options window_options{};
     window_options.struct_size = sizeof(window_options);
@@ -93,8 +94,9 @@ int main() {
     nk_surface surface = NK_INVALID_HANDLE;
     int result = 0;
 
-    if (nk_window_create(&window_options, &window) != NK_OK)
-        result = 2;
+    const nk_result window_created = nk_window_create(&window_options, &window);
+    if (window_created != NK_OK)
+        result = 200 - static_cast<int>(window_created);
 
     nk_surface_options surface_options{};
     surface_options.struct_size = sizeof(surface_options);
@@ -102,8 +104,11 @@ int main() {
     surface_options.api = NK_GRAPHICS_OPENGL_ES;
     surface_options.width = window_options.width;
     surface_options.height = window_options.height;
-    if (!result && nk_surface_create(window, &surface_options, &surface) != NK_OK)
-        result = 3;
+    nk_result surface_created = NK_ERROR_UNKNOWN;
+    if (!result)
+        surface_created = nk_surface_create(window, &surface_options, &surface);
+    if (!result && surface_created != NK_OK)
+        result = 300 - static_cast<int>(surface_created);
 
     if (!result) {
         /* Alternate present/cancel while resizing. This exercises the complete
