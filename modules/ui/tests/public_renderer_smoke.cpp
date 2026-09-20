@@ -862,6 +862,11 @@ int main(int argc, char **argv) {
         if (legacy_render != NKUI_OK || !drain_threaded_frame(surface))
             result = 14;
     }
+    /* The aliased GTK/Web-style path recreates a legacy renderer above. Keep
+       teardown explicit so its GPU pools are released before static library
+       destruction begins. */
+    if (renderer.id && nkui_renderer_destroy(renderer) != NKUI_OK)
+        result = result ? result : 15;
     nkui_display_list_destroy(scale_list);
     nkui_display_list_destroy(drop_shadow_list);
     nkui_display_list_destroy(mask_list);
