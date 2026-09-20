@@ -7,6 +7,9 @@ class DspOscillatorOptions {
 	public var waveform:DspWaveform = DspWaveform.Sine;
 	public var level:Float = 1.0;
 
+	/** Optional immutable wavetable source; null selects the built-in waveform. */
+	public var wavetable:DspWavetable = null;
+
 	public function new() {}
 
 	@:allow(nativekit.audio.DspPatchBuilder)
@@ -15,6 +18,7 @@ class DspOscillatorOptions {
 		result.set_struct_size(NativeKitAudio.NativeDspOscillatorOptions.size());
 		result.set_waveform(waveform);
 		result.set_level(level);
+		result.set_wavetable(wavetable == null ? NativeKitAudio.DspWavetableHandle.invalid() : wavetable.nativeHandle());
 		return result;
 	}
 }

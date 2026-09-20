@@ -657,6 +657,16 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 */
 	extern fn nk_audio_dsp_patch_destroy(patch: nk_audio_dsp_patch) -> nk_result;
 	/**
+	 * Creates an immutable, periodic wavetable from one source cycle. The source
+	 * length must be a power of two in the inclusive range [32, 4096]. NativeKit
+	 * builds harmonic-limited bands for alias-resistant playback.
+	 */
+	extern fn nk_audio_dsp_wavetable_create(samples: ptr<const<f32>> @in_array("sample_count"), sample_count: u32, out_wavetable: ptr<nk_audio_dsp_wavetable> @out @owned) -> nk_result;
+	/**
+	 * Destroys a wavetable handle; patches retain tables they reference.
+	 */
+	extern fn nk_audio_dsp_wavetable_destroy(wavetable: nk_audio_dsp_wavetable) -> nk_result;
+	/**
 	 * Returns linear gain for the process-wide NativeKit audio mixer.
 	 */
 	extern fn nk_audio_get_master_volume(out_volume: ptr<f32> @out) -> nk_result;
@@ -1335,6 +1345,10 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 		 */
 		level: f32 @offset(8);
 		/**
+		 * Optional wavetable source; invalid selects the built-in waveform.
+		 */
+		wavetable: nk_audio_dsp_wavetable @offset(12);
+		/**
 		 * Reserved for compatible extensions; set all elements to zero.
 		 */
 		reserved2: array<u64, 2> @offset(16);
@@ -1562,6 +1576,10 @@ interface NativeKitAudio @target("portable-abi64") @library("nativekit") @depend
 	 * Opaque handle for an immutable, reusable DSP patch definition.
 	 */
 	handle nk_audio_dsp_patch : u32 @destroy("nk_audio_dsp_patch_destroy");
+	/**
+	 * Opaque handle for an immutable, renderer-independent wavetable asset.
+	 */
+	handle nk_audio_dsp_wavetable : u32 @destroy("nk_audio_dsp_wavetable_destroy");
 	/**
 	 * Opaque handle for one reusable set of mixer bus targets.
 	 */

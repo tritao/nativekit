@@ -26,6 +26,14 @@ The first backend uses the pinned DaisySP oscillator, noise, ADSR, and SVF
 modules; only the translation units needed by this slice are compiled. The
 stable NativeKit ABI does not expose DaisySP types, so future DaisySP modules or
 other native DSP implementations can be added without changing tracker code.
+Wavetable sources are created with `nk_audio_dsp_wavetable_create()` from one
+power-of-two source cycle (32 to 4096 float samples). NativeKit builds an
+immutable harmonic-limited table bank, and the DaisySP wavetable oscillator
+selects the highest safe band for each voice frequency with linear
+interpolation. Patches retain their table resources, so a caller may dispose
+the source handle immediately after patch creation. The Haxe facade exposes the
+same lifecycle through `DspWavetable.fromSamples()` and
+`DspWavetable.fromBytes()`.
 Use `nk_audio_dsp_patch_create()` to build an immutable reusable patch from
 explicit oscillator, noise, envelope, and filter components, then create one or
 more instruments with `nk_audio_dsp_instrument_create_from_patch()`. Instruments

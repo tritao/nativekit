@@ -6,6 +6,8 @@
 
 namespace {
 
+constexpr double pi = 3.14159265358979323846;
+
 bool contains_signal(const float *samples, uint32_t count) {
     for (uint32_t index = 0; index < count; ++index) {
         if (std::abs(samples[index]) > 0.0001f)
@@ -51,6 +53,7 @@ int main() {
     assert(nk_audio_dsp_engine_get_capabilities(engine, &capabilities) == NK_OK);
     assert((capabilities & NK_AUDIO_DSP_CAPABILITY_OSCILLATOR) != 0);
     assert((capabilities & NK_AUDIO_DSP_CAPABILITY_NOISE) != 0);
+    assert((capabilities & NK_AUDIO_DSP_CAPABILITY_WAVETABLE) != 0);
     assert((capabilities & NK_AUDIO_DSP_CAPABILITY_ENVELOPE) != 0);
     assert((capabilities & NK_AUDIO_DSP_CAPABILITY_LFO) != 0);
     assert((capabilities & NK_AUDIO_DSP_CAPABILITY_FILTER) != 0);
@@ -114,6 +117,30 @@ int main() {
     assert(nk_audio_dsp_patch_destroy(patch) == NK_OK);
     assert(nk_audio_dsp_patch_destroy(patch) == NK_ERROR_INVALID_HANDLE);
 
+    float wavetable_samples[32]{};
+    for (uint32_t index = 0; index < 32; ++index)
+        wavetable_samples[index] = std::sin(2.0 * pi * static_cast<double>(index) / 32.0);
+    nk_audio_dsp_wavetable invalid_wavetable = NK_INVALID_HANDLE;
+    assert(nk_audio_dsp_wavetable_create(wavetable_samples, 31, &invalid_wavetable) ==
+           NK_ERROR_INVALID_ARGUMENT);
+    nk_audio_dsp_wavetable wavetable = NK_INVALID_HANDLE;
+    assert(nk_audio_dsp_wavetable_create(wavetable_samples, 32, &wavetable) == NK_OK);
+    auto wavetable_options = patch_options;
+    wavetable_options.oscillator.wavetable = wavetable;
+    wavetable_options.noise.level = 0.0f;
+    wavetable_options.filter.type = NK_AUDIO_DSP_FILTER_NONE;
+    wavetable_options.filter.cutoff_hz = 0.0f;
+    wavetable_options.gain = 1.0f;
+    wavetable_options.route_count = 0;
+    nk_audio_dsp_patch wavetable_patch = NK_INVALID_HANDLE;
+    assert(nk_audio_dsp_patch_create(&wavetable_options, &wavetable_patch) == NK_OK);
+    nk_audio_dsp_instrument wavetable_instrument = NK_INVALID_HANDLE;
+    assert(nk_audio_dsp_instrument_create_from_patch(engine, wavetable_patch,
+                                                     &wavetable_instrument) == NK_OK);
+    assert(nk_audio_dsp_wavetable_destroy(wavetable) == NK_OK);
+    assert(nk_audio_dsp_wavetable_destroy(wavetable) == NK_ERROR_INVALID_HANDLE);
+    assert(nk_audio_dsp_patch_destroy(wavetable_patch) == NK_OK);
+
     nk_audio_dsp_instrument_options instrument_options{};
     instrument_options.struct_size = sizeof(instrument_options);
     instrument_options.waveform = NK_AUDIO_DSP_WAVEFORM_SINE;
@@ -167,6 +194,16 @@ int main() {
     note_off.frame_offset = 0;
     note_off.voice_id = 1;
     assert(nk_audio_dsp_engine_render(engine, &target, &note_off, 1) == NK_OK);
+    assert(all_silent(samples, 64));
+
+    auto wavetable_note_on = note_on;
+    wavetable_note_on.instrument = wavetable_instrument;
+    wavetable_note_on.voice_id = 4;
+    assert(nk_audio_dsp_engine_render(engine, &target, &wavetable_note_on, 1) == NK_OK);
+    assert(contains_signal(samples, 64));
+    auto wavetable_note_off = note_off;
+    wavetable_note_off.voice_id = 4;
+    assert(nk_audio_dsp_engine_render(engine, &target, &wavetable_note_off, 1) == NK_OK);
     assert(all_silent(samples, 64));
 
     assert(nk_audio_dsp_instrument_set_parameter(instrument, NK_AUDIO_DSP_PARAMETER_GAIN, 0.5f) ==
@@ -260,6 +297,7 @@ int main() {
     assert(nk_audio_dsp_engine_reset(engine) == NK_OK);
     assert(nk_audio_dsp_instrument_destroy(instrument) == NK_OK);
     assert(nk_audio_dsp_instrument_destroy(instrument) == NK_ERROR_INVALID_HANDLE);
+    assert(nk_audio_dsp_instrument_destroy(wavetable_instrument) == NK_OK);
     assert(nk_audio_dsp_instrument_destroy(legacy_instrument) == NK_OK);
     assert(nk_audio_dsp_instrument_destroy(second_instrument) == NK_OK);
     assert(nk_audio_dsp_instrument_destroy(free_running_instrument) == NK_OK);

@@ -9,12 +9,14 @@ import nativekit.audio.DspEnums.DspParameter;
 import nativekit.audio.DspInstrument;
 import nativekit.audio.DspPatch;
 import nativekit.audio.DspRenderTarget;
+import nativekit.audio.DspWavetable;
 
 class DspSmoke {
 	public static function run():Void {
 		var engine:DspEngine = null;
 		var patch:DspPatch = null;
 		var instrument:DspInstrument = null;
+		var wavetable:DspWavetable = null;
 		try {
 			var options = new DspEngineOptions();
 			options.sampleRate = 48000;
@@ -22,23 +24,28 @@ class DspSmoke {
 			options.blockSize = 64;
 			options.maxVoices = 4;
 			engine = DspEngine.create(options);
+			var samples:Array<Float> = [];
+			for (index in 0...32)
+				samples.push(Math.sin(2.0 * Math.PI * index / 32.0));
+			wavetable = DspWavetable.fromSamples(samples);
 			var builder = DspPatch.builder();
+			builder.oscillator.wavetable = wavetable;
 			builder.gain = 0.75;
 			builder.lfo.rateHz = 5.0;
-			builder.modulate(DspModulationSource.Lfo,
-				DspModulationDestination.PitchSemitones, 2.0,
-				DspModulationPolarity.Bipolar);
-			builder.modulate(DspModulationSource.Envelope,
-				DspModulationDestination.FilterCutoffHz, 400.0,
-				DspModulationPolarity.Unipolar);
+			builder.modulate(DspModulationSource.Lfo, DspModulationDestination.PitchSemitones, 2.0, DspModulationPolarity.Bipolar);
+			builder.modulate(DspModulationSource.Envelope, DspModulationDestination.FilterCutoffHz, 400.0, DspModulationPolarity.Unipolar);
 			patch = builder.build();
 			instrument = patch.createInstrument(engine);
+			wavetable.dispose();
+			wavetable = null;
 			instrument.setParameter(DspParameter.Gain, 0.5);
 			if (instrument.parameter(DspParameter.Gain) != 0.5)
 				throw "Haxe DSP instrument parameter did not round-trip";
 			var target = new DspRenderTarget(64, 1);
-			engine.render(target, [DspEvent.noteOn(instrument, 7, 69),
-				DspEvent.parameter(instrument, DspParameter.Gain, 0.0, 32)]);
+			engine.render(target, [
+				DspEvent.noteOn(instrument, 7, 69),
+				DspEvent.parameter(instrument, DspParameter.Gain, 0.0, 32)
+			]);
 			var renderedSamples = target.samples;
 			var containsSignal = false;
 			for (index in 0...32)
@@ -50,14 +57,17 @@ class DspSmoke {
 				throw "Haxe DSP parameter event did not apply at its frame offset";
 			engine.render(target, [DspEvent.noteOff(7)]);
 			var capabilities = engine.capabilities();
-			if ((capabilities & NativeKitAudio.DspCapabilities.Lfo) == 0 ||
-				(capabilities & NativeKitAudio.DspCapabilities.Modulation) == 0)
+			if ((capabilities & NativeKitAudio.DspCapabilities.Wavetable) == 0
+				|| (capabilities & NativeKitAudio.DspCapabilities.Lfo) == 0
+					|| (capabilities & NativeKitAudio.DspCapabilities.Modulation) == 0)
 				throw "Haxe DSP capabilities omitted modulation support";
 		} catch (error:Dynamic) {
 			if (instrument != null)
 				instrument.dispose();
 			if (patch != null)
 				patch.dispose();
+			if (wavetable != null)
+				wavetable.dispose();
 			if (engine != null)
 				engine.dispose();
 			throw error;
@@ -66,6 +76,8 @@ class DspSmoke {
 			instrument.dispose();
 		if (patch != null)
 			patch.dispose();
+		if (wavetable != null)
+			wavetable.dispose();
 		if (engine != null)
 			engine.dispose();
 	}

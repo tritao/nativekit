@@ -25,6 +25,9 @@ typedef uint32_t nk_audio_dsp_engine NK_HANDLE NK_HANDLE_DESTROY(nk_audio_dsp_en
 /** Opaque handle for an immutable, reusable DSP patch definition. */
 typedef uint32_t nk_audio_dsp_patch NK_HANDLE NK_HANDLE_DESTROY(nk_audio_dsp_patch_destroy);
 
+/** Opaque handle for an immutable, renderer-independent wavetable asset. */
+typedef uint32_t nk_audio_dsp_wavetable NK_HANDLE NK_HANDLE_DESTROY(nk_audio_dsp_wavetable_destroy);
+
 /** Opaque handle for one instrument owned by a DSP renderer. */
 typedef uint32_t
     nk_audio_dsp_instrument NK_HANDLE NK_HANDLE_DESTROY(nk_audio_dsp_instrument_destroy);
@@ -136,6 +139,8 @@ typedef struct nk_audio_dsp_oscillator_options {
     nk_audio_dsp_waveform waveform;
     /** Linear source level in the inclusive range [0, 1]. */
     float level;
+    /** Optional wavetable source; invalid selects the built-in waveform. */
+    nk_audio_dsp_wavetable wavetable;
     /** Reserved for compatible extensions; set all elements to zero. */
     uint64_t reserved2[2];
 } nk_audio_dsp_oscillator_options;
@@ -355,6 +360,16 @@ NKAUDIO_API nk_result NK_CALL nk_audio_dsp_patch_create(
     const nk_audio_dsp_patch_options *options, nk_audio_dsp_patch *out_patch NK_OUT NK_OWNED);
 /** Destroys a patch definition; instruments created from it retain their copy. */
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_patch_destroy(nk_audio_dsp_patch patch);
+/** Destroys a wavetable handle; patches retain tables they reference. */
+NKAUDIO_API nk_result NK_CALL nk_audio_dsp_wavetable_destroy(nk_audio_dsp_wavetable wavetable);
+/**
+ * Creates an immutable, periodic wavetable from one source cycle. The source
+ * length must be a power of two in the inclusive range [32, 4096]. NativeKit
+ * builds harmonic-limited bands for alias-resistant playback.
+ */
+NKAUDIO_API nk_result NK_CALL
+nk_audio_dsp_wavetable_create(const float *samples NK_IN_ARRAY(sample_count), uint32_t sample_count,
+                              nk_audio_dsp_wavetable *out_wavetable NK_OUT NK_OWNED);
 /** Creates an instrument from an immutable reusable patch definition. */
 NKAUDIO_API nk_result NK_CALL
 nk_audio_dsp_instrument_create_from_patch(nk_audio_dsp_engine engine, nk_audio_dsp_patch patch,

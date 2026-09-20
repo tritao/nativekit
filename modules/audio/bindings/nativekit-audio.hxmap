@@ -31,6 +31,7 @@
     "nk_audio_dsp_engine": "DspEngineHandle",
     "nk_audio_dsp_patch": "DspPatchHandle",
     "nk_audio_dsp_instrument": "DspInstrumentHandle",
+    "nk_audio_dsp_wavetable": "DspWavetableHandle",
     "nk_audio_bus_options": "NativeBusOptions",
     "nk_audio_device_options": "NativeDeviceOptions",
     "nk_audio_voice_options": "NativeVoiceOptions",

@@ -1,16 +1,30 @@
 #pragma once
 
 #include "nativekit_audio_dsp.h"
+#include "Synthesis/wavetable_oscillator.h"
 
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 namespace nk::audio_dsp {
+
+class Wavetable final {
+  public:
+    static std::shared_ptr<const Wavetable> create(const float *samples, uint32_t sample_count);
+    const daisysp::WavetableOscillator::Table *tables() const noexcept { return tables_.data(); }
+    uint32_t table_count() const noexcept { return static_cast<uint32_t>(tables_.size()); }
+
+  private:
+    std::vector<std::vector<float>> samples_;
+    std::vector<daisysp::WavetableOscillator::Table> tables_;
+};
 
 struct OscillatorParameters {
     nk_audio_dsp_waveform waveform = NK_AUDIO_DSP_WAVEFORM_SINE;
     float level = 1.0f;
+    std::shared_ptr<const Wavetable> wavetable;
 };
 
 struct NoiseParameters {
@@ -56,7 +70,7 @@ struct PatchParameters {
     uint32_t route_count = 0;
 };
 
-/** Private backend-neutral voice boundary; DaisySP types stay in the .cpp. */
+/** Private backend-neutral voice boundary; DaisySP stays behind NativeKit's ABI. */
 class Voice final {
   public:
     Voice();

@@ -22,18 +22,26 @@ constexpr uint32_t default_max_voices = 64;
 constexpr uint32_t max_channels = 8;
 constexpr uint32_t max_block_size = 65536;
 constexpr uint32_t max_voice_count = 4096;
+constexpr uint32_t min_wavetable_samples = 32;
+constexpr uint32_t max_wavetable_samples = 4096;
 constexpr nk_audio_dsp_capabilities builtin_capabilities =
     NK_AUDIO_DSP_CAPABILITY_OSCILLATOR | NK_AUDIO_DSP_CAPABILITY_NOISE |
-    NK_AUDIO_DSP_CAPABILITY_ENVELOPE | NK_AUDIO_DSP_CAPABILITY_LFO |
-    NK_AUDIO_DSP_CAPABILITY_FILTER | NK_AUDIO_DSP_CAPABILITY_MODULATION;
+    NK_AUDIO_DSP_CAPABILITY_WAVETABLE | NK_AUDIO_DSP_CAPABILITY_ENVELOPE |
+    NK_AUDIO_DSP_CAPABILITY_LFO | NK_AUDIO_DSP_CAPABILITY_FILTER |
+    NK_AUDIO_DSP_CAPABILITY_MODULATION;
 
 using DspParameters = nk::audio_dsp::PatchParameters;
 
 struct DspEngineResource;
 struct DspPatchResource;
+struct DspWavetableResource;
 
 struct DspPatchResource final : nk::core::Resource {
     DspParameters parameters;
+};
+
+struct DspWavetableResource final : nk::core::Resource {
+    std::shared_ptr<const nk::audio_dsp::Wavetable> table;
 };
 
 struct DspInstrumentResource final : nk::core::Resource {
@@ -118,6 +126,15 @@ std::shared_ptr<DspPatchResource> get_patch(nk_audio_dsp_patch handle) {
     return std::dynamic_pointer_cast<DspPatchResource>(std::move(resource));
 }
 
+std::shared_ptr<DspWavetableResource> get_wavetable(nk_audio_dsp_wavetable handle) {
+    auto resource = nk::core::handles().get(handle, nk::core::ResourceType::audio_dsp_wavetable);
+    if (!resource) {
+        nk::core::set_error("invalid audio DSP wavetable handle");
+        return {};
+    }
+    return std::dynamic_pointer_cast<DspWavetableResource>(std::move(resource));
+}
+
 bool valid_waveform(nk_audio_dsp_waveform waveform) {
     return waveform <= NK_AUDIO_DSP_WAVEFORM_SQUARE;
 }
@@ -148,6 +165,11 @@ bool valid_modulation_polarity(nk_audio_dsp_modulation_polarity polarity) {
 
 bool valid_nonnegative_finite(float value) {
     return std::isfinite(value) && value >= 0.0f;
+}
+
+bool valid_wavetable_sample_count(uint32_t sample_count) {
+    return sample_count >= min_wavetable_samples && sample_count <= max_wavetable_samples &&
+           (sample_count & (sample_count - 1)) == 0;
 }
 
 bool valid_patch_parameters(const DspParameters &parameters) {
@@ -242,6 +264,12 @@ nk_result normalize_patch_options(const nk_audio_dsp_patch_options *input, DspPa
         return invalid_argument("audio DSP patch has too many modulation routes");
     output.oscillator.waveform = input->oscillator.waveform;
     output.oscillator.level = input->oscillator.level;
+    if (input->oscillator.wavetable != NK_INVALID_HANDLE) {
+        auto wavetable = get_wavetable(input->oscillator.wavetable);
+        if (!wavetable)
+            return NK_ERROR_INVALID_HANDLE;
+        output.oscillator.wavetable = wavetable->table;
+    }
     output.noise.level = input->noise.level;
     output.envelope.attack_seconds = input->envelope.attack_seconds;
     output.envelope.decay_seconds = input->envelope.decay_seconds;
@@ -690,6 +718,53 @@ nk_result NK_CALL nk_audio_dsp_patch_destroy(nk_audio_dsp_patch patch_handle) {
             if (!get_patch(patch_handle))
                 return NK_ERROR_INVALID_HANDLE;
             if (!nk::core::handles().erase(patch_handle, nk::core::ResourceType::audio_dsp_patch))
+                return NK_ERROR_INVALID_HANDLE;
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_audio_dsp_wavetable_create(const float *samples, uint32_t sample_count,
+                                                nk_audio_dsp_wavetable *out_wavetable) {
+    return nk::core::result_boundary(
+        "unexpected error while creating an audio DSP wavetable", [&]() -> nk_result {
+            if (const auto result = enter_dsp(); result != NK_OK)
+                return result;
+            if (!out_wavetable)
+                return invalid_argument("audio DSP wavetable output is missing");
+            *out_wavetable = NK_INVALID_HANDLE;
+            if (!samples || !valid_wavetable_sample_count(sample_count))
+                return invalid_argument("audio DSP wavetable samples are invalid");
+            for (uint32_t index = 0; index < sample_count; ++index) {
+                if (!std::isfinite(samples[index]))
+                    return invalid_argument("audio DSP wavetable samples must be finite");
+            }
+            auto table = nk::audio_dsp::Wavetable::create(samples, sample_count);
+            if (!table) {
+                nk::core::set_error("could not create an audio DSP wavetable");
+                return NK_ERROR_OUT_OF_MEMORY;
+            }
+            auto resource = std::make_shared<DspWavetableResource>();
+            resource->table = std::move(table);
+            const auto handle =
+                nk::core::handles().insert(nk::core::ResourceType::audio_dsp_wavetable, resource);
+            if (handle == NK_INVALID_HANDLE) {
+                nk::core::set_error("could not allocate an audio DSP wavetable handle");
+                return NK_ERROR_OUT_OF_MEMORY;
+            }
+            *out_wavetable = handle;
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_audio_dsp_wavetable_destroy(nk_audio_dsp_wavetable wavetable_handle) {
+    return nk::core::result_boundary(
+        "unexpected error while destroying an audio DSP wavetable", [&]() -> nk_result {
+            if (const auto result = enter_dsp(); result != NK_OK)
+                return result;
+            if (!get_wavetable(wavetable_handle))
+                return NK_ERROR_INVALID_HANDLE;
+            if (!nk::core::handles().erase(wavetable_handle,
+                                           nk::core::ResourceType::audio_dsp_wavetable))
                 return NK_ERROR_INVALID_HANDLE;
             return NK_OK;
         });

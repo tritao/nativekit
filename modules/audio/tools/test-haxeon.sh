@@ -53,6 +53,7 @@ fi
     "$module_dir/bindings/haxe/nativekit/audio/AudioTrackPlayer.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/AudioTransitionOptions.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/DspEnums.hx" \
+    "$module_dir/bindings/haxe/nativekit/audio/DspWavetable.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/DspEvent.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/DspRenderTarget.hx" \
     "$module_dir/bindings/haxe/nativekit/audio/DspOscillatorOptions.hx" \
