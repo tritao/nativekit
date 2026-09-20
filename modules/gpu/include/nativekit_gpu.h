@@ -609,6 +609,21 @@ typedef struct nkgpu_timestamp_info {
     uint64_t nanoseconds;
 } nkgpu_timestamp_info;
 
+/** Names a GPU timestamp interval. The label is copied when the interval begins. */
+typedef struct nkgpu_timestamp_desc {
+    uint32_t struct_size NK_STRUCT_SIZE;
+    const char *label NKGPU_UTF8;
+} nkgpu_timestamp_desc;
+
+/** Reports one item returned by nkgpu_timestamp_collect(). */
+typedef struct nkgpu_timestamp_result {
+    uint32_t struct_size NK_STRUCT_SIZE;
+    nkgpu_timestamp timestamp;
+    nkgpu_timestamp_state state;
+    uint32_t reserved;
+    uint64_t nanoseconds;
+} nkgpu_timestamp_result;
+
 /** An RGBA clear color used by render-pass actions. */
 typedef struct nkgpu_color {
     float r;
@@ -1470,12 +1485,28 @@ NKGPU_API nkgpu_result nkgpu_readback_destroy(nkgpu_renderer renderer, nkgpu_rea
 NKGPU_API nkgpu_result nkgpu_timestamp_begin(nkgpu_renderer renderer,
                                              nkgpu_timestamp *out_timestamp NKGPU_OUT);
 
+/** Begins a named GPU timestamp interval inside the active frame/pass. */
+NKGPU_API nkgpu_result nkgpu_timestamp_begin_desc(nkgpu_renderer renderer,
+                                                  const nkgpu_timestamp_desc *desc,
+                                                  nkgpu_timestamp *out_timestamp NKGPU_OUT);
+
 /** Ends a GPU timestamp interval. */
 NKGPU_API nkgpu_result nkgpu_timestamp_end(nkgpu_renderer renderer, nkgpu_timestamp timestamp);
 
 /** Polls a timestamp without exposing backend query objects. */
 NKGPU_API nkgpu_result nkgpu_timestamp_query(nkgpu_renderer renderer, nkgpu_timestamp timestamp,
                                              nkgpu_timestamp_info *out_info NKGPU_OUT);
+
+/** Queries multiple timestamp intervals in one backend access operation. */
+NKGPU_API nkgpu_result nkgpu_timestamp_collect(nkgpu_renderer renderer,
+                                               const nkgpu_timestamp *timestamps,
+                                               uint32_t count,
+                                               nkgpu_timestamp_result *out_results NKGPU_OUT);
+
+/** Returns a borrowed label copied from a timestamp descriptor. */
+NKGPU_API const char *nkgpu_timestamp_get_label(nkgpu_renderer renderer,
+                                                nkgpu_timestamp timestamp)
+    NKGPU_RETURNS_BORROWED_UTF8;
 
 /** Destroys a timestamp query. */
 NKGPU_API nkgpu_result nkgpu_timestamp_destroy(nkgpu_renderer renderer, nkgpu_timestamp timestamp);

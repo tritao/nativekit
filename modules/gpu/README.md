@@ -224,8 +224,11 @@ image transfer directions separately, so callers can gate
 `nkgpu_buffer_to_image()` and `nkgpu_image_to_buffer()` without identifying the
 selected backend. `nkgpu_readback_begin_buffer()` is the portable path for
 asynchronous storage-buffer results, and
-`nkgpu_timestamp_begin()` / `nkgpu_timestamp_end()` provide backend-hidden GPU
-timing where timer queries or counter samples are available. Unsupported operations return
+`nkgpu_timestamp_begin_desc()` / `nkgpu_timestamp_end()` provide named,
+backend-hidden GPU timing scopes where timer queries or counter samples are
+available. Use `nkgpu_timestamp_collect()` to poll several completed scopes
+with one NativeKit call and `nkgpu_timestamp_get_label()` to retrieve their
+copied labels. Unsupported operations return
 `NKGPU_ERROR_UNSUPPORTED`, so callers do not need to identify the selected
 backend. Depth-image rectangle readback is supported through staging and
 backend-hidden cropping; D3D11 depth image copies remain whole-subresource

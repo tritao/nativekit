@@ -1240,6 +1240,14 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_timestamp_begin(renderer: nkgpu_renderer, out_timestamp: ptr<nkgpu_timestamp> @out) -> nkgpu_result;
 	/**
+	 * Begins a named GPU timestamp interval inside the active frame/pass.
+	 */
+	extern fn nkgpu_timestamp_begin_desc(renderer: nkgpu_renderer, desc: ptr<const<nkgpu_timestamp_desc>>, out_timestamp: ptr<nkgpu_timestamp> @out) -> nkgpu_result;
+	/**
+	 * Queries multiple timestamp intervals in one backend access operation.
+	 */
+	extern fn nkgpu_timestamp_collect(renderer: nkgpu_renderer, timestamps: ptr<const<nkgpu_timestamp>>, count: u32, out_results: ptr<nkgpu_timestamp_result> @out) -> nkgpu_result;
+	/**
 	 * Destroys a timestamp query.
 	 */
 	extern fn nkgpu_timestamp_destroy(renderer: nkgpu_renderer, timestamp: nkgpu_timestamp) -> nkgpu_result;
@@ -1247,6 +1255,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * Ends a GPU timestamp interval.
 	 */
 	extern fn nkgpu_timestamp_end(renderer: nkgpu_renderer, timestamp: nkgpu_timestamp) -> nkgpu_result;
+	/**
+	 * Returns a borrowed label copied from a timestamp descriptor.
+	 */
+	extern fn nkgpu_timestamp_get_label(renderer: nkgpu_renderer, timestamp: nkgpu_timestamp) -> utf8 @borrowed;
 	/**
 	 * Polls a timestamp without exposing backend query objects.
 	 */
@@ -1616,12 +1628,29 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		back: nkgpu_stencil_face_state @offset(24);
 	}
 	/**
+	 * Names a GPU timestamp interval. The label is copied when the interval begins.
+	 */
+	struct nkgpu_timestamp_desc @layout(16, 8) {
+		struct_size: u32 @offset(0) @struct_size;
+		label: utf8 @offset(8);
+	}
+	/**
 	 * Reports a GPU timestamp duration in nanoseconds.
 	 */
 	struct nkgpu_timestamp_info @layout(16, 8) {
 		struct_size: u32 @offset(0) @struct_size;
 		state: nkgpu_timestamp_state @offset(4);
 		nanoseconds: u64 @offset(8);
+	}
+	/**
+	 * Reports one item returned by nkgpu_timestamp_collect().
+	 */
+	struct nkgpu_timestamp_result @layout(24, 8) {
+		struct_size: u32 @offset(0) @struct_size;
+		timestamp: nkgpu_timestamp @offset(4);
+		state: nkgpu_timestamp_state @offset(8);
+		reserved: u32 @offset(12);
+		nanoseconds: u64 @offset(16);
 	}
 	/**
 	 * Sealed-submission batch handle returned by nkgpu_batch_begin().

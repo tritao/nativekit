@@ -262,6 +262,7 @@ struct Timestamp {
     Handle owner = 0;
     uint32_t native = 0;
     bool ended = false;
+    std::string label;
 };
 struct Sampler {
     Handle owner = 0;
@@ -4138,9 +4139,30 @@ nkgpu_result nkgpu_readback_destroy(nkgpu_renderer r, nkgpu_readback h) {
     return NKGPU_OK;
 }
 
+static nkgpu_result query_timestamp_backend(Renderer &renderer, Timestamp &timestamp,
+                                             nkgpu_timestamp_info &out_info) {
+    const nk_sokol_transfer_api *transfer = renderer.api->transfer;
+    if (!transfer || !transfer->timestamp_supported || !transfer->timestamp_supported() ||
+        !transfer->timestamp_status || !transfer->timestamp_elapsed_ns)
+        return fail(NKGPU_ERROR_UNSUPPORTED, "GPU timestamps are unavailable");
+    out_info = {};
+    out_info.struct_size = sizeof(out_info);
+    out_info.state = transfer->timestamp_status(timestamp.native);
+    if (out_info.state == NKGPU_TIMESTAMP_READY)
+        out_info.nanoseconds = transfer->timestamp_elapsed_ns(timestamp.native);
+    return NKGPU_OK;
+}
+
 nkgpu_result nkgpu_timestamp_begin(nkgpu_renderer r, nkgpu_timestamp *out) {
-    if (!out)
-        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "timestamp output is null");
+    nkgpu_timestamp_desc desc{};
+    desc.struct_size = sizeof(desc);
+    return nkgpu_timestamp_begin_desc(r, &desc, out);
+}
+
+nkgpu_result nkgpu_timestamp_begin_desc(nkgpu_renderer r, const nkgpu_timestamp_desc *desc,
+                                        nkgpu_timestamp *out) {
+    if (!desc || desc->struct_size < sizeof(nkgpu_timestamp_desc) || !out)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid timestamp descriptor or output");
     *out = 0;
     Renderer *renderer = renderer_pool.get(r) ? &renderer_pool.get(r)->value : nullptr;
     const nkgpu_result pass = require_active_pass(r);
@@ -4153,7 +4175,8 @@ nkgpu_result nkgpu_timestamp_begin(nkgpu_renderer r, nkgpu_timestamp *out) {
     const uint32_t native = transfer->timestamp_begin();
     if (!native)
         return fail(NKGPU_ERROR_UNSUPPORTED, "GPU timestamps are unavailable");
-    const Handle handle = timestamp_pool.add(Timestamp{r, native, false});
+    const Handle handle = timestamp_pool.add(Timestamp{r, native, false,
+                                                       desc->label ? desc->label : ""});
     if (!handle) {
         if (transfer->timestamp_destroy)
             transfer->timestamp_destroy(native);
@@ -4197,17 +4220,57 @@ nkgpu_result nkgpu_timestamp_query(nkgpu_renderer r, nkgpu_timestamp h,
     const nkgpu_result access = require_transfer_access(r, &renderer);
     if (access != NKGPU_OK)
         return access;
-    const nk_sokol_transfer_api *transfer = renderer->api->transfer;
-    if (!transfer || !transfer->timestamp_supported || !transfer->timestamp_supported() ||
-        !transfer->timestamp_status || !transfer->timestamp_elapsed_ns)
-        return fail(NKGPU_ERROR_UNSUPPORTED, "GPU timestamps are unavailable");
     nkgpu_timestamp_info info{};
-    info.struct_size = sizeof(info);
-    info.state = transfer->timestamp_status(timestamp->value.native);
-    if (info.state == NKGPU_TIMESTAMP_READY)
-        info.nanoseconds = transfer->timestamp_elapsed_ns(timestamp->value.native);
+    const nkgpu_result queried = query_timestamp_backend(*renderer, timestamp->value, info);
+    if (queried != NKGPU_OK)
+        return queried;
     *out_info = info;
     return NKGPU_OK;
+}
+
+nkgpu_result nkgpu_timestamp_collect(nkgpu_renderer r, const nkgpu_timestamp *timestamps,
+                                     uint32_t count, nkgpu_timestamp_result *out_results) {
+    if (!renderer_pool.get(r))
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    if (count > timestamp_pool.slots.size() || (count && (!timestamps || !out_results)))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid timestamp collection arguments");
+    for (uint32_t index = 0; index < count; ++index) {
+        if (out_results[index].struct_size < sizeof(nkgpu_timestamp_result))
+            return fail(NKGPU_ERROR_INVALID_ARGUMENT, "timestamp result output is too small");
+        auto *timestamp = timestamp_pool.get(timestamps[index]);
+        if (!timestamp || timestamp->value.owner != r)
+            return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign timestamp");
+        if (!timestamp->value.ended)
+            return fail(NKGPU_ERROR_WRONG_STATE, "timestamp has not ended");
+    }
+    if (!count)
+        return NKGPU_OK;
+    Renderer *renderer = nullptr;
+    const nkgpu_result access = require_transfer_access(r, &renderer);
+    if (access != NKGPU_OK)
+        return access;
+    for (uint32_t index = 0; index < count; ++index) {
+        auto *timestamp = timestamp_pool.get(timestamps[index]);
+        nkgpu_timestamp_info info{};
+        const nkgpu_result queried = query_timestamp_backend(*renderer, timestamp->value, info);
+        if (queried != NKGPU_OK)
+            return queried;
+        out_results[index] = {};
+        out_results[index].struct_size = sizeof(nkgpu_timestamp_result);
+        out_results[index].timestamp = timestamps[index];
+        out_results[index].state = info.state;
+        out_results[index].nanoseconds = info.nanoseconds;
+    }
+    return NKGPU_OK;
+}
+
+const char *nkgpu_timestamp_get_label(nkgpu_renderer r, nkgpu_timestamp h) {
+    auto *timestamp = timestamp_pool.get(h);
+    if (!renderer_pool.get(r) || !timestamp || timestamp->value.owner != r) {
+        fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign timestamp");
+        return nullptr;
+    }
+    return timestamp->value.label.c_str();
 }
 
 nkgpu_result nkgpu_timestamp_destroy(nkgpu_renderer r, nkgpu_timestamp h) {

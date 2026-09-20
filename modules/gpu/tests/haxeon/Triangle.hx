@@ -195,9 +195,11 @@ class Triangle {
 
 		if (features.timestamps) {
 			renderer.beginFrame();
-			var timestamp = Timestamp.begin(renderer);
+			var timestamp = Timestamp.beginNamed(renderer, "triangle");
 			timestamp.end();
 			renderer.endFrame();
+			if (timestamp.label() != "triangle")
+				throw "GPU timestamp label was not retained";
 			var timestampInfo = timestamp.query();
 			var timestampPolls = 0;
 			while (timestampInfo.state == TimestampState.Pending && timestampPolls < 1000) {

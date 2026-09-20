@@ -23,6 +23,19 @@ class Timestamp {
 		return new Timestamp(renderer, made.out_timestamp);
 	}
 
+	/** Begins a named timing scope in the active render or compute pass. */
+	public static function beginNamed(renderer:Renderer, label:String):Timestamp {
+		if (label == null)
+			throw "GPU timestamp label must not be null";
+		renderer.ensureFrame();
+		var desc = new nkgpu_timestamp_desc();
+		desc.set_struct_size(16);
+		desc.set_label(label);
+		var made = NativeKitGpu.nkgpu_timestamp_begin_desc(renderer.nativeHandle(), desc);
+		GpuResult.check(made.status, "timestamp.beginNamed");
+		return new Timestamp(renderer, made.out_timestamp);
+	}
+
 	public function end():Void {
 		ensureLive();
 		renderer.ensureFrame();
@@ -36,6 +49,13 @@ class Timestamp {
 		var result = NativeKitGpu.nkgpu_timestamp_query(renderer.nativeHandle(), value);
 		GpuResult.check(result.status, "timestamp.query");
 		return TimestampInfo.fromNative(result.out_info);
+	}
+
+	/** Returns the copied scope label, or an empty string for an unnamed scope. */
+	public function label():String {
+		ensureLive();
+		renderer.ensureResourceOperation();
+		return NativeKitGpu.nkgpu_timestamp_get_label(renderer.nativeHandle(), value);
 	}
 
 	public function dispose():Void {

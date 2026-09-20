@@ -517,7 +517,9 @@ int main() {
     if (!msaa_resolve(resources.renderer, features))
         return 1;
     if (features.timestamps) {
-        nkgpu_timestamp timestamp{};
+        nkgpu_timestamp scene_timestamp{};
+        nkgpu_timestamp depth_timestamp{};
+        nkgpu_timestamp legacy_timestamp{};
         if (!expect_result(nkgpu_frame_begin(resources.renderer), NKGPU_OK,
                            "nkgpu_frame_begin(timestamp)"))
             return 1;
@@ -525,13 +527,33 @@ int main() {
                                                    window_options.height, 0),
                            NKGPU_OK, "nkgpu_begin_window_pass(timestamp)"))
             return 1;
-        if (!expect_result(nkgpu_timestamp_begin(resources.renderer, &timestamp), NKGPU_OK,
-                           "nkgpu_timestamp_begin"))
+        nkgpu_timestamp_desc scene_desc{};
+        scene_desc.struct_size = sizeof(scene_desc);
+        scene_desc.label = "scene";
+        if (!expect_result(nkgpu_timestamp_begin_desc(resources.renderer, &scene_desc,
+                                                      &scene_timestamp),
+                           NKGPU_OK, "nkgpu_timestamp_begin_desc(scene)"))
             return 1;
-        if (!expect_result(nkgpu_timestamp_end(resources.renderer, timestamp), NKGPU_OK,
-                           "nkgpu_timestamp_end"))
+        if (!expect_result(nkgpu_timestamp_end(resources.renderer, scene_timestamp), NKGPU_OK,
+                           "nkgpu_timestamp_end(scene)"))
             return 1;
-        if (!expect_result(nkgpu_timestamp_end(resources.renderer, timestamp),
+        nkgpu_timestamp_desc depth_desc{};
+        depth_desc.struct_size = sizeof(depth_desc);
+        depth_desc.label = "depth";
+        if (!expect_result(nkgpu_timestamp_begin_desc(resources.renderer, &depth_desc,
+                                                      &depth_timestamp),
+                           NKGPU_OK, "nkgpu_timestamp_begin_desc(depth)"))
+            return 1;
+        if (!expect_result(nkgpu_timestamp_end(resources.renderer, depth_timestamp), NKGPU_OK,
+                           "nkgpu_timestamp_end(depth)"))
+            return 1;
+        if (!expect_result(nkgpu_timestamp_begin(resources.renderer, &legacy_timestamp),
+                           NKGPU_OK, "nkgpu_timestamp_begin(legacy)"))
+            return 1;
+        if (!expect_result(nkgpu_timestamp_end(resources.renderer, legacy_timestamp), NKGPU_OK,
+                           "nkgpu_timestamp_end(legacy)"))
+            return 1;
+        if (!expect_result(nkgpu_timestamp_end(resources.renderer, scene_timestamp),
                            NKGPU_ERROR_WRONG_STATE, "nkgpu_timestamp_end(repeated)"))
             return 1;
         if (!expect_result(nkgpu_end_pass(resources.renderer), NKGPU_OK,
@@ -540,28 +562,63 @@ int main() {
         if (!expect_result(nkgpu_end_frame(resources.renderer), NKGPU_OK,
                            "nkgpu_end_frame(timestamp)"))
             return 1;
+
+        const char *scene_label =
+            nkgpu_timestamp_get_label(resources.renderer, scene_timestamp);
+        const char *depth_label =
+            nkgpu_timestamp_get_label(resources.renderer, depth_timestamp);
+        const char *legacy_label =
+            nkgpu_timestamp_get_label(resources.renderer, legacy_timestamp);
+        if (!scene_label || std::strcmp(scene_label, "scene") != 0 || !depth_label ||
+            std::strcmp(depth_label, "depth") != 0 || !legacy_label || legacy_label[0] != '\0') {
+            std::fprintf(stderr, "timestamp labels were not retained\n");
+            return 1;
+        }
+
+        const nkgpu_timestamp timestamps[] = {scene_timestamp, depth_timestamp, legacy_timestamp};
+        nkgpu_timestamp_result timestamp_results[3]{};
+        for (auto &timestamp_result : timestamp_results)
+            timestamp_result.struct_size = sizeof(timestamp_result);
         nkgpu_timestamp_info timestamp_info{};
         timestamp_info.struct_size = sizeof(timestamp_info);
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
         while (std::chrono::steady_clock::now() < deadline) {
-            if (!expect_result(nkgpu_timestamp_query(resources.renderer, timestamp,
-                                                     &timestamp_info), NKGPU_OK,
-                               "nkgpu_timestamp_query"))
+            if (!expect_result(nkgpu_timestamp_collect(resources.renderer, timestamps, 3,
+                                                       timestamp_results),
+                               NKGPU_OK, "nkgpu_timestamp_collect"))
                 return 1;
-            if (timestamp_info.state != NKGPU_TIMESTAMP_PENDING)
+            if (timestamp_results[0].state != NKGPU_TIMESTAMP_PENDING &&
+                timestamp_results[1].state != NKGPU_TIMESTAMP_PENDING &&
+                timestamp_results[2].state != NKGPU_TIMESTAMP_PENDING)
                 break;
             std::this_thread::yield();
         }
+        if (timestamp_results[0].state != NKGPU_TIMESTAMP_READY ||
+            timestamp_results[1].state != NKGPU_TIMESTAMP_READY ||
+            timestamp_results[2].state != NKGPU_TIMESTAMP_READY) {
+            std::fprintf(stderr, "GPU timestamp collection did not become ready\n");
+            return 1;
+        }
+        if (!expect_result(nkgpu_timestamp_query(resources.renderer, scene_timestamp,
+                                                 &timestamp_info),
+                           NKGPU_OK, "nkgpu_timestamp_query"))
+            return 1;
         if (timestamp_info.state != NKGPU_TIMESTAMP_READY) {
             std::fprintf(stderr, "GPU timestamp did not become ready\n");
             return 1;
         }
-        if (!expect_result(nkgpu_timestamp_destroy(resources.renderer, timestamp), NKGPU_OK,
-                           "nkgpu_timestamp_destroy"))
+        if (!expect_result(nkgpu_timestamp_destroy(resources.renderer, scene_timestamp), NKGPU_OK,
+                           "nkgpu_timestamp_destroy(scene)"))
+            return 1;
+        if (!expect_result(nkgpu_timestamp_destroy(resources.renderer, depth_timestamp), NKGPU_OK,
+                           "nkgpu_timestamp_destroy(depth)"))
+            return 1;
+        if (!expect_result(nkgpu_timestamp_destroy(resources.renderer, legacy_timestamp), NKGPU_OK,
+                           "nkgpu_timestamp_destroy(legacy)"))
             return 1;
         nkgpu_timestamp_info stale_timestamp_info{};
         stale_timestamp_info.struct_size = sizeof(stale_timestamp_info);
-        if (!expect_result(nkgpu_timestamp_query(resources.renderer, timestamp,
+        if (!expect_result(nkgpu_timestamp_query(resources.renderer, scene_timestamp,
                                                  &stale_timestamp_info),
                            NKGPU_ERROR_INVALID_HANDLE, "nkgpu_timestamp_query(stale)"))
             return 1;
