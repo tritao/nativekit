@@ -300,7 +300,12 @@ bool offscreen_format(nkgpu_renderer renderer, const nkgpu_features &features,
         if (!readback(renderer, destination.id ? destination : source, 0, 0, width, height,
                       readback_bytes, width * height * bytes) ||
             std::memcmp(readback_bytes, expected_bytes, width * height * bytes) != 0) {
-            std::fprintf(stderr, "offscreen format %s readback mismatch\n", format_name(format));
+            uint32_t actual_bits = 0;
+            uint32_t expected_bits = 0;
+            std::memcpy(&actual_bits, readback_bytes, sizeof(actual_bits));
+            std::memcpy(&expected_bits, expected_bytes, sizeof(expected_bits));
+            std::fprintf(stderr, "offscreen format %s readback mismatch: %08x != %08x\n",
+                         format_name(format), actual_bits, expected_bits);
             success = false;
         }
     }
