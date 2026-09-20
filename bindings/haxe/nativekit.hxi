@@ -1093,7 +1093,8 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 */
 		NK_EVENT_AUDIO_VOICE_STOLEN = 914;
 		/**
-		 * A playing voice was admitted logically but not rendered because its bus was full; source is its voice handle.
+		 * A playing voice was admitted logically but not rendered because its bus was full; source is
+		 * its voice handle.
 		 */
 		NK_EVENT_AUDIO_VOICE_VIRTUALIZED = 915;
 		/**
