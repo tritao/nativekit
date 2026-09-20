@@ -3520,6 +3520,13 @@ nk_result NK_CALL nk_graphics_bind_frame_target(const nk_surface_frame_target *t
 nk_result NK_CALL nk_graphics_unbind_frame_target(const nk_surface_frame_target *target) {
 #if defined(NK_WEB_THREADED_RENDER)
     (void)target;
+    /* Threaded Web never makes the OffscreenCanvas context current on
+       PLATFORM.  Surface-frame acquisition still invokes this hook to release
+       a context acquired by other physical GL backends, so it must be a no-op
+       outside RENDER rather than attempting to clear a context owned by the
+       worker. */
+    if (!nk_executor_is_current(NK_EXECUTOR_RENDER))
+        return NK_OK;
     return nk::web::clear_context_current() ? NK_OK : NK_ERROR_UNKNOWN;
 #else
     (void)target;
