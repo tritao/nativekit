@@ -25,14 +25,17 @@ class VirtualList implements View {
 	public final itemCount:Int;
 	public final itemHeight:Float;
 	public final viewportStyle:LayoutStyle;
+	public final virtualization:VirtualizationPolicy;
 	public var controller(default, null):ScrollController;
+	public var materializedFirst(default, null):Int;
+	public var materializedLast(default, null):Int;
 	final itemBuilder:Int->View;
 	final keyForIndex:Null<Int->String>;
 	final fallbackViewportHeight:Float;
 
 	public function new(key:String, itemCount:Int, itemHeight:Float, itemBuilder:Int->View,
 			?viewportStyle:LayoutStyle, ?keyForIndex:Int->String, ?controller:ScrollController,
-			viewportHeight:Float = 300.0) {
+			viewportHeight:Float = 300.0, ?virtualization:VirtualizationPolicy) {
 		if (key == null || key.length == 0 || itemCount < 0 || itemHeight <= 0.0 ||
 			!finite(itemHeight) || itemBuilder == null || viewportHeight <= 0.0 ||
 			!finite(viewportHeight))
@@ -46,6 +49,9 @@ class VirtualList implements View {
 		this.fallbackViewportHeight = viewportHeight;
 		this.viewportStyle = viewportStyle == null ? defaultViewportStyle(viewportHeight) :
 			viewportStyle.copy();
+		this.virtualization = virtualization == null ? new VirtualizationPolicy() : virtualization;
+		materializedFirst = 0;
+		materializedLast = 0;
 	}
 
 	public function build(context:BuildContext):RenderNode {
@@ -56,10 +62,12 @@ class VirtualList implements View {
 			var viewportHeight = controller.viewportHeight > 0.0 ? controller.viewportHeight :
 				(viewportStyle.height.sizing == LayoutSizing.Fixed ? viewportStyle.height.value :
 				fallbackViewportHeight);
-			var virtualWindow = new VirtualViewport(itemCount, itemHeight, viewportHeight,
+			var virtualWindow = virtualization.fixed(itemCount, itemHeight, viewportHeight,
 				controller.offsetY);
 			var first = virtualWindow.first;
 			var last = virtualWindow.last;
+			materializedFirst = first;
+			materializedLast = last;
 
 			var rowViews:Array<KeyedView> = [];
 			var beforeHeight = first * itemHeight;
@@ -72,8 +80,9 @@ class VirtualList implements View {
 				var item = itemBuilder(index);
 				if (item == null)
 					throw 'VirtualList item builder returned null for index $index';
-				var row = new VirtualCollectionRow("row", item, itemCount, index, itemHeight);
-				rowViews.push(new KeyedView('item:$rowKey', row));
+				var row = new VirtualCollectionRow("row", rowKey, item, itemCount, index, itemHeight);
+				var slotKey = virtualization.recycleSlots ? 'slot:${index - first}' : 'item:$rowKey';
+				rowViews.push(new KeyedView(slotKey, row));
 			}
 			var afterHeight = (itemCount - last) * itemHeight;
 			rowViews.push(new KeyedView("after", new Spacer("after-spacer",
@@ -111,13 +120,16 @@ class VirtualList implements View {
 
 private class VirtualCollectionRow implements View {
 	final key:String;
+	final itemKey:String;
 	final child:View;
 	final setSize:Int;
 	final index:Int;
 	final height:Float;
 
-	public function new(key:String, child:View, setSize:Int, index:Int, height:Float) {
+	public function new(key:String, itemKey:String, child:View, setSize:Int, index:Int,
+			height:Float) {
 		this.key = key;
+		this.itemKey = itemKey;
 		this.child = child;
 		this.setSize = setSize;
 		this.index = index;
@@ -134,7 +146,7 @@ private class VirtualCollectionRow implements View {
 			semantics.setSize = setSize;
 			semantics.positionInSet = index + 1;
 			node.semantics = semantics;
-			node.add(context.withScope(new Key("content"), function() return child.build(context)));
+			node.add(new KeyedView('item:$itemKey', child).build(context));
 			return node;
 		});
 	}

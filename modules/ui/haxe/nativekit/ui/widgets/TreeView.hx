@@ -33,7 +33,10 @@ class TreeView implements View {
 	public final key:String;
 	public final model:TreeViewModel;
 	public final viewportStyle:LayoutStyle;
+	public final virtualization:VirtualizationPolicy;
 	public var controller(default, null):ScrollController;
+	public var materializedFirst(default, null):Int;
+	public var materializedLast(default, null):Int;
 	public var selectedKey(default, null):Null<String>;
 	public var onSelectionChanged:Null<String->Void>;
 	public var onItemActivated:Null<String->Void>;
@@ -57,7 +60,7 @@ class TreeView implements View {
 			?controller:ScrollController, viewportHeight:Float = 300.0,
 			?selectedKey:String, ?expandedKeys:Array<String>,
 			?onSelectionChanged:String->Void, ?onItemActivated:String->Void,
-			?onExpandedChanged:String->Bool->Void) {
+			?onExpandedChanged:String->Bool->Void, ?virtualization:VirtualizationPolicy) {
 		if (key == null || key.length == 0 || model == null || viewportHeight <= 0.0 ||
 			!finite(viewportHeight) || (selectedKey != null && selectedKey.length == 0))
 			throw "TreeView requires a stable key, model, and valid viewport height";
@@ -71,6 +74,9 @@ class TreeView implements View {
 		this.onSelectionChanged = onSelectionChanged;
 		this.onItemActivated = onItemActivated;
 		this.onExpandedChanged = onExpandedChanged;
+		this.virtualization = virtualization == null ? new VirtualizationPolicy() : virtualization;
+		materializedFirst = 0;
+		materializedLast = 0;
 		this.expandedKeys = new Map();
 		if (expandedKeys != null)
 			for (expandedKey in expandedKeys) {
@@ -182,7 +188,10 @@ class TreeView implements View {
 				(viewportStyle.height.sizing == LayoutSizing.Fixed ? viewportStyle.height.value :
 				fallbackViewportHeight);
 			var window:VirtualExtentViewport = cast extentViewport;
-			window.update(viewportHeight, controller.offsetY);
+			window.update(viewportHeight, controller.offsetY, virtualization.leadingOverscan,
+				virtualization.trailingOverscan);
+			materializedFirst = window.first;
+			materializedLast = window.last;
 			var rowViews:Array<KeyedView> = [];
 			if (window.count > 0) {
 				rowViews.push(new KeyedView("before", new Spacer("before-spacer",
@@ -193,13 +202,15 @@ class TreeView implements View {
 					var item = model.buildItem(nodeKey);
 					if (item == null)
 						throw 'TreeView model returned null for key $nodeKey';
-					var row = new TreeViewRow("row", item, entry, selectedKey == nodeKey,
+					var row = new TreeViewRow("row", nodeKey, item, entry, selectedKey == nodeKey,
 						function() { select(nodeKey); },
 						function() { if (onItemActivated != null) onItemActivated(nodeKey); },
 						function() { toggleExpanded(nodeKey); },
 						function(event) { handleNodeKey(context, entry, event); },
 						function(id) { itemIds.set(nodeKey, id); });
-					rowViews.push(new KeyedView('item:$nodeKey', row));
+					var slotKey = virtualization.recycleSlots ? 'slot:${index - window.first}' :
+						'item:$nodeKey';
+					rowViews.push(new KeyedView(slotKey, row));
 				}
 				rowViews.push(new KeyedView("after", new Spacer("after-spacer",
 					LayoutAxis.grow(), LayoutAxis.fixed(window.totalExtent -
@@ -433,6 +444,7 @@ private class TreePending {
 
 private class TreeViewRow implements View {
 	final key:String;
+	final itemKey:String;
 	final child:View;
 	final entry:TreeEntry;
 	final selected:Bool;
@@ -442,10 +454,11 @@ private class TreeViewRow implements View {
 	final onKey:UiEvent->Void;
 	final onBuilt:WidgetId->Void;
 
-	public function new(key:String, child:View, entry:TreeEntry, selected:Bool,
+	public function new(key:String, itemKey:String, child:View, entry:TreeEntry, selected:Bool,
 			onSelect:Void->Void, onActivate:Void->Void, onToggle:Void->Void,
 			onKey:UiEvent->Void, onBuilt:WidgetId->Void) {
 		this.key = key;
+		this.itemKey = itemKey;
 		this.child = child;
 		this.entry = entry;
 		this.selected = selected;
@@ -489,7 +502,7 @@ private class TreeViewRow implements View {
 				? new TreeDisclosure("disclosure-control", entry.expanded, onToggle)
 				: new Spacer("disclosure-spacer", LayoutAxis.fixed(16.0), LayoutAxis.grow());
 			node.add(context.withScope(new Key("disclosure"), function() return disclosure.build(context)));
-			node.add(context.withScope(new Key("content"), function() return child.build(context)));
+			node.add(new KeyedView('item:$itemKey', child).build(context));
 			onBuilt(node.id);
 			return node;
 		});

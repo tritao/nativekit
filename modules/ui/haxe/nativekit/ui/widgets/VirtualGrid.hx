@@ -25,7 +25,10 @@ class VirtualGrid implements View {
 	public final rowHeight:Float;
 	public final columnWidth:Float;
 	public final viewportStyle:LayoutStyle;
+	public final virtualization:VirtualizationPolicy;
 	public var controller(default, null):ScrollController;
+	public var materializedFirst(default, null):Int;
+	public var materializedLast(default, null):Int;
 	final cellBuilder:Int->Int->View;
 	final keyForCell:Null<Int->Int->String>;
 	final onCellActivate:Null<Int->Int->Void>;
@@ -42,7 +45,8 @@ class VirtualGrid implements View {
 			viewportWidth:Float = 320.0, viewportHeight:Float = 240.0,
 			?onCellActivate:Int->Int->Void, ?cellSelected:Int->Int->Bool,
 			?onCellKeyDown:Int->Int->WidgetId->UiEvent->Void,
-			?onCellBuilt:Int->Int->WidgetId->Void, ?columnWidths:Array<Float>) {
+			?onCellBuilt:Int->Int->WidgetId->Void, ?columnWidths:Array<Float>,
+			?virtualization:VirtualizationPolicy) {
 		if (key == null || key.length == 0 || rowCount < 0 || columnCount < 0 ||
 			rowHeight <= 0.0 || columnWidth <= 0.0 || !finite(rowHeight) ||
 			!finite(columnWidth) || cellBuilder == null || viewportWidth <= 0.0 ||
@@ -66,6 +70,9 @@ class VirtualGrid implements View {
 				if (width <= 0.0 || !finite(width))
 					throw "VirtualGrid column extents must be finite and positive";
 		this.columnWidths = columnWidths == null ? null : columnWidths.copy();
+		this.virtualization = virtualization == null ? new VirtualizationPolicy() : virtualization;
+		materializedFirst = 0;
+		materializedLast = 0;
 		this.controller = controller == null ? new ScrollController() : controller;
 		this.fallbackViewportWidth = viewportWidth;
 		this.fallbackViewportHeight = viewportHeight;
@@ -84,22 +91,24 @@ class VirtualGrid implements View {
 			var viewportHeight = controller.viewportHeight > 0.0 ? controller.viewportHeight :
 				(viewportStyle.height.sizing == LayoutSizing.Fixed ? viewportStyle.height.value :
 				fallbackViewportHeight);
-			var rowWindow = new VirtualViewport(rowCount, rowHeight, viewportHeight,
+			var rowWindow = virtualization.fixed(rowCount, rowHeight, viewportHeight,
 				controller.offsetY);
+			materializedFirst = rowWindow.first;
+			materializedLast = rowWindow.last;
 			var firstColumn = 0;
 			var lastColumn = 0;
 			var beforeWidth = 0.0;
 			var afterWidth = 0.0;
 			var contentWidth = columnCount * columnWidth;
 			if (columnWidths == null) {
-				var fixedColumnWindow = new VirtualViewport(columnCount, columnWidth, viewportWidth,
+				var fixedColumnWindow = virtualization.fixed(columnCount, columnWidth, viewportWidth,
 					controller.offsetX);
 				firstColumn = fixedColumnWindow.first;
 				lastColumn = fixedColumnWindow.last;
 				beforeWidth = firstColumn * columnWidth;
 				afterWidth = (columnCount - lastColumn) * columnWidth;
 			} else {
-				var extentColumnWindow = new VirtualExtentViewport(columnWidths, viewportWidth,
+				var extentColumnWindow = virtualization.variable(columnWidths, viewportWidth,
 					controller.offsetX);
 				firstColumn = extentColumnWindow.first;
 				lastColumn = extentColumnWindow.last;
@@ -117,7 +126,9 @@ class VirtualGrid implements View {
 						rowHeight, columnWidth, columnWidths, firstColumn, lastColumn,
 						beforeWidth, afterWidth, contentWidth, cellBuilder, keyForCell,
 						onCellActivate, cellSelected, onCellKeyDown, onCellBuilt);
-					rowViews.push(new KeyedView('row:$row', gridRow));
+					var rowKey = virtualization.recycleSlots ? 'row-slot:${row - rowWindow.first}' :
+						'row:$row';
+					rowViews.push(new KeyedView(rowKey, gridRow));
 				}
 				var afterHeight = (rowCount - rowWindow.last) * rowHeight;
 				rowViews.push(new KeyedView("after", new Spacer("after-spacer",

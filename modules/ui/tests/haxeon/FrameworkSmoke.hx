@@ -165,6 +165,7 @@ import nativekit.ui.widgets.Utf8Text;
 import nativekit.ui.widgets.VirtualGrid;
 import nativekit.ui.widgets.VirtualList;
 import nativekit.ui.widgets.VirtualExtentViewport;
+import nativekit.ui.widgets.VirtualizationPolicy;
 import nativekit.ui.widgets.VirtualViewport;
 import nativekit.ui.widgets.WindowChrome;
 import nativekit.ui.theme.Theme;
@@ -1289,10 +1290,14 @@ class FrameworkSmoke {
 			120.0, 120.0);
 		var extentAtEnd = new VirtualExtentViewport([40.0, 80.0, 120.0, 60.0],
 			120.0, 1000.0);
+		var policy = new VirtualizationPolicy(2, 3);
+		var policyFixed = policy.fixed(100000, 32.0, 350.0, 414.0 * 32.0);
+		var policyVariable = policy.variable([40.0, 80.0, 120.0, 60.0], 120.0, 120.0);
 		if (extentViewport.totalExtent != 300.0 || extentViewport.first != 1 ||
 			extentViewport.last != 4 || extentViewport.startOffset(2) != 120.0 ||
 			extentViewport.count != 3 || extentAtEnd.offset != 180.0 ||
-			!extentAtEnd.contains(3))
+			!extentAtEnd.contains(3) || policyFixed.first != 412 || policyFixed.last != 428 ||
+			policyVariable.first != 0 || policyVariable.last != 4 || !policy.recycleSlots)
 			return 253;
 		var gridController = new ScrollController();
 		var gridStyle = new LayoutStyle();
@@ -1398,15 +1403,32 @@ class FrameworkSmoke {
 		}, virtualStyle, null, listController, 80.0);
 		var virtualRoot = context.submit(virtualList, new LayoutFrame(256.0, 80.0));
 		var virtualSemantics:Semantics = cast virtualRoot.semantics;
+		var firstVirtualRowId = 0;
+		virtualRoot.walk(function(node) {
+			var semantics:Null<Semantics> = node.semantics;
+			if (semantics != null && semantics.role == AccessibilityRole.CollectionItem &&
+				semantics.positionInSet == 1)
+				firstVirtualRowId = node.id.value;
+		});
 		if (virtualSemantics.role != AccessibilityRole.Collection || virtualSemantics.setSize != 100 ||
 			builtRows.length >= 12 ||
-			listController.maxScrollY != 1920.0)
+			listController.maxScrollY != 1920.0 || virtualList.materializedFirst != 0 ||
+			virtualList.materializedLast != 6 || firstVirtualRowId == 0)
 			return 67;
 		listController.jumpTo(0.0, 500.0);
 		builtRows.resize(0);
 		virtualRoot = context.submit(virtualList, new LayoutFrame(256.0, 80.0));
+		var recycledVirtualRowId = 0;
+		virtualRoot.walk(function(node) {
+			var semantics:Null<Semantics> = node.semantics;
+			if (semantics != null && semantics.role == AccessibilityRole.CollectionItem &&
+				semantics.positionInSet == 25)
+				recycledVirtualRowId = node.id.value;
+		});
 		if (builtRows.length >= 12 || builtRows.length == 0 || builtRows[0] < 24 ||
-			builtRows[0] > 25 || listController.offsetY != 500.0)
+			builtRows[0] > 25 || listController.offsetY != 500.0 ||
+			virtualList.materializedFirst != 24 || virtualList.materializedLast != 31 ||
+			recycledVirtualRowId != firstVirtualRowId)
 			return 68;
 		var largeListController = new ScrollController();
 		var largeVirtualStyle = new LayoutStyle();
@@ -1437,6 +1459,13 @@ class FrameworkSmoke {
 			modelController, 120.0, -1, function(index) { modelSelection = index; });
 		var modelRoot = context.submit(modelList, new LayoutFrame(256.0, 120.0));
 		var modelSemantics:Semantics = cast modelRoot.semantics;
+		var firstModelRowId = 0;
+		modelRoot.walk(function(node) {
+			var semantics:Null<Semantics> = node.semantics;
+			if (semantics != null && semantics.role == AccessibilityRole.CollectionItem &&
+				semantics.positionInSet == 1)
+				firstModelRowId = node.id.value;
+		});
 		var firstModelExtentCalls = model.extentCalls;
 		if (modelSemantics.role != AccessibilityRole.Collection || modelSemantics.setSize != 100000 ||
 			modelBuiltRows.length == 0 || modelBuiltRows.length > 16 || firstModelExtentCalls != 100000 ||
@@ -1445,8 +1474,16 @@ class FrameworkSmoke {
 		modelController.jumpTo(0.0, model.offsetBefore(50000));
 		modelBuiltRows.resize(0);
 		modelRoot = context.submit(modelList, new LayoutFrame(256.0, 120.0));
+		var recycledModelRowId = 0;
+		modelRoot.walk(function(node) {
+			var semantics:Null<Semantics> = node.semantics;
+			if (semantics != null && semantics.role == AccessibilityRole.CollectionItem &&
+				semantics.positionInSet == 50000)
+				recycledModelRowId = node.id.value;
+		});
 		if (modelBuiltRows.length == 0 || modelBuiltRows.length > 16 || modelBuiltRows[0] != 49999 ||
-			model.extentCalls != firstModelExtentCalls)
+			model.extentCalls != firstModelExtentCalls || recycledModelRowId != firstModelRowId ||
+			modelList.materializedFirst != 49999)
 			return 161;
 		if (!modelList.select(50000) || modelList.selectedIndex != 50000 || modelSelection != 50000)
 			return 162;
