@@ -1177,7 +1177,11 @@ NKGPU_API nkgpu_result nkgpu_shader_texture_type(nkgpu_shader_builder builder, u
                                                  nkgpu_image_type image_type,
                                                  const char *name NKGPU_UTF8);
 
-/** Describes a storage-buffer binding with explicit read-only metadata. */
+/**
+ * Describes a storage-buffer binding with explicit read-only metadata.
+ * Metal shader sources bind view slot `n` at `[[buffer(8 + n)]]`; the other
+ * source languages use the view slot directly in their storage-buffer binding.
+ */
 NKGPU_API nkgpu_result nkgpu_shader_storage_buffer(nkgpu_shader_builder builder, uint32_t view_slot,
                                                    nkgpu_shader_stage stage, uint32_t readonly);
 

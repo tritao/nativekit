@@ -2515,7 +2515,7 @@ nkgpu_result nkgpu_shader_storage_buffer(nkgpu_shader_builder h, uint32_t view_s
     binding.readonly = readonly != 0;
     binding.hlsl_register_t_n = static_cast<uint8_t>(view_slot);
     binding.hlsl_register_u_n = static_cast<uint8_t>(view_slot);
-    binding.msl_buffer_n = static_cast<uint8_t>(view_slot);
+    binding.msl_buffer_n = static_cast<uint8_t>(8u + view_slot);
     binding.wgsl_group1_binding_n = static_cast<uint8_t>(view_slot);
     binding.spirv_set1_binding_n = static_cast<uint8_t>(view_slot);
     binding.glsl_binding_n = static_cast<uint8_t>(view_slot);
