@@ -70,13 +70,14 @@ public:
         entry.parent = new_parent;
         if (new_parent.valid()) {
             auto &parent_entry = require(new_parent);
-            const auto previous = last_child(parent_entry);
+            const auto previous = parent_entry.last_child;
             if (previous.valid()) {
                 require(previous).next_sibling = id;
                 entry.prev_sibling = previous;
             } else {
                 parent_entry.first_child = id;
             }
+            parent_entry.last_child = id;
         }
         return true;
     }
@@ -115,6 +116,8 @@ public:
             }
             child = next;
         }
+        entry->first_child = {};
+        entry->last_child = {};
         *entry = {};
     }
 
@@ -125,6 +128,7 @@ private:
         std::uint32_t generation = 0;
         OccurrenceHandle parent;
         OccurrenceHandle first_child;
+        OccurrenceHandle last_child;
         OccurrenceHandle next_sibling;
         OccurrenceHandle prev_sibling;
     };
@@ -150,17 +154,6 @@ private:
         return *entry;
     }
 
-    OccurrenceHandle last_child(const Entry &parent) const noexcept {
-        auto child = parent.first_child;
-        while (child.valid()) {
-            const auto *entry = find(child);
-            if (!entry || !entry->next_sibling.valid())
-                return child;
-            child = entry->next_sibling;
-        }
-        return {};
-    }
-
     void remove_child(OccurrenceHandle parent, OccurrenceHandle child) noexcept {
         auto *parent_entry = find(parent);
         auto *child_entry = find(child);
@@ -174,6 +167,8 @@ private:
                 next->prev_sibling = child_entry->prev_sibling;
         if (parent_entry->first_child == child)
             parent_entry->first_child = child_entry->next_sibling;
+        if (parent_entry->last_child == child)
+            parent_entry->last_child = child_entry->prev_sibling;
         child_entry->prev_sibling = {};
         child_entry->next_sibling = {};
     }

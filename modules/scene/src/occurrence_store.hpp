@@ -72,8 +72,11 @@ public:
 
     template<class Fn>
     void for_each(Fn &&fn) const {
-        for (const auto &[id, handle] : by_id)
-            fn(id, handle);
+        for (std::uint32_t slot = 0; slot < slots.size(); ++slot) {
+            const auto &entry = slots[slot];
+            if (entry.live)
+                fn(entry.id, OccurrenceHandle{slot, entry.generation});
+        }
     }
 
 private:
