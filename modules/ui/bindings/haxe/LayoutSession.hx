@@ -70,7 +70,7 @@ class LayoutSession {
 		return readResolvedItems();
 	}
 
-	/** Updates only transforms and dependent world geometry for the last tree. */
+	/** Updates transforms, retained scene revisions, and dependent world geometry. */
 	public function updateTransforms(root:LayoutNode):Array<ResolvedLayoutItem> {
 		ensureLive();
 		if (root == null)

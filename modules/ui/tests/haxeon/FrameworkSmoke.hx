@@ -2774,7 +2774,7 @@ class FrameworkSmoke {
 		var opacityMetrics:Null<UiFrameMetrics> = context.frameMetrics;
 		if (opacityMetrics == null || opacityMetrics.nativeLayoutSubmitted ||
 			!opacityMetrics.nativeLayoutReused || opacityMetrics.resolvedGeometryChangedNodes != 0 ||
-			opacityMetrics.resolvedGeometryReusedNodes != 2)
+			opacityMetrics.resolvedGeometryReusedNodes != 2 || !opacityMetrics.nativeTransformPatched)
 			return 243;
 		context.setStyleSheet(new StyleSheet("Application"));
 		var spring = new SpringController(0.0, 180.0, 24.0, 1.0, 0.001,

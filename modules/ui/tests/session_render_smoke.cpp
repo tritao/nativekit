@@ -262,6 +262,8 @@ int main() {
     nkui_renderer_stats root_cache_first{};
     nkui_renderer_stats root_cache_repeated{};
     nkui_renderer_stats root_cache_moved{};
+    nkui_renderer_stats root_cache_content_changed{};
+    nkui_renderer_stats root_cache_resized{};
     if (!result) {
         const nkui_result session_result =
             nkui_layout_session_render_frame(renderer, session, surface, &frame_info, 0);
@@ -334,6 +336,50 @@ int main() {
             root_cache_moved.raster_cache_hits <= root_cache_repeated.raster_cache_hits) {
             std::fprintf(stderr, "translated raster subtree missed its retained cache\n");
             result = 18;
+        }
+    }
+
+    /* Content revisions invalidate retained pixels even when geometry is
+     * unchanged. A target-size change must invalidate them independently. */
+    if (!result) {
+        auto content_changed = bytes;
+        const std::size_t root_record = NKUI_LAYOUT_TRANSACTION_HEADER_BYTES;
+        write_float(content_changed, root_record + NKUI_LAYOUT_NODE_TRANSFORM_TX_OFFSET, 32.0f);
+        write_float(content_changed, root_record + NKUI_LAYOUT_NODE_TRANSFORM_TY_OFFSET, 16.0f);
+        write_u32(content_changed,
+                  root_record + NKUI_LAYOUT_NODE_CONTENT_REVISION_OFFSET, 1);
+        if (nkui_layout_session_submit(
+                session, content_changed.data(), static_cast<uint32_t>(content_changed.size()),
+                &frame) != NKUI_OK ||
+            nkui_layout_session_render_frame(renderer, session, surface, &frame_info, 0) !=
+                NKUI_OK ||
+            nkui_renderer_get_stats(renderer, &root_cache_content_changed) != NKUI_OK ||
+            root_cache_content_changed.raster_cache_misses <=
+                root_cache_moved.raster_cache_misses) {
+            std::fprintf(stderr, "content revision did not invalidate the retained raster\n");
+            result = 39;
+        }
+    }
+
+    if (!result) {
+        auto resized = bytes;
+        const std::size_t root_record = NKUI_LAYOUT_TRANSACTION_HEADER_BYTES;
+        write_float(resized, root_record + NKUI_LAYOUT_NODE_TRANSFORM_TX_OFFSET, 32.0f);
+        write_float(resized, root_record + NKUI_LAYOUT_NODE_TRANSFORM_TY_OFFSET, 16.0f);
+        write_u32(resized, root_record + NKUI_LAYOUT_NODE_CONTENT_REVISION_OFFSET, 1);
+        write_float(resized, root_record + NKUI_LAYOUT_NODE_WIDTH_VALUE_OFFSET,
+                    framebuffer_width / pixel_scale + 16.0f);
+        if (nkui_layout_session_submit(
+                session, resized.data(), static_cast<uint32_t>(resized.size()), &frame) !=
+                NKUI_OK ||
+            nkui_layout_session_render_frame(renderer, session, surface, &frame_info, 0) !=
+                NKUI_OK ||
+            nkui_renderer_get_stats(renderer, &root_cache_resized) != NKUI_OK ||
+            root_cache_resized.raster_cache_misses <=
+                root_cache_content_changed.raster_cache_misses) {
+            std::fprintf(stderr,
+                         "raster target size change did not invalidate the retained raster\n");
+            result = 40;
         }
     }
 

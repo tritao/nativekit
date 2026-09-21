@@ -256,7 +256,14 @@ class UiContext {
 					nativeLayoutReused = false;
 			});
 		var resolved:Array<ResolvedLayoutItem> = [];
+		var nativeScenePatchRequired = !styleInvalidation.treeChanged &&
+			!styleInvalidation.nativeLayoutRequired &&
+			UiDirtyFlag.contains(styleInvalidation.invalidationFlags, UiDirtyFlag.NeedsComposite);
 		if (nativeLayoutReused) {
+			if (nativeScenePatchRequired) {
+				session.updateTransforms(next.layout);
+				nativeTransformPatched = true;
+			}
 			next.walk(function(node) {
 				var previous = previousById.get(node.id.value);
 				var previousResolved:Null<ResolvedLayoutItem> = previous == null ? null : previous.resolved;

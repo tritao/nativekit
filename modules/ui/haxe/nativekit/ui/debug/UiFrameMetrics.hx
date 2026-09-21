@@ -21,7 +21,7 @@ class UiFrameMetrics {
 	public final nativeLayoutSubmitted:Bool;
 	/** Whether the previous native layout/render snapshot was reused. */
 	public final nativeLayoutReused:Bool;
-	/** Whether the native snapshot was updated through the transform-only path. */
+	/** Whether the native snapshot was updated through the transform/revision patch path. */
 	public final nativeTransformPatched:Bool;
 	/** Nodes whose resolved geometry changed and notified geometry consumers. */
 	public final resolvedGeometryChangedNodes:Int;
