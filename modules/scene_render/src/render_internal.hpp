@@ -27,6 +27,5 @@ EffectiveState effective_state(const SceneSnapshot &snapshot, const SceneView &v
 std::uint64_t presentation_signature(const SceneView &view) noexcept;
 std::uint64_t view_signature(const SceneView &view) noexcept;
 std::uint64_t culling_signature(const SceneView &view) noexcept;
-std::unordered_map<OccurrenceId, std::size_t> item_indices(const RenderPlan &plan);
 
 } // namespace nkscene::render_internal

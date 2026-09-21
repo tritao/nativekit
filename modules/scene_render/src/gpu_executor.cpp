@@ -198,18 +198,14 @@ ClipUniformData clip_uniform_data(const RenderPlan &plan) {
 
 std::vector<DesiredBatch> desired_batches(const RenderPlan &plan) {
     std::vector<DesiredBatch> result;
-    std::unordered_map<OccurrenceId, std::size_t> item_indices;
-    item_indices.reserve(plan.items().size());
-    for (std::size_t index = 0; index < plan.items().size(); ++index)
-        item_indices.emplace(plan.items()[index].occurrence, index);
-
     for (const auto &batch : plan.batches()) {
         DesiredBatch desired{{batch.geometry, batch.material}};
         const auto transforms = plan.transforms();
         for (const auto occurrence : batch.instances) {
-            const auto item_index = item_indices.find(occurrence);
-            const auto *item =
-                item_index == item_indices.end() ? nullptr : &plan.items()[item_index->second];
+            const auto item_index = plan.item_index(occurrence);
+            const auto *item = item_index == static_cast<std::size_t>(-1)
+                                   ? nullptr
+                                   : &plan.items()[item_index];
             if (!item || has_render_flag(item->flags, RenderFlags::Hidden) ||
                 has_render_flag(item->flags, RenderFlags::Culled) ||
                 item->transformIndex >= transforms.size())
