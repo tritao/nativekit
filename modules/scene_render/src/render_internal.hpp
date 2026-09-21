@@ -17,6 +17,8 @@ void rebuild_batches(RenderPlan &plan);
 std::size_t move_item_batch(RenderPlan &plan, std::size_t item_index, GeometryId geometry,
                             MaterialId material);
 void build_items(RenderPlan &plan, const SceneSnapshot &snapshot, const SceneView &view);
+void update_ancestor_index(RenderPlan &plan, const SceneSnapshot &snapshot,
+                           const ChangeSet &changes);
 bool culled_by_camera(const Bounds &bounds, const SceneCamera &camera) noexcept;
 SceneCamera camera_for_snapshot(const SceneSnapshot &snapshot, const SceneView &view) noexcept;
 bool culled_by_clip_planes(const Bounds &bounds, std::span<const ClipPlane> planes) noexcept;

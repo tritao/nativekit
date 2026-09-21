@@ -322,6 +322,28 @@ void scene_views_are_hierarchy_aware() {
     assert(update.plan_rebuilt);
     assert(plan.items().size() == 1);
     assert(plan.items().front().occurrence == leaf);
+
+    plan = nkscene::compile(hidden_snapshot, full_view);
+    Transaction reparent_leaf(scene);
+    reparent_leaf.add_parent(leaf, sibling);
+    assert(scene->commit(reparent_leaf, changes) == NKS_OK);
+    reparent_leaf.close();
+    const auto reparented_snapshot = scene->snapshot();
+    update = nkscene::update(plan, reparented_snapshot, changes, full_view);
+    assert(!update.plan_rebuilt);
+    assert(update.patched_visibility == 1);
+    assert(!nkscene::has_render_flag(find_item(plan, leaf)->flags,
+                                     nkscene::RenderFlags::Hidden));
+
+    nkscene::SceneView hide_new_parent = full_view;
+    hide_new_parent.visibility_overrides.push_back({sibling, false});
+    update = nkscene::refresh(plan, reparented_snapshot, hide_new_parent);
+    assert(!update.plan_rebuilt);
+    assert(update.patched_visibility == 2);
+    assert(nkscene::has_render_flag(find_item(plan, sibling)->flags,
+                                    nkscene::RenderFlags::Hidden));
+    assert(nkscene::has_render_flag(find_item(plan, leaf)->flags,
+                                    nkscene::RenderFlags::Hidden));
 }
 
 void scene_view_source_filters_are_incremental() {

@@ -1,5 +1,6 @@
 #include "render_internal.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <functional>
@@ -382,9 +383,10 @@ void build_items(RenderPlan &plan, const SceneSnapshot &snapshot, const SceneVie
     plan.items_.clear();
     plan.transforms_.clear();
     plan.item_sources_.clear();
+    plan.item_ancestors_.clear();
     plan.item_by_occurrence_.clear();
     plan.items_by_source_.clear();
-    plan.items_by_parent_.clear();
+    plan.items_by_ancestor_.clear();
     plan.items_by_geometry_.clear();
     plan.items_by_material_.clear();
     plan.visible_items_ = 0;
@@ -393,6 +395,7 @@ void build_items(RenderPlan &plan, const SceneSnapshot &snapshot, const SceneVie
     plan.items_.reserve(snapshot.occurrences().size());
     plan.transforms_.reserve(snapshot.occurrences().size());
     plan.item_sources_.reserve(snapshot.occurrences().size());
+    plan.item_ancestors_.reserve(snapshot.occurrences().size());
     for (const auto &occurrence : snapshot.occurrences()) {
         if (!occurrence.geometry.valid() || !occurrence.material.valid() ||
             !snapshot.find_geometry(occurrence.geometry) ||
@@ -420,12 +423,59 @@ void build_items(RenderPlan &plan, const SceneSnapshot &snapshot, const SceneVie
         const auto item_index = plan.items_.size();
         plan.items_.push_back(item);
         plan.item_sources_.push_back(occurrence.source);
+        plan.item_ancestors_.emplace_back();
         plan.item_by_occurrence_.emplace(item.occurrence, item_index);
         plan.items_by_source_[occurrence.source].push_back(item_index);
-        if (occurrence.parent.valid())
-            plan.items_by_parent_[occurrence.parent].push_back(item_index);
         plan.items_by_geometry_[item.geometry].push_back(item_index);
         plan.items_by_material_[item.material].push_back(item_index);
+
+        auto ancestor = item.occurrence;
+        while (ancestor.valid()) {
+            plan.item_ancestors_[item_index].push_back(ancestor);
+            plan.items_by_ancestor_[ancestor].push_back(item_index);
+            const auto *value = snapshot.find(ancestor);
+            if (!value)
+                break;
+            ancestor = value->parent;
+        }
+    }
+}
+
+void update_ancestor_index(RenderPlan &plan, const SceneSnapshot &snapshot,
+                           const ChangeSet &changes) {
+    std::unordered_set<std::size_t> affected_items;
+    const auto add_item = [&plan, &affected_items](OccurrenceId occurrence) {
+        const auto found = plan.item_by_occurrence_.find(occurrence);
+        if (found != plan.item_by_occurrence_.end())
+            affected_items.insert(found->second);
+    };
+    for (const auto &change : changes.changes)
+        add_item(change.occurrence);
+    for (const auto occurrence : changes.world_transform_occurrences)
+        add_item(occurrence);
+    for (const auto occurrence : changes.effective_state_occurrences)
+        add_item(occurrence);
+
+    for (const auto item_index : affected_items) {
+        for (const auto ancestor : plan.item_ancestors_[item_index]) {
+            const auto found = plan.items_by_ancestor_.find(ancestor);
+            if (found == plan.items_by_ancestor_.end())
+                continue;
+            auto &items = found->second;
+            items.erase(std::remove(items.begin(), items.end(), item_index), items.end());
+            if (items.empty())
+                plan.items_by_ancestor_.erase(found);
+        }
+        plan.item_ancestors_[item_index].clear();
+        auto ancestor = plan.items_[item_index].occurrence;
+        while (ancestor.valid()) {
+            plan.item_ancestors_[item_index].push_back(ancestor);
+            plan.items_by_ancestor_[ancestor].push_back(item_index);
+            const auto *value = snapshot.find(ancestor);
+            if (!value)
+                break;
+            ancestor = value->parent;
+        }
     }
 }
 

@@ -250,6 +250,8 @@ void build_items(RenderPlan &plan, const SceneSnapshot &snapshot, const SceneVie
 std::size_t move_item_batch(RenderPlan &plan, std::size_t item_index, GeometryId geometry,
                             MaterialId material);
 void capture_view_policy(RenderPlan &plan, const SceneView &view);
+void update_ancestor_index(RenderPlan &plan, const SceneSnapshot &snapshot,
+                           const ChangeSet &changes);
 } // namespace render_internal
 
 struct VisibilityOverride {
@@ -607,10 +609,11 @@ class RenderPlan {
     std::vector<RenderItem> items_;
     std::vector<WorldTransform> transforms_;
     std::vector<EntityId> item_sources_;
+    std::vector<std::vector<OccurrenceId>> item_ancestors_;
     std::vector<InstanceBatch> batches_;
     std::unordered_map<OccurrenceId, std::size_t> item_by_occurrence_;
     std::unordered_map<EntityId, std::vector<std::size_t>> items_by_source_;
-    std::unordered_map<OccurrenceId, std::vector<std::size_t>> items_by_parent_;
+    std::unordered_map<OccurrenceId, std::vector<std::size_t>> items_by_ancestor_;
     std::unordered_map<GeometryId, std::vector<std::size_t>> items_by_geometry_;
     std::unordered_map<MaterialId, std::vector<std::size_t>> items_by_material_;
     std::unordered_map<GeometryId, std::vector<std::size_t>> batches_by_geometry_;
@@ -655,6 +658,9 @@ class RenderPlan {
     friend void render_internal::capture_view_policy(RenderPlan &plan, const SceneView &view);
     friend void render_internal::build_items(RenderPlan &plan, const SceneSnapshot &snapshot,
                                              const SceneView &view);
+    friend void render_internal::update_ancestor_index(RenderPlan &plan,
+                                                       const SceneSnapshot &snapshot,
+                                                       const ChangeSet &changes);
 };
 
 NKSRENDER_API RenderPlan compile(const SceneSnapshot &snapshot, const SceneView &view);

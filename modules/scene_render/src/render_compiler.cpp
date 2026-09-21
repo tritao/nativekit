@@ -166,8 +166,9 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
         has_domain_in(changes, ChangeDomain::Visibility) ||
         has_domain_in(changes, ChangeDomain::Material) ||
         has_domain_in(changes, ChangeDomain::Source);
+    const bool hierarchy_changed = has_domain_in(changes, ChangeDomain::Hierarchy);
     const bool scene_hierarchy_or_source_change =
-        has_domain_in(changes, ChangeDomain::Hierarchy) ||
+        hierarchy_changed ||
         has_domain_in(changes, ChangeDomain::Source);
     const bool current_global_policy =
         view.include_invisible || !view.filter.isolated_sources.empty() ||
@@ -283,10 +284,7 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
     }
     if (topology_changed || plan.source_revision() > snapshot.revision() ||
         plan.view_root_ != view.root || invalidated_items != 0 ||
-        (view.root.valid() &&
-         std::any_of(changes.changes.begin(), changes.changes.end(), [](const SceneChange &change) {
-             return has_domain(change.domains, ChangeDomain::Hierarchy);
-         }))) {
+        (view.root.valid() && hierarchy_changed)) {
         plan = compile(snapshot, view);
         result.plan_rebuilt = true;
         result.invalidated_items = invalidated_items;
@@ -294,6 +292,9 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
         result.culled_items = plan.culled_items_;
         return result;
     }
+
+    if (hierarchy_changed)
+        render_internal::update_ancestor_index(plan, snapshot, changes);
 
     result.updated_geometry_resources = changed_geometry_resources.size();
     result.updated_material_resources = changed_material_resources.size();
@@ -432,15 +433,16 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
 
         std::vector<std::size_t> local_items;
         std::unordered_set<std::size_t> local_item_set;
-        const auto add_subtree = [&](OccurrenceId occurrence, const auto &self) -> void {
-            const auto item_index = plan.item_index(occurrence);
-            if (item_index != invalid_item_index && local_item_set.insert(item_index).second)
-                local_items.push_back(item_index);
-            for (const auto child : snapshot.children(occurrence))
-                self(child, self);
+        const auto add_ancestor_items = [&](OccurrenceId occurrence) {
+            const auto found = plan.items_by_ancestor_.find(occurrence);
+            if (found == plan.items_by_ancestor_.end())
+                return;
+            for (const auto item_index : found->second)
+                if (local_item_set.insert(item_index).second)
+                    local_items.push_back(item_index);
         };
         for (const auto occurrence : local_targets)
-            add_subtree(occurrence, add_subtree);
+            add_ancestor_items(occurrence);
 
         std::unordered_map<OccurrenceId, bool> desired_visibility;
         const auto visible = [&](OccurrenceId occurrence, const auto &self) -> bool {
@@ -509,10 +511,12 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
             if (item_index != invalid_item_index)
                 target_items.insert(item_index);
         };
-        const auto add_subtree = [&](OccurrenceId occurrence, const auto &self) -> void {
-            add_item(occurrence);
-            for (const auto child : snapshot.children(occurrence))
-                self(child, self);
+        const auto add_ancestor_items = [&](OccurrenceId occurrence) {
+            const auto found = plan.items_by_ancestor_.find(occurrence);
+            if (found == plan.items_by_ancestor_.end())
+                return;
+            for (const auto item_index : found->second)
+                target_items.insert(item_index);
         };
 
         std::unordered_set<EntityId> policy_sources;
@@ -524,13 +528,13 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
             policy_sources.insert(override.source);
         for (const auto source : policy_sources)
             for (const auto occurrence : snapshot.occurrences_for_source(source))
-                add_subtree(occurrence, add_subtree);
+                add_ancestor_items(occurrence);
 
         for (const auto occurrence : changes.effective_state_occurrences)
-            add_subtree(occurrence, add_subtree);
+            add_ancestor_items(occurrence);
         for (const auto &change : changes.changes) {
             if (has_domain(change.domains, ChangeDomain::Visibility))
-                add_subtree(change.occurrence, add_subtree);
+                add_ancestor_items(change.occurrence);
             else if (has_domain(change.domains, ChangeDomain::Material))
                 add_item(change.occurrence);
         }
@@ -599,22 +603,24 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
             if (item_index != invalid_item_index)
                 target_items.insert(item_index);
         };
-        const auto add_subtree = [&](OccurrenceId occurrence, const auto &self) -> void {
-            add_item(occurrence);
-            for (const auto child : snapshot.children(occurrence))
-                self(child, self);
+        const auto add_ancestor_items = [&](OccurrenceId occurrence) {
+            const auto found = plan.items_by_ancestor_.find(occurrence);
+            if (found == plan.items_by_ancestor_.end())
+                return;
+            for (const auto item_index : found->second)
+                target_items.insert(item_index);
         };
         for (const auto occurrence : previous_keep)
             if (!current_keep.contains(occurrence))
-                add_subtree(occurrence, add_subtree);
+                add_ancestor_items(occurrence);
         for (const auto occurrence : current_keep)
             if (!previous_keep.contains(occurrence))
-                add_subtree(occurrence, add_subtree);
+                add_ancestor_items(occurrence);
         for (const auto occurrence : changes.effective_state_occurrences)
-            add_subtree(occurrence, add_subtree);
+            add_ancestor_items(occurrence);
         for (const auto &change : changes.changes) {
             if (has_domain(change.domains, ChangeDomain::Visibility))
-                add_subtree(change.occurrence, add_subtree);
+                add_ancestor_items(change.occurrence);
             else if (has_domain(change.domains, ChangeDomain::Material))
                 add_item(change.occurrence);
         }
