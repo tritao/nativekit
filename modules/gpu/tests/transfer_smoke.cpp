@@ -495,9 +495,15 @@ int main() {
     window_options.width = 64;
     window_options.height = 64;
     window_options.title = "NativeKit GPU transfer smoke";
+    const nk_graphics_api requested_api =
+#if defined(NKGPU_TRANSFER_SMOKE_GLES3)
+        NK_GRAPHICS_OPENGL_ES;
+#else
+        nkgpu_default_graphics_api();
+#endif
     if (nk_window_create(&window_options, &resources.window) != NK_OK ||
-        nkgpu_surface_create(resources.window, window_options.width, window_options.height,
-                             &resources.surface) != NKGPU_OK ||
+        nkgpu_surface_create_for_api(resources.window, requested_api, window_options.width,
+                                     window_options.height, &resources.surface) != NKGPU_OK ||
         !wait_for_surface(resources.surface) ||
         !expect_result(nkgpu_renderer_create(resources.surface, &resources.renderer), NKGPU_OK,
                        "nkgpu_renderer_create"))

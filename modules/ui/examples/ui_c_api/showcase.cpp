@@ -257,6 +257,148 @@ struct WebShowcase {
     int framebuffer_height = 0;
     int result = 0;
 
+    bool gpu_offscreen_smoke() {
+        nkgpu_renderer gpu{};
+        if (nkgpu_renderer_create(surface, &gpu) != NKGPU_OK)
+            return false;
+
+        nkgpu_features features{};
+        features.struct_size = sizeof(features);
+        if (nkgpu_query_features(gpu, &features) != NKGPU_OK || !features.image_readback) {
+            nkgpu_renderer_destroy(gpu);
+            return false;
+        }
+
+        const nkgpu_image_format formats[] = {
+            NKGPU_IMAGEFORMAT_RGBA8,
+            NKGPU_IMAGEFORMAT_RGBA16F,
+            NKGPU_IMAGEFORMAT_R32F,
+            NKGPU_IMAGEFORMAT_R32_UINT,
+            NKGPU_IMAGEFORMAT_DEPTH32F,
+        };
+        bool success = true;
+        for (const nkgpu_image_format format : formats) {
+            nkgpu_image_format_support support{};
+            support.struct_size = sizeof(support);
+            if (nkgpu_query_image_format_support(gpu, format, &support) != NKGPU_OK) {
+                success = false;
+                break;
+            }
+
+            const bool depth = format == NKGPU_IMAGEFORMAT_DEPTH32F;
+            const bool renderable = depth ? support.depth_stencil != 0
+                                          : support.render_target != 0;
+            const bool required = format == NKGPU_IMAGEFORMAT_RGBA8;
+            if (!renderable || !support.sampled) {
+                if (required)
+                    success = false;
+                continue;
+            }
+
+            nkgpu_image_desc image_desc{};
+            image_desc.struct_size = sizeof(image_desc);
+            image_desc.width = 2;
+            image_desc.height = 2;
+            image_desc.format = format;
+            image_desc.usage = NKGPU_IMAGE_SAMPLED |
+                               (depth ? NKGPU_IMAGE_DEPTH_STENCIL
+                                      : NKGPU_IMAGE_RENDER_TARGET);
+            nkgpu_image source{};
+            nkgpu_image destination{};
+            nkgpu_readback readback{};
+            if (nkgpu_image_create_desc(gpu, &image_desc, &source) != NKGPU_OK)
+                success = false;
+
+            nkgpu_render_pass_desc pass{};
+            pass.struct_size = sizeof(pass);
+            if (success) {
+                if (depth) {
+                    pass.depth_stencil = source;
+                    pass.depth_stencil_action.load_action = NKGPU_LOADACTION_CLEAR;
+                    pass.depth_stencil_action.store_action = NKGPU_STOREACTION_STORE;
+                    pass.depth_stencil_action.clear_depth = 1.0f;
+                } else {
+                    pass.color_count = 1;
+                    pass.colors[0].image = source;
+                    pass.colors[0].action.load_action = NKGPU_LOADACTION_CLEAR;
+                    pass.colors[0].action.store_action = NKGPU_STOREACTION_STORE;
+                    pass.colors[0].action.clear_color = {0.0f, 0.0f, 0.0f, 0.0f};
+                }
+                success = nkgpu_frame_begin(gpu) == NKGPU_OK &&
+                          nkgpu_begin_render_pass(gpu, &pass) == NKGPU_OK &&
+                          nkgpu_end_pass(gpu) == NKGPU_OK &&
+                          nkgpu_end_frame(gpu) == NKGPU_OK;
+            }
+
+            if (success) {
+                image_desc.data = nullptr;
+                image_desc.data_size = 0;
+                success = nkgpu_image_create_desc(gpu, &image_desc, &destination) == NKGPU_OK;
+            }
+
+            if (success) {
+                nkgpu_image_copy_desc copy{};
+                copy.struct_size = sizeof(copy);
+                copy.source = source;
+                copy.destination = destination;
+                copy.width = 2;
+                copy.height = 2;
+                success = nkgpu_image_copy(gpu, &copy) == NKGPU_OK;
+            }
+
+            if (success) {
+                nkgpu_image_readback_desc readback_desc{};
+                readback_desc.struct_size = sizeof(readback_desc);
+                readback_desc.image = destination;
+                readback_desc.width = 2;
+                readback_desc.height = 2;
+                success = nkgpu_readback_begin_image(gpu, &readback_desc, &readback) == NKGPU_OK;
+            }
+
+            nkgpu_readback_info readback_info{};
+            if (success) {
+                readback_info.struct_size = sizeof(readback_info);
+                for (int poll = 0; poll != 1000; ++poll) {
+                    if (nkgpu_readback_query(gpu, readback, &readback_info) != NKGPU_OK) {
+                        success = false;
+                        break;
+                    }
+                    if (readback_info.state != NKGPU_READBACK_PENDING)
+                        break;
+                }
+                success = success && readback_info.state == NKGPU_READBACK_READY &&
+                          readback_info.size == 2 * 2 * (depth ? 4u :
+                                                        format == NKGPU_IMAGEFORMAT_RGBA16F ? 8u
+                                                        : 4u);
+            }
+
+            if (success) {
+                uint8_t pixels[64]{};
+                uint32_t size = 0;
+                success = nkgpu_readback_read(gpu, readback, pixels, sizeof(pixels), &size) ==
+                              NKGPU_OK &&
+                          size == readback_info.size;
+                if (success && depth) {
+                    uint32_t depth_bits = 0;
+                    std::memcpy(&depth_bits, pixels, sizeof(depth_bits));
+                    success = depth_bits == 0x3f800000u;
+                }
+            }
+
+            if (readback.id)
+                nkgpu_readback_destroy(gpu, readback);
+            if (destination.id)
+                nkgpu_image_destroy(gpu, destination);
+            if (source.id)
+                nkgpu_image_destroy(gpu, source);
+            if (!success)
+                break;
+        }
+
+        nkgpu_renderer_destroy(gpu);
+        return success;
+    }
+
     static void NK_CALL draw_frame(nk_surface surface, int32_t width, int32_t height,
                                    void *user_data) {
         auto &app = *static_cast<WebShowcase *>(user_data);
@@ -469,6 +611,10 @@ struct WebShowcase {
                             width > 0 && height > 0;
             if (!surface_ready) {
                 result = 4;
+                return;
+            }
+            if (smoke && !gpu_offscreen_smoke()) {
+                result = 10;
                 return;
             }
             framebuffer_width = width;
