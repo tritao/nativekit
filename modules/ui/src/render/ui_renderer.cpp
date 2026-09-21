@@ -1310,8 +1310,7 @@ bool create_shader(UiRendererImpl::State &state, UiShaderKind kind, nkgpu_shader
     }
     if (!gpu_result(
             state, nkgpu_shader_uniform_block(builder, 0, NKGPU_SHADERSTAGE_VERTEX, vertex_size)) ||
-        !add_uniform(state, builder, 0, 0, vertex_block, NKGPU_UNIFORMTYPE_FLOAT4,
-                     1))
+        !add_uniform(state, builder, 0, 0, vertex_block, NKGPU_UNIFORMTYPE_FLOAT4, 1))
         return false;
     if (fragment_block &&
         (!gpu_result(state, nkgpu_shader_uniform_block(builder, 1, NKGPU_SHADERSTAGE_FRAGMENT,

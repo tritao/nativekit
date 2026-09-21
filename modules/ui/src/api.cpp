@@ -3458,9 +3458,8 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
                                 static_cast<uint64_t>(surface_slot->surface->generation());
                             valid = frame_resources.bind_graphics_image(command.resource, published,
                                                                         generation);
-                            if (valid &&
-                                !owned_resources.bind_graphics_image(command.resource, published,
-                                                                    generation))
+                            if (valid && !owned_resources.bind_graphics_image(
+                                             command.resource, published, generation))
                                 sealable = false;
                         } else {
                             /* External surfaces must publish a retained graphics image. */
@@ -3932,9 +3931,8 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                                 static_cast<uint64_t>(surface_slot->surface->generation());
                             valid = frame_resources.bind_graphics_image(command.resource, published,
                                                                         generation);
-                            if (valid &&
-                                !owned_resources.bind_graphics_image(command.resource, published,
-                                                                    generation))
+                            if (valid && !owned_resources.bind_graphics_image(
+                                             command.resource, published, generation))
                                 sealable = false;
                         } else {
                             /* External surfaces must publish a retained graphics image. */

@@ -22,10 +22,11 @@ SealedRenderPlan::seal(RenderPlan plan, OwnedFrameResources resources, RenderPla
     for (const auto &dependency : plan.dependencies) {
         if (internal_targets.count(dependency.producer.value))
             continue;
-        if (resources.graphics_image(dependency.producer))
-            continue;
-        fail(error, "sealed render plans require retained graphics images for external surfaces");
-        return nullptr;
+        if (!resources.graphics_image(dependency.producer)) {
+            fail(error,
+                 "sealed render plans require retained graphics images for external surfaces");
+            return nullptr;
+        }
     }
     if (error)
         error->message = nullptr;
