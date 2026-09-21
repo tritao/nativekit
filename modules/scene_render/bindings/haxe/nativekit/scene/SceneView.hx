@@ -11,6 +11,7 @@ class SceneView {
 	var selectionOverrides:Array<nkscene_render_material_override> = [];
 	var hoverOverrides:Array<nkscene_render_material_override> = [];
 	var isolatedSources:Array<nkscene_entity_id> = [];
+	var isolatedOccurrences:Array<nkscene_occurrence_id> = [];
 	var sourceVisibilityOverrides:Array<nkscene_render_source_visibility_override> = [];
 	var sourceMaterialOverrides:Array<nkscene_render_source_material_override> = [];
 	var clipPlanes:Array<nkscene_render_clip_plane> = [];
@@ -164,6 +165,33 @@ class SceneView {
 		return this;
 	}
 
+	/** Adds or removes an explicit occurrence from the isolation set. */
+	public function setIsolatedOccurrence(occurrence:Occurrence,
+			isolated:Bool):SceneView {
+		var stable = occurrence.stableValue();
+		for (index in 0...isolatedOccurrences.length) {
+			if (isolatedOccurrences[index].get_value() == stable) {
+				if (!isolated)
+					isolatedOccurrences.splice(index, 1);
+				value.set_isolated_occurrences(isolatedOccurrences);
+				return this;
+			}
+		}
+		if (isolated)
+			isolatedOccurrences.push(occurrence.nativeValue());
+		value.set_isolated_occurrences(isolatedOccurrences);
+		return this;
+	}
+
+	/** Clears source and explicit occurrence isolation while preserving rules. */
+	public function clearIsolation():SceneView {
+		isolatedSources.resize(0);
+		isolatedOccurrences.resize(0);
+		value.set_isolated_sources(isolatedSources);
+		value.set_isolated_occurrences(isolatedOccurrences);
+		return this;
+	}
+
 	public function clearSourceFilter():SceneView {
 		isolatedSources.resize(0);
 		sourceVisibilityOverrides.resize(0);
@@ -192,6 +220,7 @@ class SceneView {
 		selectionOverrides.resize(0);
 		hoverOverrides.resize(0);
 		isolatedSources.resize(0);
+		isolatedOccurrences.resize(0);
 		sourceVisibilityOverrides.resize(0);
 		sourceMaterialOverrides.resize(0);
 		value.set_visibility_overrides(visibilityOverrides);
@@ -199,6 +228,7 @@ class SceneView {
 		value.set_selection_overrides(selectionOverrides);
 		value.set_hover_overrides(hoverOverrides);
 		value.set_isolated_sources(isolatedSources);
+		value.set_isolated_occurrences(isolatedOccurrences);
 		value.set_source_visibility_overrides(sourceVisibilityOverrides);
 		value.set_source_material_overrides(sourceMaterialOverrides);
 		return this;
@@ -253,6 +283,9 @@ class SceneView {
 
 	public function isolatedSourceCount():Int
 		return isolatedSources.length;
+
+	public function isolatedOccurrenceCount():Int
+		return isolatedOccurrences.length;
 
 	public function sourceVisibilityOverrideCount():Int
 		return sourceVisibilityOverrides.length;

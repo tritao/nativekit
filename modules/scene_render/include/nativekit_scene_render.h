@@ -97,6 +97,9 @@ typedef struct nkscene_render_view {
     const nkscene_render_source_material_override *
         source_material_overrides NK_BORROWED_ARRAY(source_material_override_count);
     uint32_t source_material_override_count;
+    const nkscene_occurrence_id *isolated_occurrences
+        NK_BORROWED_ARRAY(isolated_occurrence_count);
+    uint32_t isolated_occurrence_count;
 } nkscene_render_view;
 
 typedef struct nkscene_render_update {
@@ -296,6 +299,8 @@ struct SceneView {
     std::vector<SourceVisibilityOverride> source_visibility_overrides;
     /** Source-level base material rules below occurrence and interaction layers. */
     std::vector<SourceMaterialOverride> source_material_overrides;
+    /** Explicit occurrences retained by isolation filters, including subtrees. */
+    std::vector<OccurrenceId> isolated_occurrences;
     /** Optional world-to-clip transform used for bounds culling and rendering. */
     SceneCamera camera;
     /** Conservative occurrence-level sectioning planes. */
@@ -349,6 +354,15 @@ struct SceneView {
             found->material = material;
         else
             source_material_overrides.push_back({source, material});
+    }
+
+    void set_isolated_occurrence(OccurrenceId occurrence, bool isolated) {
+        const auto found = std::find(isolated_occurrences.begin(), isolated_occurrences.end(),
+                                     occurrence);
+        if (isolated && found == isolated_occurrences.end())
+            isolated_occurrences.push_back(occurrence);
+        else if (!isolated && found != isolated_occurrences.end())
+            isolated_occurrences.erase(found);
     }
 
     void clear_selection_material_overrides() noexcept { selection_material_overrides.clear(); }

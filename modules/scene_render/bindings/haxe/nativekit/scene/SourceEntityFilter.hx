@@ -93,6 +93,18 @@ class SourceEntityFilter {
 	public function isolationRuleCount():Int
 		return isolatedSources.length;
 
+	/** Applies the source rules directly to a reusable view. */
+	public function applyTo(view:SceneView):SceneView {
+		view.clearSourceFilter();
+		for (index in 0...visibilitySources.length)
+			view.setSourceVisibility(visibilitySources[index], visibilityValues[index]);
+		for (index in 0...materialSources.length)
+			view.setSourceMaterial(materialSources[index], materialValues[index]);
+		for (source in isolatedSources)
+			view.setIsolatedSource(source, true);
+		return view;
+	}
+
 	/** Applies declarative source rules to a view policy. */
 	public function apply(snapshot:Snapshot, policy:SceneViewPolicy):SceneViewPolicy {
 		for (index in 0...visibilitySources.length) {

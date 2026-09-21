@@ -317,6 +317,74 @@ void scene_views_are_hierarchy_aware() {
     assert(plan.items().front().occurrence == leaf);
 }
 
+void scene_view_source_filters_are_incremental() {
+    auto scene = std::make_shared<Scene>();
+    const auto geometry = scene->reserve_geometry_id();
+    scene->geometry_store().create(geometry);
+    const auto material_one = scene->reserve_material_id();
+    const auto material_two = scene->reserve_material_id();
+    scene->material_store().create(material_one);
+    scene->material_store().create(material_two);
+
+    const auto first = scene->reserve_occurrence_id();
+    const auto second = scene->reserve_occurrence_id();
+    Transaction create(scene);
+    create.add_create(first);
+    create.add_create(second);
+    ChangeSet changes;
+    assert(scene->commit(create, changes) == NKS_OK);
+    create.close();
+
+    Transaction configure(scene);
+    configure.add_geometry(first, geometry);
+    configure.add_material(first, material_one);
+    configure.add_source_entity(first, nkscene::EntityId{42});
+    configure.add_geometry(second, geometry);
+    configure.add_material(second, material_one);
+    configure.add_source_entity(second, nkscene::EntityId{84});
+    assert(scene->commit(configure, changes) == NKS_OK);
+    configure.close();
+
+    const auto snapshot = scene->snapshot();
+    nkscene::SceneView base_view;
+    auto plan = nkscene::compile(snapshot, base_view);
+    nkscene::SceneView source_view = base_view;
+    source_view.source_visibility_overrides.push_back(
+        {nkscene::EntityId{84}, false});
+    source_view.source_material_overrides.push_back(
+        {nkscene::EntityId{42}, material_two});
+    auto filter_update = nkscene::refresh(plan, snapshot, source_view);
+    assert(!filter_update.plan_rebuilt);
+    assert(filter_update.patched_visibility == 1);
+    assert(filter_update.patched_materials == 1);
+    assert(filter_update.updated_geometry_resources == 0);
+    assert(filter_update.updated_material_resources == 0);
+
+    Transaction change_source(scene);
+    change_source.add_source_entity(second, nkscene::EntityId{42});
+    assert(scene->commit(change_source, changes) == NKS_OK);
+    change_source.close();
+    const auto changed_snapshot = scene->snapshot();
+    const auto source_update = nkscene::update(plan, changed_snapshot, changes, source_view);
+    assert(!source_update.plan_rebuilt);
+    assert(source_update.patched_visibility == 1);
+    assert(source_update.patched_materials == 1);
+    assert(source_update.updated_geometry_resources == 0);
+    assert(source_update.updated_material_resources == 0);
+
+    const auto find_item = [&](nkscene::OccurrenceId occurrence) {
+        return std::find_if(plan.items().begin(), plan.items().end(),
+                            [occurrence](const nkscene::RenderItem &item) {
+                                return item.occurrence == occurrence;
+                            });
+    };
+    const auto second_item = find_item(second);
+    assert(second_item != plan.items().end());
+    assert(second_item->material == material_two);
+    assert(!nkscene::has_render_flag(second_item->flags,
+                                     nkscene::RenderFlags::Hidden));
+}
+
 void scene_view_camera_culling_is_incremental() {
     auto scene = std::make_shared<Scene>();
     const auto geometry = scene->reserve_geometry_id();
@@ -546,6 +614,7 @@ int main() {
     geometry_payload_contract_is_validated();
     resource_lifecycle_is_cache_safe();
     scene_views_are_hierarchy_aware();
+    scene_view_source_filters_are_incremental();
     scene_view_camera_culling_is_incremental();
     scene_view_clip_planes_are_incremental();
     spatial_queries_and_cpu_picking_are_snapshot_bound();

@@ -283,6 +283,54 @@ class Main {
 			|| haxe.Int64.toInt(isolationExecution.get_commands()) != 1
 			|| haxe.Int64.toInt(isolationBaseExecution.get_commands()) != 2) return 31;
 		isolationRenderer.dispose();
+		var presentationView = new SceneView().setRoot(group).setViewProjection(Transform.identity()),
+			presentationRenderer = SceneRenderer.createHeadless(),
+			sourcePresentation = ScenePresentation.create(presentationView, highlight, hoverHighlight);
+		sourcePresentation.select(first, SelectionMode.Replace);
+		sourcePresentation.hideSource(haxe.Int64.ofInt(84));
+		var sourcePresentationExecution = sourcePresentation.render(presentationRenderer, snapshot),
+			sourcePresentationUpdate = presentationRenderer.lastUpdate();
+		if (presentationView.sourceVisibilityOverrideCount() != 1
+			|| presentationView.isolatedSourceCount() != 0
+			|| presentationView.selectionOverrideCount() != 1
+			|| sourcePresentationUpdate != null
+			|| haxe.Int64.toInt(sourcePresentationExecution.get_commands()) != 1) return 32;
+		sourcePresentation.isolateSelection(snapshot);
+		var selectedIsolationExecution = sourcePresentation.render(presentationRenderer, snapshot),
+			selectedIsolationUpdate = presentationRenderer.lastUpdate();
+		if (presentationView.isolatedSourceCount() != 1
+			|| selectedIsolationUpdate == null
+			|| selectedIsolationUpdate.get_plan_rebuilt() != 0
+			|| haxe.Int64.toInt(selectedIsolationUpdate.get_patched_visibility()) != 0
+			|| haxe.Int64.toInt(selectedIsolationExecution.get_commands()) != 1) return 32;
+		sourcePresentation.clearIsolation();
+		var clearedIsolationExecution = sourcePresentation.render(presentationRenderer, snapshot),
+			clearedIsolationUpdate = presentationRenderer.lastUpdate();
+		if (presentationView.isolatedSourceCount() != 0
+			|| clearedIsolationUpdate == null
+			|| clearedIsolationUpdate.get_plan_rebuilt() != 0
+			|| haxe.Int64.toInt(clearedIsolationExecution.get_commands()) != 1) return 32;
+		sourcePresentation.clearSourceFilter();
+		var restoredPresentationExecution = sourcePresentation.render(presentationRenderer, snapshot),
+			restoredPresentationUpdate = presentationRenderer.lastUpdate();
+		if (presentationView.sourceVisibilityOverrideCount() != 0
+			|| restoredPresentationUpdate == null
+			|| restoredPresentationUpdate.get_plan_rebuilt() != 0
+			|| haxe.Int64.toInt(restoredPresentationUpdate.get_patched_visibility()) != 1
+			|| haxe.Int64.toInt(restoredPresentationExecution.get_commands()) != 2) return 32;
+		sourcePresentation.clearSelection();
+		sourcePresentation.select(group, SelectionMode.Replace);
+		sourcePresentation.isolateSelection(snapshot);
+		var fallbackIsolationExecution = sourcePresentation.render(presentationRenderer, snapshot),
+			fallbackIsolationUpdate = presentationRenderer.lastUpdate();
+		if (presentationView.isolatedSourceCount() != 0
+			|| presentationView.isolatedOccurrenceCount() != 1
+			|| fallbackIsolationUpdate == null
+			|| fallbackIsolationUpdate.get_plan_rebuilt() != 0
+			|| haxe.Int64.toInt(fallbackIsolationExecution.get_commands()) != 2) return 33;
+		sourcePresentation.clearIsolation();
+		sourcePresentation.dispose();
+		presentationRenderer.dispose();
 		var clippedView = new SceneView().setRoot(group).setViewProjection(Transform.identity())
 			.addClipPlane(1.0, 0.0, 0.0, 0.0),
 			clippedExecution = sceneRenderer.render(snapshot, clippedView),

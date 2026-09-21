@@ -92,6 +92,26 @@ EffectiveState effective_state(const SceneSnapshot &snapshot, const SceneView &v
             }
         }
     }
+    for (const auto occurrence_id : view.isolated_occurrences) {
+        if (!snapshot.find(occurrence_id))
+            continue;
+        std::vector<OccurrenceId> pending{occurrence_id};
+        while (!pending.empty()) {
+            const auto current = pending.back();
+            pending.pop_back();
+            if (!isolated_keep.insert(current).second)
+                continue;
+            const auto parent = snapshot.find(current)->parent;
+            if (parent.valid())
+                pending.push_back(parent);
+            const auto child_found = children.find(current);
+            if (child_found != children.end())
+                for (const auto child : child_found->second)
+                    pending.push_back(child);
+        }
+    }
+    const bool isolation_active = !view.isolated_sources.empty() ||
+        !view.isolated_occurrences.empty();
 
     std::unordered_map<OccurrenceId, MaterialId> material_overrides;
     material_overrides.reserve(view.material_overrides.size() +
@@ -130,7 +150,7 @@ EffectiveState effective_state(const SceneSnapshot &snapshot, const SceneView &v
             local_visible = source_override_found->second;
         if (override_found != visibility_overrides.end())
             local_visible = override_found->second;
-        if (!view.isolated_sources.empty() && !isolated_keep.contains(start))
+        if (isolation_active && !isolated_keep.contains(start))
             local_visible = false;
         const bool visible = parent_visible && local_visible;
         if (selected) {
@@ -199,6 +219,9 @@ std::uint64_t view_signature(const SceneView &view) noexcept {
         add(override.source.value);
         add(override.material.value);
     }
+    add(view.isolated_occurrences.size());
+    for (const auto occurrence : view.isolated_occurrences)
+        add(occurrence.value);
     add(view.camera.enabled ? 1 : 0);
     for (const auto value : view.camera.view_projection)
         add(std::hash<float>{}(value));

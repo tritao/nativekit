@@ -15,6 +15,8 @@ class ScenePresentation {
 	public final view:SceneView;
 	final selectionMaterial:Material;
 	final hoverMaterial:Material;
+	var sourceFilter:Null<SourceEntityFilter> = null;
+	final isolatedOccurrenceFallback:Array<Occurrence> = [];
 	var disposed:Bool = false;
 
 	private function new(interaction:SceneInteraction, view:SceneView,
@@ -55,6 +57,100 @@ class ScenePresentation {
 		interaction.clearSelection();
 	}
 
+	/** Installs a persistent source filter for this presentation. */
+	public function setSourceFilter(filter:Null<SourceEntityFilter>):ScenePresentation {
+		ensureLive();
+		sourceFilter = filter;
+		isolatedOccurrenceFallback.resize(0);
+		view.clearIsolation();
+		if (filter == null) {
+			view.clearSourceFilter();
+		} else {
+			filter.applyTo(view);
+		}
+		return this;
+	}
+
+	public function clearSourceFilter():ScenePresentation
+		return setSourceFilter(null);
+
+	public function hideSource(source:haxe.Int64):ScenePresentation {
+		ensureLive();
+		ensureSourceFilter().hideSource(source);
+		applySourceFilter();
+		return this;
+	}
+
+	public function showSource(source:haxe.Int64):ScenePresentation {
+		ensureLive();
+		ensureSourceFilter().showSource(source);
+		applySourceFilter();
+		return this;
+	}
+
+	public function setSourceMaterial(source:haxe.Int64,
+			material:Material):ScenePresentation {
+		ensureLive();
+		ensureSourceFilter().setSourceMaterial(source, material);
+		applySourceFilter();
+		return this;
+	}
+
+	public function isolateSource(source:haxe.Int64):ScenePresentation {
+		ensureLive();
+		isolatedOccurrenceFallback.resize(0);
+		ensureSourceFilter().isolateSource(source);
+		applySourceFilter();
+		return this;
+	}
+
+	public function isolateSources(sources:Array<haxe.Int64>):ScenePresentation {
+		ensureLive();
+		isolatedOccurrenceFallback.resize(0);
+		ensureSourceFilter().isolateSources(sources);
+		applySourceFilter();
+		return this;
+	}
+
+	public function clearIsolation():ScenePresentation {
+		ensureLive();
+		if (sourceFilter != null) {
+			sourceFilter.clearIsolation();
+		}
+		isolatedOccurrenceFallback.resize(0);
+		view.clearIsolation();
+		applySourceFilter();
+		return this;
+	}
+
+	/** Isolates the source entities represented by the current selection. */
+	public function isolateSelection(snapshot:Snapshot):ScenePresentation {
+		ensureLive();
+		var sources:Array<haxe.Int64> = [];
+		isolatedOccurrenceFallback.resize(0);
+		for (occurrence in interaction.selected()) {
+			var info = snapshot.find(occurrence);
+			if (info == null)
+				continue;
+			var source = info.sourceValue();
+			if (source == haxe.Int64.ofInt(0)) {
+				isolatedOccurrenceFallback.push(occurrence);
+				continue;
+			}
+			var found = false;
+			for (existing in sources)
+				if (existing == source) {
+					found = true;
+					break;
+				}
+			if (!found)
+				sources.push(source);
+		}
+		ensureSourceFilter().isolateSources(sources);
+		applySourceFilter();
+		return this;
+	}
+
 	/**
 	 * Advances interaction state and renders one frame from an immutable
 	 * snapshot. The view and render plan are reused across frames.
@@ -63,7 +159,9 @@ class ScenePresentation {
 			?changes:Null<ChangeSet>):nkscene_render_execution_stats {
 		ensureLive();
 		interaction.synchronize(snapshot);
-		interaction.pollHover(renderer, snapshot);
+		applySourceFilter();
+		if (renderer.hasPlan())
+			interaction.pollHover(renderer, snapshot);
 		interaction.applySelection(view, selectionMaterial);
 		interaction.applyHover(view, hoverMaterial);
 		return renderer.render(snapshot, view, changes);
@@ -82,5 +180,21 @@ class ScenePresentation {
 	function ensureLive():Void {
 		if (disposed)
 			throw "Scene presentation has been disposed";
+	}
+
+	function ensureSourceFilter():SourceEntityFilter {
+		var result = sourceFilter;
+		if (result == null) {
+			result = new SourceEntityFilter();
+			sourceFilter = result;
+		}
+		return result;
+	}
+
+	function applySourceFilter():Void {
+		if (sourceFilter != null)
+			sourceFilter.applyTo(view);
+		for (occurrence in isolatedOccurrenceFallback)
+			view.setIsolatedOccurrence(occurrence, true);
 	}
 }

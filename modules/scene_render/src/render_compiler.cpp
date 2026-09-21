@@ -57,7 +57,8 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
     const bool effective_state_dirty = view_changed ||
                                        has_domain_in(changes, ChangeDomain::Hierarchy) ||
                                        has_domain_in(changes, ChangeDomain::Visibility) ||
-                                       has_domain_in(changes, ChangeDomain::Material);
+                                       has_domain_in(changes, ChangeDomain::Material) ||
+                                       has_domain_in(changes, ChangeDomain::Source);
     const auto effective = effective_state_dirty ? render_internal::effective_state(snapshot, view)
                                                  : render_internal::EffectiveState{};
     std::unordered_set<GeometryId> changed_geometry_resources;

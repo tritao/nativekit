@@ -72,6 +72,10 @@ class SceneRenderer {
 	public function lastUpdate():Null<nkscene_render_update>
 		return lastUpdateValue;
 
+	/** Reports whether this renderer has compiled a render plan yet. */
+	public function hasPlan():Bool
+		return planOwner != null;
+
 	/** Performs a GPU ID pass and resolves one pixel to scene ownership. */
 	public function pickPixel(snapshot:Snapshot, width:Int, height:Int, x:Int, y:Int):PickResult {
 		ensureLive();

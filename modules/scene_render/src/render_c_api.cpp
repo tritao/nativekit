@@ -43,6 +43,9 @@ nkscene_result copy_view(const nkscene_render_view *input, nkscene::SceneView &o
     const bool has_source_material_overrides =
         input->struct_size >= offsetof(nkscene_render_view, source_material_override_count) +
                                   sizeof(input->source_material_override_count);
+    const bool has_isolated_occurrences =
+        input->struct_size >= offsetof(nkscene_render_view, isolated_occurrence_count) +
+                                  sizeof(input->isolated_occurrence_count);
     if ((input->visibility_override_count != 0 && !input->visibility_overrides) ||
         (input->material_override_count != 0 && !input->material_overrides) ||
         (input->clip_plane_count != 0 && !input->clip_planes) ||
@@ -53,7 +56,9 @@ nkscene_result copy_view(const nkscene_render_view *input, nkscene::SceneView &o
         (has_source_visibility_overrides && input->source_visibility_override_count != 0 &&
          !input->source_visibility_overrides) ||
         (has_source_material_overrides && input->source_material_override_count != 0 &&
-         !input->source_material_overrides))
+         !input->source_material_overrides) ||
+        (has_isolated_occurrences && input->isolated_occurrence_count != 0 &&
+         !input->isolated_occurrences))
         return NKS_ERROR_INVALID_ARGUMENT;
 
     output.root = {input->root.value};
@@ -104,6 +109,11 @@ nkscene_result copy_view(const nkscene_render_view *input, nkscene::SceneView &o
             output.source_material_overrides.push_back(
                 {{value.source.value}, {value.material.value}});
         }
+    }
+    if (has_isolated_occurrences) {
+        output.isolated_occurrences.reserve(input->isolated_occurrence_count);
+        for (uint32_t index = 0; index < input->isolated_occurrence_count; ++index)
+            output.isolated_occurrences.push_back({input->isolated_occurrences[index].value});
     }
     output.clip_planes.reserve(input->clip_plane_count);
     for (uint32_t index = 0; index < input->clip_plane_count; ++index) {
