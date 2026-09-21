@@ -46,6 +46,9 @@ nkscene_result copy_view(const nkscene_render_view *input, nkscene::SceneView &o
     const bool has_isolated_occurrences =
         input->struct_size >= offsetof(nkscene_render_view, isolated_occurrence_count) +
                                   sizeof(input->isolated_occurrence_count);
+    const bool has_camera_occurrence =
+        input->struct_size >= offsetof(nkscene_render_view, camera_occurrence) +
+                                  sizeof(input->camera_occurrence);
     if ((input->visibility_override_count != 0 && !input->visibility_overrides) ||
         (input->material_override_count != 0 && !input->material_overrides) ||
         (input->clip_plane_count != 0 && !input->clip_planes) ||
@@ -63,6 +66,8 @@ nkscene_result copy_view(const nkscene_render_view *input, nkscene::SceneView &o
 
     output.root = {input->root.value};
     output.include_invisible = input->include_invisible != 0;
+    if (has_camera_occurrence)
+        output.camera_occurrence = {input->camera_occurrence.value};
     output.visibility_overrides.reserve(input->visibility_override_count);
     for (uint32_t index = 0; index < input->visibility_override_count; ++index) {
         const auto &value = input->visibility_overrides[index];

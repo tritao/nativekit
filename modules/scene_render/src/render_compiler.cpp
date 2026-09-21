@@ -7,8 +7,9 @@ namespace nkscene {
 
 namespace {
 
-bool culled(const SnapshotOccurrence &occurrence, const SceneView &view) noexcept {
-    return render_internal::culled_by_camera(occurrence.bounds, view.camera) ||
+bool culled(const SnapshotOccurrence &occurrence, const SceneCamera &camera,
+            const SceneView &view) noexcept {
+    return render_internal::culled_by_camera(occurrence.bounds, camera) ||
            render_internal::culled_by_clip_planes(occurrence.bounds, view.clip_planes);
 }
 
@@ -173,13 +174,15 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
     const bool scene_culling_dirty = has_domain_in(changes, ChangeDomain::Transform) ||
                                      has_domain_in(changes, ChangeDomain::Hierarchy) ||
                                      has_domain_in(changes, ChangeDomain::Geometry) ||
-                                     has_domain_in(changes, ChangeDomain::Bounds);
+                                     has_domain_in(changes, ChangeDomain::Bounds) ||
+                                     has_domain_in(changes, ChangeDomain::Camera);
+    const auto camera = render_internal::camera_for_snapshot(snapshot, view);
     if (culling_changed || scene_culling_dirty) {
         for (auto &item : plan.items_) {
             const auto *occurrence = snapshot.find(item.occurrence);
             if (!occurrence)
                 continue;
-            const auto item_culled = culled(*occurrence, view);
+            const auto item_culled = culled(*occurrence, camera, view);
             const auto was_culled = has_render_flag(item.flags, RenderFlags::Culled);
             if (item_culled == was_culled)
                 continue;
@@ -200,8 +203,7 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
     plan.view_signature_ = next_view_signature;
     plan.view_root_ = view.root;
     plan.culling_signature_ = next_culling_signature;
-    plan.view_projection_ =
-        view.camera.enabled ? view.camera.view_projection : SceneCamera{}.view_projection;
+    plan.view_projection_ = camera.view_projection;
     plan.clip_plane_count_ = 0;
     for (const auto &plane : view.clip_planes) {
         if (!plane.enabled || plan.clip_plane_count_ == RenderPlan::max_clip_planes)

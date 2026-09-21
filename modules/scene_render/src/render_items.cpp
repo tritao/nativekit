@@ -1,6 +1,7 @@
 #include "render_internal.hpp"
 
 #include <array>
+#include <cmath>
 #include <functional>
 #include <unordered_map>
 #include <unordered_set>
@@ -16,7 +17,98 @@ bool outside_plane(const Bounds &bounds, const std::array<float, 4> &plane) noex
     return plane[0] * x + plane[1] * y + plane[2] * z + plane[3] < 0.0f;
 }
 
+std::array<float, 3> column(const LocalTransform &transform, std::size_t index) noexcept {
+    return {transform.matrix[index * 4], transform.matrix[index * 4 + 1],
+            transform.matrix[index * 4 + 2]};
+}
+
+float dot(const std::array<float, 3> &lhs, const std::array<float, 3> &rhs) noexcept {
+    return lhs[0] * rhs[0] + lhs[1] * rhs[1] + lhs[2] * rhs[2];
+}
+
+std::array<float, 3> cross(const std::array<float, 3> &lhs,
+                           const std::array<float, 3> &rhs) noexcept {
+    return {lhs[1] * rhs[2] - lhs[2] * rhs[1], lhs[2] * rhs[0] - lhs[0] * rhs[2],
+            lhs[0] * rhs[1] - lhs[1] * rhs[0]};
+}
+
+std::array<float, 3> normalized(std::array<float, 3> value) noexcept {
+    const auto length = std::sqrt(dot(value, value));
+    if (length > 1.0e-6f)
+        for (auto &component : value)
+            component /= length;
+    return value;
+}
+
+std::array<float, 16> multiply(const std::array<float, 16> &lhs,
+                               const std::array<float, 16> &rhs) noexcept {
+    std::array<float, 16> result{};
+    for (std::size_t column_index = 0; column_index < 4; ++column_index)
+        for (std::size_t row = 0; row < 4; ++row)
+            for (std::size_t index = 0; index < 4; ++index)
+                result[column_index * 4 + row] +=
+                    lhs[index * 4 + row] * rhs[column_index * 4 + index];
+    return result;
+}
+
+std::array<float, 16> scene_camera_projection(const CameraResource &camera) noexcept {
+    const auto near_plane = camera.near_plane;
+    const auto far_plane = camera.far_plane;
+    const auto aspect = camera.aspect_ratio > 0.0f ? camera.aspect_ratio : 1.0f;
+    std::array<float, 16> result{};
+    if (camera.projection == CameraProjection::Orthographic) {
+        const auto half_height = camera.orthographic_height * 0.5f;
+        const auto half_width = half_height * aspect;
+        result[0] = 1.0f / half_width;
+        result[5] = 1.0f / half_height;
+        result[10] = 2.0f / (far_plane - near_plane);
+        result[14] = -(far_plane + near_plane) / (far_plane - near_plane);
+        result[15] = 1.0f;
+    } else {
+        const auto focal = 1.0f / std::tan(camera.fov_y * 0.5f);
+        result[0] = focal / aspect;
+        result[5] = focal;
+        result[10] = (far_plane + near_plane) / (far_plane - near_plane);
+        result[11] = 1.0f;
+        result[14] = -(2.0f * far_plane * near_plane) / (far_plane - near_plane);
+    }
+    return result;
+}
+
+std::array<float, 16> scene_camera_view(const LocalTransform &transform) noexcept {
+    const auto position = column(transform, 3);
+    const auto forward = normalized(column(transform, 0));
+    const auto up = normalized(column(transform, 2));
+    const auto right = normalized(cross(forward, up));
+    return {right[0], up[0], forward[0], 0.0f,
+            right[1], up[1], forward[1], 0.0f,
+            right[2], up[2], forward[2], 0.0f,
+            -dot(right, position), -dot(up, position), -dot(forward, position), 1.0f};
+}
+
+SceneCamera camera_from_occurrence(const SnapshotOccurrence &occurrence,
+                                   const CameraResource &resource) noexcept {
+    SceneCamera result;
+    result.enabled = true;
+    result.view_projection = multiply(
+        scene_camera_projection(resource), scene_camera_view(occurrence.world_transform.transform));
+    return result;
+}
+
 } // namespace
+
+SceneCamera camera_for_snapshot(const SceneSnapshot &snapshot, const SceneView &view) noexcept {
+    if (view.camera.enabled)
+        return view.camera;
+    if (view.camera_occurrence.valid()) {
+        const auto *occurrence = snapshot.find(view.camera_occurrence);
+        if (occurrence && occurrence->camera.valid()) {
+            if (const auto *resource = snapshot.find_camera(occurrence->camera))
+                return camera_from_occurrence(*occurrence, *resource);
+        }
+    }
+    return {};
+}
 
 bool culled_by_camera(const Bounds &bounds, const SceneCamera &camera) noexcept {
     if (!camera.enabled || !bounds.valid)
@@ -224,6 +316,7 @@ std::uint64_t view_signature(const SceneView &view) noexcept {
     for (const auto occurrence : view.filter.isolated_occurrences)
         add(occurrence.value);
     add(view.camera.enabled ? 1 : 0);
+    add(view.camera_occurrence.value);
     for (const auto value : view.camera.view_projection)
         add(std::hash<float>{}(value));
     add(view.clip_planes.size());
@@ -243,6 +336,7 @@ std::uint64_t culling_signature(const SceneView &view) noexcept {
         hash *= 1099511628211ull;
     };
     add(view.camera.enabled ? 1 : 0);
+    add(view.camera_occurrence.value);
     for (const auto value : view.camera.view_projection)
         add(std::hash<float>{}(value));
     add(view.clip_planes.size());
@@ -257,12 +351,12 @@ std::uint64_t culling_signature(const SceneView &view) noexcept {
 
 void build_items(RenderPlan &plan, const SceneSnapshot &snapshot, const SceneView &view) {
     const auto state = effective_state(snapshot, view);
+    const auto camera = camera_for_snapshot(snapshot, view);
     plan.items_.clear();
     plan.transforms_.clear();
     plan.visible_items_ = 0;
     plan.culled_items_ = 0;
-    plan.view_projection_ =
-        view.camera.enabled ? view.camera.view_projection : SceneCamera{}.view_projection;
+    plan.view_projection_ = camera.view_projection;
     plan.items_.reserve(snapshot.occurrences().size());
     plan.transforms_.reserve(snapshot.occurrences().size());
     for (const auto &occurrence : snapshot.occurrences()) {
@@ -282,7 +376,7 @@ void build_items(RenderPlan &plan, const SceneSnapshot &snapshot, const SceneVie
         item.flags = RenderFlags::Opaque;
         if (!state.visible.at(occurrence.occurrence))
             item.flags |= RenderFlags::Hidden;
-        if (culled_by_camera(occurrence.bounds, view.camera) ||
+        if (culled_by_camera(occurrence.bounds, camera) ||
             culled_by_clip_planes(occurrence.bounds, view.clip_planes)) {
             item.flags |= RenderFlags::Culled;
             ++plan.culled_items_;

@@ -4,6 +4,7 @@
 uniform vec4 base_color;
 uniform vec4 material_params;
 uniform vec4 emissive;
+uniform vec4 lighting;
 uniform sampler2D base_color_texture;
 in vec3 world_position;
 in vec3 vertex_normal;
@@ -21,8 +22,9 @@ void main() {
             discard;
     }
     vec4 texture_color = texture(base_color_texture, vertex_texcoord);
-    vec3 light_direction = normalize(vec3(0.35, 0.45, 0.82));
-    float diffuse = 0.35 + 0.65 * max(dot(normalize(vertex_normal), light_direction), 0.0);
+    vec3 light_direction = normalize(lighting.xyz);
+    float diffuse = 0.35 + 0.65 * max(dot(normalize(vertex_normal), light_direction), 0.0) *
+                    max(lighting.w, 0.0);
     vec3 color = base_color.rgb * texture_color.rgb * vertex_color.rgb * diffuse + emissive.rgb;
     fragment_color = vec4(color, base_color.a * texture_color.a * vertex_color.a);
 }
