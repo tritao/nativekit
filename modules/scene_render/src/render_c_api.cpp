@@ -113,7 +113,8 @@ nkscene_result copy_view(const nkscene_render_view *input, nkscene::SceneView &o
     if (has_isolated_occurrences) {
         output.filter.isolated_occurrences.reserve(input->isolated_occurrence_count);
         for (uint32_t index = 0; index < input->isolated_occurrence_count; ++index)
-            output.filter.isolated_occurrences.push_back({input->isolated_occurrences[index].value});
+            output.filter.isolated_occurrences.push_back(
+                {input->isolated_occurrences[index].value});
     }
     output.clip_planes.reserve(input->clip_plane_count);
     for (uint32_t index = 0; index < input->clip_plane_count; ++index) {

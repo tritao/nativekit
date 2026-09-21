@@ -97,8 +97,7 @@ typedef struct nkscene_render_view {
     const nkscene_render_source_material_override *
         source_material_overrides NK_BORROWED_ARRAY(source_material_override_count);
     uint32_t source_material_override_count;
-    const nkscene_occurrence_id *isolated_occurrences
-        NK_BORROWED_ARRAY(isolated_occurrence_count);
+    const nkscene_occurrence_id *isolated_occurrences NK_BORROWED_ARRAY(isolated_occurrence_count);
     uint32_t isolated_occurrence_count;
 } nkscene_render_view;
 
@@ -308,8 +307,8 @@ struct SceneViewFilter {
     }
 
     void set_isolated_occurrence(OccurrenceId occurrence, bool isolated) {
-        const auto found = std::find(isolated_occurrences.begin(), isolated_occurrences.end(),
-                                     occurrence);
+        const auto found =
+            std::find(isolated_occurrences.begin(), isolated_occurrences.end(), occurrence);
         if (isolated && found == isolated_occurrences.end())
             isolated_occurrences.push_back(occurrence);
         else if (!isolated && found != isolated_occurrences.end())
@@ -337,11 +336,8 @@ struct ClipPlane {
 
 struct SceneCamera {
     bool enabled = false;
-    std::array<float, 16> view_projection{
-        1.0f, 0.0f, 0.0f, 0.0f,
-        0.0f, 1.0f, 0.0f, 0.0f,
-        0.0f, 0.0f, 1.0f, 0.0f,
-        0.0f, 0.0f, 0.0f, 1.0f};
+    std::array<float, 16> view_projection{1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+                                          0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
 };
 
 struct SceneView {

@@ -110,8 +110,8 @@ EffectiveState effective_state(const SceneSnapshot &snapshot, const SceneView &v
                     pending.push_back(child);
         }
     }
-    const bool isolation_active = !view.filter.isolated_sources.empty() ||
-        !view.filter.isolated_occurrences.empty();
+    const bool isolation_active =
+        !view.filter.isolated_sources.empty() || !view.filter.isolated_occurrences.empty();
 
     std::unordered_map<OccurrenceId, MaterialId> material_overrides;
     material_overrides.reserve(view.material_overrides.size() +
@@ -121,9 +121,7 @@ EffectiveState effective_state(const SceneSnapshot &snapshot, const SceneView &v
         const auto found = std::find_if(
             view.filter.source_material_overrides.begin(),
             view.filter.source_material_overrides.end(),
-            [&occurrence](const auto &override) {
-                return override.source == occurrence.source;
-            });
+            [&occurrence](const auto &override) { return override.source == occurrence.source; });
         if (found != view.filter.source_material_overrides.end())
             result.material[occurrence.occurrence] = found->material;
     }
