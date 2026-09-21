@@ -349,9 +349,9 @@ void scene_view_source_filters_are_incremental() {
     nkscene::SceneView base_view;
     auto plan = nkscene::compile(snapshot, base_view);
     nkscene::SceneView source_view = base_view;
-    source_view.source_visibility_overrides.push_back(
+    source_view.filter.source_visibility_overrides.push_back(
         {nkscene::EntityId{84}, false});
-    source_view.source_material_overrides.push_back(
+    source_view.filter.source_material_overrides.push_back(
         {nkscene::EntityId{42}, material_two});
     auto filter_update = nkscene::refresh(plan, snapshot, source_view);
     assert(!filter_update.plan_rebuilt);
@@ -359,6 +359,26 @@ void scene_view_source_filters_are_incremental() {
     assert(filter_update.patched_materials == 1);
     assert(filter_update.updated_geometry_resources == 0);
     assert(filter_update.updated_material_resources == 0);
+
+    nkscene::SceneView composed_view = source_view;
+    composed_view.visibility_overrides.push_back({second, true});
+    composed_view.material_overrides.push_back({first, material_one});
+    auto composed_plan = nkscene::compile(snapshot, base_view);
+    const auto composed_update = nkscene::refresh(composed_plan, snapshot, composed_view);
+    assert(!composed_update.plan_rebuilt);
+    assert(composed_update.patched_visibility == 0);
+    assert(composed_update.patched_materials == 0);
+    const auto composed_first_item = std::find_if(
+        composed_plan.items().begin(), composed_plan.items().end(),
+        [first](const nkscene::RenderItem &item) { return item.occurrence == first; });
+    const auto composed_second_item = std::find_if(
+        composed_plan.items().begin(), composed_plan.items().end(),
+        [second](const nkscene::RenderItem &item) { return item.occurrence == second; });
+    assert(composed_first_item != composed_plan.items().end());
+    assert(composed_second_item != composed_plan.items().end());
+    assert(composed_first_item->material == material_one);
+    assert(!nkscene::has_render_flag(composed_second_item->flags,
+                                     nkscene::RenderFlags::Hidden));
 
     Transaction change_source(scene);
     change_source.add_source_entity(second, nkscene::EntityId{42});

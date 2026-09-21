@@ -348,7 +348,7 @@ constexpr std::size_t source_count = 500;
     print(view_result);
 
     nkscene::SceneView isolation_view = presentation_view;
-    isolation_view.isolated_sources.push_back(material_source);
+    isolation_view.filter.isolated_sources.push_back(material_source);
     std::size_t visible_before_isolation = 0;
     std::size_t retained_by_isolation = 0;
     for (const auto &occurrence : presentation_snapshot.occurrences()) {

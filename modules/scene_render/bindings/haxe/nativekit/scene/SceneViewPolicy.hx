@@ -136,7 +136,7 @@ class SceneViewPolicy {
 		return sourceMaterialSources.length;
 
 	public function applySourceFilter(snapshot:Snapshot,
-			filter:SourceEntityFilter):SceneViewPolicy
+			filter:SceneViewFilter):SceneViewPolicy
 		return filter.apply(snapshot, this);
 
 	/** Applies this policy without disturbing other view layers. */

@@ -230,8 +230,8 @@ NKSRENDER_API nkscene_result NKS_CALL nkscene_render_executor_pick_pixel_poll(
 
 #include "nativekit_scene.hpp"
 
-#include <array>
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <span>
@@ -268,65 +268,16 @@ struct SourceMaterialOverride {
     MaterialId material;
 };
 
-struct ClipPlane {
-    std::array<float, 3> normal{0.0f, 0.0f, 1.0f};
-    float distance = 0.0f;
-    bool enabled = true;
-};
-
-struct SceneCamera {
-    bool enabled = false;
-    std::array<float, 16> view_projection{1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
-                                          0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
-};
-
-struct SceneView {
-    /** Invalid means that the view contains every occurrence. */
-    OccurrenceId root;
-    /** Include scene-hidden occurrences as visible for inspection views. */
-    bool include_invisible = false;
-    /** Later entries replace earlier entries for the same occurrence. */
-    std::vector<VisibilityOverride> visibility_overrides;
-    /** Base presentation material overrides. */
-    std::vector<MaterialOverride> material_overrides;
-    /** Selection material layer, below hover material overrides. */
-    std::vector<MaterialOverride> selection_material_overrides;
-    /** Hover material layer, above selection and base material overrides. */
-    std::vector<MaterialOverride> hover_material_overrides;
-    /** Source entities retained by isolation filters, including their ancestors. */
+/** Declarative, scene-independent presentation filter for one SceneView. */
+struct SceneViewFilter {
+    /** Source entities retained by isolation, including their ancestors. */
     std::vector<EntityId> isolated_sources;
     /** Source-level visibility rules below explicit occurrence overrides. */
     std::vector<SourceVisibilityOverride> source_visibility_overrides;
-    /** Source-level base material rules below occurrence and interaction layers. */
+    /** Source-level base materials below occurrence and interaction layers. */
     std::vector<SourceMaterialOverride> source_material_overrides;
-    /** Explicit occurrences retained by isolation filters, including subtrees. */
+    /** Explicit occurrences retained by isolation, including their subtrees. */
     std::vector<OccurrenceId> isolated_occurrences;
-    /** Optional world-to-clip transform used for bounds culling and rendering. */
-    SceneCamera camera;
-    /** Conservative occurrence-level sectioning planes. */
-    std::vector<ClipPlane> clip_planes;
-
-    void set_visibility_override(OccurrenceId occurrence, bool visible) {
-        const auto found = std::find_if(
-            visibility_overrides.begin(), visibility_overrides.end(),
-            [occurrence](const auto &value) { return value.occurrence == occurrence; });
-        if (found != visibility_overrides.end())
-            found->visible = visible;
-        else
-            visibility_overrides.push_back({occurrence, visible});
-    }
-
-    void set_material_override(OccurrenceId occurrence, MaterialId material) {
-        set_material_override_in(material_overrides, occurrence, material);
-    }
-
-    void set_selection_material_override(OccurrenceId occurrence, MaterialId material) {
-        set_material_override_in(selection_material_overrides, occurrence, material);
-    }
-
-    void set_hover_material_override(OccurrenceId occurrence, MaterialId material) {
-        set_material_override_in(hover_material_overrides, occurrence, material);
-    }
 
     void set_isolated_source(EntityId source, bool isolated) {
         const auto found = std::find(isolated_sources.begin(), isolated_sources.end(), source);
@@ -363,6 +314,92 @@ struct SceneView {
             isolated_occurrences.push_back(occurrence);
         else if (!isolated && found != isolated_occurrences.end())
             isolated_occurrences.erase(found);
+    }
+
+    void clear_isolation() noexcept {
+        isolated_sources.clear();
+        isolated_occurrences.clear();
+    }
+
+    void clear() noexcept {
+        isolated_sources.clear();
+        source_visibility_overrides.clear();
+        source_material_overrides.clear();
+        isolated_occurrences.clear();
+    }
+};
+
+struct ClipPlane {
+    std::array<float, 3> normal{0.0f, 0.0f, 1.0f};
+    float distance = 0.0f;
+    bool enabled = true;
+};
+
+struct SceneCamera {
+    bool enabled = false;
+    std::array<float, 16> view_projection{
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f,
+        0.0f, 0.0f, 0.0f, 1.0f};
+};
+
+struct SceneView {
+    /** Invalid means that the view contains every occurrence. */
+    OccurrenceId root;
+    /** Include scene-hidden occurrences as visible for inspection views. */
+    bool include_invisible = false;
+    /** Later entries replace earlier entries for the same occurrence. */
+    std::vector<VisibilityOverride> visibility_overrides;
+    /** Base presentation material overrides. */
+    std::vector<MaterialOverride> material_overrides;
+    /** Selection material layer, below hover material overrides. */
+    std::vector<MaterialOverride> selection_material_overrides;
+    /** Hover material layer, above selection and base material overrides. */
+    std::vector<MaterialOverride> hover_material_overrides;
+    /** Declarative source and isolation presentation rules. */
+    SceneViewFilter filter;
+    /** Optional world-to-clip transform used for bounds culling and rendering. */
+    SceneCamera camera;
+    /** Conservative occurrence-level sectioning planes. */
+    std::vector<ClipPlane> clip_planes;
+
+    void set_visibility_override(OccurrenceId occurrence, bool visible) {
+        const auto found = std::find_if(
+            visibility_overrides.begin(), visibility_overrides.end(),
+            [occurrence](const auto &value) { return value.occurrence == occurrence; });
+        if (found != visibility_overrides.end())
+            found->visible = visible;
+        else
+            visibility_overrides.push_back({occurrence, visible});
+    }
+
+    void set_material_override(OccurrenceId occurrence, MaterialId material) {
+        set_material_override_in(material_overrides, occurrence, material);
+    }
+
+    void set_selection_material_override(OccurrenceId occurrence, MaterialId material) {
+        set_material_override_in(selection_material_overrides, occurrence, material);
+    }
+
+    void set_hover_material_override(OccurrenceId occurrence, MaterialId material) {
+        set_material_override_in(hover_material_overrides, occurrence, material);
+    }
+
+    void set_isolated_source(EntityId source, bool isolated) {
+        filter.set_isolated_source(source, isolated);
+    }
+
+    void set_source_visibility_override(EntityId source, bool visible) {
+        filter.set_source_visibility_override(source, visible);
+    }
+
+    void set_source_material_override(EntityId source, MaterialId material) {
+        filter.set_source_material_override(source, material);
+    }
+
+    void set_isolated_occurrence(OccurrenceId occurrence, bool isolated) {
+        filter.set_isolated_occurrence(occurrence, isolated);
     }
 
     void clear_selection_material_overrides() noexcept { selection_material_overrides.clear(); }

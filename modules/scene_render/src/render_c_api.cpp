@@ -90,30 +90,30 @@ nkscene_result copy_view(const nkscene_render_view *input, nkscene::SceneView &o
         }
     }
     if (has_isolated_sources) {
-        output.isolated_sources.reserve(input->isolated_source_count);
+        output.filter.isolated_sources.reserve(input->isolated_source_count);
         for (uint32_t index = 0; index < input->isolated_source_count; ++index)
-            output.isolated_sources.push_back({input->isolated_sources[index].value});
+            output.filter.isolated_sources.push_back({input->isolated_sources[index].value});
     }
     if (has_source_visibility_overrides) {
-        output.source_visibility_overrides.reserve(input->source_visibility_override_count);
+        output.filter.source_visibility_overrides.reserve(input->source_visibility_override_count);
         for (uint32_t index = 0; index < input->source_visibility_override_count; ++index) {
             const auto &value = input->source_visibility_overrides[index];
-            output.source_visibility_overrides.push_back(
+            output.filter.source_visibility_overrides.push_back(
                 {{value.source.value}, value.visible != 0});
         }
     }
     if (has_source_material_overrides) {
-        output.source_material_overrides.reserve(input->source_material_override_count);
+        output.filter.source_material_overrides.reserve(input->source_material_override_count);
         for (uint32_t index = 0; index < input->source_material_override_count; ++index) {
             const auto &value = input->source_material_overrides[index];
-            output.source_material_overrides.push_back(
+            output.filter.source_material_overrides.push_back(
                 {{value.source.value}, {value.material.value}});
         }
     }
     if (has_isolated_occurrences) {
-        output.isolated_occurrences.reserve(input->isolated_occurrence_count);
+        output.filter.isolated_occurrences.reserve(input->isolated_occurrence_count);
         for (uint32_t index = 0; index < input->isolated_occurrence_count; ++index)
-            output.isolated_occurrences.push_back({input->isolated_occurrences[index].value});
+            output.filter.isolated_occurrences.push_back({input->isolated_occurrences[index].value});
     }
     output.clip_planes.reserve(input->clip_plane_count);
     for (uint32_t index = 0; index < input->clip_plane_count; ++index) {

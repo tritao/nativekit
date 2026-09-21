@@ -72,13 +72,13 @@ EffectiveState effective_state(const SceneSnapshot &snapshot, const SceneView &v
         visibility_overrides[override.occurrence] = override.visible;
 
     std::unordered_map<EntityId, bool> source_visibility_overrides;
-    source_visibility_overrides.reserve(view.source_visibility_overrides.size());
-    for (const auto &override : view.source_visibility_overrides)
+    source_visibility_overrides.reserve(view.filter.source_visibility_overrides.size());
+    for (const auto &override : view.filter.source_visibility_overrides)
         source_visibility_overrides[override.source] = override.visible;
 
     std::unordered_set<OccurrenceId> isolated_keep;
-    if (!view.isolated_sources.empty()) {
-        for (const auto source : view.isolated_sources) {
+    if (!view.filter.isolated_sources.empty()) {
+        for (const auto source : view.filter.isolated_sources) {
             for (const auto occurrence_id : snapshot.occurrences_for_source(source)) {
                 auto current = occurrence_id;
                 while (current.valid()) {
@@ -92,7 +92,7 @@ EffectiveState effective_state(const SceneSnapshot &snapshot, const SceneView &v
             }
         }
     }
-    for (const auto occurrence_id : view.isolated_occurrences) {
+    for (const auto occurrence_id : view.filter.isolated_occurrences) {
         if (!snapshot.find(occurrence_id))
             continue;
         std::vector<OccurrenceId> pending{occurrence_id};
@@ -110,8 +110,8 @@ EffectiveState effective_state(const SceneSnapshot &snapshot, const SceneView &v
                     pending.push_back(child);
         }
     }
-    const bool isolation_active = !view.isolated_sources.empty() ||
-        !view.isolated_occurrences.empty();
+    const bool isolation_active = !view.filter.isolated_sources.empty() ||
+        !view.filter.isolated_occurrences.empty();
 
     std::unordered_map<OccurrenceId, MaterialId> material_overrides;
     material_overrides.reserve(view.material_overrides.size() +
@@ -119,9 +119,12 @@ EffectiveState effective_state(const SceneSnapshot &snapshot, const SceneView &v
                                view.hover_material_overrides.size());
     for (const auto &occurrence : occurrences) {
         const auto found = std::find_if(
-            view.source_material_overrides.begin(), view.source_material_overrides.end(),
-            [&occurrence](const auto &override) { return override.source == occurrence.source; });
-        if (found != view.source_material_overrides.end())
+            view.filter.source_material_overrides.begin(),
+            view.filter.source_material_overrides.end(),
+            [&occurrence](const auto &override) {
+                return override.source == occurrence.source;
+            });
+        if (found != view.filter.source_material_overrides.end())
             result.material[occurrence.occurrence] = found->material;
     }
     const auto apply_material_layer = [&material_overrides](const auto &overrides) {
@@ -206,21 +209,21 @@ std::uint64_t view_signature(const SceneView &view) noexcept {
         add(override.occurrence.value);
         add(override.material.value);
     }
-    add(view.isolated_sources.size());
-    for (const auto source : view.isolated_sources)
+    add(view.filter.isolated_sources.size());
+    for (const auto source : view.filter.isolated_sources)
         add(source.value);
-    add(view.source_visibility_overrides.size());
-    for (const auto &override : view.source_visibility_overrides) {
+    add(view.filter.source_visibility_overrides.size());
+    for (const auto &override : view.filter.source_visibility_overrides) {
         add(override.source.value);
         add(override.visible ? 1 : 0);
     }
-    add(view.source_material_overrides.size());
-    for (const auto &override : view.source_material_overrides) {
+    add(view.filter.source_material_overrides.size());
+    for (const auto &override : view.filter.source_material_overrides) {
         add(override.source.value);
         add(override.material.value);
     }
-    add(view.isolated_occurrences.size());
-    for (const auto occurrence : view.isolated_occurrences)
+    add(view.filter.isolated_occurrences.size());
+    for (const auto occurrence : view.filter.isolated_occurrences)
         add(occurrence.value);
     add(view.camera.enabled ? 1 : 0);
     for (const auto value : view.camera.view_projection)

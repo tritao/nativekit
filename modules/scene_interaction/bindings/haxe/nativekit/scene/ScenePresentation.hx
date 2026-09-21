@@ -15,7 +15,7 @@ class ScenePresentation {
 	public final view:SceneView;
 	final selectionMaterial:Material;
 	final hoverMaterial:Material;
-	var sourceFilter:Null<SourceEntityFilter> = null;
+	var sourceFilter:Null<SceneViewFilter> = null;
 	final isolatedOccurrenceFallback:Array<Occurrence> = [];
 	var disposed:Bool = false;
 
@@ -58,7 +58,7 @@ class ScenePresentation {
 	}
 
 	/** Installs a persistent source filter for this presentation. */
-	public function setSourceFilter(filter:Null<SourceEntityFilter>):ScenePresentation {
+	public function setSourceFilter(filter:Null<SceneViewFilter>):ScenePresentation {
 		ensureLive();
 		sourceFilter = filter;
 		isolatedOccurrenceFallback.resize(0);
@@ -182,10 +182,10 @@ class ScenePresentation {
 			throw "Scene presentation has been disposed";
 	}
 
-	function ensureSourceFilter():SourceEntityFilter {
+	function ensureSourceFilter():SceneViewFilter {
 		var result = sourceFilter;
 		if (result == null) {
-			result = new SourceEntityFilter();
+			result = new SceneViewFilter();
 			sourceFilter = result;
 		}
 		return result;
