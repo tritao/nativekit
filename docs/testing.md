@@ -62,8 +62,8 @@ browser-hosted HTML integration binary. It publishes a small semantic tree,
 checks focus and text-range updates, dispatches a DOM activation, and verifies
 that the resulting `NK_EVENT_ACCESSIBILITY_ACTION` reaches NativeKit. Serve
 the generated HTML over HTTP and run it in the same browser environment used by
-the Web smoke tests. `tools/build-web.sh` builds this artifact and
-`tools/test-web.sh` runs it automatically when the test artifact is present.
+the Web smoke tests. The sibling UIKit project's `tools/build-web.sh` builds
+this artifact and its `tools/test-web.sh` runs it with the UI browser suite.
 
 ## Web system-equivalents test
 
@@ -73,8 +73,8 @@ appearance, notification, joystick, and resource-I/O capabilities, validates
 the appearance and URI input boundaries, performs an initial Gamepad
 enumeration, and exercises a writable retained-handle stream through a fake
 File System Access handle. The asynchronous flush is marked on the document
-for browser-runner assertions. `tools/test-web.sh` checks that marker through
-the same Chrome DevTools session as the showcase smoke test. Resource pickers
+for browser-runner assertions. UIKit's `tools/test-web.sh` checks that marker
+through the same Chrome DevTools session as the showcase smoke test. Resource pickers
 and notification permission prompts still require a user-activated browser test
 because browsers
 intentionally reject those APIs outside a trusted user gesture.
