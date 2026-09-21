@@ -1,28 +1,6 @@
 [submodule "vendor/sokol"]
 	path = vendor/sokol
 	url = https://github.com/tritao/sokol.git
-[submodule "vendor/skribidi"]
-	path = vendor/skribidi
-	url = https://github.com/tritao/Skribidi.git
-[submodule "vendor/harfbuzz"]
-	path = vendor/harfbuzz
-	url = https://github.com/harfbuzz/harfbuzz.git
-[submodule "vendor/sheenbidi"]
-	path = vendor/sheenbidi
-	url = https://github.com/Tehreer/SheenBidi.git
-[submodule "vendor/libunibreak"]
-	path = vendor/libunibreak
-	url = https://github.com/adah1972/libunibreak.git
-[submodule "vendor/budouxc"]
-	path = vendor/budouxc
-	url = https://github.com/memononen/budouxc.git
-[submodule "vendor/nanovg"]
-	path = vendor/nanovg
-	url = https://github.com/tritao/nanovg.git
-[submodule "vendor/clay"]
-	path = vendor/clay
-	url = https://github.com/tritao/clay.git
-	branch = nativekit
 [submodule "vendor/haxeon"]
 	path = vendor/haxeon
 	url = https://github.com/tritao/haxeon.git

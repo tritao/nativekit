@@ -6,12 +6,9 @@ dependencies and independently consumable CMake targets.
 | Module | CMake option | Target | Purpose |
 |---|---|---|---|
 | [`gpu`](gpu/) | `NK_BUILD_GPU` | `NativeKit::gpu` | Low-level GPU API backed by Sokol for Haxeon and C callers |
-| [`ui`](ui/) | `NK_BUILD_UI` | `NativeKit::ui` | UI layout/rendering boundary with private Clay/Skribidi adapters |
-| [`scene`](scene/) | `NK_BUILD_SCENE` | `NativeKit::scene` | Transactional retained scene database and stable occurrence IDs |
-| [`scene_render`](scene_render/) | `NK_BUILD_SCENE_RENDER` | `NativeKit::scene_render` | Headless render-plan compiler over immutable scene snapshots |
-| [`scene_interaction`](scene_interaction/) | `NK_BUILD_SCENE_INTERACTION` | `NativeKit::scene_interaction` | Async hover and selection state above scene rendering |
-These modules are disabled by default. Third-party implementation types must not
-cross their public C ABIs.
+The GPU module is disabled by default. UIKit and SceneKit now live as sibling
+projects in the Materia repository and consume NativeKit through its public
+core and GPU targets.
 
 ## Module rule
 
@@ -21,5 +18,5 @@ API and can primarily consume NativeKit through that public interface.
 
 Capabilities that share NativeKit runtime state, handles, event delivery,
 lifecycle, or platform backend machinery belong to the main NativeKit library.
-GPU and UI are modules; HTTP networking, clipboard, and accessibility are
-NativeKit capabilities.
+GPU is a module; HTTP networking, clipboard, and accessibility are NativeKit
+capabilities.

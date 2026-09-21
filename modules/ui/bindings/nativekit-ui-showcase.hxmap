@@ -1,6 +1,0 @@
-{
-  "interface": "NativeKitUIShowcase",
-  "enumNames": {
-    "nkui_result": "NativeKitUI.UiStatus"
-  }
-}
