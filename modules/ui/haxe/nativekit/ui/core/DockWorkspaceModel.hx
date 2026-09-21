@@ -126,6 +126,28 @@ class DockWorkspaceModel {
 	public function snapshot():DockWorkspaceSnapshot
 		return new DockWorkspaceSnapshot(root, activePanelId);
 
+	/** Serializes the current layout through the shared versioned codec. */
+	public function snapshotJson():String
+		return DockWorkspaceSnapshotCodec.encode(snapshot());
+
+	/** Restores a serialized layout without coupling the UI module to storage. */
+	public function restoreJson(source:String):Bool {
+		var snapshot = DockWorkspaceSnapshotCodec.decode(source);
+		return snapshot != null && restore(snapshot);
+	}
+
+	public function saveTo(storage:DockWorkspacePersistence, key:String):Void {
+		if (storage == null || key == null || key.length == 0)
+			throw "Dock workspace persistence requires storage and a stable key";
+		storage.save(key, snapshotJson());
+	}
+
+	public function restoreFrom(storage:DockWorkspacePersistence, key:String):Bool {
+		if (storage == null || key == null || key.length == 0)
+			throw "Dock workspace persistence requires storage and a stable key";
+		return restoreJson(storage.load(key));
+	}
+
 	public function restore(snapshot:DockWorkspaceSnapshot):Bool {
 		if (snapshot == null || snapshot.version != DockWorkspaceSnapshot.CurrentVersion)
 			return false;

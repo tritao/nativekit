@@ -107,6 +107,8 @@ class EventDispatcher {
 				targetPath[targetPath.length - 1].id, x, y, 0.0, 0.0, 0, 0,
 				modifiers, null, data, 0, pointerId);
 			dispatchPath(targetPath, event);
+			if (event.defaultPrevented)
+				suppressedClicks.set(pointerId, true);
 			applyPointerCaptureRequest(pointerId, event);
 			if (event.pointerReleaseRequested)
 				updateHover(pointerId, path, x, y);

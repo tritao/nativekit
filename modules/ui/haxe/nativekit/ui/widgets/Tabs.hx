@@ -8,6 +8,7 @@ import nativekit.ui.core.BuildContext;
 import nativekit.ui.core.Key;
 import nativekit.ui.core.RenderNode;
 import nativekit.ui.core.State;
+import nativekit.ui.core.UiEvent;
 import nativekit.ui.core.UiEventKind;
 import nativekit.ui.core.UiKey;
 import nativekit.ui.core.View;
@@ -27,15 +28,28 @@ class Tabs implements View {
 	public final style:LayoutStyle;
 	public var onChange:String->Void;
 	public var hasChangeHandler(default, null):Bool;
+	/** Optional pointer-drag lifecycle used by generic dock workspaces. */
+	public var onTabDragStart:Null<String->UiEvent->Void>;
+	public var onTabDragMove:Null<String->UiEvent->Void>;
+	public var onTabDragEnd:Null<String->UiEvent->Void>;
+	public var onTabDragCancel:Null<String->UiEvent->Void>;
 
 	public function new(key:String, items:Array<TabItem>, selectedKey:String = "",
-			?onChange:String->Void, ?style:LayoutStyle) {
+			?onChange:String->Void, ?style:LayoutStyle,
+			?onTabDragStart:String->UiEvent->Void,
+			?onTabDragMove:String->UiEvent->Void,
+			?onTabDragEnd:String->UiEvent->Void,
+			?onTabDragCancel:String->UiEvent->Void) {
 		this.key = new Key(key);
 		this.items = items == null ? [] : items.copy();
 		this.selectedKey = selectedKey == null ? "" : selectedKey;
 		this.style = style == null ? defaultStyle() : style.copy();
 		hasChangeHandler = onChange != null;
 		this.onChange = onChange == null ? function(_) {} : onChange;
+		this.onTabDragStart = onTabDragStart;
+		this.onTabDragMove = onTabDragMove;
+		this.onTabDragEnd = onTabDragEnd;
+		this.onTabDragCancel = onTabDragCancel;
 		var keys:Map<String, Bool> = new Map();
 		for (item in this.items) {
 			if (item == null || keys.exists(item.key))
@@ -80,6 +94,10 @@ class Tabs implements View {
 			stripStyle.childGap = 4.0;
 			var strip = new RenderNode(context.id("tab-strip"), LayoutVisualKind.Box, stripStyle);
 			var buttonNodes:Array<RenderNode> = [];
+			var tabDragState:Null<State<TabDragState>> = null;
+			if (onTabDragStart != null || onTabDragMove != null || onTabDragEnd != null ||
+				onTabDragCancel != null)
+				tabDragState = context.state(context.id("tab-drag"), new TabDragState());
 			for (item in items) {
 				var button = new Button(item.label, null, function() { select(item.key); }, item.key);
 				button.enabled = item.enabled;
@@ -92,6 +110,7 @@ class Tabs implements View {
 				});
 				strip.add(buttonNode);
 				buttonNodes.push(buttonNode);
+				installTabDragHandlers(buttonNode, item.key, tabDragState);
 			}
 			for (index in 0...buttonNodes.length) {
 				var tabIndex = index;
@@ -158,5 +177,87 @@ class Tabs implements View {
 		result.direction = LayoutDirection.TopToBottom;
 		result.childGap = 8.0;
 		return result;
+	}
+
+	function installTabDragHandlers(buttonNode:RenderNode, tabKey:String,
+			dragState:Null<State<TabDragState>>):Void {
+		if (dragState == null)
+			return;
+		buttonNode.on(UiEventKind.PointerDown, function(event) {
+			if (event.button != 0)
+				return;
+			var drag = dragState.value;
+			drag.active = true;
+			drag.dragging = false;
+			drag.pointerId = event.pointerId;
+			drag.tabKey = tabKey;
+			drag.startX = event.x;
+			drag.startY = event.y;
+			dragState.update(drag);
+			event.capturePointer();
+		});
+		buttonNode.on(UiEventKind.PointerMove, function(event) {
+			var drag = dragState.value;
+			if (!drag.active || drag.pointerId != event.pointerId || drag.tabKey != tabKey)
+				return;
+			var dx = event.x - drag.startX;
+			var dy = event.y - drag.startY;
+			if (!drag.dragging && dx * dx + dy * dy >= 36.0) {
+				drag.dragging = true;
+				dragState.update(drag);
+				if (onTabDragStart != null)
+					onTabDragStart(tabKey, event);
+			}
+			if (drag.dragging) {
+				if (onTabDragMove != null)
+					onTabDragMove(tabKey, event);
+				event.preventDefault();
+			}
+		});
+		buttonNode.on(UiEventKind.PointerUp, function(event) {
+			var drag = dragState.value;
+			if (!drag.active || drag.pointerId != event.pointerId || drag.tabKey != tabKey)
+				return;
+			if (drag.dragging) {
+				if (onTabDragEnd != null)
+					onTabDragEnd(tabKey, event);
+				event.preventDefault();
+			}
+			drag.clear();
+			dragState.update(drag);
+			event.releasePointer();
+		});
+		buttonNode.on(UiEventKind.PointerCancel, function(event) {
+			var drag = dragState.value;
+			if (!drag.active || drag.pointerId != event.pointerId || drag.tabKey != tabKey)
+				return;
+			if (drag.dragging && onTabDragCancel != null)
+				onTabDragCancel(tabKey, event);
+			drag.clear();
+			dragState.update(drag);
+			event.releasePointer();
+		});
+	}
+}
+
+private class TabDragState {
+	public var active:Bool;
+	public var dragging:Bool;
+	public var pointerId:Int;
+	public var tabKey:String;
+	public var startX:Float;
+	public var startY:Float;
+
+	public function new() {
+		clear();
+	}
+
+	public function clear():Void {
+		active = false;
+		dragging = false;
+		pointerId = -1;
+		tabKey = "";
+		startX = 0.0;
+		startY = 0.0;
 	}
 }

@@ -1,11 +1,16 @@
 package nativekit.ui.widgets;
 
+import Color;
 import LayoutAxis;
 import LayoutStyle;
+import Rect;
 import nativekit.ui.core.BuildContext;
+import nativekit.ui.core.DockDropZone;
 import nativekit.ui.core.DockNode;
+import nativekit.ui.core.DockDropTarget;
 import nativekit.ui.core.DockPanelDescriptor;
 import nativekit.ui.core.DockSplitAxis;
+import nativekit.ui.core.DockWorkspaceInteraction;
 import nativekit.ui.core.DockWorkspaceModel;
 import nativekit.ui.core.Key;
 import nativekit.ui.core.RenderNode;
@@ -15,15 +20,18 @@ import nativekit.ui.core.View;
 class DockWorkspace implements View {
 	public final key:String;
 	public final model:DockWorkspaceModel;
+	public final interaction:DockWorkspaceInteraction;
 	public final style:LayoutStyle;
 	var invalidate:Null<Void->Void>;
 	var subscribed:Bool;
 
-	public function new(key:String, model:DockWorkspaceModel, ?style:LayoutStyle) {
+	public function new(key:String, model:DockWorkspaceModel, ?style:LayoutStyle,
+			?interaction:DockWorkspaceInteraction) {
 		if (key == null || key.length == 0 || model == null)
 			throw "Dock workspaces require a stable key and model";
 		this.key = key;
 		this.model = model;
+		this.interaction = interaction == null ? new DockWorkspaceInteraction(model) : interaction;
 		this.style = style == null ? defaultStyle() : style.copy();
 		invalidate = null;
 		subscribed = false;
@@ -35,9 +43,14 @@ class DockWorkspace implements View {
 				if (invalidate != null)
 					invalidate();
 			});
+			interaction.listen(function() {
+				if (invalidate != null)
+					invalidate();
+			});
 			subscribed = true;
 		}
 		invalidate = function() context.commands.refresh();
+		interaction.beginFrame();
 		var content = buildNode(model.root, context, [], "layout");
 		var layout = new SizedBox("layout", content, LayoutAxis.grow(), LayoutAxis.grow());
 		return new Column(key, [new KeyedView("content", layout)], style).build(context);
@@ -48,9 +61,12 @@ class DockWorkspace implements View {
 			return new Text("No dock layout");
 		switch (node) {
 			case DockNode.Empty: return new Text("No panels");
-			case DockNode.Panel(panelId): return panelView(panelId);
+			case DockNode.Panel(panelId): return targetView(panelId, panelView(panelId));
 			case DockNode.Tabs(panelIds, activePanelId):
-				return buildTabs(panelIds, activePanelId, context, nodeKey);
+				var targetPanelId = activePanelId == null && panelIds != null && panelIds.length > 0
+					? panelIds[0] : activePanelId;
+				return targetPanelId == null ? buildTabs(panelIds, activePanelId, context, nodeKey) :
+					targetView(targetPanelId, buildTabs(panelIds, activePanelId, context, nodeKey));
 			case DockNode.Split(axis, ratio, first, second):
 				return buildSplit(axis, ratio, first, second, context, path, nodeKey);
 		}
@@ -71,7 +87,11 @@ class DockWorkspace implements View {
 		tabsStyle.height = LayoutAxis.grow();
 		return new Tabs(nodeKey, items, activePanelId, function(next) {
 			model.activate(next);
-		}, tabsStyle);
+		}, tabsStyle,
+			function(panelId, event) interaction.beginTabDrag(panelId, event.pointerId, event.x, event.y),
+			function(panelId, event) interaction.moveTabDrag(panelId, event.pointerId, event.x, event.y),
+			function(panelId, event) interaction.endTabDrag(panelId, event.pointerId, event.x, event.y),
+			function(panelId, event) interaction.cancelTabDrag(panelId, event.pointerId));
 	}
 
 	function buildSplit(axis:DockSplitAxis, ratio:Float, first:DockNode, second:DockNode,
@@ -109,6 +129,9 @@ class DockWorkspace implements View {
 			new DockPanelView(descriptor);
 	}
 
+	function targetView(targetPanelId:String, child:View):View
+		return new DockDropTargetView(child, interaction, targetPanelId);
+
 	static function defaultStyle():LayoutStyle {
 		var result = new LayoutStyle();
 		result.width = LayoutAxis.grow();
@@ -133,5 +156,45 @@ private class DockPanelView implements View {
 		return context.withScope(new Key("panel:" + descriptor.id), function() {
 			return content.build(context);
 		});
+	}
+}
+
+private class DockDropTargetView implements View {
+	final child:View;
+	final interaction:DockWorkspaceInteraction;
+	final targetPanelId:String;
+
+	public function new(child:View, interaction:DockWorkspaceInteraction,
+			targetPanelId:String) {
+		if (child == null || interaction == null || targetPanelId == null)
+			throw "Dock drop target views require a child, interaction, and target";
+		this.child = child;
+		this.interaction = interaction;
+		this.targetPanelId = targetPanelId;
+	}
+
+	public function build(context:BuildContext):RenderNode {
+		var node = child.build(context);
+		interaction.registerTarget(new DockDropTarget(targetPanelId, node));
+		var activePreview = interaction.preview;
+		if (activePreview != null && activePreview.targetPanelId == targetPanelId)
+			node.onPaint(function(canvas, geometry) {
+				var preview = interaction.preview;
+				if (preview == null || preview.targetPanelId != targetPanelId)
+					return;
+				canvas.fillRectIfPositive(previewRect(preview.zone, geometry.width, geometry.height),
+					Color.rgba(0.18, 0.52, 0.95, 0.22));
+			});
+		return node;
+	}
+
+	static function previewRect(zone:DockDropZone, width:Float, height:Float):Rect {
+		return switch (zone) {
+			case DockDropZone.Center: new Rect(width * 0.2, height * 0.2, width * 0.6, height * 0.6);
+			case DockDropZone.Left: new Rect(0.0, 0.0, width * 0.25, height);
+			case DockDropZone.Right: new Rect(width * 0.75, 0.0, width * 0.25, height);
+			case DockDropZone.Top: new Rect(0.0, 0.0, width, height * 0.25);
+			case DockDropZone.Bottom: new Rect(0.0, height * 0.75, width, height * 0.25);
+		};
 	}
 }

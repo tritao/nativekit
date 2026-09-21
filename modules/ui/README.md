@@ -189,9 +189,12 @@ vectors, transforms, entity references, assets, colors, and curves.
 panels, tab groups, and ratio-based splits. `DockWorkspace` renders that tree
 through `SplitView` and `Tabs`, building only the active tab page. The model
 supports activation, close/open, docking mutations, split-ratio updates,
-snapshots, and `dock.close`/`dock.reset` command registration. Persist its
-`DockWorkspaceSnapshot` alongside project or user preferences; panel content
-and document state remain owned by the application.
+snapshots, JSON persistence, and `dock.close`/`dock.reset` command
+registration. `DockWorkspaceInteraction` adds pointer-driven tab dragging and
+resolved-geometry drop-zone targeting while keeping storage application-owned
+through `DockWorkspacePersistence`. Persist its `DockWorkspaceSnapshot`
+alongside project or user preferences; panel content and document state remain
+owned by the application.
 
 ## Frame building and sealed plans
 

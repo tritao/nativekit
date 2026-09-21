@@ -54,9 +54,11 @@ import nativekit.ui.core.CommandParameters;
 import nativekit.ui.core.CommandRegistry;
 import nativekit.ui.core.CommandResult;
 import nativekit.ui.core.DockDropZone;
+import nativekit.ui.core.DockDropTarget;
 import nativekit.ui.core.DockNode;
 import nativekit.ui.core.DockPanelDescriptor;
 import nativekit.ui.core.DockSplitAxis;
+import nativekit.ui.core.DockWorkspacePersistence;
 import nativekit.ui.core.DockWorkspaceModel;
 import nativekit.ui.core.EditorDocument;
 import nativekit.ui.core.EditHistory;
@@ -3498,6 +3500,47 @@ class FrameworkSmoke {
 		workspaceRoot = uiContext.submit(workspace, new LayoutFrame(640.0, 480.0));
 		if (workspaceRoot == null || consoleBuilds != 1)
 			return false;
+		var tabsNode:Null<RenderNode> = null;
+		workspaceRoot.walk(function(node) {
+			if (tabsNode == null && node.styleType == "tabs")
+				tabsNode = node;
+		});
+		if (tabsNode == null)
+			return false;
+		var tabsBounds = tabsNode.globalBounds();
+		var centerX = tabsBounds.x + tabsBounds.width * 0.5;
+		var centerY = tabsBounds.y + tabsBounds.height * 0.5;
+		if (!workspace.interaction.beginTabDrag("inspector", 11, centerX, centerY) ||
+			!workspace.interaction.moveTabDrag("inspector", 11, centerX, centerY) ||
+			workspace.interaction.preview == null ||
+			!workspace.interaction.endTabDrag("inspector", 11, centerX, centerY))
+			return false;
+		if (!model.restore(snapshot))
+			return false;
+		var snapshotJson = model.snapshotJson();
+		if (snapshotJson == null || snapshotJson.length == 0 || !model.restoreJson(snapshotJson))
+			return false;
+		var storage = new SmokeDockStorage();
+		model.saveTo(storage, "editor");
+		if (!model.restoreFrom(storage, "editor") || model.restoreFrom(storage, "missing"))
+			return false;
+		workspaceRoot = uiContext.submit(workspace, new LayoutFrame(640.0, 480.0));
+		var inspectorTab:Null<RenderNode> = null;
+		workspaceRoot.walk(function(node) {
+			if (inspectorTab == null && node.styleType == "button" && node.styleKey == "inspector")
+				inspectorTab = node;
+		});
+		if (inspectorTab == null)
+			return false;
+		var inspectorBounds = inspectorTab.globalBounds();
+		var inspectorX = inspectorBounds.x + inspectorBounds.width * 0.5;
+		var inspectorY = inspectorBounds.y + inspectorBounds.height * 0.5;
+		uiContext.pointerDown(inspectorX, inspectorY, 0);
+		uiContext.pointerMove(inspectorX + 12.0, inspectorY);
+		uiContext.pointerUp(inspectorX + 12.0, inspectorY, 0);
+		if (workspace.interaction.draggingPanelId != null || model.activePanelId != "inspector" ||
+			!model.restore(snapshot))
+			return false;
 		if (!model.close("console") || model.isOpen("console") || !model.open("console", "viewport"))
 			return false;
 		if (!model.restore(snapshot) || !model.isOpen("console") || model.activePanelId != "console")
@@ -3719,6 +3762,19 @@ private class SmokeVector {
 		this.y = y;
 		this.z = z;
 	}
+}
+
+private class SmokeDockStorage implements DockWorkspacePersistence {
+	var values:Map<String, String>;
+
+	public function new()
+		values = new Map();
+
+	public function load(key:String):Null<String>
+		return values.get(key);
+
+	public function save(key:String, value:String):Void
+		values.set(key, value);
 }
 
 private class SmokeVectorExtension implements PropertyEditorExtension {
