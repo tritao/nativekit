@@ -104,10 +104,43 @@ void readers_can_hold_old_snapshots_during_commits() {
     assert(scene->snapshot().find(occurrence)->world_transform.transform.matrix[12] == 200.0f);
 }
 
+void snapshots_expose_reverse_indexes() {
+    auto scene = std::make_shared<Scene>();
+    const auto geometry = scene->create_geometry();
+    const auto material = scene->create_material();
+    const auto root = scene->reserve_occurrence_id();
+    const auto first = scene->reserve_occurrence_id();
+    const auto second = scene->reserve_occurrence_id();
+
+    Transaction transaction(scene);
+    transaction.add_create(root);
+    transaction.add_create(first);
+    transaction.add_create(second);
+    transaction.add_parent(first, root);
+    transaction.add_parent(second, root);
+    transaction.add_geometry(first, geometry);
+    transaction.add_geometry(second, geometry);
+    transaction.add_material(first, material);
+    transaction.add_material(second, material);
+    ChangeSet changes;
+    assert(scene->commit(transaction, changes) == NKS_OK);
+    transaction.close();
+
+    const auto snapshot = scene->snapshot();
+    const auto children = snapshot.children(root);
+    assert(children.size() == 2);
+    assert(children[0] == first && children[1] == second);
+    const auto geometry_occurrences = snapshot.occurrences_for_geometry(geometry);
+    assert(geometry_occurrences.size() == 2);
+    const auto material_occurrences = snapshot.occurrences_for_material(material);
+    assert(material_occurrences.size() == 2);
+}
+
 } // namespace
 
 int main() {
     published_payloads_are_shared_and_snapshot_safe();
     readers_can_hold_old_snapshots_during_commits();
+    snapshots_expose_reverse_indexes();
     return 0;
 }

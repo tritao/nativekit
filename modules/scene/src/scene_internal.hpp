@@ -20,8 +20,11 @@ namespace nkscene {
 struct PublishedSceneState {
     RevisionCounters revisions;
     std::vector<SnapshotOccurrence> occurrences;
+    std::unordered_map<OccurrenceId, std::vector<OccurrenceId>> children_by_parent;
     std::unordered_map<EntityId, std::vector<OccurrenceId>> occurrences_by_source;
     std::unordered_map<EntityId, std::string> entity_names;
+    std::unordered_map<GeometryId, std::vector<OccurrenceId>> occurrences_by_geometry;
+    std::unordered_map<MaterialId, std::vector<OccurrenceId>> occurrences_by_material;
     std::vector<GeometryResource> geometries;
     std::vector<MaterialResource> materials;
     std::vector<ImageResource> images;

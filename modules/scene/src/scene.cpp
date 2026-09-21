@@ -35,10 +35,33 @@ std::span<const SnapshotOccurrence> SceneSnapshot::occurrences() const noexcept 
     return state_->occurrences;
 }
 
+std::span<const OccurrenceId> SceneSnapshot::children(OccurrenceId parent) const noexcept {
+    const auto found = state_->children_by_parent.find(parent);
+    return found == state_->children_by_parent.end()
+               ? std::span<const OccurrenceId>{}
+               : std::span<const OccurrenceId>{found->second};
+}
+
 std::span<const OccurrenceId>
 SceneSnapshot::occurrences_for_source(EntityId source) const noexcept {
     const auto found = state_->occurrences_by_source.find(source);
     return found == state_->occurrences_by_source.end()
+               ? std::span<const OccurrenceId>{}
+               : std::span<const OccurrenceId>{found->second};
+}
+
+std::span<const OccurrenceId>
+SceneSnapshot::occurrences_for_geometry(GeometryId geometry) const noexcept {
+    const auto found = state_->occurrences_by_geometry.find(geometry);
+    return found == state_->occurrences_by_geometry.end()
+               ? std::span<const OccurrenceId>{}
+               : std::span<const OccurrenceId>{found->second};
+}
+
+std::span<const OccurrenceId>
+SceneSnapshot::occurrences_for_material(MaterialId material) const noexcept {
+    const auto found = state_->occurrences_by_material.find(material);
+    return found == state_->occurrences_by_material.end()
                ? std::span<const OccurrenceId>{}
                : std::span<const OccurrenceId>{found->second};
 }
@@ -422,9 +445,19 @@ void Scene::publish_state() const {
               [](const SnapshotOccurrence &lhs, const SnapshotOccurrence &rhs) {
                   return lhs.occurrence.value < rhs.occurrence.value;
               });
+    state->children_by_parent.reserve(state->occurrences.size());
     state->occurrences_by_source.reserve(state->occurrences.size());
-    for (const auto &occurrence : state->occurrences)
+    state->occurrences_by_geometry.reserve(state->occurrences.size());
+    state->occurrences_by_material.reserve(state->occurrences.size());
+    for (const auto &occurrence : state->occurrences) {
+        if (occurrence.parent.valid())
+            state->children_by_parent[occurrence.parent].push_back(occurrence.occurrence);
         state->occurrences_by_source[occurrence.source].push_back(occurrence.occurrence);
+        if (occurrence.geometry.valid())
+            state->occurrences_by_geometry[occurrence.geometry].push_back(occurrence.occurrence);
+        if (occurrence.material.valid())
+            state->occurrences_by_material[occurrence.material].push_back(occurrence.occurrence);
+    }
     state->entity_names = entity_names;
     geometries.for_each([&](GeometryId, const GeometryResource &resource) {
         state->geometries.push_back(resource);
