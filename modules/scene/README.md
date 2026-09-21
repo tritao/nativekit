@@ -29,3 +29,12 @@ without collapsing their independent transforms or presentation state.
 Transactions remain the scene mutation boundary. Simulation systems should
 place all updates for one step in one transaction and use
 `nkscene_tx_set_transforms()` for bulk transform updates.
+
+Geometry uses vertex streams. A geometry must provide a position stream, while
+normal, tangent, UV, and color streams are optional and independently packed.
+Scene images, textures, and samplers are asset descriptions owned by the scene;
+their GPU realizations belong to `scene_render`.
+
+Materials use a compact metallic/roughness model. Cameras and lights are
+generic scene resources attached to occurrences through their own references;
+sensor-specific concepts remain above the scene layer.
