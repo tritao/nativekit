@@ -703,10 +703,10 @@ bool ensure_geometry(StateT &state, const GeometryResource &resource, GpuExecuti
 
     if (cached.buffer.id) {
         if (cached.byte_size == byte_size && byte_size != 0) {
-            const auto result = nkgpu_buffer_update(state.renderer, cached.buffer, 0,
-                                                    reinterpret_cast<const std::uint8_t *>(
-                                                        packed_vertices.data()),
-                                                    static_cast<std::uint32_t>(byte_size));
+            const auto result =
+                nkgpu_buffer_update(state.renderer, cached.buffer, 0,
+                                    reinterpret_cast<const std::uint8_t *>(packed_vertices.data()),
+                                    static_cast<std::uint32_t>(byte_size));
             if (result != NKGPU_OK)
                 return set_failure(state, stats, result);
         } else {
@@ -813,9 +813,9 @@ bool ensure_default_material_resources(StateT &state, GpuExecutionStats &stats) 
             return set_failure(state, stats, result);
     }
     if (!state.default_sampler.id) {
-        const auto result = nkgpu_sampler_create(
-            state.renderer, NKGPU_FILTER_LINEAR, NKGPU_FILTER_LINEAR, NKGPU_WRAP_REPEAT,
-            NKGPU_WRAP_REPEAT, &state.default_sampler);
+        const auto result =
+            nkgpu_sampler_create(state.renderer, NKGPU_FILTER_LINEAR, NKGPU_FILTER_LINEAR,
+                                 NKGPU_WRAP_REPEAT, NKGPU_WRAP_REPEAT, &state.default_sampler);
         if (result != NKGPU_OK)
             return set_failure(state, stats, result);
     }
