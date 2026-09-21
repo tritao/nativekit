@@ -7,7 +7,7 @@ haxeon_dir=${HAXEON_DIR:-"$(dirname "$repo_dir")/realtime-haxe"}
 build_dir=${NATIVEKIT_BUILD_DIR:-"$repo_dir/build-ui"}
 artifact="$build_dir/haxeon-ui-virtual-list-benchmark.hl"
 
-cmake --build "$build_dir" --target nativekit_ui
+cmake --build "$build_dir" --target nativekit_ui nativekit_ui_hit_test_benchmark
 "$module_dir/tools/check-hxi.sh"
 if [[ -x "$haxeon_dir/scripts/build-runtime.sh" ]]; then
 	(cd "$haxeon_dir" && scripts/build-runtime.sh)
@@ -54,3 +54,5 @@ fi
 	NKUI_TEST_FONT_PATH="$font_path" \
 	LD_LIBRARY_PATH="$runtime_library_path" \
 	"$hashlink_runtime" "$artifact")
+
+"$build_dir/modules/ui/nativekit_ui_hit_test_benchmark"

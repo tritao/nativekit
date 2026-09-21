@@ -34,7 +34,8 @@ class VirtualListBenchmark {
 			runModel(fonts, 10000) && runModel(fonts, 100000) &&
 			runTree(fonts, 100000) &&
 			runSubmitComparison(fonts, 10000) &&
-			runSubmitComparison(fonts, 100000);
+			runSubmitComparison(fonts, 100000) &&
+			runHitTestBenchmarks();
 		fonts.dispose();
 		return valid ? 0 : 1;
 	}
@@ -106,6 +107,105 @@ class VirtualListBenchmark {
 			'speedup=$speedup full_nodes=${fullNodes / samples} retained_nodes=${retainedNodes / samples} ' +
 			'retained_frames=$retainedFrames');
 		return retainedFrames == samples;
+	}
+
+	/** Measures native geometric picking and the Haxe hit-path boundary. */
+	static function runHitTestBenchmarks():Bool {
+		return runHitScenario('ordinary_1k', ordinaryTree(1000), 0, 256) &&
+			runHitScenario('ordinary_10k', ordinaryTree(10000), 0, 256) &&
+			runHitScenario('deeply_nested_clipping', clippedTree(32), 1, 256) &&
+			runHitScenario('pointer_sweep_10k', ordinaryTree(10000), 3, 1024);
+	}
+
+	static function runHitScenario(name:String, root:LayoutNode, mode:Int,
+			queryCount:Int):Bool {
+		var session = LayoutSession.create();
+		var frame = new LayoutFrame(viewportWidth, viewportHeight);
+		session.submit(root, frame);
+		var path:Array<Int> = [];
+		var checksum = 0;
+		var started = Sys.time();
+		for (sample in 0...queryCount) {
+			var x:Float;
+			var y:Float;
+			switch (mode) {
+			case 1:
+				// Alternate between the center of the clipping chain and a point
+				// just outside the inner viewport.
+				x = sample % 2 == 0 ? viewportWidth * 0.5 : viewportWidth - 2.0;
+				y = viewportHeight * 0.5;
+			default:
+				var columns = mode == 3 ? 64 : 32;
+				var rows = mode == 3 ? Std.int(Math.ceil(queryCount / columns)) : 8;
+				var column = sample % columns;
+				var row = Std.int(sample / columns) % rows;
+				x = (column + 0.5) * viewportWidth / columns;
+				y = (row + 0.5) * viewportHeight / rows;
+			}
+			session.hitTestInto(x, y, path);
+			checksum += path.length;
+		}
+		var boundaryMicros = (Sys.time() - started) * 1000000.0 / queryCount;
+		var stats = session.hitTestStats();
+		var hits = haxe.Int64.toInt(stats.hitTestCount);
+		var visited = haxe.Int64.toInt(stats.nodesVisited);
+		var rejected = haxe.Int64.toInt(stats.subtreesRejected);
+		var precise = haxe.Int64.toInt(stats.preciseHitTests);
+		var maxVisited = haxe.Int64.toInt(stats.maxNodesVisited);
+		var nativeMicros = haxe.Int64.toInt(stats.hitTestTimeNanoseconds) / 1000.0 /
+			Math.max(1, hits);
+		var averageVisited = visited / Math.max(1, hits);
+		var averagePrecise = precise / Math.max(1, hits);
+		var rejectionRatio = rejected / Math.max(1, visited);
+		Sys.println('hit_test name=$name queries=$hits ' +
+			'avg_nodes_visited=$averageVisited subtree_rejection_ratio=$rejectionRatio ' +
+			'avg_precise_tests=$averagePrecise native_us=$nativeMicros ' +
+			'boundary_us=$boundaryMicros max_nodes_visited=$maxVisited checksum=$checksum');
+		session.dispose();
+		return hits == queryCount && checksum > 0;
+	}
+
+	static function fixedStyle(width:Float, height:Float):LayoutStyle {
+		var style = new LayoutStyle();
+		style.width = LayoutAxis.fixed(width);
+		style.height = LayoutAxis.fixed(height);
+		return style;
+	}
+
+	static function ordinaryTree(itemCount:Int):LayoutNode {
+		var rootStyle = fixedStyle(viewportWidth, viewportHeight);
+		rootStyle.clipHorizontal = true;
+		rootStyle.clipVertical = true;
+		var root = LayoutNode.box(1, rootStyle);
+		var groupSize = 32;
+		var groupCount = Std.int(Math.ceil(itemCount / groupSize));
+		var nextId = 2;
+		for (groupIndex in 0...groupCount) {
+			var rowCount = Std.int(Math.min(groupSize, itemCount - groupIndex * groupSize));
+			var group = LayoutNode.box(nextId++, fixedStyle(viewportWidth, rowCount * itemHeight));
+			group.hitSelf = false;
+			for (_ in 0...rowCount)
+				group.add(LayoutNode.box(nextId++, fixedStyle(viewportWidth, itemHeight)));
+			root.add(group);
+		}
+		return root;
+	}
+
+	static function clippedTree(depth:Int):LayoutNode {
+		var rootStyle = fixedStyle(viewportWidth, viewportHeight);
+		rootStyle.clipHorizontal = true;
+		rootStyle.clipVertical = true;
+		var root = LayoutNode.box(1, rootStyle);
+		var parent = root;
+		for (index in 0...depth) {
+			var style = fixedStyle(viewportWidth - 8.0, viewportHeight - 8.0);
+			style.clipHorizontal = true;
+			style.clipVertical = true;
+			var child = LayoutNode.box(index + 2, style);
+			parent.add(child);
+			parent = child;
+		}
+		return root;
 	}
 
 	static function run(fonts:FontCollection, itemCount:Int):Bool {
