@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <thread>
 #include <unordered_map>
@@ -16,10 +17,17 @@ namespace nkscene {
 
 namespace {
 
-constexpr std::uint32_t vertex_stride = sizeof(GeometryVertex);
+struct SceneVertex {
+    std::array<float, 3> position{};
+    std::array<float, 3> normal{0.0f, 0.0f, 1.0f};
+    std::array<float, 2> texcoord{};
+    std::array<float, 4> color{1.0f, 1.0f, 1.0f, 1.0f};
+};
+
+constexpr std::uint32_t vertex_stride = sizeof(SceneVertex);
 constexpr std::uint32_t instance_stride = sizeof(float) * 20;
 
-static_assert(sizeof(GeometryVertex) == sizeof(float) * 3);
+static_assert(sizeof(SceneVertex) == sizeof(float) * 12);
 
 struct InstanceData {
     std::array<float, 16> transform;
@@ -32,6 +40,14 @@ struct ClipUniformData {
     std::array<std::array<float, 4>, RenderPlan::max_clip_planes> planes{};
     std::array<float, 4> count{};
 };
+
+struct MaterialUniformData {
+    std::array<float, 4> base_color{};
+    std::array<float, 4> surface_params{};
+    std::array<float, 4> emissive{};
+};
+
+static_assert(sizeof(MaterialUniformData) == sizeof(float) * 12);
 
 static_assert(sizeof(ClipUniformData) ==
               RenderPlan::max_clip_planes * sizeof(float) * 4 + sizeof(float) * 4);
@@ -59,6 +75,94 @@ std::array<float, 4> encode_pick_id(std::uint32_t id) {
 std::uint32_t decode_pick_id(const std::array<std::uint8_t, 4> &pixel) {
     return static_cast<std::uint32_t>(pixel[0]) | (static_cast<std::uint32_t>(pixel[1]) << 8) |
            (static_cast<std::uint32_t>(pixel[2]) << 16);
+}
+
+std::size_t vertex_format_size(VertexFormat format) noexcept {
+    switch (format) {
+    case VertexFormat::Float32x2:
+        return sizeof(float) * 2;
+    case VertexFormat::Float32x3:
+        return sizeof(float) * 3;
+    case VertexFormat::Float32x4:
+        return sizeof(float) * 4;
+    case VertexFormat::Unorm8x4:
+    case VertexFormat::Snorm8x4:
+        return 4;
+    }
+    return 0;
+}
+
+bool decode_vertex_stream(const GeometryVertexStream &stream, std::size_t index,
+                          std::array<float, 4> &out) noexcept {
+    const auto element_size = vertex_format_size(stream.format);
+    const auto stride = stream.stride ? stream.stride : element_size;
+    if (!element_size || index >= stream.count || stride < element_size ||
+        index > (std::numeric_limits<std::size_t>::max() - element_size) / stride)
+        return false;
+    const auto offset = index * stride;
+    if (offset + element_size > stream.data.size())
+        return false;
+    const auto *source = reinterpret_cast<const std::uint8_t *>(stream.data.data()) + offset;
+    switch (stream.format) {
+    case VertexFormat::Float32x2: {
+        float values[2];
+        std::memcpy(values, source, sizeof(values));
+        out = {values[0], values[1], 0.0f, 1.0f};
+        return true;
+    }
+    case VertexFormat::Float32x3: {
+        float values[3];
+        std::memcpy(values, source, sizeof(values));
+        out = {values[0], values[1], values[2], 1.0f};
+        return true;
+    }
+    case VertexFormat::Float32x4:
+        std::memcpy(out.data(), source, sizeof(float) * 4);
+        return true;
+    case VertexFormat::Unorm8x4:
+        for (std::size_t component = 0; component < 4; ++component)
+            out[component] = static_cast<float>(source[component]) / 255.0f;
+        return true;
+    case VertexFormat::Snorm8x4:
+        for (std::size_t component = 0; component < 4; ++component)
+            out[component] = std::max(-1.0f, static_cast<float>(static_cast<std::int8_t>(source[component])) /
+                                                127.0f);
+        return true;
+    }
+    return false;
+}
+
+bool pack_geometry_vertices(const GeometryResource &resource, std::vector<SceneVertex> &out) {
+    out.resize(resource.payload.vertices.size());
+    for (std::size_t index = 0; index < out.size(); ++index)
+        out[index].position = resource.payload.vertices[index].position;
+    for (const auto &stream : resource.payload.streams) {
+        if (stream.count != out.size())
+            return false;
+        for (std::size_t index = 0; index < out.size(); ++index) {
+            std::array<float, 4> value{};
+            if (!decode_vertex_stream(stream, index, value))
+                return false;
+            switch (stream.semantic) {
+            case VertexSemantic::Position:
+                out[index].position = {value[0], value[1], value[2]};
+                break;
+            case VertexSemantic::Normal:
+                out[index].normal = {value[0], value[1], value[2]};
+                break;
+            case VertexSemantic::Texcoord0:
+                out[index].texcoord = {value[0], value[1]};
+                break;
+            case VertexSemantic::Color0:
+                out[index].color = value;
+                break;
+            case VertexSemantic::Tangent:
+            case VertexSemantic::Texcoord1:
+                break;
+            }
+        }
+    }
+    return true;
 }
 
 ClipUniformData clip_uniform_data(const RenderPlan &plan) {
@@ -114,6 +218,16 @@ struct NativeKitGpuExecutor::State {
         bool indexed = false;
     };
 
+    struct MaterialGpu {
+        nkgpu_image image{};
+        nkgpu_sampler sampler{};
+        std::uint64_t material_revision = 0;
+        std::uint64_t image_revision = 0;
+        std::uint64_t sampler_revision = 0;
+        bool owns_image = false;
+        bool owns_sampler = false;
+    };
+
     struct BatchGpu {
         BatchKey key;
         nkgpu_buffer buffer{};
@@ -133,10 +247,13 @@ struct NativeKitGpuExecutor::State {
     nkgpu_image pick_subelement{};
     nkgpu_image pick_depth_value{};
     nkgpu_image pick_depth{};
+    nkgpu_image default_image{};
+    nkgpu_sampler default_sampler{};
     std::uint32_t pick_width = 0;
     std::uint32_t pick_height = 0;
     std::unordered_map<GeometryId, GeometryGpu> geometry_resources;
     std::unordered_map<MaterialId, std::uint64_t> material_revisions;
+    std::unordered_map<MaterialId, MaterialGpu> material_resources;
     std::vector<BatchGpu> batches;
     std::vector<GpuCommand> commands;
     nkgpu_result last_result = NKGPU_OK;
@@ -153,6 +270,13 @@ struct NativeKitGpuExecutor::State {
             if (resource.index_buffer.id)
                 (void)nkgpu_buffer_destroy(renderer, resource.index_buffer);
         }
+        for (auto &[id, resource] : material_resources) {
+            (void)id;
+            if (resource.owns_image && resource.image.id)
+                (void)nkgpu_image_destroy(renderer, resource.image);
+            if (resource.owns_sampler && resource.sampler.id)
+                (void)nkgpu_sampler_destroy(renderer, resource.sampler);
+        }
         for (auto &batch : batches) {
             if (batch.buffer.id)
                 (void)nkgpu_buffer_destroy(renderer, batch.buffer);
@@ -165,6 +289,10 @@ struct NativeKitGpuExecutor::State {
             (void)nkgpu_image_destroy(renderer, pick_depth_value);
         if (pick_depth.id)
             (void)nkgpu_image_destroy(renderer, pick_depth);
+        if (default_image.id)
+            (void)nkgpu_image_destroy(renderer, default_image);
+        if (default_sampler.id)
+            (void)nkgpu_sampler_destroy(renderer, default_sampler);
         if (pipeline.id)
             (void)nkgpu_pipeline_destroy(renderer, pipeline);
         if (indexed_pipeline.id)
@@ -179,6 +307,7 @@ struct NativeKitGpuExecutor::State {
             (void)nkgpu_shader_destroy(renderer, pick_shader);
         geometry_resources.clear();
         material_revisions.clear();
+        material_resources.clear();
         batches.clear();
         pipeline = {};
         indexed_pipeline = {};
@@ -190,6 +319,8 @@ struct NativeKitGpuExecutor::State {
         pick_subelement = {};
         pick_depth_value = {};
         pick_depth = {};
+        default_image = {};
+        default_sampler = {};
         pick_width = 0;
         pick_height = 0;
     }
@@ -234,7 +365,7 @@ bool valid_geometry_payload(const GeometryResource &resource) {
     const auto index_count = resource.payload.indices.size();
     return vertex_count <= std::numeric_limits<std::uint32_t>::max() &&
            index_count <= std::numeric_limits<std::uint32_t>::max() &&
-           vertex_count <= std::numeric_limits<std::uint32_t>::max() / sizeof(GeometryVertex) &&
+           vertex_count <= std::numeric_limits<std::uint32_t>::max() / sizeof(SceneVertex) &&
            index_count % 3 == 0 &&
            (resource.payload.indices.empty()
                 ? vertex_count % 3 == 0
@@ -287,14 +418,23 @@ bool ensure_pipeline(StateT &state, GpuExecutionStats &stats, bool indexed) {
             (result = attribute(2, "transform1", "TEXCOORD")) != NKGPU_OK ||
             (result = attribute(3, "transform2", "TEXCOORD")) != NKGPU_OK ||
             (result = attribute(4, "transform3", "TEXCOORD")) != NKGPU_OK ||
+            (result = attribute(5, "normal", "TEXCOORD")) != NKGPU_OK ||
+            (result = attribute(6, "texcoord0", "TEXCOORD")) != NKGPU_OK ||
+            (result = attribute(7, "color0", "TEXCOORD")) != NKGPU_OK ||
             (result = nkgpu_shader_uniform_block(shader_builder, 1, NKGPU_SHADERSTAGE_VERTEX,
                                                  sizeof(float) * 16)) != NKGPU_OK ||
             (result = nkgpu_shader_uniform(shader_builder, 1, 0, "view_projection",
                                            NKGPU_UNIFORMTYPE_MAT4, 1)) != NKGPU_OK ||
             (result = nkgpu_shader_uniform_block(shader_builder, 0, NKGPU_SHADERSTAGE_FRAGMENT,
-                                                 sizeof(float) * 4)) != NKGPU_OK ||
-            (result = nkgpu_shader_uniform(shader_builder, 0, 0, "material_color",
+                                                 sizeof(float) * 12)) != NKGPU_OK ||
+            (result = nkgpu_shader_uniform(shader_builder, 0, 0, "base_color",
                                            NKGPU_UNIFORMTYPE_FLOAT4, 0)) != NKGPU_OK ||
+            (result = nkgpu_shader_uniform(shader_builder, 0, 1, "material_params",
+                                           NKGPU_UNIFORMTYPE_FLOAT4, 0)) != NKGPU_OK ||
+            (result = nkgpu_shader_uniform(shader_builder, 0, 2, "emissive",
+                                           NKGPU_UNIFORMTYPE_FLOAT4, 0)) != NKGPU_OK ||
+            (result = nkgpu_shader_texture(shader_builder, 0, 0, NKGPU_SHADERSTAGE_FRAGMENT,
+                                           "base_color_texture")) != NKGPU_OK ||
             (result = nkgpu_shader_uniform_block(shader_builder, 2, NKGPU_SHADERSTAGE_FRAGMENT,
                                                  sizeof(ClipUniformData))) != NKGPU_OK ||
             (result =
@@ -319,6 +459,12 @@ bool ensure_pipeline(StateT &state, GpuExecutionStats &stats, bool indexed) {
         (result = nkgpu_pipeline_attribute(pipeline_builder, 3, 1, sizeof(float) * 8,
                                            NKGPU_VERTEXFORMAT_FLOAT4)) != NKGPU_OK ||
         (result = nkgpu_pipeline_attribute(pipeline_builder, 4, 1, sizeof(float) * 12,
+                                           NKGPU_VERTEXFORMAT_FLOAT4)) != NKGPU_OK ||
+        (result = nkgpu_pipeline_attribute(pipeline_builder, 5, 0, sizeof(float) * 3,
+                                           NKGPU_VERTEXFORMAT_FLOAT3)) != NKGPU_OK ||
+        (result = nkgpu_pipeline_attribute(pipeline_builder, 6, 0, sizeof(float) * 6,
+                                           NKGPU_VERTEXFORMAT_FLOAT2)) != NKGPU_OK ||
+        (result = nkgpu_pipeline_attribute(pipeline_builder, 7, 0, sizeof(float) * 8,
                                            NKGPU_VERTEXFORMAT_FLOAT4)) != NKGPU_OK ||
         (result = nkgpu_pipeline_vertex_buffer(pipeline_builder, 0, vertex_stride,
                                                NKGPU_VERTEXSTEP_PER_VERTEX, 1)) != NKGPU_OK ||
@@ -520,10 +666,13 @@ bool ensure_geometry(StateT &state, const GeometryResource &resource, GpuExecuti
     const auto index_count = resource.payload.indices.size();
     if (!valid_geometry_payload(resource))
         return set_failure(state, stats, NKGPU_ERROR_INVALID_ARGUMENT);
+    std::vector<SceneVertex> packed_vertices;
+    if (!pack_geometry_vertices(resource, packed_vertices))
+        return set_failure(state, stats, NKGPU_ERROR_INVALID_ARGUMENT);
 
     auto [found, inserted] = state.geometry_resources.try_emplace(resource.id);
     auto &cached = found->second;
-    const auto byte_size = vertex_count * sizeof(GeometryVertex);
+    const auto byte_size = packed_vertices.size() * sizeof(SceneVertex);
     const auto index_byte_size = index_count * sizeof(std::uint32_t);
     const bool revision_changed = inserted || cached.revision != resource.revision;
     if (!revision_changed)
@@ -533,7 +682,7 @@ bool ensure_geometry(StateT &state, const GeometryResource &resource, GpuExecuti
         if (cached.byte_size == byte_size && byte_size != 0) {
             const auto result = nkgpu_buffer_update(
                 state.renderer, cached.buffer, 0,
-                reinterpret_cast<const std::uint8_t *>(resource.payload.vertices.data()),
+                reinterpret_cast<const std::uint8_t *>(packed_vertices.data()),
                 static_cast<std::uint32_t>(byte_size));
             if (result != NKGPU_OK)
                 return set_failure(state, stats, result);
@@ -549,7 +698,7 @@ bool ensure_geometry(StateT &state, const GeometryResource &resource, GpuExecuti
         descriptor.struct_size = sizeof(descriptor);
         descriptor.size = static_cast<std::uint32_t>(byte_size);
         descriptor.usage = NKGPU_BUFFER_VERTEX;
-        descriptor.data = reinterpret_cast<const std::uint8_t *>(resource.payload.vertices.data());
+        descriptor.data = reinterpret_cast<const std::uint8_t *>(packed_vertices.data());
         descriptor.data_size = descriptor.size;
         descriptor.dynamic_update = 1;
         const auto result = nkgpu_buffer_create_desc(state.renderer, &descriptor, &cached.buffer);
@@ -595,6 +744,123 @@ bool ensure_geometry(StateT &state, const GeometryResource &resource, GpuExecuti
         ++stats.geometry_resources_created;
     else if (revision_changed)
         ++stats.geometry_resources_updated;
+    return true;
+}
+
+nkgpu_image_format gpu_image_format(ImageFormat format) noexcept {
+    switch (format) {
+    case ImageFormat::R8:
+        return NKGPU_IMAGEFORMAT_R8;
+    case ImageFormat::RGBA8:
+        return NKGPU_IMAGEFORMAT_RGBA8;
+    case ImageFormat::RGBA16F:
+        return NKGPU_IMAGEFORMAT_RGBA16F;
+    case ImageFormat::R32F:
+        return NKGPU_IMAGEFORMAT_R32F;
+    }
+    return 0;
+}
+
+nkgpu_filter gpu_filter(SamplerFilter filter) noexcept {
+    return filter == SamplerFilter::Nearest ? NKGPU_FILTER_NEAREST : NKGPU_FILTER_LINEAR;
+}
+
+nkgpu_wrap gpu_wrap(SamplerWrap wrap) noexcept {
+    return wrap == SamplerWrap::ClampToEdge ? NKGPU_WRAP_CLAMP_TO_EDGE : NKGPU_WRAP_REPEAT;
+}
+
+template <class StateT>
+bool ensure_default_material_resources(StateT &state, GpuExecutionStats &stats) {
+    if (!state.default_image.id) {
+        constexpr std::uint8_t white[] = {255, 255, 255, 255};
+        nkgpu_image_desc image{};
+        image.struct_size = sizeof(image);
+        image.width = 1;
+        image.height = 1;
+        image.format = NKGPU_IMAGEFORMAT_RGBA8;
+        image.usage = NKGPU_IMAGE_SAMPLED;
+        image.mip_count = 1;
+        image.sample_count = 1;
+        image.layer_count = 1;
+        image.data = white;
+        image.data_size = sizeof(white);
+        image.type = NKGPU_IMAGETYPE_2D;
+        auto result = nkgpu_image_create_desc(state.renderer, &image, &state.default_image);
+        if (result != NKGPU_OK)
+            return set_failure(state, stats, result);
+    }
+    if (!state.default_sampler.id) {
+        const auto result = nkgpu_sampler_create(
+            state.renderer, NKGPU_FILTER_LINEAR, NKGPU_FILTER_LINEAR, NKGPU_WRAP_REPEAT,
+            NKGPU_WRAP_REPEAT, &state.default_sampler);
+        if (result != NKGPU_OK)
+            return set_failure(state, stats, result);
+    }
+    return true;
+}
+
+template <class StateT>
+bool ensure_material(StateT &state, const SceneSnapshot &snapshot, const MaterialResource &resource,
+                     GpuExecutionStats &stats) {
+    if (!ensure_default_material_resources(state, stats))
+        return false;
+
+    const auto *image = static_cast<const ImageResource *>(nullptr);
+    const auto *sampler = static_cast<const SamplerResource *>(nullptr);
+    if (resource.base_color_texture.valid()) {
+        if (const auto *texture = snapshot.find_texture(resource.base_color_texture))
+            image = snapshot.find_image(texture->image);
+    }
+    if (resource.sampler.valid())
+        sampler = snapshot.find_sampler(resource.sampler);
+    const auto image_revision = image ? image->revision : 0;
+    const auto sampler_revision = sampler ? sampler->revision : 0;
+    auto [found, inserted] = state.material_resources.try_emplace(resource.id);
+    auto &cached = found->second;
+    if (!inserted && cached.material_revision == resource.revision &&
+        cached.image_revision == image_revision && cached.sampler_revision == sampler_revision)
+        return true;
+
+    if (cached.owns_image && cached.image.id)
+        (void)nkgpu_image_destroy(state.renderer, cached.image);
+    if (cached.owns_sampler && cached.sampler.id)
+        (void)nkgpu_sampler_destroy(state.renderer, cached.sampler);
+    cached = {};
+    cached.material_revision = resource.revision;
+    cached.image_revision = image_revision;
+    cached.sampler_revision = sampler_revision;
+
+    if (image && gpu_image_format(image->format) != 0) {
+        nkgpu_image_desc descriptor{};
+        descriptor.struct_size = sizeof(descriptor);
+        descriptor.width = image->width;
+        descriptor.height = image->height;
+        descriptor.format = gpu_image_format(image->format);
+        descriptor.usage = NKGPU_IMAGE_SAMPLED;
+        descriptor.mip_count = image->mip_count ? image->mip_count : 1;
+        descriptor.sample_count = 1;
+        descriptor.layer_count = 1;
+        descriptor.data = reinterpret_cast<const std::uint8_t *>(image->data.data());
+        descriptor.data_size = static_cast<std::uint32_t>(image->data.size());
+        descriptor.type = NKGPU_IMAGETYPE_2D;
+        const auto result = nkgpu_image_create_desc(state.renderer, &descriptor, &cached.image);
+        if (result != NKGPU_OK)
+            return set_failure(state, stats, result);
+        cached.owns_image = true;
+    } else {
+        cached.image = state.default_image;
+    }
+
+    if (sampler) {
+        const auto result = nkgpu_sampler_create(
+            state.renderer, gpu_filter(sampler->min_filter), gpu_filter(sampler->mag_filter),
+            gpu_wrap(sampler->wrap_u), gpu_wrap(sampler->wrap_v), &cached.sampler);
+        if (result != NKGPU_OK)
+            return set_failure(state, stats, result);
+        cached.owns_sampler = true;
+    } else {
+        cached.sampler = state.default_sampler;
+    }
     return true;
 }
 
@@ -677,6 +943,8 @@ bool prepare_resources(StateT &state, const RenderPlan &plan, const SceneSnapsho
             found->second = resource.revision;
             ++stats.material_resources_updated;
         }
+        if (state.renderer.id && !ensure_material(state, snapshot, resource, stats))
+            return false;
     }
 
     for (auto found = state.geometry_resources.begin(); found != state.geometry_resources.end();) {
@@ -696,6 +964,17 @@ bool prepare_resources(StateT &state, const RenderPlan &plan, const SceneSnapsho
             continue;
         }
         found = state.material_revisions.erase(found);
+    }
+    for (auto found = state.material_resources.begin(); found != state.material_resources.end();) {
+        if (snapshot.find_material(found->first)) {
+            ++found;
+            continue;
+        }
+        if (state.renderer.id && found->second.owns_image && found->second.image.id)
+            (void)nkgpu_image_destroy(state.renderer, found->second.image);
+        if (state.renderer.id && found->second.owns_sampler && found->second.sampler.id)
+            (void)nkgpu_sampler_destroy(state.renderer, found->second.sampler);
+        found = state.material_resources.erase(found);
     }
 
     if (state.renderer.id && !synchronize_batches(state, plan, stats))
@@ -873,10 +1152,22 @@ GpuExecutionStats NativeKitGpuExecutor::execute(const RenderPlan &plan,
         const auto &pipeline =
             geometry->second.indexed ? state_->indexed_pipeline : state_->pipeline;
         const auto *material = snapshot.find_material(batch.key.material);
-        std::array<float, 4> material_color{1.0f, 1.0f, 1.0f, 1.0f};
+        MaterialUniformData material_data;
         if (material) {
-            material_color = material->base_color;
-            material_color[3] *= material->opacity;
+            material_data.base_color = material->base_color;
+            material_data.base_color[3] *= material->opacity;
+            material_data.surface_params = {material->metallic, material->roughness,
+                                            material->alpha_cutoff,
+                                            static_cast<float>(static_cast<std::uint32_t>(
+                                                material->alpha_mode))};
+            material_data.emissive = {material->emissive[0], material->emissive[1],
+                                      material->emissive[2], 1.0f};
+        }
+        const auto material_gpu = state_->material_resources.find(batch.key.material);
+        if (material_gpu == state_->material_resources.end()) {
+            set_failure(*state_, stats, NKGPU_ERROR_INVALID_HANDLE);
+            (void)nkgpu_end_frame(state_->renderer);
+            return stats;
         }
         if ((result = nkgpu_apply_pipeline(state_->renderer, pipeline)) != NKGPU_OK ||
             (result = nkgpu_apply_uniform_data(
@@ -890,9 +1181,14 @@ GpuExecutionStats NativeKitGpuExecutor::execute(const RenderPlan &plan,
                                                 0)) != NKGPU_OK) ||
             (result = nkgpu_apply_vertex_buffer(state_->renderer, 1, batch.buffer, 0)) !=
                 NKGPU_OK ||
+            (result = nkgpu_apply_image(state_->renderer, 0, material_gpu->second.image)) !=
+                NKGPU_OK ||
+            (result = nkgpu_apply_sampler(state_->renderer, 0, material_gpu->second.sampler)) !=
+                NKGPU_OK ||
             (result = nkgpu_apply_uniform_data(
-                 state_->renderer, 0, reinterpret_cast<const std::uint8_t *>(material_color.data()),
-                 sizeof(material_color))) != NKGPU_OK ||
+                 state_->renderer, 0,
+                 reinterpret_cast<const std::uint8_t *>(&material_data), sizeof(material_data))) !=
+                NKGPU_OK ||
             (result = nkgpu_apply_uniform_data(state_->renderer, 2,
                                                reinterpret_cast<const std::uint8_t *>(&clip_data),
                                                sizeof(clip_data))) != NKGPU_OK ||

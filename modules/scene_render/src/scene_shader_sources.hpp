@@ -61,12 +61,18 @@ struct SceneVertexInput
     float4 transform1 : TEXCOORD2;
     float4 transform2 : TEXCOORD3;
     float4 transform3 : TEXCOORD4;
+    float3 normal : TEXCOORD5;
+    float2 texcoord0 : TEXCOORD6;
+    float4 color0 : TEXCOORD7;
 };
 
 struct SceneVertexOutput
 {
     float4 position : SV_Position;
     float3 world_position : TEXCOORD0;
+    float3 normal : TEXCOORD1;
+    float2 texcoord0 : TEXCOORD2;
+    float4 color0 : TEXCOORD3;
 };
 
 SceneVertexOutput main(SceneVertexInput input)
@@ -77,15 +83,25 @@ SceneVertexOutput main(SceneVertexInput input)
                                          input.transform2, input.transform3)).xyz;
     output.position = mul(float4(world_position, 1.0f), value);
     output.world_position = world_position;
+    output.normal = normalize(mul(float4(input.normal, 0.0f),
+                                  float4x4(input.transform0, input.transform1,
+                                           input.transform2, input.transform3)).xyz);
+    output.texcoord0 = input.texcoord0;
+    output.color0 = input.color0;
     return output;
 }
 )";
 
 inline constexpr char scene_fragment_hlsl[] = R"(
-cbuffer material_color : register(b0)
+cbuffer material_params : register(b0)
 {
-    float4 value : packoffset(c0);
+    float4 base_color : packoffset(c0);
+    float4 surface_params : packoffset(c1);
+    float4 emissive : packoffset(c2);
 };
+
+Texture2D base_color_texture : register(t0);
+SamplerState base_color_sampler : register(s0);
 
 cbuffer clip_params : register(b2)
 {
@@ -96,6 +112,9 @@ cbuffer clip_params : register(b2)
 struct SceneFragmentInput
 {
     float3 world_position : TEXCOORD0;
+    float3 normal : TEXCOORD1;
+    float2 texcoord0 : TEXCOORD2;
+    float4 color0 : TEXCOORD3;
 };
 
 float4 main(SceneFragmentInput input) : SV_Target0
@@ -106,7 +125,11 @@ float4 main(SceneFragmentInput input) : SV_Target0
         if (dot(clip_planes[index].xyz, input.world_position) + clip_planes[index].w < 0.0f)
             discard;
     }
-    return value;
+    float4 texture_color = base_color_texture.Sample(base_color_sampler, input.texcoord0);
+    float3 light_direction = normalize(float3(0.35f, 0.45f, 0.82f));
+    float diffuse = 0.35f + 0.65f * max(dot(normalize(input.normal), light_direction), 0.0f);
+    float3 color = base_color.rgb * texture_color.rgb * input.color0.rgb * diffuse + emissive.rgb;
+    return float4(color, base_color.a * texture_color.a * input.color0.a);
 }
 )";
 
@@ -125,6 +148,9 @@ struct SceneVertexOutput
 {
     float4 position [[position]];
     float3 world_position [[user(locn0)]];
+    float3 normal [[user(locn1)]];
+    float2 texcoord0 [[user(locn2)]];
+    float4 color0 [[user(locn3)]];
 };
 
 struct SceneVertexInput
@@ -134,6 +160,9 @@ struct SceneVertexInput
     float4 transform1 [[attribute(2)]];
     float4 transform2 [[attribute(3)]];
     float4 transform3 [[attribute(4)]];
+    float3 normal [[attribute(5)]];
+    float2 texcoord0 [[attribute(6)]];
+    float4 color0 [[attribute(7)]];
 };
 
 vertex SceneVertexOutput main0(SceneVertexInput input [[stage_in]],
@@ -144,6 +173,11 @@ vertex SceneVertexOutput main0(SceneVertexInput input [[stage_in]],
                                       input.transform2, input.transform3) *
                              float4(input.position, 1.0)).xyz;
     output.position = view.value * float4(output.world_position, 1.0);
+    output.normal = normalize((float4x4(input.transform0, input.transform1,
+                                        input.transform2, input.transform3) *
+                               float4(input.normal, 0.0)).xyz);
+    output.texcoord0 = input.texcoord0;
+    output.color0 = input.color0;
     return output;
 }
 )";
@@ -155,7 +189,9 @@ using namespace metal;
 
 struct SceneMaterialParams
 {
-    float4 value;
+    float4 base_color;
+    float4 surface_params;
+    float4 emissive;
 };
 
 struct SceneClipParams
@@ -167,11 +203,16 @@ struct SceneClipParams
 struct SceneFragmentInput
 {
     float3 world_position [[user(locn0)]];
+    float3 normal [[user(locn1)]];
+    float2 texcoord0 [[user(locn2)]];
+    float4 color0 [[user(locn3)]];
 };
 
 fragment float4 main0(SceneFragmentInput input [[stage_in]],
                       constant SceneMaterialParams &params [[buffer(0)]],
-                      constant SceneClipParams &clip [[buffer(2)]])
+                      constant SceneClipParams &clip [[buffer(2)]],
+                      texture2d<float> base_color_texture [[texture(0)]],
+                      sampler base_color_sampler [[sampler(0)]])
 {
     for (int index = 0; index < 32; ++index) {
         if (index >= int(clip.count.x))
@@ -179,7 +220,12 @@ fragment float4 main0(SceneFragmentInput input [[stage_in]],
         if (dot(clip.planes[index].xyz, input.world_position) + clip.planes[index].w < 0.0)
             discard_fragment();
     }
-    return params.value;
+    float4 texture_color = base_color_texture.sample(base_color_sampler, input.texcoord0);
+    float3 light_direction = normalize(float3(0.35, 0.45, 0.82));
+    float diffuse = 0.35 + 0.65 * max(dot(normalize(input.normal), light_direction), 0.0);
+    float3 color = params.base_color.rgb * texture_color.rgb * input.color0.rgb * diffuse +
+                   params.emissive.rgb;
+    return float4(color, params.base_color.a * texture_color.a * input.color0.a);
 }
 )";
 

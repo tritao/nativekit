@@ -8,6 +8,7 @@
 #include <cassert>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <memory>
 #include <thread>
 
@@ -77,11 +78,51 @@ int main() {
             {{{-0.6f, -0.6f, 0.0f}}},
             {{{0.6f, -0.6f, 0.0f}}},
             {{{0.0f, 0.6f, 0.0f}}}};
+        const std::array<float, 9> normals = {
+            0.0f, 0.0f, 1.0f,
+            0.0f, 0.0f, 1.0f,
+            0.0f, 0.0f, 1.0f};
+        nkscene::GeometryVertexStream normal_stream;
+        normal_stream.semantic = nkscene::VertexSemantic::Normal;
+        normal_stream.format = nkscene::VertexFormat::Float32x3;
+        normal_stream.stride = sizeof(float) * 3;
+        normal_stream.count = 3;
+        normal_stream.data.resize(sizeof(normals));
+        std::memcpy(normal_stream.data.data(), normals.data(), sizeof(normals));
+        const std::array<float, 6> texcoords = {
+            0.0f, 0.0f,
+            1.0f, 0.0f,
+            0.5f, 1.0f};
+        nkscene::GeometryVertexStream texcoord_stream;
+        texcoord_stream.semantic = nkscene::VertexSemantic::Texcoord0;
+        texcoord_stream.format = nkscene::VertexFormat::Float32x2;
+        texcoord_stream.stride = sizeof(float) * 2;
+        texcoord_stream.count = 3;
+        texcoord_stream.data.resize(sizeof(texcoords));
+        std::memcpy(texcoord_stream.data.data(), texcoords.data(), sizeof(texcoords));
+        geometry_resource.payload.streams = {normal_stream, texcoord_stream};
         geometry_resource.payload.indices = {0, 1, 2};
         geometry_resource.subelements.ranges.push_back({0, 1, 42});
+        const auto image = scene->reserve_image_id();
+        auto &image_resource = scene->image_store().create(image);
+        image_resource.width = 1;
+        image_resource.height = 1;
+        image_resource.format = nkscene::ImageFormat::RGBA8;
+        image_resource.data = {std::byte{255}, std::byte{128}, std::byte{64}, std::byte{255}};
+        const auto texture = scene->reserve_texture_id();
+        auto &texture_resource = scene->texture_store().create(texture);
+        texture_resource.image = image;
+        const auto sampler = scene->reserve_sampler_id();
+        auto &sampler_resource = scene->sampler_store().create(sampler);
+        sampler_resource.min_filter = nkscene::SamplerFilter::Nearest;
+        sampler_resource.mag_filter = nkscene::SamplerFilter::Nearest;
+        sampler_resource.wrap_u = nkscene::SamplerWrap::ClampToEdge;
+        sampler_resource.wrap_v = nkscene::SamplerWrap::ClampToEdge;
         const auto material = scene->reserve_material_id();
         auto &material_resource = scene->material_store().create(material);
         material_resource.base_color = {0.2f, 0.7f, 1.0f, 1.0f};
+        material_resource.base_color_texture = texture;
+        material_resource.sampler = sampler;
 
         Transaction create(scene);
         const auto occurrence = scene->reserve_occurrence_id();
