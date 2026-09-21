@@ -29,6 +29,12 @@ class PropertyDescriptor {
 			throw "Property descriptor step must be positive";
 		if (type == PropertyType.Enum && (config.options == null || config.options.length == 0))
 			throw "Enum properties require options";
+		switch (type) {
+			case PropertyType.Custom(typeId):
+				if (typeId == null || typeId.length == 0)
+					throw "Custom property types require a stable type ID";
+			default:
+		}
 		this.id = id;
 		this.label = label;
 		this.type = type;
@@ -104,6 +110,11 @@ class PropertyDescriptor {
 			case PropertyType.Enum:
 				switch (value) {
 					case Enum(data): return option(data) == null ? "Unknown enum option" : null;
+					default:
+				}
+			case PropertyType.Custom(typeId):
+				switch (value) {
+					case Custom(valueType, _): valid = valueType == typeId;
 					default:
 				}
 		}

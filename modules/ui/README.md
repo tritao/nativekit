@@ -176,6 +176,15 @@ hooks, range and option validation, units, defaults, and read-only policy.
 Mixed values are preserved for multi-selection; edits apply to the active
 `EditorDocument`, so reset, slider, and text commits participate in undo/redo.
 
+Application types can extend that inspector without changing NativeKit's core
+property enum. Register a `PropertyEditorExtension` in a
+`PropertyEditorRegistry`, then use `PropertyType.Custom("sim.vec3")` and
+`PropertyValue.Custom("sim.vec3", value)` in a descriptor. The extension owns
+payload equality, formatting, parsing, validation, and its inspector `View`;
+its `apply` callback routes edits through the same document history as built-in
+controls. This is the intended boundary for simulation/CAD values such as
+vectors, transforms, entity references, assets, colors, and curves.
+
 ## Frame building and sealed plans
 
 One frame has three stages: layout and recording build a display list, the

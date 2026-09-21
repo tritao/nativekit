@@ -7,4 +7,6 @@ enum PropertyType {
 	Float;
 	Text;
 	Enum;
+	/** Application-defined property type resolved by PropertyEditorRegistry. */
+	Custom(typeId:String);
 }

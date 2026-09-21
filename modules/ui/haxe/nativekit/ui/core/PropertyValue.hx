@@ -9,4 +9,6 @@ enum PropertyValue {
 	Float(value:Float);
 	Text(value:String);
 	Enum(value:String);
+	/** Application-owned value payload tagged with its registered type ID. */
+	Custom(typeId:String, value:Dynamic);
 }

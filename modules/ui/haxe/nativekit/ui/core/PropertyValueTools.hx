@@ -11,6 +11,7 @@ class PropertyValueTools {
 			case [Int(a), Int(b)]: a == b;
 			case [Float(a), Float(b)]: a == b;
 			case [Text(a), Text(b)] | [Enum(a), Enum(b)]: a == b;
+			case [Custom(typeA, a), Custom(typeB, b)]: typeA == typeB && a == b;
 			default: false;
 		};
 	}
@@ -25,6 +26,7 @@ class PropertyValueTools {
 			case Int(data): Std.string(data);
 			case Float(data): Std.string(data);
 			case Text(data) | Enum(data): data;
+			case Custom(_, data): data == null ? "" : Std.string(data);
 		};
 	}
 
@@ -38,6 +40,7 @@ class PropertyValueTools {
 			case Int(data): Std.string(data);
 			case Float(data): Std.string(data);
 			case Unavailable | Mixed: "";
+			case Custom(_, data): data == null ? "" : Std.string(data);
 		};
 	}
 
@@ -48,6 +51,7 @@ class PropertyValueTools {
 		return switch (type) {
 			case Text: PropertyValue.Text(value);
 			case Enum: PropertyValue.Enum(value);
+			case Custom(_): null;
 			case Bool: value == "true" ? PropertyValue.Bool(true) :
 				value == "false" ? PropertyValue.Bool(false) : null;
 			case Int: integerValue == null || Std.string(integerValue) != value

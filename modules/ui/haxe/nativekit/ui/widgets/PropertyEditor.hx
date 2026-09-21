@@ -9,9 +9,9 @@ import nativekit.ui.core.CommandContext;
 import nativekit.ui.core.EditOperation;
 import nativekit.ui.core.Key;
 import nativekit.ui.core.PropertyDescriptor;
+import nativekit.ui.core.PropertyEditorRegistry;
 import nativekit.ui.core.PropertyType;
 import nativekit.ui.core.PropertyValue;
-import nativekit.ui.core.PropertyValueTools;
 import nativekit.ui.core.RenderNode;
 import nativekit.ui.core.View;
 
@@ -20,12 +20,14 @@ class PropertyEditor implements View {
 	public final key:String;
 	public final descriptors:Array<PropertyDescriptor>;
 	public final style:LayoutStyle;
+	public final registry:PropertyEditorRegistry;
 	public var enabled:Bool;
 	public var labelWidth:Float;
 	final drafts:Map<String, String>;
 	final errors:Map<String, String>;
 
-	public function new(key:String, descriptors:Array<PropertyDescriptor>, ?style:LayoutStyle) {
+	public function new(key:String, descriptors:Array<PropertyDescriptor>, ?style:LayoutStyle,
+		?registry:PropertyEditorRegistry) {
 		if (key == null || key.length == 0)
 			throw "Property editors require a stable key";
 		this.key = key;
@@ -37,6 +39,7 @@ class PropertyEditor implements View {
 			ids.set(descriptor.id, true);
 		}
 		this.style = style == null ? defaultStyle() : style.copy();
+		this.registry = registry == null ? new PropertyEditorRegistry() : registry;
 		enabled = true;
 		labelWidth = 140.0;
 		drafts = new Map();
@@ -55,13 +58,19 @@ class PropertyEditor implements View {
 			context.commands.refresh();
 			return false;
 		}
+		var extensionValidation = registry.validate(commandContext, descriptor, next);
+		if (extensionValidation != null) {
+			errors.set(descriptor.id, extensionValidation);
+			context.commands.refresh();
+			return false;
+		}
 		if (commandContext.document == null) {
 			errors.set(descriptor.id, "Property editing requires an active document");
 			context.commands.refresh();
 			return false;
 		}
 		var before = descriptor.readValue(commandContext);
-		if (PropertyValueTools.same(before, next)) {
+		if (registry.same(before, next)) {
 			errors.remove(descriptor.id);
 			return false;
 		}
@@ -110,10 +119,10 @@ class PropertyEditor implements View {
 
 	function draftOrValue(descriptor:PropertyDescriptor, value:PropertyValue):String
 		return drafts.exists(descriptor.id) ? drafts.get(descriptor.id) :
-			PropertyValueTools.editableText(value);
+			registry.editableText(value);
 
 	function commitText(context:BuildContext, descriptor:PropertyDescriptor, text:String):Void {
-		var parsed = PropertyValueTools.parse(descriptor.type, text);
+		var parsed = registry.parse(descriptor.type, text);
 		if (parsed == null) {
 			errors.set(descriptor.id, "Value is not valid");
 			context.commands.refresh();
@@ -166,6 +175,11 @@ class PropertyEditor implements View {
 				result = numericEditor(context, descriptor, value, editorKey, writable);
 			case PropertyType.Text:
 				result = textField(context, descriptor, value, editorKey, writable);
+			case PropertyType.Custom(typeId):
+				var extension = registry.get(typeId);
+				result = extension == null ? new Text("No editor for " + typeId) :
+					extension.build(editorKey, descriptor, value, context, writable,
+						function(next) { applyValue(context, descriptor, next); });
 		}
 		return result;
 	}

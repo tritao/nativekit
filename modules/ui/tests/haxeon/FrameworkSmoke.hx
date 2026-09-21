@@ -47,6 +47,7 @@ import NativeKitEventDecoderTests;
 import nativekit.ui.core.NativeInputAdapter;
 import nativekit.ui.core.CursorShape as UiCursorShape;
 import nativekit.ui.core.CachePolicy;
+import nativekit.ui.core.BuildContext;
 import nativekit.ui.core.Command;
 import nativekit.ui.core.CommandContext;
 import nativekit.ui.core.CommandParameters;
@@ -57,6 +58,8 @@ import nativekit.ui.core.EditHistory;
 import nativekit.ui.core.EditOperation;
 import nativekit.ui.core.PropertyDescriptor;
 import nativekit.ui.core.PropertyDescriptorOptions;
+import nativekit.ui.core.PropertyEditorExtension;
+import nativekit.ui.core.PropertyEditorRegistry;
 import nativekit.ui.core.PropertyOption;
 import nativekit.ui.core.PropertyType;
 import nativekit.ui.core.PropertyValue;
@@ -3344,6 +3347,47 @@ class FrameworkSmoke {
 		if (!undoneMass || massAfterUndo != 2.0 || !cleanAfterUndo ||
 			!redoneMass || mass != 4.0 || !document.isDirty)
 			return false;
+
+		var vector = new SmokeVector(1.0, 2.0, 3.0);
+		var customRegistry = new PropertyEditorRegistry();
+		customRegistry.register(new SmokeVectorExtension());
+		var vectorProperty = new PropertyDescriptor("position", "Position",
+			PropertyType.Custom("vec3"), function(_) {
+				return PropertyValue.Custom("vec3", vector);
+			}, function(_, value) {
+				switch (value) {
+					case PropertyValue.Custom("vec3", next): vector = cast next;
+					default: throw "Position requires a vec3 value";
+				}
+			});
+		var customInspector = new PropertyEditor("custom-inspector", [vectorProperty], null,
+			customRegistry);
+		var customRoot = uiContext.submit(customInspector, new LayoutFrame(480.0, 120.0));
+		var customPresentationValid = customRoot != null &&
+			customRegistry.display(PropertyValue.Custom("vec3", vector)) == "1, 2, 3" &&
+			customRegistry.editableText(PropertyValue.Custom("vec3", vector)) == "1,2,3";
+		if (!customPresentationValid)
+			return false;
+		var parsedVector = customRegistry.parse(PropertyType.Custom("vec3"), "7,8,9");
+		if (parsedVector == null || !customRegistry.same(parsedVector,
+			PropertyValue.Custom("vec3", new SmokeVector(7.0, 8.0, 9.0))))
+			return false;
+		var nextVector = new SmokeVector(4.0, 5.0, 6.0);
+		var appliedVector = customInspector.applyValue(uiContext.buildContext, vectorProperty,
+			PropertyValue.Custom("vec3", nextVector));
+		if (!appliedVector || vector != nextVector)
+			return false;
+		var undoneVector = document.undo();
+		var undoRestoredVector = vector.x == 1.0 && vector.y == 2.0 && vector.z == 3.0;
+		var redoneVector = document.redo();
+		var redoRestoredVector = vector.x == 4.0 && vector.y == 5.0 && vector.z == 6.0;
+		if (!undoneVector || !undoRestoredVector || !redoneVector || !redoRestoredVector)
+			return false;
+		if (vectorProperty.validateValue(commandContext,
+			PropertyValue.Custom("other", nextVector)) == null || vector != nextVector ||
+			!document.undo() || vector.x != 1.0 ||
+			vector.y != 2.0 || vector.z != 3.0)
+			return false;
 		var contextualRuns = 0;
 		var contextualRegistry = new CommandRegistry();
 		contextualRegistry.register(Command.contextual("property.reset", "Reset property",
@@ -3581,4 +3625,80 @@ private class SmokeTreeModel implements TreeViewModel {
 
 	public function revision():Int
 		return 1;
+}
+
+private class SmokeVector {
+	public final x:Float;
+	public final y:Float;
+	public final z:Float;
+
+	public function new(x:Float, y:Float, z:Float) {
+		this.x = x;
+		this.y = y;
+		this.z = z;
+	}
+}
+
+private class SmokeVectorExtension implements PropertyEditorExtension {
+	public function new() {}
+
+	public function typeId():String
+		return "vec3";
+
+	public function same(first:Dynamic, second:Dynamic):Bool {
+		var left:SmokeVector = cast first;
+		var right:SmokeVector = cast second;
+		return left != null && right != null && left.x == right.x && left.y == right.y &&
+			left.z == right.z;
+	}
+
+	public function display(value:Dynamic):String {
+		var vector:SmokeVector = cast value;
+		return vector == null ? "" : Std.string(vector.x) + ", " + Std.string(vector.y) + ", " +
+			Std.string(vector.z);
+	}
+
+	public function editableText(value:Dynamic):String {
+		var vector:SmokeVector = cast value;
+		return vector == null ? "" : Std.string(vector.x) + "," + Std.string(vector.y) + "," +
+			Std.string(vector.z);
+	}
+
+	public function parse(text:String):Null<Dynamic> {
+		var parts = StringTools.trim(text == null ? "" : text).split(",");
+		if (parts.length != 3)
+			return null;
+		var x = Std.parseFloat(StringTools.trim(parts[0]));
+		var y = Std.parseFloat(StringTools.trim(parts[1]));
+		var z = Std.parseFloat(StringTools.trim(parts[2]));
+		return !finite(x) || !finite(y) || !finite(z) ? null : new SmokeVector(x, y, z);
+	}
+
+	public function validate(context:CommandContext, descriptor:PropertyDescriptor,
+		value:Dynamic):Null<String> {
+		return value == null ? "A vec3 value is required" : null;
+	}
+
+	public function build(key:String, descriptor:PropertyDescriptor, value:PropertyValue,
+		context:BuildContext, enabled:Bool, apply:PropertyValue->Void):View {
+		var field = new TextField(key, editableTextValue(value), function(_) {}, null,
+			descriptor.label);
+		field.enabled = enabled;
+		field.onSubmit = function(text) {
+			var parsed = parse(text);
+			if (parsed != null)
+				apply(PropertyValue.Custom(typeId(), parsed));
+		};
+		return field;
+	}
+
+	function editableTextValue(value:PropertyValue):String {
+		return switch (value) {
+			case PropertyValue.Custom("vec3", data): editableText(data);
+			default: "";
+		};
+	}
+
+	static inline function finite(value:Float):Bool
+		return value == value && value - value == 0.0;
 }
