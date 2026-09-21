@@ -113,6 +113,8 @@ int main() {
     if (window_created != NK_OK) {
         result = 200 - static_cast<int>(window_created);
         report_frame_backend_stage(result);
+    } else {
+        report_frame_backend_stage(150);
     }
 
     nk_surface_options surface_options{};
@@ -127,6 +129,8 @@ int main() {
     if (!result && surface_created != NK_OK) {
         result = 300 - static_cast<int>(surface_created);
         report_frame_backend_stage(result);
+    } else if (!result) {
+        report_frame_backend_stage(250);
     }
 
     if (!result) {
