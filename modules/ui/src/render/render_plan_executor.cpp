@@ -201,9 +201,9 @@ std::pair<int, int> surface_request_size(const RenderPlan &plan, ResourceId surf
 
 } // namespace
 
-bool detail::execute_unsealed_render_plan(
-    UiRenderer &renderer, const RenderPlan &plan, const FrameResources &resources,
-    const WindowTarget &window, RenderExecutionError *error) {
+bool detail::execute_unsealed_render_plan(UiRenderer &renderer, const RenderPlan &plan,
+                                          const FrameResources &resources,
+                                          const WindowTarget &window, RenderExecutionError *error) {
     if (!renderer.valid() || !is_resource_id(window.id, ResourceKind::RenderTarget) ||
         window.frame_target.struct_size < sizeof(window.frame_target) ||
         window.frame_target.width <= 0 || window.frame_target.height <= 0)
