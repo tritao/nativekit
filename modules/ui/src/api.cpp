@@ -4049,8 +4049,7 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
     }
     if (sealable) {
         nkui::RenderPlanSealError seal_error;
-        auto sealed = nkui::SealedRenderPlan::seal(std::move(session_state->frame.plan()),
-                                                   std::move(owned_resources), &seal_error);
+        auto sealed = std::move(session_state->frame).seal(&seal_error);
         if (!sealed)
             return NKUI_ERROR_OUT_OF_MEMORY;
         if (threaded) {

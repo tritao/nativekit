@@ -144,6 +144,13 @@ class OwnedFrameResources final : public FrameResources {
     /** Binds a graphics image and retains it until this set is destroyed. */
     bool bind_graphics_image(ResourceId id, nk_graphics_image image,
                              uint64_t content_generation = 0);
+    /**
+     * Binds an internal recordable producer and keeps it alive until this set is
+     * destroyed. External/native producers must publish a retained graphics
+     * image instead of supplying a callback.
+     */
+    bool bind_surface(ResourceId id, std::shared_ptr<SurfaceProducer> producer,
+                      uint64_t content_generation = 0);
 
     /* Borrowed bindings and live producers cannot belong to an owned set. */
     bool bind_path(ResourceId, const PreparedPathData &, uint32_t, uint64_t) = delete;

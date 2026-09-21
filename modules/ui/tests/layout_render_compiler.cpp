@@ -1,6 +1,7 @@
 #include "layout/layout_engine.h"
 #include "layout/layout_render_compiler.h"
-#include "render/render_plan_executor.h"
+#include "render/cube_surface_producer.h"
+#include "render/render_plan_executor_detail.h"
 #include "render/sealed_render_plan.h"
 #include "render/ui_renderer.h"
 
@@ -13,6 +14,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 using namespace nkui;
@@ -962,8 +964,8 @@ int main() {
     frame_target.width = 480;
     frame_target.height = 300;
     RenderExecutionError execution_error;
-    if (!execute_render_plan(backend, frame.plan(), frame.resources(), {main_target, frame_target},
-                             &execution_error) ||
+    if (!detail::execute_unsealed_render_plan(backend, frame.plan(), frame.resources(),
+                                              {main_target, frame_target}, &execution_error) ||
         backend.pass_count != 1 || backend.path_count != path_commands ||
         backend.text_count != text_commands || backend.commit_count != 1)
         return 12;
@@ -1000,8 +1002,9 @@ int main() {
         if (!producer_resources.bind_surface(producer_target, producer))
             return 66;
         RecordingRenderer producer_backend;
-        if (execute_render_plan(producer_backend, producer_plan, producer_resources,
-                                {main_target, frame_target}, &execution_error) ||
+        if (detail::execute_unsealed_render_plan(producer_backend, producer_plan,
+                                                 producer_resources, {main_target, frame_target},
+                                                 &execution_error) ||
             producer_backend.recorded_frame || !execution_error.message ||
             std::strcmp(
                 execution_error.message,
@@ -1009,6 +1012,25 @@ int main() {
             return 67;
     }
 
+    /* The showcase cube is recordable and its offscreen pass enters the sealed batch. */
+    {
+        CubeSurfaceProducer producer;
+        producer.set_rotation(0.5f);
+        FrameResources producer_resources;
+        RenderPlan producer_plan;
+        producer_plan.passes.push_back({main_target, {}, false, {}});
+        const ResourceId producer_target = make_resource_id(ResourceKind::RenderTarget, 1, 449);
+        producer_plan.dependencies.push_back({producer_target, main_target});
+        if (!producer_resources.bind_surface(producer_target, producer))
+            return 68;
+        RecordingRenderer producer_backend;
+        if (!detail::execute_unsealed_render_plan(producer_backend, producer_plan,
+                                                  producer_resources, {main_target, frame_target},
+                                                  &execution_error) ||
+            !producer_backend.recorded_frame || producer_backend.surface_mesh_count != 1 ||
+            producer_backend.pass_count != 2 || producer_backend.commit_count != 1)
+            return 69;
+    }
     const ResourceId effect_input = make_resource_id(ResourceKind::RenderTarget, 1, 446);
     const ResourceId effect_output = make_resource_id(ResourceKind::RenderTarget, 1, 447);
     RenderPlan effect_plan;
@@ -1024,8 +1046,8 @@ int main() {
     effect_pass.effect.color_matrix[12] = 1.0f;
     effect_pass.effect.color_matrix[18] = 1.0f;
     effect_plan.passes.push_back(effect_pass);
-    if (!execute_render_plan(backend, effect_plan, frame.resources(), {main_target, frame_target},
-                             &execution_error) ||
+    if (!detail::execute_unsealed_render_plan(backend, effect_plan, frame.resources(),
+                                              {main_target, frame_target}, &execution_error) ||
         backend.effect_count != 1 || backend.commit_count != 2)
         return 25;
 
@@ -1044,8 +1066,8 @@ int main() {
     mask_pass.mask.values[4] = 0.0f;
     mask_pass.mask.values[5] = 1.0f;
     mask_plan.passes.push_back(mask_pass);
-    if (!execute_render_plan(backend, mask_plan, frame.resources(), {main_target, frame_target},
-                             &execution_error) ||
+    if (!detail::execute_unsealed_render_plan(backend, mask_plan, frame.resources(),
+                                              {main_target, frame_target}, &execution_error) ||
         backend.mask_count != 1 || backend.commit_count != 3)
         return 28;
 
@@ -1060,8 +1082,8 @@ int main() {
     box_shadow_command.box_shadow.blur_sigma = 8.0f;
     box_shadow_command.box_shadow.color = {0.1f, 0.2f, 0.3f, 0.5f};
     box_shadow_plan.passes.front().commands.push_back(box_shadow_command);
-    if (!execute_render_plan(backend, box_shadow_plan, frame.resources(),
-                             {main_target, frame_target}, &execution_error) ||
+    if (!detail::execute_unsealed_render_plan(backend, box_shadow_plan, frame.resources(),
+                                              {main_target, frame_target}, &execution_error) ||
         backend.box_shadow_count != 1 || backend.commit_count != 4)
         return 29;
 
@@ -1149,8 +1171,8 @@ int main() {
 
     RecordingRenderer cache_backend;
     auto execute_cache_plan = [&] {
-        return execute_render_plan(cache_backend, cache_plan, cache_resources,
-                                   {cache_main, frame_target}, &execution_error);
+        return detail::execute_unsealed_render_plan(cache_backend, cache_plan, cache_resources,
+                                                    {cache_main, frame_target}, &execution_error);
     };
     if (!execute_cache_plan() || cache_backend.effect_cache_keys.size() != 2 ||
         cache_backend.effect_cache_hits != 0 || cache_backend.effect_count != 2)
@@ -1355,9 +1377,7 @@ int main() {
         if (!builder_frame.sealable())
             return 64;
         RenderPlanSealError session_seal_error;
-        session_sealed = SealedRenderPlan::seal(
-            RenderPlan(builder_frame.plan()), OwnedFrameResources(builder_frame.owned_resources()),
-            &session_seal_error);
+        session_sealed = std::move(builder_frame).seal(&session_seal_error);
         if (!session_sealed || session_seal_error.message)
             return 62;
     }

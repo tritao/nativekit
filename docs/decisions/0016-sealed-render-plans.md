@@ -2,10 +2,10 @@
 
 ## Status
 
-Accepted. The UI module can now seal a compiled render plan into a
-reference-counted, immutable object that owns everything it renders with. The
-production API paths still execute unsealed plans; adopting sealing there is the
-next step and is called out below.
+Accepted. The UI module seals every public display-list and layout-session
+submission into a reference-counted, immutable object that owns everything it
+renders with. Borrowed plans remain a build-phase representation and are kept
+only for compiler/test helpers; production execution accepts sealed plans.
 
 ## Decision
 
@@ -49,26 +49,27 @@ runtime in the sealed plan.
 - Sealing cost follows the bindings, not the bytes. Prepared text publishes an
   immutable snapshot through `TextEngine::published_glyphs()`, which shares
   one object per layout generation, geometry, scale, and mode and stays valid
-  after later preparation passes. Images and paths follow the same rule as their
-  producers move to shared immutable data; the API paths still bind borrowed
-  resources until they adopt sealing.
-- Live surface producers are excluded by construction. A future shared-buffer or
-  image-handle path should give producers a way to publish a retained
-  `nk_graphics_image` snapshot, which *can* be sealed.
-- `nkui_renderer_render_frame()` and the layout-session render path keep
-  executing unsealed plans until they bind owned resources; that adoption, plus
-  the public C API that exposes sealing to Haxe, remains the next step. Doing it
-  requires deciding how a plan handle binds to an acquired surface frame from
-  ADR 0015.
+  after later preparation passes. Images and paths follow the same rule; borrowed
+  bindings exist only during the build phase before the public frame is sealed.
+- Non-recordable live surface producers are excluded by construction. Recordable
+  producers such as the showcase cube can encode an offscreen pass into the sealed
+  batch while remaining owned by the plan. A future shared-buffer or image-handle
+  path should still give producers a retained `nk_graphics_image` snapshot, which
+  is the fully data-only form.
+- `nkui_renderer_render_frame()`, its overlay variant, and the layout-session
+  render path reject frames that cannot be made self-contained, seal their
+  plans, and then execute or enqueue the sealed object. The remaining cleanup is
+  to hide the borrowed executor overload from production-facing internal code
+  and migrate the last callback-style producers to retained graphics images.
 
 ## Open questions
 
-The display-list render path seals today. The layout-session path cannot seal
-until one more thing is settled: only `LayoutRenderCompiler` tints glyphs, by
-multiplying the tint into vertex colors after preparation
-(`tint_glyphs`), and it does so per primitive. A published glyph snapshot is
-shared and immutable, so it must not be tinted in place, and publishing an
-untinted snapshot would render uncolored text.
+Both public display-list and layout-session render paths seal today. One
+remaining design issue is independent of the sealing boundary: only
+`LayoutRenderCompiler` tints glyphs, by multiplying the tint into vertex colors
+after preparation (`tint_glyphs`), and it does so per primitive. A published
+glyph snapshot is shared and immutable, so it must not be tinted in place, and
+publishing an untinted snapshot would render uncolored text.
 
 Two options:
 

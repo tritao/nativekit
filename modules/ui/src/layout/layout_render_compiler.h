@@ -4,6 +4,7 @@
 #include "compositor/render_plan.h"
 #include "layout/layout_types.h"
 #include "render/frame_resources.h"
+#include "render/sealed_render_plan.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -24,12 +25,12 @@ struct LayoutRenderCompileError {
 };
 
 /**
- * Owns the prepared resources referenced by one layout render plan.
+ * Builds the prepared resources referenced by one layout render plan.
  *
- * The frame must remain alive until its plan has finished executing because
- * FrameResources deliberately stores non-owning references to prepared data.
- * The text engine is retained across compilations so atlas state can be
- * reused by a UI session.
+ * FrameResources deliberately stores non-owning references while the frame is
+ * being built. Call seal() to consume the builder and transfer the immutable
+ * plan and owned resources to a SealedRenderPlan. The text engine is retained
+ * across compilations so atlas state can be reused by a UI session.
  */
 class LayoutRenderFrame {
   public:
@@ -51,6 +52,8 @@ class LayoutRenderFrame {
     /** False when the frame references something that cannot be sealed. */
     bool sealable() const { return sealable_; }
     void set_sealable(bool value) { sealable_ = value; }
+    /** Consumes this build-phase frame and transfers it into an immutable plan. */
+    std::shared_ptr<const SealedRenderPlan> seal(RenderPlanSealError *error = nullptr) &&;
     // A shared source is owned by the layout engine and must outlive this
     // frame and any backend atlas uploads derived from it.
     TextEngine *text_engine() {

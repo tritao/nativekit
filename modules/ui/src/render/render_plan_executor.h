@@ -20,10 +20,6 @@ struct RenderExecutionError {
     const char *message = nullptr;
 };
 
-bool execute_render_plan(UiRenderer &renderer, const RenderPlan &plan,
-                         const FrameResources &resources, const WindowTarget &window,
-                         RenderExecutionError *error = nullptr);
-
 /** Executes a sealed plan; the plan and its resources stay alive for the call. */
 bool execute_render_plan(UiRenderer &renderer, const SealedRenderPlan &sealed,
                          const WindowTarget &window, RenderExecutionError *error = nullptr);

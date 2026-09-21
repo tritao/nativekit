@@ -11,6 +11,7 @@
 #include <cstring>
 #include <limits>
 #include <unordered_set>
+#include <utility>
 
 namespace nkui {
 namespace {
@@ -301,6 +302,23 @@ void LayoutRenderFrame::reset() {
     paths_.clear();
     glyphs_.clear();
     text_engine_source_ = nullptr;
+}
+
+std::shared_ptr<const SealedRenderPlan> LayoutRenderFrame::seal(RenderPlanSealError *error) && {
+    if (!sealable_) {
+        if (error)
+            error->message = "layout render frame contains unowned resources";
+        return {};
+    }
+    auto sealed = SealedRenderPlan::seal(std::move(plan_), std::move(owned_resources_), error);
+    if (sealed) {
+        resources_.reset();
+        paths_.clear();
+        glyphs_.clear();
+        text_engine_source_ = nullptr;
+        sealable_ = false;
+    }
+    return sealed;
 }
 
 LayoutRenderCompiler::LayoutRenderCompiler() : fonts_(std::make_shared<FontCollection>()) {}

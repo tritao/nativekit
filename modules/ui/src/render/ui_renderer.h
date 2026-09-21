@@ -124,9 +124,9 @@ class UiRenderer {
     virtual bool lost() const = 0;
     /**
      * Starts a frame. Frames are recorded into a sealed submission batch and
-     * replayed by endFrame(). Retained graphics images and recordable producers
-     * are the only external-surface bindings accepted by the executor; a live
-     * non-recordable callback is rejected before GPU work begins.
+     * replayed by endFrame(). Retained graphics images and internal recordable
+     * producers are the only external-surface bindings accepted by the executor;
+     * a live non-recordable callback is rejected before GPU work begins.
      */
     virtual bool beginFrame(bool record, const nk_surface_frame_target *frame_target = nullptr) = 0;
     virtual bool beginWindowPass(int width, int height, bool clear) = 0;
