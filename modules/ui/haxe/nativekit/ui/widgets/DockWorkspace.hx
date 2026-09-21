@@ -2,12 +2,15 @@ package nativekit.ui.widgets;
 
 import Color;
 import LayoutAxis;
+import LayoutPositioning;
 import LayoutStyle;
+import LayoutVisualKind;
 import Rect;
 import nativekit.ui.core.BuildContext;
 import nativekit.ui.core.DockDropZone;
 import nativekit.ui.core.DockNode;
 import nativekit.ui.core.DockDropTarget;
+import nativekit.ui.core.DockTabDropTarget;
 import nativekit.ui.core.DockPanelDescriptor;
 import nativekit.ui.core.DockSplitAxis;
 import nativekit.ui.core.DockWorkspaceInteraction;
@@ -92,7 +95,30 @@ class DockWorkspace implements View {
 			function(panelId, event) interaction.moveTabDrag(panelId, event.pointerId, event.x, event.y),
 			function(panelId, event) interaction.endTabDrag(panelId, event.pointerId, event.x, event.y),
 			function(panelId, event) interaction.cancelTabDrag(panelId, event.pointerId),
-			TabsSelectionMode.Controlled);
+			TabsSelectionMode.Controlled,
+			function(panelId, node) {
+				interaction.registerTabTarget(new DockTabDropTarget(panelId, node));
+				var indicatorStyle = new LayoutStyle();
+				indicatorStyle.width = LayoutAxis.grow();
+				indicatorStyle.height = LayoutAxis.grow();
+				indicatorStyle.positioning = LayoutPositioning.Absolute;
+				indicatorStyle.zIndex = 2;
+				var indicator = new RenderNode(context.id("tab-drop-indicator:" + panelId),
+					LayoutVisualKind.Custom, indicatorStyle);
+				indicator.hitTestSelf = false;
+				indicator.onPaint(function(canvas, geometry) {
+					var preview = interaction.preview;
+					if (preview == null || preview.targetPanelId != panelId ||
+						(preview.zone != DockDropZone.TabBefore && preview.zone != DockDropZone.TabAfter))
+						return;
+					var indicatorWidth = Math.max(2.0, Math.min(4.0, geometry.width * 0.08));
+					var x = preview.zone == DockDropZone.TabBefore ? 0.0 :
+						Math.max(0.0, geometry.width - indicatorWidth);
+					canvas.fillRectIfPositive(new Rect(x, 0.0, indicatorWidth, geometry.height),
+						Color.rgba(0.18, 0.52, 0.95, 0.9));
+				});
+				node.add(indicator);
+			});
 	}
 
 	function buildSplit(axis:DockSplitAxis, ratio:Float, first:DockNode, second:DockNode,
@@ -192,6 +218,9 @@ private class DockDropTargetView implements View {
 	static function previewRect(zone:DockDropZone, width:Float, height:Float):Rect {
 		return switch (zone) {
 			case DockDropZone.Center: new Rect(width * 0.2, height * 0.2, width * 0.6, height * 0.6);
+			case DockDropZone.TabBefore: new Rect(0.0, 0.0, Math.max(3.0, width * 0.08), height);
+			case DockDropZone.TabAfter: new Rect(Math.max(0.0, width * 0.92), 0.0,
+				Math.max(3.0, width * 0.08), height);
 			case DockDropZone.Left: new Rect(0.0, 0.0, width * 0.25, height);
 			case DockDropZone.Right: new Rect(width * 0.75, 0.0, width * 0.25, height);
 			case DockDropZone.Top: new Rect(0.0, 0.0, width, height * 0.25);

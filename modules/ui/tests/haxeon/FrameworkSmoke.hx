@@ -95,6 +95,9 @@ import nativekit.ui.semantics.AccessibilityRequest;
 import nativekit.ui.semantics.Semantics;
 import nativekit.ui.widgets.Button;
 import nativekit.ui.widgets.ButtonVariant;
+import nativekit.ui.widgets.CommandButton;
+import nativekit.ui.widgets.CommandMenu;
+import nativekit.ui.widgets.CommandPalette;
 import nativekit.ui.widgets.Column;
 import nativekit.ui.widgets.Align;
 import nativekit.ui.widgets.AppShell;
@@ -144,6 +147,7 @@ import nativekit.ui.widgets.TableColumn;
 import nativekit.ui.widgets.TableView;
 import nativekit.ui.widgets.Toggle;
 import nativekit.ui.widgets.Tooltip;
+import nativekit.ui.widgets.Toolbar;
 import nativekit.ui.widgets.TreeView;
 import nativekit.ui.widgets.TreeViewModel;
 import nativekit.ui.widgets.Utf8Text;
@@ -3463,7 +3467,39 @@ class FrameworkSmoke {
 			return false;
 		routingRoot.commandScope = null;
 		dispatcher.key(UiEventKind.KeyDown, UiKey.K, UiModifier.Control);
-		return routed == 1 && globalRouted == 1;
+		if (routed != 1 || globalRouted != 1)
+			return false;
+
+		var surfaceRegistry = new CommandRegistry();
+		var surfaceRuns = 0;
+		surfaceRegistry.register(new Command("surface.run", "Run simulation", function() {
+			surfaceRuns++;
+		}, new Shortcut(UiKey.R, UiModifier.Control)));
+		var toolbar = new Toolbar("command-toolbar", ["surface.run"], surfaceRegistry);
+		var toolbarRoot = uiContext.submit(toolbar, new LayoutFrame(480.0, 48.0));
+		var commandButton:Null<RenderNode> = null;
+		toolbarRoot.walk(function(node) {
+			if (commandButton == null && node.styleType == "button" && node.styleKey == "surface.run")
+				commandButton = node;
+		});
+		if (commandButton == null || commandButton.semantics == null ||
+			commandButton.semantics.label != "Run simulation")
+			return false;
+		if (!uiContext.accessibilityAction(commandButton.id.value, AccessibilityAction.Activate,
+			null, -1, -1, 1) || surfaceRuns != 1)
+			return false;
+		var menuRoot = uiContext.submit(new CommandMenu("surface-menu", ["surface.run"],
+			24.0, 24.0, surfaceRegistry), new LayoutFrame(480.0, 320.0));
+		if (menuRoot == null || menuRoot.semantics == null ||
+			menuRoot.semantics.role != AccessibilityRole.Menu)
+			return false;
+		var palette = new CommandPalette("surface-palette", surfaceRegistry, null,
+			40.0, 40.0);
+		var paletteRoot = uiContext.submit(palette, new LayoutFrame(640.0, 480.0));
+		if (paletteRoot == null || paletteRoot.semantics == null ||
+			paletteRoot.semantics.label != "Command palette")
+			return false;
+		return true;
 	}
 
 	static function dockWorkspaceValid(uiContext:UiContext):Bool {
@@ -3491,6 +3527,21 @@ class FrameworkSmoke {
 		var defaultLayout = DockNode.Split(DockSplitAxis.Horizontal, 0.3,
 			DockNode.Panel("hierarchy"), DockNode.Tabs(["viewport", "inspector"], "viewport"));
 		model.setDefaultLayout(defaultLayout);
+		var reorder = new DockWorkspaceModel();
+		for (panelId in ["a", "b", "c"])
+			reorder.register(new DockPanelDescriptor(panelId, panelId, function(_) {
+				return new Text(panelId);
+			}, false));
+		reorder.setDefaultLayout(DockNode.Tabs(["a", "b", "c"], "a"));
+		if (!reorder.dock("a", "c", DockDropZone.TabAfter))
+			return false;
+		switch (reorder.root) {
+			case DockNode.Tabs(ids, active):
+				if (ids.length != 3 || ids[0] != "b" || ids[1] != "c" || ids[2] != "a" ||
+					active != "a")
+					return false;
+			default: return false;
+		}
 		var changes = 0;
 		model.listen(function() changes++);
 		var workspace = new DockWorkspace("editor-workspace", model);

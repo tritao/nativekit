@@ -7,6 +7,7 @@ class DockWorkspaceInteraction {
 	public var preview(default, null):Null<DockDropPreview>;
 	public var revision(default, null):Int;
 	final targets:Array<DockDropTarget>;
+	final tabTargets:Array<DockTabDropTarget>;
 	final listeners:Array<Void->Void>;
 	var pointerId:Int;
 
@@ -18,6 +19,7 @@ class DockWorkspaceInteraction {
 		preview = null;
 		revision = 0;
 		targets = [];
+		tabTargets = [];
 		listeners = [];
 		pointerId = -1;
 	}
@@ -30,6 +32,17 @@ class DockWorkspaceInteraction {
 	/** Replaces render targets after each workspace rebuild. */
 	public function beginFrame():Void {
 		targets.splice(0, targets.length);
+		tabTargets.splice(0, tabTargets.length);
+	}
+
+	/** Registers one tab header as a precise before/after reorder target. */
+	public function registerTabTarget(target:DockTabDropTarget):Void {
+		if (target == null)
+			return;
+		for (existing in tabTargets)
+			if (existing.targetPanelId == target.targetPanelId && existing.node == target.node)
+				return;
+		tabTargets.push(target);
 	}
 
 	public function registerTarget(target:DockDropTarget):Void {
@@ -63,7 +76,13 @@ class DockWorkspaceInteraction {
 		updatePreview(x, y);
 		var selected = preview;
 		clearDrag();
-		return selected != null && model.dock(selected.sourcePanelId, selected.targetPanelId, selected.zone);
+		if (selected == null)
+			return false;
+		// A drag released on its own header is still a valid activation. This
+		// keeps pointer-drag capture from swallowing the tab's normal selection.
+		return selected.sourcePanelId == selected.targetPanelId
+			? model.activate(selected.sourcePanelId)
+			: model.dock(selected.sourcePanelId, selected.targetPanelId, selected.zone);
 	}
 
 	public function cancelTabDrag(panelId:String, nextPointerId:Int):Bool {
@@ -75,7 +94,19 @@ class DockWorkspaceInteraction {
 
 	function updatePreview(x:Float, y:Float):Void {
 		var next:Null<DockDropPreview> = null;
-		if (draggingPanelId != null)
+		if (draggingPanelId != null) {
+			// Header targets win over broad panel targets so a center drop can
+			// reorder an existing tab group instead of merely appending a tab.
+			for (index in 0...tabTargets.length) {
+				var tabTarget = tabTargets[tabTargets.length - index - 1];
+				var tabZone = tabTarget.zoneAt(x, y);
+				if (tabZone != null) {
+					next = new DockDropPreview(draggingPanelId, tabTarget.targetPanelId, tabZone);
+					break;
+				}
+			}
+		}
+		if (next == null && draggingPanelId != null)
 			for (index in 0...targets.length) {
 				var target = targets[targets.length - index - 1];
 				var zone = target.zoneAt(x, y);
@@ -84,7 +115,7 @@ class DockWorkspaceInteraction {
 					break;
 				}
 			}
-		if (preview == null && next == null || preview != null && !preview.same(next)) {
+		if (preview == null && next != null || preview != null && !preview.same(next)) {
 			preview = next;
 			touch();
 		}

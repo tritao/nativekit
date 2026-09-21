@@ -35,6 +35,8 @@ class Tabs implements View {
 	public var onTabDragMove:Null<String->UiEvent->Void>;
 	public var onTabDragEnd:Null<String->UiEvent->Void>;
 	public var onTabDragCancel:Null<String->UiEvent->Void>;
+	/** Called after each header is built so dock hosts can register geometry. */
+	public var onTabHeaderBuilt:Null<String->RenderNode->Void>;
 
 	public function new(key:String, items:Array<TabItem>, selectedKey:String = "",
 			?onChange:String->Void, ?style:LayoutStyle,
@@ -42,7 +44,8 @@ class Tabs implements View {
 			?onTabDragMove:String->UiEvent->Void,
 			?onTabDragEnd:String->UiEvent->Void,
 			?onTabDragCancel:String->UiEvent->Void,
-			?selectionMode:TabsSelectionMode) {
+			?selectionMode:TabsSelectionMode,
+			?onTabHeaderBuilt:String->RenderNode->Void) {
 		this.key = new Key(key);
 		this.items = items == null ? [] : items.copy();
 		this.selectedKey = selectedKey == null ? "" : selectedKey;
@@ -54,6 +57,7 @@ class Tabs implements View {
 		this.onTabDragMove = onTabDragMove;
 		this.onTabDragEnd = onTabDragEnd;
 		this.onTabDragCancel = onTabDragCancel;
+		this.onTabHeaderBuilt = onTabHeaderBuilt;
 		var keys:Map<String, Bool> = new Map();
 		for (item in this.items) {
 			if (item == null || keys.exists(item.key))
@@ -115,6 +119,8 @@ class Tabs implements View {
 				});
 				strip.add(buttonNode);
 				buttonNodes.push(buttonNode);
+				if (onTabHeaderBuilt != null)
+					onTabHeaderBuilt(item.key, buttonNode);
 				installTabDragHandlers(buttonNode, item.key, tabDragState);
 			}
 			for (index in 0...buttonNodes.length) {

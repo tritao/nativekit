@@ -233,6 +233,8 @@ class DockNodeTools {
 				else
 					switch (zone) {
 						case Center: Tabs([id, panelId], panelId);
+						case TabBefore: Tabs([panelId, id], panelId);
+						case TabAfter: Tabs([id, panelId], panelId);
 						case Left: Split(DockSplitAxis.Horizontal, 0.3, Panel(panelId), Panel(id));
 						case Right: Split(DockSplitAxis.Horizontal, 0.7, Panel(id), Panel(panelId));
 						case Top: Split(DockSplitAxis.Vertical, 0.3, Panel(panelId), Panel(id));
@@ -248,6 +250,8 @@ class DockNodeTools {
 							if (!containsId(next, panelId))
 								next.push(panelId);
 							Tabs(next, panelId);
+						case TabBefore | TabAfter:
+							insertTab(ids, panelId, targetPanelId, zone);
 						case Left | Right | Top | Bottom:
 							var group = Tabs(ids == null ? [] : ids.copy(), active);
 							splitAround(group, panelId, zone);
@@ -268,8 +272,31 @@ class DockNodeTools {
 			case Right: Split(DockSplitAxis.Horizontal, 0.7, target, Panel(panelId));
 			case Top: Split(DockSplitAxis.Vertical, 0.3, Panel(panelId), target);
 			case Bottom: Split(DockSplitAxis.Vertical, 0.7, target, Panel(panelId));
-			case Center: target;
+			case Center | TabBefore | TabAfter: target;
 		};
+	}
+
+	static function insertTab(ids:Array<String>, panelId:String, targetPanelId:String,
+			zone:DockDropZone):DockNode {
+		var next:Array<String> = [];
+		var inserted = false;
+		if (ids != null)
+			for (id in ids) {
+				if (id == panelId)
+					continue;
+				if (!inserted && id == targetPanelId && zone == DockDropZone.TabBefore) {
+					next.push(panelId);
+					inserted = true;
+				}
+				next.push(id);
+				if (!inserted && id == targetPanelId && zone == DockDropZone.TabAfter) {
+					next.push(panelId);
+					inserted = true;
+				}
+			}
+		if (!inserted)
+			next.push(panelId);
+		return Tabs(next, panelId);
 	}
 
 	static function appendPanelIds(node:DockNode, result:Array<String>):Void {
