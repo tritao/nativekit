@@ -364,8 +364,6 @@ if(NK_BUILD_TESTS)
 endif()
 
 if(NK_BUILD_EXAMPLES)
-    target_sources(nativekit_ui PRIVATE src/render/cube_surface_producer.cpp)
-    target_compile_definitions(nativekit_ui PRIVATE NKUI_ENABLE_SHOWCASE_PRODUCER=1)
     add_executable(nativekit_ui_c_api examples/ui_c_api/showcase.cpp)
     set(NKUI_C_API_FONT_PATH
         "${NK_VENDOR_DIR}/skribidi/example/data/IBMPlexSans-Regular.ttf")
@@ -715,8 +713,6 @@ if(NK_BUILD_EXAMPLES)
                 _nkui_text_layout_update
                 _nkui_text_layout_word_range_at
                 _nkui_text_layout_word_range
-                _nkui_showcase_cube_create
-                _nkui_showcase_cube_set_rotation
                 _nkui_showcase_diagnostic_report
                 _nkui_showcase_diagnostic_message
                 _nkui_showcase_diagnostic_stack

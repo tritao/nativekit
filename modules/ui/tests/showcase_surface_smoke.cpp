@@ -4,14 +4,13 @@
 #include "nativekit_window.h"
 #include "core/executor.hpp"
 #include "core/frame_backend.hpp"
+#include "showcase_offscreen_surface.h"
 #include "testing.h"
 
 #include <chrono>
+#include <cstdio>
+#include <memory>
 #include <thread>
-
-/* The showcase-only ABI is intentionally not part of the stable UI header. */
-extern "C" nkui_result nkui_showcase_cube_create(nkui_resource *out_surface);
-extern "C" nkui_result nkui_showcase_cube_set_rotation(nkui_resource surface, float radians);
 
 namespace {
 
@@ -88,7 +87,7 @@ int main() {
     nk_surface surface = NK_INVALID_HANDLE;
     nkui_renderer renderer{};
     nkui_display_list list{};
-    nkui_resource cube{};
+    std::unique_ptr<ShowcaseOffscreenSurface> cube;
     int result = 0;
 
     if (nk_window_create(&window_options, &window) != NK_OK)
@@ -112,13 +111,18 @@ int main() {
         result = 5;
     if (!result && nkui_display_list_create(&list) != NKUI_OK)
         result = 6;
-    if (!result && nkui_showcase_cube_create(&cube) != NKUI_OK)
-        result = 7;
+    if (!result) {
+        cube = std::make_unique<ShowcaseOffscreenSurface>(surface);
+        if (!cube->create(width, height)) {
+            std::fprintf(stderr, "showcase offscreen create failed: %s\n", nkgpu_last_error());
+            result = 7;
+        }
+    }
 
     if (!result) {
         const nkui_draw_rect_command draw{
             {NKUI_COMMAND_DRAW_RENDER_TARGET, NKUI_COMMAND_VERSION, sizeof(nkui_draw_rect_command)},
-            cube,
+            cube ? cube->resource() : nkui_resource{},
             24.0f,
             24.0f,
             272.0f,
@@ -158,8 +162,7 @@ int main() {
             }
             if (result)
                 break;
-            if (nkui_showcase_cube_set_rotation(cube, 0.2f * static_cast<float>(frame)) !=
-                NKUI_OK) {
+            if (!cube || !cube->update(0.2f * static_cast<float>(frame), width, height)) {
                 result = 12;
                 break;
             }
@@ -196,8 +199,7 @@ int main() {
                       stats.render_submission_failures != 0 || stats.device_losses == 0))))
         result = 17;
 
-    if (cube.id)
-        (void)nkui_resource_destroy(cube);
+    cube.reset();
     if (list.id)
         (void)nkui_display_list_destroy(list);
     if (renderer.id)

@@ -5,7 +5,6 @@
 #include <cmath>
 #include <cstring>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 
 namespace nkui {
@@ -56,11 +55,8 @@ void hash_runtime_command_geometry(uint64_t &hash, const RenderCommand &command)
 void hash_runtime_resource(uint64_t &hash, const FrameResources &resources, ResourceId resource) {
     hash_runtime_u32(hash, resource.value);
     hash_runtime_u64(hash, resources.content_generation(resource));
-    if (const auto *surface = resources.surface(resource)) {
+    if (const auto *image = resources.graphics_image(resource)) {
         hash_runtime_u32(hash, 1u);
-        hash_runtime_u32(hash, surface->generation());
-    } else if (const auto *image = resources.graphics_image(resource)) {
-        hash_runtime_u32(hash, 2u);
         hash_runtime_u32(hash, image->id);
     } else {
         hash_runtime_u32(hash, 0u);
@@ -170,35 +166,6 @@ bool fail(RenderExecutionError *error, uint32_t pass, uint32_t command, const ch
     return false;
 }
 
-std::pair<int, int> surface_request_size(const RenderPlan &plan, ResourceId surface,
-                                         const nk_surface_frame_target &window) {
-    float requested_width = 0.0f;
-    float requested_height = 0.0f;
-    for (const auto &pass : plan.passes) {
-        for (const auto &command : pass.commands) {
-            if (command.kind != RenderCommandKind::CompositeTarget ||
-                command.resource.value != surface.value || command.width <= 0.0f ||
-                command.height <= 0.0f)
-                continue;
-            const auto &m = command.transform;
-            const float width = std::abs(m[0]) * command.width + std::abs(m[2]) * command.height;
-            const float height = std::abs(m[1]) * command.width + std::abs(m[3]) * command.height;
-            if (std::isfinite(width) && std::isfinite(height)) {
-                requested_width = std::max(requested_width, width);
-                requested_height = std::max(requested_height, height);
-            }
-        }
-    }
-    if (!(requested_width > 0.0f) || !(requested_height > 0.0f))
-        return {window.width, window.height};
-    const auto bounded_extent = [](float value, int maximum) {
-        const double rounded = std::ceil(static_cast<double>(value));
-        return static_cast<int>(std::clamp(rounded, 1.0, static_cast<double>(maximum)));
-    };
-    return {bounded_extent(requested_width, window.width),
-            bounded_extent(requested_height, window.height)};
-}
-
 } // namespace
 
 bool execute_render_plan(UiRenderer &renderer, const SealedRenderPlan &sealed,
@@ -213,19 +180,17 @@ bool execute_render_plan(UiRenderer &renderer, const SealedRenderPlan &sealed,
     RenderPlanScheduleError schedule_error{};
     if (!schedule_render_plan(plan, pass_order, &schedule_error))
         return fail(error, schedule_error.pass_index, 0, schedule_error.message);
-    /* Every render-plan execution is batch-capable. A live, non-recordable
-       producer is rejected below instead of being rendered through an inline
-       callback: callbacks would observe mutable APP state after sealing and
-       would violate the APP -> RENDER ownership boundary. Retained graphics
-       images are represented in FrameResources as graphics-image bindings and
-       therefore do not enter this path. */
+    /* Every render-plan execution is batch-capable. External surfaces are
+       retained graphics-image bindings; no producer callback can execute on
+       RENDER after sealing. */
     constexpr bool record = true;
     for (const auto &dependency : plan.dependencies) {
-        const auto *producer = resources.surface(dependency.producer);
-        if (producer && !producer->recordable()) {
-            return fail(error, 0, 0,
-                        "surface producer must publish a retained graphics image or be recordable");
-        }
+        bool internal_target = false;
+        for (const auto &pass : plan.passes)
+            if (pass.target.value == dependency.producer.value)
+                internal_target = true;
+        if (!internal_target && !resources.graphics_image(dependency.producer))
+            return fail(error, 0, 0, "external surface is missing a retained graphics image");
     }
     if (!renderer.beginFrame(record, &window.frame_target))
         return fail(error, 0, 0, renderer.lastError());
@@ -237,57 +202,6 @@ bool execute_render_plan(UiRenderer &renderer, const SealedRenderPlan &sealed,
                 renderer.endFrame();
         }
     } frame_guard{renderer};
-    std::unordered_set<uint32_t> internal_targets;
-    for (const auto &pass : plan.passes)
-        internal_targets.insert(pass.target.value);
-    std::unordered_set<uint32_t> rendered_producers;
-    for (const auto &dependency : plan.dependencies) {
-        if (internal_targets.count(dependency.producer.value) ||
-            rendered_producers.count(dependency.producer.value))
-            continue;
-        if (resources.graphics_image(dependency.producer)) {
-            rendered_producers.insert(dependency.producer.value);
-            continue;
-        }
-        SurfaceProducer *producer = resources.surface(dependency.producer);
-        if (!producer)
-            return fail(error, 0, 0, "surface producer is unavailable");
-        if (!producer->ready()) {
-            if (!renderer.surfaceHasContent(dependency.producer))
-                return fail(error, 0, 0, "surface producer is unavailable");
-            rendered_producers.insert(dependency.producer.value);
-            continue;
-        }
-        SurfaceDescriptor description{};
-        const auto requested = surface_request_size(plan, dependency.producer, window.frame_target);
-        if (!producer->describe(requested.first, requested.second, description) ||
-            description.width <= 0 || description.height <= 0)
-            return fail(error, 0, 0, "surface producer description is invalid");
-        if (description.format != SurfacePixelFormat::Rgba8 ||
-            (description.alpha != SurfaceAlphaMode::Opaque &&
-             description.alpha != SurfaceAlphaMode::Premultiplied) ||
-            (description.filter != SurfaceFilter::Nearest &&
-             description.filter != SurfaceFilter::Linear) ||
-            description.color_space != SurfaceColorSpace::Linear)
-            return fail(error, 0, 0, "surface producer descriptor is unsupported");
-        const uint32_t generation = producer->generation();
-        if (renderer.surfaceIsCurrent(dependency.producer, generation, description)) {
-            rendered_producers.insert(dependency.producer.value);
-            continue;
-        }
-        const SurfaceRenderResult render_result =
-            producer->render(renderer, dependency.producer, description);
-        if (render_result == SurfaceRenderResult::Unavailable) {
-            if (!renderer.surfaceHasContent(dependency.producer))
-                return fail(error, 0, 0, "surface producer has no fallback content");
-            rendered_producers.insert(dependency.producer.value);
-            continue;
-        }
-        if (render_result != SurfaceRenderResult::Rendered)
-            return fail(error, 0, 0, "surface producer render failed");
-        renderer.markSurfaceCurrent(dependency.producer, generation, description);
-        rendered_producers.insert(dependency.producer.value);
-    }
     static std::atomic<uint64_t> next_execution_serial{1};
     const uint64_t execution_serial = next_execution_serial.fetch_add(1, std::memory_order_relaxed);
     std::unordered_map<uint32_t, uint64_t> target_runtime_hashes;

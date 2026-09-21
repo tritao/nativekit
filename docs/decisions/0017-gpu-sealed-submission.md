@@ -57,7 +57,7 @@ Invariants:
 | --- | --- |
 | Immutability | A sealed batch never changes. Appending after seal is an error, not a silent no-op. |
 | Ownership | The batch owns its command bytes and retains every GPU resource handle it references, releasing them on destroy. Handles stay valid even if the caller destroys its own references. |
-| No callbacks | A batch contains data and handles only. Sampler/image producers, custom effect callbacks, and anything language-bound must be resolved into handles before sealing. |
+| No unowned callbacks | A batch contains data and retained handles. Surface producers, sampler/image callbacks, custom effect callbacks, and language-bound callbacks must be resolved to retained resources before sealing. |
 | Target binding | The platform executor acquires an immutable `nk_surface_frame_target`; the render side binds that target and submits the batch. Presentation and surface frame acquisition stay with `nk_surface_frame` on the platform executor, so a batch never implies ownership of a surface. |
 | Failure | Submit is atomic from the caller's view: a batch that fails validation is rejected before any GPU state changes, and a batch referencing a destroyed resource fails at submit rather than drawing garbage. |
 
@@ -122,9 +122,8 @@ destruction they were holding.
 2. ~~Translate UI render-plan execution to record one batch and submit it, still
    on the platform executor. Behavior and visuals must not change.~~ Done. The
    public display-list and layout-session paths seal every frame before execution;
-   explicitly recordable built-in producers may encode their offscreen passes
-   into that batch. External/native producers use retained
-   `nk_graphics_image` publication. Stream-buffer appends moved out of the pass
+   offscreen producers encode their target before publishing a retained image.
+   External/native producers use retained `nk_graphics_image` publication. Stream-buffer appends moved out of the pass
    requirement, because a recorded frame fills its buffers before any pass opens,
    and Sokol rewinds the append cursor per frame either way.
 3. ~~Add the deferred submit path and run submission on `NK_EXECUTOR_RENDER`,

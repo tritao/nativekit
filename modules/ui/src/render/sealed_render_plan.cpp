@@ -24,7 +24,7 @@ SealedRenderPlan::seal(RenderPlan plan, OwnedFrameResources resources, RenderPla
             continue;
         if (resources.graphics_image(dependency.producer))
             continue;
-        fail(error, "sealed render plans cannot contain live surface producers");
+        fail(error, "sealed render plans require retained graphics images for external surfaces");
         return nullptr;
     }
     if (error)

@@ -1,6 +1,5 @@
 #include "layout/layout_engine.h"
 #include "layout/layout_render_compiler.h"
-#include "render/cube_surface_producer.h"
 #include "render/render_plan_executor.h"
 #include "render/sealed_render_plan.h"
 #include "render/ui_renderer.h"
@@ -66,20 +65,6 @@ class RecordingRenderer final : public UiRenderer {
         ++pass_count;
         return true;
     }
-    bool beginSurfacePass(ResourceId, const SurfaceDescriptor &, bool) override {
-        ++pass_count;
-        return true;
-    }
-    bool drawSurfaceMesh(const SurfaceMeshView &) override {
-        ++surface_mesh_count;
-        return true;
-    }
-    bool surfaceHasContent(ResourceId) const override { return false; }
-    bool surfaceIsCurrent(ResourceId, uint32_t, const SurfaceDescriptor &) const override {
-        return false;
-    }
-    void markSurfaceCurrent(ResourceId, uint32_t, const SurfaceDescriptor &) override {}
-
     bool setScissor(bool enabled, float x, float y, float width, float height) override {
         last_scissor_enabled = enabled;
         last_scissor = {x, y, width, height};
@@ -161,7 +146,6 @@ class RecordingRenderer final : public UiRenderer {
     uint32_t text_count = 0;
     uint32_t effect_count = 0;
     uint32_t mask_count = 0;
-    uint32_t surface_mesh_count = 0;
     uint32_t box_shadow_count = 0;
     uint32_t image_count = 0;
     uint32_t commit_count = 0;
@@ -174,24 +158,6 @@ class RecordingRenderer final : public UiRenderer {
     bool last_scissor_enabled = false;
     std::array<float, 4> last_scissor{};
     std::string error;
-};
-
-class MutableSurfaceProducer final : public SurfaceProducer {
-  public:
-    bool ready() const override { return true; }
-    bool describe(int requested_width, int requested_height,
-                  SurfaceDescriptor &description) const override {
-        description = {requested_width, requested_height, SurfacePixelFormat::Rgba8,
-                       SurfaceAlphaMode::Premultiplied};
-        return true;
-    }
-    uint32_t generation() const override { return generation_value; }
-    bool recordable() const override { return true; }
-    SurfaceRenderResult render(UiRenderer &, ResourceId, const SurfaceDescriptor &) override {
-        return SurfaceRenderResult::Rendered;
-    }
-
-    uint32_t generation_value = 1;
 };
 
 } // namespace
@@ -981,65 +947,6 @@ int main() {
     if (!backend.recorded_frame)
         return 65;
 
-    /* Live, non-recordable producers cannot cross the render boundary. Their
-       replacement is a retained graphics-image binding; recordable producers
-       remain valid because they encode entirely through the supplied renderer. */
-    {
-        struct TestProducer final : SurfaceProducer {
-            bool ready() const override { return true; }
-            bool describe(int, int, SurfaceDescriptor &description) const override {
-                description.width = 4;
-                description.height = 4;
-                description.format = SurfacePixelFormat::Rgba8;
-                description.alpha = SurfaceAlphaMode::Premultiplied;
-                description.filter = SurfaceFilter::Nearest;
-                description.color_space = SurfaceColorSpace::Linear;
-                return true;
-            }
-            uint32_t generation() const override { return 1; }
-            SurfaceRenderResult render(UiRenderer &, ResourceId,
-                                       const SurfaceDescriptor &) override {
-                return SurfaceRenderResult::Rendered;
-            }
-        } producer;
-        RenderPlan producer_plan;
-        producer_plan.passes.push_back({main_target, {}, false, {}});
-        const ResourceId producer_target = make_resource_id(ResourceKind::RenderTarget, 1, 448);
-        producer_plan.dependencies.push_back({producer_target, main_target});
-        OwnedFrameResources producer_resources;
-        if (producer_resources.bind_surface(producer_target, std::make_shared<TestProducer>()))
-            return 66;
-        RenderPlanSealError producer_error;
-        if (SealedRenderPlan::seal(std::move(producer_plan), std::move(producer_resources),
-                                   &producer_error) ||
-            !producer_error.message ||
-            std::strcmp(producer_error.message,
-                        "sealed render plans cannot contain non-recordable surface producers") != 0)
-            return 67;
-    }
-
-    /* The showcase cube is recordable and its offscreen pass enters the sealed batch. */
-    {
-        auto producer = std::make_shared<CubeSurfaceProducer>();
-        RenderPlan producer_plan;
-        producer_plan.passes.push_back({main_target, {}, false, {}});
-        const ResourceId producer_target = make_resource_id(ResourceKind::RenderTarget, 1, 449);
-        producer_plan.dependencies.push_back({producer_target, main_target});
-        producer->set_rotation(0.5f);
-        OwnedFrameResources producer_resources;
-        if (!producer_resources.bind_surface(producer_target, producer))
-            return 68;
-        RenderPlanSealError producer_error;
-        const auto sealed_producer =
-            seal_test_plan(producer_plan, producer_resources, &producer_error);
-        RecordingRenderer producer_backend;
-        if (!sealed_producer || producer_error.message ||
-            !execute_render_plan(producer_backend, *sealed_producer, {main_target, frame_target},
-                                 &execution_error) ||
-            !producer_backend.recorded_frame || producer_backend.surface_mesh_count != 1 ||
-            producer_backend.pass_count != 2 || producer_backend.commit_count != 1)
-            return 69;
-    }
     const ResourceId effect_input = make_resource_id(ResourceKind::RenderTarget, 1, 446);
     const ResourceId effect_output = make_resource_id(ResourceKind::RenderTarget, 1, 447);
     RenderPlan effect_plan;
@@ -1116,18 +1023,15 @@ int main() {
     const ResourceId cache_blur = make_resource_id(ResourceKind::RenderTarget, 1, 462);
     const ResourceId cache_mask = make_resource_id(ResourceKind::RenderTarget, 1, 463);
     const ResourceId cache_output = make_resource_id(ResourceKind::RenderTarget, 1, 464);
-    const ResourceId cache_surface = make_resource_id(ResourceKind::RenderTarget, 1, 465);
     const ResourceId cache_source_image = make_resource_id(ResourceKind::Image, 1, 466);
     const ResourceId cache_mask_image = make_resource_id(ResourceKind::Image, 1, 467);
     auto cache_source_texture = std::make_shared<PreparedTexture>();
     cache_source_texture->width = cache_source_texture->height = 1;
     cache_source_texture->pixels = {255, 255, 255, 255};
     auto cache_mask_texture = std::make_shared<PreparedTexture>(*cache_source_texture);
-    auto cache_surface_producer = std::make_shared<MutableSurfaceProducer>();
     OwnedFrameResources cache_resources;
     if (!cache_resources.bind_image(cache_source_image, cache_source_texture, 10) ||
-        !cache_resources.bind_image(cache_mask_image, cache_mask_texture, 20) ||
-        !cache_resources.bind_surface(cache_surface, cache_surface_producer))
+        !cache_resources.bind_image(cache_mask_image, cache_mask_texture, 20))
         return 29;
 
     RenderPlan cache_plan;
@@ -1175,11 +1079,6 @@ int main() {
 
     RenderPass cache_main_pass;
     cache_main_pass.target = cache_main;
-    RenderCommand cache_surface_command;
-    cache_surface_command.kind = RenderCommandKind::CompositeTarget;
-    cache_surface_command.resource = cache_surface;
-    cache_surface_command.width = cache_surface_command.height = 10.0f;
-    cache_main_pass.commands.push_back(cache_surface_command);
     RenderCommand cache_output_command;
     cache_output_command.kind = RenderCommandKind::CompositeTarget;
     cache_output_command.resource = cache_output;
@@ -1187,7 +1086,6 @@ int main() {
     cache_main_pass.commands.push_back(cache_output_command);
     cache_plan.passes.push_back(std::move(cache_main_pass));
     cache_plan.dependencies.push_back({cache_output, cache_main});
-    cache_plan.dependencies.push_back({cache_surface, cache_main});
 
     RecordingRenderer cache_backend;
     auto execute_cache_plan = [&] {
@@ -1200,10 +1098,6 @@ int main() {
     if (!execute_cache_plan() || cache_backend.effect_cache_keys.size() != 2 ||
         cache_backend.effect_cache_hits != 0 || cache_backend.effect_count != 2)
         return 30;
-    cache_surface_producer->generation_value = 2;
-    if (!execute_cache_plan() || cache_backend.effect_cache_keys.size() != 2 ||
-        cache_backend.effect_cache_hits != 2 || cache_backend.effect_count != 2)
-        return 31;
     if (!cache_resources.bind_image(cache_source_image, cache_source_texture, 11) ||
         !execute_cache_plan() || cache_backend.effect_cache_keys.size() != 4 ||
         cache_backend.effect_cache_hits != 2 || cache_backend.effect_count != 4)

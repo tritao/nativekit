@@ -9,11 +9,8 @@
 #include <array>
 #include <cstdint>
 #include <memory>
-#include <span>
 
 namespace nkui {
-
-struct SurfaceDescriptor;
 
 /** Native-owned shader sources and execution contract for one custom effect. */
 struct CustomEffectRegistration {
@@ -99,22 +96,6 @@ struct UiRendererStats {
     UiGpuStats gpu{};
 };
 
-struct SurfaceMeshVertex {
-    float x;
-    float y;
-    float z;
-    uint8_t red;
-    uint8_t green;
-    uint8_t blue;
-    uint8_t alpha;
-};
-
-struct SurfaceMeshView {
-    std::span<const SurfaceMeshVertex> vertices;
-    std::span<const uint32_t> indices;
-    std::array<float, 16> model_view_projection{};
-};
-
 class UiRenderer {
   public:
     virtual ~UiRenderer() = default;
@@ -124,9 +105,7 @@ class UiRenderer {
     virtual bool lost() const = 0;
     /**
      * Starts a frame. Frames are recorded into a sealed submission batch and
-     * replayed by endFrame(). Retained graphics images and internal recordable
-     * producers are the only external-surface bindings accepted by the executor;
-     * a live non-recordable callback is rejected before GPU work begins.
+     * replayed by endFrame(). External surfaces are retained graphics images.
      */
     virtual bool beginFrame(bool record, const nk_surface_frame_target *frame_target = nullptr) = 0;
     virtual bool beginWindowPass(int width, int height, bool clear) = 0;
@@ -137,14 +116,6 @@ class UiRenderer {
     /** Begin a cached raster pass containing ordinary draw commands. */
     virtual bool beginRasterPass(ResourceId target, uint64_t cache_key, int width, int height,
                                  bool &cache_hit) = 0;
-    virtual bool beginSurfacePass(ResourceId target, const SurfaceDescriptor &description,
-                                  bool load_existing) = 0;
-    virtual bool drawSurfaceMesh(const SurfaceMeshView &mesh) = 0;
-    virtual bool surfaceHasContent(ResourceId target) const = 0;
-    virtual bool surfaceIsCurrent(ResourceId target, uint32_t generation,
-                                  const SurfaceDescriptor &description) const = 0;
-    virtual void markSurfaceCurrent(ResourceId target, uint32_t generation,
-                                    const SurfaceDescriptor &description) = 0;
     virtual bool setScissor(bool enabled, float x = 0.0f, float y = 0.0f, float width = 0.0f,
                             float height = 0.0f) = 0;
     virtual bool drawPath(const PreparedPathData &path, uint32_t operation_index,

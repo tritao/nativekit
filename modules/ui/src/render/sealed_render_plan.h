@@ -30,9 +30,9 @@ class SealedRenderPlan {
      * Seals one compiled plan and the resources it renders with.
      *
      * The owned resource set is the contract: borrowed bindings and live
-     * surface producers cannot be part of it, so sealing cannot capture
-     * something that changes or dangles later. The remaining failure is
-     * allocation.
+     * surface callbacks cannot be part of it, so sealing cannot capture
+     * something that changes or dangles later. External surfaces must publish
+     * retained graphics images. The remaining failure is allocation.
      */
     static std::shared_ptr<const SealedRenderPlan>
     seal(RenderPlan plan, OwnedFrameResources resources, RenderPlanSealError *error = nullptr);

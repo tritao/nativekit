@@ -1,12 +1,11 @@
 package components;
 
-import GraphicsSurface;
 import LayoutAxis;
 import LayoutStyle;
 import LayoutVisualKind;
 import Rect;
-import ShowcaseCube;
 import Canvas;
+import Color;
 import ResolvedLayoutItem;
 import nativekit.ui.animation.Animation;
 import nativekit.ui.animation.AnimationHandle;
@@ -20,7 +19,7 @@ import nativekit.ui.core.View;
 import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.Semantics;
 
-/** Retained native 3D surface composited as an ordinary UI view. */
+/** Lightweight animated preview used by the showcase without a production GPU producer. */
 class CubeView implements View {
 	public final key:String;
 	public final style:LayoutStyle;
@@ -68,7 +67,6 @@ class CubeView implements View {
 
 private class CubeViewPainter {
 	static inline var TwoPi:Float = 6.283185307179586;
-	final surface:GraphicsSurface;
 	final scheduler:AnimationScheduler;
 	final loop:LoopAnimation;
 	final animation:Animation;
@@ -81,7 +79,6 @@ private class CubeViewPainter {
 		loop = new LoopAnimation(speed);
 		animation = loop;
 		registration = null;
-		surface = ShowcaseCube.create();
 	}
 
 	public function configure(rotation:Float, speed:Float, running:Bool):Void {
@@ -99,14 +96,18 @@ private class CubeViewPainter {
 	public function paint(canvas:Canvas, geometry:ResolvedLayoutItem):Void {
 		if (geometry.width <= 0.0 || geometry.height <= 0.0)
 			return;
-		ShowcaseCube.setRotation(surface, baseRotation + loop.phase * TwoPi);
-		canvas.drawSurface(surface, new Rect(0.0, 0.0, geometry.width, geometry.height));
+		var phase = baseRotation + loop.phase * TwoPi;
+		canvas.fillRoundedRect(new Rect(0.0, 0.0, geometry.width, geometry.height), 6.0,
+			Color.rgba(0.035, 0.055, 0.09, 1.0));
+		var inset = 12.0 + 5.0 * Math.sin(phase);
+		canvas.fillRoundedRect(new Rect(inset, inset, Math.max(0.0, geometry.width - inset * 2.0),
+			Math.max(0.0, geometry.height - inset * 2.0)), 4.0,
+			Color.rgba(0.20, 0.65, 0.84, 0.72));
 	}
 
 	public function dispose():Void {
 		if (registration != null)
 			registration.cancel();
 		registration = null;
-		surface.dispose();
 	}
 }

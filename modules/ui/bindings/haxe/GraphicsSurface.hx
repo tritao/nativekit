@@ -5,7 +5,6 @@ import GraphicsImageRef;
 
 /** Typed compositable surface produced by NativeKit's renderer. */
 class GraphicsSurface extends NativeKitUIResource {
-	@:allow(ShowcaseCube)
 	private function new(value:nkui_resource)
 		super(value);
 

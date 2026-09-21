@@ -23,7 +23,7 @@ Sealing therefore formalizes two things:
 | --- | --- |
 | Plan | `SealedRenderPlan` owns the `RenderPlan` by value; no builder, session, or display list has to stay alive. |
 | Resources | The plan is sealed with an `OwnedFrameResources`, whose bindings share prepared data as immutable objects and retain graphics images until the set is destroyed. |
-| Callbacks | An owned set cannot hold a live `SurfaceProducer`: the borrowed bind and the producer bind are deleted there, so a producer (a callback by nature) has no immutable form. |
+| Producers | External/native surfaces publish retained graphics images. Sealed plans contain no live producer callbacks. |
 
 The type split is the contract rather than a runtime check: `FrameResources` is
 the borrowed execution set that is only valid while its builder lives, and
@@ -47,20 +47,17 @@ runtime in the sealed plan.
   immutable objects, so later preparation passes cannot change what a sealed
   frame draws.
 - Sealing cost follows the bindings, not the bytes. Prepared text publishes an
-  immutable snapshot through `TextEngine::published_glyphs()`, which shares
+  immutable snapshot through `SkribidiAdapter::published_glyphs()`, which shares
   one object per layout generation, geometry, scale, and mode and stays valid
   after later preparation passes. Images and paths follow the same rule; borrowed
   bindings exist only during the build phase before the public frame is sealed.
-- Non-recordable live surface producers are excluded by construction. Recordable
-  producers such as the showcase cube can encode an offscreen pass into the sealed
-  batch while remaining owned by the plan. A future shared-buffer or image-handle
-  path should still give producers a retained `nk_graphics_image` snapshot, which
-  is the fully data-only form.
+- Live surface producers are excluded from public sealed submissions. The
+  producer must render into an offscreen target on its owning executor and
+  publish a retained `nk_graphics_image`.
 - `nkui_renderer_render_frame()`, its overlay variant, and the layout-session
   render path reject frames that cannot be made self-contained, seal their
-  plans, and then execute or enqueue the sealed object. The remaining cleanup is
-  to hide the borrowed executor overload from production-facing internal code
-  and migrate the last callback-style producers to retained graphics images.
+  plans, and then execute or enqueue the sealed object. Callback-style surface
+  producers are not part of the production render-plan contract.
 
 ## Open questions
 

@@ -22,7 +22,6 @@ FAMILIES = {
     "text": ("text_alpha", "text_sdf", "text_color"),
     "composite": ("composite",),
     "effect": ("effect", "blur", "drop_shadow", "box_shadow", "mask"),
-    "surface_mesh": ("surface_mesh",),
 }
 SLANG_EXTENSIONS = {
     "glsl410": "glsl",

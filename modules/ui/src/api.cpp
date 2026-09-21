@@ -17,9 +17,6 @@
 #include "layout/layout_render_compiler.h"
 #include "prepare/nanovg_path.h"
 #include "prepare/text_engine.h"
-#if defined(NKUI_ENABLE_SHOWCASE_PRODUCER)
-#include "render/cube_surface_producer.h"
-#endif
 #include "render/frame_resources.h"
 #include "render/render_plan_executor.h"
 #include "render/ui_renderer.h"
@@ -239,43 +236,11 @@ class RetainedImageSurfaceProducer final : public nkui::SurfaceProducer {
             nk_graphics_image_release(previous);
     }
 
-    bool ready() const override {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return image_.id != 0;
-    }
-
-    bool describe(int requested_width, int requested_height,
-                  nkui::SurfaceDescriptor &description) const override {
-        if (requested_width <= 0 || requested_height <= 0)
-            return false;
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (!image_.id)
-            return false;
-        nk_graphics_image_info info{};
-        info.struct_size = sizeof(info);
-        if (nk_graphics_image_get_info(image_, &info) != NK_OK || info.width <= 0 ||
-            info.height <= 0)
-            return false;
-        description.width = info.width;
-        description.height = info.height;
-        description.format = nkui::SurfacePixelFormat::Rgba8;
-        description.alpha = nkui::SurfaceAlphaMode::Premultiplied;
-        description.filter = nkui::SurfaceFilter::Linear;
-        description.color_space = nkui::SurfaceColorSpace::Linear;
-        return true;
-    }
-
     uint32_t generation() const override { return generation_.load(std::memory_order_acquire); }
 
     nk_graphics_image retained_image() const override {
         std::lock_guard<std::mutex> lock(mutex_);
         return image_;
-    }
-
-    nkui::SurfaceRenderResult render(nkui::UiRenderer &, nkui::ResourceId,
-                                     const nkui::SurfaceDescriptor &) override {
-        /* A retained image is resolved as a sealed graphics-image binding. */
-        return nkui::SurfaceRenderResult::Failed;
     }
 
   private:
@@ -1708,34 +1673,6 @@ bool collect_display_resources(const uint8_t *data, size_t size,
 extern "C" uint32_t nkui_api_version(void) {
     return NKUI_API_VERSION;
 }
-
-#if defined(NKUI_ENABLE_SHOWCASE_PRODUCER)
-extern "C" NKUI_API nkui_result nkui_showcase_cube_create(nkui_resource *out_surface) {
-    if (!out_surface)
-        return NKUI_ERROR_INVALID_ARGUMENT;
-    std::lock_guard<std::mutex> lock(resources_mutex);
-    ResourceSlot *slot = nullptr;
-    const nkui_result allocated =
-        allocate_resource(nkui::ResourceKind::RenderTarget, out_surface, &slot);
-    if (allocated != NKUI_OK)
-        return allocated;
-    slot->surface = std::make_unique<nkui::CubeSurfaceProducer>();
-    return NKUI_OK;
-}
-
-extern "C" NKUI_API nkui_result nkui_showcase_cube_set_rotation(nkui_resource surface,
-                                                                float radians) {
-    if (!std::isfinite(radians))
-        return NKUI_ERROR_INVALID_ARGUMENT;
-    std::lock_guard<std::mutex> lock(resources_mutex);
-    auto *slot = resolve(surface, nkui::ResourceKind::RenderTarget);
-    auto *cube = slot ? dynamic_cast<nkui::CubeSurfaceProducer *>(slot->surface.get()) : nullptr;
-    if (!cube)
-        return NKUI_ERROR_INVALID_HANDLE;
-    cube->set_rotation(radians);
-    return NKUI_OK;
-}
-#endif
 
 extern "C" nkui_result nkui_display_list_create(nkui_display_list *out_list) {
     if (!out_list)
@@ -3525,18 +3462,9 @@ static nkui_result renderer_render_frame_impl(nkui_renderer renderer, nkui_displ
                                              command.resource, published, generation))
                                 sealable = false;
                         } else {
-                            const auto generation =
-                                static_cast<uint64_t>(surface_slot->surface->generation());
-                            valid = frame_resources.bind_surface(
-                                command.resource, *surface_slot->surface, generation);
-                            if (valid && surface_slot->surface->recordable()) {
-                                if (!owned_resources.bind_surface(
-                                        command.resource, surface_slot->surface, generation))
-                                    sealable = false;
-                            } else {
-                                /* Non-recordable producers cannot cross the render boundary. */
-                                sealable = false;
-                            }
+                            /* External surfaces must publish a retained graphics image. */
+                            valid = false;
+                            sealable = false;
                         }
                     } else {
                         valid = false;
@@ -4007,9 +3935,8 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                                              command.resource, published, generation))
                                 sealable = false;
                         } else {
-                            valid = frame_resources.bind_surface(command.resource,
-                                                                 *surface_slot->surface);
-                            /* A live result producer is a callback and cannot be sealed. */
+                            /* External surfaces must publish a retained graphics image. */
+                            valid = false;
                             sealable = false;
                         }
                     }

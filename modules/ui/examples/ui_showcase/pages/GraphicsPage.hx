@@ -92,18 +92,18 @@ class GraphicsPage {
 	}
 
 	public static function build3d(explorer:UiExplorer, items:Array<KeyedView>):Void {
-		explorer.pageHeading(items, "3D Views",
-			"Native indexed meshes render with perspective and depth, then composite into ordinary UI layout.");
+		explorer.pageHeading(items, "Retained Views",
+			"NativeKit keeps GPU-produced content behind retained graphics-image resources.");
 		items.push(explorer.keyed("cube-view", explorer.panel("cube-view", [
 			explorer.keyed("heading", explorer.heading("Live perspective viewport")),
-			explorer.keyed("copy", explorer.caption("A retained native surface continuously rotates an indexed cube with depth-tested face occlusion.")),
+			explorer.keyed("copy", explorer.caption("The preview is animated entirely in the UI layer; production surfaces use retained graphics images.")),
 			explorer.keyed("preview", new CubeView("live-cube", 0.38,
 				"Live rotating perspective cube", cubeStyle(explorer), true, 0.10)),
 			explorer.keyed("try", explorer.caption("Try this: inspect the viewport and resize the split pane while it rotates."))
 		])));
 		items.push(explorer.keyed("3d-pipeline", explorer.panel("3d-pipeline", [
-			explorer.keyed("heading", explorer.heading("Mesh to depth pass to sampled surface to compositor")),
-			explorer.keyed("copy", explorer.caption("The producer submits 24 colored vertices and 36 indices with a model-view-projection matrix. The NativeKit rendering dependency draws offscreen with depth testing and Haxeon samples the result in its display list."))
+			explorer.keyed("heading", explorer.heading("Retained image to compositor")),
+			explorer.keyed("copy", explorer.caption("Native producers render offscreen on their owning executor, publish a retained graphics image, and the UI compositor samples that immutable resource."))
 		])));
 	}
 

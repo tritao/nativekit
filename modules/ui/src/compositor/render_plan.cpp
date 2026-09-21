@@ -492,7 +492,7 @@ bool schedule_render_plan(const RenderPlan &plan, std::vector<uint32_t> &order,
                 consumers.push_back(index);
         }
         if (producers.empty())
-            continue; // The executor resolves an external SurfaceProducer.
+            continue; // External dependencies are retained graphics images.
         bool has_consumer_command = false;
         for (const uint32_t consumer : consumers) {
             for (const auto &command : plan.passes[consumer].commands) {

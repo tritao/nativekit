@@ -32,14 +32,6 @@ class UiRendererImpl final : public UiRenderer {
                          bool &cache_hit) override;
     bool beginRasterPass(ResourceId target, uint64_t cache_key, int width, int height,
                          bool &cache_hit) override;
-    bool beginSurfacePass(ResourceId target, const SurfaceDescriptor &description,
-                          bool load_existing) override;
-    bool drawSurfaceMesh(const SurfaceMeshView &mesh) override;
-    bool surfaceHasContent(ResourceId target) const override;
-    bool surfaceIsCurrent(ResourceId target, uint32_t generation,
-                          const SurfaceDescriptor &description) const override;
-    void markSurfaceCurrent(ResourceId target, uint32_t generation,
-                            const SurfaceDescriptor &description) override;
     bool setScissor(bool enabled, float x, float y, float width, float height) override;
     bool drawPath(const PreparedPathData &path, uint32_t operation_index, float opacity) override;
     bool drawPath(const PreparedPathData &path, uint32_t operation_index, const float transform[6],
@@ -122,16 +114,6 @@ struct UiRendererImpl::State {
         uint64_t key = 0;
     };
 
-    struct SurfaceState {
-        uint32_t generation = 0;
-        int width = 0;
-        int height = 0;
-        SurfacePixelFormat format = SurfacePixelFormat::Rgba8;
-        SurfaceAlphaMode alpha = SurfaceAlphaMode::Premultiplied;
-        SurfaceFilter filter = SurfaceFilter::Nearest;
-        SurfaceColorSpace color_space = SurfaceColorSpace::Linear;
-    };
-
     struct PaintImage {
         nkgpu_image image{};
         nkgpu_sampler sampler{};
@@ -162,7 +144,6 @@ struct UiRendererImpl::State {
     nkgpu_shader drop_shadow_shader{};
     nkgpu_shader box_shadow_shader{};
     nkgpu_shader mask_shader{};
-    nkgpu_shader surface_mesh_shader{};
     nkgpu_pipeline solid_pipeline{};
     nkgpu_pipeline fill_stencil_pipeline{};
     nkgpu_pipeline fill_stencil_even_odd_pipeline{};
@@ -179,7 +160,6 @@ struct UiRendererImpl::State {
     nkgpu_pipeline drop_shadow_pipeline{};
     nkgpu_pipeline box_shadow_pipeline{};
     nkgpu_pipeline mask_pipeline{};
-    nkgpu_pipeline surface_mesh_pipeline{};
     nkgpu_sampler sampler{};
     nkgpu_sampler glyph_sampler{};
     nkgpu_sampler surface_sampler{};
@@ -188,7 +168,6 @@ struct UiRendererImpl::State {
     nkgpu_buffer solid_vertices{};
     nkgpu_buffer glyph_vertices{};
     nkgpu_buffer composite_vertices{};
-    nkgpu_buffer surface_mesh_vertices{};
     nkgpu_buffer indices{};
     std::unordered_map<uint64_t, AtlasImage> atlases;
     std::unordered_map<uint32_t, Target> targets;
@@ -203,7 +182,6 @@ struct UiRendererImpl::State {
     uint64_t raster_cache_hits = 0;
     uint64_t raster_cache_misses = 0;
     uint64_t frame_serial = 0;
-    std::unordered_map<uint32_t, SurfaceState> surfaces;
     std::unordered_map<const PreparedPathData *, std::unordered_map<PreparedImageToken, PaintImage>>
         paint_images;
     std::unordered_map<uint32_t, PaintImage> images;
@@ -1106,8 +1084,7 @@ enum class UiShaderKind {
     Blur,
     DropShadow,
     BoxShadow,
-    Mask,
-    SurfaceMesh
+    Mask
 };
 
 struct ShaderSources {
@@ -1226,16 +1203,6 @@ ShaderSources shader_sources(nkgpu_backend backend, UiShaderKind kind) {
                     NKGPU_SHADERLANGUAGE_MSL};
         return gl(ui_shader_mask_glsl410_vertex, ui_shader_mask_glsl410_fragment,
                   ui_shader_mask_glsl300es_vertex, ui_shader_mask_glsl300es_fragment);
-    case UiShaderKind::SurfaceMesh:
-        if (d3d11)
-            return {ui_shader_surface_mesh_hlsl5_vertex, ui_shader_surface_mesh_hlsl5_fragment,
-                    NKGPU_SHADERLANGUAGE_HLSL5};
-        if (metal)
-            return {ui_shader_surface_mesh_metal_macos_vertex,
-                    ui_shader_surface_mesh_metal_macos_fragment, NKGPU_SHADERLANGUAGE_MSL};
-        return gl(ui_shader_surface_mesh_glsl410_vertex, ui_shader_surface_mesh_glsl410_fragment,
-                  ui_shader_surface_mesh_glsl300es_vertex,
-                  ui_shader_surface_mesh_glsl300es_fragment);
     }
     return {nullptr, nullptr, NKGPU_SHADERLANGUAGE_GLSL};
 }
@@ -1274,10 +1241,6 @@ bool create_shader(UiRendererImpl::State &state, UiShaderKind kind, nkgpu_shader
     case UiShaderKind::ColorGlyph:
         attributes[attribute_count++] = "position";
         attributes[attribute_count++] = "uv0";
-        attributes[attribute_count++] = "color0";
-        break;
-    case UiShaderKind::SurfaceMesh:
-        attributes[attribute_count++] = "position";
         attributes[attribute_count++] = "color0";
         break;
     }
@@ -1344,15 +1307,11 @@ bool create_shader(UiRendererImpl::State &state, UiShaderKind kind, nkgpu_shader
         fragment_size = sizeof(MaskUniforms);
         textured = true;
         break;
-    case UiShaderKind::SurfaceMesh:
-        vertex_block = "surface_mesh_vs_params";
-        vertex_size = 64;
-        break;
     }
     if (!gpu_result(
             state, nkgpu_shader_uniform_block(builder, 0, NKGPU_SHADERSTAGE_VERTEX, vertex_size)) ||
         !add_uniform(state, builder, 0, 0, vertex_block, NKGPU_UNIFORMTYPE_FLOAT4,
-                     kind == UiShaderKind::SurfaceMesh ? 4 : 1))
+                     1))
         return false;
     if (fragment_block &&
         (!gpu_result(state, nkgpu_shader_uniform_block(builder, 1, NKGPU_SHADERSTAGE_FRAGMENT,
@@ -1525,8 +1484,7 @@ bool UiRendererImpl::initialize() {
         !create_shader(*state_, UiShaderKind::Blur, state_->blur_shader) ||
         !create_shader(*state_, UiShaderKind::DropShadow, state_->drop_shadow_shader) ||
         !create_shader(*state_, UiShaderKind::BoxShadow, state_->box_shadow_shader) ||
-        !create_shader(*state_, UiShaderKind::Mask, state_->mask_shader) ||
-        !create_shader(*state_, UiShaderKind::SurfaceMesh, state_->surface_mesh_shader))
+        !create_shader(*state_, UiShaderKind::Mask, state_->mask_shader))
         return false;
 
     const auto premultiplied = premultiplied_blend();
@@ -1579,11 +1537,6 @@ bool UiRendererImpl::initialize() {
     fringe_options.stencil = &fringe_stencil;
     PipelineOptions glyph_options{};
     glyph_options.blend = &glyph_blend;
-    PipelineOptions surface_options{};
-    surface_options.depth_stencil = true;
-    surface_options.cull = true;
-    surface_options.cull_mode = NKGPU_CULLMODE_BACK;
-    surface_options.winding = NKGPU_FACEWINDING_CCW;
 
     if (!create_pipeline(*state_, state_->solid_shader, sizeof(SolidVertex),
                          {{0, offsetof(SolidVertex, x), NKGPU_VERTEXFORMAT_FLOAT2}}, color_options,
@@ -1647,11 +1600,7 @@ bool UiRendererImpl::initialize() {
         !create_pipeline(*state_, state_->mask_shader, sizeof(TextureVertex),
                          {{0, offsetof(TextureVertex, x), NKGPU_VERTEXFORMAT_FLOAT2},
                           {1, offsetof(TextureVertex, u), NKGPU_VERTEXFORMAT_FLOAT2}},
-                         color_options, state_->mask_pipeline) ||
-        !create_pipeline(*state_, state_->surface_mesh_shader, sizeof(SurfaceMeshVertex),
-                         {{0, offsetof(SurfaceMeshVertex, x), NKGPU_VERTEXFORMAT_FLOAT3},
-                          {1, offsetof(SurfaceMeshVertex, red), NKGPU_VERTEXFORMAT_UBYTE4N}},
-                         surface_options, state_->surface_mesh_pipeline))
+                         color_options, state_->mask_pipeline))
         return false;
 
     const auto nearest = NKGPU_FILTER_NEAREST;
@@ -1679,10 +1628,9 @@ bool UiRendererImpl::initialize() {
     if (!create_stream(4 * 1024 * 1024, NKGPU_BUFFER_VERTEX, state_->solid_vertices) ||
         !create_stream(4 * 1024 * 1024, NKGPU_BUFFER_VERTEX, state_->glyph_vertices) ||
         !create_stream(1024 * 1024, NKGPU_BUFFER_VERTEX, state_->composite_vertices) ||
-        !create_stream(1024 * 1024, NKGPU_BUFFER_VERTEX, state_->surface_mesh_vertices) ||
         !create_stream(4 * 1024 * 1024, NKGPU_BUFFER_INDEX, state_->indices))
         return false;
-    state_->stats.gpu_resources = 38;
+    state_->stats.gpu_resources = 35;
     state_->initialized = true;
     return true;
 }
@@ -1883,59 +1831,6 @@ bool UiRendererImpl::beginRasterPass(ResourceId target_id, uint64_t cache_key, i
         return false;
     }
     return true;
-}
-
-bool UiRendererImpl::beginSurfacePass(ResourceId target, const SurfaceDescriptor &description,
-                                      bool load_existing) {
-    /*
-     * A live producer renders through callbacks and cannot be recorded, so the
-     * executor keeps frames that use one on the inline path.
-     */
-    if (state_->recording)
-        return fail(*state_, "surface producers cannot be recorded");
-    if (description.format != SurfacePixelFormat::Rgba8 || description.width <= 0 ||
-        description.height <= 0 ||
-        (description.alpha != SurfaceAlphaMode::Opaque &&
-         description.alpha != SurfaceAlphaMode::Premultiplied) ||
-        (description.filter != SurfaceFilter::Nearest &&
-         description.filter != SurfaceFilter::Linear) ||
-        description.color_space != SurfaceColorSpace::Linear)
-        return fail(*state_, "invalid producer surface descriptor");
-    return beginTargetPass(target, description.width, description.height, load_existing);
-}
-
-bool UiRendererImpl::drawSurfaceMesh(const SurfaceMeshView &mesh) {
-    if (!state_->in_pass || mesh.vertices.empty() || mesh.indices.empty())
-        return fail(*state_, "invalid surface mesh draw");
-    const std::vector<SurfaceMeshVertex> vertices(mesh.vertices.begin(), mesh.vertices.end());
-    const std::vector<uint32_t> indices(mesh.indices.begin(), mesh.indices.end());
-    return draw_mesh(*state_, state_->surface_mesh_pipeline, vertices, indices, nullptr, 0, {}, {},
-                     state_->surface_mesh_vertices, {}, mesh.model_view_projection.data(),
-                     sizeof(mesh.model_view_projection));
-}
-
-bool UiRendererImpl::surfaceHasContent(ResourceId target) const {
-    const auto found = state_->targets.find(target.value);
-    return found != state_->targets.end() && found->second.color.id && found->second.image.id;
-}
-
-bool UiRendererImpl::surfaceIsCurrent(ResourceId target, uint32_t generation,
-                                      const SurfaceDescriptor &description) const {
-    const auto found = state_->surfaces.find(target.value);
-    if (found == state_->surfaces.end())
-        return false;
-    const auto &surface = found->second;
-    return surface.generation == generation && surface.width == description.width &&
-           surface.height == description.height && surface.format == description.format &&
-           surface.alpha == description.alpha && surface.filter == description.filter &&
-           surface.color_space == description.color_space;
-}
-
-void UiRendererImpl::markSurfaceCurrent(ResourceId target, uint32_t generation,
-                                        const SurfaceDescriptor &description) {
-    state_->surfaces[target.value] = {
-        generation,        description.width,  description.height,     description.format,
-        description.alpha, description.filter, description.color_space};
 }
 
 bool UiRendererImpl::setScissor(bool enabled, float x, float y, float width, float height) {
@@ -2505,16 +2400,8 @@ bool UiRendererImpl::compositeImage(ResourceId target_id, float x, float y, floa
         width = static_cast<float>(found->width);
     if (height <= 0.0f)
         height = static_cast<float>(found->height);
-    nkgpu_sampler sampler = state_->sampler;
-    const auto surface = state_->surfaces.find(target_id.value);
-    if (surface != state_->surfaces.end()) {
-        if (surface->second.filter == SurfaceFilter::Linear)
-            sampler = state_->surface_sampler;
-        else if (surface->second.filter != SurfaceFilter::Nearest)
-            return fail(*state_, "surface filter is unsupported");
-    }
     return draw_composite(*state_, x, y, width, height, transform, opacity, {}, found->image,
-                          sampler);
+                          state_->sampler);
 }
 
 bool UiRendererImpl::compositeImage(nk_graphics_image image, float x, float y, float width,

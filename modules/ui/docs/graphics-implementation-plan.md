@@ -202,9 +202,8 @@ logical sizing, format, sample count, usage, and generation. A zero pixel size
 means that the executor inherits the current window dimensions. The scheduler
 preserves same-target continuation order, places internal producer passes
 before the pass that samples them, and rejects cycles before GPU submission;
-external surfaces resolve through retained `nk_graphics_image` bindings (or
-explicitly recordable producers); a live non-recordable callback is rejected
-before it can cross the APP -> RENDER boundary.
+external surfaces resolve through retained `nk_graphics_image` bindings; live
+producer callbacks are rejected before they can cross the APP -> RENDER boundary.
 ```
 
 The compositor records target dependencies while walking the display list.
