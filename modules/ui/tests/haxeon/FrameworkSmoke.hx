@@ -53,6 +53,11 @@ import nativekit.ui.core.CommandContext;
 import nativekit.ui.core.CommandParameters;
 import nativekit.ui.core.CommandRegistry;
 import nativekit.ui.core.CommandResult;
+import nativekit.ui.core.DockDropZone;
+import nativekit.ui.core.DockNode;
+import nativekit.ui.core.DockPanelDescriptor;
+import nativekit.ui.core.DockSplitAxis;
+import nativekit.ui.core.DockWorkspaceModel;
 import nativekit.ui.core.EditorDocument;
 import nativekit.ui.core.EditHistory;
 import nativekit.ui.core.EditOperation;
@@ -105,6 +110,7 @@ import nativekit.ui.widgets.Padding;
 import nativekit.ui.widgets.ProgressBar;
 import nativekit.ui.widgets.PropertyEditor;
 import nativekit.ui.widgets.Dialog;
+import nativekit.ui.widgets.DockWorkspace;
 import nativekit.ui.widgets.DefaultTextStyle;
 import nativekit.ui.widgets.Menu;
 import nativekit.ui.widgets.MenuItem;
@@ -220,6 +226,8 @@ class FrameworkSmoke {
 			return 30;
 		if (!commandHistoryValid(context))
 			return 230;
+		if (!dockWorkspaceValid(context))
+			return 231;
 		var emptyEditor = new TextEditorState(fonts, "");
 		if (Utf8Text.length(emptyEditor.text) != 0)
 			return 38;
@@ -3444,6 +3452,80 @@ class FrameworkSmoke {
 		dispatcher.setRoot(routingRoot);
 		dispatcher.key(UiEventKind.KeyDown, UiKey.K, UiModifier.Control);
 		return routed == 1;
+	}
+
+	static function dockWorkspaceValid(uiContext:UiContext):Bool {
+		var hierarchyBuilds = 0;
+		var viewportBuilds = 0;
+		var inspectorBuilds = 0;
+		var consoleBuilds = 0;
+		var model = new DockWorkspaceModel();
+		model.register(new DockPanelDescriptor("hierarchy", "Hierarchy", function(_) {
+			hierarchyBuilds++;
+			return new Text("Hierarchy");
+		}, false));
+		model.register(new DockPanelDescriptor("viewport", "Viewport", function(_) {
+			viewportBuilds++;
+			return new Text("Viewport");
+		}));
+		model.register(new DockPanelDescriptor("inspector", "Inspector", function(_) {
+			inspectorBuilds++;
+			return new Text("Inspector");
+		}));
+		model.register(new DockPanelDescriptor("console", "Console", function(_) {
+			consoleBuilds++;
+			return new Text("Console");
+		}));
+		var defaultLayout = DockNode.Split(DockSplitAxis.Horizontal, 0.3,
+			DockNode.Panel("hierarchy"), DockNode.Tabs(["viewport", "inspector"], "viewport"));
+		model.setDefaultLayout(defaultLayout);
+		var changes = 0;
+		model.listen(function() changes++);
+		var workspace = new DockWorkspace("editor-workspace", model);
+		var workspaceRoot = uiContext.submit(workspace, new LayoutFrame(640.0, 480.0));
+		if (workspaceRoot == null || hierarchyBuilds != 1 || viewportBuilds != 1 ||
+			inspectorBuilds != 0 || consoleBuilds != 0 || model.activePanelId != "hierarchy")
+			return false;
+		if (!model.activate("inspector") || changes != 1)
+			return false;
+		workspaceRoot = uiContext.submit(workspace, new LayoutFrame(640.0, 480.0));
+		if (workspaceRoot == null || inspectorBuilds != 1 || viewportBuilds != 1)
+			return false;
+		if (!model.dock("console", "viewport", DockDropZone.Center) ||
+			!model.isOpen("console") || model.activePanelId != "console")
+			return false;
+		var snapshot = model.snapshot();
+		workspaceRoot = uiContext.submit(workspace, new LayoutFrame(640.0, 480.0));
+		if (workspaceRoot == null || consoleBuilds != 1)
+			return false;
+		if (!model.close("console") || model.isOpen("console") || !model.open("console", "viewport"))
+			return false;
+		if (!model.restore(snapshot) || !model.isOpen("console") || model.activePanelId != "console")
+			return false;
+		if (!model.setSplitRatio([], 0.6))
+			return false;
+		switch (model.root) {
+			case DockNode.Split(_, ratio, _, _):
+				if (ratio != 0.6)
+					return false;
+			default: return false;
+		}
+		if (!model.dock("inspector", "hierarchy", DockDropZone.Left) ||
+			!model.isOpen("inspector"))
+			return false;
+		var commandRegistry = new CommandRegistry();
+		model.installCommands(commandRegistry, "workspace");
+		var parameters = new CommandParameters();
+		parameters.setString("panel", "console");
+		var commandContext = new CommandContext(null, [], null, parameters, "dock-smoke");
+		var closeResult = commandRegistry.executeContext("workspace.close", commandContext);
+		if (!closeResult.succeeded || model.isOpen("console"))
+			return false;
+		var resetResult = commandRegistry.executeContext("workspace.reset", commandContext);
+		if (!resetResult.succeeded || !model.isOpen("hierarchy") || !model.isOpen("viewport") ||
+			model.isOpen("console") || !model.isOpen("inspector"))
+			return false;
+		return model.restore(snapshot) && model.isOpen("console");
 	}
 
 	/** Covers the shared Haxe scene policy around transforms, clipping, order, and events. */

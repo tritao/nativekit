@@ -185,6 +185,14 @@ its `apply` callback routes edits through the same document history as built-in
 controls. This is the intended boundary for simulation/CAD values such as
 vectors, transforms, entity references, assets, colors, and curves.
 
+`DockWorkspaceModel` stores a versioned, view-independent layout tree of
+panels, tab groups, and ratio-based splits. `DockWorkspace` renders that tree
+through `SplitView` and `Tabs`, building only the active tab page. The model
+supports activation, close/open, docking mutations, split-ratio updates,
+snapshots, and `dock.close`/`dock.reset` command registration. Persist its
+`DockWorkspaceSnapshot` alongside project or user preferences; panel content
+and document state remain owned by the application.
+
 ## Frame building and sealed plans
 
 One frame has three stages: layout and recording build a display list, the
