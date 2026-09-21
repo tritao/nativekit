@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <unordered_map>
 
 namespace nkscene {
@@ -48,6 +49,7 @@ public:
         return world_transforms_;
     }
     const ComponentStore<Visibility> &visibilities() const noexcept { return visibilities_; }
+    const ComponentStore<std::string> &names() const noexcept { return names_; }
     const GeometryStore &geometry_store() const noexcept { return geometries; }
     const MaterialStore &material_store() const noexcept { return materials; }
     GeometryStore &geometry_store() noexcept { return geometries; }
@@ -69,6 +71,8 @@ private:
     ComponentStore<GeometryRef> geometry_refs;
     ComponentStore<MaterialRef> material_refs;
     ComponentStore<Visibility> visibilities_;
+    ComponentStore<std::string> names_;
+    std::unordered_map<EntityId, std::string> entity_names;
     ComponentStore<Bounds> bounds;
     HierarchyIndex hierarchy;
     GeometryStore geometries;

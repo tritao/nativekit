@@ -6,6 +6,7 @@
 #include <cassert>
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <vector>
 
 namespace {
@@ -173,6 +174,43 @@ void snapshots_are_immutable() {
     assert(before.revision() != scene->revision());
 }
 
+void names_and_bulk_transforms_are_transactional() {
+    auto scene = std::make_shared<Scene>();
+    std::vector<nkscene::OccurrenceId> occurrences;
+    for (int index = 0; index < 3; ++index)
+        occurrences.push_back(scene->reserve_occurrence_id());
+
+    Transaction create(scene);
+    for (const auto occurrence : occurrences)
+        create.add_create(occurrence);
+    nkscene::ChangeSet changes;
+    assert(scene->commit(create, changes) == NKS_OK);
+    create.close();
+
+    std::vector<nkscene::TransformUpdate> updates;
+    for (std::size_t index = 0; index < occurrences.size(); ++index)
+        updates.push_back({occurrences[index], translated(static_cast<float>(index + 1))});
+    Transaction move(scene);
+    move.add_transforms(std::span<const nkscene::TransformUpdate>{updates});
+    assert(scene->commit(move, changes) == NKS_OK);
+    move.close();
+    assert(changes.changes.size() == occurrences.size());
+    assert(changes.revisions.transform == 1);
+    assert(scene->world_transforms().find(occurrences[2])->transform.matrix[12] == 3.0f);
+
+    constexpr nkscene::EntityId robot_link{100};
+    Transaction names(scene);
+    names.add_source_entity(occurrences[0], robot_link);
+    names.add_name(occurrences[0], "panda_link0");
+    names.add_entity_name(robot_link, "RobotLink");
+    assert(scene->commit(names, changes) == NKS_OK);
+    names.close();
+    assert(changes.revisions.name == 1);
+    const auto snapshot = scene->snapshot();
+    assert(snapshot.name(occurrences[0]) == "panda_link0");
+    assert(snapshot.entity_name(robot_link) == "RobotLink");
+}
+
 } // namespace
 
 int main() {
@@ -180,5 +218,6 @@ int main() {
     changes_are_domain_precise();
     shared_resources_do_not_follow_instance_transforms();
     snapshots_are_immutable();
+    names_and_bulk_transforms_are_transactional();
     return 0;
 }
