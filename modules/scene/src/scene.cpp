@@ -229,14 +229,27 @@ std::size_t vertex_format_size(nkscene_vertex_format format) noexcept {
     }
 }
 
+template <class Resource>
+struct ResourceCollector {
+    std::vector<Resource> &resources;
+
+    template <class Id>
+    void operator()(Id, const Resource &resource) const {
+        resources.push_back(resource);
+    }
+};
+
+template <class Resource>
+struct ResourceIdLess {
+    bool operator()(const Resource &lhs, const Resource &rhs) const {
+        return lhs.id.value < rhs.id.value;
+    }
+};
+
 template <class Store, class Resource>
 void append_resources(const Store &store, std::vector<Resource> &resources) {
-    store.for_each(
-        [&](auto, const Resource &resource) { resources.push_back(resource); });
-    std::sort(resources.begin(), resources.end(),
-              [](const Resource &lhs, const Resource &rhs) {
-                  return lhs.id.value < rhs.id.value;
-              });
+    store.for_each(ResourceCollector<Resource>{resources});
+    std::sort(resources.begin(), resources.end(), ResourceIdLess<Resource>{});
 }
 
 std::uint32_t primitive_width(nkscene_primitive_type primitive) noexcept {
