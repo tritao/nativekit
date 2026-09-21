@@ -196,6 +196,7 @@ if(EMSCRIPTEN)
             "-pthread"
             "-sOFFSCREENCANVAS_SUPPORT=1"
             "-sOFFSCREEN_FRAMEBUFFER=1"
+            "-sASYNCIFY=1"
             "-sPTHREAD_POOL_SIZE=1"
             "-sPTHREAD_POOL_DELAY_LOAD=0")
     endif()

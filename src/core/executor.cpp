@@ -16,6 +16,7 @@
 #if defined(NK_BACKEND_WEB) && defined(NK_WEB_THREADED_RENDER)
 #include "nativekit_web_config.h"
 
+#include <emscripten.h>
 #include <emscripten/threading.h>
 #include <pthread.h>
 #endif
@@ -419,9 +420,23 @@ nk_result dispatch_to_render_sync(nk_task_fn fn, void *user_data, std::size_t by
                                                 bytes == 0 ? sizeof(task) : bytes);
     if (queued != NK_OK)
         return queued;
+#if defined(NK_BACKEND_WEB) && defined(NK_WEB_THREADED_RENDER)
+    /* A futex wait on the browser's main thread prevents the event loop from
+       servicing OffscreenCanvas/WebGL work performed by RENDER. Asyncify lets
+       the synchronous NativeKit API yield until the render task completes. */
+    for (;;) {
+        {
+            std::lock_guard lock(task.mutex);
+            if (task.completed)
+                return NK_OK;
+        }
+        emscripten_sleep(0);
+    }
+#else
     std::unique_lock lock(task.mutex);
     task.condition.wait(lock, [&] { return task.completed; });
     return NK_OK;
+#endif
 }
 
 void fail_next_platform_dispatch() noexcept {
