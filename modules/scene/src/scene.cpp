@@ -229,18 +229,15 @@ std::size_t vertex_format_size(nkscene_vertex_format format) noexcept {
     }
 }
 
-template <class Resource>
-struct ResourceCollector {
+template <class Resource> struct ResourceCollector {
     std::vector<Resource> &resources;
 
-    template <class Id>
-    void operator()(Id, const Resource &resource) const {
+    template <class Id> void operator()(Id, const Resource &resource) const {
         resources.push_back(resource);
     }
 };
 
-template <class Resource>
-struct ResourceIdLess {
+template <class Resource> struct ResourceIdLess {
     bool operator()(const Resource &lhs, const Resource &rhs) const {
         return lhs.id.value < rhs.id.value;
     }
