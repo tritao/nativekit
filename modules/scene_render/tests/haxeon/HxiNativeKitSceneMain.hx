@@ -50,6 +50,7 @@ import nativekit.scene.SceneView;
 import nativekit.scene.SceneViewPolicy;
 import nativekit.scene.SourceEntityFilter;
 import nativekit.scene.SceneRenderer;
+import nativekit.scene.SceneSession;
 import nativekit.scene.SpatialIndex;
 import nativekit.scene.PickPollResult;
 import nativekit.scene.PickResult;
@@ -582,6 +583,52 @@ class Main {
 		snapshot.dispose();
 		changes.dispose();
 		scene.dispose();
+
+		var scaleSession = SceneSession.createHeadless(),
+			scaleScene = scaleSession.scene(),
+			scaleGeometry = scaleScene.createGeometry(),
+			scaleMaterial = scaleScene.createMaterial(),
+			scaleGeometryData = new GeometryData();
+		scaleGeometryData.addVertex(-0.01, -0.01, 0.0);
+		scaleGeometryData.addVertex(0.01, -0.01, 0.0);
+		scaleGeometryData.addVertex(0.0, 0.01, 0.0);
+		scaleGeometryData.addTriangle(0, 1, 2);
+		scaleGeometryData.setBounds(-0.01, -0.01, 0.0, 0.01, 0.01, 0.0);
+		scaleScene.setGeometryData(scaleGeometry, scaleGeometryData);
+		scaleScene.setMaterialData(scaleMaterial, MaterialData.opaque(0.3, 0.8, 0.4));
+		var scaleTransaction = scaleSession.beginTransaction(),
+			scaleLast:Null<Occurrence> = null;
+		for (index in 0...50000) {
+			var occurrence = scaleTransaction.createOccurrence();
+			scaleTransaction.setGeometry(occurrence, scaleGeometry);
+			scaleTransaction.setMaterial(occurrence, scaleMaterial);
+			scaleLast = occurrence;
+		}
+		var scaleInitialFrame = scaleSession.commit(scaleTransaction),
+			scaleInitialStats = scaleSession.render(scaleInitialFrame),
+			scaleUpdate = scaleSession.renderer().lastUpdate();
+		if (scaleLast == null
+			|| haxe.Int64.toInt(scaleInitialStats.get_commands()) != 50000
+			|| haxe.Int64.toInt(scaleInitialStats.get_draw_calls()) != 50000
+			|| scaleUpdate != null) return 35;
+		var scaleMoveTransaction = scaleSession.beginTransaction();
+		scaleMoveTransaction.setTransform(scaleLast, Transform.identity().translated(0.25, 0.0, 0.0));
+		var scaleMovedFrame = scaleSession.commit(scaleMoveTransaction),
+			scaleMovedStats = scaleSession.render(scaleMovedFrame),
+			scaleMovedUpdate = scaleSession.renderer().lastUpdate();
+		if (scaleMovedUpdate == null
+			|| scaleMovedUpdate.get_plan_rebuilt() != 0
+			|| haxe.Int64.toInt(scaleMovedUpdate.get_patched_instances()) != 1
+			|| haxe.Int64.toInt(scaleMovedUpdate.get_updated_geometry_resources()) != 0
+			|| haxe.Int64.toInt(scaleMovedUpdate.get_updated_material_resources()) != 0
+			|| haxe.Int64.toInt(scaleMovedStats.get_geometry_resources_created()) != 0
+			|| haxe.Int64.toInt(scaleMovedStats.get_geometry_resources_updated()) != 0
+			|| haxe.Int64.toInt(scaleMovedStats.get_material_resources_created()) != 0
+			|| haxe.Int64.toInt(scaleMovedStats.get_material_resources_updated()) != 0) return 35;
+		scaleMovedFrame.dispose();
+		scaleInitialFrame.dispose();
+		scaleSession.dispose();
+		if (!scaleSession.isDisposed()) return 35;
 		return 42;
 	}
 }
