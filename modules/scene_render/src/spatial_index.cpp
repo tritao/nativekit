@@ -307,33 +307,33 @@ PickResult SceneSpatialIndex::pick_ray(const Ray &ray) const {
         const auto *geometry = state_->snapshot.find_geometry(occurrence->geometry);
         if (!geometry)
             continue;
-        const auto primitive_count = geometry->payload.element_count() / 3;
+        const auto primitive_count = geometry->payload->element_count() / 3;
         for (std::size_t primitive = 0; primitive < primitive_count; ++primitive) {
             const auto first_index =
-                static_cast<std::size_t>(vertex_index(geometry->payload, primitive * 3));
+                static_cast<std::size_t>(vertex_index(*geometry->payload, primitive * 3));
             const auto second_index =
-                static_cast<std::size_t>(vertex_index(geometry->payload, primitive * 3 + 1));
+                static_cast<std::size_t>(vertex_index(*geometry->payload, primitive * 3 + 1));
             const auto third_index =
-                static_cast<std::size_t>(vertex_index(geometry->payload, primitive * 3 + 2));
-            if (first_index >= geometry->payload.vertices.size() ||
-                second_index >= geometry->payload.vertices.size() ||
-                third_index >= geometry->payload.vertices.size())
+                static_cast<std::size_t>(vertex_index(*geometry->payload, primitive * 3 + 2));
+            if (first_index >= geometry->payload->vertices.size() ||
+                second_index >= geometry->payload->vertices.size() ||
+                third_index >= geometry->payload->vertices.size())
                 continue;
             float distance = 0.0f;
             if (!ray_hits_triangle(normalized,
                                    transform_point(occurrence->world_transform.transform,
-                                                   geometry->payload.vertices[first_index]),
+                                                   geometry->payload->vertices[first_index]),
                                    transform_point(occurrence->world_transform.transform,
-                                                   geometry->payload.vertices[second_index]),
+                                                   geometry->payload->vertices[second_index]),
                                    transform_point(occurrence->world_transform.transform,
-                                                   geometry->payload.vertices[third_index]),
+                                                   geometry->payload->vertices[third_index]),
                                    distance) ||
                 distance >= best_distance)
                 continue;
             best_distance = distance;
             result.occurrence = occurrence->occurrence;
             result.source = occurrence->source;
-            result.subelement = {geometry->subelements.id_for_primitive(primitive)};
+            result.subelement = {geometry->subelements->id_for_primitive(primitive)};
             result.worldPosition = scale_add(normalized.origin, normalized.direction, distance);
             result.depth = distance;
         }

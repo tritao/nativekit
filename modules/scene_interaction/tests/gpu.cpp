@@ -68,11 +68,11 @@ int main() {
         auto scene = std::make_shared<nkscene::Scene>();
         const auto geometry = scene->reserve_geometry_id();
         auto &geometry_resource = scene->geometry_store().create(geometry);
-        geometry_resource.payload.vertices = {
+        geometry_resource.edit_payload().vertices = {
             {{{-0.6f, -0.6f, 0.0f}}},
             {{{0.6f, -0.6f, 0.0f}}},
             {{{0.0f, 0.6f, 0.0f}}}};
-        geometry_resource.subelements.ranges.push_back({0, 1, 42});
+        geometry_resource.edit_subelements().ranges.push_back({0, 1, 42});
         const auto material = scene->reserve_material_id();
         scene->material_store().create(material);
         const auto selection_material = scene->reserve_material_id();

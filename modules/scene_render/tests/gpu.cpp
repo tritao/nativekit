@@ -74,7 +74,7 @@ int main() {
         auto scene = std::make_shared<Scene>();
         const auto geometry = scene->reserve_geometry_id();
         auto &geometry_resource = scene->geometry_store().create(geometry);
-        geometry_resource.payload.vertices = {
+        geometry_resource.edit_payload().vertices = {
             {{{-0.6f, -0.6f, 0.0f}}},
             {{{0.6f, -0.6f, 0.0f}}},
             {{{0.0f, 0.6f, 0.0f}}}};
@@ -100,9 +100,9 @@ int main() {
         texcoord_stream.count = 3;
         texcoord_stream.data.resize(sizeof(texcoords));
         std::memcpy(texcoord_stream.data.data(), texcoords.data(), sizeof(texcoords));
-        geometry_resource.payload.streams = {normal_stream, texcoord_stream};
-        geometry_resource.payload.indices = {0, 1, 2};
-        geometry_resource.subelements.ranges.push_back({0, 1, 42});
+        geometry_resource.edit_payload().streams = {normal_stream, texcoord_stream};
+        geometry_resource.edit_payload().indices = {0, 1, 2};
+        geometry_resource.edit_subelements().ranges.push_back({0, 1, 42});
         const auto image = scene->reserve_image_id();
         auto &image_resource = scene->image_store().create(image);
         image_resource.width = 1;
@@ -124,9 +124,9 @@ int main() {
         light_resource.intensity = 1.25f;
         const auto material = scene->reserve_material_id();
         auto &material_resource = scene->material_store().create(material);
-        material_resource.base_color = {0.2f, 0.7f, 1.0f, 1.0f};
-        material_resource.base_color_texture = texture;
-        material_resource.sampler = sampler;
+        material_resource.edit_state().base_color = {0.2f, 0.7f, 1.0f, 1.0f};
+        material_resource.edit_state().base_color_texture = texture;
+        material_resource.edit_state().sampler = sampler;
 
         Transaction create(scene);
         const auto occurrence = scene->reserve_occurrence_id();
@@ -250,13 +250,15 @@ int main() {
         assert(picked.source == nkscene::EntityId{142});
 
         auto &updated_material = scene->material_store().create(material);
-        updated_material.base_color = {1.0f, 0.3f, 0.2f, 1.0f};
+        updated_material.edit_state().base_color = {1.0f, 0.3f, 0.2f, 1.0f};
+        scene->publish();
         stats = executor.execute(plan, scene->snapshot());
         assert(stats.result == NKGPU_OK);
         assert(stats.material_resources_updated == 1);
 
         auto &non_indexed_geometry = scene->geometry_store().create(geometry);
-        non_indexed_geometry.payload.indices.clear();
+        non_indexed_geometry.edit_payload().indices.clear();
+        scene->publish();
         stats = executor.execute(plan, scene->snapshot());
         assert(stats.result == NKGPU_OK);
         assert(stats.geometry_resources_created == 0);
@@ -264,18 +266,20 @@ int main() {
         assert(stats.draw_calls == 1);
 
         auto &indexed_geometry = scene->geometry_store().create(geometry);
-        indexed_geometry.payload.indices = {0, 1, 2};
+        indexed_geometry.edit_payload().indices = {0, 1, 2};
+        scene->publish();
         stats = executor.execute(plan, scene->snapshot());
         assert(stats.result == NKGPU_OK);
         assert(stats.geometry_resources_created == 0);
         assert(stats.geometry_resources_updated == 1);
         assert(stats.draw_calls == 1);
 
-        const auto vertices = indexed_geometry.payload.vertices;
+        const auto vertices = indexed_geometry.payload->vertices;
         const auto unused_geometry = scene->reserve_geometry_id();
         auto &unused_resource = scene->geometry_store().create(unused_geometry);
-        unused_resource.payload.vertices = vertices;
-        unused_resource.payload.indices = {0, 1, 2};
+        unused_resource.edit_payload().vertices = vertices;
+        unused_resource.edit_payload().indices = {0, 1, 2};
+        scene->publish();
         stats = executor.execute(plan, scene->snapshot());
         assert(stats.result == NKGPU_OK);
         assert(stats.geometry_resources_created == 1);
@@ -283,6 +287,7 @@ int main() {
         assert(stats.draw_calls == 1);
 
         assert(scene->geometry_store().destroy(unused_geometry));
+        scene->publish();
         stats = executor.execute(plan, scene->snapshot());
         assert(stats.result == NKGPU_OK);
         assert(stats.geometry_resources_created == 0);
@@ -290,8 +295,9 @@ int main() {
         assert(stats.draw_calls == 1);
 
         auto &recreated_geometry = scene->geometry_store().create(unused_geometry);
-        recreated_geometry.payload.vertices = vertices;
-        recreated_geometry.payload.indices.clear();
+        recreated_geometry.edit_payload().vertices = vertices;
+        recreated_geometry.edit_payload().indices.clear();
+        scene->publish();
         stats = executor.execute(plan, scene->snapshot());
         assert(stats.result == NKGPU_OK);
         assert(stats.geometry_resources_created == 1);
@@ -303,15 +309,15 @@ int main() {
         auto scene = std::make_shared<Scene>();
         const auto geometry = scene->reserve_geometry_id();
         auto &geometry_resource = scene->geometry_store().create(geometry);
-        geometry_resource.payload.vertices = {
+        geometry_resource.edit_payload().vertices = {
             {{{-0.6f, -0.6f, 0.0f}}},
             {{{0.6f, -0.6f, 0.0f}}},
             {{{0.0f, 0.6f, 0.0f}}}};
-        geometry_resource.payload.indices = {0, 1, 2};
-        geometry_resource.subelements.ranges.push_back({0, 1, 7});
+        geometry_resource.edit_payload().indices = {0, 1, 2};
+        geometry_resource.edit_subelements().ranges.push_back({0, 1, 7});
         const auto material = scene->reserve_material_id();
         auto &material_resource = scene->material_store().create(material);
-        material_resource.base_color = {0.8f, 0.8f, 0.8f, 1.0f};
+        material_resource.edit_state().base_color = {0.8f, 0.8f, 0.8f, 1.0f};
 
         Transaction create(scene);
         const auto occurrence = scene->reserve_occurrence_id();

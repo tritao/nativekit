@@ -13,11 +13,28 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace nkscene {
 
+struct PublishedSceneState {
+    RevisionCounters revisions;
+    std::vector<SnapshotOccurrence> occurrences;
+    std::unordered_map<EntityId, std::vector<OccurrenceId>> occurrences_by_source;
+    std::unordered_map<EntityId, std::string> entity_names;
+    std::vector<GeometryResource> geometries;
+    std::vector<MaterialResource> materials;
+    std::vector<ImageResource> images;
+    std::vector<TextureResource> textures;
+    std::vector<SamplerResource> samplers;
+    std::vector<CameraResource> cameras;
+    std::vector<LightResource> lights;
+};
+
 class NKS_API Scene {
 public:
+    Scene();
+
     OccurrenceId reserve_occurrence_id() noexcept { return occurrences.reserve_id(); }
     GeometryId reserve_geometry_id() noexcept { return GeometryId{next_geometry_id++}; }
     MaterialId reserve_material_id() noexcept { return MaterialId{next_material_id++}; }
@@ -26,16 +43,8 @@ public:
     SamplerId reserve_sampler_id() noexcept { return SamplerId{next_sampler_id++}; }
     CameraId reserve_camera_id() noexcept { return CameraId{next_camera_id++}; }
     LightId reserve_light_id() noexcept { return LightId{next_light_id++}; }
-    GeometryId create_geometry() {
-        const auto id = reserve_geometry_id();
-        geometries.create(id);
-        return id;
-    }
-    MaterialId create_material() {
-        const auto id = reserve_material_id();
-        materials.create(id);
-        return id;
-    }
+    GeometryId create_geometry();
+    MaterialId create_material();
     ImageId create_image() {
         const auto id = reserve_image_id();
         images.create(id);
@@ -61,8 +70,8 @@ public:
         lights.create(id);
         return id;
     }
-    void destroy_geometry(GeometryId id) noexcept { geometries.destroy(id); }
-    void destroy_material(MaterialId id) noexcept { materials.destroy(id); }
+    void destroy_geometry(GeometryId id) noexcept;
+    void destroy_material(MaterialId id) noexcept;
     void destroy_image(ImageId id) noexcept { images.destroy(id); }
     void destroy_texture(TextureId id) noexcept { textures.destroy(id); }
     void destroy_sampler(SamplerId id) noexcept { samplers.destroy(id); }
@@ -102,11 +111,15 @@ public:
     const CameraStore &camera_store() const noexcept { return cameras; }
     const LightStore &light_store() const noexcept { return lights; }
 
+    /** Publishes externally edited resources into the next immutable snapshot. */
+    void publish() const;
+
 private:
     nkscene_result validate(const Transaction &transaction) const noexcept;
     bool exists_after(const std::unordered_map<OccurrenceId, bool> &live,
                       OccurrenceId id) const noexcept;
     void recompute_world_transforms(ChangeSet &changes);
+    void publish_state() const;
     void record_change(ChangeSet &changes, std::unordered_map<OccurrenceId, std::size_t> &indices,
                        OccurrenceId id, ChangeDomain domain);
 
@@ -139,6 +152,7 @@ private:
     std::uint64_t next_camera_id = 1;
     std::uint64_t next_light_id = 1;
     RevisionCounters revisions;
+    mutable std::shared_ptr<const PublishedSceneState> published_;
 };
 
 NKS_API std::shared_ptr<const SceneSnapshot> resolve_snapshot_handle(

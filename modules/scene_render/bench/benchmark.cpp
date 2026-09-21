@@ -97,7 +97,7 @@ constexpr std::size_t source_count = 500;
     geometry_resource.bounds.valid = true;
     geometry_resource.bounds.minimum = {-1.0f, -1.0f, 0.0f};
     geometry_resource.bounds.maximum = {1.0f, 1.0f, 0.0f};
-    geometry_resource.payload.vertices = {
+    geometry_resource.edit_payload().vertices = {
         nkscene::GeometryVertex{{-1.0f, -1.0f, 0.0f}},
         nkscene::GeometryVertex{{1.0f, -1.0f, 0.0f}},
         nkscene::GeometryVertex{{0.0f, 1.0f, 0.0f}}};

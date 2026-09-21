@@ -99,11 +99,11 @@ int main() {
         auto scene = std::make_shared<Scene>();
         const auto geometry = scene->reserve_geometry_id();
         auto &geometry_resource = scene->geometry_store().create(geometry);
-        geometry_resource.payload.vertices = {
+        geometry_resource.edit_payload().vertices = {
             nkscene::GeometryVertex{{-0.05f, -0.05f, 0.0f}},
             nkscene::GeometryVertex{{0.05f, -0.05f, 0.0f}},
             nkscene::GeometryVertex{{0.0f, 0.05f, 0.0f}}};
-        geometry_resource.payload.indices = {0, 1, 2};
+        geometry_resource.edit_payload().indices = {0, 1, 2};
 
         std::vector<nkscene::MaterialId> materials;
         materials.reserve(4);

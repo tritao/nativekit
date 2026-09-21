@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstring>
 #include <limits>
@@ -17,23 +18,10 @@
 
 namespace nkscene {
 
-struct SceneSnapshot::State {
-    RevisionCounters revisions;
-    std::vector<SnapshotOccurrence> occurrences;
-    std::unordered_map<EntityId, std::vector<OccurrenceId>> occurrences_by_source;
-    std::unordered_map<EntityId, std::string> entity_names;
-    std::vector<GeometryResource> geometries;
-    std::vector<MaterialResource> materials;
-    std::vector<ImageResource> images;
-    std::vector<TextureResource> textures;
-    std::vector<SamplerResource> samplers;
-    std::vector<CameraResource> cameras;
-    std::vector<LightResource> lights;
-};
+SceneSnapshot::SceneSnapshot() : state_(std::make_shared<PublishedSceneState>()) {}
 
-SceneSnapshot::SceneSnapshot() : state_(std::make_shared<State>()) {}
-
-SceneSnapshot::SceneSnapshot(std::shared_ptr<const State> state) : state_(std::move(state)) {}
+SceneSnapshot::SceneSnapshot(std::shared_ptr<const PublishedSceneState> state)
+    : state_(std::move(state)) {}
 
 std::uint64_t SceneSnapshot::revision() const noexcept {
     return state_->revisions.scene;
@@ -364,8 +352,40 @@ bool Scene::exists_after(const std::unordered_map<OccurrenceId, bool> &live,
     return found == live.end() ? occurrences.contains(id) : found->second;
 }
 
-SceneSnapshot Scene::snapshot() const {
-    auto state = std::make_shared<SceneSnapshot::State>();
+Scene::Scene() {
+    publish_state();
+}
+
+GeometryId Scene::create_geometry() {
+    const auto id = reserve_geometry_id();
+    geometries.create(id);
+    publish_state();
+    return id;
+}
+
+MaterialId Scene::create_material() {
+    const auto id = reserve_material_id();
+    materials.create(id);
+    publish_state();
+    return id;
+}
+
+void Scene::destroy_geometry(GeometryId id) noexcept {
+    if (geometries.destroy(id))
+        publish_state();
+}
+
+void Scene::destroy_material(MaterialId id) noexcept {
+    if (materials.destroy(id))
+        publish_state();
+}
+
+void Scene::publish() const {
+    publish_state();
+}
+
+void Scene::publish_state() const {
+    auto state = std::make_shared<PublishedSceneState>();
     state->revisions = revisions;
     state->occurrences.reserve(occurrences.size());
     occurrences.for_each([&](OccurrenceId id, OccurrenceHandle) {
@@ -421,7 +441,13 @@ SceneSnapshot Scene::snapshot() const {
     append_resources(samplers, state->samplers);
     append_resources(cameras, state->cameras);
     append_resources(lights, state->lights);
-    return SceneSnapshot(std::move(state));
+    std::shared_ptr<const PublishedSceneState> published = std::move(state);
+    std::atomic_store_explicit(&published_, std::move(published), std::memory_order_release);
+}
+
+SceneSnapshot Scene::snapshot() const {
+    return SceneSnapshot(
+        std::atomic_load_explicit(&published_, std::memory_order_acquire));
 }
 
 nkscene_result Scene::validate(const Transaction &transaction) const noexcept {
@@ -757,6 +783,7 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
     }
     changes.scene_revision = revisions.scene;
     changes.revisions = revisions;
+    publish_state();
     return NKS_OK;
 }
 
@@ -1440,26 +1467,29 @@ nkscene_result NKS_CALL nkscene_geometry_set_data(nkscene_scene scene, nkscene_g
     if (!owner->geometry_store().find({geometry.value}))
         return NKS_ERROR_STALE_ID;
     auto &resource = owner->geometry_store().create({geometry.value});
-    resource.payload.vertices = std::move(vertices);
-    resource.payload.streams = std::move(streams);
-    resource.payload.primitive_type = static_cast<nkscene::PrimitiveType>(primitive);
-    resource.payload.indices.clear();
+    auto &payload = resource.edit_payload();
+    payload.vertices = std::move(vertices);
+    payload.streams = std::move(streams);
+    payload.primitive_type = static_cast<nkscene::PrimitiveType>(primitive);
+    payload.indices.clear();
     if (data->index_count != 0)
-        resource.payload.indices.assign(indices, indices + data->index_count);
+        payload.indices.assign(indices, indices + data->index_count);
     resource.bounds.valid = data->bounds.valid != 0;
     std::copy(std::begin(data->bounds.minimum), std::end(data->bounds.minimum),
               resource.bounds.minimum.begin());
     std::copy(std::begin(data->bounds.maximum), std::end(data->bounds.maximum),
               resource.bounds.maximum.begin());
-    resource.subelements.ranges.clear();
+    auto &subelements = resource.edit_subelements();
+    subelements.ranges.clear();
     if (data->subelement_count != 0) {
-        resource.subelements.ranges.reserve(data->subelement_count);
+        subelements.ranges.reserve(data->subelement_count);
         for (uint32_t index = 0; index < data->subelement_count; ++index) {
             const auto &range = data->subelements[index];
-            resource.subelements.ranges.push_back(
+            subelements.ranges.push_back(
                 {range.first_primitive, range.primitive_count, range.subelement});
         }
     }
+    owner->publish();
     return NKS_OK;
 }
 
@@ -1475,30 +1505,34 @@ nkscene_result NKS_CALL nkscene_material_set_data(nkscene_scene scene, nkscene_m
     if (!owner->material_store().find({material.value}))
         return NKS_ERROR_STALE_ID;
     auto &resource = owner->material_store().create({material.value});
+    auto &material_state = resource.edit_state();
     std::copy(std::begin(data->base_color), std::end(data->base_color),
-              resource.base_color.begin());
-    resource.opacity = data->opacity;
-    resource.flags = data->flags;
-    resource.metallic = data->metallic;
-    resource.roughness = data->roughness;
-    std::copy(std::begin(data->emissive), std::end(data->emissive), resource.emissive.begin());
-    resource.alpha_cutoff = data->alpha_cutoff;
-    resource.alpha_mode = static_cast<nkscene::AlphaMode>(
+              material_state.base_color.begin());
+    material_state.opacity = data->opacity;
+    material_state.flags = data->flags;
+    material_state.metallic = data->metallic;
+    material_state.roughness = data->roughness;
+    std::copy(std::begin(data->emissive), std::end(data->emissive),
+              material_state.emissive.begin());
+    material_state.alpha_cutoff = data->alpha_cutoff;
+    material_state.alpha_mode = static_cast<nkscene::AlphaMode>(
         data->alpha_mode == 0 ? NKS_MATERIAL_ALPHA_OPAQUE : data->alpha_mode);
-    resource.base_color_texture = {data->base_color_texture.value};
-    resource.metallic_roughness_texture = {data->metallic_roughness_texture.value};
-    resource.normal_texture = {data->normal_texture.value};
-    resource.emissive_texture = {data->emissive_texture.value};
-    resource.occlusion_texture = {data->occlusion_texture.value};
-    resource.sampler = {data->sampler.value};
+    material_state.base_color_texture = {data->base_color_texture.value};
+    material_state.metallic_roughness_texture = {data->metallic_roughness_texture.value};
+    material_state.normal_texture = {data->normal_texture.value};
+    material_state.emissive_texture = {data->emissive_texture.value};
+    material_state.occlusion_texture = {data->occlusion_texture.value};
+    material_state.sampler = {data->sampler.value};
     const nkscene::TextureId textures[] = {
-        resource.base_color_texture, resource.metallic_roughness_texture, resource.normal_texture,
-        resource.emissive_texture, resource.occlusion_texture};
+        material_state.base_color_texture, material_state.metallic_roughness_texture,
+        material_state.normal_texture, material_state.emissive_texture,
+        material_state.occlusion_texture};
     for (const auto texture : textures)
         if (texture.valid() && !owner->texture_store().find(texture))
             return NKS_ERROR_STALE_ID;
-    if (resource.sampler.valid() && !owner->sampler_store().find(resource.sampler))
+    if (material_state.sampler.valid() && !owner->sampler_store().find(material_state.sampler))
         return NKS_ERROR_STALE_ID;
+    owner->publish();
     return NKS_OK;
 }
 

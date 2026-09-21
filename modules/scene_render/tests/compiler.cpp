@@ -45,20 +45,20 @@ void geometry_payload_contract_is_validated() {
     auto scene = std::make_shared<Scene>();
     const auto valid_geometry = scene->reserve_geometry_id();
     auto &valid = scene->geometry_store().create(valid_geometry);
-    valid.payload.vertices = {
+    valid.edit_payload().vertices = {
         nkscene::GeometryVertex{{-1.0f, 0.0f, 0.0f}},
         nkscene::GeometryVertex{{1.0f, 0.0f, 0.0f}},
         nkscene::GeometryVertex{{0.0f, 1.0f, 0.0f}}};
-    valid.payload.indices = {0, 1, 2};
-    valid.subelements.ranges.push_back({0, 1, 7});
-    assert(valid.payload.element_count() == 3);
-    assert(valid.payload.indexed());
-    assert(valid.subelements.id_for_primitive(0) == 7);
+    valid.edit_payload().indices = {0, 1, 2};
+    valid.edit_subelements().ranges.push_back({0, 1, 7});
+    assert(valid.payload->element_count() == 3);
+    assert(valid.payload->indexed());
+    assert(valid.subelements->id_for_primitive(0) == 7);
 
     const auto invalid_geometry = scene->reserve_geometry_id();
     auto &invalid = scene->geometry_store().create(invalid_geometry);
-    invalid.payload.vertices = valid.payload.vertices;
-    invalid.payload.indices = {0, 1, 3};
+    invalid.edit_payload().vertices = valid.payload->vertices;
+    invalid.edit_payload().indices = {0, 1, 3};
 
     const auto material = scene->reserve_material_id();
     scene->material_store().create(material);
@@ -84,11 +84,11 @@ void resource_lifecycle_is_cache_safe() {
     auto scene = std::make_shared<Scene>();
     const auto geometry = scene->reserve_geometry_id();
     auto &geometry_resource = scene->geometry_store().create(geometry);
-    geometry_resource.payload.vertices = {
+    geometry_resource.edit_payload().vertices = {
         nkscene::GeometryVertex{{-1.0f, -1.0f, 0.0f}},
         nkscene::GeometryVertex{{1.0f, -1.0f, 0.0f}},
         nkscene::GeometryVertex{{0.0f, 1.0f, 0.0f}}};
-    geometry_resource.payload.indices = {0, 1, 2};
+    geometry_resource.edit_payload().indices = {0, 1, 2};
 
     const auto material = scene->reserve_material_id();
     scene->material_store().create(material);
@@ -114,7 +114,8 @@ void resource_lifecycle_is_cache_safe() {
     assert(stats.material_resources_created == 1);
 
     auto &non_indexed = scene->geometry_store().create(geometry);
-    non_indexed.payload.indices.clear();
+    non_indexed.edit_payload().indices.clear();
+    scene->publish();
     auto update = nkscene::update(plan, scene->snapshot(), no_changes, view);
     assert(!update.plan_rebuilt);
     assert(update.updated_geometry_resources == 1);
@@ -125,7 +126,8 @@ void resource_lifecycle_is_cache_safe() {
     assert(stats.geometry_resources_updated == 1);
 
     auto &indexed = scene->geometry_store().create(geometry);
-    indexed.payload.indices = {0, 1, 2};
+    indexed.edit_payload().indices = {0, 1, 2};
+    scene->publish();
     update = nkscene::update(plan, scene->snapshot(), no_changes, view);
     assert(!update.plan_rebuilt);
     assert(update.updated_geometry_resources == 1);
@@ -135,8 +137,9 @@ void resource_lifecycle_is_cache_safe() {
     assert(stats.geometry_resources_created == 0);
     assert(stats.geometry_resources_updated == 1);
 
-    const auto vertices = indexed.payload.vertices;
+    const auto vertices = indexed.payload->vertices;
     assert(scene->geometry_store().destroy(geometry));
+    scene->publish();
     update = nkscene::update(plan, scene->snapshot(), no_changes, view);
     assert(update.plan_rebuilt);
     assert(update.invalidated_items == 1);
@@ -147,8 +150,9 @@ void resource_lifecycle_is_cache_safe() {
     assert(stats.geometry_resources_updated == 0);
 
     auto &restored_geometry = scene->geometry_store().create(geometry);
-    restored_geometry.payload.vertices = vertices;
-    restored_geometry.payload.indices.clear();
+    restored_geometry.edit_payload().vertices = vertices;
+    restored_geometry.edit_payload().indices.clear();
+    scene->publish();
     plan = nkscene::compile(scene->snapshot(), view);
     assert(plan.items().size() == 1);
     stats = executor.execute(plan, scene->snapshot());
@@ -157,6 +161,7 @@ void resource_lifecycle_is_cache_safe() {
     assert(stats.geometry_resources_updated == 0);
 
     scene->material_store().create(material);
+    scene->publish();
     update = nkscene::update(plan, scene->snapshot(), no_changes, view);
     assert(!update.plan_rebuilt);
     assert(update.updated_geometry_resources == 0);
@@ -167,6 +172,7 @@ void resource_lifecycle_is_cache_safe() {
     assert(stats.material_resources_updated == 1);
 
     assert(scene->material_store().destroy(material));
+    scene->publish();
     update = nkscene::update(plan, scene->snapshot(), no_changes, view);
     assert(update.plan_rebuilt);
     assert(update.invalidated_items == 1);
@@ -177,6 +183,7 @@ void resource_lifecycle_is_cache_safe() {
     assert(stats.material_resources_updated == 0);
 
     scene->material_store().create(material);
+    scene->publish();
     plan = nkscene::compile(scene->snapshot(), view);
     stats = executor.execute(plan, scene->snapshot());
     assert(stats.result == NKGPU_OK);
@@ -611,12 +618,12 @@ void spatial_queries_and_cpu_picking_are_snapshot_bound() {
     geometry_resource.bounds.valid = true;
     geometry_resource.bounds.minimum = {-0.5f, -0.5f, 0.0f};
     geometry_resource.bounds.maximum = {0.5f, 0.5f, 0.0f};
-    geometry_resource.payload.vertices = {
+    geometry_resource.edit_payload().vertices = {
         nkscene::GeometryVertex{{-0.5f, -0.5f, 0.0f}},
         nkscene::GeometryVertex{{0.5f, -0.5f, 0.0f}},
         nkscene::GeometryVertex{{0.0f, 0.5f, 0.0f}}};
-    geometry_resource.payload.indices = {0, 1, 2};
-    geometry_resource.subelements.ranges.push_back({0, 1, 42});
+    geometry_resource.edit_payload().indices = {0, 1, 2};
+    geometry_resource.edit_subelements().ranges.push_back({0, 1, 42});
     const auto material = scene->reserve_material_id();
     scene->material_store().create(material);
 
@@ -802,6 +809,7 @@ int main() {
     assert(gpu_stats.geometry_resources_created == 0);
     assert(gpu_stats.material_resources_created == 0);
     scene->geometry_store().create(geometry);
+    scene->publish();
     gpu_stats = executor.execute(plan, scene->snapshot());
     assert(gpu_stats.geometry_resources_updated == 1);
 

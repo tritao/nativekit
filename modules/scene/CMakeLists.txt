@@ -29,6 +29,13 @@ if(NK_BUILD_TESTS)
     add_test(NAME scene_transactional COMMAND nativekit_scene_transaction_tests)
     set_tests_properties(scene_transactional PROPERTIES LABELS "scene" TIMEOUT 30)
 
+    add_executable(nativekit_scene_versioned_state_tests tests/versioned_state.cpp)
+    target_compile_features(nativekit_scene_versioned_state_tests PRIVATE cxx_std_20)
+    target_include_directories(nativekit_scene_versioned_state_tests PRIVATE src)
+    target_link_libraries(nativekit_scene_versioned_state_tests PRIVATE NativeKit::scene)
+    add_test(NAME scene_versioned_state COMMAND nativekit_scene_versioned_state_tests)
+    set_tests_properties(scene_versioned_state PROPERTIES LABELS "scene" TIMEOUT 30)
+
     add_executable(nativekit_scene_c_api_tests tests/c_api.c)
     set_target_properties(nativekit_scene_c_api_tests PROPERTIES LINKER_LANGUAGE CXX)
     target_include_directories(nativekit_scene_c_api_tests PRIVATE include)
@@ -42,6 +49,13 @@ if(NK_BUILD_TESTS)
     target_link_libraries(nativekit_scene_benchmark PRIVATE NativeKit::scene)
     add_test(NAME scene_benchmark COMMAND nativekit_scene_benchmark)
     set_tests_properties(scene_benchmark PROPERTIES LABELS "scene;benchmark" TIMEOUT 30)
+
+    add_executable(nativekit_scene_snapshot_benchmark bench/snapshot_benchmark.cpp)
+    target_compile_features(nativekit_scene_snapshot_benchmark PRIVATE cxx_std_20)
+    target_include_directories(nativekit_scene_snapshot_benchmark PRIVATE src)
+    target_link_libraries(nativekit_scene_snapshot_benchmark PRIVATE NativeKit::scene)
+    add_test(NAME scene_snapshot_benchmark COMMAND nativekit_scene_snapshot_benchmark)
+    set_tests_properties(scene_snapshot_benchmark PROPERTIES LABELS "scene;benchmark" TIMEOUT 30)
 endif()
 
 install(TARGETS nativekit_scene EXPORT NativeKitTargets

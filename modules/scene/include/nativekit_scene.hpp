@@ -176,8 +176,20 @@ struct GeometryResource {
     GeometryId id;
     std::uint64_t revision = 1;
     Bounds bounds;
-    GeometryPayload payload;
-    SubelementTable subelements;
+    std::shared_ptr<const GeometryPayload> payload = std::make_shared<GeometryPayload>();
+    std::shared_ptr<const SubelementTable> subelements = std::make_shared<SubelementTable>();
+
+    GeometryPayload &edit_payload() {
+        auto next = std::make_shared<GeometryPayload>(*payload);
+        payload = next;
+        return *next;
+    }
+
+    SubelementTable &edit_subelements() {
+        auto next = std::make_shared<SubelementTable>(*subelements);
+        subelements = next;
+        return *next;
+    }
 };
 
 struct ImageResource {
@@ -216,9 +228,7 @@ constexpr bool has_material_flag(std::uint32_t value, MaterialFlags flag) noexce
     return (value & static_cast<std::uint32_t>(flag)) != 0;
 }
 
-struct MaterialResource {
-    MaterialId id;
-    std::uint64_t revision = 1;
+struct MaterialState {
     std::array<float, 4> base_color{1.0f, 1.0f, 1.0f, 1.0f};
     float opacity = 1.0f;
     std::uint32_t flags = static_cast<std::uint32_t>(MaterialFlags::Opaque);
@@ -266,6 +276,18 @@ struct LightResource {
     float range = 10.0f;
     float inner_cone_angle = 0.2617994f;
     float outer_cone_angle = 0.7853982f;
+};
+
+struct MaterialResource {
+    MaterialId id;
+    std::uint64_t revision = 1;
+    std::shared_ptr<const MaterialState> state = std::make_shared<MaterialState>();
+
+    MaterialState &edit_state() {
+        auto next = std::make_shared<MaterialState>(*state);
+        state = next;
+        return *next;
+    }
 };
 
 enum class ChangeDomain : std::uint32_t {
@@ -348,6 +370,7 @@ struct SnapshotOccurrence {
 };
 
 class Scene;
+struct PublishedSceneState;
 
 class NKS_API SceneSnapshot {
 public:
@@ -376,10 +399,9 @@ public:
     const LightResource *find_light(LightId id) const noexcept;
 
 private:
-    struct State;
-    explicit SceneSnapshot(std::shared_ptr<const State> state);
+    explicit SceneSnapshot(std::shared_ptr<const PublishedSceneState> state);
 
-    std::shared_ptr<const State> state_;
+    std::shared_ptr<const PublishedSceneState> state_;
     friend class Scene;
 };
 

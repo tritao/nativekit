@@ -382,15 +382,15 @@ GpuPickRequest &GpuPickRequest::operator=(GpuPickRequest &&) noexcept = default;
 namespace {
 
 bool valid_geometry_payload(const GeometryResource &resource) {
-    const auto vertex_count = resource.payload.vertices.size();
-    const auto index_count = resource.payload.indices.size();
+    const auto vertex_count = resource.payload->vertices.size();
+    const auto index_count = resource.payload->indices.size();
     return vertex_count <= std::numeric_limits<std::uint32_t>::max() &&
            index_count <= std::numeric_limits<std::uint32_t>::max() &&
            vertex_count <= std::numeric_limits<std::uint32_t>::max() / sizeof(SceneVertex) &&
            index_count % 3 == 0 &&
-           (resource.payload.indices.empty()
+           (resource.payload->indices.empty()
                 ? vertex_count % 3 == 0
-                : !std::any_of(resource.payload.indices.begin(), resource.payload.indices.end(),
+                : !std::any_of(resource.payload->indices.begin(), resource.payload->indices.end(),
                                [vertex_count](std::uint32_t index) {
                                    return static_cast<std::size_t>(index) >= vertex_count;
                                }));
@@ -685,8 +685,8 @@ bool create_instance_buffer(StateT &state, const DesiredBatch &desired,
 
 template <class StateT>
 bool ensure_geometry(StateT &state, const GeometryResource &resource, GpuExecutionStats &stats) {
-    const auto vertex_count = resource.payload.vertices.size();
-    const auto index_count = resource.payload.indices.size();
+    const auto vertex_count = resource.payload->vertices.size();
+    const auto index_count = resource.payload->indices.size();
     if (!valid_geometry_payload(resource))
         return set_failure(state, stats, NKGPU_ERROR_INVALID_ARGUMENT);
     std::vector<SceneVertex> packed_vertices;
@@ -733,7 +733,7 @@ bool ensure_geometry(StateT &state, const GeometryResource &resource, GpuExecuti
         if (cached.index_byte_size == index_byte_size && index_byte_size != 0) {
             const auto result = nkgpu_buffer_update(
                 state.renderer, cached.index_buffer, 0,
-                reinterpret_cast<const std::uint8_t *>(resource.payload.indices.data()),
+                reinterpret_cast<const std::uint8_t *>(resource.payload->indices.data()),
                 static_cast<std::uint32_t>(index_byte_size));
             if (result != NKGPU_OK)
                 return set_failure(state, stats, result);
@@ -749,7 +749,7 @@ bool ensure_geometry(StateT &state, const GeometryResource &resource, GpuExecuti
         descriptor.struct_size = sizeof(descriptor);
         descriptor.size = static_cast<std::uint32_t>(index_byte_size);
         descriptor.usage = NKGPU_BUFFER_INDEX;
-        descriptor.data = reinterpret_cast<const std::uint8_t *>(resource.payload.indices.data());
+        descriptor.data = reinterpret_cast<const std::uint8_t *>(resource.payload->indices.data());
         descriptor.data_size = descriptor.size;
         descriptor.dynamic_update = 1;
         const auto result =
@@ -762,7 +762,7 @@ bool ensure_geometry(StateT &state, const GeometryResource &resource, GpuExecuti
     cached.index_byte_size = static_cast<std::uint32_t>(index_byte_size);
     cached.vertex_count = static_cast<std::uint32_t>(vertex_count);
     cached.index_count = static_cast<std::uint32_t>(index_count);
-    cached.indexed = !resource.payload.indices.empty();
+    cached.indexed = !resource.payload->indices.empty();
     if (inserted)
         ++stats.geometry_resources_created;
     else if (revision_changed)
@@ -1088,10 +1088,10 @@ void resolve_pick_result(const RenderPlan &plan, const SceneSnapshot &snapshot,
         return;
     const auto &item = plan.items()[pick_id - 1];
     if (const auto *geometry = snapshot.find_geometry(item.geometry)) {
-        const auto element_count = geometry->payload.element_count();
+        const auto element_count = geometry->payload->element_count();
         const auto primitive = static_cast<std::size_t>(subelement_id - 1);
         if (primitive < element_count / 3)
-            out_result.subelement = {geometry->subelements.id_for_primitive(primitive)};
+            out_result.subelement = {geometry->subelements->id_for_primitive(primitive)};
     }
 }
 
@@ -1177,13 +1177,13 @@ GpuExecutionStats NativeKitGpuExecutor::execute(const RenderPlan &plan,
         const auto *material = snapshot.find_material(batch.key.material);
         MaterialUniformData material_data;
         if (material) {
-            material_data.base_color = material->base_color;
-            material_data.base_color[3] *= material->opacity;
+            material_data.base_color = material->state->base_color;
+            material_data.base_color[3] *= material->state->opacity;
             material_data.surface_params = {
-                material->metallic, material->roughness, material->alpha_cutoff,
-                static_cast<float>(static_cast<std::uint32_t>(material->alpha_mode))};
-            material_data.emissive = {material->emissive[0], material->emissive[1],
-                                      material->emissive[2], 1.0f};
+                material->state->metallic, material->state->roughness, material->state->alpha_cutoff,
+                static_cast<float>(static_cast<std::uint32_t>(material->state->alpha_mode))};
+            material_data.emissive = {material->state->emissive[0], material->state->emissive[1],
+                                      material->state->emissive[2], 1.0f};
         }
         material_data.lighting = scene_lighting(snapshot);
         const auto material_gpu = state_->material_resources.find(batch.key.material);
