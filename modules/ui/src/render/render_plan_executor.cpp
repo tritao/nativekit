@@ -201,11 +201,10 @@ std::pair<int, int> surface_request_size(const RenderPlan &plan, ResourceId surf
 
 } // namespace
 
-namespace {
-
-bool execute_render_plan_impl(UiRenderer &renderer, const RenderPlan &plan,
-                              const FrameResources &resources, const WindowTarget &window,
-                              RenderExecutionError *error) {
+bool execute_render_plan(UiRenderer &renderer, const SealedRenderPlan &sealed,
+                         const WindowTarget &window, RenderExecutionError *error) {
+    const RenderPlan &plan = sealed.plan();
+    const FrameResources &resources = sealed.resources();
     if (!renderer.valid() || !is_resource_id(window.id, ResourceKind::RenderTarget) ||
         window.frame_target.struct_size < sizeof(window.frame_target) ||
         window.frame_target.width <= 0 || window.frame_target.height <= 0)
@@ -427,13 +426,6 @@ bool execute_render_plan_impl(UiRenderer &renderer, const RenderPlan &plan,
     if (error)
         *error = {};
     return true;
-}
-
-} // namespace
-
-bool execute_render_plan(UiRenderer &renderer, const SealedRenderPlan &sealed,
-                         const WindowTarget &window, RenderExecutionError *error) {
-    return execute_render_plan_impl(renderer, sealed.plan(), sealed.resources(), window, error);
 }
 
 } // namespace nkui
