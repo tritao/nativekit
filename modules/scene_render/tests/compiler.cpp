@@ -468,6 +468,65 @@ void scene_view_camera_culling_is_incremental() {
                                      nkscene::RenderFlags::Culled));
 }
 
+void scene_resource_camera_is_used_for_render_view() {
+    auto scene = std::make_shared<Scene>();
+    const auto geometry = scene->reserve_geometry_id();
+    auto &geometry_resource = scene->geometry_store().create(geometry);
+    geometry_resource.payload.vertices = {
+        {{{-0.25f, -0.25f, -0.25f}}},
+        {{{0.25f, -0.25f, -0.25f}}},
+        {{{0.0f, 0.25f, 0.25f}}}};
+    geometry_resource.bounds.valid = true;
+    geometry_resource.bounds.minimum = {-0.25f, -0.25f, -0.25f};
+    geometry_resource.bounds.maximum = {0.25f, 0.25f, 0.25f};
+    const auto material = scene->reserve_material_id();
+    scene->material_store().create(material);
+    const auto camera = scene->reserve_camera_id();
+    auto &camera_resource = scene->camera_store().create(camera);
+    camera_resource.fov_y = 1.0f;
+    camera_resource.near_plane = 0.1f;
+    camera_resource.far_plane = 10.0f;
+    camera_resource.aspect_ratio = 1.0f;
+    const auto camera_occurrence = scene->reserve_occurrence_id();
+    const auto visible = scene->reserve_occurrence_id();
+    const auto hidden = scene->reserve_occurrence_id();
+
+    Transaction create(scene);
+    create.add_create(camera_occurrence);
+    create.add_create(visible);
+    create.add_create(hidden);
+    ChangeSet changes;
+    assert(scene->commit(create, changes) == NKS_OK);
+    create.close();
+
+    Transaction configure(scene);
+    configure.add_camera(camera_occurrence, camera);
+    configure.add_geometry(visible, geometry);
+    configure.add_material(visible, material);
+    configure.add_geometry(hidden, geometry);
+    configure.add_material(hidden, material);
+    configure.add_transform(visible, translated(2.0f));
+    configure.add_transform(hidden, translated(-2.0f));
+    assert(scene->commit(configure, changes) == NKS_OK);
+    configure.close();
+
+    nkscene::SceneView view;
+    view.camera_occurrence = camera_occurrence;
+    const auto snapshot = scene->snapshot();
+    const auto plan = nkscene::compile(snapshot, view);
+    assert(plan.view_projection() != nkscene::SceneCamera{}.view_projection);
+    const auto find_item = [&](nkscene::OccurrenceId id) {
+        return std::find_if(plan.items().begin(), plan.items().end(),
+                            [id](const nkscene::RenderItem &item) {
+                                return item.occurrence == id;
+                            });
+    };
+    assert(!nkscene::has_render_flag(find_item(visible)->flags,
+                                     nkscene::RenderFlags::Culled));
+    assert(nkscene::has_render_flag(find_item(hidden)->flags,
+                                    nkscene::RenderFlags::Culled));
+}
+
 void scene_view_clip_planes_are_incremental() {
     auto scene = std::make_shared<Scene>();
     const auto geometry = scene->reserve_geometry_id();
@@ -636,6 +695,7 @@ int main() {
     scene_views_are_hierarchy_aware();
     scene_view_source_filters_are_incremental();
     scene_view_camera_culling_is_incremental();
+    scene_resource_camera_is_used_for_render_view();
     scene_view_clip_planes_are_incremental();
     spatial_queries_and_cpu_picking_are_snapshot_bound();
     constexpr std::size_t count = 50000;

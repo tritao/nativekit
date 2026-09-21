@@ -98,6 +98,7 @@ cbuffer material_params : register(b0)
     float4 base_color : packoffset(c0);
     float4 surface_params : packoffset(c1);
     float4 emissive : packoffset(c2);
+    float4 lighting : packoffset(c3);
 };
 
 Texture2D base_color_texture : register(t0);
@@ -126,8 +127,9 @@ float4 main(SceneFragmentInput input) : SV_Target0
             discard;
     }
     float4 texture_color = base_color_texture.Sample(base_color_sampler, input.texcoord0);
-    float3 light_direction = normalize(float3(0.35f, 0.45f, 0.82f));
-    float diffuse = 0.35f + 0.65f * max(dot(normalize(input.normal), light_direction), 0.0f);
+    float3 light_direction = normalize(lighting.xyz);
+    float diffuse = 0.35f + 0.65f * max(dot(normalize(input.normal), light_direction), 0.0f) *
+                    max(lighting.w, 0.0f);
     float3 color = base_color.rgb * texture_color.rgb * input.color0.rgb * diffuse + emissive.rgb;
     return float4(color, base_color.a * texture_color.a * input.color0.a);
 }
@@ -192,6 +194,7 @@ struct SceneMaterialParams
     float4 base_color;
     float4 surface_params;
     float4 emissive;
+    float4 lighting;
 };
 
 struct SceneClipParams
@@ -221,8 +224,9 @@ fragment float4 main0(SceneFragmentInput input [[stage_in]],
             discard_fragment();
     }
     float4 texture_color = base_color_texture.sample(base_color_sampler, input.texcoord0);
-    float3 light_direction = normalize(float3(0.35, 0.45, 0.82));
-    float diffuse = 0.35 + 0.65 * max(dot(normalize(input.normal), light_direction), 0.0);
+    float3 light_direction = normalize(params.lighting.xyz);
+    float diffuse = 0.35 + 0.65 * max(dot(normalize(input.normal), light_direction), 0.0) *
+                    max(params.lighting.w, 0.0);
     float3 color = params.base_color.rgb * texture_color.rgb * input.color0.rgb * diffuse +
                    params.emissive.rgb;
     return float4(color, params.base_color.a * texture_color.a * input.color0.a);

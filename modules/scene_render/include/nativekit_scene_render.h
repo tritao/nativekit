@@ -99,6 +99,8 @@ typedef struct nkscene_render_view {
     uint32_t source_material_override_count;
     const nkscene_occurrence_id *isolated_occurrences NK_BORROWED_ARRAY(isolated_occurrence_count);
     uint32_t isolated_occurrence_count;
+    /** Optional scene camera occurrence used when camera.enabled is zero. */
+    nkscene_occurrence_id camera_occurrence;
 } nkscene_render_view;
 
 typedef struct nkscene_render_update {
@@ -357,6 +359,8 @@ struct SceneView {
     SceneViewFilter filter;
     /** Optional world-to-clip transform used for bounds culling and rendering. */
     SceneCamera camera;
+    /** Optional scene camera occurrence used when camera.enabled is false. */
+    OccurrenceId camera_occurrence;
     /** Conservative occurrence-level sectioning planes. */
     std::vector<ClipPlane> clip_planes;
 

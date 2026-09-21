@@ -118,6 +118,10 @@ int main() {
         sampler_resource.mag_filter = nkscene::SamplerFilter::Nearest;
         sampler_resource.wrap_u = nkscene::SamplerWrap::ClampToEdge;
         sampler_resource.wrap_v = nkscene::SamplerWrap::ClampToEdge;
+        const auto light = scene->reserve_light_id();
+        auto &light_resource = scene->light_store().create(light);
+        light_resource.type = nkscene::LightType::Directional;
+        light_resource.intensity = 1.25f;
         const auto material = scene->reserve_material_id();
         auto &material_resource = scene->material_store().create(material);
         material_resource.base_color = {0.2f, 0.7f, 1.0f, 1.0f};
@@ -127,8 +131,10 @@ int main() {
         Transaction create(scene);
         const auto occurrence = scene->reserve_occurrence_id();
         const auto second_occurrence = scene->reserve_occurrence_id();
+        const auto light_occurrence = scene->reserve_occurrence_id();
         create.add_create(occurrence);
         create.add_create(second_occurrence);
+        create.add_create(light_occurrence);
         ChangeSet changes;
         assert(scene->commit(create, changes) == NKS_OK);
         create.close();
@@ -139,6 +145,7 @@ int main() {
         configure.add_material(second_occurrence, material);
         configure.add_source_entity(occurrence, nkscene::EntityId{42});
         configure.add_source_entity(second_occurrence, nkscene::EntityId{84});
+        configure.add_light(light_occurrence, light);
         nkscene::LocalTransform first_transform;
         first_transform.matrix[12] = -0.8f;
         configure.add_transform(occurrence, first_transform);

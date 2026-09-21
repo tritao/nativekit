@@ -45,9 +45,10 @@ struct MaterialUniformData {
     std::array<float, 4> base_color{};
     std::array<float, 4> surface_params{};
     std::array<float, 4> emissive{};
+    std::array<float, 4> lighting{0.35f, 0.45f, 0.82f, 1.0f};
 };
 
-static_assert(sizeof(MaterialUniformData) == sizeof(float) * 12);
+static_assert(sizeof(MaterialUniformData) == sizeof(float) * 16);
 
 static_assert(sizeof(ClipUniformData) ==
               RenderPlan::max_clip_planes * sizeof(float) * 4 + sizeof(float) * 4);
@@ -163,6 +164,26 @@ bool pack_geometry_vertices(const GeometryResource &resource, std::vector<SceneV
         }
     }
     return true;
+}
+
+std::array<float, 4> scene_lighting(const SceneSnapshot &snapshot) noexcept {
+    for (const auto &occurrence : snapshot.occurrences()) {
+        if (!occurrence.light.valid())
+            continue;
+        const auto *light = snapshot.find_light(occurrence.light);
+        if (!light)
+            continue;
+        const auto &matrix = occurrence.world_transform.transform.matrix;
+        std::array<float, 3> direction{-matrix[0], -matrix[1], -matrix[2]};
+        const auto length = std::sqrt(direction[0] * direction[0] +
+                                      direction[1] * direction[1] +
+                                      direction[2] * direction[2]);
+        if (length > 1.0e-6f)
+            for (auto &component : direction)
+                component /= length;
+        return {direction[0], direction[1], direction[2], light->intensity};
+    }
+    return {0.35f, 0.45f, 0.82f, 1.0f};
 }
 
 ClipUniformData clip_uniform_data(const RenderPlan &plan) {
@@ -426,12 +447,14 @@ bool ensure_pipeline(StateT &state, GpuExecutionStats &stats, bool indexed) {
             (result = nkgpu_shader_uniform(shader_builder, 1, 0, "view_projection",
                                            NKGPU_UNIFORMTYPE_MAT4, 1)) != NKGPU_OK ||
             (result = nkgpu_shader_uniform_block(shader_builder, 0, NKGPU_SHADERSTAGE_FRAGMENT,
-                                                 sizeof(float) * 12)) != NKGPU_OK ||
+                                                 sizeof(float) * 16)) != NKGPU_OK ||
             (result = nkgpu_shader_uniform(shader_builder, 0, 0, "base_color",
                                            NKGPU_UNIFORMTYPE_FLOAT4, 0)) != NKGPU_OK ||
             (result = nkgpu_shader_uniform(shader_builder, 0, 1, "material_params",
                                            NKGPU_UNIFORMTYPE_FLOAT4, 0)) != NKGPU_OK ||
             (result = nkgpu_shader_uniform(shader_builder, 0, 2, "emissive",
+                                           NKGPU_UNIFORMTYPE_FLOAT4, 0)) != NKGPU_OK ||
+            (result = nkgpu_shader_uniform(shader_builder, 0, 3, "lighting",
                                            NKGPU_UNIFORMTYPE_FLOAT4, 0)) != NKGPU_OK ||
             (result = nkgpu_shader_texture(shader_builder, 0, 0, NKGPU_SHADERSTAGE_FRAGMENT,
                                            "base_color_texture")) != NKGPU_OK ||
@@ -1163,6 +1186,7 @@ GpuExecutionStats NativeKitGpuExecutor::execute(const RenderPlan &plan,
             material_data.emissive = {material->emissive[0], material->emissive[1],
                                       material->emissive[2], 1.0f};
         }
+        material_data.lighting = scene_lighting(snapshot);
         const auto material_gpu = state_->material_resources.find(batch.key.material);
         if (material_gpu == state_->material_resources.end()) {
             set_failure(*state_, stats, NKGPU_ERROR_INVALID_HANDLE);

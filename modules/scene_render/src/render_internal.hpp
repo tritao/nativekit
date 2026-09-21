@@ -16,6 +16,7 @@ struct EffectiveState {
 void rebuild_batches(RenderPlan &plan);
 void build_items(RenderPlan &plan, const SceneSnapshot &snapshot, const SceneView &view);
 bool culled_by_camera(const Bounds &bounds, const SceneCamera &camera) noexcept;
+SceneCamera camera_for_snapshot(const SceneSnapshot &snapshot, const SceneView &view) noexcept;
 bool culled_by_clip_planes(const Bounds &bounds, std::span<const ClipPlane> planes) noexcept;
 EffectiveState effective_state(const SceneSnapshot &snapshot, const SceneView &view);
 std::uint64_t view_signature(const SceneView &view) noexcept;
