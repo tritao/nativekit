@@ -356,10 +356,11 @@ class VirtualListBenchmark {
 		var firstStart = Sys.time();
 		context.submit(tree, frame);
 		var firstSeconds = Sys.time() - firstStart;
-		var firstRows = builtKeys.length;
-		var maxExpectedRows = Std.int(Math.ceil(viewportHeight / 24.0)) + 4;
-	var valid = firstRows > 0 && firstRows <= maxExpectedRows &&
-			model.extentCalls > 0 && model.extentCalls < itemCount;
+	var firstRows = builtKeys.length;
+	var maxExpectedRows = Std.int(Math.ceil(viewportHeight / 24.0)) + 4;
+		var valid = firstRows > 0 && firstRows <= maxExpectedRows &&
+			model.extentCalls > 0 && model.extentCalls < itemCount &&
+			model.childCalls > 0 && model.childCalls < itemCount;
 
 		var totalSeconds = 0.0;
 		var totalRows = 0;
@@ -403,7 +404,7 @@ class VirtualListBenchmark {
 			'first_us=${firstSeconds * 1000000.0} avg_us=$averageMicros');
 
 		context.dispose();
-		return valid && model.extentCalls < itemCount;
+		return valid && model.extentCalls < itemCount && model.childCalls < itemCount;
 	}
 }
 
