@@ -287,7 +287,9 @@ bool offscreen_format(nkgpu_renderer renderer, const nkgpu_features &features,
         } else {
             pass.color_count = 1;
             pass.colors[0].image = source;
-            pass.colors[0].action.load_action = NKGPU_LOADACTION_CLEAR;
+            pass.colors[0].action.load_action =
+                format == NKGPU_IMAGEFORMAT_R32_UINT ? NKGPU_LOADACTION_DISCARD
+                                                      : NKGPU_LOADACTION_CLEAR;
             pass.colors[0].action.store_action = NKGPU_STOREACTION_STORE;
             pass.colors[0].action.clear_color = {0.0f, 0.0f, 0.0f, 0.0f};
         }
