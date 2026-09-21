@@ -12,6 +12,7 @@ import nativekit.ui.widgets.ScrollController;
 import nativekit.ui.widgets.Text;
 import nativekit.ui.widgets.TreeView;
 import nativekit.ui.widgets.TreeViewModel;
+import nativekit.ui.widgets.TreeRootMetadata;
 import nativekit.ui.widgets.VirtualList;
 
 /** Measures the Haxe virtual-list boundary without materializing the dataset. */
@@ -345,6 +346,9 @@ private class BenchmarkListModel implements ListViewModel {
 	public function extentRevisionAt(index:Int):Int
 		return index == changedExtentIndex ? extentRevisionValue : 1;
 
+	public function totalExtent():Null<Float>
+		return null;
+
 	public function bumpExtent(index:Int):Void {
 		changedExtentIndex = index;
 		extentRevisionValue++;
@@ -375,6 +379,13 @@ private class BenchmarkTreeModel implements TreeViewModel {
 
 	public function rootCount():Int
 		return itemCount;
+
+	public function rootRange(start:Int, count:Int):Array<TreeRootMetadata> {
+		var result:Array<TreeRootMetadata> = [];
+		for (index in start...(start + count))
+			result.push(new TreeRootMetadata('root:$index', false));
+		return result;
+	}
 
 	public function rootKeyAt(index:Int):String
 		return 'root:$index';

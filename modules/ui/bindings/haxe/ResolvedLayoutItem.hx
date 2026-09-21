@@ -81,6 +81,17 @@ class ResolvedLayoutItem {
 		return new Rect(left, top, right - left, bottom - top);
 	}
 
+	/** Returns the transformed bounds intersected with the resolved clip. */
+	public function clippedViewportBounds():Rect {
+		var bounds = viewportBounds();
+		var left = Math.max(bounds.x, clipBounds.x);
+		var top = Math.max(bounds.y, clipBounds.y);
+		var right = Math.min(bounds.x + bounds.width, clipBounds.x + clipBounds.width);
+		var bottom = Math.min(bounds.y + bounds.height, clipBounds.y + clipBounds.height);
+		return new Rect(left, top, Math.max(0.0, right - left),
+			Math.max(0.0, bottom - top));
+	}
+
 	/** Converts a viewport point back to this node's pre-transform layout space. */
 	public function viewportToLayout(x:Float, y:Float):Point {
 		var result = transform.tryInverse();

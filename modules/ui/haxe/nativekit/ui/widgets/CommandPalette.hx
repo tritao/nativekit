@@ -104,8 +104,20 @@ private class CommandPaletteModel implements ListViewModel {
 	public function keyAt(index:Int):String
 		return commands[index].id;
 
+	public function estimatedExtent():Float
+		return 36.0;
+
+	public function extentIsUniform():Bool
+		return true;
+
 	public function extentAt(index:Int):Float
 		return 36.0;
+
+	public function extentRevisionAt(index:Int):Int
+		return 0;
+
+	public function totalExtent():Null<Float>
+		return commands.length * 36.0;
 
 	public function buildItem(index:Int):View {
 		var command = commands[index];

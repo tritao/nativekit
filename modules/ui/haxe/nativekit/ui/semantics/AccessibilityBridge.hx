@@ -184,7 +184,8 @@ class AccessibilityBridge {
 			if (!enabled)
 				actions = 0;
 			output.push(new AccessibilitySnapshotNode(node.id.value, semanticParent,
-				childIndex, semantics.role, states, actions, visibleBounds(node.resolved), semantics));
+				childIndex, semantics.role, states, actions,
+				node.resolved.clippedViewportBounds(), semantics));
 			nextParent = node.id.value;
 		}
 		for (child in node.children)
@@ -203,22 +204,4 @@ class AccessibilityBridge {
 		return result;
 	}
 
-	static function visibleBounds(item:ResolvedLayoutItem):Rect {
-		var transform = item.transform;
-		var x0 = transform.a * item.x + transform.c * item.y + transform.tx;
-		var y0 = transform.b * item.x + transform.d * item.y + transform.ty;
-		var x1 = transform.a * (item.x + item.width) + transform.c * item.y + transform.tx;
-		var y1 = transform.b * (item.x + item.width) + transform.d * item.y + transform.ty;
-		var x2 = transform.a * item.x + transform.c * (item.y + item.height) + transform.tx;
-		var y2 = transform.b * item.x + transform.d * (item.y + item.height) + transform.ty;
-		var x3 = transform.a * (item.x + item.width) + transform.c * (item.y + item.height) + transform.tx;
-		var y3 = transform.b * (item.x + item.width) + transform.d * (item.y + item.height) + transform.ty;
-		var left = Math.max(item.clipBounds.x, Math.min(Math.min(x0, x1), Math.min(x2, x3)));
-		var top = Math.max(item.clipBounds.y, Math.min(Math.min(y0, y1), Math.min(y2, y3)));
-		var right = Math.min(item.clipBounds.x + item.clipBounds.width,
-			Math.max(Math.max(x0, x1), Math.max(x2, x3)));
-		var bottom = Math.min(item.clipBounds.y + item.clipBounds.height,
-			Math.max(Math.max(y0, y1), Math.max(y2, y3)));
-		return new Rect(left, top, Math.max(0.0, right - left), Math.max(0.0, bottom - top));
-	}
 }

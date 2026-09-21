@@ -161,10 +161,12 @@ import nativekit.ui.widgets.Tooltip;
 import nativekit.ui.widgets.Toolbar;
 import nativekit.ui.widgets.TreeView;
 import nativekit.ui.widgets.TreeViewModel;
+import nativekit.ui.widgets.TreeRootMetadata;
 import nativekit.ui.widgets.Utf8Text;
 import nativekit.ui.widgets.VirtualGrid;
 import nativekit.ui.widgets.VirtualList;
 import nativekit.ui.widgets.VirtualExtentViewport;
+import nativekit.ui.widgets.VirtualExtentIndex;
 import nativekit.ui.widgets.VirtualizationPolicy;
 import nativekit.ui.widgets.VirtualViewport;
 import nativekit.ui.widgets.WindowChrome;
@@ -233,6 +235,15 @@ class FrameworkSmoke {
 	static function main():Int {
 		if (!coordinateMathValid())
 			return 240;
+		var anchorIndex = new VirtualExtentIndex(100, 20.0, 40.0, 200.0, 0, 0,
+			2400.0);
+		if (anchorIndex.totalExtent != 2400.0 || anchorIndex.indexAtOffset(200.0) != 10)
+			return 260;
+		for (index in 0...10)
+			anchorIndex.setExtent(index, 30.0);
+		if (anchorIndex.startOffset(10) != 300.0 ||
+			anchorIndex.startOffset(10) + (200.0 - 200.0) != 300.0)
+			return 261;
 		var fontPath = Sys.getEnv("NKUI_TEST_FONT_PATH");
 		if (fontPath == null)
 			return 2;
@@ -3945,6 +3956,9 @@ private class SmokeListModel implements ListViewModel {
 	public function extentRevisionAt(index:Int):Int
 		return index == changedExtentIndex ? extentRevisionValue : 1;
 
+	public function totalExtent():Null<Float>
+		return null;
+
 	public function bumpExtent(index:Int):Void {
 		changedExtentIndex = index;
 		extentRevisionValue++;
@@ -3980,6 +3994,13 @@ private class SmokeTreeModel implements TreeViewModel {
 
 	public function rootCount():Int
 		return 100000;
+
+	public function rootRange(start:Int, count:Int):Array<TreeRootMetadata> {
+		var result:Array<TreeRootMetadata> = [];
+		for (index in start...(start + count))
+			result.push(new TreeRootMetadata('root:$index', index == 0));
+		return result;
+	}
 
 	public function rootKeyAt(index:Int):String
 		return 'root:$index';

@@ -63,6 +63,9 @@ private class ShowcaseListModel implements ListViewModel {
 	public function extentRevisionAt(index:Int):Int
 		return 0;
 
+	public function totalExtent():Null<Float>
+		return UiExplorer.LIST_COUNT * UiExplorer.LIST_ROW_HEIGHT;
+
 	public function buildItem(index:Int):View {
 		var rowStyle = new LayoutStyle();
 		rowStyle.width = LayoutAxis.grow();

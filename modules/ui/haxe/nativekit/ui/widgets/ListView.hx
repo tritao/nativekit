@@ -124,14 +124,7 @@ class ListView implements View {
 				(viewportStyle.height.sizing == LayoutSizing.Fixed ? viewportStyle.height.value :
 				fallbackViewportHeight);
 			var window = requiredExtentIndex();
-			window.update(viewportHeight, controller.offsetY, virtualization.leadingOverscan,
-				virtualization.trailingOverscan);
-			measureWindow(window.first, window.last);
-			window.update(viewportHeight, controller.offsetY, virtualization.leadingOverscan,
-				virtualization.trailingOverscan);
-			measureWindow(window.first, window.last);
-			window.update(viewportHeight, controller.offsetY, virtualization.leadingOverscan,
-				virtualization.trailingOverscan);
+			measureWindowPreservingAnchor(window, viewportHeight);
 			materializedFirst = window.first;
 			materializedLast = window.last;
 
@@ -160,8 +153,8 @@ class ListView implements View {
 					rowViews.push(new KeyedView(slotKey, row));
 				}
 				rowViews.push(new KeyedView("after", new Spacer("after-spacer",
-					LayoutAxis.grow(), LayoutAxis.fixed(window.totalExtent -
-					window.startOffset(window.last)))));
+					LayoutAxis.grow(), LayoutAxis.fixed(Math.max(0.0, window.totalExtent -
+					window.startOffset(window.last))))));
 			}
 
 			var contentStyle = new LayoutStyle();
@@ -233,9 +226,19 @@ class ListView implements View {
 		cachedCount = count;
 		extentIndex = new VirtualExtentIndex(count, estimatedExtent,
 			fallbackViewportHeight, controller.offsetY,
-			virtualization.leadingOverscan, virtualization.trailingOverscan);
+			virtualization.leadingOverscan, virtualization.trailingOverscan,
+			validatedTotalExtent());
 		if (selectedIndex >= cachedCount)
 			selectedIndex = -1;
+	}
+
+	function validatedTotalExtent():Null<Float> {
+		var total = model.totalExtent();
+		if (total == null)
+			return null;
+		if (total < 0.0 || !finite(total))
+			throw "ListView total extent must be finite and non-negative";
+		return total;
 	}
 
 	function measureWindow(first:Int, last:Int):Void {
@@ -262,6 +265,30 @@ class ListView implements View {
 			var indexMetrics = requiredExtentIndex();
 			indexMetrics.setExtent(index, extent);
 		}
+	}
+
+	function measureWindowPreservingAnchor(window:VirtualExtentIndex,
+			viewportHeight:Float):Void {
+		window.update(viewportHeight, controller.offsetY, virtualization.leadingOverscan,
+			virtualization.trailingOverscan);
+		if (window.itemCount == 0)
+			return;
+
+		var anchorOffset = window.offset;
+		var anchorIndex = window.indexAtOffset(anchorOffset);
+		var anchorLocalOffset = anchorOffset - window.startOffset(anchorIndex);
+		measureWindow(window.first, window.last);
+		window.update(viewportHeight, controller.offsetY, virtualization.leadingOverscan,
+			virtualization.trailingOverscan);
+		measureWindow(window.first, window.last);
+		window.update(viewportHeight, controller.offsetY, virtualization.leadingOverscan,
+			virtualization.trailingOverscan);
+
+		var correctedOffset = window.startOffset(anchorIndex) + anchorLocalOffset;
+		if (Math.abs(correctedOffset - controller.offsetY) > 0.00001)
+			controller.jumpTo(controller.offsetX, correctedOffset);
+		window.update(viewportHeight, controller.offsetY, virtualization.leadingOverscan,
+			virtualization.trailingOverscan);
 	}
 
 	function itemKeyAt(index:Int):String {

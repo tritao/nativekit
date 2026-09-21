@@ -131,29 +131,35 @@ for every item; uniform models skip extent callbacks entirely. Model revisions
 must still change whenever keys, structure, content, or extents change.
 
 This lazy path is safe for fixed-height models and for variable-height models
-whose estimates are acceptable during convergence. Until an unmeasured
-variable-height region is visited, `maxScrollY` and `scrollTo` can be
-approximate, and measuring rows above the viewport can move the visual anchor.
-TreeView also indexes collapsed branches lazily, but its initial setup still
-queries root keys and default-expansion state across the root set. Anchor
-preservation for corrected extents and a bulk root-metadata path are planned
-follow-ups rather than prerequisites for using the current implementation.
+whose estimates are acceptable during convergence. An optional exact
+`totalExtent()` lets ListView expose an exact `maxScrollY` without visiting
+every row, while sparse prefixes remain estimated until rows are measured.
+Both controls preserve the visible row anchor when measured rows correct a
+prefix before the viewport. TreeView receives root keys and default-expansion
+state through one bulk range call while still indexing collapsed branches
+lazily.
 
-## Remaining virtualization and integration work
+## Virtualization and resolved-scene status
 
-The current branch intentionally leaves these follow-ups explicit:
+The remaining virtualization follow-ups from the initial implementation are
+now covered:
 
-1. Add anchor-preserving correction when measured variable-height rows change
-   the prefix before the viewport.
-2. Add optional exact extent summaries or prefix support so `maxScrollY` and
-   `scrollTo` can converge without requiring every row to be visited.
-3. Add a bulk/range root-metadata API for TreeView so large root sets do not
-   require one-by-one root-key and default-expansion queries at startup.
-4. Audit accessibility, rendering, picking, and raster-cache consumers against
-   the shared resolved snapshot metadata, removing any parallel geometry rules.
-5. Rebase or merge the branch onto current `main`, then rerun the native UI
-   suite, Haxe framework smoke, virtualization/hit-test benchmarks, and UI
-   visual regressions before publication.
+1. Variable-height ListView and TreeView measurements preserve the visible
+   row and its intra-row pixel offset when measured prefixes change.
+2. ListView models may provide an exact `totalExtent()` summary, allowing
+   `maxScrollY` to converge without visiting every row; sparse prefixes still
+   use the logarithmic estimate index.
+3. TreeView models provide `rootRange(start, count)` metadata, including
+   default expansion state, so root metadata crosses the model boundary in a
+   bulk operation.
+4. Accessibility projection and window-decoration regions now share the
+   `ResolvedLayoutItem.clippedViewportBounds()` geometry helper. Native
+   rendering, picking, and raster caching already consume the same native
+   `LayoutSnapshot` facts.
+
+The branch has been replayed on current `main`; rerun the native UI suite,
+Haxe framework smoke, virtualization/hit-test benchmarks, and visual
+regressions before publication.
 
 `ListView` and `VirtualGrid` remain separate public controls: ListView owns
 one-dimensional model-backed collections, while VirtualGrid owns two-axis

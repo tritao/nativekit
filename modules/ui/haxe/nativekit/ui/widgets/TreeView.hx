@@ -53,6 +53,7 @@ class TreeView implements View {
 	var rootOffsets:Array<Int>;
 	var visibleCount:Int;
 	var cachedEstimatedExtent:Float;
+	var rootInitialExpansion:Map<String, Bool>;
 	var expandedBranches:Map<String, TreeBranch>;
 	var indexByKey:Map<String, Int>;
 	var entryByKey:Map<String, TreeEntry>;
@@ -97,6 +98,7 @@ class TreeView implements View {
 		rootOffsets = [0];
 		visibleCount = 0;
 		cachedEstimatedExtent = 0.0;
+		rootInitialExpansion = new Map();
 		expandedBranches = new Map();
 		indexByKey = new Map();
 		entryByKey = new Map();
@@ -207,14 +209,7 @@ class TreeView implements View {
 				(viewportStyle.height.sizing == LayoutSizing.Fixed ? viewportStyle.height.value :
 				fallbackViewportHeight);
 			var window = requiredExtentIndex();
-			window.update(viewportHeight, controller.offsetY, virtualization.leadingOverscan,
-				virtualization.trailingOverscan);
-			measureWindow(window.first, window.last);
-			window.update(viewportHeight, controller.offsetY, virtualization.leadingOverscan,
-				virtualization.trailingOverscan);
-			measureWindow(window.first, window.last);
-			window.update(viewportHeight, controller.offsetY, virtualization.leadingOverscan,
-				virtualization.trailingOverscan);
+			measureWindowPreservingAnchor(window, viewportHeight);
 			materializedFirst = window.first;
 			materializedLast = window.last;
 			var rowViews:Array<KeyedView> = [];
@@ -341,13 +336,21 @@ class TreeView implements View {
 			throw "TreeView root count must be non-negative";
 		var roots:Array<String> = [];
 		var visibleKeys:Map<String, Bool> = new Map();
+		var rootMetadata = model.rootRange(0, rootCount);
+		if (rootMetadata == null || rootMetadata.length != rootCount)
+			throw "TreeView root range returned an invalid number of entries";
+		rootInitialExpansion = new Map();
 		for (index in 0...rootCount) {
-			var rootKey = model.rootKeyAt(index);
+			var metadata = rootMetadata[index];
+			if (metadata == null)
+				throw 'TreeView root $index returned null metadata';
+			var rootKey = metadata.key;
 			if (rootKey == null || rootKey.length == 0)
 				throw 'TreeView root $index has an empty key';
 			if (visibleKeys.exists(rootKey))
 				throw 'TreeView contains a duplicate visible key $rootKey';
 			visibleKeys.set(rootKey, true);
+			rootInitialExpansion.set(rootKey, metadata.initiallyExpanded);
 			roots.push(rootKey);
 		}
 
@@ -498,9 +501,35 @@ class TreeView implements View {
 		}
 	}
 
+	function measureWindowPreservingAnchor(window:VirtualExtentIndex,
+			viewportHeight:Float):Void {
+		window.update(viewportHeight, controller.offsetY, virtualization.leadingOverscan,
+			virtualization.trailingOverscan);
+		if (window.itemCount == 0)
+			return;
+
+		var anchorOffset = window.offset;
+		var anchorIndex = window.indexAtOffset(anchorOffset);
+		var anchorLocalOffset = anchorOffset - window.startOffset(anchorIndex);
+		measureWindow(window.first, window.last);
+		window.update(viewportHeight, controller.offsetY, virtualization.leadingOverscan,
+			virtualization.trailingOverscan);
+		measureWindow(window.first, window.last);
+		window.update(viewportHeight, controller.offsetY, virtualization.leadingOverscan,
+			virtualization.trailingOverscan);
+
+		var correctedOffset = window.startOffset(anchorIndex) + anchorLocalOffset;
+		if (Math.abs(correctedOffset - controller.offsetY) > 0.00001)
+			controller.jumpTo(controller.offsetX, correctedOffset);
+		window.update(viewportHeight, controller.offsetY, virtualization.leadingOverscan,
+			virtualization.trailingOverscan);
+	}
+
 	function expansionFor(nodeKey:String):Bool {
 		if (expandedKeys.exists(nodeKey))
 			return expandedKeys.get(nodeKey);
+		if (rootInitialExpansion.exists(nodeKey))
+			return rootInitialExpansion.get(nodeKey);
 		var expanded = model.initiallyExpanded(nodeKey);
 		if (expanded)
 			expandedKeys.set(nodeKey, true);

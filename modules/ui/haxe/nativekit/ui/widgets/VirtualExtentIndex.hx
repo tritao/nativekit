@@ -17,20 +17,29 @@ class VirtualExtentIndex {
 
 	final deltas:Array<Float>;
 	final measured:Map<Int, Float>;
+	final totalExtentOverride:Null<Float>;
 
 	public var totalExtent(get, never):Float;
 	inline function get_totalExtent():Float
-		return itemCount * estimatedExtent + prefixDelta(itemCount);
+		return totalExtentOverride == null ? itemCount * estimatedExtent + prefixDelta(itemCount) :
+			cast totalExtentOverride;
 
 	public var count(get, never):Int;
 	inline function get_count():Int
 		return last - first;
 
 	public function new(itemCount:Int, estimatedExtent:Float, viewportExtent:Float, offset:Float,
-			leadingOverscan:Int = 1, trailingOverscan:Int = 1) {
+			leadingOverscan:Int = 1, trailingOverscan:Int = 1,
+			totalExtent:Null<Float> = null) {
+		var invalidTotal = false;
+		if (totalExtent != null) {
+			var total:Float = cast totalExtent;
+			invalidTotal = total < 0.0 || !finite(total) ||
+				(itemCount > 0 && total <= 0.0);
+		}
 		if (itemCount < 0 || estimatedExtent <= 0.0 || !finite(estimatedExtent) ||
 			viewportExtent <= 0.0 || !finite(viewportExtent) || !finite(offset) || offset < 0.0 ||
-			leadingOverscan < 0 || trailingOverscan < 0)
+			leadingOverscan < 0 || trailingOverscan < 0 || invalidTotal)
 			throw "Estimated virtual extent index requires finite dimensions and overscan";
 		this.itemCount = itemCount;
 		this.estimatedExtent = estimatedExtent;
@@ -38,6 +47,7 @@ class VirtualExtentIndex {
 		this.offset = 0.0;
 		this.first = 0;
 		this.last = 0;
+		this.totalExtentOverride = totalExtent;
 		deltas = [];
 		for (_ in 0...(itemCount + 1))
 			deltas.push(0.0);
@@ -91,7 +101,20 @@ class VirtualExtentIndex {
 	public function startOffset(index:Int):Float {
 		if (index < 0 || index > itemCount)
 			throw "Estimated virtual extent offset index is out of range";
+		if (index == itemCount && totalExtentOverride != null)
+			return cast totalExtentOverride;
 		return index * estimatedExtent + prefixDelta(index);
+	}
+
+	/** Returns the item containing an offset, clamped to the last item. */
+	public function indexAtOffset(value:Float):Int {
+		if (!finite(value) || value < 0.0)
+			throw "Estimated virtual extent offset must be finite and non-negative";
+		if (itemCount == 0)
+			return 0;
+		var clamped = Math.min(value, Math.max(0.0, totalExtent));
+		var index = upperBound(clamped) - 1;
+		return Std.int(Math.max(0, Math.min(itemCount - 1, index)));
 	}
 
 	function upperBound(value:Float):Int {
