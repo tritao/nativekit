@@ -130,6 +130,20 @@ SceneSnapshot::occurrences_for_material(MaterialId material) const noexcept {
 
 const SnapshotOccurrence *SceneSnapshot::find(OccurrenceId id) const noexcept {
     const auto &published_occurrences = *state_->occurrences;
+    if (published_occurrences.changed_handles) {
+        const auto changed = published_occurrences.changed_handles->find(id);
+        if (changed != published_occurrences.changed_handles->end()) {
+            const auto handle = changed->second;
+            const auto page_index = handle.slot / published_occurrence_page_capacity;
+            if (page_index >= published_occurrences.pages.size() ||
+                !published_occurrences.pages[page_index])
+                return nullptr;
+            const auto &occurrence =
+                published_occurrences.pages[page_index]->values[handle.slot %
+                                                                 published_occurrence_page_capacity];
+            return occurrence.occurrence == id ? &occurrence : nullptr;
+        }
+    }
     auto cached =
         std::atomic_load_explicit(&published_occurrences.lookup, std::memory_order_acquire);
     if (!cached) {
@@ -613,11 +627,31 @@ void Scene::publish_state(const ChangeSet *changes,
 
     std::unordered_set<std::uint32_t> changed_slots;
     std::unordered_map<std::uint32_t, OccurrenceHandle> active_handles;
+    std::unordered_map<OccurrenceId, OccurrenceHandle> changed_handles;
+    const auto direct_lookup_work =
+        changes ? changes->changes.size() + changes->world_transform_occurrences.size() +
+                      changes->effective_state_occurrences.size()
+                : occurrences.size();
+    const bool collect_direct_lookup = direct_lookup_work <= published_direct_lookup_limit;
+    const auto add_changed_handle = [&](OccurrenceId id) {
+        if (!collect_direct_lookup)
+            return;
+        const auto handle = occurrences.resolve(id);
+        if (handle.valid())
+            changed_handles[id] = handle;
+    };
     const auto add_active = [&](OccurrenceId id) {
         const auto handle = occurrences.resolve(id);
         if (handle.valid()) {
             changed_slots.insert(handle.slot);
             active_handles[handle.slot] = handle;
+            add_changed_handle(id);
+        }
+    };
+    const auto add_changed_chain = [&](OccurrenceId id) {
+        for (auto current = id; current.valid();) {
+            add_changed_handle(current);
+            current = hierarchy.parent(current);
         }
     };
     if (!previous) {
@@ -626,12 +660,21 @@ void Scene::publish_state(const ChangeSet *changes,
             active_handles[handle.slot] = handle;
         });
     } else if (changes) {
-        for (const auto &change : changes->changes)
+        for (const auto &change : changes->changes) {
             add_active(change.occurrence);
-        for (const auto id : changes->world_transform_occurrences)
+            if (collect_direct_lookup)
+                add_changed_chain(change.occurrence);
+        }
+        for (const auto id : changes->world_transform_occurrences) {
             add_active(id);
-        for (const auto id : changes->effective_state_occurrences)
+            if (collect_direct_lookup)
+                add_changed_chain(id);
+        }
+        for (const auto id : changes->effective_state_occurrences) {
             add_active(id);
+            if (collect_direct_lookup)
+                add_changed_chain(id);
+        }
         for (const auto slot : destroyed_slots)
             changed_slots.insert(slot);
     }
@@ -686,6 +729,15 @@ void Scene::publish_state(const ChangeSet *changes,
         std::atomic_store_explicit(&occurrence_state->materialized,
                                    std::shared_ptr<const SnapshotMaterialization>{},
                                    std::memory_order_release);
+    if (!changed_slots.empty()) {
+        if (changed_handles.size() <= published_direct_lookup_limit) {
+            occurrence_state->changed_handles = std::make_shared<
+                const std::unordered_map<OccurrenceId, OccurrenceHandle>>(
+                    std::move(changed_handles));
+        } else {
+            occurrence_state->changed_handles.reset();
+        }
+    }
     state->occurrences = std::move(occurrence_state);
     std::shared_ptr<const PublishedSceneState> published = std::move(state);
     std::atomic_store_explicit(&published_, std::move(published), std::memory_order_release);

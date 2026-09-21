@@ -20,6 +20,7 @@
 namespace nkscene {
 
 constexpr std::size_t published_occurrence_page_capacity = 256;
+constexpr std::size_t published_direct_lookup_limit = 4096;
 
 struct SnapshotMaterialization;
 
@@ -38,6 +39,7 @@ struct PublishedOccurrencePage {
 struct PublishedOccurrenceState {
     std::size_t slot_count = 0;
     std::vector<std::shared_ptr<const PublishedOccurrencePage>> pages;
+    std::shared_ptr<const std::unordered_map<OccurrenceId, OccurrenceHandle>> changed_handles;
     mutable std::shared_ptr<const std::unordered_map<OccurrenceId, const SnapshotOccurrence *>>
         lookup;
     mutable std::shared_ptr<const SnapshotMaterialization> materialized;
