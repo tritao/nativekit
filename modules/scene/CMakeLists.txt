@@ -56,6 +56,14 @@ if(NK_BUILD_TESTS)
     target_link_libraries(nativekit_scene_snapshot_benchmark PRIVATE NativeKit::scene)
     add_test(NAME scene_snapshot_benchmark COMMAND nativekit_scene_snapshot_benchmark)
     set_tests_properties(scene_snapshot_benchmark PROPERTIES LABELS "scene;benchmark" TIMEOUT 30)
+
+    add_executable(nativekit_scene_scale_benchmark bench/scale_benchmark.cpp)
+    target_compile_features(nativekit_scene_scale_benchmark PRIVATE cxx_std_20)
+    target_include_directories(nativekit_scene_scale_benchmark PRIVATE src)
+    target_link_libraries(nativekit_scene_scale_benchmark PRIVATE NativeKit::scene)
+    add_test(NAME scene_scale_benchmark COMMAND nativekit_scene_scale_benchmark)
+    set_tests_properties(scene_scale_benchmark PROPERTIES LABELS "scene;benchmark;scale"
+                                                          TIMEOUT 120)
 endif()
 
 install(TARGETS nativekit_scene EXPORT NativeKitTargets
