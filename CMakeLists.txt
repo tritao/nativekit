@@ -39,6 +39,9 @@ set(NK_NET_BACKEND_CURL OFF)
 option(NK_ENABLE_NO_EXCEPTIONS
     "Compile NativeKit production targets without C++ exception support" ON)
 option(NK_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
+set(NK_SCENE_SANITIZER "" CACHE STRING
+    "Sanitizer set for the retained scene and scene tests (for example address,undefined or thread)")
+set_property(CACHE NK_SCENE_SANITIZER PROPERTY STRINGS "" address,undefined thread)
 option(NK_ENABLE_WEBVIEW2 "Enable the Windows WebView2 backend" ON)
 
 if(WIN32)
@@ -396,6 +399,19 @@ endif()
 if(NK_ENABLE_SANITIZERS AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(nativekit PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
     target_link_options(nativekit PRIVATE -fsanitize=address,undefined)
+endif()
+
+if(NK_SCENE_SANITIZER)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+        message(FATAL_ERROR "NK_SCENE_SANITIZER requires a Clang or GNU C++ compiler")
+    endif()
+    set(NK_SCENE_SANITIZER_COMPILE_OPTIONS
+        "-fsanitize=${NK_SCENE_SANITIZER}" -fno-omit-frame-pointer)
+    set(NK_SCENE_SANITIZER_LINK_OPTIONS "-fsanitize=${NK_SCENE_SANITIZER}")
+    if(NK_SCENE_SANITIZER STREQUAL "thread" AND UNIX AND NOT APPLE)
+        set(NK_SCENE_SANITIZER_EXECUTABLE_COMPILE_OPTIONS -fno-pie)
+        set(NK_SCENE_SANITIZER_EXECUTABLE_LINK_OPTIONS -no-pie)
+    endif()
 endif()
 
 if(NK_BUILD_TESTS)

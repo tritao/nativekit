@@ -2,6 +2,10 @@ add_library(nativekit_scene ${NK_LIBRARY_TYPE} src/scene.cpp)
 add_library(NativeKit::scene ALIAS nativekit_scene)
 target_compile_features(nativekit_scene PRIVATE cxx_std_20)
 target_compile_definitions(nativekit_scene PRIVATE NKSCENE_BUILDING_LIBRARY)
+if(NK_SCENE_SANITIZER)
+    target_compile_options(nativekit_scene PRIVATE ${NK_SCENE_SANITIZER_COMPILE_OPTIONS})
+    target_link_options(nativekit_scene PRIVATE ${NK_SCENE_SANITIZER_LINK_OPTIONS})
+endif()
 target_include_directories(nativekit_scene
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -36,6 +40,13 @@ if(NK_BUILD_TESTS)
     add_test(NAME scene_versioned_state COMMAND nativekit_scene_versioned_state_tests)
     set_tests_properties(scene_versioned_state PROPERTIES LABELS "scene" TIMEOUT 30)
 
+    add_executable(nativekit_scene_concurrency_tests tests/concurrency.cpp)
+    target_compile_features(nativekit_scene_concurrency_tests PRIVATE cxx_std_20)
+    target_include_directories(nativekit_scene_concurrency_tests PRIVATE src)
+    target_link_libraries(nativekit_scene_concurrency_tests PRIVATE NativeKit::scene)
+    add_test(NAME scene_concurrency COMMAND nativekit_scene_concurrency_tests)
+    set_tests_properties(scene_concurrency PROPERTIES LABELS "scene;concurrency" TIMEOUT 30)
+
     add_executable(nativekit_scene_c_api_tests tests/c_api.c)
     set_target_properties(nativekit_scene_c_api_tests PROPERTIES LINKER_LANGUAGE CXX)
     target_include_directories(nativekit_scene_c_api_tests PRIVATE include)
@@ -64,6 +75,27 @@ if(NK_BUILD_TESTS)
     add_test(NAME scene_scale_benchmark COMMAND nativekit_scene_scale_benchmark)
     set_tests_properties(scene_scale_benchmark PROPERTIES LABELS "scene;benchmark;scale"
                                                           TIMEOUT 120)
+
+    if(NK_SCENE_SANITIZER)
+        foreach(scene_target
+                nativekit_scene_foundation_tests
+                nativekit_scene_transaction_tests
+                nativekit_scene_versioned_state_tests
+                nativekit_scene_concurrency_tests
+                nativekit_scene_c_api_tests
+                nativekit_scene_benchmark
+                nativekit_scene_snapshot_benchmark
+                nativekit_scene_scale_benchmark)
+            target_compile_options(${scene_target} PRIVATE ${NK_SCENE_SANITIZER_COMPILE_OPTIONS})
+            target_link_options(${scene_target} PRIVATE ${NK_SCENE_SANITIZER_LINK_OPTIONS})
+            if(NK_SCENE_SANITIZER_EXECUTABLE_COMPILE_OPTIONS)
+                target_compile_options(${scene_target} PRIVATE
+                    ${NK_SCENE_SANITIZER_EXECUTABLE_COMPILE_OPTIONS})
+                target_link_options(${scene_target} PRIVATE
+                    ${NK_SCENE_SANITIZER_EXECUTABLE_LINK_OPTIONS})
+            endif()
+        endforeach()
+    endif()
 endif()
 
 install(TARGETS nativekit_scene EXPORT NativeKitTargets
