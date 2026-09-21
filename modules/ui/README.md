@@ -170,6 +170,12 @@ standard Ctrl+Z/Ctrl+Y commands above. For document-owned edits, use
 state makes undoing back to the saved history state clear the document's dirty
 flag.
 
+`PropertyDescriptor` and `PropertyEditor` provide the first inspector layer for
+bool, integer, float, text, and enum values. Descriptors own model read/write
+hooks, range and option validation, units, defaults, and read-only policy.
+Mixed values are preserved for multi-selection; edits apply to the active
+`EditorDocument`, so reset, slider, and text commits participate in undo/redo.
+
 ## Frame building and sealed plans
 
 One frame has three stages: layout and recording build a display list, the

@@ -55,6 +55,12 @@ import nativekit.ui.core.CommandResult;
 import nativekit.ui.core.EditorDocument;
 import nativekit.ui.core.EditHistory;
 import nativekit.ui.core.EditOperation;
+import nativekit.ui.core.PropertyDescriptor;
+import nativekit.ui.core.PropertyDescriptorOptions;
+import nativekit.ui.core.PropertyOption;
+import nativekit.ui.core.PropertyType;
+import nativekit.ui.core.PropertyValue;
+import nativekit.ui.core.PropertyValueTools;
 import nativekit.ui.core.EventDispatcher;
 import nativekit.ui.core.FocusManager;
 import nativekit.ui.core.HitTest;
@@ -94,6 +100,7 @@ import nativekit.ui.widgets.ListView;
 import nativekit.ui.widgets.ListViewModel;
 import nativekit.ui.widgets.Padding;
 import nativekit.ui.widgets.ProgressBar;
+import nativekit.ui.widgets.PropertyEditor;
 import nativekit.ui.widgets.Dialog;
 import nativekit.ui.widgets.DefaultTextStyle;
 import nativekit.ui.widgets.Menu;
@@ -3284,6 +3291,59 @@ class FrameworkSmoke {
 		if (uiContext.commandContext != commandContext ||
 			uiContext.buildContext.commandContext != commandContext)
 			return false;
+		var mass = 2.0;
+		var massSettings = new PropertyDescriptorOptions();
+		massSettings.category = "Physics";
+		massSettings.minimum = 0.0;
+		massSettings.maximum = 100.0;
+		massSettings.step = 0.1;
+		massSettings.unit = "kg";
+		massSettings.defaultValue = PropertyValue.Float(2.0);
+		var massProperty = new PropertyDescriptor("mass", "Mass", PropertyType.Float,
+			function(_) return PropertyValue.Float(mass), function(_, value) {
+				switch (value) {
+					case PropertyValue.Float(next): mass = next;
+					case PropertyValue.Int(next): mass = next;
+					default: throw "Mass requires a numeric value";
+				}
+			}, massSettings);
+		var mode = "solid";
+		var modeSettings = new PropertyDescriptorOptions();
+		modeSettings.category = "Display";
+		modeSettings.options = [new PropertyOption("solid", "Solid"),
+			new PropertyOption("wire", "Wire")];
+		var modeProperty = new PropertyDescriptor("mode", "Mode", PropertyType.Enum,
+			function(_) return PropertyValue.Enum(mode), function(_, value) {
+				switch (value) {
+					case PropertyValue.Enum(next): mode = next;
+					default: throw "Mode requires an enum value";
+				}
+			}, modeSettings);
+		if (modeProperty.validateValue(commandContext, PropertyValue.Enum("wire")) != null ||
+			modeProperty.validateValue(commandContext, PropertyValue.Enum("invalid")) == null)
+			return false;
+		var mixedProperty = new PropertyDescriptor("visible", "Visible", PropertyType.Bool,
+			function(_) return PropertyValue.Mixed, function(_, _) {}, null);
+		var inspector = new PropertyEditor("inspector", [massProperty, modeProperty, mixedProperty]);
+		var inspectorRoot = uiContext.submit(inspector, new LayoutFrame(480.0, 320.0));
+		if (inspectorRoot == null || inspectorRoot.children.length < 4 ||
+			!PropertyValueTools.same(PropertyValue.Float(2.0), PropertyValue.Float(2.0)))
+			return false;
+		var appliedMass = inspector.applyValue(uiContext.buildContext, massProperty,
+			PropertyValue.Float(4.0));
+		if (!appliedMass || mass != 4.0 || !document.isDirty)
+			return false;
+		var invalidMass = inspector.applyValue(uiContext.buildContext, massProperty,
+			PropertyValue.Float(101.0));
+		if (invalidMass || mass != 4.0)
+			return false;
+		var undoneMass = document.undo();
+		var massAfterUndo = mass;
+		var cleanAfterUndo = !document.isDirty;
+		var redoneMass = document.redo();
+		if (!undoneMass || massAfterUndo != 2.0 || !cleanAfterUndo ||
+			!redoneMass || mass != 4.0 || !document.isDirty)
+			return false;
 		var contextualRuns = 0;
 		var contextualRegistry = new CommandRegistry();
 		contextualRegistry.register(Command.contextual("property.reset", "Reset property",
@@ -3308,10 +3368,10 @@ class FrameworkSmoke {
 		var documentHistory = new CommandRegistry();
 		documentHistory.installDocumentHistoryCommands(document);
 		var undoResult = documentHistory.dispatchContext(UiKey.Z, UiModifier.Control, commandContext);
-		if (!undoResult.succeeded || documentValue != 0 || !document.isDirty)
+		if (!undoResult.succeeded || mass != 2.0 || document.isDirty)
 			return false;
 		var redoResult = documentHistory.dispatchContext(UiKey.Y, UiModifier.Control, commandContext);
-		if (!redoResult.succeeded || documentValue != 7 || document.isDirty)
+		if (!redoResult.succeeded || mass != 4.0 || !document.isDirty)
 			return false;
 
 		var focus = new FocusManager();
