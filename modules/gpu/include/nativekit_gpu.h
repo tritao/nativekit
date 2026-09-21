@@ -1113,6 +1113,17 @@ NKGPU_API nkgpu_result nkgpu_shader_begin_compute(nkgpu_renderer renderer,
                                                   nkgpu_shader_builder *out_builder NKGPU_OUT);
 
 /**
+ * Sets the compute threadgroup dimensions used by Metal.
+ *
+ * The product of `x`, `y`, and `z` must be a positive multiple of 32. This
+ * metadata is ignored by other backends, but supplying it for every compute
+ * shader keeps shader construction backend-agnostic. Call this before
+ * nkgpu_shader_end().
+ */
+NKGPU_API nkgpu_result nkgpu_shader_compute_threads(nkgpu_shader_builder builder, uint32_t x,
+                                                    uint32_t y, uint32_t z);
+
+/**
  * Describes a vertex input for a shader builder.
  *
  * `location` matches the vertex attribute index used by the pipeline. The GLSL

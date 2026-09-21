@@ -138,9 +138,10 @@ bool select_sources(nk_graphics_api api, ShaderSources &out) {
         out = {NKGPU_SHADERLANGUAGE_MSL,
                "#include <metal_stdlib>\n"
                "using namespace metal;\n"
+               "struct VertexIn { float2 position [[attribute(0)]]; };\n"
                "struct VertexOut { float4 position [[position]]; };\n"
-               "vertex VertexOut main0(float2 position [[attribute(0)]]) {\n"
-               "    VertexOut output; output.position=float4(position,0,1); return output;\n"
+               "vertex VertexOut main0(VertexIn input) {\n"
+               "    VertexOut output; output.position=float4(input.position,0,1); return output;\n"
                "}\n",
                "#include <metal_stdlib>\n"
                "using namespace metal;\n"

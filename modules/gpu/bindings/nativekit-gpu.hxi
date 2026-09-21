@@ -1127,6 +1127,11 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_shader_begin_compute(renderer: nkgpu_renderer, language: nkgpu_shader_language, compute_source: utf8, out_builder: ptr<nkgpu_shader_builder> @out) -> nkgpu_result;
 	/**
+	 * Sets the compute threadgroup dimensions used by Metal. The product of
+	 * `x`, `y`, and `z` must be a positive multiple of 32.
+	 */
+	extern fn nkgpu_shader_compute_threads(builder: nkgpu_shader_builder, x: u32, y: u32, z: u32) -> nkgpu_result;
+	/**
 	 * Adds generalized resource metadata to a shader builder.
 	 */
 	extern fn nkgpu_shader_binding(builder: nkgpu_shader_builder, desc: ptr<const<nkgpu_shader_binding_desc>>) -> nkgpu_result;
