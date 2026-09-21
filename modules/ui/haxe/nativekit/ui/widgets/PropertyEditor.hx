@@ -6,9 +6,10 @@ import LayoutDirection;
 import LayoutStyle;
 import nativekit.ui.core.BuildContext;
 import nativekit.ui.core.CommandContext;
-import nativekit.ui.core.EditOperation;
 import nativekit.ui.core.Key;
 import nativekit.ui.core.PropertyDescriptor;
+import nativekit.ui.core.PropertyBinding;
+import nativekit.ui.core.PropertyEditResult;
 import nativekit.ui.core.PropertyEditorRegistry;
 import nativekit.ui.core.PropertyType;
 import nativekit.ui.core.PropertyValue;
@@ -52,50 +53,21 @@ class PropertyEditor implements View {
 		if (!enabled || context == null || descriptor == null)
 			return false;
 		var commandContext = context.commandContext == null ? new CommandContext() : context.commandContext;
-		var validation = descriptor.validateValue(commandContext, next);
-		if (validation != null) {
-			errors.set(descriptor.id, validation);
-			context.commands.refresh();
-			return false;
+		var result = new PropertyBinding(descriptor, commandContext, registry).apply(next, coalesceKey);
+		switch (result) {
+			case PropertyEditResult.Rejected(message):
+				errors.set(descriptor.id, message);
+				context.commands.refresh();
+				return false;
+			case PropertyEditResult.Unchanged:
+				errors.remove(descriptor.id);
+				return false;
+			case PropertyEditResult.Applied:
+				drafts.remove(descriptor.id);
+				errors.remove(descriptor.id);
+				context.commands.refresh();
+				return true;
 		}
-		var extensionValidation = registry.validate(commandContext, descriptor, next);
-		if (extensionValidation != null) {
-			errors.set(descriptor.id, extensionValidation);
-			context.commands.refresh();
-			return false;
-		}
-		if (commandContext.document == null) {
-			errors.set(descriptor.id, "Property editing requires an active document");
-			context.commands.refresh();
-			return false;
-		}
-		var before = descriptor.readValue(commandContext);
-		if (registry.same(before, next)) {
-			errors.remove(descriptor.id);
-			return false;
-		}
-		var latest = next;
-		var key = coalesceKey == null ? "property:" + descriptor.id : coalesceKey;
-		var operation = new EditOperation("Set " + descriptor.label,
-			function() descriptor.write(commandContext, latest),
-			function() descriptor.write(commandContext, before), key,
-			function(nextOperation) {
-				if (nextOperation == null || nextOperation.mergeData == null)
-					return false;
-				latest = cast nextOperation.mergeData;
-				return latest != null;
-			}, next);
-		try {
-			commandContext.document.apply(operation, key);
-		} catch (error:Dynamic) {
-			errors.set(descriptor.id, error == null ? "Property edit failed" : Std.string(error));
-			context.commands.refresh();
-			return false;
-		}
-		drafts.remove(descriptor.id);
-		errors.remove(descriptor.id);
-		context.commands.refresh();
-		return true;
 	}
 
 	public function build(context:BuildContext):RenderNode {

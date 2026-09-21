@@ -65,12 +65,19 @@ import nativekit.ui.core.EditHistory;
 import nativekit.ui.core.EditOperation;
 import nativekit.ui.core.PropertyDescriptor;
 import nativekit.ui.core.PropertyDescriptorOptions;
+import nativekit.ui.core.PropertyBinding;
+import nativekit.ui.core.PropertyEditResult;
 import nativekit.ui.core.PropertyEditorExtension;
 import nativekit.ui.core.PropertyEditorRegistry;
 import nativekit.ui.core.PropertyOption;
 import nativekit.ui.core.PropertyType;
 import nativekit.ui.core.PropertyValue;
 import nativekit.ui.core.PropertyValueTools;
+import nativekit.ui.core.PlotModel;
+import nativekit.ui.core.PlotPoint;
+import nativekit.ui.core.PlotSeries;
+import nativekit.ui.core.ViewportCamera;
+import nativekit.ui.core.ViewportContent;
 import nativekit.ui.core.EventDispatcher;
 import nativekit.ui.core.FocusManager;
 import nativekit.ui.core.HitTest;
@@ -114,6 +121,8 @@ import nativekit.ui.widgets.ListViewModel;
 import nativekit.ui.widgets.Padding;
 import nativekit.ui.widgets.ProgressBar;
 import nativekit.ui.widgets.PropertyEditor;
+import nativekit.ui.widgets.GpuViewport;
+import nativekit.ui.widgets.PlotView;
 import nativekit.ui.widgets.Dialog;
 import nativekit.ui.widgets.DockWorkspace;
 import nativekit.ui.widgets.DefaultTextStyle;
@@ -3361,6 +3370,67 @@ class FrameworkSmoke {
 		if (!undoneMass || massAfterUndo != 2.0 || !cleanAfterUndo ||
 			!redoneMass || mass != 4.0 || !document.isDirty)
 			return false;
+		var bindingValue = 1;
+		var bindingDocument = new EditorDocument("binding");
+		var bindingDescriptor = new PropertyDescriptor("value", "Value", PropertyType.Int,
+			function(_) return PropertyValue.Int(bindingValue), function(_, value) {
+				switch (value) {
+					case PropertyValue.Int(next): bindingValue = next;
+					default: throw "Binding value requires an integer";
+				}
+			});
+		var binding = new PropertyBinding(bindingDescriptor,
+			new CommandContext(bindingDocument));
+		if (binding.read() == null || binding.validate(PropertyValue.Int(2)) != null)
+			return false;
+		switch (binding.apply(PropertyValue.Int(2), "binding-drag")) {
+			case PropertyEditResult.Applied:
+			default: return false;
+		}
+		switch (binding.apply(PropertyValue.Int(3), "binding-drag")) {
+			case PropertyEditResult.Applied:
+			default: return false;
+		}
+		if (bindingValue != 3 || bindingDocument.history.undoCount != 1 ||
+			!bindingDocument.undo() || bindingValue != 1 || !bindingDocument.redo() ||
+			bindingValue != 3)
+			return false;
+
+		var camera = new ViewportCamera();
+		var cameraAnchor = camera.viewportToWorld(40.0, 30.0);
+		if (!camera.zoomAt(2.0, 40.0, 30.0) ||
+			!near(camera.viewportToWorld(40.0, 30.0).x, cameraAnchor.x) ||
+			!near(camera.viewportToWorld(40.0, 30.0).y, cameraAnchor.y))
+			return false;
+		if (!camera.panByScreen(10.0, 6.0) || camera.revision < 3)
+			return false;
+		var plotModel = new PlotModel();
+		var plotSeries = new PlotSeries("temperature", "Temperature",
+			Color.rgba(0.9, 0.35, 0.2, 1.0));
+		plotSeries.setPoints([new PlotPoint(0.0, 1.0), new PlotPoint(1.0, 2.0),
+			new PlotPoint(2.0, 1.5)]);
+		plotModel.addSeries(plotSeries);
+		var plotRange = plotModel.range();
+		if (plotRange == null || plotRange.minimumX != 0.0 || plotRange.maximumX != 2.0 ||
+			plotModel.revision() <= 1)
+			return false;
+		var plotRoot = uiContext.submit(new PlotView("telemetry-plot", plotModel),
+			new LayoutFrame(320.0, 180.0));
+		if (plotRoot == null || plotRoot.semantics == null ||
+			plotRoot.semantics.label != "Plot")
+			return false;
+		var viewportContent = new SmokeViewportContent(640.0, 480.0);
+		var viewportCamera = new ViewportCamera();
+		var viewport = new GpuViewport("scene-viewport", viewportContent, viewportCamera);
+		var viewportRoot = uiContext.submit(viewport, new LayoutFrame(320.0, 180.0));
+		if (viewportRoot == null || viewportRoot.semantics == null ||
+			viewportRoot.semantics.label != "GPU viewport")
+			return false;
+		uiContext.pointerDown(40.0, 40.0, 0, 0, 7);
+		uiContext.pointerMove(55.0, 52.0, 0, 7);
+		uiContext.pointerUp(55.0, 52.0, 0, 0, 7);
+		if (viewportCamera.panX == 0.0 || viewportCamera.panY == 0.0)
+			return false;
 
 		var vector = new SmokeVector(1.0, 2.0, 3.0);
 		var customRegistry = new PropertyEditorRegistry();
@@ -3846,6 +3916,28 @@ private class SmokeVector {
 		this.y = y;
 		this.z = z;
 	}
+}
+
+private class SmokeViewportContent implements ViewportContent {
+	final contentWidth:Float;
+	final contentHeight:Float;
+
+	public function new(width:Float, height:Float) {
+		contentWidth = width;
+		contentHeight = height;
+	}
+
+	public function width():Float
+		return contentWidth;
+
+	public function height():Float
+		return contentHeight;
+
+	public function revision():Int
+		return 1;
+
+	public function paint(canvas:Canvas, destination:Rect):Void
+		canvas.fillRect(destination, Color.rgba(0.08, 0.12, 0.18, 1.0));
 }
 
 private class SmokeDockStorage implements DockWorkspacePersistence {
