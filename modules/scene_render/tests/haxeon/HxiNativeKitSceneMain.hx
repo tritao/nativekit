@@ -394,11 +394,18 @@ class Main {
 		var movedTransaction = scene.beginTransaction(),
 			transform = Transform.identity().translated(-0.55, 0.0, 0.0);
 		movedTransaction.setTransform(first, transform);
-		var movedChanges = movedTransaction.commitWithChanges(),
-			movedSnapshot = scene.snapshot(),
-			movedExecution = sceneRenderer.render(movedSnapshot, view, movedChanges),
+		var movedFrame = movedTransaction.commitFrame(),
+			movedChanges = movedFrame.changeSet(),
+			movedSnapshot = movedFrame.sceneSnapshot(),
+			movedExecution = sceneRenderer.renderFrame(movedFrame, view),
 			update = sceneRenderer.lastUpdate();
-		if (update == null
+		var oldFirstInfo = snapshot.find(first),
+			movedFirstInfo = movedSnapshot.find(first);
+		if (oldFirstInfo == null || movedFirstInfo == null
+			|| Math.abs(oldFirstInfo.worldTransform().element(12) + 0.65) > 0.0001
+			|| Math.abs(movedFirstInfo.worldTransform().element(12) + 0.55) > 0.0001
+			|| movedChanges == null
+			|| update == null
 			|| update.get_plan_rebuilt() != 0
 			|| haxe.Int64.toInt(update.get_patched_instances()) != 1
 			|| haxe.Int64.toInt(update.get_updated_geometry_resources()) != 0
@@ -563,10 +570,13 @@ class Main {
 		sceneRenderer.dispose();
 		spatialIndex.dispose();
 		nextFrameSnapshot.dispose();
-		movedSnapshot.dispose();
 		culledSnapshot.dispose();
 		restoredSnapshot.dispose();
-		movedChanges.dispose();
+		movedFrame.dispose();
+		if (!movedFrame.isDisposed()
+			|| !movedSnapshot.isDisposed()
+			|| movedChanges == null
+			|| !movedChanges.isDisposed()) return 34;
 		culledChanges.dispose();
 		restoredChanges.dispose();
 		snapshot.dispose();

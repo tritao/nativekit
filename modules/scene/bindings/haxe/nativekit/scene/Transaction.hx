@@ -121,6 +121,18 @@ class Transaction {
 		return new ChangeSet(result.out_changes);
 	}
 
+	/** Commits this transaction and retains its snapshot/delta as one frame. */
+	public function commitFrame():SceneFrame {
+		ensureOpen();
+		var changes = commitWithChanges();
+		try {
+			return new SceneFrame(scene.snapshot(), changes);
+		} catch (error:Dynamic) {
+			changes.dispose();
+			throw error;
+		}
+	}
+
 	public function cancel():Void {
 		if (closed)
 			return;

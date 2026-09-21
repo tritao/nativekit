@@ -3,7 +3,15 @@ set -euo pipefail
 
 module_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 repo_dir=$(cd "$module_dir/../.." && pwd)
-haxeon_dir=${HAXEON_DIR:-"$(dirname "$repo_dir")/realtime-haxe"}
+if [[ -n "${HAXEON_DIR:-}" ]]; then
+	haxeon_dir=$HAXEON_DIR
+elif [[ -d "$repo_dir/../realtime-haxe" ]]; then
+	haxeon_dir="$repo_dir/../realtime-haxe"
+elif [[ -d "$repo_dir/../../realtime-haxe" ]]; then
+	haxeon_dir="$repo_dir/../../realtime-haxe"
+else
+	haxeon_dir="$repo_dir/../realtime-haxe"
+fi
 nativekit_build=${NATIVEKIT_BUILD:?Set NATIVEKIT_BUILD to a shared NativeKit build directory}
 target=${NATIVEKIT_HAXE_TARGET:-x86_64-linux-gnu}
 haxe_bin=${HAXEON_HAXE_BIN:-"$haxeon_dir/.tools/haxe/haxe"}

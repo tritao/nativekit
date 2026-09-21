@@ -68,6 +68,10 @@ class SceneRenderer {
 		return executed.out_stats;
 	}
 
+	/** Renders one owned frame, including its optional incremental change set. */
+	public function renderFrame(frame:SceneFrame, view:SceneView):nkscene_render_execution_stats
+		return render(frame.sceneSnapshot(), view, frame.changeSet());
+
 	/** Returns the last plan update metrics, or null before the first update. */
 	public function lastUpdate():Null<nkscene_render_update>
 		return lastUpdateValue;
