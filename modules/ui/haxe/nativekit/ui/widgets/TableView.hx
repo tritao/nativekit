@@ -28,6 +28,7 @@ class TableView implements View {
 	public final rowHeight:Float;
 	public final headerHeight:Float;
 	public final viewportStyle:LayoutStyle;
+	public final virtualization:VirtualizationPolicy;
 	public var controller(default, null):ScrollController;
 	public var selectedRow(default, null):Int;
 	public var selectedColumn(default, null):Int;
@@ -51,7 +52,8 @@ class TableView implements View {
 			viewportWidth:Float = 640.0, viewportHeight:Float = 320.0,
 			headerHeight:Float = 32.0, selectedRow:Int = -1, ?onRowSelected:Int->Void,
 			selectedColumn:Int = 0, ?onCellSelected:Int->Int->Void,
-			?onSort:Int->Bool->Void, ?onColumnResized:Int->Float->Void) {
+			?onSort:Int->Bool->Void, ?onColumnResized:Int->Float->Void,
+			?virtualization:VirtualizationPolicy) {
 		if (key == null || key.length == 0 || rowCount < 0 || columns == null ||
 			rowHeight <= 0.0 || headerHeight <= 0.0 || !finite(rowHeight) ||
 			!finite(headerHeight) || cellBuilder == null || viewportWidth <= 0.0 ||
@@ -86,6 +88,7 @@ class TableView implements View {
 		this.onCellSelected = onCellSelected;
 		this.onSort = onSort;
 		this.onColumnResized = onColumnResized;
+		this.virtualization = virtualization == null ? new VirtualizationPolicy() : virtualization;
 		columnRevision = 0;
 		columnRevisionState = null;
 		cellIds = new Map();
@@ -169,7 +172,7 @@ class TableView implements View {
 					return selectionRow.value == row && selectionColumn.value == column;
 				}, handleCellKeyDown, function(row:Int, column:Int, id:WidgetId) {
 					cellIds.set(cellKey(row, column), id);
-				}, columnWidths());
+				}, columnWidths(), virtualization);
 			var bodyNode = body.build(context);
 			// The table root owns the grid semantics; the nested body remains a scroll region.
 			bodyNode.semantics = null;

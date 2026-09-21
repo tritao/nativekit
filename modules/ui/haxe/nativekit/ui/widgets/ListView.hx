@@ -24,7 +24,10 @@ class ListView implements View {
 	public final key:String;
 	public final model:ListViewModel;
 	public final viewportStyle:LayoutStyle;
+	public final virtualization:VirtualizationPolicy;
 	public var controller(default, null):ScrollController;
+	public var materializedFirst(default, null):Int;
+	public var materializedLast(default, null):Int;
 	public var selectedIndex(default, null):Int;
 	public var onSelectionChanged:Null<Int->Void>;
 	public var onItemActivated:Null<Int->Void>;
@@ -40,7 +43,7 @@ class ListView implements View {
 	public function new(key:String, model:ListViewModel, ?viewportStyle:LayoutStyle,
 			?controller:ScrollController, viewportHeight:Float = 300.0,
 			selectedIndex:Int = -1, ?onSelectionChanged:Int->Void,
-			?onItemActivated:Int->Void) {
+			?onItemActivated:Int->Void, ?virtualization:VirtualizationPolicy) {
 		if (key == null || key.length == 0 || model == null || viewportHeight <= 0.0 ||
 			!finite(viewportHeight) || selectedIndex < -1)
 			throw "ListView requires a stable key, model, and valid viewport height";
@@ -53,6 +56,9 @@ class ListView implements View {
 		this.selectedIndex = selectedIndex;
 		this.onSelectionChanged = onSelectionChanged;
 		this.onItemActivated = onItemActivated;
+		this.virtualization = virtualization == null ? new VirtualizationPolicy() : virtualization;
+		materializedFirst = 0;
+		materializedLast = 0;
 		selectedState = null;
 		cachedRevision = -1;
 		cachedCount = -1;
@@ -101,7 +107,10 @@ class ListView implements View {
 				(viewportStyle.height.sizing == LayoutSizing.Fixed ? viewportStyle.height.value :
 				fallbackViewportHeight);
 			var window:VirtualExtentViewport = cast extentViewport;
-			window.update(viewportHeight, controller.offsetY);
+			window.update(viewportHeight, controller.offsetY, virtualization.leadingOverscan,
+				virtualization.trailingOverscan);
+			materializedFirst = window.first;
+			materializedLast = window.last;
 
 			var rowViews:Array<KeyedView> = [];
 			if (window.count > 0) {
@@ -115,13 +124,15 @@ class ListView implements View {
 					var item = model.buildItem(itemIndex);
 					if (item == null)
 						throw 'ListView model returned null for index $itemIndex';
-					var row = new ListViewRow("row", item, cachedCount, itemIndex,
+					var row = new ListViewRow("row", itemKey, item, cachedCount, itemIndex,
 						cachedExtents[itemIndex], selectedIndex == itemIndex,
 						function() { select(itemIndex); },
 						function() { if (onItemActivated != null) onItemActivated(itemIndex); },
 						function(event) { handleItemKey(context, itemIndex, event); },
 						function(id) { itemIds.set(itemIndex, id); });
-					rowViews.push(new KeyedView('item:$itemKey', row));
+					var slotKey = virtualization.recycleSlots ? 'slot:${index - window.first}' :
+						'item:$itemKey';
+					rowViews.push(new KeyedView(slotKey, row));
 				}
 				rowViews.push(new KeyedView("after", new Spacer("after-spacer",
 					LayoutAxis.grow(), LayoutAxis.fixed(window.totalExtent -
@@ -225,6 +236,7 @@ class ListView implements View {
 
 private class ListViewRow implements View {
 	final key:String;
+	final itemKey:String;
 	final child:View;
 	final setSize:Int;
 	final index:Int;
@@ -235,10 +247,11 @@ private class ListViewRow implements View {
 	final onKey:UiEvent->Void;
 	final onBuilt:WidgetId->Void;
 
-	public function new(key:String, child:View, setSize:Int, index:Int, extent:Float,
+	public function new(key:String, itemKey:String, child:View, setSize:Int, index:Int, extent:Float,
 			selected:Bool, onSelect:Void->Void, onActivate:Void->Void,
 			onKey:UiEvent->Void, onBuilt:WidgetId->Void) {
 		this.key = key;
+		this.itemKey = itemKey;
 		this.child = child;
 		this.setSize = setSize;
 		this.index = index;
@@ -271,7 +284,7 @@ private class ListViewRow implements View {
 			node.on(UiEventKind.Activate, function(_) { onSelect(); onActivate(); });
 			node.on(UiEventKind.KeyDown, onKey);
 			node.on(UiEventKind.KeyRepeat, onKey);
-			node.add(context.withScope(new Key("content"), function() return child.build(context)));
+			node.add(new KeyedView('item:$itemKey', child).build(context));
 			onBuilt(node.id);
 			return node;
 		});
