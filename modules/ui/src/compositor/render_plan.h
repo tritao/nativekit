@@ -96,6 +96,8 @@ struct RenderPass {
     MaskDescriptor mask{};
     /** Structural content/effect key; execution adds only reachable resource generations. */
     uint64_t cache_key = 0;
+    /** Explicit scene content revision for retained raster pixels. */
+    uint32_t content_revision = 0;
 };
 
 struct RenderDependency {

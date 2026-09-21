@@ -145,6 +145,7 @@ uint64_t runtime_pass_hash(const RenderPass &pass, const FrameResources &resourc
         const auto previous = target_hashes.find(pass.target.value);
         if (previous != target_hashes.end())
             hash_runtime_u64(hash, previous->second);
+        hash_runtime_u32(hash, pass.content_revision);
         if (pass.load_existing)
             hash_runtime_u64(hash, execution_serial);
         for (const auto &command : pass.commands) {

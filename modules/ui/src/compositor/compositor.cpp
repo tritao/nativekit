@@ -212,6 +212,8 @@ void assign_effect_cache_keys(RenderPlan &plan) {
             uint64_t hash = kCacheHashOffset;
             hash_u32(hash, static_cast<uint32_t>(pass.kind));
             hash_u32(hash, pass.load_existing ? 1u : 0u);
+            if (pass.kind == RenderPassKind::Raster)
+                hash_u32(hash, pass.content_revision);
             hash_descriptor(hash, pass.target_descriptor);
             for (const auto &command : pass.commands)
                 hash_command(hash, command);

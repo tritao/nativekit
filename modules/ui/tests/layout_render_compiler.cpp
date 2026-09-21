@@ -774,6 +774,43 @@ int main() {
         revision_backend.raster_cache_hits != 2)
         return 129;
 
+    // Geometry revisions describe hit/layout geometry, but do not by
+    // themselves invalidate pixels when the resolved subtree content and
+    // local geometry are unchanged.
+    std::vector<LayoutNode> geometry_revision_nodes = nodes;
+    geometry_revision_nodes[0].geometry_revision = 11;
+    LayoutSnapshot geometry_revision_snapshot;
+    if (!engine.layout(geometry_revision_nodes, 320.0f, 200.0f, 1.0f / 60.0f,
+                       geometry_revision_snapshot, &layout_error))
+        return 131;
+    LayoutRenderFrame geometry_revision_frame;
+    if (!compiler.compile(geometry_revision_snapshot, main_target, 1.5f,
+                          geometry_revision_frame, &compile_error, false,
+                          engine.text_engine(), nullptr, &subtree_paints) ||
+        !execute_render_plan(revision_backend, geometry_revision_frame.plan(),
+                             geometry_revision_frame.resources(),
+                             {main_target, subtree_frame_target}, &subtree_execution_error) ||
+        revision_backend.raster_cache_hits != 3)
+        return 131;
+
+    // The owning scene item's content revision is part of the raster identity
+    // even when the emitted primitive stream is unchanged.
+    LayoutSnapshot scene_content_snapshot = snapshot;
+    const auto scene_content_item = std::find_if(
+        scene_content_snapshot.items.begin(), scene_content_snapshot.items.end(),
+        [](const LayoutItem &item) { return item.id == 1; });
+    if (scene_content_item == scene_content_snapshot.items.end())
+        return 132;
+    scene_content_item->content_revision = 23;
+    LayoutRenderFrame scene_content_frame;
+    if (!compiler.compile(scene_content_snapshot, main_target, 1.5f, scene_content_frame,
+                          &compile_error, false, engine.text_engine(), nullptr, &subtree_paints) ||
+        !execute_render_plan(revision_backend, scene_content_frame.plan(),
+                             scene_content_frame.resources(),
+                             {main_target, subtree_frame_target}, &subtree_execution_error) ||
+        revision_backend.raster_cache_hits != 3)
+        return 132;
+
     // Raster entries are keyed by content, but the renderer must also reject
     // a cached surface when its physical dimensions change (resize/DPR).
     auto &subtree_raster_pass = subtree_frame.plan().passes[1];

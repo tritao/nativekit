@@ -383,6 +383,7 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
 
         struct RasterRoot {
             uint32_t node_id = 0;
+            uint32_t content_revision = 0;
             std::size_t first = 0;
             std::size_t last = 0;
             LayoutRect bounds{};
@@ -456,6 +457,7 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                     continue;
                 RasterRoot root;
                 root.node_id = node_id;
+                root.content_revision = item->content_revision;
                 root.first = first;
                 root.last = last;
                 root.bounds = local_bounds;
@@ -692,6 +694,10 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
             RenderPass pass;
             pass.target = active_raster_target;
             pass.kind = RenderPassKind::Raster;
+            // Only content invalidates the retained pixels. The root's
+            // geometry is normalized into cache-local coordinates and its
+            // transform/opacity are applied by the final composite pass.
+            pass.content_revision = root.content_revision;
             pass.target_descriptor.logical_width = root.bounds.width;
             pass.target_descriptor.logical_height = root.bounds.height;
             out.plan_.passes.push_back(std::move(pass));
