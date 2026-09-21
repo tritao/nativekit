@@ -153,6 +153,22 @@ bool culled_by_clip_planes(const Bounds &bounds, std::span<const ClipPlane> plan
     return false;
 }
 
+void append_culling_planes(const SceneView &view, std::vector<std::array<float, 4>> &planes) {
+    if (view.camera.enabled) {
+        const auto &m = view.camera.view_projection;
+        planes.push_back({m[0] + m[3], m[4] + m[7], m[8] + m[11], m[12] + m[15]});
+        planes.push_back({m[3] - m[0], m[7] - m[4], m[11] - m[8], m[15] - m[12]});
+        planes.push_back({m[1] + m[3], m[5] + m[7], m[9] + m[11], m[13] + m[15]});
+        planes.push_back({m[3] - m[1], m[7] - m[5], m[11] - m[9], m[15] - m[13]});
+        planes.push_back({m[2] + m[3], m[6] + m[7], m[10] + m[11], m[14] + m[15]});
+        planes.push_back({m[3] - m[2], m[7] - m[6], m[11] - m[10], m[15] - m[14]});
+    }
+    for (const auto &plane : view.clip_planes) {
+        if (plane.enabled)
+            planes.push_back({plane.normal[0], plane.normal[1], plane.normal[2], plane.distance});
+    }
+}
+
 EffectiveState effective_state(const SceneSnapshot &snapshot, const SceneView &view) {
     EffectiveState result;
     const auto occurrences = snapshot.occurrences();

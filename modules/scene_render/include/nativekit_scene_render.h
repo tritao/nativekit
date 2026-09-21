@@ -237,6 +237,7 @@ NKSRENDER_API nkscene_result NKS_CALL nkscene_render_executor_pick_pixel_poll(
 #include <memory>
 #include <span>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace nkscene {
@@ -469,6 +470,7 @@ struct RenderUpdate {
     std::size_t updated_material_resources = 0;
     std::size_t invalidated_items = 0;
     std::size_t patched_culling = 0;
+    std::size_t culling_candidates = 0;
     std::size_t visible_items = 0;
     std::size_t culled_items = 0;
 };
@@ -523,6 +525,9 @@ class NKSRENDER_API SceneSpatialIndex {
 
     std::uint64_t source_revision() const noexcept;
     std::span<const OccurrenceId> query_bounds(const Bounds &) const;
+    /** Returns snapshot occurrences whose bounds intersect all supplied planes. */
+    std::span<const OccurrenceId>
+    query_frustum(std::span<const std::array<float, 4>> planes) const;
     std::span<const OccurrenceId> query_ray(const Ray &) const;
     std::size_t query_result_count() const noexcept;
     OccurrenceId query_result(std::size_t index) const noexcept;
@@ -616,16 +621,26 @@ class RenderPlan {
     std::unordered_map<GeometryId, std::uint64_t> geometry_revisions_;
     std::unordered_map<MaterialId, std::uint64_t> material_revisions_;
     std::vector<OccurrenceId> view_override_occurrences_;
+    std::vector<EntityId> view_source_policy_sources_;
+    std::vector<EntityId> view_isolation_sources_;
+    std::vector<OccurrenceId> view_isolation_occurrences_;
     bool view_global_policy_ = false;
+    bool view_source_rules_only_ = false;
+    bool view_isolation_only_ = false;
     OccurrenceId view_root_;
     std::array<float, 16> view_projection_ = {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
                                               0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
+    bool camera_enabled_ = false;
     std::array<std::array<float, 4>, max_clip_planes> clip_planes_{};
     std::uint32_t clip_plane_count_ = 0;
     std::size_t visible_items_ = 0;
     std::size_t culled_items_ = 0;
     std::size_t compile_count_ = 0;
     std::uint64_t culling_signature_ = 0;
+    std::shared_ptr<SceneSpatialIndex> culling_index_;
+    std::unordered_set<OccurrenceId> culling_dirty_occurrences_;
+    std::unordered_set<OccurrenceId> culling_unbounded_occurrences_;
+    std::unordered_set<OccurrenceId> culled_occurrences_;
 
     friend NKSRENDER_API RenderPlan compile(const SceneSnapshot &, const SceneView &);
     friend NKSRENDER_API RenderUpdate update(RenderPlan &, const SceneSnapshot &, const ChangeSet &,

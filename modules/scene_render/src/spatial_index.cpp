@@ -72,6 +72,20 @@ bool overlaps(const Bounds &lhs, const Bounds &rhs) noexcept {
     return true;
 }
 
+bool outside_planes(const Bounds &bounds,
+                    std::span<const std::array<float, 4>> planes) noexcept {
+    if (!bounds.valid)
+        return false;
+    for (const auto &plane : planes) {
+        const auto x = plane[0] >= 0.0f ? bounds.maximum[0] : bounds.minimum[0];
+        const auto y = plane[1] >= 0.0f ? bounds.maximum[1] : bounds.minimum[1];
+        const auto z = plane[2] >= 0.0f ? bounds.maximum[2] : bounds.minimum[2];
+        if (plane[0] * x + plane[1] * y + plane[2] * z + plane[3] < 0.0f)
+            return true;
+    }
+    return false;
+}
+
 bool normalize_ray(const Ray &ray, Ray &normalized) noexcept {
     const auto length =
         std::sqrt(ray.direction.x * ray.direction.x + ray.direction.y * ray.direction.y +
@@ -198,6 +212,23 @@ void visit_ray(const std::vector<Node> &nodes, const std::vector<Entry> &entries
     visit_ray(nodes, entries, node.right, ray, visitor);
 }
 
+template <class Visitor>
+void visit_frustum(const std::vector<Node> &nodes, const std::vector<Entry> &entries,
+                   std::uint32_t node_index, std::span<const std::array<float, 4>> planes,
+                   Visitor &&visitor) {
+    if (node_index == invalid_node || outside_planes(nodes[node_index].bounds, planes))
+        return;
+    const auto &node = nodes[node_index];
+    if (node.leaf()) {
+        for (std::uint32_t index = 0; index < node.count; ++index)
+            if (!outside_planes(entries[node.first + index].bounds, planes))
+                visitor(entries[node.first + index]);
+        return;
+    }
+    visit_frustum(nodes, entries, node.left, planes, visitor);
+    visit_frustum(nodes, entries, node.right, planes, visitor);
+}
+
 } // namespace
 
 struct SceneSpatialIndex::State {
@@ -262,6 +293,20 @@ std::span<const OccurrenceId> SceneSpatialIndex::query_bounds(const Bounds &boun
         return {};
     visit_bounds(state_->nodes, state_->entries, 0, bounds,
                  [this](const Entry &entry) { state_->results.push_back(entry.occurrence); });
+    std::sort(state_->results.begin(), state_->results.end(),
+              [](OccurrenceId lhs, OccurrenceId rhs) { return lhs.value < rhs.value; });
+    return state_->results;
+}
+
+std::span<const OccurrenceId>
+SceneSpatialIndex::query_frustum(std::span<const std::array<float, 4>> planes) const {
+    if (!state_)
+        return {};
+    state_->results.clear();
+    if (state_->nodes.empty())
+        return {};
+    visit_frustum(state_->nodes, state_->entries, 0, planes,
+                  [this](const Entry &entry) { state_->results.push_back(entry.occurrence); });
     std::sort(state_->results.begin(), state_->results.end(),
               [](OccurrenceId lhs, OccurrenceId rhs) { return lhs.value < rhs.value; });
     return state_->results;

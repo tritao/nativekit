@@ -20,6 +20,7 @@ void build_items(RenderPlan &plan, const SceneSnapshot &snapshot, const SceneVie
 bool culled_by_camera(const Bounds &bounds, const SceneCamera &camera) noexcept;
 SceneCamera camera_for_snapshot(const SceneSnapshot &snapshot, const SceneView &view) noexcept;
 bool culled_by_clip_planes(const Bounds &bounds, std::span<const ClipPlane> planes) noexcept;
+void append_culling_planes(const SceneView &view, std::vector<std::array<float, 4>> &planes);
 EffectiveState effective_state(const SceneSnapshot &snapshot, const SceneView &view);
 std::uint64_t presentation_signature(const SceneView &view) noexcept;
 std::uint64_t view_signature(const SceneView &view) noexcept;
