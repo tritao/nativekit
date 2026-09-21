@@ -52,8 +52,8 @@ class TreeView implements View {
 	var entries:Array<TreeEntry>;
 	var indexByKey:Map<String, Int>;
 	var entryByKey:Map<String, TreeEntry>;
-	var cachedExtents:Array<Float>;
-	var extentViewport:Null<VirtualExtentViewport>;
+	var cachedUniform:Bool;
+	var extentIndex:Null<VirtualExtentIndex>;
 	var itemIds:Map<String, WidgetId>;
 
 	public function new(key:String, model:TreeViewModel, ?viewportStyle:LayoutStyle,
@@ -92,8 +92,8 @@ class TreeView implements View {
 		entries = [];
 		indexByKey = new Map();
 		entryByKey = new Map();
-		cachedExtents = [];
-		extentViewport = null;
+		cachedUniform = false;
+		extentIndex = null;
 		itemIds = new Map();
 	}
 
@@ -187,7 +187,13 @@ class TreeView implements View {
 			var viewportHeight = controller.viewportHeight > 0.0 ? controller.viewportHeight :
 				(viewportStyle.height.sizing == LayoutSizing.Fixed ? viewportStyle.height.value :
 				fallbackViewportHeight);
-			var window:VirtualExtentViewport = cast extentViewport;
+			var window = requiredExtentIndex();
+			window.update(viewportHeight, controller.offsetY, virtualization.leadingOverscan,
+				virtualization.trailingOverscan);
+			measureWindow(window.first, window.last);
+			window.update(viewportHeight, controller.offsetY, virtualization.leadingOverscan,
+				virtualization.trailingOverscan);
+			measureWindow(window.first, window.last);
 			window.update(viewportHeight, controller.offsetY, virtualization.leadingOverscan,
 				virtualization.trailingOverscan);
 			materializedFirst = window.first;
@@ -291,20 +297,24 @@ class TreeView implements View {
 	}
 
 	function visibleNodeCount():Int {
-		if (extentViewport == null)
+		if (extentIndex == null)
 			return 1;
-		var window:VirtualExtentViewport = cast extentViewport;
+		var window = requiredExtentIndex();
 		if (window.count == 0)
 			return 1;
 		return Std.int(Math.max(1.0, Math.ceil(window.viewportExtent /
-			Math.max(1.0, cachedExtents[window.first]))));
+			Math.max(1.0, window.extentAt(window.first)))));
 	}
 
 	function ensureTreeMetrics():Void {
 		var modelRevision = model.revision();
 		if (cachedModelRevision == modelRevision && cachedExpansionRevision == expansionRevision &&
-			extentViewport != null)
+			extentIndex != null)
 			return;
+		var estimatedExtent = model.estimatedExtent();
+		if (estimatedExtent <= 0.0 || !finite(estimatedExtent))
+			throw "TreeView estimated extent must be finite and positive";
+		cachedUniform = model.extentIsUniform();
 		var flattened:Array<TreeEntry> = [];
 		var pending:Array<TreePending> = [];
 		var roots:Array<String> = [];
@@ -330,11 +340,8 @@ class TreeView implements View {
 			if (childCount < 0)
 				throw 'TreeView child count for ${next.key} must be non-negative';
 			var expanded = childCount > 0 && expansionFor(next.key);
-			var extent = model.extentAt(next.key);
-			if (extent <= 0.0 || !finite(extent))
-				throw 'TreeView extent for ${next.key} must be finite and positive';
 			var entry = new TreeEntry(next.key, next.parentKey, next.depth,
-				childCount > 0, expanded, extent);
+				childCount > 0, expanded, estimatedExtent);
 			flattened.push(entry);
 			if (!expanded)
 				continue;
@@ -353,19 +360,31 @@ class TreeView implements View {
 		entries = flattened;
 		indexByKey = new Map();
 		entryByKey = new Map();
-		cachedExtents = [];
 		for (index in 0...entries.length) {
 			indexByKey.set(entries[index].key, index);
 			entryByKey.set(entries[index].key, entries[index]);
-			cachedExtents.push(entries[index].extent);
 		}
 		cachedModelRevision = modelRevision;
 		cachedExpansionRevision = expansionRevision;
-		extentViewport = new VirtualExtentViewport(cachedExtents,
-			fallbackViewportHeight, controller.offsetY);
+		extentIndex = new VirtualExtentIndex(entries.length, estimatedExtent,
+			fallbackViewportHeight, controller.offsetY,
+			virtualization.leadingOverscan, virtualization.trailingOverscan);
 		if (selectedKey != null && !indexByKey.exists(selectedKey)) {
 			selectedKey = null;
 			updateSelectedState(null);
+		}
+	}
+
+	function measureWindow(first:Int, last:Int):Void {
+		if (extentIndex == null || cachedUniform)
+			return;
+		var indexMetrics = requiredExtentIndex();
+		for (index in first...last) {
+			var extent = model.extentAt(entries[index].key);
+			if (extent <= 0.0 || !finite(extent))
+				throw 'TreeView extent for ${entries[index].key} must be finite and positive';
+			entries[index].extent = extent;
+			indexMetrics.setExtent(index, extent);
 		}
 	}
 
@@ -385,10 +404,17 @@ class TreeView implements View {
 	}
 
 	function extentOffset(index:Int):Float {
-		if (extentViewport == null)
+		if (extentIndex == null)
 			return 0.0;
-		var window:VirtualExtentViewport = cast extentViewport;
+		var window = requiredExtentIndex();
 		return window.startOffset(index);
+	}
+
+	function requiredExtentIndex():VirtualExtentIndex {
+		var result = extentIndex;
+		if (result == null)
+			throw "TreeView extent metrics are not initialized";
+		return result;
 	}
 
 	static function copyExpanded(source:Map<String, Bool>):Map<String, Bool> {
@@ -417,7 +443,7 @@ private class TreeEntry {
 	public final depth:Int;
 	public final hasChildren:Bool;
 	public final expanded:Bool;
-	public final extent:Float;
+	public var extent:Float;
 
 	public function new(key:String, parentKey:Null<String>, depth:Int,
 			hasChildren:Bool, expanded:Bool, extent:Float) {

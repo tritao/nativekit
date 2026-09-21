@@ -358,8 +358,8 @@ class VirtualListBenchmark {
 		var firstSeconds = Sys.time() - firstStart;
 		var firstRows = builtKeys.length;
 		var maxExpectedRows = Std.int(Math.ceil(viewportHeight / 24.0)) + 4;
-		var valid = firstRows > 0 && firstRows <= maxExpectedRows &&
-			model.extentCalls == itemCount;
+	var valid = firstRows > 0 && firstRows <= maxExpectedRows &&
+			model.extentCalls > 0 && model.extentCalls < itemCount;
 
 		var totalSeconds = 0.0;
 		var totalRows = 0;
@@ -403,7 +403,7 @@ class VirtualListBenchmark {
 			'first_us=${firstSeconds * 1000000.0} avg_us=$averageMicros');
 
 		context.dispose();
-		return valid && model.extentCalls == itemCount;
+		return valid && model.extentCalls < itemCount;
 	}
 }
 
@@ -487,6 +487,12 @@ private class BenchmarkTreeModel implements TreeViewModel {
 		return '$parentKey:child:$index';
 
 	public function initiallyExpanded(key:String):Bool
+		return false;
+
+	public function estimatedExtent():Float
+		return 28.0;
+
+	public function extentIsUniform():Bool
 		return false;
 
 	public function extentAt(key:String):Float {

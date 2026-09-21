@@ -119,7 +119,7 @@ class ListView implements View {
 			var viewportHeight = controller.viewportHeight > 0.0 ? controller.viewportHeight :
 				(viewportStyle.height.sizing == LayoutSizing.Fixed ? viewportStyle.height.value :
 				fallbackViewportHeight);
-			var window:VirtualExtentIndex = cast extentIndex;
+			var window = requiredExtentIndex();
 			window.update(viewportHeight, controller.offsetY, virtualization.leadingOverscan,
 				virtualization.trailingOverscan);
 			measureWindow(window.first, window.last);
@@ -207,7 +207,7 @@ class ListView implements View {
 	function visibleItemCount():Int {
 		if (extentIndex == null)
 			return 1;
-		var viewport:VirtualExtentIndex = cast extentIndex;
+		var viewport = requiredExtentIndex();
 		if (viewport.count == 0)
 			return 1;
 		return Std.int(Math.max(1.0, Math.ceil(viewport.viewportExtent /
@@ -255,7 +255,7 @@ class ListView implements View {
 				throw 'ListView extent for index $index must be finite and positive';
 			extentCache.set(itemKey, extent);
 			extentRevisionCache.set(itemKey, extentRevision);
-			var indexMetrics:VirtualExtentIndex = cast extentIndex;
+			var indexMetrics = requiredExtentIndex();
 			indexMetrics.setExtent(index, extent);
 		}
 	}
@@ -274,8 +274,15 @@ class ListView implements View {
 	function extentOffset(index:Int):Float {
 		if (extentIndex == null)
 			return 0.0;
-		var viewport:VirtualExtentIndex = cast extentIndex;
+		var viewport = requiredExtentIndex();
 		return viewport.startOffset(index);
+	}
+
+	function requiredExtentIndex():VirtualExtentIndex {
+		var result = extentIndex;
+		if (result == null)
+			throw "ListView extent metrics are not initialized";
+		return result;
 	}
 
 	static function defaultViewportStyle(height:Float):LayoutStyle {
