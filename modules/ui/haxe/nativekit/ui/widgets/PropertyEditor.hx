@@ -24,6 +24,8 @@ class PropertyEditor implements View {
 	public final registry:PropertyEditorRegistry;
 	public var enabled:Bool;
 	public var labelWidth:Float;
+	/** When false, category headers are supplied by an outer inspector. */
+	public var showCategories:Bool;
 	final drafts:Map<String, String>;
 	final errors:Map<String, String>;
 
@@ -43,6 +45,7 @@ class PropertyEditor implements View {
 		this.registry = registry == null ? new PropertyEditorRegistry() : registry;
 		enabled = true;
 		labelWidth = 140.0;
+		showCategories = true;
 		drafts = new Map();
 		errors = new Map();
 	}
@@ -75,7 +78,7 @@ class PropertyEditor implements View {
 		var categoryKeys:Map<String, Bool> = new Map();
 		for (descriptor in descriptors) {
 			var category = descriptor.category;
-			if (category.length > 0 && !categoryKeys.exists(category)) {
+			if (showCategories && category.length > 0 && !categoryKeys.exists(category)) {
 				categoryKeys.set(category, true);
 				children.push(new KeyedView("category:" + category,
 					new Text(category)));

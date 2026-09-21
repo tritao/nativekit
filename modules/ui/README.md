@@ -176,6 +176,15 @@ hooks, range and option validation, units, defaults, and read-only policy.
 Mixed values are preserved for multi-selection; edits apply to the active
 `EditorDocument`, so reset, slider, and text commits participate in undo/redo.
 
+`PropertyInspector` composes those editors into a scrollable, sectioned
+inspector. Pass descriptors directly to group them by descriptor category, or
+pass explicit `PropertyInspectorSection` values when the application needs a
+stable editor-specific order and section labels. Sections can be collapsed and
+their state persists on the inspector instance; `onSectionExpanded` can be
+used to persist that preference with the workspace. `PropertyInspector` also
+forwards `applyValue(...)` to the section editor, so programmatic edits use the
+same validation and undo path as visible controls.
+
 Application types can extend that inspector without changing NativeKit's core
 property enum. Register a `PropertyEditorExtension` in a
 `PropertyEditorRegistry`, then use `PropertyType.Custom("sim.vec3")` and

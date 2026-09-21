@@ -69,6 +69,7 @@ import nativekit.ui.core.PropertyBinding;
 import nativekit.ui.core.PropertyEditResult;
 import nativekit.ui.core.PropertyEditorExtension;
 import nativekit.ui.core.PropertyEditorRegistry;
+import nativekit.ui.core.PropertyInspectorSection;
 import nativekit.ui.core.PropertyOption;
 import nativekit.ui.core.PropertyType;
 import nativekit.ui.core.PropertyValue;
@@ -121,6 +122,7 @@ import nativekit.ui.widgets.ListViewModel;
 import nativekit.ui.widgets.Padding;
 import nativekit.ui.widgets.ProgressBar;
 import nativekit.ui.widgets.PropertyEditor;
+import nativekit.ui.widgets.PropertyInspector;
 import nativekit.ui.widgets.GpuViewport;
 import nativekit.ui.widgets.PlotView;
 import nativekit.ui.widgets.Dialog;
@@ -3354,6 +3356,29 @@ class FrameworkSmoke {
 		var inspectorRoot = uiContext.submit(inspector, new LayoutFrame(480.0, 320.0));
 		if (inspectorRoot == null || inspectorRoot.children.length < 4 ||
 			!PropertyValueTools.same(PropertyValue.Float(2.0), PropertyValue.Float(2.0)))
+			return false;
+		var sectionChanges = 0;
+		var composedInspector = new PropertyInspector("composed-inspector",
+			[massProperty, modeProperty, mixedProperty], null, null, [
+				new PropertyInspectorSection("physics", "Physics", [massProperty]),
+				new PropertyInspectorSection("display", "Display", [modeProperty, mixedProperty])
+			]);
+		composedInspector.onSectionExpanded = function(id, expanded) {
+			if (id == "display" && !expanded)
+				sectionChanges++;
+		};
+		var composedRoot = uiContext.submit(composedInspector, new LayoutFrame(480.0, 320.0));
+		if (composedRoot == null || composedRoot.semantics == null ||
+			composedRoot.semantics.label != "Inspector" ||
+			!composedInspector.isSectionExpanded("display"))
+			return false;
+		if (!composedInspector.setSectionExpanded("display", false) || sectionChanges != 1 ||
+			composedInspector.isSectionExpanded("display"))
+			return false;
+		composedRoot = uiContext.submit(composedInspector, new LayoutFrame(480.0, 320.0));
+		if (composedRoot == null || composedRoot.children.length == 0 ||
+			composedRoot.children[0].children.length == 0 ||
+			composedRoot.children[0].children[0].children.length != 3)
 			return false;
 		var appliedMass = inspector.applyValue(uiContext.buildContext, massProperty,
 			PropertyValue.Float(4.0));
