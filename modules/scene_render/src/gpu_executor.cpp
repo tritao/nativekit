@@ -1252,9 +1252,8 @@ nkgpu_result NativeKitGpuExecutor::last_result() const noexcept {
     return state_->last_result;
 }
 
-GpuExecutionStats NativeKitGpuExecutor::execute(const RenderPlan &plan,
-                                                const SceneSnapshot &snapshot) {
-    GpuExecutionStats stats;
+bool NativeKitGpuExecutor::synchronize(const RenderPlan &plan, const SceneSnapshot &snapshot,
+                                       GpuExecutionStats &stats) {
     state_->last_result = NKGPU_OK;
 
     struct DeltaWork {
@@ -1327,17 +1326,17 @@ GpuExecutionStats NativeKitGpuExecutor::execute(const RenderPlan &plan,
 
     if (work.full_rebuild) {
         if (!prepare_resources(*state_, plan, snapshot, stats))
-            return stats;
+            return false;
     } else {
         if (!prepare_changed_resources(*state_, snapshot, work.geometries, work.materials,
                                        stats))
-            return stats;
+            return false;
         if (work.layout_changed) {
             if (state_->renderer.id && !synchronize_batches(*state_, plan, stats))
-                return stats;
+                return false;
         } else if (!patch_instance_records(*state_, plan, work.transforms, stats)) {
             if (stats.result != NKGPU_OK)
-                return stats;
+                return false;
             // A missing indexed instance means the delta history no longer matches the
             // executor's batch layout. Reconcile from the complete current plan.
             state_->commands.clear();
@@ -1351,15 +1350,24 @@ GpuExecutionStats NativeKitGpuExecutor::execute(const RenderPlan &plan,
             }
             stats.commands = state_->commands.size();
             if (!prepare_resources(*state_, plan, snapshot, stats))
-                return stats;
+                return false;
         }
     }
 
+    state_->plan_identity = plan.gpu_identity_;
+    state_->plan_revision = plan.gpu_revision_;
+    state_->plan_initialized = true;
+    return true;
+}
+
+GpuExecutionStats NativeKitGpuExecutor::execute(const RenderPlan &plan,
+                                                const SceneSnapshot &snapshot) {
+    GpuExecutionStats stats;
+    if (!synchronize(plan, snapshot, stats))
+        return stats;
+
     if (!state_->renderer.id) {
         stats.draw_calls = stats.commands;
-        state_->plan_identity = plan.gpu_identity_;
-        state_->plan_revision = plan.gpu_revision_;
-        state_->plan_initialized = true;
         return stats;
     }
     for (const auto &batch : state_->batches) {
@@ -1439,11 +1447,6 @@ GpuExecutionStats NativeKitGpuExecutor::execute(const RenderPlan &plan,
     result = nkgpu_end_frame(state_->renderer);
     if (result != NKGPU_OK)
         set_failure(*state_, stats, result);
-    if (stats.result == NKGPU_OK) {
-        state_->plan_identity = plan.gpu_identity_;
-        state_->plan_revision = plan.gpu_revision_;
-        state_->plan_initialized = true;
-    }
     return stats;
 }
 
@@ -1619,7 +1622,7 @@ nkgpu_result NativeKitGpuExecutor::begin_pick_pixel(const RenderPlan &plan,
     }
 
     GpuExecutionStats stats;
-    if (!prepare_resources(*state_, plan, snapshot, stats) ||
+    if (!synchronize(plan, snapshot, stats) ||
         !ensure_pick_targets(*state_, width, height, stats))
         return state_->last_result;
     for (const auto &batch : state_->batches) {

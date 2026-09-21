@@ -162,6 +162,29 @@ int main() {
         assert(stats.draw_calls == materials.size());
         print_stats("initial", stats, {}, initial_time.count());
 
+        const auto pick_start = Clock::now();
+        std::shared_ptr<nkscene::GpuPickRequest> pick_request;
+        assert(executor.begin_pick_pixel(plan, scene->snapshot(), width, height, width / 2,
+                                         height / 2, pick_request) == NKGPU_OK);
+        nkscene::PickResult pick_result;
+        nkgpu_result pick_error = NKGPU_OK;
+        std::uint32_t pick_state = NKS_RENDER_PICK_PENDING;
+        for (int attempt = 0; attempt < 100 && pick_state == NKS_RENDER_PICK_PENDING;
+             ++attempt) {
+            pick_state = executor.poll_pick_pixel(*pick_request, plan, scene->snapshot(),
+                                                   &pick_result, &pick_error);
+            if (pick_state == NKS_RENDER_PICK_PENDING)
+                std::this_thread::yield();
+        }
+        const auto pick_time =
+            std::chrono::duration<double, std::milli>(Clock::now() - pick_start);
+        assert(pick_state == NKS_RENDER_PICK_READY);
+        assert(pick_error == NKGPU_OK);
+        assert(pick_result.occurrence.valid());
+        std::printf("%-10s %8.3f ms  ready=%d occurrence=%llu\n", "async pick",
+                    pick_time.count(), pick_state == NKS_RENDER_PICK_READY,
+                    static_cast<unsigned long long>(pick_result.occurrence.value));
+
         Transaction move_one(scene);
         move_one.add_transform(leaves[0], translated(1.0f));
         assert(scene->commit(move_one, changes) == NKS_OK);

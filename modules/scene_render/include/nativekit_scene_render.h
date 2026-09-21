@@ -245,6 +245,7 @@ namespace nkscene {
 struct SceneView;
 class RenderPlan;
 class NativeKitGpuExecutor;
+struct GpuExecutionStats;
 namespace render_internal {
 void rebuild_batches(RenderPlan &plan);
 void build_items(RenderPlan &plan, const SceneSnapshot &snapshot, const SceneView &view);
@@ -723,6 +724,8 @@ class NKSRENDER_API NativeKitGpuExecutor {
     std::span<const GpuCommand> commands() const noexcept;
 
   private:
+    bool synchronize(const RenderPlan &, const SceneSnapshot &, GpuExecutionStats &);
+
     struct State;
     std::unique_ptr<State> state_;
 };

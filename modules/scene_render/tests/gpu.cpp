@@ -224,11 +224,30 @@ int main() {
         const auto moved_snapshot = scene->snapshot();
         const auto update = nkscene::update(plan, moved_snapshot, changes, view);
         assert(!update.plan_rebuilt);
+
+        std::shared_ptr<nkscene::GpuPickRequest> moved_request;
+        assert(executor.begin_pick_pixel(plan, moved_snapshot, options.width, options.height, 80,
+                                         options.height / 2, moved_request) == NKGPU_OK);
+        nkscene::PickResult moved_picked;
+        nkgpu_result moved_error = NKGPU_OK;
+        std::uint32_t moved_state = NKS_RENDER_PICK_PENDING;
+        for (int attempt = 0; attempt < 100 && moved_state == NKS_RENDER_PICK_PENDING;
+             ++attempt) {
+            moved_state = executor.poll_pick_pixel(*moved_request, plan, moved_snapshot,
+                                                    &moved_picked, &moved_error);
+            if (moved_state == NKS_RENDER_PICK_PENDING)
+                std::this_thread::yield();
+        }
+        assert(moved_state == NKS_RENDER_PICK_READY);
+        assert(moved_error == NKGPU_OK);
+        assert(moved_picked.occurrence == occurrence);
+        assert(moved_picked.source == nkscene::EntityId{42});
+
         stats = executor.execute(plan, scene->snapshot());
         assert(stats.result == NKGPU_OK);
         assert(stats.geometry_resources_created == 0);
         assert(stats.geometry_resources_updated == 0);
-        assert(stats.instance_records_updated == 1);
+        assert(stats.instance_records_updated == 0);
         assert(stats.draw_calls == 1);
 
         Transaction change_source(scene);
