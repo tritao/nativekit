@@ -46,6 +46,10 @@ if(NK_BUILD_TESTS)
     target_link_libraries(nativekit_scene_concurrency_tests PRIVATE NativeKit::scene)
     add_test(NAME scene_concurrency COMMAND nativekit_scene_concurrency_tests)
     set_tests_properties(scene_concurrency PROPERTIES LABELS "scene;concurrency" TIMEOUT 30)
+    if(NK_SCENE_SANITIZER STREQUAL "thread")
+        set_tests_properties(scene_concurrency PROPERTIES
+            ENVIRONMENT "TSAN_OPTIONS=protect_shadow_gap=0")
+    endif()
 
     add_executable(nativekit_scene_c_api_tests tests/c_api.c)
     set_target_properties(nativekit_scene_c_api_tests PROPERTIES LINKER_LANGUAGE CXX)
