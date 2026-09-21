@@ -28,6 +28,10 @@ class ListView implements View {
 	public var controller(default, null):ScrollController;
 	public var materializedFirst(default, null):Int;
 	public var materializedLast(default, null):Int;
+	/** Number of model extent measurements performed by this control. */
+	public var extentMeasurements(default, null):Int;
+	/** Number of cached extents reused after checking their item generation. */
+	public var extentReuses(default, null):Int;
 	public var selectedIndex(default, null):Int;
 	public var onSelectionChanged:Null<Int->Void>;
 	public var onItemActivated:Null<Int->Void>;
@@ -37,6 +41,8 @@ class ListView implements View {
 	var cachedRevision:Int;
 	var cachedCount:Int;
 	var cachedExtents:Array<Float>;
+	var extentCache:Map<String, Float>;
+	var extentRevisionCache:Map<String, Int>;
 	var extentViewport:Null<VirtualExtentViewport>;
 	var itemIds:Map<Int, WidgetId>;
 
@@ -59,10 +65,14 @@ class ListView implements View {
 		this.virtualization = virtualization == null ? new VirtualizationPolicy() : virtualization;
 		materializedFirst = 0;
 		materializedLast = 0;
+		extentMeasurements = 0;
+		extentReuses = 0;
 		selectedState = null;
 		cachedRevision = -1;
 		cachedCount = -1;
 		cachedExtents = [];
+		extentCache = new Map();
+		extentRevisionCache = new Map();
 		extentViewport = null;
 		itemIds = new Map();
 	}
@@ -201,11 +211,37 @@ class ListView implements View {
 		if (cachedRevision == revision && cachedCount == count && extentViewport != null)
 			return;
 		var extents:Array<Float> = [];
+		var seenKeys:Map<String, Bool> = new Map();
 		for (index in 0...count) {
-			var extent = model.extentAt(index);
+			var itemKey = model.keyAt(index);
+			if (itemKey == null || itemKey.length == 0)
+				throw 'ListView item $index has an empty key';
+			if (seenKeys.exists(itemKey))
+				throw 'ListView contains duplicate item key $itemKey';
+			seenKeys.set(itemKey, true);
+			var extentRevision = model.extentRevisionAt(index);
+			var cachedRevisionForKey = extentRevisionCache.get(itemKey);
+			var cachedExtent = extentCache.get(itemKey);
+			var extent:Float;
+			if (cachedExtent != null && cachedRevisionForKey != null &&
+				cachedRevisionForKey == extentRevision) {
+				extent = cachedExtent;
+				extentReuses++;
+			} else {
+				extent = model.extentAt(index);
+				extentMeasurements++;
+			}
 			if (extent <= 0.0 || !finite(extent))
 				throw 'ListView extent for index $index must be finite and positive';
+			extentCache.set(itemKey, extent);
+			extentRevisionCache.set(itemKey, extentRevision);
 			extents.push(extent);
+		}
+		for (itemKey in extentCache.keys()) {
+			if (!seenKeys.exists(itemKey)) {
+				extentCache.remove(itemKey);
+				extentRevisionCache.remove(itemKey);
+			}
 		}
 		cachedExtents = extents;
 		cachedRevision = revision;

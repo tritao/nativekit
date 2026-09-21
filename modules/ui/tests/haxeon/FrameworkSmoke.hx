@@ -1485,6 +1485,14 @@ class FrameworkSmoke {
 			model.extentCalls != firstModelExtentCalls || recycledModelRowId != firstModelRowId ||
 			modelList.materializedFirst != 49999)
 			return 161;
+		var incrementalExtentCalls = model.extentCalls;
+		model.bumpExtent(50000);
+		modelBuiltRows.resize(0);
+		modelRoot = context.submit(modelList, new LayoutFrame(256.0, 120.0));
+		if (model.extentCalls != incrementalExtentCalls + 1 ||
+			modelList.extentMeasurements != incrementalExtentCalls + 1 ||
+			modelList.extentReuses < 99999)
+			return 174;
 		if (!modelList.select(50000) || modelList.selectedIndex != 50000 || modelSelection != 50000)
 			return 162;
 		modelRoot = context.submit(modelList, new LayoutFrame(256.0, 120.0));
@@ -3901,11 +3909,17 @@ private class SmokeListModel implements ListViewModel {
 	final itemCount:Int;
 	final builtRows:Array<Int>;
 	public var extentCalls:Int;
+	var modelRevision:Int;
+	var extentRevisionValue:Int;
+	var changedExtentIndex:Int;
 
 	public function new(itemCount:Int, builtRows:Array<Int>) {
 		this.itemCount = itemCount;
 		this.builtRows = builtRows;
 		extentCalls = 0;
+		modelRevision = 1;
+		extentRevisionValue = 1;
+		changedExtentIndex = -1;
 	}
 
 	public function count():Int
@@ -3916,7 +3930,16 @@ private class SmokeListModel implements ListViewModel {
 
 	public function extentAt(index:Int):Float {
 		extentCalls++;
-		return 20.0 + (index % 3) * 4.0;
+		return 20.0 + (index % 3) * 4.0 + (index == changedExtentIndex ? 4.0 : 0.0);
+	}
+
+	public function extentRevisionAt(index:Int):Int
+		return index == changedExtentIndex ? extentRevisionValue : 1;
+
+	public function bumpExtent(index:Int):Void {
+		changedExtentIndex = index;
+		extentRevisionValue++;
+		modelRevision++;
 	}
 
 	public function buildItem(index:Int):View {
@@ -3925,7 +3948,7 @@ private class SmokeListModel implements ListViewModel {
 	}
 
 	public function revision():Int
-		return 1;
+		return modelRevision;
 
 	public function offsetBefore(index:Int):Float {
 		var result = 0.0;

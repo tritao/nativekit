@@ -190,6 +190,12 @@ class VirtualListBenchmark {
 		var maxExpectedRows = Std.int(Math.ceil(viewportHeight / 20.0)) + 4;
 		var valid = firstRows > 0 && firstRows <= maxExpectedRows &&
 			model.extentCalls == itemCount;
+		var extentCallsBeforeUpdate = model.extentCalls;
+		model.bumpExtent(Std.int(itemCount / 2));
+		builtRows.resize(0);
+		context.submit(list, frame);
+		if (model.extentCalls != extentCallsBeforeUpdate + 1)
+			valid = false;
 
 		var totalSeconds = 0.0;
 		var totalRows = 0;
@@ -229,11 +235,12 @@ class VirtualListBenchmark {
 		Sys.println('model_items=$itemCount first_rows=$firstRows ' +
 			'avg_rows=$averageRows max_rows=$maxRows ' +
 			'avg_nodes=$averageNodes max_nodes=$maxNodes ' +
-			'extent_calls=${model.extentCalls} first_us=${firstSeconds * 1000000.0} ' +
+			'extent_calls=${model.extentCalls} extent_reuses=${list.extentReuses} ' +
+			'first_us=${firstSeconds * 1000000.0} ' +
 			'avg_us=$averageMicros');
 
 		context.dispose();
-		return valid && model.extentCalls == itemCount;
+		return valid && model.extentCalls == itemCount + 1;
 	}
 
 	static function runTree(fonts:FontCollection, itemCount:Int):Bool {
@@ -304,11 +311,17 @@ private class BenchmarkListModel implements ListViewModel {
 	final itemCount:Int;
 	final builtRows:Array<Int>;
 	public var extentCalls:Int;
+	var modelRevision:Int;
+	var extentRevisionValue:Int;
+	var changedExtentIndex:Int;
 
 	public function new(itemCount:Int, builtRows:Array<Int>) {
 		this.itemCount = itemCount;
 		this.builtRows = builtRows;
 		extentCalls = 0;
+		modelRevision = 1;
+		extentRevisionValue = 1;
+		changedExtentIndex = -1;
 	}
 
 	public function count():Int
@@ -319,7 +332,16 @@ private class BenchmarkListModel implements ListViewModel {
 
 	public function extentAt(index:Int):Float {
 		extentCalls++;
-		return 20.0 + (index % 3) * 4.0;
+		return 20.0 + (index % 3) * 4.0 + (index == changedExtentIndex ? 4.0 : 0.0);
+	}
+
+	public function extentRevisionAt(index:Int):Int
+		return index == changedExtentIndex ? extentRevisionValue : 1;
+
+	public function bumpExtent(index:Int):Void {
+		changedExtentIndex = index;
+		extentRevisionValue++;
+		modelRevision++;
 	}
 
 	public function buildItem(index:Int):View {
@@ -328,7 +350,7 @@ private class BenchmarkListModel implements ListViewModel {
 	}
 
 	public function revision():Int
-		return 1;
+		return modelRevision;
 }
 
 private class BenchmarkTreeModel implements TreeViewModel {
