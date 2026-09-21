@@ -451,6 +451,25 @@ int main() {
             cube_desc.data_size = sizeof(cube_pixels);
             cube_desc.type = NKGPU_IMAGETYPE_CUBE;
             EXPECT_RESULT(nkgpu_image_create_desc(first, &cube_desc, &cube_image), NKGPU_OK);
+            nkgpu_image cube_destination{};
+            EXPECT_RESULT(nkgpu_image_create_desc(first, &cube_desc, &cube_destination), NKGPU_OK);
+            nkgpu_image_copy_desc cube_copy{};
+            cube_copy.struct_size = sizeof(cube_copy);
+            cube_copy.source = cube_image;
+            cube_copy.destination = cube_destination;
+            cube_copy.width = 1;
+            cube_copy.height = 1;
+            EXPECT_RESULT(nkgpu_image_copy(first, &cube_copy), NKGPU_ERROR_UNSUPPORTED);
+            nkgpu_image_readback_desc cube_readback{};
+            cube_readback.struct_size = sizeof(cube_readback);
+            cube_readback.image = cube_image;
+            cube_readback.width = 1;
+            cube_readback.height = 1;
+            nkgpu_readback cube_readback_handle{};
+            EXPECT_RESULT(nkgpu_readback_begin_image(first, &cube_readback,
+                                                      &cube_readback_handle),
+                          NKGPU_ERROR_UNSUPPORTED);
+            EXPECT_RESULT(nkgpu_image_destroy(first, cube_destination), NKGPU_OK);
             EXPECT_RESULT(nkgpu_image_destroy(first, cube_image), NKGPU_OK);
             cube_image = {};
 

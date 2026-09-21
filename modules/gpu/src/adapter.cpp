@@ -3833,6 +3833,10 @@ static uint32_t image_row_pitch(const Image &image, uint32_t width) {
     return bytes && width <= UINT32_MAX / bytes ? width * bytes : 0;
 }
 
+static bool image_transfer_shape_supported(const Image &image) {
+    return image.type == NKGPU_IMAGETYPE_2D || image.type == NKGPU_IMAGETYPE_ARRAY;
+}
+
 static nkgpu_result validate_buffer_copy(const nkgpu_buffer_copy_desc &desc, const Buffer &source,
                                          const Buffer &destination) {
     if (!desc.size || desc.source_offset > source.size ||
@@ -3851,6 +3855,8 @@ static nkgpu_result validate_buffer_copy(const nkgpu_buffer_copy_desc &desc, con
 
 static nkgpu_result validate_image_copy(const nkgpu_image_copy_desc &desc, const Image &source,
                                         const Image &destination) {
+    if (!image_transfer_shape_supported(source) || !image_transfer_shape_supported(destination))
+        return fail(NKGPU_ERROR_UNSUPPORTED, "cube image copies are unavailable");
     if (source.format != destination.format || source.sample_count != 1 ||
         destination.sample_count != 1)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "image-copy formats or samples are incompatible");
@@ -3921,6 +3927,8 @@ nkgpu_result nkgpu_image_copy(nkgpu_renderer r, const nkgpu_image_copy_desc *des
 static nkgpu_result validate_buffer_image_copy(const nkgpu_buffer_image_copy_desc &desc,
                                                const Buffer &buffer, const Image &image,
                                                uint32_t &row_pitch) {
+    if (!image_transfer_shape_supported(image))
+        return fail(NKGPU_ERROR_UNSUPPORTED, "cube image transfers are unavailable");
     if (image.sample_count != 1)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT,
                     "buffer-image transfers require single-sample images");
@@ -3999,6 +4007,8 @@ nkgpu_result nkgpu_readback_begin_image(nkgpu_renderer r, const nkgpu_image_read
     auto *image = image_pool.get(desc->image);
     if (!image || image->value.owner != r)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign readback image");
+    if (!image_transfer_shape_supported(image->value))
+        return fail(NKGPU_ERROR_UNSUPPORTED, "cube image readback is unavailable");
     if (image->value.sample_count != 1)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "image readback requires a single-sample image");
     uint32_t image_width = 0;
