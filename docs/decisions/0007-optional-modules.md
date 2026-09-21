@@ -1,5 +1,8 @@
 # ADR 0007: Optional GPU and UI modules
 
+> **Superseded in part:** UIKit was extracted to the sibling `uikit` project.
+> NativeKit retains its core and optional GPU module.
+
 NativeKit's platform ABI remains independent of rendering and UI-framework
 policy. Experimental higher layers live in the same repository for atomic
 changes and shared CI, but build as optional targets.

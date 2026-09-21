@@ -3,7 +3,7 @@ set -euo pipefail
 
 module_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 nativekit_dir=$(cd "$module_dir/../.." && pwd)
-haxeon_dir=${HAXEON_DIR:-"$(dirname "$nativekit_dir")/realtime-haxe"}
+haxeon_dir=${HAXEON_DIR:-"$(dirname "$nativekit_dir")/haxeon"}
 build_dir=${NATIVEKIT_BUILD_DIR:-"$nativekit_dir/build-gpu"}
 
 cmake -S "$nativekit_dir" -B "$build_dir" -GNinja -DCMAKE_BUILD_TYPE=Debug \

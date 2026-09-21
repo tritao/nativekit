@@ -16,11 +16,9 @@ update the snapshot, the normative
 [platform parity contract](platform-parity.md), and behavior coverage together.
 
 The parity suite covers the core platform ABI and the optional networking
-capability bits when that module is enabled. Optional GPU and retained UI
-behavior is validated by module-specific native, Haxeon, showcase, and visual
-tests rather than by the capability snapshot; see the [UI module guide](../modules/ui/README.md)
-for its layout, computed-style cache, whole-submission cache, and framework
-smoke-test coverage.
+capability bits when that module is enabled. Optional GPU behavior is validated
+by its module-specific native and Haxeon tests. UIKit maintains its native,
+Haxeon, showcase, and visual tests in the sibling `uikit` project.
 
 Desktop backends also run `capability_conformance`, a shared operation-level
 suite for windows, extended geometry and styling, input/IME, cursors, monitors,
@@ -110,22 +108,15 @@ cd android
 reviewed Linux HXI declarations into Haxe, and runs the result through HashLink.
 It covers initialization, typed event polling, UTF-8 diagnostics, window and
 monitor handles, and the two-call monitor-name output buffer. The sibling
-`../realtime-haxe` checkout is used by default. Set `HAXEON_DIR` when
-configuring to select another checkout, or set the cached `NKUI_HAXEON_DIR`
-path explicitly:
+`../haxeon` checkout is used by default. Set `HAXEON_DIR` to select another
+checkout:
 
 ```sh
-HAXEON_DIR=/path/to/haxeon cmake -S . -B build
-# or, on an existing build:
-cmake -S . -B build -DNKUI_HAXEON_DIR=/path/to/haxeon
+HAXEON_DIR=/path/to/haxeon tools/test-haxeon.sh
 ```
 
-The selected path is captured in the build cache and propagated to the UI
-CTest targets, so later reconfigures do not silently switch compiler branches.
 The smoke test first runs `tools/update-haxeon-hxi.sh --check`, so header and
-checked-in binding drift fails before compilation. The UI projection is composed
-with the core `NativeKit` HXI, so core declarations are projected once and the
-UI interface owns only its `nkui_*` functions.
+checked-in binding drift fails before compilation.
 
 ## Windows compatibility smoke tests
 

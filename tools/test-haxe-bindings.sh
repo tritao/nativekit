@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-haxeon_dir=${HAXEON_DIR:-"$(dirname "$repo_dir")/realtime-haxe"}
+haxeon_dir=${HAXEON_DIR:-"$(dirname "$repo_dir")/haxeon"}
 test_root=$(mktemp -d)
 trap 'rm -rf -- "$test_root"' EXIT
 
@@ -15,7 +15,6 @@ HAXEON_DIR="$haxeon_dir" "$repo_dir/tools/update-haxeon-hxi.sh" --check
 HAXEON_DIR="$haxeon_dir" "$repo_dir/tools/update-haxeon-vulkan-hxi.sh" --check
 HAXEON_DIR="$haxeon_dir" "$repo_dir/tools/update-haxeon-net-hxi.sh" --check
 HAXEON_DIR="$haxeon_dir" "$repo_dir/tools/update-haxeon-wasm-hxi.sh" --check
-HAXEON_DIR="$haxeon_dir" "$repo_dir/modules/ui/tools/update-haxeon-wasm-hxi.sh" --check
 
 "$haxeon_dir/scripts/haxeon-ffi-audit" \
     --target=x86_64-linux-gnu \
@@ -54,32 +53,15 @@ cmp "$repo_dir/modules/gpu/bindings/nativekit-gpu.hxi" "$test_root/nativekit-gpu
     --output="$test_root/nativekit-gpu-abi32.hxi" \
     "$repo_dir/modules/gpu/bindings/nativekit_gpu_import.h"
 
-HAXEON_DIR="$haxeon_dir" "$repo_dir/modules/ui/tools/check-hxi.sh" \
-    "$test_root/nativekit-ui-abi64.hxi"
-cmp "$repo_dir/modules/ui/bindings/nativekit-ui.hxi" "$test_root/nativekit-ui-abi64.hxi"
-
 build_dir="$test_root/native-build"
 cmake -S "$repo_dir" -B "$build_dir" -GNinja \
     -DCMAKE_BUILD_TYPE=Debug \
     -DNK_BUILD_SHARED=ON \
     -DNK_BUILD_GPU=ON \
-    -DNK_BUILD_SCENE=ON \
-    -DNK_BUILD_SCENE_RENDER=ON \
-    -DNK_BUILD_SCENE_INTERACTION=ON \
-    -DNK_BUILD_UI=ON \
     -DNK_BUILD_TESTS=ON \
     -DNK_BUILD_EXAMPLES=ON
 
 HAXEON_DIR="$haxeon_dir" "$repo_dir/tools/test-haxeon.sh"
 HAXEON_DIR="$haxeon_dir" NATIVEKIT_BUILD_DIR="$build_dir" \
     "$repo_dir/modules/gpu/tools/test-haxeon.sh"
-HAXEON_DIR="$haxeon_dir" NATIVEKIT_BUILD="$build_dir" \
-    "$repo_dir/modules/scene_render/tools/test-haxeon.sh"
-HAXEON_DIR="$haxeon_dir" NATIVEKIT_BUILD_DIR="$build_dir" \
-    "$repo_dir/modules/ui/tools/test-haxeon.sh"
-HAXEON_DIR="$haxeon_dir" NATIVEKIT_BUILD_DIR="$build_dir" \
-    "$repo_dir/modules/ui/tools/test-haxeon-framework.sh"
-HAXEON_DIR="$haxeon_dir" NATIVEKIT_BUILD_DIR="$build_dir" \
-    "$repo_dir/modules/ui/tools/showcase.sh" --build-only
-
-echo "PASS: ABI32/ABI64 HXI drift checks and NativeKit core, GPU, and UI Haxeon smoke tests"
+echo "PASS: ABI32/ABI64 HXI drift checks and NativeKit core and GPU Haxeon smoke tests"

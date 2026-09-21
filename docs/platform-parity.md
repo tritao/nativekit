@@ -11,9 +11,9 @@ makes semantic sense or explicitly classified as not applicable. A missing
 implementation is a `Deferred` item, not an implicit platform exception.
 
 This contract covers the core NativeKit platform ABI and its capability bits.
-The optional `NativeKit::gpu` and `NativeKit::ui` modules are not capability
-families in this table: their rendering, layout, style, and framework behavior
-are documented and tested by their respective module suites. The optional
+The optional `NativeKit::gpu` module is not a capability family in this table;
+its behavior is documented and tested by its module suite. UIKit is a sibling
+project and maintains its own layout, rendering, and framework contracts. The optional
 HTTP capability bits are the exception and are included below. They remain
 runtime-optional and are advertised only when the selected transport supports
 them.

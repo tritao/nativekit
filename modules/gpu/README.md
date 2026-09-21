@@ -69,19 +69,16 @@ xvfb-run -a ./build-gpu/modules/gpu/nativekit_gpu_triangle --smoke-test
 
 Set `NK_BUILD_TESTS=ON`, then build and run CTest for each configuration:
 
-| Configuration | `NK_BUILD_GPU` | `NK_BUILD_UI` |
-| --- | --- | --- |
-| Core only | `OFF` | `OFF` |
-| GPU only | `ON` | `OFF` |
-| UI (GPU dependency enabled automatically) | `OFF` | `ON` |
-| GPU + UI | `ON` | `ON` |
+| Configuration | `NK_BUILD_GPU` |
+| --- | --- |
+| Core only | `OFF` |
+| Core + GPU | `ON` |
 
 Use `NK_BUILD_SHARED=ON` and `OFF` to cover shared and static libraries. On
 desktop Linux, use `NK_SOKOL_BACKEND=glcore` or `gles3` for a single runtime;
 `NK_BUILD_GPU_BACKEND_MATRIX=ON` builds both runtime variants together. The
-GPU runtime test independently verifies both Sokol runtime variants. With UI
-enabled, `nativekit_ui_public_renderer_smoke` checks the public UI renderer on
-the configured GPU backend.
+GPU runtime test independently verifies both Sokol runtime variants. UIKit has
+its own renderer tests against the configured NativeKit GPU backend.
 
 `nativekit_gpu_contract_smoke` covers shader-language validation, renderer
 ownership, renderer cleanup, the lost-state contract, injected allocation and

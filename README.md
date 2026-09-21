@@ -125,83 +125,23 @@ ctest --test-dir build --output-on-failure
 ```
 
 For a Linux Release package with stripped shared libraries and separate debug
-symbols, configure and build the UI, then run:
+symbols, configure and build NativeKit, then run:
 
 ```sh
-tools/check-native-ui-size.sh build-release/modules/ui/libnativekit_ui.so
 tools/package-native-release.sh build-release out/nativekit
 ```
 
 The package helper writes debug files under `lib/.debug/` and adds GNU debug
-links to the stripped libraries. The current native UI loadable-size budget is
-1,700,000 bytes; the same check runs in CI.
+links to the stripped libraries.
 
-Experimental higher-level modules live in the same repository but remain
-optional so the core platform library stays compact. Enable the low-level GPU
-module with `-DNK_BUILD_GPU=ON`, or the retained UI module with
-`-DNK_BUILD_UI=ON` (which also builds its GPU dependency). HTTP networking is
+The experimental low-level GPU module remains optional so the core platform
+library stays compact; enable it with `-DNK_BUILD_GPU=ON`. HTTP networking is
 part of the main NativeKit library and is available as a runtime capability.
 On Linux, opt into the system libcurl backend with
 `-DNK_USE_SYSTEM_CURL=ON`; when curl is unavailable, the API remains present
 but reports `NK_ERROR_UNSUPPORTED`. Module architecture and build notes live
-under [`modules/`](modules/).
-
-The retained UI module provides cross-platform layout and rendering plus an
-optional Haxe framework with widgets, state, gestures, accessibility, and
-animation. Its FIT/GROW layout axes support minimum and maximum constraints and
-weighted growth; the Haxe layer also provides computed-style and whole-submission
-caches for static or mostly static trees. See the [UI module guide](modules/ui/README.md)
-for the layout/style contract, cache invalidation rules, and framework test
-commands. The [UI Explorer guide](modules/ui/examples/ui_showcase/README.md)
-covers the interactive showcase and visual checks.
-
-### Web / WASM preview
-
-The initial browser backend is Emscripten + WebGL2 behind NativeKit's regular
-window, surface, input, and frame-callback APIs. Set it up and build the
-browser UI showcase with:
-
-```sh
-./tools/setup-web.sh
-./tools/build-web.sh
-./tools/test-web.sh
-./tools/benchmark-web-haxeon.sh
-python3 -m http.server --directory build-web 8080
-```
-
-Then open `http://localhost:8080/modules/ui/nativekit_ui_c_api.html`. Add `?smoke` to run
-the 30-frame browser smoke test. The generated web host is an example/deploy
-shell; Emscripten remains private to the platform implementation.
-
-The same Showcase source can also be compiled through Haxeon’s wasm32 backend:
-
-```sh
-./modules/ui/tools/showcase-wasm.sh
-```
-
-This produces a validated guest module and portable wasm32 HXI contracts. A
-browser host bridge is still required to connect those imports to Emscripten’s
-NativeKit runtime.
-
-The browser benchmark warms up the Haxeon Showcase, measures 600 rendered
-frames by default, and writes startup timings, frame-time percentiles, dropped
-frames, artifact sizes, and shared-memory size to
-`out/benchmark-web-haxeon.json`. Override the run length with
-`NATIVEKIT_WEB_BENCHMARK_WARMUP` and `NATIVEKIT_WEB_BENCHMARK_FRAMES`.
-The default runner uses headless Chrome with software WebGL for repeatability;
-its frame cost is useful for regressions, while its estimated dropped-frame
-count should not be treated as production GPU pacing.
-
-Capture every neutral NativeKit UI Explorer catalog page headlessly with:
-
-```sh
-./tools/build-web.sh
-./tools/test-web-visual.sh --ui-gallery out/ui-gallery
-```
-
-The gallery command writes deterministic 1200×800 PNGs without reading or
-updating visual-test baselines. Focus, overlay, theme, zoom, and compact cases
-remain available through `tools/test-web-visual.sh` as regression states.
+under [`modules/`](modules/). The UI framework, browser showcase, and visual
+test tooling now live in the sibling `uikit` project.
 
 The Android library, sample applications, and Gradle wrapper live under
 [`android/`](android/). See the [Android guide](android/README.md) for SDK/NDK,

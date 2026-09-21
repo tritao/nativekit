@@ -1,8 +1,3 @@
 [submodule "vendor/sokol"]
 	path = vendor/sokol
 	url = https://github.com/tritao/sokol.git
-[submodule "vendor/haxeon"]
-	path = vendor/haxeon
-	url = https://github.com/tritao/haxeon.git
-	update = none
-	shallow = true

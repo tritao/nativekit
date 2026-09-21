@@ -1,5 +1,8 @@
 # ADR 0015: Explicit surface frame transactions
 
+> **Historical note:** references to `NativeKit::ui` describe the component now
+> maintained by the sibling UIKit project.
+
 ## Status
 
 Accepted. Frame acquisition, rendering, and presentation are now three named

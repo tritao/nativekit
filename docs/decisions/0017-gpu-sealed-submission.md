@@ -1,5 +1,8 @@
 # ADR 0017: GPU sealed submission batches
 
+> **Historical note:** references to `NativeKit::ui` describe the component now
+> maintained by the sibling UIKit project.
+
 ## Status
 
 Implemented through migration step 3. `nkgpu_batch_*` records, seals, retains,

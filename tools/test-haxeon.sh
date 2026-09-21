@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-haxeon_dir=${HAXEON_DIR:-"$(dirname "$repo_dir")/realtime-haxe"}
+haxeon_dir=${HAXEON_DIR:-"$(dirname "$repo_dir")/haxeon"}
 
 if [[ ! -x "$haxeon_dir/.tools/haxe/haxe" ]]; then
     echo "test-haxeon: missing Haxeon compiler: $haxeon_dir/.tools/haxe/haxe" >&2

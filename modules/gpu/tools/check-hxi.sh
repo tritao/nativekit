@@ -3,7 +3,7 @@ set -euo pipefail
 
 module_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 repo_dir=$(cd "$module_dir/../.." && pwd)
-haxeon_dir=${HAXEON_DIR:-"$(dirname "$repo_dir")/realtime-haxe"}
+haxeon_dir=${HAXEON_DIR:-"$(dirname "$repo_dir")/haxeon"}
 output=${1:-"$module_dir/bindings/nativekit-gpu.hxi"}
 
 "$haxeon_dir/scripts/haxeon-ffi-audit" \

@@ -1,5 +1,8 @@
 # ADR 0008: NativeKit GPU owns backend rendering; UI owns render planning
 
+> **Superseded in ownership only:** the UI responsibilities described here now
+> belong to the sibling UIKit project; the GPU boundary remains unchanged.
+
 NativeKit needs one ordered rendering model for Canvas drawing, retained UI,
 NanoVG paths, Skribidi text, offscreen layers, and producers such as 3D views.
 The GPU/UI boundary keeps backend work generic while allowing UI to preserve

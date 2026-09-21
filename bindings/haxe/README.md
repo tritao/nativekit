@@ -91,7 +91,7 @@ tools/update-haxeon-hxi.sh
 tools/update-haxeon-hxi.sh --check
 ```
 
-It expects the Haxeon checkout at `../realtime-haxe` by default. Override that
-with `HAXEON_DIR=/path/to/realtime-haxe`. The canonical file is written only
+It expects the Haxeon checkout at `../haxeon` by default. Override that
+with `HAXEON_DIR=/path/to/haxeon`. The canonical file is written only
 after Linux, Windows, and both macOS 64-bit models compare successfully. Wine
 continues to validate the same C ABI independently through `tools/test-wine.sh`.

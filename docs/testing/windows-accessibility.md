@@ -11,8 +11,8 @@ On a Windows build, run the focused check with:
 ctest --test-dir build -C Debug -R "win_accessibility_uia|win_surface_d3d11" --output-on-failure
 ```
 
-For an interactive screen-reader check, build the NativeKit UI Explorer with
-the repository's Haxeon toolchain and run `modules/ui/tools/showcase.sh`. The
+For an interactive screen-reader check, build the UI Explorer from the sibling
+UIKit project with the Materia Haxeon toolchain and run `uikit/tools/showcase.sh`. The
 desktop Explorer publishes its resolved semantic tree to its D3D11 surface on
 each frame, and routes UI Automation actions back through the NativeKit event
 queue into the focused widget.
