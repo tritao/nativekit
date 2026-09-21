@@ -14,7 +14,9 @@
 		"nk_joystick": "JoystickHandle",
 		"nk_mobile_host": "MobileHostHandle",
 		"nk_resource_stream": "ResourceStreamHandle",
-		"nk_task": "TaskHandle"
+		"nk_task": "TaskHandle",
+		"nk_transport": "TransportHandle",
+		"nk_listener": "ListenerHandle"
 	},
 	"resultPolicies": {
 		"nk_result": {

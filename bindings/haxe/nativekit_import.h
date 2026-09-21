@@ -22,5 +22,6 @@
 #include "nativekit_view.h"
 #include "nativekit_notification.h"
 #include "nativekit_time.h"
+#include "nativekit_transport.h"
 
 #endif
