@@ -268,6 +268,70 @@ int main() {
         assert(picked.occurrence == second_occurrence);
         assert(picked.source == nkscene::EntityId{142});
 
+        Transaction hide_second(scene);
+        hide_second.add_visibility(second_occurrence, false);
+        assert(scene->commit(hide_second, changes) == NKS_OK);
+        hide_second.close();
+        const auto hidden_snapshot = scene->snapshot();
+        const auto hidden_update = nkscene::update(plan, hidden_snapshot, changes, view);
+        assert(!hidden_update.plan_rebuilt);
+        stats = executor.execute(plan, hidden_snapshot);
+        assert(stats.result == NKGPU_OK);
+        assert(stats.full_rebuilds == 0);
+        assert(stats.batches_inspected == 1);
+        assert(stats.batch_instances_inspected == 1);
+        assert(stats.commands_patched == 1);
+        assert(stats.commands == 1);
+
+        Transaction show_second(scene);
+        show_second.add_visibility(second_occurrence, true);
+        assert(scene->commit(show_second, changes) == NKS_OK);
+        show_second.close();
+        const auto restored_snapshot = scene->snapshot();
+        const auto restored_update = nkscene::update(plan, restored_snapshot, changes, view);
+        assert(!restored_update.plan_rebuilt);
+        stats = executor.execute(plan, restored_snapshot);
+        assert(stats.result == NKGPU_OK);
+        assert(stats.full_rebuilds == 0);
+        assert(stats.batches_inspected == 1);
+        assert(stats.batch_instances_inspected == 2);
+        assert(stats.commands_patched == 1);
+        assert(stats.commands == 2);
+
+        const auto alternate_material = scene->reserve_material_id();
+        scene->material_store().create(alternate_material);
+        Transaction change_instance_material(scene);
+        change_instance_material.add_material(occurrence, alternate_material);
+        assert(scene->commit(change_instance_material, changes) == NKS_OK);
+        change_instance_material.close();
+        const auto rematerialized_snapshot = scene->snapshot();
+        const auto rematerialized_update =
+            nkscene::update(plan, rematerialized_snapshot, changes, view);
+        assert(!rematerialized_update.plan_rebuilt);
+        stats = executor.execute(plan, rematerialized_snapshot);
+        assert(stats.result == NKGPU_OK);
+        assert(stats.full_rebuilds == 0);
+        assert(stats.batches_inspected == 2);
+        assert(stats.batch_instances_inspected == 2);
+        assert(stats.commands_patched == 1);
+        assert(stats.commands == 2);
+
+        Transaction restore_instance_material(scene);
+        restore_instance_material.add_material(occurrence, material);
+        assert(scene->commit(restore_instance_material, changes) == NKS_OK);
+        restore_instance_material.close();
+        const auto restored_material_snapshot = scene->snapshot();
+        const auto restored_material_update =
+            nkscene::update(plan, restored_material_snapshot, changes, view);
+        assert(!restored_material_update.plan_rebuilt);
+        stats = executor.execute(plan, restored_material_snapshot);
+        assert(stats.result == NKGPU_OK);
+        assert(stats.full_rebuilds == 0);
+        assert(stats.batches_inspected == 2);
+        assert(stats.batch_instances_inspected == 2);
+        assert(stats.commands_patched == 1);
+        assert(stats.commands == 2);
+
         auto &updated_material = scene->material_store().create(material);
         updated_material.edit_state().base_color = {1.0f, 0.3f, 0.2f, 1.0f};
         scene->publish();

@@ -167,6 +167,12 @@ RenderPlan compile(const SceneSnapshot &snapshot, const SceneView &view) {
 RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const ChangeSet &changes,
                     const SceneView &view) {
     RenderUpdate result;
+    std::vector<OccurrenceId> layout_occurrences;
+    std::unordered_set<OccurrenceId> layout_occurrence_set;
+    const auto mark_layout_occurrence = [&](OccurrenceId occurrence) {
+        if (layout_occurrence_set.insert(occurrence).second)
+            layout_occurrences.push_back(occurrence);
+    };
     const auto next_view_signature = render_internal::view_signature(view);
     const auto next_presentation_signature = render_internal::presentation_signature(view);
     const auto next_culling_signature = render_internal::culling_signature(view);
@@ -378,6 +384,7 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
         auto &item = plan.items_[item_index];
         if (has_domain(change.domains, ChangeDomain::Geometry) &&
             item.geometry != snapshot_occurrence->geometry) {
+            mark_layout_occurrence(change.occurrence);
             remove_index(plan.items_by_geometry_, item.geometry, item_index);
             item.geometry = snapshot_occurrence->geometry;
             plan.items_by_geometry_[item.geometry].push_back(item_index);
@@ -481,6 +488,7 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
             const auto next_visible = visible(item.occurrence, visible);
             const auto was_visible = !has_render_flag(item.flags, RenderFlags::Hidden);
             if (next_visible != was_visible) {
+                mark_layout_occurrence(item.occurrence);
                 const auto before = item.flags;
                 if (next_visible)
                     item.flags = static_cast<RenderFlags>(
@@ -500,6 +508,7 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
                 continue;
             }
             if (next_material != item.material) {
+                mark_layout_occurrence(item.occurrence);
                 remove_index(plan.items_by_material_, item.material, item_index);
                 item.material = next_material;
                 plan.items_by_material_[item.material].push_back(item_index);
@@ -576,6 +585,7 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
             const auto next_visible = visible(item.occurrence, visible);
             const auto was_visible = !has_render_flag(item.flags, RenderFlags::Hidden);
             if (next_visible != was_visible) {
+                mark_layout_occurrence(item.occurrence);
                 const auto before = item.flags;
                 if (next_visible)
                     item.flags = static_cast<RenderFlags>(
@@ -595,6 +605,7 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
                 continue;
             }
             if (next_material != item.material) {
+                mark_layout_occurrence(item.occurrence);
                 remove_index(plan.items_by_material_, item.material, item_index);
                 item.material = next_material;
                 plan.items_by_material_[item.material].push_back(item_index);
@@ -658,6 +669,7 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
             const auto next_visible = visible(item.occurrence, visible);
             const auto was_visible = !has_render_flag(item.flags, RenderFlags::Hidden);
             if (next_visible != was_visible) {
+                mark_layout_occurrence(item.occurrence);
                 const auto before = item.flags;
                 if (next_visible)
                     item.flags = static_cast<RenderFlags>(
@@ -673,6 +685,7 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
                 continue;
             }
             if (occurrence->material != item.material) {
+                mark_layout_occurrence(item.occurrence);
                 remove_index(plan.items_by_material_, item.material, item_index);
                 item.material = occurrence->material;
                 plan.items_by_material_[item.material].push_back(item_index);
@@ -701,6 +714,7 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
             const auto visible = effective.visible.at(occurrence_id);
             const auto was_visible = !has_render_flag(item.flags, RenderFlags::Hidden);
             if (visible != was_visible) {
+                mark_layout_occurrence(item.occurrence);
                 const auto before = item.flags;
                 if (visible)
                     item.flags =
@@ -717,6 +731,7 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
                 continue;
             }
             if (material != item.material) {
+                mark_layout_occurrence(item.occurrence);
                 remove_index(plan.items_by_material_, item.material, item_index);
                 item.material = material;
                 plan.items_by_material_[item.material].push_back(item_index);
@@ -800,6 +815,7 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
         const auto was_culled = has_render_flag(item.flags, RenderFlags::Culled);
         if (item_culled == was_culled)
             continue;
+        mark_layout_occurrence(occurrence_id);
         const auto before = item.flags;
         if (item_culled)
             item.flags |= RenderFlags::Culled;
@@ -840,6 +856,7 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
                            result.patched_culling != 0;
     delta.resource_delta_complete = resource_changes_complete;
     delta.transforms = changes.world_transform_occurrences;
+    delta.layout_occurrences = std::move(layout_occurrences);
     if (resource_changes_complete) {
         delta.geometries = resource_changes.geometries;
         delta.materials = resource_changes.materials;

@@ -561,6 +561,12 @@ struct GpuExecutionStats {
     std::size_t draw_calls = 0;
     /** Number of complete executor reconciliations performed by this call. */
     std::size_t full_rebuilds = 0;
+    /** Number of GPU batch records inspected while synchronizing batch layout. */
+    std::size_t batches_inspected = 0;
+    /** Number of batch instances inspected while synchronizing batch layout. */
+    std::size_t batch_instances_inspected = 0;
+    /** Number of command records patched by an incremental layout update. */
+    std::size_t commands_patched = 0;
 };
 
 class RenderPlan {
@@ -575,6 +581,16 @@ class RenderPlan {
     std::size_t item_index(OccurrenceId occurrence) const noexcept {
         const auto found = item_by_occurrence_.find(occurrence);
         return found == item_by_occurrence_.end() ? invalid_item_index : found->second;
+    }
+    std::size_t batch_index(OccurrenceId occurrence) const noexcept {
+        const auto item = item_index(occurrence);
+        return item == invalid_item_index || item >= item_batch_.size()
+                   ? invalid_item_index
+                   : item_batch_[item];
+    }
+    std::size_t batch_index(GeometryId geometry, MaterialId material) const noexcept {
+        const auto found = batch_by_key_.find({geometry, material});
+        return found == batch_by_key_.end() ? invalid_item_index : found->second;
     }
     std::span<const std::size_t> items_for_source(EntityId source) const noexcept {
         const auto found = items_by_source_.find(source);
@@ -599,6 +615,7 @@ class RenderPlan {
         bool layout_changed = false;
         bool resource_delta_complete = true;
         std::vector<OccurrenceId> transforms;
+        std::vector<OccurrenceId> layout_occurrences;
         std::vector<GeometryId> geometries;
         std::vector<MaterialId> materials;
     };
