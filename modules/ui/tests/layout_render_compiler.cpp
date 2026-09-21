@@ -1,7 +1,7 @@
 #include "layout/layout_engine.h"
 #include "layout/layout_render_compiler.h"
 #include "render/cube_surface_producer.h"
-#include "render/render_plan_executor_detail.h"
+#include "render/render_plan_executor.h"
 #include "render/sealed_render_plan.h"
 #include "render/ui_renderer.h"
 
@@ -964,8 +964,16 @@ int main() {
     frame_target.width = 480;
     frame_target.height = 300;
     RenderExecutionError execution_error;
-    if (!detail::execute_unsealed_render_plan(backend, frame.plan(), frame.resources(),
-                                              {main_target, frame_target}, &execution_error) ||
+    auto seal_test_plan = [](const RenderPlan &plan, const OwnedFrameResources &resources,
+                             RenderPlanSealError *error = nullptr) {
+        return SealedRenderPlan::seal(plan, resources, error);
+    };
+    RenderPlanSealError frame_seal_error;
+    const auto sealed_frame =
+        seal_test_plan(frame.plan(), frame.owned_resources(), &frame_seal_error);
+    if (!sealed_frame || frame_seal_error.message ||
+        !execute_render_plan(backend, *sealed_frame, {main_target, frame_target},
+                             &execution_error) ||
         backend.pass_count != 1 || backend.path_count != path_commands ||
         backend.text_count != text_commands || backend.commit_count != 1)
         return 12;
@@ -994,39 +1002,40 @@ int main() {
                 return SurfaceRenderResult::Rendered;
             }
         } producer;
-        FrameResources producer_resources;
         RenderPlan producer_plan;
         producer_plan.passes.push_back({main_target, {}, false, {}});
         const ResourceId producer_target = make_resource_id(ResourceKind::RenderTarget, 1, 448);
         producer_plan.dependencies.push_back({producer_target, main_target});
-        if (!producer_resources.bind_surface(producer_target, producer))
+        OwnedFrameResources producer_resources;
+        if (producer_resources.bind_surface(producer_target, std::make_shared<TestProducer>()))
             return 66;
-        RecordingRenderer producer_backend;
-        if (detail::execute_unsealed_render_plan(producer_backend, producer_plan,
-                                                 producer_resources, {main_target, frame_target},
-                                                 &execution_error) ||
-            producer_backend.recorded_frame || !execution_error.message ||
-            std::strcmp(
-                execution_error.message,
-                "surface producer must publish a retained graphics image or be recordable") != 0)
+        RenderPlanSealError producer_error;
+        if (SealedRenderPlan::seal(std::move(producer_plan), std::move(producer_resources),
+                                   &producer_error) ||
+            !producer_error.message ||
+            std::strcmp(producer_error.message,
+                        "sealed render plans cannot contain non-recordable surface producers") != 0)
             return 67;
     }
 
     /* The showcase cube is recordable and its offscreen pass enters the sealed batch. */
     {
-        CubeSurfaceProducer producer;
-        producer.set_rotation(0.5f);
-        FrameResources producer_resources;
+        auto producer = std::make_shared<CubeSurfaceProducer>();
         RenderPlan producer_plan;
         producer_plan.passes.push_back({main_target, {}, false, {}});
         const ResourceId producer_target = make_resource_id(ResourceKind::RenderTarget, 1, 449);
         producer_plan.dependencies.push_back({producer_target, main_target});
+        producer->set_rotation(0.5f);
+        OwnedFrameResources producer_resources;
         if (!producer_resources.bind_surface(producer_target, producer))
             return 68;
+        RenderPlanSealError producer_error;
+        const auto sealed_producer =
+            seal_test_plan(producer_plan, producer_resources, &producer_error);
         RecordingRenderer producer_backend;
-        if (!detail::execute_unsealed_render_plan(producer_backend, producer_plan,
-                                                  producer_resources, {main_target, frame_target},
-                                                  &execution_error) ||
+        if (!sealed_producer || producer_error.message ||
+            !execute_render_plan(producer_backend, *sealed_producer, {main_target, frame_target},
+                                 &execution_error) ||
             !producer_backend.recorded_frame || producer_backend.surface_mesh_count != 1 ||
             producer_backend.pass_count != 2 || producer_backend.commit_count != 1)
             return 69;
@@ -1046,8 +1055,12 @@ int main() {
     effect_pass.effect.color_matrix[12] = 1.0f;
     effect_pass.effect.color_matrix[18] = 1.0f;
     effect_plan.passes.push_back(effect_pass);
-    if (!detail::execute_unsealed_render_plan(backend, effect_plan, frame.resources(),
-                                              {main_target, frame_target}, &execution_error) ||
+    RenderPlanSealError effect_seal_error;
+    const auto sealed_effect =
+        seal_test_plan(effect_plan, frame.owned_resources(), &effect_seal_error);
+    if (!sealed_effect || effect_seal_error.message ||
+        !execute_render_plan(backend, *sealed_effect, {main_target, frame_target},
+                             &execution_error) ||
         backend.effect_count != 1 || backend.commit_count != 2)
         return 25;
 
@@ -1066,8 +1079,11 @@ int main() {
     mask_pass.mask.values[4] = 0.0f;
     mask_pass.mask.values[5] = 1.0f;
     mask_plan.passes.push_back(mask_pass);
-    if (!detail::execute_unsealed_render_plan(backend, mask_plan, frame.resources(),
-                                              {main_target, frame_target}, &execution_error) ||
+    RenderPlanSealError mask_seal_error;
+    const auto sealed_mask = seal_test_plan(mask_plan, frame.owned_resources(), &mask_seal_error);
+    if (!sealed_mask || mask_seal_error.message ||
+        !execute_render_plan(backend, *sealed_mask, {main_target, frame_target},
+                             &execution_error) ||
         backend.mask_count != 1 || backend.commit_count != 3)
         return 28;
 
@@ -1082,8 +1098,12 @@ int main() {
     box_shadow_command.box_shadow.blur_sigma = 8.0f;
     box_shadow_command.box_shadow.color = {0.1f, 0.2f, 0.3f, 0.5f};
     box_shadow_plan.passes.front().commands.push_back(box_shadow_command);
-    if (!detail::execute_unsealed_render_plan(backend, box_shadow_plan, frame.resources(),
-                                              {main_target, frame_target}, &execution_error) ||
+    RenderPlanSealError box_shadow_seal_error;
+    const auto sealed_box_shadow =
+        seal_test_plan(box_shadow_plan, frame.owned_resources(), &box_shadow_seal_error);
+    if (!sealed_box_shadow || box_shadow_seal_error.message ||
+        !execute_render_plan(backend, *sealed_box_shadow, {main_target, frame_target},
+                             &execution_error) ||
         backend.box_shadow_count != 1 || backend.commit_count != 4)
         return 29;
 
@@ -1099,12 +1119,12 @@ int main() {
     const ResourceId cache_surface = make_resource_id(ResourceKind::RenderTarget, 1, 465);
     const ResourceId cache_source_image = make_resource_id(ResourceKind::Image, 1, 466);
     const ResourceId cache_mask_image = make_resource_id(ResourceKind::Image, 1, 467);
-    PreparedTexture cache_source_texture;
-    cache_source_texture.width = cache_source_texture.height = 1;
-    cache_source_texture.pixels = {255, 255, 255, 255};
-    PreparedTexture cache_mask_texture = cache_source_texture;
-    MutableSurfaceProducer cache_surface_producer;
-    FrameResources cache_resources;
+    auto cache_source_texture = std::make_shared<PreparedTexture>();
+    cache_source_texture->width = cache_source_texture->height = 1;
+    cache_source_texture->pixels = {255, 255, 255, 255};
+    auto cache_mask_texture = std::make_shared<PreparedTexture>(*cache_source_texture);
+    auto cache_surface_producer = std::make_shared<MutableSurfaceProducer>();
+    OwnedFrameResources cache_resources;
     if (!cache_resources.bind_image(cache_source_image, cache_source_texture, 10) ||
         !cache_resources.bind_image(cache_mask_image, cache_mask_texture, 20) ||
         !cache_resources.bind_surface(cache_surface, cache_surface_producer))
@@ -1171,13 +1191,16 @@ int main() {
 
     RecordingRenderer cache_backend;
     auto execute_cache_plan = [&] {
-        return detail::execute_unsealed_render_plan(cache_backend, cache_plan, cache_resources,
-                                                    {cache_main, frame_target}, &execution_error);
+        RenderPlanSealError cache_seal_error;
+        const auto sealed_cache = seal_test_plan(cache_plan, cache_resources, &cache_seal_error);
+        return sealed_cache && !cache_seal_error.message &&
+               execute_render_plan(cache_backend, *sealed_cache, {cache_main, frame_target},
+                                   &execution_error);
     };
     if (!execute_cache_plan() || cache_backend.effect_cache_keys.size() != 2 ||
         cache_backend.effect_cache_hits != 0 || cache_backend.effect_count != 2)
         return 30;
-    cache_surface_producer.generation_value = 2;
+    cache_surface_producer->generation_value = 2;
     if (!execute_cache_plan() || cache_backend.effect_cache_keys.size() != 2 ||
         cache_backend.effect_cache_hits != 2 || cache_backend.effect_count != 2)
         return 31;
