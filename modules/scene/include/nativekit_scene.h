@@ -374,10 +374,10 @@ NKS_API nkscene_result NKS_CALL nkscene_tx_set_source_entity(nkscene_transaction
                                                              nkscene_entity_id source);
 NKS_API nkscene_result NKS_CALL nkscene_tx_set_name(nkscene_transaction transaction,
                                                     nkscene_occurrence_id occurrence,
-                                                    const char *name);
+                                                    const char *name NK_UTF8);
 NKS_API nkscene_result NKS_CALL nkscene_tx_set_entity_name(nkscene_transaction transaction,
                                                            nkscene_entity_id entity,
-                                                           const char *name);
+                                                           const char *name NK_UTF8);
 
 /* ------------------------------------------------------------------------- */
 /* Snapshots and changes                                                     */
