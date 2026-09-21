@@ -1,6 +1,13 @@
 {
   "interface": "NativeKitSceneRender",
   "typeNames": {
+    "nkscene_bounds": "NativeKitScene.nkscene_bounds",
+    "nkscene_change_set": "NativeKitScene.nkscene_change_set",
+    "nkscene_entity_id": "NativeKitScene.nkscene_entity_id",
+    "nkscene_material_id": "NativeKitScene.nkscene_material_id",
+    "nkscene_occurrence_id": "NativeKitScene.nkscene_occurrence_id",
+    "nkscene_snapshot": "NativeKitScene.nkscene_snapshot",
+    "nkscene_transform": "NativeKitScene.nkscene_transform",
     "nkgpu_renderer": "NativeKitGpu.nkgpu_renderer",
     "nkgpu_result": "NativeKitGpu.GpuStatus"
   }

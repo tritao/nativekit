@@ -63,6 +63,9 @@ cmake -S "$repo_dir" -B "$build_dir" -GNinja \
     -DCMAKE_BUILD_TYPE=Debug \
     -DNK_BUILD_SHARED=ON \
     -DNK_BUILD_GPU=ON \
+    -DNK_BUILD_SCENE=ON \
+    -DNK_BUILD_SCENE_RENDER=ON \
+    -DNK_BUILD_SCENE_INTERACTION=ON \
     -DNK_BUILD_UI=ON \
     -DNK_BUILD_TESTS=ON \
     -DNK_BUILD_EXAMPLES=ON
