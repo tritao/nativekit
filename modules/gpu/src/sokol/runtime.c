@@ -379,8 +379,60 @@ static uint32_t nk_sokol_image_copy(sg_image source, uint32_t source_mip, uint32
     if (!row_size || row_size / source_bytes != width || temporary_size / row_size != height)
         return 0;
     const sg_image_usage source_usage = sg_query_image_usage(source);
+    const sg_image_usage destination_usage = sg_query_image_usage(destination);
+    const int source_is_depth = source_usage.depth_stencil_attachment;
+    const int destination_is_depth = destination_usage.depth_stencil_attachment;
+    if (source_is_depth || destination_is_depth) {
+        if (!source_is_depth || !destination_is_depth)
+            return 0;
+
+        GLint old_read_framebuffer = 0;
+        GLint old_draw_framebuffer = 0;
+        GLuint read_framebuffer = 0;
+        GLuint draw_framebuffer = 0;
+        clear_gl_errors();
+        glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &old_read_framebuffer);
+        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &old_draw_framebuffer);
+        glGenFramebuffers(1, &read_framebuffer);
+        glGenFramebuffers(1, &draw_framebuffer);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, read_framebuffer);
+        glFramebufferTexture2D(GL_READ_FRAMEBUFFER,
+                               image_attachment(sg_query_image_pixelformat(source)),
+                               source_target, source_texture, (GLint)source_mip);
+        const GLenum read_status = glCheckFramebufferStatus(GL_READ_FRAMEBUFFER);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, draw_framebuffer);
+        glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER,
+                               image_attachment(sg_query_image_pixelformat(destination)),
+                               destination_target, destination_texture,
+                               (GLint)destination_mip);
+        const GLenum draw_status = glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
+        GLenum error = glGetError();
+        if (read_status == GL_FRAMEBUFFER_COMPLETE && draw_status == GL_FRAMEBUFFER_COMPLETE &&
+            error == GL_NO_ERROR) {
+            const GLint source_y0 = (GLint)source_height - (GLint)source_y - (GLint)height;
+            const GLint source_y1 = source_y0 + (GLint)height;
+            const GLint destination_y0 =
+                (GLint)destination_height - (GLint)destination_y - (GLint)height;
+            const GLint destination_y1 = destination_y0 + (GLint)height;
+            const GLbitfield mask =
+                sg_query_image_pixelformat(source) == SG_PIXELFORMAT_DEPTH_STENCIL
+                    ? GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT
+                    : GL_DEPTH_BUFFER_BIT;
+            glBlitFramebuffer((GLint)source_x, source_y0, (GLint)(source_x + width), source_y1,
+                              (GLint)destination_x, destination_y0,
+                              (GLint)(destination_x + width), destination_y1, mask, GL_NEAREST);
+            error = glGetError();
+        }
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)old_read_framebuffer);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, (GLuint)old_draw_framebuffer);
+        glDeleteFramebuffers(1, &read_framebuffer);
+        glDeleteFramebuffers(1, &draw_framebuffer);
+        sg_reset_state_cache();
+        return read_status == GL_FRAMEBUFFER_COMPLETE && draw_status == GL_FRAMEBUFFER_COMPLETE &&
+               error == GL_NO_ERROR;
+    }
     const int source_is_attachment =
-        source_usage.color_attachment || source_usage.depth_stencil_attachment;
+        source_usage.color_attachment;
     uint8_t *temporary = (uint8_t *)malloc(temporary_size);
     if (!temporary)
         return 0;

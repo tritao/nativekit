@@ -317,9 +317,9 @@ bool offscreen_format(nkgpu_renderer renderer, const nkgpu_features &features,
                      format_name(format), stage, actual_bits, expected_bits);
         return false;
     };
-    if (success && can_render && can_sample && features.image_readback)
+    if (success && can_render && can_sample && features.image_readback && support.readback)
         success = check_readback(source, "source");
-    if (success && can_render && depth && features.image_readback) {
+    if (success && can_render && depth && features.image_readback && support.readback) {
         uint32_t depth_pixel = 0;
         const uint32_t expected_depth_bits = 0x3f800000u;
         if (!readback(renderer, source, 1, 1, 1, 1, reinterpret_cast<uint8_t *>(&depth_pixel),
@@ -331,7 +331,8 @@ bool offscreen_format(nkgpu_renderer renderer, const nkgpu_features &features,
             success = false;
         }
     }
-    if (success && can_render && depth && features.image_to_buffer && features.buffer_readback) {
+    if (success && can_render && depth && support.readback && features.image_to_buffer &&
+        features.buffer_readback) {
         nkgpu_buffer depth_buffer{};
         nkgpu_buffer_desc depth_buffer_desc{};
         depth_buffer_desc.struct_size = sizeof(depth_buffer_desc);
@@ -369,7 +370,7 @@ bool offscreen_format(nkgpu_renderer renderer, const nkgpu_features &features,
         }
     }
 
-    if (success && features.image_copy) {
+    if (success && features.image_copy && support.copy) {
         nkgpu_image_desc destination_desc = desc;
         if (can_render) {
             destination_desc.data = nullptr;
@@ -402,7 +403,7 @@ bool offscreen_format(nkgpu_renderer renderer, const nkgpu_features &features,
         }
     }
 
-    if (success && can_sample && features.image_readback) {
+    if (success && can_sample && features.image_readback && support.readback) {
         if (!check_readback(destination.id ? destination : source, "destination"))
             success = false;
     }

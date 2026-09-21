@@ -189,9 +189,14 @@ queries, while Metal uses blit encoders and shared readback buffers. The
 portable surface does not expose backend fences or native resource structs. The
 WebGL build uses WebGL2 staging and synchronous readback, so it exposes the
 same transfer/readback operations but does not promise native asynchronous
-completion semantics. GLCore, D3D11, and Metal expose opaque timestamp queries
-when the runtime provides them; unsupported backends report that capability as
-unavailable.
+completion semantics. Per-format transfer capabilities are reported by
+`nkgpu_query_image_format_support()`: use its `copy` and `readback` fields in
+addition to the resource-usage fields. WebGL2 supports depth textures for
+rendering, sampling, and framebuffer copies, but its `readPixels()` contract
+does not include `DEPTH_COMPONENT` or `DEPTH_STENCIL`; depth image readback is
+therefore reported unavailable on Web. GLCore, D3D11, and Metal expose opaque
+timestamp queries when the runtime provides them; unsupported backends report
+that capability as unavailable.
 
 ## Current GPU API
 
@@ -230,8 +235,7 @@ available. Use `nkgpu_timestamp_collect()` to poll several completed scopes
 with one NativeKit call and `nkgpu_timestamp_get_label()` to retrieve their
 copied labels. Unsupported operations return
 `NKGPU_ERROR_UNSUPPORTED`, so callers do not need to identify the selected
-backend. Depth-image rectangle readback is supported through staging and
-backend-hidden cropping; D3D11 depth image copies remain whole-subresource
-operations because that backend does not permit depth-stencil source rectangles;
-D3D11 depth subregion image copies report `NKGPU_ERROR_UNSUPPORTED`, while
-full-subresource copies remain available.
+backend. D3D11 depth image copies remain whole-subresource operations because
+that backend does not permit depth-stencil source rectangles; D3D11 depth
+subregion image copies report `NKGPU_ERROR_UNSUPPORTED`, while full-subresource
+copies remain available.
