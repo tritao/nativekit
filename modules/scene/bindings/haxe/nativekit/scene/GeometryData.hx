@@ -8,6 +8,8 @@ class GeometryData {
 	final value:nkscene_geometry_data;
 	final vertices:Array<nkscene_geometry_vertex> = [];
 	final subelements:Array<nkscene_subelement_range> = [];
+	final streams:Array<nkscene_vertex_stream> = [];
+	final streamData:Array<Bytes> = [];
 	final indexValues:Array<Int> = [];
 	var indices:Bytes = Bytes.alloc(0);
 
@@ -29,6 +31,28 @@ class GeometryData {
 		appendIndex(first);
 		appendIndex(second);
 		appendIndex(third);
+		return this;
+	}
+
+	public function setPrimitiveType(primitiveType:Int):GeometryData {
+		value.set_primitive_type(primitiveType);
+		return this;
+	}
+
+	/** Adds one tightly packed or explicitly strided vertex attribute stream. */
+	public function addStream(semantic:Int, format:Int, data:Bytes, count:Int,
+			stride:Int = 0):GeometryData {
+		if (count < 0 || stride < 0)
+			throw "Geometry stream count and stride must be non-negative";
+		var stream = new nkscene_vertex_stream();
+		stream.set_struct_size(nkscene_vertex_stream.size());
+		stream.set_semantic(semantic);
+		stream.set_format(format);
+		stream.set_stride(stride);
+		stream.set_data_bytes(data);
+		stream.set_count(count);
+		streams.push(stream);
+		streamData.push(data);
 		return this;
 	}
 
@@ -73,6 +97,10 @@ class GeometryData {
 			value.set_index_count(indexValues.length);
 		}
 		value.set_subelements(subelements);
+		if (streams.length != 0) {
+			value.set_streams(streams);
+			value.set_stream_count(streams.length);
+		}
 		return value;
 	}
 

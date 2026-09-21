@@ -34,6 +34,59 @@ class MaterialData {
 		return this;
 	}
 
+	public function setMetallic(value:Float):MaterialData {
+		this.value.set_metallic(value);
+		return this;
+	}
+
+	public function setRoughness(value:Float):MaterialData {
+		this.value.set_roughness(value);
+		return this;
+	}
+
+	public function setEmissive(red:Float, green:Float, blue:Float):MaterialData {
+		value.set_emissive(0, red);
+		value.set_emissive(1, green);
+		value.set_emissive(2, blue);
+		return this;
+	}
+
+	public function setAlphaCutoff(value:Float):MaterialData {
+		this.value.set_alpha_cutoff(value);
+		return this;
+	}
+
+	public function setAlphaMode(value:Int):MaterialData {
+		this.value.set_alpha_mode(value);
+		return this;
+	}
+
+	public function setBaseColorTexture(texture:Null<Texture>, sampler:Null<Sampler> = null):MaterialData {
+		value.set_base_color_texture(texture == null ? new nkscene_texture_id() : texture.id());
+		value.set_sampler(sampler == null ? new nkscene_sampler_id() : sampler.id());
+		return this;
+	}
+
+	public function setMetallicRoughnessTexture(texture:Null<Texture>):MaterialData {
+		value.set_metallic_roughness_texture(texture == null ? new nkscene_texture_id() : texture.id());
+		return this;
+	}
+
+	public function setNormalTexture(texture:Null<Texture>):MaterialData {
+		value.set_normal_texture(texture == null ? new nkscene_texture_id() : texture.id());
+		return this;
+	}
+
+	public function setEmissiveTexture(texture:Null<Texture>):MaterialData {
+		value.set_emissive_texture(texture == null ? new nkscene_texture_id() : texture.id());
+		return this;
+	}
+
+	public function setOcclusionTexture(texture:Null<Texture>):MaterialData {
+		value.set_occlusion_texture(texture == null ? new nkscene_texture_id() : texture.id());
+		return this;
+	}
+
 	public function setOpaque(opaque:Bool):MaterialData {
 		flags = opaque ? flags | NativeKitSceneConstants.NKS_MATERIAL_OPAQUE
 			: flags & ~NativeKitSceneConstants.NKS_MATERIAL_OPAQUE;

@@ -55,7 +55,13 @@ import nativekit.scene.PickPollResult;
 import nativekit.scene.PickResult;
 import nativekit.scene.GeometryData;
 import nativekit.scene.MaterialData;
+import nativekit.scene.ImageData;
+import nativekit.scene.TextureData;
+import nativekit.scene.SamplerData;
+import nativekit.scene.CameraData;
+import nativekit.scene.LightData;
 import nativekit.scene.Transform;
+import nativekit.scene.TransformUpdate;
 import nativekit.scene.Occurrence;
 import nativekit.scene.VisibilityFilter;
 import nativekit.scene.SelectionSet;
@@ -64,6 +70,7 @@ import nativekit.scene.ScenePresentation;
 import nativekit.scene.SelectionMode;
 import nativekit.gpu.Renderer;
 import nativekit.gpu.Surface;
+import haxe.io.Bytes;
 
 class Main {
 	static function main():Int {
@@ -79,16 +86,34 @@ class Main {
 		geometryData.setBounds(-0.6, -0.6, 0.0, 0.6, 0.6, 0.0);
 		geometryData.addSubelement(0, 1, 42);
 		scene.setGeometryData(geometry, geometryData);
-		scene.setMaterialData(material, MaterialData.opaque(0.2, 0.7, 1.0));
+		var image = scene.createImage(),
+			pixels = Bytes.alloc(4);
+		pixels.set(0, 255);
+		pixels.set(1, 128);
+		pixels.set(2, 64);
+		pixels.set(3, 255);
+		scene.setImageData(image, new ImageData(1, 1).setPixels(pixels));
+		var texture = scene.createTexture();
+		scene.setTextureData(texture, new TextureData(image));
+		var sampler = scene.createSampler();
+		scene.setSamplerData(sampler, new SamplerData());
+		scene.setMaterialData(material, MaterialData.opaque(0.2, 0.7, 1.0)
+			.setBaseColorTexture(texture, sampler));
 		var highlight = scene.createMaterial();
 		scene.setMaterialData(highlight, MaterialData.opaque(1.0, 0.8, 0.1));
 		var hoverHighlight = scene.createMaterial();
 		scene.setMaterialData(hoverHighlight, MaterialData.opaque(1.0, 0.2, 0.1));
+		var camera = scene.createCamera();
+		scene.setCameraData(camera, new CameraData().setPerspective(1.0, 0.01, 100.0, 1.0));
+		var light = scene.createLight();
+		scene.setLightData(light, new LightData().setIntensity(1.25));
 
 		var transaction = scene.beginTransaction(),
 			group = transaction.createOccurrence(),
 			first = transaction.createOccurrence(),
-			second = transaction.createOccurrence();
+			second = transaction.createOccurrence(),
+			cameraOccurrence = transaction.createOccurrence(),
+			lightOccurrence = transaction.createOccurrence();
 		transaction.setParent(first, group);
 		transaction.setParent(second, group);
 		transaction.setGeometry(first, geometry);
@@ -97,17 +122,21 @@ class Main {
 		transaction.setMaterial(second, material);
 		transaction.setSourceEntity(first, haxe.Int64.ofInt(42));
 		transaction.setSourceEntity(second, haxe.Int64.ofInt(84));
-		transaction.setTransform(first, Transform.identity().translated(-0.65, 0.0, 0.0));
+		transaction.setCamera(cameraOccurrence, camera);
+		transaction.setLight(lightOccurrence, light);
+		transaction.setTransforms([new TransformUpdate(first,
+			Transform.identity().translated(-0.65, 0.0, 0.0))]);
 		transaction.setTransform(second, Transform.identity().translated(0.65, 0.0, 0.0));
 		var changes = transaction.commitWithChanges(),
 			snapshot = scene.snapshot(),
-			view = new SceneView().setRoot(group).setViewProjection(Transform.identity());
+			view = new SceneView().setRoot(group).setViewProjection(Transform.identity())
+				.setCameraOccurrence(cameraOccurrence);
 		var infos = snapshot.occurrences(),
 			groupInfo = snapshot.find(group),
 			firstInfo = snapshot.find(first),
 			secondInfo = snapshot.find(second),
 			children = snapshot.children(group);
-		if (infos.length != 3 || groupInfo == null || firstInfo == null || secondInfo == null)
+		if (infos.length != 5 || groupInfo == null || firstInfo == null || secondInfo == null)
 			return 10;
 		var interaction = SceneInteraction.create();
 		interaction.select(first, SelectionMode.Replace);

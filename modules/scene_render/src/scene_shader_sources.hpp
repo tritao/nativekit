@@ -130,8 +130,14 @@ float4 main(SceneFragmentInput input) : SV_Target0
     float3 light_direction = normalize(lighting.xyz);
     float diffuse = 0.35f + 0.65f * max(dot(normalize(input.normal), light_direction), 0.0f) *
                     max(lighting.w, 0.0f);
-    float3 color = base_color.rgb * texture_color.rgb * input.color0.rgb * diffuse + emissive.rgb;
-    return float4(color, base_color.a * texture_color.a * input.color0.a);
+    float surface_response = lerp(1.0f, 0.65f, saturate(surface_params.x)) *
+                             lerp(0.5f, 1.0f, saturate(surface_params.y));
+    float3 color = base_color.rgb * texture_color.rgb * input.color0.rgb * diffuse *
+                   surface_response + emissive.rgb;
+    float alpha = base_color.a * texture_color.a * input.color0.a;
+    if (surface_params.w > 1.5f && alpha < surface_params.z)
+        discard;
+    return float4(color, alpha);
 }
 )";
 
@@ -227,9 +233,14 @@ fragment float4 main0(SceneFragmentInput input [[stage_in]],
     float3 light_direction = normalize(params.lighting.xyz);
     float diffuse = 0.35 + 0.65 * max(dot(normalize(input.normal), light_direction), 0.0) *
                     max(params.lighting.w, 0.0);
-    float3 color = params.base_color.rgb * texture_color.rgb * input.color0.rgb * diffuse +
-                   params.emissive.rgb;
-    return float4(color, params.base_color.a * texture_color.a * input.color0.a);
+    float surface_response = mix(1.0, 0.65, clamp(params.surface_params.x, 0.0, 1.0)) *
+                             mix(0.5, 1.0, clamp(params.surface_params.y, 0.0, 1.0));
+    float3 color = params.base_color.rgb * texture_color.rgb * input.color0.rgb * diffuse *
+                   surface_response + params.emissive.rgb;
+    float alpha = params.base_color.a * texture_color.a * input.color0.a;
+    if (params.surface_params.w > 1.5 && alpha < params.surface_params.z)
+        discard_fragment();
+    return float4(color, alpha);
 }
 )";
 

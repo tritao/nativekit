@@ -25,6 +25,12 @@ void main() {
     vec3 light_direction = normalize(lighting.xyz);
     float diffuse = 0.35 + 0.65 * max(dot(normalize(vertex_normal), light_direction), 0.0) *
                     max(lighting.w, 0.0);
-    vec3 color = base_color.rgb * texture_color.rgb * vertex_color.rgb * diffuse + emissive.rgb;
-    fragment_color = vec4(color, base_color.a * texture_color.a * vertex_color.a);
+    float surface_response = mix(1.0, 0.65, clamp(material_params.x, 0.0, 1.0)) *
+                             mix(0.5, 1.0, clamp(material_params.y, 0.0, 1.0));
+    vec3 color = base_color.rgb * texture_color.rgb * vertex_color.rgb * diffuse *
+                 surface_response + emissive.rgb;
+    float alpha = base_color.a * texture_color.a * vertex_color.a;
+    if (material_params.w > 1.5 && alpha < material_params.z)
+        discard;
+    fragment_color = vec4(color, alpha);
 }

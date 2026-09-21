@@ -9,6 +9,8 @@ class OccurrenceInfo {
 	final sourceId:haxe.Int64;
 	final geometryId:haxe.Int64;
 	final materialId:haxe.Int64;
+	final cameraId:haxe.Int64;
+	final lightId:haxe.Int64;
 	final visibleValue:Bool;
 	final localTransformValue:Transform;
 	final worldTransformValue:Transform;
@@ -24,6 +26,8 @@ class OccurrenceInfo {
 		sourceId = value.get_source().get_value();
 		geometryId = value.get_geometry().get_value();
 		materialId = value.get_material().get_value();
+		cameraId = value.get_camera().get_value();
+		lightId = value.get_light().get_value();
 		visibleValue = value.get_visible() != 0;
 		localTransformValue = Transform.fromNative(value.get_local_transform());
 		worldTransformValue = Transform.fromNative(value.get_world_transform());
@@ -46,6 +50,12 @@ class OccurrenceInfo {
 
 	public function materialValue():haxe.Int64
 		return materialId;
+
+	public function cameraValue():haxe.Int64
+		return cameraId;
+
+	public function lightValue():haxe.Int64
+		return lightId;
 
 	public function visible():Bool
 		return visibleValue;

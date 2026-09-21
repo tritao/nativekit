@@ -42,6 +42,12 @@ class Transaction {
 			"transaction.setTransform");
 	}
 
+	public function setTransforms(updates:Array<TransformUpdate>):Void {
+		ensureOpen();
+		for (update in updates)
+			update.apply(this);
+	}
+
 	public function setGeometry(occurrence:Occurrence, geometry:Geometry):Void {
 		ensureOpen();
 		check(NativeKitScene.nkscene_tx_set_geometry(owner.borrow(), occurrence.nativeValue(), geometry.id()),
@@ -52,6 +58,20 @@ class Transaction {
 		ensureOpen();
 		check(NativeKitScene.nkscene_tx_set_material(owner.borrow(), occurrence.nativeValue(), material.id()),
 			"transaction.setMaterial");
+	}
+
+	public function setCamera(occurrence:Occurrence, camera:Null<Camera>):Void {
+		ensureOpen();
+		var value = camera == null ? new nkscene_camera_id() : camera.id();
+		check(NativeKitScene.nkscene_tx_set_camera(owner.borrow(), occurrence.nativeValue(), value),
+			"transaction.setCamera");
+	}
+
+	public function setLight(occurrence:Occurrence, light:Null<Light>):Void {
+		ensureOpen();
+		var value = light == null ? new nkscene_light_id() : light.id();
+		check(NativeKitScene.nkscene_tx_set_light(owner.borrow(), occurrence.nativeValue(), value),
+			"transaction.setLight");
 	}
 
 	public function setVisibility(occurrence:Occurrence, visible:Bool):Void {
