@@ -10,6 +10,26 @@ interface NativeKitScene @target("portable-abi64") @library("nativekit_scene") {
 	const NKS_MATERIAL_OPAQUE = 1;
 	const NKS_OK = 0;
 	const NKS_SCENE_SNAPSHOT_OCCURRENCE_PAGE_CAPACITY = 64;
+	enum nkscene_primitive_type : c_int {
+		NKS_PRIMITIVE_TRIANGLES = 1;
+		NKS_PRIMITIVE_LINES = 2;
+		NKS_PRIMITIVE_POINTS = 3;
+	}
+	enum nkscene_vertex_format : c_int {
+		NKS_VERTEX_FORMAT_FLOAT32X2 = 1;
+		NKS_VERTEX_FORMAT_FLOAT32X3 = 2;
+		NKS_VERTEX_FORMAT_FLOAT32X4 = 3;
+		NKS_VERTEX_FORMAT_UNORM8X4 = 4;
+		NKS_VERTEX_FORMAT_SNORM8X4 = 5;
+	}
+	enum nkscene_vertex_semantic : c_int {
+		NKS_VERTEX_SEMANTIC_POSITION = 1;
+		NKS_VERTEX_SEMANTIC_NORMAL = 2;
+		NKS_VERTEX_SEMANTIC_TANGENT = 3;
+		NKS_VERTEX_SEMANTIC_TEXCOORD0 = 4;
+		NKS_VERTEX_SEMANTIC_TEXCOORD1 = 5;
+		NKS_VERTEX_SEMANTIC_COLOR0 = 6;
+	}
 	extern fn nkscene_change_set_destroy(changes: nkscene_change_set) -> void;
 	extern fn nkscene_change_set_get_revision(changes: nkscene_change_set, out_revision: ptr<u64> @out) -> nkscene_result;
 	extern fn nkscene_geometry_create(scene: nkscene_scene, out_geometry: ptr<nkscene_geometry_id> @out) -> nkscene_result;
@@ -59,7 +79,7 @@ interface NativeKitScene @target("portable-abi64") @library("nativekit_scene") {
 	struct nkscene_entity_id @layout(8, 8) {
 		value: u64 @offset(0);
 	}
-	struct nkscene_geometry_data @layout(80, 8) {
+	struct nkscene_geometry_data @layout(96, 8) {
 		struct_size: u32 @offset(0) @struct_size;
 		vertices: ptr<const<nkscene_geometry_vertex>> @offset(8) @borrowed @length_field("vertex_count");
 		vertex_count: u32 @offset(16);
@@ -71,6 +91,9 @@ interface NativeKitScene @target("portable-abi64") @library("nativekit_scene") {
 		bounds: nkscene_bounds @offset(36);
 		subelements: ptr<const<nkscene_subelement_range>> @offset(64) @borrowed @length_field("subelement_count");
 		subelement_count: u32 @offset(72);
+		primitive_type: nkscene_primitive_type @offset(76);
+		streams: ptr<const<nkscene_vertex_stream>> @offset(80) @borrowed @length_field("stream_count");
+		stream_count: u32 @offset(88);
 	}
 	struct nkscene_geometry_id @layout(8, 8) {
 		value: u64 @offset(0);
@@ -126,6 +149,14 @@ interface NativeKitScene @target("portable-abi64") @library("nativekit_scene") {
 	struct nkscene_transform_update @layout(72, 8) {
 		occurrence: nkscene_occurrence_id @offset(0);
 		transform: nkscene_transform @offset(8);
+	}
+	struct nkscene_vertex_stream @layout(32, 8) {
+		struct_size: u32 @offset(0) @struct_size;
+		semantic: nkscene_vertex_semantic @offset(4);
+		format: nkscene_vertex_format @offset(8);
+		stride: u32 @offset(12);
+		data: ptr<const<void>> @offset(16) @borrowed @length_field("count");
+		count: u32 @offset(24);
 	}
 	handle nkscene_change_set : u32 @destroy("nkscene_change_set_destroy");
 	type nkscene_result = i32;

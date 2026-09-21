@@ -94,6 +94,38 @@ typedef struct nkscene_geometry_vertex {
     float position[3];
 } nkscene_geometry_vertex;
 
+typedef enum nkscene_vertex_semantic {
+    NKS_VERTEX_SEMANTIC_POSITION = 1,
+    NKS_VERTEX_SEMANTIC_NORMAL = 2,
+    NKS_VERTEX_SEMANTIC_TANGENT = 3,
+    NKS_VERTEX_SEMANTIC_TEXCOORD0 = 4,
+    NKS_VERTEX_SEMANTIC_TEXCOORD1 = 5,
+    NKS_VERTEX_SEMANTIC_COLOR0 = 6
+} nkscene_vertex_semantic;
+
+typedef enum nkscene_vertex_format {
+    NKS_VERTEX_FORMAT_FLOAT32X2 = 1,
+    NKS_VERTEX_FORMAT_FLOAT32X3 = 2,
+    NKS_VERTEX_FORMAT_FLOAT32X4 = 3,
+    NKS_VERTEX_FORMAT_UNORM8X4 = 4,
+    NKS_VERTEX_FORMAT_SNORM8X4 = 5
+} nkscene_vertex_format;
+
+typedef enum nkscene_primitive_type {
+    NKS_PRIMITIVE_TRIANGLES = 1,
+    NKS_PRIMITIVE_LINES = 2,
+    NKS_PRIMITIVE_POINTS = 3
+} nkscene_primitive_type;
+
+typedef struct nkscene_vertex_stream {
+    uint32_t struct_size NK_STRUCT_SIZE;
+    nkscene_vertex_semantic semantic;
+    nkscene_vertex_format format;
+    uint32_t stride;
+    const void *data NK_BORROWED_ARRAY(count);
+    uint32_t count;
+} nkscene_vertex_stream;
+
 typedef struct nkscene_subelement_range {
     uint32_t first_primitive;
     uint32_t primitive_count;
@@ -110,6 +142,9 @@ typedef struct nkscene_geometry_data {
     nkscene_bounds bounds;
     const nkscene_subelement_range *subelements NK_BORROWED_ARRAY(subelement_count);
     uint32_t subelement_count;
+    nkscene_primitive_type primitive_type;
+    const nkscene_vertex_stream *streams NK_BORROWED_ARRAY(stream_count);
+    uint32_t stream_count;
 } nkscene_geometry_data;
 
 enum { NKS_MATERIAL_OPAQUE = 1u << 0, NKS_MATERIAL_DOUBLE_SIDED = 1u << 1 };

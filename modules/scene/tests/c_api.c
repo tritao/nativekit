@@ -18,6 +18,36 @@ int main(void) {
     nkscene_scene scene = {0};
     assert(nkscene_scene_create(&scene) == NKS_OK);
 
+    nkscene_geometry_id geometry = {0};
+    assert(nkscene_geometry_create(scene, &geometry) == NKS_OK);
+    const float positions[] = {
+        0.0f, 0.0f, 0.0f,
+        1.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f,
+    };
+    const float normals[] = {
+        0.0f, 0.0f, 1.0f,
+        0.0f, 0.0f, 1.0f,
+        0.0f, 0.0f, 1.0f,
+    };
+    nkscene_vertex_stream streams[2] = {0};
+    streams[0].struct_size = sizeof(streams[0]);
+    streams[0].semantic = NKS_VERTEX_SEMANTIC_POSITION;
+    streams[0].format = NKS_VERTEX_FORMAT_FLOAT32X3;
+    streams[0].data = positions;
+    streams[0].count = 3;
+    streams[1].struct_size = sizeof(streams[1]);
+    streams[1].semantic = NKS_VERTEX_SEMANTIC_NORMAL;
+    streams[1].format = NKS_VERTEX_FORMAT_FLOAT32X3;
+    streams[1].data = normals;
+    streams[1].count = 3;
+    nkscene_geometry_data stream_geometry = {0};
+    stream_geometry.struct_size = sizeof(stream_geometry);
+    stream_geometry.primitive_type = NKS_PRIMITIVE_TRIANGLES;
+    stream_geometry.streams = streams;
+    stream_geometry.stream_count = 2;
+    assert(nkscene_geometry_set_data(scene, geometry, &stream_geometry) == NKS_OK);
+
     nkscene_transaction transaction = {0};
     assert(nkscene_transaction_begin(scene, &transaction) == NKS_OK);
     nkscene_occurrence_id group = {0};
@@ -105,6 +135,7 @@ int main(void) {
            NKS_ERROR_INVALID_ARGUMENT);
 
     nkscene_snapshot_destroy(snapshot);
+    nkscene_geometry_destroy(scene, geometry);
     nkscene_scene_destroy(scene);
     return 0;
 }
