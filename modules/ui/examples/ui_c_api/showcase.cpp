@@ -269,18 +269,12 @@ struct WebShowcase {
             return false;
         }
 
-        /* WebGL2's portable offscreen contract is the RGBA8 path. Native
-           backends exercise the sensor-oriented float, integer, and depth
-           targets below; WebGL implementations do not expose a reliable
-           integer/depth transfer path for this synchronous smoke callback. */
         const nkgpu_image_format formats[] = {
             NKGPU_IMAGEFORMAT_RGBA8,
-#if !defined(__EMSCRIPTEN__)
             NKGPU_IMAGEFORMAT_RGBA16F,
             NKGPU_IMAGEFORMAT_R32F,
             NKGPU_IMAGEFORMAT_R32_UINT,
             NKGPU_IMAGEFORMAT_DEPTH32F,
-#endif
         };
         bool success = true;
         for (const nkgpu_image_format format : formats) {
