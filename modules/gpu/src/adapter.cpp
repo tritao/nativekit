@@ -3363,6 +3363,9 @@ nkgpu_result nkgpu_image_create_desc(nkgpu_renderer r, const nkgpu_image_desc *i
     } else if (image_type == NKGPU_IMAGETYPE_2D && layer_count != 1) {
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "2D images require one layer");
     }
+    if ((image_type == NKGPU_IMAGETYPE_CUBE || image_type == NKGPU_IMAGETYPE_CUBE_ARRAY) &&
+        desc.width != desc.height)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "cube images require square dimensions");
     if (!convert_image_type(image_type, native_type))
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid image type");
     if (!desc.width || !desc.height || desc.width > static_cast<uint32_t>(INT32_MAX) ||

@@ -499,7 +499,9 @@ enum NK_ENUM(nkgpu_image_type) {
 
 /**
  * Descriptor for a 2D, array, cube, or cube-array image.
- * Cube arrays are portable six-layer groups.
+ * Cube dimensions must be square. Cube data is packed per mip level in face order
+ * +X, -X, +Y, -Y, +Z, -Z; cube arrays repeat that six-face order for each cube.
+ * Cube arrays are portable six-layer groups and are sampled as array textures.
  */
 typedef struct nkgpu_image_desc {
     uint32_t struct_size NK_STRUCT_SIZE;
