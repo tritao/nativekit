@@ -53,6 +53,8 @@ void run_frame_probe(void *data) {
     probe.surface_api_violations = nk::core::render_surface_api_violations();
 }
 
+void render_noop(void *) {}
+
 int run_frame(nk_window window, nk_surface surface, bool cancel, int32_t width, int32_t height) {
     nk_surface_frame frame = NK_INVALID_HANDLE;
     nk_surface_frame_target target{};
@@ -115,6 +117,12 @@ int main() {
         report_frame_backend_stage(result);
     } else {
         report_frame_backend_stage(150);
+        if (nk::core::dispatch_to_render_sync(&render_noop, nullptr, 1) != NK_OK) {
+            result = 175;
+            report_frame_backend_stage(result);
+        } else {
+            report_frame_backend_stage(175);
+        }
     }
 
     nk_surface_options surface_options{};
