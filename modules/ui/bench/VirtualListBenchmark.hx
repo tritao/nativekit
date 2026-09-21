@@ -289,12 +289,12 @@ class VirtualListBenchmark {
 		var firstRows = builtRows.length;
 		var maxExpectedRows = Std.int(Math.ceil(viewportHeight / 20.0)) + 4;
 		var valid = firstRows > 0 && firstRows <= maxExpectedRows &&
-			model.extentCalls == itemCount;
+			model.extentCalls > 0 && model.extentCalls < itemCount;
 		var extentCallsBeforeUpdate = model.extentCalls;
 		model.bumpExtent(Std.int(itemCount / 2));
 		builtRows.resize(0);
 		context.submit(list, frame);
-		if (model.extentCalls != extentCallsBeforeUpdate + 1)
+		if (model.extentCalls != extentCallsBeforeUpdate)
 			valid = false;
 
 		var totalSeconds = 0.0;
@@ -340,7 +340,7 @@ class VirtualListBenchmark {
 			'avg_us=$averageMicros');
 
 		context.dispose();
-		return valid && model.extentCalls == itemCount + 1;
+		return valid && model.extentCalls < itemCount;
 	}
 
 	static function runTree(fonts:FontCollection, itemCount:Int):Bool {
@@ -429,6 +429,12 @@ private class BenchmarkListModel implements ListViewModel {
 
 	public function keyAt(index:Int):String
 		return 'benchmark-item:$index';
+
+	public function estimatedExtent():Float
+		return 24.0;
+
+	public function extentIsUniform():Bool
+		return false;
 
 	public function extentAt(index:Int):Float {
 		extentCalls++;

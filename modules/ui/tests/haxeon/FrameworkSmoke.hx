@@ -1422,7 +1422,8 @@ class FrameworkSmoke {
 		});
 		var firstModelExtentCalls = model.extentCalls;
 		if (modelSemantics.role != AccessibilityRole.Collection || modelSemantics.setSize != 100000 ||
-			modelBuiltRows.length == 0 || modelBuiltRows.length > 16 || firstModelExtentCalls != 100000 ||
+			modelBuiltRows.length == 0 || modelBuiltRows.length > 16 || firstModelExtentCalls <= 0 ||
+			firstModelExtentCalls >= 100000 ||
 			modelBuiltRows[0] != 0 || modelController.maxScrollY <= 0.0)
 			return 160;
 		modelController.jumpTo(0.0, model.offsetBefore(50000));
@@ -1436,16 +1437,17 @@ class FrameworkSmoke {
 				recycledModelRowId = node.id.value;
 		});
 		if (modelBuiltRows.length == 0 || modelBuiltRows.length > 16 || modelBuiltRows[0] != 49999 ||
-			model.extentCalls != firstModelExtentCalls || recycledModelRowId != firstModelRowId ||
+			model.extentCalls <= firstModelExtentCalls || model.extentCalls >= 100000 ||
+			recycledModelRowId != firstModelRowId ||
 			modelList.materializedFirst != 49999)
 			return 161;
 		var incrementalExtentCalls = model.extentCalls;
 		model.bumpExtent(50000);
 		modelBuiltRows.resize(0);
 		modelRoot = context.submit(modelList, new LayoutFrame(256.0, 120.0));
-		if (model.extentCalls != incrementalExtentCalls + 1 ||
-			modelList.extentMeasurements != incrementalExtentCalls + 1 ||
-			modelList.extentReuses < 99999)
+		if (model.extentCalls <= incrementalExtentCalls ||
+			modelList.extentMeasurements != model.extentCalls ||
+			modelList.extentReuses <= 0)
 			return 174;
 		if (!modelList.select(50000) || modelList.selectedIndex != 50000 || modelSelection != 50000)
 			return 162;
@@ -3403,6 +3405,12 @@ private class SmokeListModel implements ListViewModel {
 
 	public function keyAt(index:Int):String
 		return 'model-item:$index';
+
+	public function estimatedExtent():Float
+		return 24.0;
+
+	public function extentIsUniform():Bool
+		return false;
 
 	public function extentAt(index:Int):Float {
 		extentCalls++;

@@ -40,11 +40,12 @@ class ListView implements View {
 	var selectedState:Null<State<Int>>;
 	var cachedRevision:Int;
 	var cachedCount:Int;
-	var cachedExtents:Array<Float>;
+	var cachedUniform:Bool;
 	var extentCache:Map<String, Float>;
 	var extentRevisionCache:Map<String, Int>;
-	var extentViewport:Null<VirtualExtentViewport>;
+	var extentIndex:Null<VirtualExtentIndex>;
 	var itemIds:Map<Int, WidgetId>;
+	var itemKeys:Map<Int, String>;
 
 	public function new(key:String, model:ListViewModel, ?viewportStyle:LayoutStyle,
 			?controller:ScrollController, viewportHeight:Float = 300.0,
@@ -70,11 +71,12 @@ class ListView implements View {
 		selectedState = null;
 		cachedRevision = -1;
 		cachedCount = -1;
-		cachedExtents = [];
+		cachedUniform = false;
 		extentCache = new Map();
 		extentRevisionCache = new Map();
-		extentViewport = null;
+		extentIndex = null;
 		itemIds = new Map();
+		itemKeys = new Map();
 	}
 
 	/** Selects an item, or clears selection with -1. */
@@ -99,7 +101,7 @@ class ListView implements View {
 		ensureModelMetrics();
 		if (index < 0 || index >= cachedCount)
 			throw "ListView scroll index is out of range";
-		var target = cachedExtents.length == 0 ? 0.0 : extentOffset(index);
+		var target = extentIndex == null ? 0.0 : extentOffset(index);
 		return controller.jumpTo(controller.offsetX, target);
 	}
 
@@ -112,11 +114,18 @@ class ListView implements View {
 				state.update(-1);
 			selectedIndex = state.value;
 			itemIds = new Map();
+			itemKeys = new Map();
 
 			var viewportHeight = controller.viewportHeight > 0.0 ? controller.viewportHeight :
 				(viewportStyle.height.sizing == LayoutSizing.Fixed ? viewportStyle.height.value :
 				fallbackViewportHeight);
-			var window:VirtualExtentViewport = cast extentViewport;
+			var window:VirtualExtentIndex = cast extentIndex;
+			window.update(viewportHeight, controller.offsetY, virtualization.leadingOverscan,
+				virtualization.trailingOverscan);
+			measureWindow(window.first, window.last);
+			window.update(viewportHeight, controller.offsetY, virtualization.leadingOverscan,
+				virtualization.trailingOverscan);
+			measureWindow(window.first, window.last);
 			window.update(viewportHeight, controller.offsetY, virtualization.leadingOverscan,
 				virtualization.trailingOverscan);
 			materializedFirst = window.first;
@@ -124,18 +133,20 @@ class ListView implements View {
 
 			var rowViews:Array<KeyedView> = [];
 			if (window.count > 0) {
+				var seenItemKeys:Map<String, Bool> = new Map();
 				rowViews.push(new KeyedView("before", new Spacer("before-spacer",
 					LayoutAxis.grow(), LayoutAxis.fixed(window.startOffset(window.first)))));
 				for (index in window.first...window.last) {
 					var itemIndex = index;
-					var itemKey = model.keyAt(itemIndex);
-					if (itemKey == null || itemKey.length == 0)
-						throw 'ListView item $itemIndex has an empty key';
+					var itemKey = itemKeyAt(itemIndex);
+					if (seenItemKeys.exists(itemKey))
+						throw 'ListView contains duplicate item key $itemKey';
+					seenItemKeys.set(itemKey, true);
 					var item = model.buildItem(itemIndex);
 					if (item == null)
 						throw 'ListView model returned null for index $itemIndex';
 					var row = new ListViewRow("row", itemKey, item, cachedCount, itemIndex,
-						cachedExtents[itemIndex], selectedIndex == itemIndex,
+						window.extentAt(itemIndex), selectedIndex == itemIndex,
 						function() { select(itemIndex); },
 						function() { if (onItemActivated != null) onItemActivated(itemIndex); },
 						function(event) { handleItemKey(context, itemIndex, event); },
@@ -194,13 +205,13 @@ class ListView implements View {
 	}
 
 	function visibleItemCount():Int {
-		if (extentViewport == null)
+		if (extentIndex == null)
 			return 1;
-		var viewport:VirtualExtentViewport = cast extentViewport;
+		var viewport:VirtualExtentIndex = cast extentIndex;
 		if (viewport.count == 0)
 			return 1;
 		return Std.int(Math.max(1.0, Math.ceil(viewport.viewportExtent /
-			Math.max(1.0, cachedExtents[viewport.first]))));
+			Math.max(1.0, viewport.extentAt(viewport.first)))));
 	}
 
 	function ensureModelMetrics():Void {
@@ -208,17 +219,26 @@ class ListView implements View {
 		if (count < 0)
 			throw "ListView model count must be non-negative";
 		var revision = model.revision();
-		if (cachedRevision == revision && cachedCount == count && extentViewport != null)
+		if (cachedRevision == revision && cachedCount == count && extentIndex != null)
 			return;
-		var extents:Array<Float> = [];
-		var seenKeys:Map<String, Bool> = new Map();
-		for (index in 0...count) {
-			var itemKey = model.keyAt(index);
-			if (itemKey == null || itemKey.length == 0)
-				throw 'ListView item $index has an empty key';
-			if (seenKeys.exists(itemKey))
-				throw 'ListView contains duplicate item key $itemKey';
-			seenKeys.set(itemKey, true);
+		var estimatedExtent = model.estimatedExtent();
+		if (estimatedExtent <= 0.0 || !finite(estimatedExtent))
+			throw "ListView estimated extent must be finite and positive";
+		cachedUniform = model.extentIsUniform();
+		cachedRevision = revision;
+		cachedCount = count;
+		extentIndex = new VirtualExtentIndex(count, estimatedExtent,
+			fallbackViewportHeight, controller.offsetY,
+			virtualization.leadingOverscan, virtualization.trailingOverscan);
+		if (selectedIndex >= cachedCount)
+			selectedIndex = -1;
+	}
+
+	function measureWindow(first:Int, last:Int):Void {
+		if (extentIndex == null || cachedUniform)
+			return;
+		for (index in first...last) {
+			var itemKey = itemKeyAt(index);
 			var extentRevision = model.extentRevisionAt(index);
 			var cachedRevisionForKey = extentRevisionCache.get(itemKey);
 			var cachedExtent = extentCache.get(itemKey);
@@ -235,27 +255,26 @@ class ListView implements View {
 				throw 'ListView extent for index $index must be finite and positive';
 			extentCache.set(itemKey, extent);
 			extentRevisionCache.set(itemKey, extentRevision);
-			extents.push(extent);
+			var indexMetrics:VirtualExtentIndex = cast extentIndex;
+			indexMetrics.setExtent(index, extent);
 		}
-		for (itemKey in extentCache.keys()) {
-			if (!seenKeys.exists(itemKey)) {
-				extentCache.remove(itemKey);
-				extentRevisionCache.remove(itemKey);
-			}
-		}
-		cachedExtents = extents;
-		cachedRevision = revision;
-		cachedCount = count;
-		extentViewport = new VirtualExtentViewport(cachedExtents,
-			fallbackViewportHeight, controller.offsetY);
-		if (selectedIndex >= cachedCount)
-			selectedIndex = -1;
+	}
+
+	function itemKeyAt(index:Int):String {
+		var cached = itemKeys.get(index);
+		if (cached != null)
+			return cached;
+		var itemKey = model.keyAt(index);
+		if (itemKey == null || itemKey.length == 0)
+			throw 'ListView item $index has an empty key';
+		itemKeys.set(index, itemKey);
+		return itemKey;
 	}
 
 	function extentOffset(index:Int):Float {
-		if (extentViewport == null)
+		if (extentIndex == null)
 			return 0.0;
-		var viewport:VirtualExtentViewport = cast extentViewport;
+		var viewport:VirtualExtentIndex = cast extentIndex;
 		return viewport.startOffset(index);
 	}
 

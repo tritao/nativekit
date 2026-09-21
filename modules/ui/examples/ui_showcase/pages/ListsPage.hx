@@ -57,6 +57,12 @@ private class ShowcaseListModel implements ListViewModel {
 	public function keyAt(index:Int):String
 		return 'row-$index';
 
+	public function estimatedExtent():Float
+		return UiExplorer.LIST_ROW_HEIGHT;
+
+	public function extentIsUniform():Bool
+		return true;
+
 	public function extentAt(index:Int):Float
 		return UiExplorer.LIST_ROW_HEIGHT;
 
