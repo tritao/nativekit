@@ -51,6 +51,17 @@ class SceneView {
 		return this;
 	}
 
+	/** Selects a scene camera occurrence when no explicit matrix is set. */
+	public function setCameraOccurrence(occurrence:Occurrence):SceneView {
+		value.set_camera_occurrence(occurrence.nativeValue());
+		return this;
+	}
+
+	public function clearCameraOccurrence():SceneView {
+		value.set_camera_occurrence(new nkscene_occurrence_id());
+		return this;
+	}
+
 	/** Adds a conservative occurrence-level section plane. Kept side is normal * p + distance >= 0. */
 	public function addClipPlane(normalX:Float, normalY:Float, normalZ:Float,
 			distance:Float, enabled:Bool = true):SceneView {

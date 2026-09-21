@@ -110,7 +110,7 @@ interface NativeKitSceneRender @target("portable-abi64") @library("nativekit_sce
 		visible_items: u64 @offset(80);
 		culled_items: u64 @offset(88);
 	}
-	struct nkscene_render_view @layout(232, 8) {
+	struct nkscene_render_view @layout(240, 8) {
 		struct_size: u32 @offset(0) @struct_size;
 		root: nkscene_occurrence_id @offset(8);
 		include_invisible: u32 @offset(16);
@@ -133,6 +133,10 @@ interface NativeKitSceneRender @target("portable-abi64") @library("nativekit_sce
 		source_material_override_count: u32 @offset(208);
 		isolated_occurrences: ptr<const<nkscene_occurrence_id>> @offset(216) @borrowed @length_field("isolated_occurrence_count");
 		isolated_occurrence_count: u32 @offset(224);
+		/**
+		 * Optional scene camera occurrence used when camera.enabled is zero.
+		 */
+		camera_occurrence: nkscene_occurrence_id @offset(232);
 	}
 	struct nkscene_render_visibility_override @layout(16, 8) {
 		occurrence: nkscene_occurrence_id @offset(0);
