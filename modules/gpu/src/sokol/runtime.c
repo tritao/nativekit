@@ -379,8 +379,8 @@ static uint32_t nk_sokol_image_copy(sg_image source, uint32_t source_mip, uint32
     if (!row_size || row_size / source_bytes != width || temporary_size / row_size != height)
         return 0;
     const sg_image_usage source_usage = sg_query_image_usage(source);
-    const int source_is_attachment = source_usage.color_attachment ||
-                                     source_usage.depth_stencil_attachment;
+    const int source_is_attachment =
+        source_usage.color_attachment || source_usage.depth_stencil_attachment;
     uint8_t *temporary = (uint8_t *)malloc(temporary_size);
     if (!temporary)
         return 0;
@@ -420,10 +420,9 @@ static uint32_t nk_sokol_image_copy(sg_image source, uint32_t source_mip, uint32
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
         glBindTexture(destination_target, destination_texture);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        const GLint destination_gl_y = source_is_attachment
-                                           ? (GLint)destination_height - (GLint)destination_y -
-                                                 (GLint)height
-                                           : (GLint)destination_y;
+        const GLint destination_gl_y =
+            source_is_attachment ? (GLint)destination_height - (GLint)destination_y - (GLint)height
+                                 : (GLint)destination_y;
         glTexSubImage2D(destination_target, (GLint)destination_mip, (GLint)destination_x,
                         destination_gl_y, (GLsizei)width, (GLsizei)height, destination_format,
                         destination_type, temporary);

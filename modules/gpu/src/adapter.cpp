@@ -2398,8 +2398,9 @@ nkgpu_result nkgpu_shader_compute_threads(nkgpu_shader_builder h, uint32_t x, ui
     const nkgpu_result idle = require_idle_renderer(s->value.owner);
     if (idle != NKGPU_OK)
         return idle;
-    s->value.desc.mtl_threads_per_threadgroup = {
-        static_cast<int>(x), static_cast<int>(y), static_cast<int>(z)};
+    s->value.desc.mtl_threads_per_threadgroup.x = static_cast<int>(x);
+    s->value.desc.mtl_threads_per_threadgroup.y = static_cast<int>(y);
+    s->value.desc.mtl_threads_per_threadgroup.z = static_cast<int>(z);
     return NKGPU_OK;
 }
 
