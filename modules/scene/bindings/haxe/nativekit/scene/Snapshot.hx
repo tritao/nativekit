@@ -10,6 +10,8 @@ class Snapshot {
 	var occurrenceIndex:Null<Map<String, OccurrenceInfo>> = null;
 	var childrenIndex:Null<Map<String, Array<Occurrence>>> = null;
 	var sourceOccurrenceIndex:Null<Map<String, Array<Occurrence>>> = null;
+	var geometryOccurrenceIndex:Null<Map<String, Array<Occurrence>>> = null;
+	var materialOccurrenceIndex:Null<Map<String, Array<Occurrence>>> = null;
 
 	@:allow(Scene)
 	private function new(owner:Ownednkscene_snapshot) {
@@ -90,6 +92,54 @@ class Snapshot {
 			result.push(Occurrence.fromNative(value.out_occurrence));
 		}
 		sourceOccurrenceIndex.set(sourceKey, result);
+		return result;
+	}
+
+	/** Returns cached occurrences associated with one geometry resource. */
+	public function occurrencesForGeometry(geometry:Geometry):Array<Occurrence> {
+		ensureLive();
+		if (geometryOccurrenceIndex == null)
+			geometryOccurrenceIndex = new Map();
+		var geometryKey = haxe.Int64.toStr(geometry.id().get_value()),
+			cached = geometryOccurrenceIndex.get(geometryKey);
+		if (cached != null)
+			return cached;
+
+		var countResult = NativeKitScene.nkscene_snapshot_get_geometry_occurrence_count(
+			owner.borrow(), geometry.id());
+		check(countResult.status, "snapshot.geometryOccurrenceCount");
+		var result:Array<Occurrence> = [];
+		for (index in 0...haxe.Int64.toInt(countResult.out_count)) {
+			var value = NativeKitScene.nkscene_snapshot_get_geometry_occurrence(
+				owner.borrow(), geometry.id(), index);
+			check(value.status, "snapshot.geometryOccurrence");
+			result.push(Occurrence.fromNative(value.out_occurrence));
+		}
+		geometryOccurrenceIndex.set(geometryKey, result);
+		return result;
+	}
+
+	/** Returns cached occurrences associated with one material resource. */
+	public function occurrencesForMaterial(material:Material):Array<Occurrence> {
+		ensureLive();
+		if (materialOccurrenceIndex == null)
+			materialOccurrenceIndex = new Map();
+		var materialKey = haxe.Int64.toStr(material.id().get_value()),
+			cached = materialOccurrenceIndex.get(materialKey);
+		if (cached != null)
+			return cached;
+
+		var countResult = NativeKitScene.nkscene_snapshot_get_material_occurrence_count(
+			owner.borrow(), material.id());
+		check(countResult.status, "snapshot.materialOccurrenceCount");
+		var result:Array<Occurrence> = [];
+		for (index in 0...haxe.Int64.toInt(countResult.out_count)) {
+			var value = NativeKitScene.nkscene_snapshot_get_material_occurrence(
+				owner.borrow(), material.id(), index);
+			check(value.status, "snapshot.materialOccurrence");
+			result.push(Occurrence.fromNative(value.out_occurrence));
+		}
+		materialOccurrenceIndex.set(materialKey, result);
 		return result;
 	}
 

@@ -89,6 +89,12 @@ interface NativeKitScene @target("portable-abi64") @library("nativekit_scene") {
 	 * Returns a name borrowed from the snapshot and valid until it is destroyed.
 	 */
 	extern fn nkscene_snapshot_get_name(snapshot: nkscene_snapshot, occurrence: nkscene_occurrence_id, out_name: ptr<ptr<const<c_char>>>) -> nkscene_result;
+	extern fn nkscene_snapshot_get_child_occurrence(snapshot: nkscene_snapshot, parent: nkscene_occurrence_id, index: u64, out_occurrence: ptr<nkscene_occurrence_id> @out) -> nkscene_result;
+	extern fn nkscene_snapshot_get_child_occurrence_count(snapshot: nkscene_snapshot, parent: nkscene_occurrence_id, out_count: ptr<u64> @out) -> nkscene_result;
+	extern fn nkscene_snapshot_get_geometry_occurrence(snapshot: nkscene_snapshot, geometry: nkscene_geometry_id, index: u64, out_occurrence: ptr<nkscene_occurrence_id> @out) -> nkscene_result;
+	extern fn nkscene_snapshot_get_geometry_occurrence_count(snapshot: nkscene_snapshot, geometry: nkscene_geometry_id, out_count: ptr<u64> @out) -> nkscene_result;
+	extern fn nkscene_snapshot_get_material_occurrence(snapshot: nkscene_snapshot, material: nkscene_material_id, index: u64, out_occurrence: ptr<nkscene_occurrence_id> @out) -> nkscene_result;
+	extern fn nkscene_snapshot_get_material_occurrence_count(snapshot: nkscene_snapshot, material: nkscene_material_id, out_count: ptr<u64> @out) -> nkscene_result;
 	extern fn nkscene_snapshot_get_occurrence(snapshot: nkscene_snapshot, index: u64, out_occurrence: ptr<nkscene_snapshot_occurrence> @inout) -> nkscene_result;
 	extern fn nkscene_snapshot_get_occurrence_count(snapshot: nkscene_snapshot, out_count: ptr<u64> @out) -> nkscene_result;
 	extern fn nkscene_snapshot_get_occurrence_page(snapshot: nkscene_snapshot, start_index: u64, out_page: ptr<nkscene_snapshot_occurrence_page> @inout) -> nkscene_result;

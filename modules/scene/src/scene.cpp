@@ -1427,6 +1427,36 @@ nkscene_result NKS_CALL nkscene_snapshot_get_occurrence_page(
     return NKS_OK;
 }
 
+nkscene_result NKS_CALL nkscene_snapshot_get_child_occurrence_count(
+    nkscene_snapshot snapshot, nkscene_occurrence_id parent, uint64_t *out_count) {
+    if (!out_count)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    const auto value = state.snapshots.get(nkscene::unpack_handle(snapshot));
+    if (!value)
+        return NKS_ERROR_INVALID_HANDLE;
+    *out_count = value->children({parent.value}).size();
+    return NKS_OK;
+}
+
+nkscene_result NKS_CALL nkscene_snapshot_get_child_occurrence(
+    nkscene_snapshot snapshot, nkscene_occurrence_id parent, uint64_t index,
+    nkscene_occurrence_id *out_occurrence) {
+    if (!out_occurrence)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    const auto value = state.snapshots.get(nkscene::unpack_handle(snapshot));
+    if (!value)
+        return NKS_ERROR_INVALID_HANDLE;
+    const auto children = value->children({parent.value});
+    if (index >= children.size())
+        return NKS_ERROR_INVALID_ARGUMENT;
+    *out_occurrence = {children[static_cast<std::size_t>(index)].value};
+    return NKS_OK;
+}
+
 nkscene_result NKS_CALL nkscene_snapshot_get_source_occurrence_count(nkscene_snapshot snapshot,
                                                                      nkscene_entity_id source,
                                                                      uint64_t *out_count) {
@@ -1489,6 +1519,66 @@ nkscene_result NKS_CALL nkscene_snapshot_get_entity_name(nkscene_snapshot snapsh
         return NKS_ERROR_INVALID_HANDLE;
     const auto name = value->entity_name({entity.value});
     *out_name = name.empty() ? "" : name.data();
+    return NKS_OK;
+}
+
+nkscene_result NKS_CALL nkscene_snapshot_get_geometry_occurrence_count(
+    nkscene_snapshot snapshot, nkscene_geometry_id geometry, uint64_t *out_count) {
+    if (!out_count)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    const auto value = state.snapshots.get(nkscene::unpack_handle(snapshot));
+    if (!value)
+        return NKS_ERROR_INVALID_HANDLE;
+    *out_count = value->occurrences_for_geometry({geometry.value}).size();
+    return NKS_OK;
+}
+
+nkscene_result NKS_CALL nkscene_snapshot_get_geometry_occurrence(
+    nkscene_snapshot snapshot, nkscene_geometry_id geometry, uint64_t index,
+    nkscene_occurrence_id *out_occurrence) {
+    if (!out_occurrence)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    const auto value = state.snapshots.get(nkscene::unpack_handle(snapshot));
+    if (!value)
+        return NKS_ERROR_INVALID_HANDLE;
+    const auto occurrences = value->occurrences_for_geometry({geometry.value});
+    if (index >= occurrences.size())
+        return NKS_ERROR_INVALID_ARGUMENT;
+    *out_occurrence = {occurrences[static_cast<std::size_t>(index)].value};
+    return NKS_OK;
+}
+
+nkscene_result NKS_CALL nkscene_snapshot_get_material_occurrence_count(
+    nkscene_snapshot snapshot, nkscene_material_id material, uint64_t *out_count) {
+    if (!out_count)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    const auto value = state.snapshots.get(nkscene::unpack_handle(snapshot));
+    if (!value)
+        return NKS_ERROR_INVALID_HANDLE;
+    *out_count = value->occurrences_for_material({material.value}).size();
+    return NKS_OK;
+}
+
+nkscene_result NKS_CALL nkscene_snapshot_get_material_occurrence(
+    nkscene_snapshot snapshot, nkscene_material_id material, uint64_t index,
+    nkscene_occurrence_id *out_occurrence) {
+    if (!out_occurrence)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    const auto value = state.snapshots.get(nkscene::unpack_handle(snapshot));
+    if (!value)
+        return NKS_ERROR_INVALID_HANDLE;
+    const auto occurrences = value->occurrences_for_material({material.value});
+    if (index >= occurrences.size())
+        return NKS_ERROR_INVALID_ARGUMENT;
+    *out_occurrence = {occurrences[static_cast<std::size_t>(index)].value};
     return NKS_OK;
 }
 

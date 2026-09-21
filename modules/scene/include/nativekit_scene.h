@@ -394,6 +394,11 @@ nkscene_snapshot_get_occurrence(nkscene_snapshot snapshot, uint64_t index,
 NKS_API nkscene_result NKS_CALL
 nkscene_snapshot_get_occurrence_page(nkscene_snapshot snapshot, uint64_t start_index,
                                      nkscene_snapshot_occurrence_page *out_page NK_INOUT);
+NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_child_occurrence_count(
+    nkscene_snapshot snapshot, nkscene_occurrence_id parent, uint64_t *out_count NK_OUT);
+NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_child_occurrence(
+    nkscene_snapshot snapshot, nkscene_occurrence_id parent, uint64_t index,
+    nkscene_occurrence_id *out_occurrence NK_OUT);
 NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_source_occurrence_count(
     nkscene_snapshot snapshot, nkscene_entity_id source, uint64_t *out_count NK_OUT);
 NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_source_occurrence(
@@ -407,6 +412,16 @@ NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_name(nkscene_snapshot snaps
 NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_entity_name(nkscene_snapshot snapshot,
                                                                  nkscene_entity_id entity,
                                                                  const char **out_name);
+NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_geometry_occurrence_count(
+    nkscene_snapshot snapshot, nkscene_geometry_id geometry, uint64_t *out_count NK_OUT);
+NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_geometry_occurrence(
+    nkscene_snapshot snapshot, nkscene_geometry_id geometry, uint64_t index,
+    nkscene_occurrence_id *out_occurrence NK_OUT);
+NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_material_occurrence_count(
+    nkscene_snapshot snapshot, nkscene_material_id material, uint64_t *out_count NK_OUT);
+NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_material_occurrence(
+    nkscene_snapshot snapshot, nkscene_material_id material, uint64_t index,
+    nkscene_occurrence_id *out_occurrence NK_OUT);
 NKS_API void NKS_CALL nkscene_change_set_destroy(nkscene_change_set changes);
 NKS_API nkscene_result NKS_CALL nkscene_change_set_get_revision(nkscene_change_set changes,
                                                                 uint64_t *out_revision NK_OUT);

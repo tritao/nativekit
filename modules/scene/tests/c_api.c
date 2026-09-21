@@ -115,6 +115,10 @@ int main(void) {
 
     nkscene_transaction transaction = {0};
     assert(nkscene_transaction_begin(scene, &transaction) == NKS_OK);
+    nkscene_geometry_id geometry = {0};
+    nkscene_material_id material = {0};
+    assert(nkscene_geometry_create(scene, &geometry) == NKS_OK);
+    assert(nkscene_material_create(scene, &material) == NKS_OK);
     nkscene_occurrence_id group = {0};
     nkscene_occurrence_id first = {0};
     nkscene_occurrence_id second = {0};
@@ -123,6 +127,10 @@ int main(void) {
     assert(nkscene_tx_create_occurrence(transaction, &second) == NKS_OK);
     assert(nkscene_tx_set_parent(transaction, first, group) == NKS_OK);
     assert(nkscene_tx_set_parent(transaction, second, group) == NKS_OK);
+    assert(nkscene_tx_set_geometry(transaction, first, geometry) == NKS_OK);
+    assert(nkscene_tx_set_geometry(transaction, second, geometry) == NKS_OK);
+    assert(nkscene_tx_set_material(transaction, first, material) == NKS_OK);
+    assert(nkscene_tx_set_material(transaction, second, material) == NKS_OK);
     const nkscene_transform first_transform = translated(-2.0f);
     const nkscene_transform second_transform = translated(3.0f);
     const nkscene_transform_update transform_updates[] = {
@@ -204,6 +212,29 @@ int main(void) {
     assert(nkscene_snapshot_get_source_occurrence(
                snapshot, first_source, source_count, &source_occurrence) ==
            NKS_ERROR_INVALID_ARGUMENT);
+
+    uint64_t child_count = 0;
+    assert(nkscene_snapshot_get_child_occurrence_count(snapshot, group, &child_count) == NKS_OK);
+    assert(child_count == 2);
+    assert(nkscene_snapshot_get_child_occurrence(snapshot, group, 0, &source_occurrence) ==
+           NKS_OK);
+    assert(source_occurrence.value == first.value);
+    assert(nkscene_snapshot_get_child_occurrence(snapshot, group, child_count, &source_occurrence) ==
+           NKS_ERROR_INVALID_ARGUMENT);
+
+    uint64_t resource_count = 0;
+    assert(nkscene_snapshot_get_geometry_occurrence_count(snapshot, geometry, &resource_count) ==
+           NKS_OK);
+    assert(resource_count == 2);
+    assert(nkscene_snapshot_get_geometry_occurrence(snapshot, geometry, 1, &source_occurrence) ==
+           NKS_OK);
+    assert(source_occurrence.value == second.value);
+    assert(nkscene_snapshot_get_material_occurrence_count(snapshot, material, &resource_count) ==
+           NKS_OK);
+    assert(resource_count == 2);
+    assert(nkscene_snapshot_get_material_occurrence(snapshot, material, 0, &source_occurrence) ==
+           NKS_OK);
+    assert(source_occurrence.value == first.value);
 
     nkscene_snapshot_destroy(snapshot);
     nkscene_light_destroy(scene, light);
