@@ -3,6 +3,7 @@
 #include "ids.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <unordered_map>
 
 namespace nkscene {
@@ -13,10 +14,16 @@ public:
         auto [found, inserted] = resources.emplace(id, GeometryResource{id});
         if (!inserted)
             ++found->second.revision;
+        ++revision_counter;
         return found->second;
     }
 
-    bool destroy(GeometryId id) noexcept { return resources.erase(id) != 0; }
+    bool destroy(GeometryId id) noexcept {
+        if (resources.erase(id) == 0)
+            return false;
+        ++revision_counter;
+        return true;
+    }
 
     const GeometryResource *find(GeometryId id) const noexcept {
         const auto found = resources.find(id);
@@ -29,6 +36,7 @@ public:
     }
 
     std::size_t size() const noexcept { return resources.size(); }
+    std::uint64_t revision() const noexcept { return revision_counter; }
 
     template<class Fn>
     void for_each(Fn &&fn) const {
@@ -38,6 +46,7 @@ public:
 
 private:
     std::unordered_map<GeometryId, GeometryResource> resources;
+    std::uint64_t revision_counter = 0;
 };
 
 class MaterialStore {
@@ -46,10 +55,16 @@ public:
         auto [found, inserted] = resources.emplace(id, MaterialResource{id});
         if (!inserted)
             ++found->second.revision;
+        ++revision_counter;
         return found->second;
     }
 
-    bool destroy(MaterialId id) noexcept { return resources.erase(id) != 0; }
+    bool destroy(MaterialId id) noexcept {
+        if (resources.erase(id) == 0)
+            return false;
+        ++revision_counter;
+        return true;
+    }
 
     const MaterialResource *find(MaterialId id) const noexcept {
         const auto found = resources.find(id);
@@ -62,6 +77,7 @@ public:
     }
 
     std::size_t size() const noexcept { return resources.size(); }
+    std::uint64_t revision() const noexcept { return revision_counter; }
 
     template<class Fn>
     void for_each(Fn &&fn) const {
@@ -71,6 +87,7 @@ public:
 
 private:
     std::unordered_map<MaterialId, MaterialResource> resources;
+    std::uint64_t revision_counter = 0;
 };
 
 template<class Resource, class Id>

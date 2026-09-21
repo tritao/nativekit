@@ -129,13 +129,27 @@ SceneSnapshot::occurrences_for_material(MaterialId material) const noexcept {
 }
 
 const SnapshotOccurrence *SceneSnapshot::find(OccurrenceId id) const noexcept {
-    const auto &value = materialized();
-    const auto found =
-        std::lower_bound(value.occurrences.begin(), value.occurrences.end(), id,
-                         [](const SnapshotOccurrence &occurrence, OccurrenceId value) {
-                             return occurrence.occurrence.value < value.value;
-                         });
-    return found == value.occurrences.end() || found->occurrence != id ? nullptr : &*found;
+    const auto &published_occurrences = *state_->occurrences;
+    auto cached =
+        std::atomic_load_explicit(&published_occurrences.lookup, std::memory_order_acquire);
+    if (!cached) {
+        auto next = std::make_shared<std::unordered_map<OccurrenceId, const SnapshotOccurrence *>>();
+        next->reserve(published_occurrences.slot_count);
+        for (const auto &page : published_occurrences.pages) {
+            for (const auto &occurrence : page->values)
+                if (occurrence.occurrence.valid())
+                    next->emplace(occurrence.occurrence, &occurrence);
+        }
+        std::shared_ptr<const std::unordered_map<OccurrenceId, const SnapshotOccurrence *>> candidate =
+            std::move(next);
+        std::atomic_compare_exchange_strong_explicit(
+            &published_occurrences.lookup, &cached, std::move(candidate),
+            std::memory_order_release, std::memory_order_acquire);
+        cached =
+            std::atomic_load_explicit(&published_occurrences.lookup, std::memory_order_acquire);
+    }
+    const auto found = cached->find(id);
+    return found == cached->end() ? nullptr : found->second;
 }
 
 std::string_view SceneSnapshot::name(OccurrenceId id) const noexcept {
@@ -489,6 +503,8 @@ void Scene::publish_state(const ChangeSet *changes, std::span<const std::uint32_
     auto state = std::make_shared<PublishedSceneState>();
     state->revisions = revisions;
     state->entity_names = entity_names;
+    state->geometry_store_revision = geometries.revision();
+    state->material_store_revision = materials.revision();
     if (previous && !resources_changed) {
         state->geometries = previous->geometries;
         state->materials = previous->materials;
@@ -588,6 +604,11 @@ void Scene::publish_state(const ChangeSet *changes, std::span<const std::uint32_
                 make_occurrence(occurrences.id(active->second), active->second);
         occurrence_state->pages[page_index] = std::move(page);
     }
+    if (!changed_slots.empty())
+        std::atomic_store_explicit(&occurrence_state->lookup,
+                                   std::shared_ptr<const std::unordered_map<OccurrenceId,
+                                                                            const SnapshotOccurrence *>>{},
+                                   std::memory_order_release);
     if (!changed_slots.empty())
         std::atomic_store_explicit(&occurrence_state->materialized,
                                    std::shared_ptr<const SnapshotMaterialization>{},
@@ -975,10 +996,12 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
     }
     changes.scene_revision = revisions.scene;
     changes.revisions = revisions;
-    // Direct C++ resource-store edits are allowed before a transaction, so the
-    // resource tables are refreshed at commit publication as well. Occurrence
-    // pages remain copy-on-write and are the dominant publication cost.
-    publish_state(&changes, destroyed_slots, true);
+    const auto published =
+        std::atomic_load_explicit(&published_, std::memory_order_acquire);
+    const bool resources_changed =
+        !published || published->geometry_store_revision != geometries.revision() ||
+        published->material_store_revision != materials.revision();
+    publish_state(&changes, destroyed_slots, resources_changed);
     return NKS_OK;
 }
 

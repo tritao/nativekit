@@ -30,6 +30,8 @@ struct PublishedOccurrencePage {
 struct PublishedOccurrenceState {
     std::size_t slot_count = 0;
     std::vector<std::shared_ptr<const PublishedOccurrencePage>> pages;
+    mutable std::shared_ptr<const std::unordered_map<OccurrenceId, const SnapshotOccurrence *>>
+        lookup;
     mutable std::shared_ptr<const SnapshotMaterialization> materialized;
 };
 
@@ -44,6 +46,8 @@ struct SnapshotMaterialization {
 struct PublishedSceneState {
     RevisionCounters revisions;
     std::unordered_map<EntityId, std::string> entity_names;
+    std::uint64_t geometry_store_revision = 0;
+    std::uint64_t material_store_revision = 0;
     std::shared_ptr<const PublishedOccurrenceState> occurrences;
     std::shared_ptr<const std::vector<GeometryResource>> geometries;
     std::shared_ptr<const std::vector<MaterialResource>> materials;
