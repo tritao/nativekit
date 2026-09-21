@@ -52,9 +52,10 @@ jobs:
       - name: Build backend matrix tests
         run: >-
           cmake --build build --target nativekit_sokol_runtime_matrix_test
-          nativekit_gpu_gles3_smoke_test nativekit_gpu_contract_smoke_test
+          nativekit_gpu_transfer_smoke_test nativekit_gpu_gles3_smoke_test
+          nativekit_gpu_contract_smoke_test
           nativekit_gpu_batch_submit_test
       - name: Run backend matrix and GPU tests
         run: >-
           ctest --test-dir build --output-on-failure --timeout 120
-          -R '^(nativekit_sokol_runtime_matrix|nativekit_gpu_(gles3_smoke|contract_smoke|batch_submit))$'
+          -R '^(nativekit_sokol_runtime_matrix|nativekit_gpu_(transfer_smoke|gles3_smoke|contract_smoke|batch_submit))$'

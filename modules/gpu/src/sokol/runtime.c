@@ -378,6 +378,9 @@ static uint32_t nk_sokol_image_copy(sg_image source, uint32_t source_mip, uint32
     const size_t temporary_size = row_size * height;
     if (!row_size || row_size / source_bytes != width || temporary_size / row_size != height)
         return 0;
+    const sg_image_usage source_usage = sg_query_image_usage(source);
+    const int source_is_attachment = source_usage.color_attachment ||
+                                     source_usage.depth_stencil_attachment;
     uint8_t *temporary = (uint8_t *)malloc(temporary_size);
     if (!temporary)
         return 0;
@@ -403,11 +406,24 @@ static uint32_t nk_sokol_image_copy(sg_image source, uint32_t source_mip, uint32
         glReadPixels((GLint)source_x, source_gl_y, (GLsizei)width, (GLsizei)height, source_format,
                      source_type, temporary);
         glPixelStorei(GL_PACK_ALIGNMENT, 4);
+        if (!source_is_attachment) {
+            for (uint32_t row = 0; row < height / 2; ++row) {
+                uint8_t *top = temporary + (size_t)row * row_size;
+                uint8_t *bottom = temporary + (size_t)(height - row - 1) * row_size;
+                for (size_t byte = 0; byte < row_size; ++byte) {
+                    const uint8_t value = top[byte];
+                    top[byte] = bottom[byte];
+                    bottom[byte] = value;
+                }
+            }
+        }
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
         glBindTexture(destination_target, destination_texture);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        const GLint destination_gl_y =
-            (GLint)destination_height - (GLint)destination_y - (GLint)height;
+        const GLint destination_gl_y = source_is_attachment
+                                           ? (GLint)destination_height - (GLint)destination_y -
+                                                 (GLint)height
+                                           : (GLint)destination_y;
         glTexSubImage2D(destination_target, (GLint)destination_mip, (GLint)destination_x,
                         destination_gl_y, (GLsizei)width, (GLsizei)height, destination_format,
                         destination_type, temporary);

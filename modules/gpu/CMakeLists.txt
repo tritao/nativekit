@@ -138,6 +138,10 @@ if(NK_BUILD_TESTS)
                 "${PROJECT_SOURCE_DIR}/src")
             target_link_libraries(nativekit_gpu_transfer_smoke_test PRIVATE NativeKit::gpu
                 NativeKit::nativekit)
+            if(NK_BUILD_GPU_BACKEND_MATRIX)
+                target_compile_definitions(nativekit_gpu_transfer_smoke_test PRIVATE
+                    NKGPU_TRANSFER_SMOKE_GLES3=1)
+            endif()
             add_test(NAME nativekit_gpu_transfer_smoke
                 COMMAND ${NKGPU_XVFB_RUN} -a $<TARGET_FILE:nativekit_gpu_transfer_smoke_test>)
             set_tests_properties(nativekit_gpu_transfer_smoke PROPERTIES
