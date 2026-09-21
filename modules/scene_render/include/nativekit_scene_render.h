@@ -582,9 +582,12 @@ class RenderPlan {
     std::uint64_t view_signature_ = 0;
     std::vector<RenderItem> items_;
     std::vector<WorldTransform> transforms_;
+    std::vector<EntityId> item_sources_;
     std::vector<InstanceBatch> batches_;
     std::unordered_map<OccurrenceId, std::size_t> item_by_occurrence_;
     std::unordered_map<EntityId, std::vector<std::size_t>> items_by_source_;
+    std::unordered_map<GeometryId, std::vector<std::size_t>> items_by_geometry_;
+    std::unordered_map<MaterialId, std::vector<std::size_t>> items_by_material_;
     std::unordered_map<GeometryId, std::vector<std::size_t>> batches_by_geometry_;
     std::unordered_map<MaterialId, std::vector<std::size_t>> batches_by_material_;
     std::unordered_map<GeometryId, std::uint64_t> geometry_revisions_;

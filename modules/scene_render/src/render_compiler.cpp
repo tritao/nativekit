@@ -19,6 +19,8 @@ bool has_domain_in(const ChangeSet &changes, ChangeDomain domain) noexcept {
         [domain](const SceneChange &change) { return has_domain(change.domains, domain); });
 }
 
+constexpr std::size_t invalid_item_index = static_cast<std::size_t>(-1);
+
 } // namespace
 
 RenderPlan compile(const SceneSnapshot &snapshot, const SceneView &view) {
@@ -65,28 +67,35 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
     std::unordered_set<GeometryId> changed_geometry_resources;
     std::unordered_set<MaterialId> changed_material_resources;
     std::size_t invalidated_items = 0;
-    for (const auto &item : plan.items_) {
-        const auto *occurrence = snapshot.find(item.occurrence);
-        const auto *geometry = snapshot.find_geometry(item.geometry);
-        const auto *material = snapshot.find_material(item.material);
-        const auto desired_geometry = occurrence ? occurrence->geometry : invalid_geometry;
-        const auto desired_material = occurrence && effective_state_dirty
-                                          ? effective.material.at(item.occurrence)
-                                          : item.material;
-        if (!occurrence || !geometry || !material ||
-            (desired_geometry != item.geometry && !snapshot.find_geometry(desired_geometry)) ||
-            !snapshot.find_material(desired_material)) {
-            ++invalidated_items;
+    for (const auto &resource : snapshot.geometries()) {
+        const auto found = plan.geometry_revisions_.find(resource.id);
+        if (found != plan.geometry_revisions_.end() && found->second != resource.revision &&
+            plan.items_by_geometry_.contains(resource.id))
+            changed_geometry_resources.insert(resource.id);
+    }
+    for (const auto &resource : snapshot.materials()) {
+        const auto found = plan.material_revisions_.find(resource.id);
+        if (found != plan.material_revisions_.end() && found->second != resource.revision &&
+            plan.items_by_material_.contains(resource.id))
+            changed_material_resources.insert(resource.id);
+    }
+    for (const auto &[geometry, unused] : plan.geometry_revisions_)
+        if (!snapshot.find_geometry(geometry) && plan.items_by_geometry_.contains(geometry))
+            invalidated_items += plan.items_by_geometry_.at(geometry).size();
+    for (const auto &[material, unused] : plan.material_revisions_)
+        if (!snapshot.find_material(material) && plan.items_by_material_.contains(material))
+            invalidated_items += plan.items_by_material_.at(material).size();
+    for (const auto &change : changes.changes) {
+        const auto item_index = plan.item_index(change.occurrence);
+        const auto *occurrence = snapshot.find(change.occurrence);
+        if (item_index == invalid_item_index || !occurrence)
             continue;
-        }
-        const auto geometry_revision = plan.geometry_revisions_.find(item.geometry);
-        if (geometry_revision == plan.geometry_revisions_.end() ||
-            geometry_revision->second != geometry->revision)
-            changed_geometry_resources.insert(item.geometry);
-        const auto material_revision = plan.material_revisions_.find(item.material);
-        if (material_revision == plan.material_revisions_.end() ||
-            material_revision->second != material->revision)
-            changed_material_resources.insert(item.material);
+        if (has_domain(change.domains, ChangeDomain::Geometry) &&
+            !snapshot.find_geometry(occurrence->geometry))
+            ++invalidated_items;
+        if (has_domain(change.domains, ChangeDomain::Material) &&
+            !snapshot.find_material(occurrence->material))
+            ++invalidated_items;
     }
     if (topology_changed || plan.source_revision() > snapshot.revision() ||
         plan.view_root_ != view.root || invalidated_items != 0 ||
@@ -113,86 +122,157 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
     for (const auto &resource : snapshot.materials())
         plan.material_revisions_.emplace(resource.id, resource.revision);
 
+    const auto remove_index = [](auto &index, const auto key, std::size_t item_index) {
+        const auto found = index.find(key);
+        if (found == index.end())
+            return;
+        auto &items = found->second;
+        items.erase(std::remove(items.begin(), items.end(), item_index), items.end());
+        if (items.empty())
+            index.erase(found);
+    };
+    const auto adjust_counts = [&plan](RenderFlags before, RenderFlags after) {
+        const auto before_culled = has_render_flag(before, RenderFlags::Culled);
+        const auto after_culled = has_render_flag(after, RenderFlags::Culled);
+        const auto before_visible = !before_culled && !has_render_flag(before, RenderFlags::Hidden);
+        const auto after_visible = !after_culled && !has_render_flag(after, RenderFlags::Hidden);
+        if (before_culled != after_culled) {
+            if (after_culled)
+                ++plan.culled_items_;
+            else
+                --plan.culled_items_;
+        }
+        if (before_visible != after_visible) {
+            if (after_visible)
+                ++plan.visible_items_;
+            else
+                --plan.visible_items_;
+        }
+    };
+
     bool batches_dirty = false;
     for (const auto &change : changes.changes) {
         const auto item_index = plan.item_index(change.occurrence);
         const auto *snapshot_occurrence = snapshot.find(change.occurrence);
-        if (item_index == static_cast<std::size_t>(-1) || !snapshot_occurrence)
+        if (item_index == invalid_item_index || !snapshot_occurrence)
             continue;
         auto &item = plan.items_[item_index];
-        if (has_domain(change.domains, ChangeDomain::Transform) ||
-            has_domain(change.domains, ChangeDomain::Hierarchy)) {
-            plan.transforms_[item.transformIndex] = snapshot_occurrence->world_transform;
-            ++result.patched_instances;
-        }
-        if (has_domain(change.domains, ChangeDomain::Geometry)) {
+        if (has_domain(change.domains, ChangeDomain::Geometry) &&
+            item.geometry != snapshot_occurrence->geometry) {
+            remove_index(plan.items_by_geometry_, item.geometry, item_index);
             item.geometry = snapshot_occurrence->geometry;
+            plan.items_by_geometry_[item.geometry].push_back(item_index);
             batches_dirty = true;
             result.geometry_rebuilt = true;
         }
-    }
-    const bool world_transforms_changed =
-        std::any_of(changes.changes.begin(), changes.changes.end(), [](const SceneChange &change) {
-            return has_domain(change.domains, ChangeDomain::Transform) ||
-                   has_domain(change.domains, ChangeDomain::Hierarchy);
-        });
-    if (world_transforms_changed) {
-        for (auto &item : plan.items_) {
-            if (const auto *occurrence = snapshot.find(item.occurrence)) {
-                if (occurrence->world_transform.revision !=
-                    plan.transforms_[item.transformIndex].revision) {
-                    plan.transforms_[item.transformIndex] = occurrence->world_transform;
-                    ++result.patched_instances;
-                }
+        if (has_domain(change.domains, ChangeDomain::Source) &&
+            plan.item_sources_[item_index] != snapshot_occurrence->source) {
+            for (auto found = plan.items_by_source_.begin(); found != plan.items_by_source_.end();) {
+                auto &items = found->second;
+                items.erase(std::remove(items.begin(), items.end(), item_index), items.end());
+                if (items.empty())
+                    found = plan.items_by_source_.erase(found);
+                else
+                    ++found;
             }
+            plan.item_sources_[item_index] = snapshot_occurrence->source;
+            plan.items_by_source_[snapshot_occurrence->source].push_back(item_index);
         }
     }
 
+    for (const auto occurrence_id : changes.world_transform_occurrences) {
+        const auto item_index = plan.item_index(occurrence_id);
+        const auto *occurrence = snapshot.find(occurrence_id);
+        if (item_index == invalid_item_index || !occurrence)
+            continue;
+        auto &item = plan.items_[item_index];
+        if (plan.transforms_[item.transformIndex].revision != occurrence->world_transform.revision) {
+            plan.transforms_[item.transformIndex] = occurrence->world_transform;
+            ++result.patched_instances;
+        }
+    }
+
+    std::vector<OccurrenceId> effective_targets;
+    std::unordered_set<OccurrenceId> effective_target_set;
+    const auto add_effective_target = [&](OccurrenceId occurrence) {
+        if (effective_target_set.insert(occurrence).second)
+            effective_targets.push_back(occurrence);
+    };
+    for (const auto occurrence : changes.effective_state_occurrences)
+        add_effective_target(occurrence);
+    if (view_changed)
+        for (const auto &item : plan.items_)
+            add_effective_target(item.occurrence);
     if (effective_state_dirty) {
-        for (auto &item : plan.items_) {
-            const auto visible = effective.visible.at(item.occurrence);
+        for (const auto occurrence_id : effective_targets) {
+            const auto item_index = plan.item_index(occurrence_id);
+            if (item_index == invalid_item_index || !effective.visible.contains(occurrence_id))
+                continue;
+            auto &item = plan.items_[item_index];
+            const auto visible = effective.visible.at(occurrence_id);
             const auto was_visible = !has_render_flag(item.flags, RenderFlags::Hidden);
             if (visible != was_visible) {
+                const auto before = item.flags;
                 if (visible)
                     item.flags =
                         static_cast<RenderFlags>(static_cast<std::uint32_t>(item.flags) &
                                                  ~static_cast<std::uint32_t>(RenderFlags::Hidden));
                 else
                     item.flags |= RenderFlags::Hidden;
+                adjust_counts(before, item.flags);
                 ++result.patched_visibility;
             }
-            const auto material = effective.material.at(item.occurrence);
+            const auto material = effective.material.at(occurrence_id);
+            if (!snapshot.find_material(material)) {
+                ++invalidated_items;
+                continue;
+            }
             if (material != item.material) {
+                remove_index(plan.items_by_material_, item.material, item_index);
                 item.material = material;
+                plan.items_by_material_[item.material].push_back(item_index);
                 ++result.patched_materials;
                 batches_dirty = true;
             }
         }
     }
 
-    const bool scene_culling_dirty = has_domain_in(changes, ChangeDomain::Transform) ||
-                                     has_domain_in(changes, ChangeDomain::Hierarchy) ||
-                                     has_domain_in(changes, ChangeDomain::Geometry) ||
-                                     has_domain_in(changes, ChangeDomain::Bounds) ||
-                                     has_domain_in(changes, ChangeDomain::Camera);
     const auto camera = render_internal::camera_for_snapshot(snapshot, view);
-    if (culling_changed || scene_culling_dirty) {
-        for (auto &item : plan.items_) {
-            const auto *occurrence = snapshot.find(item.occurrence);
-            if (!occurrence)
-                continue;
-            const auto item_culled = culled(*occurrence, camera, view);
-            const auto was_culled = has_render_flag(item.flags, RenderFlags::Culled);
-            if (item_culled == was_culled)
-                continue;
-            if (item_culled)
-                item.flags |= RenderFlags::Culled;
-            else
-                item.flags =
-                    static_cast<RenderFlags>(static_cast<std::uint32_t>(item.flags) &
-                                             ~static_cast<std::uint32_t>(RenderFlags::Culled));
-            ++result.patched_culling;
-        }
+    std::vector<OccurrenceId> culling_targets;
+    std::unordered_set<OccurrenceId> culling_target_set;
+    const auto add_culling_target = [&](OccurrenceId occurrence) {
+        if (culling_target_set.insert(occurrence).second)
+            culling_targets.push_back(occurrence);
+    };
+    for (const auto occurrence : changes.world_transform_occurrences)
+        add_culling_target(occurrence);
+    if (culling_changed || has_domain_in(changes, ChangeDomain::Camera))
+        for (const auto &item : plan.items_)
+            add_culling_target(item.occurrence);
+    if (!culling_changed)
+        for (const auto &change : changes.changes)
+            if (has_domain(change.domains, ChangeDomain::Bounds) ||
+                has_domain(change.domains, ChangeDomain::Geometry))
+                add_culling_target(change.occurrence);
+    for (const auto occurrence_id : culling_targets) {
+        const auto item_index = plan.item_index(occurrence_id);
+        const auto *occurrence = snapshot.find(occurrence_id);
+        if (item_index == invalid_item_index || !occurrence)
+            continue;
+        auto &item = plan.items_[item_index];
+        const auto item_culled = culled(*occurrence, camera, view);
+        const auto was_culled = has_render_flag(item.flags, RenderFlags::Culled);
+        if (item_culled == was_culled)
+            continue;
+        const auto before = item.flags;
+        if (item_culled)
+            item.flags |= RenderFlags::Culled;
+        else
+            item.flags =
+                static_cast<RenderFlags>(static_cast<std::uint32_t>(item.flags) &
+                                         ~static_cast<std::uint32_t>(RenderFlags::Culled));
+        adjust_counts(before, item.flags);
+        ++result.patched_culling;
     }
     if (batches_dirty) {
         render_internal::rebuild_batches(plan);
@@ -209,14 +289,6 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
             continue;
         plan.clip_planes_[plan.clip_plane_count_++] = {plane.normal[0], plane.normal[1],
                                                        plane.normal[2], plane.distance};
-    }
-    plan.visible_items_ = 0;
-    plan.culled_items_ = 0;
-    for (const auto &item : plan.items_) {
-        if (has_render_flag(item.flags, RenderFlags::Culled))
-            ++plan.culled_items_;
-        else if (!has_render_flag(item.flags, RenderFlags::Hidden))
-            ++plan.visible_items_;
     }
     result.visible_items = plan.visible_items_;
     result.culled_items = plan.culled_items_;

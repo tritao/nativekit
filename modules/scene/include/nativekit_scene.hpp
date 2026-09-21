@@ -355,6 +355,10 @@ struct ChangeSet {
     RevisionCounters revisions;
     ChangeStats stats;
     std::vector<SceneChange> changes;
+    /** Derived world-transform updates, including descendants of a changed parent. */
+    std::vector<OccurrenceId> world_transform_occurrences;
+    /** Occurrences whose effective view state may change due to scene mutations. */
+    std::vector<OccurrenceId> effective_state_occurrences;
 };
 
 struct SnapshotOccurrence {

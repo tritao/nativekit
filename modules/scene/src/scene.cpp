@@ -354,6 +354,7 @@ void Scene::recompute_world_transforms(ChangeSet &changes) {
             world_transforms_.insert_or_assign(handle,
                                                WorldTransform{world, revisions.scene + 1});
             ++changes.stats.dirty_world_transforms;
+            changes.world_transform_occurrences.push_back(current);
             if (const auto *geometry = geometry_refs.find(handle)) {
                 const auto *resource = geometries.find(geometry->id);
                 if (resource && resource->bounds.valid) {
@@ -776,6 +777,33 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
     }
     changes.stats.changed_occurrences = changes.changes.size();
     recompute_world_transforms(changes);
+    std::unordered_set<OccurrenceId> effective_state_seen;
+    const auto mark_effective = [&](OccurrenceId occurrence) {
+        if (effective_state_seen.insert(occurrence).second)
+            changes.effective_state_occurrences.push_back(occurrence);
+    };
+    const auto mark_effective_subtree = [&](OccurrenceId root) {
+        std::vector<OccurrenceId> pending{root};
+        while (!pending.empty()) {
+            const auto current = pending.back();
+            pending.pop_back();
+            if (effective_state_seen.contains(current))
+                continue;
+            mark_effective(current);
+            hierarchy.for_each_child(occurrences.resolve(current),
+                                     [&](OccurrenceId child, OccurrenceHandle) {
+                                         pending.push_back(child);
+                                     });
+        }
+    };
+    for (const auto &change : changes.changes) {
+        if (has_domain(change.domains, ChangeDomain::Visibility) ||
+            has_domain(change.domains, ChangeDomain::Hierarchy))
+            mark_effective_subtree(change.occurrence);
+        else if (has_domain(change.domains, ChangeDomain::Material) ||
+                 has_domain(change.domains, ChangeDomain::Source))
+            mark_effective(change.occurrence);
+    }
     if (!changes.changes.empty() || name_changed) {
         auto &revision = revisions;
         ++revision.scene;

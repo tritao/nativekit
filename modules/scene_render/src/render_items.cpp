@@ -356,13 +356,17 @@ void build_items(RenderPlan &plan, const SceneSnapshot &snapshot, const SceneVie
     const auto camera = camera_for_snapshot(snapshot, view);
     plan.items_.clear();
     plan.transforms_.clear();
+    plan.item_sources_.clear();
     plan.item_by_occurrence_.clear();
     plan.items_by_source_.clear();
+    plan.items_by_geometry_.clear();
+    plan.items_by_material_.clear();
     plan.visible_items_ = 0;
     plan.culled_items_ = 0;
     plan.view_projection_ = camera.view_projection;
     plan.items_.reserve(snapshot.occurrences().size());
     plan.transforms_.reserve(snapshot.occurrences().size());
+    plan.item_sources_.reserve(snapshot.occurrences().size());
     for (const auto &occurrence : snapshot.occurrences()) {
         if (!occurrence.geometry.valid() || !occurrence.material.valid() ||
             !snapshot.find_geometry(occurrence.geometry) ||
@@ -389,8 +393,11 @@ void build_items(RenderPlan &plan, const SceneSnapshot &snapshot, const SceneVie
         }
         const auto item_index = plan.items_.size();
         plan.items_.push_back(item);
+        plan.item_sources_.push_back(occurrence.source);
         plan.item_by_occurrence_.emplace(item.occurrence, item_index);
         plan.items_by_source_[occurrence.source].push_back(item_index);
+        plan.items_by_geometry_[item.geometry].push_back(item_index);
+        plan.items_by_material_[item.material].push_back(item_index);
     }
 }
 
