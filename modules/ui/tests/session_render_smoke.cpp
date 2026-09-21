@@ -325,8 +325,8 @@ int main() {
         const std::size_t root_record = NKUI_LAYOUT_TRANSACTION_HEADER_BYTES;
         write_float(moved, root_record + NKUI_LAYOUT_NODE_TRANSFORM_TX_OFFSET, 32.0f);
         write_float(moved, root_record + NKUI_LAYOUT_NODE_TRANSFORM_TY_OFFSET, 16.0f);
-        if (nkui_layout_session_submit(session, moved.data(), static_cast<uint32_t>(moved.size()),
-                                       &frame) != NKUI_OK ||
+        if (nkui_layout_session_update_transforms(
+                session, moved.data(), static_cast<uint32_t>(moved.size())) != NKUI_OK ||
             nkui_layout_session_render_frame(renderer, session, surface, &frame_info, 0) !=
                 NKUI_OK ||
             nkui_renderer_get_stats(renderer, &root_cache_moved) != NKUI_OK ||
