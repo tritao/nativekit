@@ -115,10 +115,6 @@ int main(void) {
 
     nkscene_transaction transaction = {0};
     assert(nkscene_transaction_begin(scene, &transaction) == NKS_OK);
-    nkscene_geometry_id geometry = {0};
-    nkscene_material_id material = {0};
-    assert(nkscene_geometry_create(scene, &geometry) == NKS_OK);
-    assert(nkscene_material_create(scene, &material) == NKS_OK);
     nkscene_occurrence_id group = {0};
     nkscene_occurrence_id first = {0};
     nkscene_occurrence_id second = {0};

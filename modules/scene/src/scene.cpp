@@ -603,7 +603,7 @@ void Scene::publish_state(const ChangeSet *changes,
     };
     if (previous && !geometry_resources_changed) {
         state->geometries = previous->geometries;
-    else
+    } else
         state->geometries = collect.template operator()<GeometryStore, GeometryResource>(geometries);
     if (previous && !material_resources_changed)
         state->materials = previous->materials;

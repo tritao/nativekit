@@ -519,7 +519,7 @@ void scene_resource_camera_is_used_for_render_view() {
     auto scene = std::make_shared<Scene>();
     const auto geometry = scene->reserve_geometry_id();
     auto &geometry_resource = scene->geometry_store().create(geometry);
-    geometry_resource.payload.vertices = {
+    geometry_resource.edit_payload().vertices = {
         {{{-0.25f, -0.25f, -0.25f}}},
         {{{0.25f, -0.25f, -0.25f}}},
         {{{0.0f, 0.25f, 0.25f}}}};

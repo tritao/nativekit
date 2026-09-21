@@ -337,7 +337,9 @@ void names_and_bulk_transforms_are_transactional() {
     move.close();
     assert(changes.changes.size() == occurrences.size());
     assert(changes.revisions.transform == 1);
-    assert(scene->world_transforms().find(occurrences[2])->transform.matrix[12] == 3.0f);
+    assert(scene->world_transforms()
+               .find(scene->occurrence_store().resolve(occurrences[2]))
+               ->transform.matrix[12] == 3.0f);
 
     constexpr nkscene::EntityId robot_link{100};
     Transaction names(scene);

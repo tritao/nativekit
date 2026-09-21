@@ -144,10 +144,10 @@ bool decode_vertex_stream(const GeometryVertexStream &stream, std::size_t index,
 }
 
 bool pack_geometry_vertices(const GeometryResource &resource, std::vector<SceneVertex> &out) {
-    out.resize(resource.payload.vertices.size());
+    out.resize(resource.payload->vertices.size());
     for (std::size_t index = 0; index < out.size(); ++index)
-        out[index].position = resource.payload.vertices[index].position;
-    for (const auto &stream : resource.payload.streams) {
+        out[index].position = resource.payload->vertices[index].position;
+    for (const auto &stream : resource.payload->streams) {
         if (stream.count != out.size())
             return false;
         for (std::size_t index = 0; index < out.size(); ++index) {
@@ -860,12 +860,12 @@ bool ensure_material(StateT &state, const SceneSnapshot &snapshot, const Materia
 
     const auto *image = static_cast<const ImageResource *>(nullptr);
     const auto *sampler = static_cast<const SamplerResource *>(nullptr);
-    if (resource.base_color_texture.valid()) {
-        if (const auto *texture = snapshot.find_texture(resource.base_color_texture))
+    if (resource.state->base_color_texture.valid()) {
+        if (const auto *texture = snapshot.find_texture(resource.state->base_color_texture))
             image = snapshot.find_image(texture->image);
     }
-    if (resource.sampler.valid())
-        sampler = snapshot.find_sampler(resource.sampler);
+    if (resource.state->sampler.valid())
+        sampler = snapshot.find_sampler(resource.state->sampler);
     const auto image_revision = image ? image->revision : 0;
     const auto sampler_revision = sampler ? sampler->revision : 0;
     auto [found, inserted] = state.material_resources.try_emplace(resource.id);
@@ -1210,6 +1210,8 @@ bool prepare_changed_resources(StateT &state, const SceneSnapshot &snapshot,
             found->second = resource->revision;
             ++stats.material_resources_updated;
         }
+        if (state.renderer.id && !ensure_material(state, snapshot, *resource, stats))
+            return false;
     }
     return true;
 }
