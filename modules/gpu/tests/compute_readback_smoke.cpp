@@ -163,20 +163,20 @@ int main() {
     switch (graphics_api) {
     case NK_GRAPHICS_OPENGL:
         source = "#version 430\n"
-                 "layout(local_size_x=4, local_size_y=1, local_size_z=1) in;\n"
+                 "layout(local_size_x=32, local_size_y=1, local_size_z=1) in;\n"
                  "layout(std430, binding=0) buffer Data { uint values[]; };\n"
                  "void main(){ uint i=gl_GlobalInvocationID.x; values[i]=values[i]*3u+1u; }\n";
         break;
     case NK_GRAPHICS_OPENGL_ES:
         source = "#version 310 es\n"
-                 "layout(local_size_x=4, local_size_y=1, local_size_z=1) in;\n"
+                 "layout(local_size_x=32, local_size_y=1, local_size_z=1) in;\n"
                  "layout(std430, binding=0) buffer Data { uint values[]; };\n"
                  "void main(){ uint i=gl_GlobalInvocationID.x; values[i]=values[i]*3u+1u; }\n";
         break;
     case NK_GRAPHICS_D3D11:
         language = NKGPU_SHADERLANGUAGE_HLSL5;
         source = "RWStructuredBuffer<uint> values : register(u0);\n"
-                 "[numthreads(4,1,1)] void main(uint3 id : SV_DispatchThreadID) {\n"
+                 "[numthreads(32,1,1)] void main(uint3 id : SV_DispatchThreadID) {\n"
                  "    values[id.x] = values[id.x] * 3 + 1;\n"
                  "}\n";
         break;
@@ -199,6 +199,9 @@ int main() {
                                                   &shader_builder),
                        NKGPU_OK, "nkgpu_shader_begin_compute"))
         return 1;
+    if (!expect_result(nkgpu_shader_compute_threads(shader_builder, 32, 1, 1), NKGPU_OK,
+                       "nkgpu_shader_compute_threads"))
+        return 1;
     nkgpu_shader_binding_desc binding{};
     binding.struct_size = sizeof(binding);
     binding.kind = NKGPU_SHADERBINDING_STORAGE_BUFFER;
@@ -219,7 +222,9 @@ int main() {
                        "nkgpu_pipeline_end"))
         return 1;
 
-    const uint32_t initial[] = {9, 4, 7, 1, 11, 13, 17, 19};
+    uint32_t initial[32]{};
+    for (uint32_t index = 0; index < 32; ++index)
+        initial[index] = index * 2 + 1;
     nkgpu_buffer_desc buffer_desc{};
     buffer_desc.struct_size = sizeof(buffer_desc);
     buffer_desc.size = sizeof(initial);
@@ -238,7 +243,7 @@ int main() {
                        "nkgpu_apply_pipeline(compute)") ||
         !expect_result(nkgpu_apply_storage_buffer(resources.renderer, 0, resources.buffer),
                        NKGPU_OK, "nkgpu_apply_storage_buffer") ||
-        !expect_result(nkgpu_dispatch(resources.renderer, 2, 1, 1), NKGPU_OK,
+        !expect_result(nkgpu_dispatch(resources.renderer, 1, 1, 1), NKGPU_OK,
                        "nkgpu_dispatch") ||
         !expect_result(nkgpu_end_pass(resources.renderer), NKGPU_OK,
                        "nkgpu_end_pass(compute)") ||

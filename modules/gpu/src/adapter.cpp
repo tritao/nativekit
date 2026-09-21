@@ -21,6 +21,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <cstdint>
+#include <limits>
 #include <new>
 #include <string>
 #include <utility>
@@ -2382,6 +2383,23 @@ nkgpu_result nkgpu_shader_begin_compute(nkgpu_renderer r, nkgpu_shader_language 
         s->value.desc.compute_func.entry = "main0";
     }
     *out = h;
+    return NKGPU_OK;
+}
+
+nkgpu_result nkgpu_shader_compute_threads(nkgpu_shader_builder h, uint32_t x, uint32_t y,
+                                          uint32_t z) {
+    const uint64_t thread_count = uint64_t(x) * uint64_t(y) * uint64_t(z);
+    auto *s = shader_builder_pool.get(h);
+    if (!s || s->value.compute_source.empty() || !x || !y || !z ||
+        x > static_cast<uint32_t>(std::numeric_limits<int>::max()) ||
+        y > static_cast<uint32_t>(std::numeric_limits<int>::max()) ||
+        z > static_cast<uint32_t>(std::numeric_limits<int>::max()) || thread_count % 32 != 0)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid compute threadgroup dimensions");
+    const nkgpu_result idle = require_idle_renderer(s->value.owner);
+    if (idle != NKGPU_OK)
+        return idle;
+    s->value.desc.mtl_threads_per_threadgroup = {
+        static_cast<int>(x), static_cast<int>(y), static_cast<int>(z)};
     return NKGPU_OK;
 }
 
