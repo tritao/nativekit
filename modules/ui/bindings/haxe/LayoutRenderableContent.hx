@@ -1,5 +1,6 @@
 import Canvas;
 import DisplayList;
+import Rect;
 
 /** Paint callback for a retained custom layout content provider. */
 typedef LayoutContentPaint = (canvas:Canvas, geometry:ResolvedLayoutItem) -> Void;
@@ -8,9 +9,10 @@ typedef LayoutContentPaint = (canvas:Canvas, geometry:ResolvedLayoutItem) -> Voi
  * Pairs intrinsic measurement with a retained Canvas display list.
  *
  * The painter draws in the custom node's local layout space. LayoutSession
- * applies the resolved clip, transform, and node origin before invoking it,
- * matching the framework RenderNode paint contract. The display list is
- * regenerated only when the provider version or resolved geometry changes.
+ * applies the resolved position, transform, and ancestor clipping when the
+ * list is embedded, matching the framework RenderNode paint contract. The
+ * display list is regenerated only when the provider version or local size
+ * changes.
  */
 class LayoutRenderableContent implements LayoutContent {
 	final measurement:LayoutContent;
@@ -50,9 +52,7 @@ class LayoutRenderableContent implements LayoutContent {
 		canvas.reset();
 		canvas.withState(function(target) {
 			target.resetTransform();
-			target.clip(geometry.clipBounds);
-			target.setTransform(geometry.transform);
-			target.translate(geometry.x, geometry.y);
+			target.clip(new Rect(0.0, 0.0, geometry.width, geometry.height));
 			painter(target, geometry);
 		});
 		list.update(canvas);
@@ -77,13 +77,6 @@ class LayoutRenderableContent implements LayoutContent {
 	}
 
 	static function geometryEqual(a:ResolvedLayoutItem, b:ResolvedLayoutItem):Bool {
-		return a.id == b.id && a.x == b.x && a.y == b.y && a.width == b.width &&
-			a.height == b.height && rectEqual(a.clipBounds, b.clipBounds) &&
-			a.transform.a == b.transform.a && a.transform.b == b.transform.b &&
-			a.transform.c == b.transform.c && a.transform.d == b.transform.d &&
-			a.transform.tx == b.transform.tx && a.transform.ty == b.transform.ty;
+		return a.width == b.width && a.height == b.height;
 	}
-
-	static inline function rectEqual(a:Rect, b:Rect):Bool
-		return a.x == b.x && a.y == b.y && a.width == b.width && a.height == b.height;
 }

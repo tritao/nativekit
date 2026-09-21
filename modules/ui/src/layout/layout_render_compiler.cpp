@@ -201,6 +201,15 @@ std::array<float, 6> transform_array(const LayoutTransform &transform) {
     return {transform.a, transform.b, transform.c, transform.d, transform.tx, transform.ty};
 }
 
+// Custom Canvas callbacks draw from the node's local origin. Layout bounds
+// carry the node's position in the pre-transform layout space, while the
+// primitive transform carries the cumulative visual transform.
+std::array<float, 6> custom_local_to_world(const LayoutPrimitive &primitive) {
+    return compose_transform(
+        transform_array(primitive.transform),
+        {1.0f, 0.0f, 0.0f, 1.0f, primitive.bounds.x, primitive.bounds.y});
+}
+
 LayoutTransform transform_layout(const std::array<float, 6> &transform) {
     return {transform[0], transform[1], transform[2], transform[3], transform[4], transform[5]};
 }
@@ -520,9 +529,8 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                     make_resource_id(ResourceKind::RenderTarget, 1,
                                      static_cast<uint16_t>(transient_target_slot++)));
             }
-            std::array<float, 6> placement{primitive.transform.a,  primitive.transform.b,
-                                           primitive.transform.c,  primitive.transform.d,
-                                           primitive.transform.tx, primitive.transform.ty};
+            const std::array<float, 6> placement =
+                command_transform ? *command_transform : custom_local_to_world(primitive);
             std::array<float, 4> clip{};
             const bool has_clip = clip_override || !clips.empty();
             if (clip_override) {
@@ -569,21 +577,16 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
             RenderPass content_pass;
             content_pass.target = content_target;
             content_pass.kind = raster ? RenderPassKind::Raster : RenderPassKind::Draw;
-            std::array<float, 6> content_transform{};
-            const std::array<float, 6> *content_command_transform = command_transform;
-            if (!command_transform && finite_rect(primitive.bounds)) {
+            const std::array<float, 6> content_transform{
+                1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+            if (finite_rect(primitive.bounds)) {
                 content_pass.target_descriptor.logical_width = primitive.bounds.width;
                 content_pass.target_descriptor.logical_height = primitive.bounds.height;
-                content_pass.target_descriptor.origin_x = primitive.bounds.x;
-                content_pass.target_descriptor.origin_y = primitive.bounds.y;
-                content_transform = {1.0f, 0.0f, 0.0f, 1.0f, -primitive.bounds.x,
-                                     -primitive.bounds.y};
-                content_command_transform = &content_transform;
             }
             out.plan_.passes.push_back(std::move(content_pass));
             const std::size_t content_pass_index = out.plan_.passes.size() - 1;
             if (!append_custom_plan(content_plan, primitive_index, content_target,
-                                    content_pass_index, content_command_transform, clip_override,
+                                    content_pass_index, &content_transform, nullptr,
                                     content_revision))
                 return false;
 
@@ -621,6 +624,9 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                 custom_composites && custom_composites->contains(primitive.node_id);
             if (active_raster_root != no_raster_root) {
                 const auto &root = raster_roots[active_raster_root];
+                const auto node_local_to_world = custom_local_to_world(primitive);
+                const auto destination_transform =
+                    compose_transform(root.world_to_cache, node_local_to_world);
                 const LayoutRect local_clip =
                     clips.empty()
                         ? LayoutRect{}
@@ -628,22 +634,23 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                 if (has_composite)
                     return append_custom_with_composite(
                         *found->second, primitive.node_id, primitive_index, active_raster_target,
-                        current_main_pass, false, &root.world_to_cache,
+                        current_main_pass, false, &destination_transform,
                         clips.empty() ? nullptr : &local_clip);
                 return append_custom_plan(*found->second, primitive_index, active_raster_target,
-                                          current_main_pass, &root.world_to_cache,
+                                          current_main_pass, &destination_transform,
                                           clips.empty() ? nullptr : &local_clip,
                                           content_revision);
             }
+            const auto node_local_to_world = custom_local_to_world(primitive);
             const bool raster =
                 raster_paint_nodes && raster_paint_nodes->contains(primitive.node_id);
             if (has_composite)
                 return append_custom_with_composite(*found->second, primitive.node_id,
                                                     primitive_index, main_target, current_main_pass,
-                                                    raster);
+                                                    raster, &node_local_to_world);
             if (!raster)
                 return append_custom_plan(*found->second, primitive_index, main_target,
-                                          current_main_pass, nullptr, nullptr,
+                                          current_main_pass, &node_local_to_world, nullptr,
                                           content_revision);
             if (transient_target_slot > std::numeric_limits<uint16_t>::max())
                 return fail(error, primitive_index, "raster cache target limit exceeded");
@@ -655,7 +662,7 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
             out.plan_.passes.push_back(std::move(raster_pass));
             const std::size_t raster_pass_index = out.plan_.passes.size() - 1;
             if (!append_custom_plan(*found->second, primitive_index, raster_target,
-                                    raster_pass_index, nullptr, nullptr,
+                                    raster_pass_index, &node_local_to_world, nullptr,
                                     content_revision))
                 return false;
             out.plan_.dependencies.push_back({raster_target, main_target});

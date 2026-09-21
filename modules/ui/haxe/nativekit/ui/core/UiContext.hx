@@ -8,6 +8,7 @@ import DisplayList;
 import Renderer;
 import Surface;
 import FrameInfo;
+import Rect;
 import ResolvedLayoutItem;
 import FontCollection;
 import NativeKitSurface;
@@ -66,7 +67,7 @@ class UiContext {
 	var customPaintBound:Map<Int, Bool>;
 	var customCompositeCanvases:Map<Int, Canvas>;
 	var customCompositeLists:Map<Int, DisplayList>;
-	var customCompositeRevisions:Map<Int, Int>;
+	var customCompositeKeys:Map<Int, String>;
 	var customCompositeGeometries:Map<Int, ResolvedLayoutItem>;
 	var customCompositeBound:Map<Int, Bool>;
 	var accessibilityBridge:Null<AccessibilityBridge>;
@@ -118,7 +119,7 @@ class UiContext {
 		customPaintBound = new Map();
 		customCompositeCanvases = new Map();
 		customCompositeLists = new Map();
-		customCompositeRevisions = new Map();
+		customCompositeKeys = new Map();
 		customCompositeGeometries = new Map();
 		customCompositeBound = new Map();
 		accessibilityBridge = null;
@@ -423,9 +424,10 @@ class UiContext {
 				var geometry:ResolvedLayoutItem = cast node.resolved;
 				canvas.withState(function(target) {
 					target.resetTransform();
-					target.clip(geometry.clipBounds);
-					target.setTransform(geometry.transform);
-					target.translate(geometry.x, geometry.y);
+					// Custom painters own only node-local pixels. Native layout and
+					// compositing apply the resolved position, transform, and ancestor
+					// clips when the retained list is embedded.
+					target.clip(new Rect(0.0, 0.0, geometry.width, geometry.height));
 					node.paintContent(target);
 				});
 				if (displayList == null) {
@@ -467,7 +469,7 @@ class UiContext {
 						customCompositeLists.set(nodeId, compositeList);
 					}
 					compositeCanvas.update(compositeList);
-					customCompositeRevisions.set(nodeId, node.compositeRevision);
+					customCompositeKeys.set(nodeId, node.retainedCompositeKey());
 					customCompositeGeometries.set(nodeId, cast node.resolved);
 				}
 				if (compositeList != null && compositeList.info().commandCount > 0) {
@@ -521,7 +523,7 @@ class UiContext {
 				compositeList.dispose();
 			customCompositeCanvases.remove(nodeId);
 			customCompositeLists.remove(nodeId);
-			customCompositeRevisions.remove(nodeId);
+			customCompositeKeys.remove(nodeId);
 			customCompositeGeometries.remove(nodeId);
 			customCompositeBound.remove(nodeId);
 			customListHasCommands.remove(nodeId);
@@ -715,7 +717,7 @@ class UiContext {
 			return false;
 		var previousGeometry = customGeometries.get(nodeId);
 		if (previousGeometry == null || node.resolved == null ||
-			!sameGeometry(previousGeometry, node.resolved))
+			!samePaintGeometry(previousGeometry, node.resolved))
 			return false;
 		return true;
 	}
@@ -723,12 +725,16 @@ class UiContext {
 	function canReuseCustomComposite(node:RenderNode):Bool {
 		var nodeId = node.id.value;
 		if (!customCompositeLists.exists(nodeId) ||
-			customCompositeRevisions.get(nodeId) != node.compositeRevision)
+			customCompositeKeys.get(nodeId) != node.retainedCompositeKey())
 			return false;
 		var previousGeometry = customCompositeGeometries.get(nodeId);
 		return previousGeometry != null && node.resolved != null &&
-			sameGeometry(previousGeometry, node.resolved);
+			samePaintGeometry(previousGeometry, node.resolved);
 	}
+
+	/** Local custom display lists only depend on the size of their paint plane. */
+	static function samePaintGeometry(left:ResolvedLayoutItem, right:ResolvedLayoutItem):Bool
+		return left.width == right.width && left.height == right.height;
 
 	function clearCustomPaintBindings(nodeId:Int):Void {
 		if (customPaintBound.get(nodeId) == true) {
@@ -838,7 +844,7 @@ class UiContext {
 		customPaintBound = new Map();
 		customCompositeCanvases = new Map();
 		customCompositeLists = new Map();
-		customCompositeRevisions = new Map();
+		customCompositeKeys = new Map();
 		customCompositeGeometries = new Map();
 		customCompositeBound = new Map();
 		events.setHitTestProvider(null);

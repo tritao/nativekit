@@ -400,7 +400,8 @@ int main() {
     RenderCommand custom_command{RenderCommandKind::Path, custom_path};
     custom_command.transform = {2.0f, 0.0f, 0.0f, 2.0f, 10.0f, 20.0f};
     custom_command.has_scissor = true;
-    // Custom display-list scissors are already in resolved viewport space.
+    // Custom display-list commands and scissors are node-local; embedding
+    // applies the resolved node placement.
     custom_command.scissor_x = 26.0f;
     custom_command.scissor_y = 18.0f;
     custom_command.scissor_width = 3.0f;
@@ -420,8 +421,8 @@ int main() {
         (custom_position - 1)->kind != RenderCommandKind::Path ||
         custom_position->resource.value != custom_path.value ||
         (custom_position + 1)->kind != RenderCommandKind::GlyphBatch ||
-        custom_position->transform != std::array<float, 6>{3.0f, 0.0f, 0.0f, 3.0f, 15.0f, 30.0f} ||
-        custom_position->scissor_x != 39.0f || custom_position->scissor_y != 27.0f ||
+        custom_position->transform != std::array<float, 6>{3.0f, 0.0f, 0.0f, 3.0f, 54.0f, 57.0f} ||
+        custom_position->scissor_x != 78.0f || custom_position->scissor_y != 54.0f ||
         custom_position->scissor_width != 4.5f || custom_position->scissor_height != 6.0f)
         return 22;
 
@@ -435,8 +436,8 @@ int main() {
     MaskDescriptor composite_mask;
     composite_mask.kind = MaskKind::RoundedRect;
     composite_mask.values[0] = 3.0f;
-    const LayerBounds composite_bounds{button_item->bounds.x, button_item->bounds.y,
-                                       button_item->bounds.width, button_item->bounds.height};
+    const LayerBounds composite_bounds{0.0f, 0.0f, button_item->bounds.width,
+                                      button_item->bounds.height};
     if (!composite_metadata.begin_layer(0.5f, composite_bounds, composite_blur, composite_mask) ||
         !composite_metadata.end_layer())
         return 220;
@@ -572,8 +573,9 @@ int main() {
                           false, engine.text_engine(), nullptr, &subtree_paints))
         return 27;
 
-    // Custom paint descendants are embedded into the parent's raster target,
-    // and their world-space transform/clip is rebased along with native paint.
+    // Custom paint descendants are embedded into the parent's raster target.
+    // Their local display list remains unchanged while native placement moves
+    // it with the layout snapshot.
     LayoutSnapshot moved_ordered_snapshot = moved_snapshot;
     const auto moved_label_primitive = std::find_if(
         moved_ordered_snapshot.primitives.begin(), moved_ordered_snapshot.primitives.end(),
@@ -586,10 +588,6 @@ int main() {
     moved_custom_marker.transform = moved_button_item->transform;
     moved_ordered_snapshot.primitives.insert(moved_label_primitive, moved_custom_marker);
     RenderPlan moved_custom_plan = custom_plan;
-    moved_custom_plan.passes.front().commands.front().transform[4] += 48.0f;
-    moved_custom_plan.passes.front().commands.front().transform[5] += 24.0f;
-    moved_custom_plan.passes.front().commands.front().scissor_x += 48.0f;
-    moved_custom_plan.passes.front().commands.front().scissor_y += 24.0f;
     LayoutRenderCompiler::CustomPaintPlans moved_custom_paints{{2, &moved_custom_plan}};
     LayoutRenderFrame mixed_frame;
     LayoutRenderFrame moved_mixed_frame;
@@ -793,10 +791,6 @@ int main() {
         nested_mixed_frame.plan().dependencies.size() != 2)
         return 32;
     RenderPlan moved_bounded_custom_plan = bounded_custom_plan;
-    moved_bounded_custom_plan.passes.back().commands.front().transform[4] += 48.0f;
-    moved_bounded_custom_plan.passes.back().commands.front().transform[5] += 24.0f;
-    moved_bounded_custom_plan.passes.back().commands.front().scissor_x += 48.0f;
-    moved_bounded_custom_plan.passes.back().commands.front().scissor_y += 24.0f;
     LayoutRenderCompiler::CustomPaintPlans moved_bounded_paints{{2,
                                                                  &moved_bounded_custom_plan}};
     LayoutRenderFrame moved_nested_mixed_frame;
@@ -911,16 +905,16 @@ int main() {
     if (bounded_pass.target_descriptor.logical_width != 20.0f ||
         bounded_pass.target_descriptor.logical_height != 10.0f ||
         bounded_pass.target_descriptor.width != 30 || bounded_pass.target_descriptor.height != 15 ||
-        bounded_pass.target_descriptor.origin_x != 12.0f ||
-        bounded_pass.target_descriptor.origin_y != 9.0f ||
+        bounded_pass.target_descriptor.origin_x != 28.0f ||
+        bounded_pass.target_descriptor.origin_y != 21.0f ||
         bounded_pass.commands.front().transform !=
-            std::array<float, 6>{1.5f, 0.0f, 0.0f, 1.5f, 15.0f, 36.0f} ||
-        bounded_pass.commands.front().scissor_x != -9.0f ||
-        bounded_pass.commands.front().scissor_y != -1.5f ||
+            std::array<float, 6>{1.5f, 0.0f, 0.0f, 1.5f, -9.0f, 18.0f} ||
+        bounded_pass.commands.front().scissor_x != -33.0f ||
+        bounded_pass.commands.front().scissor_y != -19.5f ||
         bounded_pass.commands.front().scissor_width != 9.0f ||
         bounded_pass.commands.front().scissor_height != 10.5f ||
         bounded_composite == bounded_frame.plan().passes.front().commands.end() ||
-        bounded_composite->transform != std::array<float, 6>{1.5f, 0.0f, 0.0f, 1.5f, 15.0f, 9.0f})
+        bounded_composite->transform != std::array<float, 6>{1.5f, 0.0f, 0.0f, 1.5f, 39.0f, 27.0f})
         return 24;
 
     const ResourceId scaled_effect_input = make_resource_id(ResourceKind::RenderTarget, 1, 448);

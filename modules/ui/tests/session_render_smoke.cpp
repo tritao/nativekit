@@ -418,10 +418,9 @@ int main() {
             nkui_display_list_create(&custom_list) != NKUI_OK)
             result = 22;
         if (!result) {
-            /* Custom paint commands carry their own placement: the layout
-             * session does not re-apply the node transform, so the list is
-             * responsible for putting content where the node sits. */
-            const auto custom_commands = make_custom_commands(12.0f, 20.0f);
+            /* Custom paint commands are node-local; the layout session applies
+             * the node's position when embedding the retained list. */
+            const auto custom_commands = make_custom_commands(0.0f, 0.0f);
             if (nkui_display_list_submit(custom_list, custom_commands.data(),
                                          static_cast<uint32_t>(custom_commands.size())) !=
                     NKUI_OK ||
