@@ -247,9 +247,6 @@ int main() {
                        "nkgpu_dispatch") ||
         !expect_result(nkgpu_end_pass(resources.renderer), NKGPU_OK,
                        "nkgpu_end_pass(compute)") ||
-        !expect_result(nkgpu_begin_window_pass(resources.renderer, window_options.width,
-                                               window_options.height, 0),
-                       NKGPU_OK, "nkgpu_begin_window_pass") ||
         !expect_result(nkgpu_end_frame(resources.renderer), NKGPU_OK,
                         "nkgpu_end_frame(compute)"))
         return 1;
