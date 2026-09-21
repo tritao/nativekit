@@ -31,7 +31,7 @@ void rebuild_batches(RenderPlan &plan) {
 
 namespace {
 
-template<class Key>
+template <class Key>
 void remove_batch_index(std::unordered_map<Key, std::vector<std::size_t>> &index, Key key,
                         std::size_t batch_index) {
     const auto found = index.find(key);
@@ -43,7 +43,7 @@ void remove_batch_index(std::unordered_map<Key, std::vector<std::size_t>> &index
         index.erase(found);
 }
 
-template<class Key>
+template <class Key>
 void replace_batch_index(std::unordered_map<Key, std::vector<std::size_t>> &index, Key key,
                          std::size_t old_index, std::size_t new_index) {
     const auto found = index.find(key);
@@ -84,8 +84,8 @@ std::size_t move_item_batch(RenderPlan &plan, std::size_t item_index, GeometryId
         plan.batch_by_key_.erase(old_key);
         const auto last_batch_index = plan.batches_.size() - 1;
         if (old_batch_index != last_batch_index) {
-            const auto moved_key = RenderPlan::BatchKey{plan.batches_.back().geometry,
-                                                       plan.batches_.back().material};
+            const auto moved_key =
+                RenderPlan::BatchKey{plan.batches_.back().geometry, plan.batches_.back().material};
             plan.batches_[old_batch_index] = std::move(plan.batches_.back());
             plan.batch_by_key_[moved_key] = old_batch_index;
             replace_batch_index(plan.batches_by_geometry_, moved_key.geometry, last_batch_index,

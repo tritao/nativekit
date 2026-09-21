@@ -1486,7 +1486,7 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	/**
 	 * Reports the portable operations supported by one image format.
 	 */
-	struct nkgpu_image_format_support @layout(32, 4) {
+	struct nkgpu_image_format_support @layout(40, 4) {
 		struct_size: u32 @offset(0) @struct_size;
 		sampled: u32 @offset(4);
 		filter: u32 @offset(8);
@@ -1495,6 +1495,14 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		multisample: u32 @offset(20);
 		depth_stencil: u32 @offset(24);
 		storage: u32 @offset(28);
+		/**
+		 * Whether image-to-image copies are supported for this format.
+		 */
+		copy: u32 @offset(32);
+		/**
+		 * Whether image readback is supported for this format.
+		 */
+		readback: u32 @offset(36);
 	}
 	/**
 	 * Describes one asynchronous image readback request.

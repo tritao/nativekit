@@ -209,9 +209,8 @@ DesiredBatch desired_batch(const RenderPlan &plan, const InstanceBatch &batch) {
     const auto transforms = plan.transforms();
     for (const auto occurrence : batch.instances) {
         const auto item_index = plan.item_index(occurrence);
-        const auto *item = item_index == static_cast<std::size_t>(-1)
-                               ? nullptr
-                               : &plan.items()[item_index];
+        const auto *item =
+            item_index == static_cast<std::size_t>(-1) ? nullptr : &plan.items()[item_index];
         if (!item || has_render_flag(item->flags, RenderFlags::Hidden) ||
             has_render_flag(item->flags, RenderFlags::Culled) ||
             item->transformIndex >= transforms.size())
@@ -917,8 +916,7 @@ bool ensure_material(StateT &state, const SceneSnapshot &snapshot, const Materia
     return true;
 }
 
-template <class StateT>
-void rebuild_batch_index(StateT &state) {
+template <class StateT> void rebuild_batch_index(StateT &state) {
     state.batch_by_key.clear();
     state.free_batches.clear();
     state.batch_instances.clear();
@@ -934,8 +932,7 @@ void rebuild_batch_index(StateT &state) {
     }
 }
 
-template <class StateT>
-void rebuild_commands(StateT &state, const RenderPlan &plan) {
+template <class StateT> void rebuild_commands(StateT &state, const RenderPlan &plan) {
     state.commands.clear();
     state.command_by_occurrence.clear();
     state.commands.reserve(plan.items().size());
@@ -949,8 +946,7 @@ void rebuild_commands(StateT &state, const RenderPlan &plan) {
     }
 }
 
-template <class StateT>
-void remove_command(StateT &state, std::size_t command_index) {
+template <class StateT> void remove_command(StateT &state, std::size_t command_index) {
     const auto last = state.commands.size() - 1;
     const auto removed = state.commands[command_index].occurrence;
     if (command_index != last) {
@@ -963,17 +959,15 @@ void remove_command(StateT &state, std::size_t command_index) {
 
 template <class StateT>
 void patch_commands(StateT &state, const RenderPlan &plan,
-                    std::span<const OccurrenceId> affected_occurrences,
-                    GpuExecutionStats &stats) {
+                    std::span<const OccurrenceId> affected_occurrences, GpuExecutionStats &stats) {
     std::unordered_set<OccurrenceId> seen;
     seen.reserve(affected_occurrences.size());
     for (const auto occurrence : affected_occurrences) {
         if (!seen.insert(occurrence).second)
             continue;
         const auto item_index = plan.item_index(occurrence);
-        const auto *item = item_index == static_cast<std::size_t>(-1)
-                               ? nullptr
-                               : &plan.items()[item_index];
+        const auto *item =
+            item_index == static_cast<std::size_t>(-1) ? nullptr : &plan.items()[item_index];
         const bool desired = item && !has_render_flag(item->flags, RenderFlags::Hidden) &&
                              !has_render_flag(item->flags, RenderFlags::Culled);
         const auto found = state.command_by_occurrence.find(occurrence);
@@ -996,8 +990,7 @@ void patch_commands(StateT &state, const RenderPlan &plan,
     }
 }
 
-template <class StateT>
-void remove_batch(StateT &state, std::size_t batch_index) noexcept {
+template <class StateT> void remove_batch(StateT &state, std::size_t batch_index) noexcept {
     if (batch_index >= state.batches.size())
         return;
     auto &batch = state.batches[batch_index];
@@ -1161,8 +1154,7 @@ bool prepare_geometry_resource(StateT &state, const GeometryResource &resource,
     return true;
 }
 
-template <class StateT>
-void remove_geometry_resource(StateT &state, GeometryId id) noexcept {
+template <class StateT> void remove_geometry_resource(StateT &state, GeometryId id) noexcept {
     const auto found = state.geometry_resources.find(id);
     if (found == state.geometry_resources.end())
         return;
@@ -1218,8 +1210,7 @@ bool prepare_changed_resources(StateT &state, const SceneSnapshot &snapshot,
 
 template <class StateT>
 bool patch_instance_records(StateT &state, const RenderPlan &plan,
-                            std::span<const OccurrenceId> occurrences,
-                            GpuExecutionStats &stats) {
+                            std::span<const OccurrenceId> occurrences, GpuExecutionStats &stats) {
     if (!state.renderer.id)
         return true;
     std::unordered_set<OccurrenceId> seen;
@@ -1454,12 +1445,12 @@ bool NativeKitGpuExecutor::synchronize(const RenderPlan &plan, const SceneSnapsh
             work.resource_delta_complete && delta.resource_delta_complete;
         work.transforms.insert(work.transforms.end(), delta.transforms.begin(),
                                delta.transforms.end());
-        work.layout_occurrences.insert(work.layout_occurrences.end(), delta.layout_occurrences.begin(),
+        work.layout_occurrences.insert(work.layout_occurrences.end(),
+                                       delta.layout_occurrences.begin(),
                                        delta.layout_occurrences.end());
         work.geometries.insert(work.geometries.end(), delta.geometries.begin(),
                                delta.geometries.end());
-        work.materials.insert(work.materials.end(), delta.materials.begin(),
-                              delta.materials.end());
+        work.materials.insert(work.materials.end(), delta.materials.begin(), delta.materials.end());
     };
 
     if (!state_->plan_initialized || state_->plan_identity != plan.gpu_identity_) {
@@ -1468,8 +1459,7 @@ bool NativeKitGpuExecutor::synchronize(const RenderPlan &plan, const SceneSnapsh
         work.full_rebuild = true;
     } else if (plan.gpu_revision_ > state_->plan_revision) {
         auto expected_revision = state_->plan_revision + 1;
-        if (plan.gpu_delta_history_.empty() ||
-            expected_revision < plan.gpu_delta_history_start_) {
+        if (plan.gpu_delta_history_.empty() || expected_revision < plan.gpu_delta_history_start_) {
             work.full_rebuild = true;
         } else {
             for (const auto &delta : plan.gpu_delta_history_) {
@@ -1493,8 +1483,7 @@ bool NativeKitGpuExecutor::synchronize(const RenderPlan &plan, const SceneSnapsh
         plan.material_resources_revision_ != snapshot.material_resources_revision()) {
         ResourceChanges resource_changes;
         if (snapshot.resource_changes_since(plan.geometry_resources_revision_,
-                                            plan.material_resources_revision_,
-                                            resource_changes)) {
+                                            plan.material_resources_revision_, resource_changes)) {
             work.geometries.insert(work.geometries.end(), resource_changes.geometries.begin(),
                                    resource_changes.geometries.end());
             work.materials.insert(work.materials.end(), resource_changes.materials.begin(),
@@ -1521,8 +1510,7 @@ bool NativeKitGpuExecutor::synchronize(const RenderPlan &plan, const SceneSnapsh
         if (!prepare_resources(*state_, plan, snapshot, stats))
             return false;
     } else {
-        if (!prepare_changed_resources(*state_, snapshot, work.geometries, work.materials,
-                                       stats))
+        if (!prepare_changed_resources(*state_, snapshot, work.geometries, work.materials, stats))
             return false;
         if (work.layout_changed) {
             if (state_->renderer.id &&
@@ -1589,7 +1577,8 @@ GpuExecutionStats NativeKitGpuExecutor::execute(const RenderPlan &plan,
             material_data.base_color = material->state->base_color;
             material_data.base_color[3] *= material->state->opacity;
             material_data.surface_params = {
-                material->state->metallic, material->state->roughness, material->state->alpha_cutoff,
+                material->state->metallic, material->state->roughness,
+                material->state->alpha_cutoff,
                 static_cast<float>(static_cast<std::uint32_t>(material->state->alpha_mode))};
             material_data.emissive = {material->state->emissive[0], material->state->emissive[1],
                                       material->state->emissive[2], 1.0f};
@@ -1809,8 +1798,7 @@ nkgpu_result NativeKitGpuExecutor::begin_pick_pixel(const RenderPlan &plan,
     }
 
     GpuExecutionStats stats;
-    if (!synchronize(plan, snapshot, stats) ||
-        !ensure_pick_targets(*state_, width, height, stats))
+    if (!synchronize(plan, snapshot, stats) || !ensure_pick_targets(*state_, width, height, stats))
         return state_->last_result;
     for (const auto &batch : state_->batches) {
         const auto geometry = state_->geometry_resources.find(batch.key.geometry);

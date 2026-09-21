@@ -530,8 +530,7 @@ class NKSRENDER_API SceneSpatialIndex {
     std::uint64_t source_revision() const noexcept;
     std::span<const OccurrenceId> query_bounds(const Bounds &) const;
     /** Returns snapshot occurrences whose bounds intersect all supplied planes. */
-    std::span<const OccurrenceId>
-    query_frustum(std::span<const std::array<float, 4>> planes) const;
+    std::span<const OccurrenceId> query_frustum(std::span<const std::array<float, 4>> planes) const;
     std::span<const OccurrenceId> query_ray(const Ray &) const;
     std::size_t query_result_count() const noexcept;
     OccurrenceId query_result(std::size_t index) const noexcept;
@@ -584,9 +583,8 @@ class RenderPlan {
     }
     std::size_t batch_index(OccurrenceId occurrence) const noexcept {
         const auto item = item_index(occurrence);
-        return item == invalid_item_index || item >= item_batch_.size()
-                   ? invalid_item_index
-                   : item_batch_[item];
+        return item == invalid_item_index || item >= item_batch_.size() ? invalid_item_index
+                                                                        : item_batch_[item];
     }
     std::size_t batch_index(GeometryId geometry, MaterialId material) const noexcept {
         const auto found = batch_by_key_.find({geometry, material});
@@ -594,9 +592,8 @@ class RenderPlan {
     }
     std::span<const std::size_t> items_for_source(EntityId source) const noexcept {
         const auto found = items_by_source_.find(source);
-        return found == items_by_source_.end()
-                   ? std::span<const std::size_t>{}
-                   : std::span<const std::size_t>{found->second};
+        return found == items_by_source_.end() ? std::span<const std::size_t>{}
+                                               : std::span<const std::size_t>{found->second};
     }
     std::size_t compile_count() const noexcept { return compile_count_; }
     std::size_t visible_items() const noexcept { return visible_items_; }

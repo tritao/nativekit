@@ -251,8 +251,7 @@ static void clear_gl_errors(void) {
 
 #if defined(__EMSCRIPTEN__)
 static int webgl_depth_readback_setup(void) {
-    if (webgl_depth_readback_program && webgl_depth_readback_vao &&
-        webgl_depth_readback_sampler)
+    if (webgl_depth_readback_program && webgl_depth_readback_vao && webgl_depth_readback_sampler)
         return 1;
 
     static const char *vertex_source =
@@ -351,12 +350,11 @@ fail:
 }
 
 static int webgl_depth_readback(uint32_t source_mip, uint32_t source_texture, GLenum source_target,
-                                uint32_t source_width,
-                                uint32_t source_height, uint32_t source_x, uint32_t source_y,
-                                uint32_t width, uint32_t height, uint8_t *output) {
+                                uint32_t source_width, uint32_t source_height, uint32_t source_x,
+                                uint32_t source_y, uint32_t width, uint32_t height,
+                                uint8_t *output) {
     if (!output || source_target != GL_TEXTURE_2D || !source_width || !source_height ||
-        width > 0x7FFFFFFFu || height > 0x7FFFFFFFu ||
-        !webgl_depth_readback_setup())
+        width > 0x7FFFFFFFu || height > 0x7FFFFFFFu || !webgl_depth_readback_setup())
         return 0;
 
     const size_t row_size = (size_t)width * 4u;
@@ -398,8 +396,8 @@ static int webgl_depth_readback(uint32_t source_mip, uint32_t source_texture, GL
                  GL_UNSIGNED_BYTE, 0);
     glGenFramebuffers(1, &framebuffer);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, framebuffer);
-    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
-                           color_texture, 0);
+    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, color_texture,
+                           0);
     const GLenum draw_buffer = GL_COLOR_ATTACHMENT0;
     glDrawBuffers(1, &draw_buffer);
     if (glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
@@ -417,8 +415,7 @@ static int webgl_depth_readback(uint32_t source_mip, uint32_t source_texture, GL
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(source_target, source_texture);
     glBindSampler(0, webgl_depth_readback_sampler);
-    const GLint depth_texture =
-        glGetUniformLocation(webgl_depth_readback_program, "depth_texture");
+    const GLint depth_texture = glGetUniformLocation(webgl_depth_readback_program, "depth_texture");
     const GLint uv_origin = glGetUniformLocation(webgl_depth_readback_program, "uv_origin");
     const GLint uv_scale = glGetUniformLocation(webgl_depth_readback_program, "uv_scale");
     const GLint mip_level = glGetUniformLocation(webgl_depth_readback_program, "mip_level");
@@ -697,14 +694,13 @@ static uint32_t nk_sokol_image_copy(sg_image source, uint32_t source_mip, uint32
         glGenFramebuffers(1, &draw_framebuffer);
         glBindFramebuffer(GL_READ_FRAMEBUFFER, read_framebuffer);
         glFramebufferTexture2D(GL_READ_FRAMEBUFFER,
-                               image_attachment(sg_query_image_pixelformat(source)),
-                               source_target, source_texture, (GLint)source_mip);
+                               image_attachment(sg_query_image_pixelformat(source)), source_target,
+                               source_texture, (GLint)source_mip);
         const GLenum read_status = glCheckFramebufferStatus(GL_READ_FRAMEBUFFER);
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, draw_framebuffer);
         glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER,
                                image_attachment(sg_query_image_pixelformat(destination)),
-                               destination_target, destination_texture,
-                               (GLint)destination_mip);
+                               destination_target, destination_texture, (GLint)destination_mip);
         const GLenum draw_status = glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
         GLenum error = glGetError();
         if (read_status == GL_FRAMEBUFFER_COMPLETE && draw_status == GL_FRAMEBUFFER_COMPLETE &&
@@ -719,8 +715,8 @@ static uint32_t nk_sokol_image_copy(sg_image source, uint32_t source_mip, uint32
                     ? GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT
                     : GL_DEPTH_BUFFER_BIT;
             glBlitFramebuffer((GLint)source_x, source_y0, (GLint)(source_x + width), source_y1,
-                              (GLint)destination_x, destination_y0,
-                              (GLint)(destination_x + width), destination_y1, mask, GL_NEAREST);
+                              (GLint)destination_x, destination_y0, (GLint)(destination_x + width),
+                              destination_y1, mask, GL_NEAREST);
             error = glGetError();
         }
         glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)old_read_framebuffer);
@@ -731,8 +727,7 @@ static uint32_t nk_sokol_image_copy(sg_image source, uint32_t source_mip, uint32
         return read_status == GL_FRAMEBUFFER_COMPLETE && draw_status == GL_FRAMEBUFFER_COMPLETE &&
                error == GL_NO_ERROR;
     }
-    const int source_is_attachment =
-        source_usage.color_attachment;
+    const int source_is_attachment = source_usage.color_attachment;
     uint8_t *temporary = (uint8_t *)malloc(temporary_size);
     if (!temporary)
         return 0;
@@ -900,8 +895,8 @@ static uint32_t nk_sokol_image_to_buffer(sg_image source, uint32_t mip_level, ui
         uint8_t *temporary = (uint8_t *)malloc(temporary_size);
         if (!temporary)
             return 0;
-        int converted = webgl_depth_readback(
-            mip_level, texture, target, image_width, image_height, x, y, width, height, temporary);
+        int converted = webgl_depth_readback(mip_level, texture, target, image_width, image_height,
+                                             x, y, width, height, temporary);
         if (converted) {
             GLint old_copy_write_buffer = 0;
             clear_gl_errors();
@@ -1019,8 +1014,7 @@ static uint32_t nk_sokol_readback_begin(sg_image source, uint32_t mip_level, uin
         if (status == GL_FRAMEBUFFER_COMPLETE) {
             const GLint gl_y = (GLint)image_height - (GLint)y - (GLint)height;
             glPixelStorei(GL_PACK_ALIGNMENT, 1);
-            glReadPixels((GLint)x, gl_y, (GLsizei)width, (GLsizei)height, format, type,
-                         slot->data);
+            glReadPixels((GLint)x, gl_y, (GLsizei)width, (GLsizei)height, format, type, slot->data);
             glPixelStorei(GL_PACK_ALIGNMENT, 4);
             for (uint32_t row = 0; row < height / 2; ++row) {
                 uint8_t *top = slot->data + (size_t)row * row_pitch;

@@ -32,9 +32,9 @@ bool isolation_only(const SceneView &view) noexcept {
            (!view.filter.isolated_sources.empty() || !view.filter.isolated_occurrences.empty());
 }
 
-std::unordered_set<OccurrenceId>
-isolation_keep(const SceneSnapshot &snapshot, std::span<const EntityId> sources,
-              std::span<const OccurrenceId> occurrences) {
+std::unordered_set<OccurrenceId> isolation_keep(const SceneSnapshot &snapshot,
+                                                std::span<const EntityId> sources,
+                                                std::span<const OccurrenceId> occurrences) {
     std::unordered_set<OccurrenceId> keep;
     for (const auto source : sources) {
         for (const auto occurrence_id : snapshot.occurrences_for_source(source)) {
@@ -74,10 +74,9 @@ isolation_keep(const SceneSnapshot &snapshot, std::span<const EntityId> sources,
 
 void render_internal::capture_view_policy(RenderPlan &plan, const SceneView &view) {
     plan.view_override_occurrences_.clear();
-    plan.view_override_occurrences_.reserve(view.visibility_overrides.size() +
-                                            view.material_overrides.size() +
-                                            view.selection_material_overrides.size() +
-                                            view.hover_material_overrides.size());
+    plan.view_override_occurrences_.reserve(
+        view.visibility_overrides.size() + view.material_overrides.size() +
+        view.selection_material_overrides.size() + view.hover_material_overrides.size());
     for (const auto &override : view.visibility_overrides)
         plan.view_override_occurrences_.push_back(override.occurrence);
     for (const auto &override : view.material_overrides)
@@ -95,10 +94,9 @@ void render_internal::capture_view_policy(RenderPlan &plan, const SceneView &vie
         plan.view_source_policy_sources_.push_back(override.source);
     std::sort(plan.view_source_policy_sources_.begin(), plan.view_source_policy_sources_.end(),
               [](EntityId lhs, EntityId rhs) { return lhs.value < rhs.value; });
-    plan.view_source_policy_sources_.erase(
-        std::unique(plan.view_source_policy_sources_.begin(),
-                    plan.view_source_policy_sources_.end()),
-        plan.view_source_policy_sources_.end());
+    plan.view_source_policy_sources_.erase(std::unique(plan.view_source_policy_sources_.begin(),
+                                                       plan.view_source_policy_sources_.end()),
+                                           plan.view_source_policy_sources_.end());
     plan.view_global_policy_ = view.include_invisible || !view.filter.isolated_sources.empty() ||
                                !view.filter.source_visibility_overrides.empty() ||
                                !view.filter.source_material_overrides.empty() ||
@@ -178,20 +176,17 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
     const auto next_culling_signature = render_internal::culling_signature(view);
     const bool presentation_changed = plan.presentation_signature_ != next_presentation_signature;
     const bool culling_changed = plan.culling_signature_ != next_culling_signature;
-    const bool scene_effective_change =
-        has_domain_in(changes, ChangeDomain::Hierarchy) ||
-        has_domain_in(changes, ChangeDomain::Visibility) ||
-        has_domain_in(changes, ChangeDomain::Material) ||
-        has_domain_in(changes, ChangeDomain::Source);
+    const bool scene_effective_change = has_domain_in(changes, ChangeDomain::Hierarchy) ||
+                                        has_domain_in(changes, ChangeDomain::Visibility) ||
+                                        has_domain_in(changes, ChangeDomain::Material) ||
+                                        has_domain_in(changes, ChangeDomain::Source);
     const bool hierarchy_changed = has_domain_in(changes, ChangeDomain::Hierarchy);
     const bool scene_hierarchy_or_source_change =
-        hierarchy_changed ||
-        has_domain_in(changes, ChangeDomain::Source);
+        hierarchy_changed || has_domain_in(changes, ChangeDomain::Source);
     const bool current_global_policy =
         view.include_invisible || !view.filter.isolated_sources.empty() ||
         !view.filter.source_visibility_overrides.empty() ||
-        !view.filter.source_material_overrides.empty() ||
-        !view.filter.isolated_occurrences.empty();
+        !view.filter.source_material_overrides.empty() || !view.filter.isolated_occurrences.empty();
     const bool current_source_rules_only =
         !view.include_invisible && view.filter.isolated_sources.empty() &&
         view.filter.isolated_occurrences.empty() && view.visibility_overrides.empty() &&
@@ -205,23 +200,21 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
         (!current_global_policy && plan.view_source_rules_only_);
     const bool current_isolation_only = isolation_only(view);
     const bool local_policy = !plan.view_global_policy_ && !current_global_policy;
-    const bool local_scene_effective_change =
-        local_policy && !scene_hierarchy_or_source_change &&
-        (has_domain_in(changes, ChangeDomain::Visibility) ||
-         has_domain_in(changes, ChangeDomain::Material));
+    const bool local_scene_effective_change = local_policy && !scene_hierarchy_or_source_change &&
+                                              (has_domain_in(changes, ChangeDomain::Visibility) ||
+                                               has_domain_in(changes, ChangeDomain::Material));
     const bool local_presentation_change =
         local_policy && presentation_changed && !scene_hierarchy_or_source_change;
     const bool local_effective_change = local_scene_effective_change || local_presentation_change;
-    const bool source_rules_change =
-        source_rules_compatible && !scene_hierarchy_or_source_change &&
-        (presentation_changed || scene_effective_change);
-    const bool isolation_change =
-        current_isolation_only && plan.view_isolation_only_ && !scene_hierarchy_or_source_change &&
-        (presentation_changed || scene_effective_change);
+    const bool source_rules_change = source_rules_compatible && !scene_hierarchy_or_source_change &&
+                                     (presentation_changed || scene_effective_change);
+    const bool isolation_change = current_isolation_only && plan.view_isolation_only_ &&
+                                  !scene_hierarchy_or_source_change &&
+                                  (presentation_changed || scene_effective_change);
     const bool topology_changed = has_domain_in(changes, ChangeDomain::Created) ||
                                   has_domain_in(changes, ChangeDomain::Destroyed);
-    const bool effective_state_dirty =
-        !local_effective_change && !source_rules_change && !isolation_change &&
+    const bool effective_state_dirty = !local_effective_change && !source_rules_change &&
+                                       !isolation_change &&
                                        (presentation_changed || scene_effective_change);
     const auto effective = effective_state_dirty ? render_internal::effective_state(snapshot, view)
                                                  : render_internal::EffectiveState{};
@@ -406,7 +399,8 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
         if (item_index == invalid_item_index || !occurrence)
             continue;
         auto &item = plan.items_[item_index];
-        if (plan.transforms_[item.transformIndex].revision != occurrence->world_transform.revision) {
+        if (plan.transforms_[item.transformIndex].revision !=
+            occurrence->world_transform.revision) {
             plan.transforms_[item.transformIndex] = occurrence->world_transform;
             ++result.patched_instances;
         }
@@ -491,9 +485,9 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
                 mark_layout_occurrence(item.occurrence);
                 const auto before = item.flags;
                 if (next_visible)
-                    item.flags = static_cast<RenderFlags>(
-                        static_cast<std::uint32_t>(item.flags) &
-                        ~static_cast<std::uint32_t>(RenderFlags::Hidden));
+                    item.flags =
+                        static_cast<RenderFlags>(static_cast<std::uint32_t>(item.flags) &
+                                                 ~static_cast<std::uint32_t>(RenderFlags::Hidden));
                 else
                     item.flags |= RenderFlags::Hidden;
                 adjust_counts(before, item.flags);
@@ -588,9 +582,9 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
                 mark_layout_occurrence(item.occurrence);
                 const auto before = item.flags;
                 if (next_visible)
-                    item.flags = static_cast<RenderFlags>(
-                        static_cast<std::uint32_t>(item.flags) &
-                        ~static_cast<std::uint32_t>(RenderFlags::Hidden));
+                    item.flags =
+                        static_cast<RenderFlags>(static_cast<std::uint32_t>(item.flags) &
+                                                 ~static_cast<std::uint32_t>(RenderFlags::Hidden));
                 else
                     item.flags |= RenderFlags::Hidden;
                 adjust_counts(before, item.flags);
@@ -615,8 +609,8 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
             }
         }
     } else if (isolation_change) {
-        const auto previous_keep =
-            isolation_keep(snapshot, plan.view_isolation_sources_, plan.view_isolation_occurrences_);
+        const auto previous_keep = isolation_keep(snapshot, plan.view_isolation_sources_,
+                                                  plan.view_isolation_occurrences_);
         const auto current_keep = isolation_keep(snapshot, view.filter.isolated_sources,
                                                  view.filter.isolated_occurrences);
         std::unordered_set<std::size_t> target_items;
@@ -672,9 +666,9 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
                 mark_layout_occurrence(item.occurrence);
                 const auto before = item.flags;
                 if (next_visible)
-                    item.flags = static_cast<RenderFlags>(
-                        static_cast<std::uint32_t>(item.flags) &
-                        ~static_cast<std::uint32_t>(RenderFlags::Hidden));
+                    item.flags =
+                        static_cast<RenderFlags>(static_cast<std::uint32_t>(item.flags) &
+                                                 ~static_cast<std::uint32_t>(RenderFlags::Hidden));
                 else
                     item.flags |= RenderFlags::Hidden;
                 adjust_counts(before, item.flags);
@@ -736,8 +730,8 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
                 item.material = material;
                 plan.items_by_material_[item.material].push_back(item_index);
                 ++result.patched_materials;
-                result.rebuilt_batches +=
-                    render_internal::move_item_batch(plan, item_index, item.geometry, item.material);
+                result.rebuilt_batches += render_internal::move_item_batch(
+                    plan, item_index, item.geometry, item.material);
             }
         }
     }
@@ -780,7 +774,8 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
             previous_view.camera.enabled = plan.camera_enabled_;
             previous_view.camera.view_projection = plan.view_projection_;
             for (const auto &plane : plan.clip_planes())
-                previous_view.clip_planes.push_back({{plane[0], plane[1], plane[2]}, plane[3], true});
+                previous_view.clip_planes.push_back(
+                    {{plane[0], plane[1], plane[2]}, plane[3], true});
             std::vector<std::array<float, 4>> previous_planes;
             render_internal::append_culling_planes(previous_view, previous_planes);
             for (const auto occurrence : plan.culling_index_->query_frustum(previous_planes))
@@ -820,9 +815,8 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
         if (item_culled)
             item.flags |= RenderFlags::Culled;
         else
-            item.flags =
-                static_cast<RenderFlags>(static_cast<std::uint32_t>(item.flags) &
-                                         ~static_cast<std::uint32_t>(RenderFlags::Culled));
+            item.flags = static_cast<RenderFlags>(static_cast<std::uint32_t>(item.flags) &
+                                                  ~static_cast<std::uint32_t>(RenderFlags::Culled));
         adjust_counts(before, item.flags);
         ++result.patched_culling;
         if (item_culled)

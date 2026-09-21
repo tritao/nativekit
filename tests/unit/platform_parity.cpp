@@ -165,8 +165,8 @@ constexpr backend_contract platform_contract() {
                 cap(NK_CAP_VULKAN_SURFACE) | cap(NK_CAP_D3D11_SURFACE) | cap(NK_CAP_METAL_SURFACE) |
                 cap(NK_CAP_APPLICATION_PATH) | cap(NK_CAP_APPLICATION_STORAGE) |
                 cap(NK_CAP_SYSTEM_FONTS) | cap(NK_CAP_WINDOW_CUSTOM_DECORATIONS) |
-                cap(NK_CAP_FILE_WATCH) | cap(NK_CAP_CLIPBOARD_WATCH) | cap(NK_CAP_APPLICATION_MENU) |
-                cap(NK_CAP_DYNAMIC_LIBRARY),
+                cap(NK_CAP_FILE_WATCH) | cap(NK_CAP_CLIPBOARD_WATCH) |
+                cap(NK_CAP_APPLICATION_MENU) | cap(NK_CAP_DYNAMIC_LIBRARY),
             cap(NK_CAP_SYSTEM_APPEARANCE) | cap(NK_CAP_KEEP_AWAKE) |
                 cap(NK_CAP_DEVICE_ORIENTATION) | cap(NK_CAP_DISPLAY_ORIENTATION) |
                 cap(NK_CAP_SENSORS) | cap(NK_CAP_HAPTICS) | cap(NK_CAP_GAMEPAD_RUMBLE)};

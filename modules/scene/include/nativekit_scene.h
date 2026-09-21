@@ -396,9 +396,9 @@ nkscene_snapshot_get_occurrence_page(nkscene_snapshot snapshot, uint64_t start_i
                                      nkscene_snapshot_occurrence_page *out_page NK_INOUT);
 NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_child_occurrence_count(
     nkscene_snapshot snapshot, nkscene_occurrence_id parent, uint64_t *out_count NK_OUT);
-NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_child_occurrence(
-    nkscene_snapshot snapshot, nkscene_occurrence_id parent, uint64_t index,
-    nkscene_occurrence_id *out_occurrence NK_OUT);
+NKS_API nkscene_result NKS_CALL
+nkscene_snapshot_get_child_occurrence(nkscene_snapshot snapshot, nkscene_occurrence_id parent,
+                                      uint64_t index, nkscene_occurrence_id *out_occurrence NK_OUT);
 NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_source_occurrence_count(
     nkscene_snapshot snapshot, nkscene_entity_id source, uint64_t *out_count NK_OUT);
 NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_source_occurrence(

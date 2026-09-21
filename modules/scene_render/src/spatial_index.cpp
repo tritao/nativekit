@@ -72,8 +72,7 @@ bool overlaps(const Bounds &lhs, const Bounds &rhs) noexcept {
     return true;
 }
 
-bool outside_planes(const Bounds &bounds,
-                    std::span<const std::array<float, 4>> planes) noexcept {
+bool outside_planes(const Bounds &bounds, std::span<const std::array<float, 4>> planes) noexcept {
     if (!bounds.valid)
         return false;
     for (const auto &plane : planes) {

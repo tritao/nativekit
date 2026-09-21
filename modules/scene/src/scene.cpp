@@ -65,11 +65,9 @@ const SnapshotMaterialization &SceneSnapshot::materialized() const {
                 next->children_by_parent[occurrence.parent].push_back(occurrence.occurrence);
             next->occurrences_by_source[occurrence.source].push_back(occurrence.occurrence);
             if (occurrence.geometry.valid())
-                next->occurrences_by_geometry[occurrence.geometry].push_back(
-                    occurrence.occurrence);
+                next->occurrences_by_geometry[occurrence.geometry].push_back(occurrence.occurrence);
             if (occurrence.material.valid())
-                next->occurrences_by_material[occurrence.material].push_back(
-                    occurrence.occurrence);
+                next->occurrences_by_material[occurrence.material].push_back(occurrence.occurrence);
         }
         std::shared_ptr<const SnapshotMaterialization> candidate = std::move(next);
         std::atomic_compare_exchange_strong_explicit(
@@ -96,9 +94,8 @@ std::span<const SnapshotOccurrence> SceneSnapshot::occurrences() const noexcept 
 std::span<const OccurrenceId> SceneSnapshot::children(OccurrenceId parent) const noexcept {
     const auto &value = materialized();
     const auto found = value.children_by_parent.find(parent);
-    return found == value.children_by_parent.end()
-               ? std::span<const OccurrenceId>{}
-               : std::span<const OccurrenceId>{found->second};
+    return found == value.children_by_parent.end() ? std::span<const OccurrenceId>{}
+                                                   : std::span<const OccurrenceId>{found->second};
 }
 
 std::span<const OccurrenceId>
@@ -138,27 +135,27 @@ const SnapshotOccurrence *SceneSnapshot::find(OccurrenceId id) const noexcept {
             if (page_index >= published_occurrences.pages.size() ||
                 !published_occurrences.pages[page_index])
                 return nullptr;
-            const auto &occurrence =
-                published_occurrences.pages[page_index]->values[handle.slot %
-                                                                 published_occurrence_page_capacity];
+            const auto &occurrence = published_occurrences.pages[page_index]
+                                         ->values[handle.slot % published_occurrence_page_capacity];
             return occurrence.occurrence == id ? &occurrence : nullptr;
         }
     }
     auto cached =
         std::atomic_load_explicit(&published_occurrences.lookup, std::memory_order_acquire);
     if (!cached) {
-        auto next = std::make_shared<std::unordered_map<OccurrenceId, const SnapshotOccurrence *>>();
+        auto next =
+            std::make_shared<std::unordered_map<OccurrenceId, const SnapshotOccurrence *>>();
         next->reserve(published_occurrences.slot_count);
         for (const auto &page : published_occurrences.pages) {
             for (const auto &occurrence : page->values)
                 if (occurrence.occurrence.valid())
                     next->emplace(occurrence.occurrence, &occurrence);
         }
-        std::shared_ptr<const std::unordered_map<OccurrenceId, const SnapshotOccurrence *>> candidate =
-            std::move(next);
+        std::shared_ptr<const std::unordered_map<OccurrenceId, const SnapshotOccurrence *>>
+            candidate = std::move(next);
         std::atomic_compare_exchange_strong_explicit(
-            &published_occurrences.lookup, &cached, std::move(candidate),
-            std::memory_order_release, std::memory_order_acquire);
+            &published_occurrences.lookup, &cached, std::move(candidate), std::memory_order_release,
+            std::memory_order_acquire);
         cached =
             std::atomic_load_explicit(&published_occurrences.lookup, std::memory_order_acquire);
     }
@@ -195,8 +192,8 @@ std::uint64_t SceneSnapshot::material_resources_revision() const noexcept {
 }
 
 bool SceneSnapshot::resource_changes_since(std::uint64_t geometry_revision,
-                                            std::uint64_t material_revision,
-                                            ResourceChanges &changes) const {
+                                           std::uint64_t material_revision,
+                                           ResourceChanges &changes) const {
     changes = {};
     const auto current_geometry_revision = geometry_resources_revision();
     const auto current_material_revision = material_resources_revision();
@@ -449,17 +446,15 @@ bool valid_sampler_wrap(nkscene_sampler_wrap wrap) noexcept {
 
 } // namespace
 
-void Scene::recompute_world_transforms(ChangeSet &changes,
-                                       const TransactionOverlay &overlay) {
+void Scene::recompute_world_transforms(ChangeSet &changes, const TransactionOverlay &overlay) {
     struct PendingOccurrence {
         OccurrenceId id;
         OccurrenceHandle handle;
     };
     const auto handle_for = [&](OccurrenceId id) {
         const auto found = overlay.indices.find(id);
-        return found == overlay.indices.end()
-                   ? occurrences.resolve(id)
-                   : overlay.entries[found->second].handle;
+        return found == overlay.indices.end() ? occurrences.resolve(id)
+                                              : overlay.entries[found->second].handle;
     };
     std::unordered_map<OccurrenceId, OccurrenceHandle> dirty;
     std::vector<PendingOccurrence> pending;
@@ -525,10 +520,11 @@ void Scene::recompute_world_transforms(ChangeSet &changes,
             } else {
                 bounds.erase(current.handle);
             }
-            hierarchy.for_each_child(current.handle, [&](OccurrenceId child, OccurrenceHandle handle) {
-                if (dirty.contains(child))
-                    stack.push_back({child, handle});
-            });
+            hierarchy.for_each_child(current.handle,
+                                     [&](OccurrenceId child, OccurrenceHandle handle) {
+                                         if (dirty.contains(child))
+                                             stack.push_back({child, handle});
+                                     });
         }
     }
 }
@@ -567,8 +563,7 @@ void Scene::publish() const {
 
 void Scene::publish_state(const ChangeSet *changes,
                           std::span<const std::uint32_t> destroyed_slots) const {
-    const auto previous =
-        std::atomic_load_explicit(&published_, std::memory_order_acquire);
+    const auto previous = std::atomic_load_explicit(&published_, std::memory_order_acquire);
     auto state = std::make_shared<PublishedSceneState>();
     state->revisions = revisions;
     state->entity_names = entity_names;
@@ -604,7 +599,8 @@ void Scene::publish_state(const ChangeSet *changes,
     if (previous && !geometry_resources_changed) {
         state->geometries = previous->geometries;
     } else
-        state->geometries = collect.template operator()<GeometryStore, GeometryResource>(geometries);
+        state->geometries =
+            collect.template operator()<GeometryStore, GeometryResource>(geometries);
     if (previous && !material_resources_changed)
         state->materials = previous->materials;
     else
@@ -635,10 +631,10 @@ void Scene::publish_state(const ChangeSet *changes,
     std::unordered_set<std::uint32_t> changed_slots;
     std::unordered_map<std::uint32_t, OccurrenceHandle> active_handles;
     std::unordered_map<OccurrenceId, OccurrenceHandle> changed_handles;
-    const auto direct_lookup_work =
-        changes ? changes->changes.size() + changes->world_transform_occurrences.size() +
-                      changes->effective_state_occurrences.size()
-                : occurrences.size();
+    const auto direct_lookup_work = changes ? changes->changes.size() +
+                                                  changes->world_transform_occurrences.size() +
+                                                  changes->effective_state_occurrences.size()
+                                            : occurrences.size();
     const bool collect_direct_lookup = direct_lookup_work <= published_direct_lookup_limit;
     const auto add_changed_handle = [&](OccurrenceId id) {
         if (!collect_direct_lookup)
@@ -723,23 +719,22 @@ void Scene::publish_state(const ChangeSet *changes,
         if (active == active_handles.end())
             page->values[offset] = {};
         else
-            page->values[offset] =
-                make_occurrence(occurrences.id(active->second), active->second);
+            page->values[offset] = make_occurrence(occurrences.id(active->second), active->second);
         occurrence_state->pages[page_index] = std::move(page);
     }
     if (!changed_slots.empty())
-        std::atomic_store_explicit(&occurrence_state->lookup,
-                                   std::shared_ptr<const std::unordered_map<OccurrenceId,
-                                                                            const SnapshotOccurrence *>>{},
-                                   std::memory_order_release);
+        std::atomic_store_explicit(
+            &occurrence_state->lookup,
+            std::shared_ptr<const std::unordered_map<OccurrenceId, const SnapshotOccurrence *>>{},
+            std::memory_order_release);
     if (!changed_slots.empty())
         std::atomic_store_explicit(&occurrence_state->materialized,
                                    std::shared_ptr<const SnapshotMaterialization>{},
                                    std::memory_order_release);
     if (!changed_slots.empty()) {
         if (changed_handles.size() <= published_direct_lookup_limit) {
-            occurrence_state->changed_handles = std::make_shared<
-                const std::unordered_map<OccurrenceId, OccurrenceHandle>>(
+            occurrence_state->changed_handles =
+                std::make_shared<const std::unordered_map<OccurrenceId, OccurrenceHandle>>(
                     std::move(changed_handles));
         } else {
             occurrence_state->changed_handles.reset();
@@ -751,8 +746,7 @@ void Scene::publish_state(const ChangeSet *changes,
 }
 
 SceneSnapshot Scene::snapshot() const {
-    return SceneSnapshot(
-        std::atomic_load_explicit(&published_, std::memory_order_acquire));
+    return SceneSnapshot(std::atomic_load_explicit(&published_, std::memory_order_acquire));
 }
 
 nkscene_result Scene::validate(const Transaction &transaction,
@@ -818,9 +812,8 @@ nkscene_result Scene::validate(const Transaction &transaction,
                         return;
                     }
                     const auto target_index = ensure_entry(value.occurrence);
-                    const auto parent_index = value.parent.valid()
-                                                  ? ensure_entry(value.parent)
-                                                  : std::size_t{};
+                    const auto parent_index =
+                        value.parent.valid() ? ensure_entry(value.parent) : std::size_t{};
                     auto &target = overlay.entries[target_index];
                     const bool valid_parent =
                         !value.parent.valid() || overlay.entries[parent_index].live;
@@ -834,8 +827,7 @@ nkscene_result Scene::validate(const Transaction &transaction,
                 } else if constexpr (std::is_same_v<T, SetTransform> ||
                                      std::is_same_v<T, SetGeometry> ||
                                      std::is_same_v<T, SetMaterial> ||
-                                     std::is_same_v<T, SetCamera> ||
-                                     std::is_same_v<T, SetLight> ||
+                                     std::is_same_v<T, SetCamera> || std::is_same_v<T, SetLight> ||
                                      std::is_same_v<T, SetVisibility> ||
                                      std::is_same_v<T, SetSourceEntity>) {
                     if (!value.occurrence.valid() ||
@@ -958,9 +950,9 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
                     const auto target_handle = target.handle;
                     const auto previous = occurrences.id(hierarchy.parent_handle(target_handle));
                     if (previous != value.parent) {
-                        const auto parent_handle =
-                            value.parent.valid() ? entry_for(value.parent).handle
-                                                 : OccurrenceHandle{};
+                        const auto parent_handle = value.parent.valid()
+                                                       ? entry_for(value.parent).handle
+                                                       : OccurrenceHandle{};
                         hierarchy.reparent(target_handle, parent_handle);
                         parent_components.insert_or_assign(target_handle, Parent{value.parent});
                         record_change(changes, change_indices, value.occurrence,
@@ -978,8 +970,7 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
                     const auto handle = entry_for(value.occurrence).handle;
                     const auto *previous = geometry_refs.find(handle);
                     if (!previous || previous->id != value.geometry) {
-                        geometry_refs.insert_or_assign(handle,
-                                                       GeometryRef{value.geometry});
+                        geometry_refs.insert_or_assign(handle, GeometryRef{value.geometry});
                         record_change(changes, change_indices, value.occurrence,
                                       ChangeDomain::Geometry);
                     }
@@ -987,8 +978,7 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
                     const auto handle = entry_for(value.occurrence).handle;
                     const auto *previous = material_refs.find(handle);
                     if (!previous || previous->id != value.material) {
-                        material_refs.insert_or_assign(handle,
-                                                       MaterialRef{value.material});
+                        material_refs.insert_or_assign(handle, MaterialRef{value.material});
                         record_change(changes, change_indices, value.occurrence,
                                       ChangeDomain::Material);
                     }
@@ -997,8 +987,7 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
                     const auto *previous = camera_refs_.find(handle);
                     if (value.camera.valid()) {
                         if (!previous || previous->id != value.camera) {
-                            camera_refs_.insert_or_assign(handle,
-                                                          CameraRef{value.camera});
+                            camera_refs_.insert_or_assign(handle, CameraRef{value.camera});
                             record_change(changes, change_indices, value.occurrence,
                                           ChangeDomain::Camera);
                         }
@@ -1034,8 +1023,7 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
                     const auto *previous = source_entities.find(handle);
                     if (value.source.valid()) {
                         if (!previous || previous->id != value.source) {
-                            source_entities.insert_or_assign(handle,
-                                                             SourceEntity{value.source});
+                            source_entities.insert_or_assign(handle, SourceEntity{value.source});
                             record_change(changes, change_indices, value.occurrence,
                                           ChangeDomain::Source);
                         }
@@ -1108,10 +1096,10 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
             if (effective_state_seen.contains(current.id))
                 continue;
             mark_effective(current.id);
-            hierarchy.for_each_child(current.handle, [&](OccurrenceId child,
-                                                         OccurrenceHandle handle) {
-                pending.push_back({child, handle});
-            });
+            hierarchy.for_each_child(current.handle,
+                                     [&](OccurrenceId child, OccurrenceHandle handle) {
+                                         pending.push_back({child, handle});
+                                     });
         }
     };
     for (const auto &change : changes.changes) {
@@ -1626,8 +1614,9 @@ nkscene_result NKS_CALL nkscene_snapshot_get_occurrence_page(
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_snapshot_get_child_occurrence_count(
-    nkscene_snapshot snapshot, nkscene_occurrence_id parent, uint64_t *out_count) {
+nkscene_result NKS_CALL nkscene_snapshot_get_child_occurrence_count(nkscene_snapshot snapshot,
+                                                                    nkscene_occurrence_id parent,
+                                                                    uint64_t *out_count) {
     if (!out_count)
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = nkscene::registry();
@@ -1639,9 +1628,9 @@ nkscene_result NKS_CALL nkscene_snapshot_get_child_occurrence_count(
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_snapshot_get_child_occurrence(
-    nkscene_snapshot snapshot, nkscene_occurrence_id parent, uint64_t index,
-    nkscene_occurrence_id *out_occurrence) {
+nkscene_result NKS_CALL
+nkscene_snapshot_get_child_occurrence(nkscene_snapshot snapshot, nkscene_occurrence_id parent,
+                                      uint64_t index, nkscene_occurrence_id *out_occurrence) {
     if (!out_occurrence)
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = nkscene::registry();
@@ -1721,8 +1710,9 @@ nkscene_result NKS_CALL nkscene_snapshot_get_entity_name(nkscene_snapshot snapsh
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_snapshot_get_geometry_occurrence_count(
-    nkscene_snapshot snapshot, nkscene_geometry_id geometry, uint64_t *out_count) {
+nkscene_result NKS_CALL nkscene_snapshot_get_geometry_occurrence_count(nkscene_snapshot snapshot,
+                                                                       nkscene_geometry_id geometry,
+                                                                       uint64_t *out_count) {
     if (!out_count)
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = nkscene::registry();
@@ -1734,9 +1724,9 @@ nkscene_result NKS_CALL nkscene_snapshot_get_geometry_occurrence_count(
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_snapshot_get_geometry_occurrence(
-    nkscene_snapshot snapshot, nkscene_geometry_id geometry, uint64_t index,
-    nkscene_occurrence_id *out_occurrence) {
+nkscene_result NKS_CALL
+nkscene_snapshot_get_geometry_occurrence(nkscene_snapshot snapshot, nkscene_geometry_id geometry,
+                                         uint64_t index, nkscene_occurrence_id *out_occurrence) {
     if (!out_occurrence)
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = nkscene::registry();
@@ -1751,8 +1741,9 @@ nkscene_result NKS_CALL nkscene_snapshot_get_geometry_occurrence(
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_snapshot_get_material_occurrence_count(
-    nkscene_snapshot snapshot, nkscene_material_id material, uint64_t *out_count) {
+nkscene_result NKS_CALL nkscene_snapshot_get_material_occurrence_count(nkscene_snapshot snapshot,
+                                                                       nkscene_material_id material,
+                                                                       uint64_t *out_count) {
     if (!out_count)
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = nkscene::registry();
@@ -1764,9 +1755,9 @@ nkscene_result NKS_CALL nkscene_snapshot_get_material_occurrence_count(
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_snapshot_get_material_occurrence(
-    nkscene_snapshot snapshot, nkscene_material_id material, uint64_t index,
-    nkscene_occurrence_id *out_occurrence) {
+nkscene_result NKS_CALL
+nkscene_snapshot_get_material_occurrence(nkscene_snapshot snapshot, nkscene_material_id material,
+                                         uint64_t index, nkscene_occurrence_id *out_occurrence) {
     if (!out_occurrence)
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = nkscene::registry();

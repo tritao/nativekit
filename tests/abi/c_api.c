@@ -60,8 +60,7 @@ _Static_assert(sizeof(nk_clipboard_watch_options) == 24,
 _Static_assert(sizeof(nk_clipboard_changed_event) == 16,
                "clipboard-change event ABI layout is stable");
 _Static_assert(sizeof(nk_menu) == sizeof(uint32_t), "menu handles remain four-byte tokens");
-_Static_assert(sizeof(nk_library) == sizeof(uint32_t),
-               "library handles remain four-byte tokens");
+_Static_assert(sizeof(nk_library) == sizeof(uint32_t), "library handles remain four-byte tokens");
 _Static_assert(sizeof(nk_menu_item) == sizeof(uint32_t),
                "menu item handles remain four-byte tokens");
 _Static_assert(sizeof(nk_menu_item_activated_event) == 24,

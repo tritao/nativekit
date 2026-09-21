@@ -15,7 +15,7 @@
 #if defined(_WIN32)
 #define NK_LIBRARY_WINDOWS 1
 #include <windows.h>
-#elif defined(NK_BACKEND_ANDROID) || defined(NK_BACKEND_IOS) ||                              \
+#elif defined(NK_BACKEND_ANDROID) || defined(NK_BACKEND_IOS) ||                                    \
     (!defined(NK_BACKEND_WEB) && (defined(__unix__) || defined(__APPLE__)))
 #define NK_LIBRARY_POSIX 1
 #include <dlfcn.h>
@@ -84,8 +84,8 @@ bool file_uri_path(const char *uri, std::string &path) {
         index += 2;
     }
 #if defined(NK_LIBRARY_WINDOWS)
-    if (path.size() >= 3 && path[0] == '/' &&
-        std::isalpha(static_cast<unsigned char>(path[1])) && path[2] == ':')
+    if (path.size() >= 3 && path[0] == '/' && std::isalpha(static_cast<unsigned char>(path[1])) &&
+        path[2] == ':')
         path.erase(path.begin());
 #endif
     return !path.empty();
@@ -116,8 +116,8 @@ bool ios_framework_executable(const std::string &path) {
     const auto name_start = bundle_start == std::string::npos ? 0 : bundle_start + 1;
     const auto bundle_name = path.substr(name_start, marker_start - name_start);
     const auto executable = path.substr(marker_start + marker.size());
-    return !bundle_name.empty() && !executable.empty() && executable.find('/') == std::string::npos &&
-           executable == bundle_name;
+    return !bundle_name.empty() && !executable.empty() &&
+           executable.find('/') == std::string::npos && executable == bundle_name;
 }
 #endif
 
