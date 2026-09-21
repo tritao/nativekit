@@ -35,6 +35,8 @@ void published_payloads_are_shared_and_snapshot_safe() {
     create.close();
 
     const auto before = scene->snapshot();
+    const auto before_geometry_resources_revision = before.geometry_resources_revision();
+    const auto before_material_resources_revision = before.material_resources_revision();
     const auto *before_geometry = before.find_geometry(geometry);
     const auto *before_material = before.find_material(material);
     assert(before_geometry && before_material);
@@ -53,6 +55,8 @@ void published_payloads_are_shared_and_snapshot_safe() {
     scene->publish();
 
     const auto after = scene->snapshot();
+    assert(after.geometry_resources_revision() > before_geometry_resources_revision);
+    assert(after.material_resources_revision() > before_material_resources_revision);
     assert(after.find_geometry(geometry)->revision > before_geometry_revision);
     assert(after.find_material(material)->revision > before_material_revision);
     assert(after.find_geometry(geometry)->payload->vertices[0].position[0] == 7.0f);
@@ -60,7 +64,17 @@ void published_payloads_are_shared_and_snapshot_safe() {
     assert(before.find_geometry(geometry)->payload->vertices[0].position[0] == 0.0f);
     assert(before.find_material(material)->state->base_color[2] == 0.8f);
 
+    const auto after_geometry_resources_revision = after.geometry_resources_revision();
+    const auto after_material_resources_revision = after.material_resources_revision();
+    scene->material_store().find(material)->edit_state().opacity = 0.5f;
+    scene->publish();
+    const auto material_only = scene->snapshot();
+    assert(material_only.geometry_resources_revision() == after_geometry_resources_revision);
+    assert(material_only.material_resources_revision() > after_material_resources_revision);
+
     const auto before_direct_edit = scene->snapshot();
+    const auto before_direct_geometry_resources_revision =
+        before_direct_edit.geometry_resources_revision();
     auto &direct_payload = scene->geometry_store().find(geometry)->edit_payload();
     direct_payload.vertices[0].position[0] = 11.0f;
     Transaction move(scene);
@@ -70,6 +84,8 @@ void published_payloads_are_shared_and_snapshot_safe() {
     assert(scene->commit(move, changes) == NKS_OK);
     move.close();
     const auto after_direct_edit = scene->snapshot();
+    assert(after_direct_edit.geometry_resources_revision() >
+           before_direct_geometry_resources_revision);
     assert(after_direct_edit.find_geometry(geometry)->payload->vertices[0].position[0] == 11.0f);
     assert(before_direct_edit.find_geometry(geometry)->payload->vertices[0].position[0] == 7.0f);
 }

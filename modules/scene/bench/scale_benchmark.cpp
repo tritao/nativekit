@@ -30,6 +30,17 @@ int main() {
     assert(changes.stats.changed_occurrences == occurrence_count);
     assert(scene->snapshot().occurrences().size() == occurrence_count);
 
+    nkscene::Transaction hierarchy(scene);
+    for (std::size_t index = 2; index < occurrence_count; ++index)
+        hierarchy.add_parent(occurrences[index], occurrences.front());
+    const auto hierarchy_start = std::chrono::steady_clock::now();
+    assert(scene->commit(hierarchy, changes) == NKS_OK);
+    hierarchy.close();
+    const auto hierarchy_elapsed = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - hierarchy_start);
+    assert(changes.stats.changed_occurrences == occurrence_count - 2);
+    assert(scene->snapshot().children(occurrences.front()).size() == occurrence_count - 2);
+
     const auto before = scene->snapshot();
     std::atomic<bool> failed = false;
     std::vector<std::thread> readers;
@@ -47,7 +58,7 @@ int main() {
     nkscene::LocalTransform transform;
     transform.matrix[12] = 3.0f;
     nkscene::Transaction move(scene);
-    move.add_transform(occurrences.front(), transform);
+    move.add_transform(occurrences.back(), transform);
     const auto move_start = std::chrono::steady_clock::now();
     assert(scene->commit(move, changes) == NKS_OK);
     move.close();
@@ -61,10 +72,24 @@ int main() {
     assert(changes.stats.dirty_world_transforms == 1);
     assert(changes.stats.dirty_bounds == 0);
     assert(changes.world_transform_occurrences.size() == 1);
-    assert(changes.world_transform_occurrences.front() == occurrences.front());
+    assert(changes.world_transform_occurrences.front() == occurrences.back());
     assert(before.revision() != scene->snapshot().revision());
 
-    std::printf("scale occurrences=%zu create=%.3f ms move=%.3f us readers=%d\n",
-                occurrence_count, create_elapsed.count(), move_elapsed.count(), reader_count);
+    nkscene::Transaction reparent(scene);
+    reparent.add_parent(occurrences.front(), occurrences[1]);
+    const auto reparent_start = std::chrono::steady_clock::now();
+    assert(scene->commit(reparent, changes) == NKS_OK);
+    reparent.close();
+    const auto reparent_elapsed = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - reparent_start);
+    assert(changes.stats.changed_occurrences == 1);
+    assert(changes.stats.dirty_world_transforms == occurrence_count - 1);
+    assert(scene->hierarchy_index().children(occurrences[1]).size() == 1);
+    assert(scene->hierarchy_index().children(occurrences.front()).size() == occurrence_count - 2);
+
+    std::printf("scale occurrences=%zu create=%.3f ms hierarchy=%.3f ms move=%.3f us "
+                "reparent=%.3f ms readers=%d\n",
+                occurrence_count, create_elapsed.count(), hierarchy_elapsed.count(),
+                move_elapsed.count(), reparent_elapsed.count(), reader_count);
     return 0;
 }
