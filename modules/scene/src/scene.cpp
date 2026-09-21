@@ -231,12 +231,12 @@ std::size_t vertex_format_size(nkscene_vertex_format format) noexcept {
 
 template <class Store, class Resource>
 void append_resources(const Store &store, std::vector<Resource> &resources) {
-    store.for_each([&](auto, const Resource &resource) {
-        resources.push_back(resource);
-    });
-    std::sort(resources.begin(), resources.end(), [](const Resource &lhs, const Resource &rhs) {
-        return lhs.id.value < rhs.id.value;
-    });
+    store.for_each(
+        [&](auto, const Resource &resource) { resources.push_back(resource); });
+    std::sort(resources.begin(), resources.end(),
+              [](const Resource &lhs, const Resource &rhs) {
+                  return lhs.id.value < rhs.id.value;
+              });
 }
 
 std::uint32_t primitive_width(nkscene_primitive_type primitive) noexcept {
@@ -976,8 +976,8 @@ nkscene_result NKS_CALL nkscene_tx_set_transform(nkscene_transaction handle,
 }
 
 nkscene_result NKS_CALL nkscene_tx_set_transforms(nkscene_transaction handle,
-                                                 const nkscene_transform_update *updates,
-                                                 uint32_t update_count) {
+                                                  const nkscene_transform_update *updates,
+                                                  uint32_t update_count) {
     if (update_count != 0 && !updates)
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = nkscene::registry();
