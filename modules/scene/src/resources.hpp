@@ -73,4 +73,44 @@ private:
     std::unordered_map<MaterialId, MaterialResource> resources;
 };
 
+template<class Resource, class Id>
+class ResourceStore {
+public:
+    Resource &create(Id id) {
+        auto [found, inserted] = resources.emplace(id, Resource{id});
+        if (!inserted)
+            ++found->second.revision;
+        return found->second;
+    }
+
+    bool destroy(Id id) noexcept { return resources.erase(id) != 0; }
+
+    const Resource *find(Id id) const noexcept {
+        const auto found = resources.find(id);
+        return found == resources.end() ? nullptr : &found->second;
+    }
+
+    Resource *find(Id id) noexcept {
+        const auto found = resources.find(id);
+        return found == resources.end() ? nullptr : &found->second;
+    }
+
+    std::size_t size() const noexcept { return resources.size(); }
+
+    template<class Fn>
+    void for_each(Fn &&fn) const {
+        for (const auto &[id, resource] : resources)
+            fn(id, resource);
+    }
+
+private:
+    std::unordered_map<Id, Resource> resources;
+};
+
+using ImageStore = ResourceStore<ImageResource, ImageId>;
+using TextureStore = ResourceStore<TextureResource, TextureId>;
+using SamplerStore = ResourceStore<SamplerResource, SamplerId>;
+using CameraStore = ResourceStore<CameraResource, CameraId>;
+using LightStore = ResourceStore<LightResource, LightId>;
+
 } // namespace nkscene

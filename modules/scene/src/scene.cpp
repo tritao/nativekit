@@ -24,6 +24,11 @@ struct SceneSnapshot::State {
     std::unordered_map<EntityId, std::string> entity_names;
     std::vector<GeometryResource> geometries;
     std::vector<MaterialResource> materials;
+    std::vector<ImageResource> images;
+    std::vector<TextureResource> textures;
+    std::vector<SamplerResource> samplers;
+    std::vector<CameraResource> cameras;
+    std::vector<LightResource> lights;
 };
 
 SceneSnapshot::SceneSnapshot() : state_(std::make_shared<State>()) {}
@@ -92,6 +97,66 @@ const MaterialResource *SceneSnapshot::find_material(MaterialId id) const noexce
                                             return resource.id.value < value.value;
                                         });
     return found == state_->materials.end() || found->id != id ? nullptr : &*found;
+}
+
+std::span<const ImageResource> SceneSnapshot::images() const noexcept {
+    return state_->images;
+}
+
+std::span<const TextureResource> SceneSnapshot::textures() const noexcept {
+    return state_->textures;
+}
+
+std::span<const SamplerResource> SceneSnapshot::samplers() const noexcept {
+    return state_->samplers;
+}
+
+std::span<const CameraResource> SceneSnapshot::cameras() const noexcept {
+    return state_->cameras;
+}
+
+std::span<const LightResource> SceneSnapshot::lights() const noexcept {
+    return state_->lights;
+}
+
+const ImageResource *SceneSnapshot::find_image(ImageId id) const noexcept {
+    const auto found = std::lower_bound(state_->images.begin(), state_->images.end(), id,
+                                        [](const ImageResource &resource, ImageId value) {
+                                            return resource.id.value < value.value;
+                                        });
+    return found == state_->images.end() || found->id != id ? nullptr : &*found;
+}
+
+const TextureResource *SceneSnapshot::find_texture(TextureId id) const noexcept {
+    const auto found = std::lower_bound(state_->textures.begin(), state_->textures.end(), id,
+                                        [](const TextureResource &resource, TextureId value) {
+                                            return resource.id.value < value.value;
+                                        });
+    return found == state_->textures.end() || found->id != id ? nullptr : &*found;
+}
+
+const SamplerResource *SceneSnapshot::find_sampler(SamplerId id) const noexcept {
+    const auto found = std::lower_bound(state_->samplers.begin(), state_->samplers.end(), id,
+                                        [](const SamplerResource &resource, SamplerId value) {
+                                            return resource.id.value < value.value;
+                                        });
+    return found == state_->samplers.end() || found->id != id ? nullptr : &*found;
+}
+
+const CameraResource *SceneSnapshot::find_camera(CameraId id) const noexcept {
+    const auto found = std::lower_bound(state_->cameras.begin(), state_->cameras.end(), id,
+                                        [](const CameraResource &resource, CameraId value) {
+                                            return resource.id.value < value.value;
+                                        });
+    return found == state_->cameras.end() || found->id != id ? nullptr : &*found;
+}
+
+const LightResource *SceneSnapshot::find_light(LightId id) const noexcept {
+    const auto found = std::lower_bound(state_->lights.begin(), state_->lights.end(), id,
+                                        [](const LightResource &resource, LightId value) {
+                                            return resource.id.value < value.value;
+                                        });
+    return found == state_->lights.end() || found->id != id ? nullptr : &*found;
 }
 
 namespace {
@@ -179,6 +244,30 @@ std::uint32_t primitive_width(nkscene_primitive_type primitive) noexcept {
 bool valid_vertex_semantic(nkscene_vertex_semantic semantic) noexcept {
     return semantic >= NKS_VERTEX_SEMANTIC_POSITION &&
         semantic <= NKS_VERTEX_SEMANTIC_COLOR0;
+}
+
+std::size_t image_format_size(nkscene_image_format format) noexcept {
+    switch (format) {
+    case NKS_IMAGE_FORMAT_R8:
+        return 1;
+    case NKS_IMAGE_FORMAT_RGBA8:
+        return 4;
+    case NKS_IMAGE_FORMAT_RGBA16F:
+        return 8;
+    case NKS_IMAGE_FORMAT_R32F:
+        return 4;
+    default:
+        return 0;
+    }
+}
+
+bool valid_sampler_filter(nkscene_sampler_filter filter) noexcept {
+    return filter == NKS_SAMPLER_FILTER_NEAREST || filter == NKS_SAMPLER_FILTER_LINEAR;
+}
+
+bool valid_sampler_wrap(nkscene_sampler_wrap wrap) noexcept {
+    return wrap == NKS_SAMPLER_WRAP_REPEAT || wrap == NKS_SAMPLER_WRAP_CLAMP_TO_EDGE ||
+        wrap == NKS_SAMPLER_WRAP_MIRRORED_REPEAT;
 }
 
 } // namespace
@@ -275,6 +364,10 @@ SceneSnapshot Scene::snapshot() const {
             occurrence.geometry = geometry->id;
         if (const auto *material = material_refs.find(id))
             occurrence.material = material->id;
+        if (const auto *camera = camera_refs_.find(id))
+            occurrence.camera = camera->id;
+        if (const auto *light = light_refs_.find(id))
+            occurrence.light = light->id;
         if (const auto *visibility = visibilities_.find(id))
             occurrence.visible = visibility->visible;
         if (const auto *bound = bounds.find(id))
@@ -301,6 +394,41 @@ SceneSnapshot Scene::snapshot() const {
     });
     std::sort(state->materials.begin(), state->materials.end(),
               [](const MaterialResource &lhs, const MaterialResource &rhs) {
+                  return lhs.id.value < rhs.id.value;
+              });
+    images.for_each([&](ImageId, const ImageResource &resource) {
+        state->images.push_back(resource);
+    });
+    std::sort(state->images.begin(), state->images.end(),
+              [](const ImageResource &lhs, const ImageResource &rhs) {
+                  return lhs.id.value < rhs.id.value;
+              });
+    textures.for_each([&](TextureId, const TextureResource &resource) {
+        state->textures.push_back(resource);
+    });
+    std::sort(state->textures.begin(), state->textures.end(),
+              [](const TextureResource &lhs, const TextureResource &rhs) {
+                  return lhs.id.value < rhs.id.value;
+              });
+    samplers.for_each([&](SamplerId, const SamplerResource &resource) {
+        state->samplers.push_back(resource);
+    });
+    std::sort(state->samplers.begin(), state->samplers.end(),
+              [](const SamplerResource &lhs, const SamplerResource &rhs) {
+                  return lhs.id.value < rhs.id.value;
+              });
+    cameras.for_each([&](CameraId, const CameraResource &resource) {
+        state->cameras.push_back(resource);
+    });
+    std::sort(state->cameras.begin(), state->cameras.end(),
+              [](const CameraResource &lhs, const CameraResource &rhs) {
+                  return lhs.id.value < rhs.id.value;
+              });
+    lights.for_each([&](LightId, const LightResource &resource) {
+        state->lights.push_back(resource);
+    });
+    std::sort(state->lights.begin(), state->lights.end(),
+              [](const LightResource &lhs, const LightResource &rhs) {
                   return lhs.id.value < rhs.id.value;
               });
     return SceneSnapshot(std::move(state));
@@ -352,6 +480,12 @@ nkscene_result Scene::validate(const Transaction &transaction) const noexcept {
                     if (!value.occurrence.valid() || !exists_after(live, value.occurrence))
                         result = NKS_ERROR_STALE_ID;
                 } else if constexpr (std::is_same_v<T, SetMaterial>) {
+                    if (!value.occurrence.valid() || !exists_after(live, value.occurrence))
+                        result = NKS_ERROR_STALE_ID;
+                } else if constexpr (std::is_same_v<T, SetCamera>) {
+                    if (!value.occurrence.valid() || !exists_after(live, value.occurrence))
+                        result = NKS_ERROR_STALE_ID;
+                } else if constexpr (std::is_same_v<T, SetLight>) {
                     if (!value.occurrence.valid() || !exists_after(live, value.occurrence))
                         result = NKS_ERROR_STALE_ID;
                 } else if constexpr (std::is_same_v<T, SetVisibility>) {
@@ -448,6 +582,8 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
                     world_transforms_.erase(value.occurrence);
                     geometry_refs.erase(value.occurrence);
                     material_refs.erase(value.occurrence);
+                    camera_refs_.erase(value.occurrence);
+                    light_refs_.erase(value.occurrence);
                     visibilities_.erase(value.occurrence);
                     names_.erase(value.occurrence);
                     bounds.erase(value.occurrence);
@@ -485,6 +621,32 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
                                                        MaterialRef{value.material});
                         record_change(changes, change_indices, value.occurrence,
                                       ChangeDomain::Material);
+                    }
+                } else if constexpr (std::is_same_v<T, SetCamera>) {
+                    const auto *previous = camera_refs_.find(value.occurrence);
+                    if (value.camera.valid()) {
+                        if (!previous || previous->id != value.camera) {
+                            camera_refs_.insert_or_assign(value.occurrence, CameraRef{value.camera});
+                            record_change(changes, change_indices, value.occurrence,
+                                          ChangeDomain::Camera);
+                        }
+                    } else if (previous) {
+                        camera_refs_.erase(value.occurrence);
+                        record_change(changes, change_indices, value.occurrence,
+                                      ChangeDomain::Camera);
+                    }
+                } else if constexpr (std::is_same_v<T, SetLight>) {
+                    const auto *previous = light_refs_.find(value.occurrence);
+                    if (value.light.valid()) {
+                        if (!previous || previous->id != value.light) {
+                            light_refs_.insert_or_assign(value.occurrence, LightRef{value.light});
+                            record_change(changes, change_indices, value.occurrence,
+                                          ChangeDomain::Light);
+                        }
+                    } else if (previous) {
+                        light_refs_.erase(value.occurrence);
+                        record_change(changes, change_indices, value.occurrence,
+                                      ChangeDomain::Light);
                     }
                 } else if constexpr (std::is_same_v<T, SetVisibility>) {
                     const auto *previous = visibilities_.find(value.occurrence);
@@ -560,6 +722,8 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
         bool bounds_changed = false;
         bool source_changed = false;
         bool names_changed = name_changed;
+        bool camera_changed = false;
+        bool light_changed = false;
         for (const auto &change : changes.changes) {
             hierarchy_changed = hierarchy_changed ||
                                 has_domain(change.domains, ChangeDomain::Created) ||
@@ -576,6 +740,8 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
             bounds_changed = bounds_changed || has_domain(change.domains, ChangeDomain::Bounds);
             source_changed = source_changed || has_domain(change.domains, ChangeDomain::Source);
             names_changed = names_changed || has_domain(change.domains, ChangeDomain::Name);
+            camera_changed = camera_changed || has_domain(change.domains, ChangeDomain::Camera);
+            light_changed = light_changed || has_domain(change.domains, ChangeDomain::Light);
         }
         if (hierarchy_changed)
             ++revision.hierarchy;
@@ -593,6 +759,10 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
             ++revision.source;
         if (names_changed)
             ++revision.name;
+        if (camera_changed)
+            ++revision.camera;
+        if (light_changed)
+            ++revision.light;
     }
     changes.scene_revision = revisions.scene;
     changes.revisions = revisions;
@@ -693,6 +863,8 @@ void copy_snapshot_occurrence(const SnapshotOccurrence &source,
     target.world_transform_revision = source.world_transform.revision;
     target.geometry.value = source.geometry.value;
     target.material.value = source.material.value;
+    target.camera.value = source.camera.value;
+    target.light.value = source.light.value;
     target.visible = source.visible ? 1u : 0u;
     std::copy(source.bounds.minimum.begin(), source.bounds.minimum.end(),
               std::begin(target.bounds.minimum));
@@ -856,8 +1028,8 @@ nkscene_result NKS_CALL nkscene_tx_set_geometry(nkscene_transaction handle,
 }
 
 nkscene_result NKS_CALL nkscene_tx_set_material(nkscene_transaction handle,
-                                                nkscene_occurrence_id occurrence,
-                                                nkscene_material_id material) {
+                                                 nkscene_occurrence_id occurrence,
+                                                 nkscene_material_id material) {
     auto &state = nkscene::registry();
     std::lock_guard lock(state.mutex);
     std::shared_ptr<nkscene::Transaction> transaction;
@@ -865,6 +1037,32 @@ nkscene_result NKS_CALL nkscene_tx_set_material(nkscene_transaction handle,
     if (result != NKS_OK)
         return result;
     transaction->add_material({occurrence.value}, {material.value});
+    return NKS_OK;
+}
+
+nkscene_result NKS_CALL nkscene_tx_set_camera(nkscene_transaction handle,
+                                               nkscene_occurrence_id occurrence,
+                                               nkscene_camera_id camera) {
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    std::shared_ptr<nkscene::Transaction> transaction;
+    const auto result = nkscene::require_transaction(handle, transaction);
+    if (result != NKS_OK)
+        return result;
+    transaction->add_camera({occurrence.value}, {camera.value});
+    return NKS_OK;
+}
+
+nkscene_result NKS_CALL nkscene_tx_set_light(nkscene_transaction handle,
+                                              nkscene_occurrence_id occurrence,
+                                              nkscene_light_id light) {
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    std::shared_ptr<nkscene::Transaction> transaction;
+    const auto result = nkscene::require_transaction(handle, transaction);
+    if (result != NKS_OK)
+        return result;
+    transaction->add_light({occurrence.value}, {light.value});
     return NKS_OK;
 }
 
@@ -1292,6 +1490,253 @@ nkscene_result NKS_CALL nkscene_material_set_data(nkscene_scene scene, nkscene_m
               resource.base_color.begin());
     resource.opacity = data->opacity;
     resource.flags = data->flags;
+    resource.metallic = data->metallic;
+    resource.roughness = data->roughness;
+    std::copy(std::begin(data->emissive), std::end(data->emissive), resource.emissive.begin());
+    resource.alpha_cutoff = data->alpha_cutoff;
+    resource.alpha_mode = static_cast<nkscene::AlphaMode>(
+        data->alpha_mode == 0 ? NKS_MATERIAL_ALPHA_OPAQUE : data->alpha_mode);
+    resource.base_color_texture = {data->base_color_texture.value};
+    resource.metallic_roughness_texture = {data->metallic_roughness_texture.value};
+    resource.normal_texture = {data->normal_texture.value};
+    resource.emissive_texture = {data->emissive_texture.value};
+    resource.occlusion_texture = {data->occlusion_texture.value};
+    resource.sampler = {data->sampler.value};
+    const nkscene::TextureId textures[] = {
+        resource.base_color_texture, resource.metallic_roughness_texture,
+        resource.normal_texture, resource.emissive_texture, resource.occlusion_texture};
+    for (const auto texture : textures)
+        if (texture.valid() && !owner->texture_store().find(texture))
+            return NKS_ERROR_STALE_ID;
+    if (resource.sampler.valid() && !owner->sampler_store().find(resource.sampler))
+        return NKS_ERROR_STALE_ID;
+    return NKS_OK;
+}
+
+nkscene_result NKS_CALL nkscene_image_create(nkscene_scene scene,
+                                             nkscene_image_id *out_image) {
+    if (!out_image)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    auto owner = state.scenes.get(nkscene::unpack_handle(scene));
+    if (!owner)
+        return NKS_ERROR_INVALID_HANDLE;
+    out_image->value = owner->create_image().value;
+    return NKS_OK;
+}
+
+void NKS_CALL nkscene_image_destroy(nkscene_scene scene, nkscene_image_id image) {
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    auto owner = state.scenes.get(nkscene::unpack_handle(scene));
+    if (owner)
+        owner->destroy_image({image.value});
+}
+
+nkscene_result NKS_CALL nkscene_image_set_data(nkscene_scene scene, nkscene_image_id image,
+                                               const nkscene_image_data *data) {
+    if (!data || data->struct_size < sizeof(nkscene_image_data) || !data->width ||
+        !data->height || !nkscene::image_format_size(data->format) ||
+        (data->data_size != 0 && !data->data))
+        return NKS_ERROR_INVALID_ARGUMENT;
+    const auto mip_count = data->mip_count == 0 ? 1u : data->mip_count;
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    auto owner = state.scenes.get(nkscene::unpack_handle(scene));
+    if (!owner)
+        return NKS_ERROR_INVALID_HANDLE;
+    auto *resource = owner->image_store().find({image.value});
+    if (!resource)
+        return NKS_ERROR_STALE_ID;
+    resource = &owner->image_store().create({image.value});
+    resource->width = data->width;
+    resource->height = data->height;
+    resource->format = static_cast<nkscene::ImageFormat>(data->format);
+    resource->mip_count = mip_count;
+    resource->data.resize(data->data_size);
+    if (!resource->data.empty())
+        std::memcpy(resource->data.data(), data->data, resource->data.size());
+    return NKS_OK;
+}
+
+nkscene_result NKS_CALL nkscene_texture_create(nkscene_scene scene,
+                                               nkscene_texture_id *out_texture) {
+    if (!out_texture)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    auto owner = state.scenes.get(nkscene::unpack_handle(scene));
+    if (!owner)
+        return NKS_ERROR_INVALID_HANDLE;
+    out_texture->value = owner->create_texture().value;
+    return NKS_OK;
+}
+
+void NKS_CALL nkscene_texture_destroy(nkscene_scene scene, nkscene_texture_id texture) {
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    auto owner = state.scenes.get(nkscene::unpack_handle(scene));
+    if (owner)
+        owner->destroy_texture({texture.value});
+}
+
+nkscene_result NKS_CALL nkscene_texture_set_data(nkscene_scene scene,
+                                                 nkscene_texture_id texture,
+                                                 const nkscene_texture_data *data) {
+    if (!data || data->struct_size < sizeof(nkscene_texture_data))
+        return NKS_ERROR_INVALID_ARGUMENT;
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    auto owner = state.scenes.get(nkscene::unpack_handle(scene));
+    if (!owner)
+        return NKS_ERROR_INVALID_HANDLE;
+    if (!owner->texture_store().find({texture.value}) ||
+        (data->image.value && !owner->image_store().find({data->image.value})))
+        return NKS_ERROR_STALE_ID;
+    auto &resource = owner->texture_store().create({texture.value});
+    resource.image = {data->image.value};
+    return NKS_OK;
+}
+
+nkscene_result NKS_CALL nkscene_sampler_create(nkscene_scene scene,
+                                               nkscene_sampler_id *out_sampler) {
+    if (!out_sampler)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    auto owner = state.scenes.get(nkscene::unpack_handle(scene));
+    if (!owner)
+        return NKS_ERROR_INVALID_HANDLE;
+    out_sampler->value = owner->create_sampler().value;
+    return NKS_OK;
+}
+
+void NKS_CALL nkscene_sampler_destroy(nkscene_scene scene, nkscene_sampler_id sampler) {
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    auto owner = state.scenes.get(nkscene::unpack_handle(scene));
+    if (owner)
+        owner->destroy_sampler({sampler.value});
+}
+
+nkscene_result NKS_CALL nkscene_sampler_set_data(nkscene_scene scene,
+                                                 nkscene_sampler_id sampler,
+                                                 const nkscene_sampler_data *data) {
+    if (!data || data->struct_size < sizeof(nkscene_sampler_data) ||
+        !nkscene::valid_sampler_filter(data->min_filter) ||
+        !nkscene::valid_sampler_filter(data->mag_filter) ||
+        !nkscene::valid_sampler_wrap(data->wrap_u) || !nkscene::valid_sampler_wrap(data->wrap_v) ||
+        !nkscene::valid_sampler_wrap(data->wrap_w) || data->max_anisotropy < 1.0f)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    auto owner = state.scenes.get(nkscene::unpack_handle(scene));
+    if (!owner)
+        return NKS_ERROR_INVALID_HANDLE;
+    if (!owner->sampler_store().find({sampler.value}))
+        return NKS_ERROR_STALE_ID;
+    auto &resource = owner->sampler_store().create({sampler.value});
+    resource.min_filter = static_cast<nkscene::SamplerFilter>(data->min_filter);
+    resource.mag_filter = static_cast<nkscene::SamplerFilter>(data->mag_filter);
+    resource.wrap_u = static_cast<nkscene::SamplerWrap>(data->wrap_u);
+    resource.wrap_v = static_cast<nkscene::SamplerWrap>(data->wrap_v);
+    resource.wrap_w = static_cast<nkscene::SamplerWrap>(data->wrap_w);
+    resource.max_anisotropy = data->max_anisotropy;
+    return NKS_OK;
+}
+
+nkscene_result NKS_CALL nkscene_camera_create(nkscene_scene scene,
+                                              nkscene_camera_id *out_camera) {
+    if (!out_camera)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    auto owner = state.scenes.get(nkscene::unpack_handle(scene));
+    if (!owner)
+        return NKS_ERROR_INVALID_HANDLE;
+    out_camera->value = owner->create_camera().value;
+    return NKS_OK;
+}
+
+void NKS_CALL nkscene_camera_destroy(nkscene_scene scene, nkscene_camera_id camera) {
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    auto owner = state.scenes.get(nkscene::unpack_handle(scene));
+    if (owner)
+        owner->destroy_camera({camera.value});
+}
+
+nkscene_result NKS_CALL nkscene_camera_set_data(nkscene_scene scene,
+                                                nkscene_camera_id camera,
+                                                const nkscene_camera_data *data) {
+    if (!data || data->struct_size < sizeof(nkscene_camera_data) ||
+        (data->projection != NKS_CAMERA_PERSPECTIVE &&
+         data->projection != NKS_CAMERA_ORTHOGRAPHIC) ||
+        data->near_plane <= 0.0f || data->far_plane <= data->near_plane ||
+        (data->projection == NKS_CAMERA_PERSPECTIVE && data->fov_y <= 0.0f) ||
+        (data->projection == NKS_CAMERA_ORTHOGRAPHIC && data->orthographic_height <= 0.0f) ||
+        data->aspect_ratio < 0.0f)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    auto owner = state.scenes.get(nkscene::unpack_handle(scene));
+    if (!owner)
+        return NKS_ERROR_INVALID_HANDLE;
+    if (!owner->camera_store().find({camera.value}))
+        return NKS_ERROR_STALE_ID;
+    auto &resource = owner->camera_store().create({camera.value});
+    resource.projection = static_cast<nkscene::CameraProjection>(data->projection);
+    resource.fov_y = data->fov_y;
+    resource.orthographic_height = data->orthographic_height;
+    resource.near_plane = data->near_plane;
+    resource.far_plane = data->far_plane;
+    resource.aspect_ratio = data->aspect_ratio;
+    return NKS_OK;
+}
+
+nkscene_result NKS_CALL nkscene_light_create(nkscene_scene scene,
+                                             nkscene_light_id *out_light) {
+    if (!out_light)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    auto owner = state.scenes.get(nkscene::unpack_handle(scene));
+    if (!owner)
+        return NKS_ERROR_INVALID_HANDLE;
+    out_light->value = owner->create_light().value;
+    return NKS_OK;
+}
+
+void NKS_CALL nkscene_light_destroy(nkscene_scene scene, nkscene_light_id light) {
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    auto owner = state.scenes.get(nkscene::unpack_handle(scene));
+    if (owner)
+        owner->destroy_light({light.value});
+}
+
+nkscene_result NKS_CALL nkscene_light_set_data(nkscene_scene scene, nkscene_light_id light,
+                                               const nkscene_light_data *data) {
+    if (!data || data->struct_size < sizeof(nkscene_light_data) ||
+        (data->type != NKS_LIGHT_DIRECTIONAL && data->type != NKS_LIGHT_POINT &&
+         data->type != NKS_LIGHT_SPOT) || data->intensity < 0.0f || data->range <= 0.0f ||
+        data->inner_cone_angle < 0.0f || data->outer_cone_angle < data->inner_cone_angle)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    auto owner = state.scenes.get(nkscene::unpack_handle(scene));
+    if (!owner)
+        return NKS_ERROR_INVALID_HANDLE;
+    if (!owner->light_store().find({light.value}))
+        return NKS_ERROR_STALE_ID;
+    auto &resource = owner->light_store().create({light.value});
+    resource.type = static_cast<nkscene::LightType>(data->type);
+    std::copy(std::begin(data->color), std::end(data->color), resource.color.begin());
+    resource.intensity = data->intensity;
+    resource.range = data->range;
+    resource.inner_cone_angle = data->inner_cone_angle;
+    resource.outer_cone_angle = data->outer_cone_angle;
     return NKS_OK;
 }
 

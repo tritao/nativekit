@@ -27,16 +27,31 @@ struct OccurrenceTag;
 struct EntityTag;
 struct GeometryTag;
 struct MaterialTag;
+struct ImageTag;
+struct TextureTag;
+struct SamplerTag;
+struct CameraTag;
+struct LightTag;
 
 using OccurrenceId = Id<OccurrenceTag>;
 using EntityId = Id<EntityTag>;
 using GeometryId = Id<GeometryTag>;
 using MaterialId = Id<MaterialTag>;
+using ImageId = Id<ImageTag>;
+using TextureId = Id<TextureTag>;
+using SamplerId = Id<SamplerTag>;
+using CameraId = Id<CameraTag>;
+using LightId = Id<LightTag>;
 
 constexpr OccurrenceId invalid_occurrence{};
 constexpr EntityId invalid_entity{};
 constexpr GeometryId invalid_geometry{};
 constexpr MaterialId invalid_material{};
+constexpr ImageId invalid_image{};
+constexpr TextureId invalid_texture{};
+constexpr SamplerId invalid_sampler{};
+constexpr CameraId invalid_camera{};
+constexpr LightId invalid_light{};
 
 struct LocalTransform {
     std::array<float, 16> matrix{
@@ -87,6 +102,30 @@ enum class PrimitiveType : std::uint32_t {
     Triangles = NKS_PRIMITIVE_TRIANGLES,
     Lines = NKS_PRIMITIVE_LINES,
     Points = NKS_PRIMITIVE_POINTS
+};
+
+enum class ImageFormat : std::uint32_t {
+    R8 = NKS_IMAGE_FORMAT_R8,
+    RGBA8 = NKS_IMAGE_FORMAT_RGBA8,
+    RGBA16F = NKS_IMAGE_FORMAT_RGBA16F,
+    R32F = NKS_IMAGE_FORMAT_R32F
+};
+
+enum class SamplerFilter : std::uint32_t {
+    Nearest = NKS_SAMPLER_FILTER_NEAREST,
+    Linear = NKS_SAMPLER_FILTER_LINEAR
+};
+
+enum class SamplerWrap : std::uint32_t {
+    Repeat = NKS_SAMPLER_WRAP_REPEAT,
+    ClampToEdge = NKS_SAMPLER_WRAP_CLAMP_TO_EDGE,
+    MirroredRepeat = NKS_SAMPLER_WRAP_MIRRORED_REPEAT
+};
+
+enum class AlphaMode : std::uint32_t {
+    Opaque = NKS_MATERIAL_ALPHA_OPAQUE,
+    Mask = NKS_MATERIAL_ALPHA_MASK,
+    Blend = NKS_MATERIAL_ALPHA_BLEND
 };
 
 struct GeometryVertexStream {
@@ -141,6 +180,33 @@ struct GeometryResource {
     SubelementTable subelements;
 };
 
+struct ImageResource {
+    ImageId id;
+    std::uint64_t revision = 1;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    ImageFormat format = ImageFormat::RGBA8;
+    std::uint32_t mip_count = 1;
+    std::vector<std::byte> data;
+};
+
+struct TextureResource {
+    TextureId id;
+    std::uint64_t revision = 1;
+    ImageId image;
+};
+
+struct SamplerResource {
+    SamplerId id;
+    std::uint64_t revision = 1;
+    SamplerFilter min_filter = SamplerFilter::Linear;
+    SamplerFilter mag_filter = SamplerFilter::Linear;
+    SamplerWrap wrap_u = SamplerWrap::Repeat;
+    SamplerWrap wrap_v = SamplerWrap::Repeat;
+    SamplerWrap wrap_w = SamplerWrap::Repeat;
+    float max_anisotropy = 1.0f;
+};
+
 enum class MaterialFlags : std::uint32_t {
     Opaque = 1u << 0,
     DoubleSided = 1u << 1
@@ -156,6 +222,50 @@ struct MaterialResource {
     std::array<float, 4> base_color{1.0f, 1.0f, 1.0f, 1.0f};
     float opacity = 1.0f;
     std::uint32_t flags = static_cast<std::uint32_t>(MaterialFlags::Opaque);
+    float metallic = 0.0f;
+    float roughness = 1.0f;
+    std::array<float, 3> emissive{0.0f, 0.0f, 0.0f};
+    float alpha_cutoff = 0.5f;
+    AlphaMode alpha_mode = AlphaMode::Opaque;
+    TextureId base_color_texture;
+    TextureId metallic_roughness_texture;
+    TextureId normal_texture;
+    TextureId emissive_texture;
+    TextureId occlusion_texture;
+    SamplerId sampler;
+};
+
+enum class CameraProjection : std::uint32_t {
+    Perspective = NKS_CAMERA_PERSPECTIVE,
+    Orthographic = NKS_CAMERA_ORTHOGRAPHIC
+};
+
+struct CameraResource {
+    CameraId id;
+    std::uint64_t revision = 1;
+    CameraProjection projection = CameraProjection::Perspective;
+    float fov_y = 1.04719755f;
+    float orthographic_height = 10.0f;
+    float near_plane = 0.01f;
+    float far_plane = 1000.0f;
+    float aspect_ratio = 0.0f;
+};
+
+enum class LightType : std::uint32_t {
+    Directional = NKS_LIGHT_DIRECTIONAL,
+    Point = NKS_LIGHT_POINT,
+    Spot = NKS_LIGHT_SPOT
+};
+
+struct LightResource {
+    LightId id;
+    std::uint64_t revision = 1;
+    LightType type = LightType::Directional;
+    std::array<float, 3> color{1.0f, 1.0f, 1.0f};
+    float intensity = 1.0f;
+    float range = 10.0f;
+    float inner_cone_angle = 0.2617994f;
+    float outer_cone_angle = 0.7853982f;
 };
 
 enum class ChangeDomain : std::uint32_t {
@@ -169,7 +279,9 @@ enum class ChangeDomain : std::uint32_t {
     Visibility = 1u << 6,
     Bounds = 1u << 7,
     Source = 1u << 8,
-    Name = 1u << 9
+    Name = 1u << 9,
+    Camera = 1u << 10,
+    Light = 1u << 11
 };
 
 constexpr ChangeDomain operator|(ChangeDomain lhs, ChangeDomain rhs) noexcept {
@@ -201,6 +313,8 @@ struct RevisionCounters {
     std::uint64_t bounds = 0;
     std::uint64_t source = 0;
     std::uint64_t name = 0;
+    std::uint64_t camera = 0;
+    std::uint64_t light = 0;
 };
 
 struct ChangeStats {
@@ -227,6 +341,8 @@ struct SnapshotOccurrence {
     WorldTransform world_transform;
     GeometryId geometry;
     MaterialId material;
+    CameraId camera;
+    LightId light;
     bool visible = true;
     Bounds bounds;
 };
@@ -246,8 +362,18 @@ public:
     std::string_view entity_name(EntityId id) const noexcept;
     std::span<const GeometryResource> geometries() const noexcept;
     std::span<const MaterialResource> materials() const noexcept;
+    std::span<const ImageResource> images() const noexcept;
+    std::span<const TextureResource> textures() const noexcept;
+    std::span<const SamplerResource> samplers() const noexcept;
+    std::span<const CameraResource> cameras() const noexcept;
+    std::span<const LightResource> lights() const noexcept;
     const GeometryResource *find_geometry(GeometryId id) const noexcept;
     const MaterialResource *find_material(MaterialId id) const noexcept;
+    const ImageResource *find_image(ImageId id) const noexcept;
+    const TextureResource *find_texture(TextureId id) const noexcept;
+    const SamplerResource *find_sampler(SamplerId id) const noexcept;
+    const CameraResource *find_camera(CameraId id) const noexcept;
+    const LightResource *find_light(LightId id) const noexcept;
 
 private:
     struct State;
