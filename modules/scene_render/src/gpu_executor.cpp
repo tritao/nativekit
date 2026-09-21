@@ -10,6 +10,7 @@
 #include <limits>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -257,6 +258,11 @@ struct NativeKitGpuExecutor::State {
         std::vector<std::uint32_t> pick_ids;
     };
 
+    struct BatchInstance {
+        std::size_t batch = 0;
+        std::size_t instance = 0;
+    };
+
     nkgpu_renderer renderer{};
     nkgpu_shader shader{};
     nkgpu_pipeline pipeline{};
@@ -276,19 +282,21 @@ struct NativeKitGpuExecutor::State {
     std::unordered_map<MaterialId, std::uint64_t> material_revisions;
     std::unordered_map<MaterialId, MaterialGpu> material_resources;
     std::vector<BatchGpu> batches;
+    std::unordered_map<OccurrenceId, BatchInstance> batch_instances;
     std::vector<GpuCommand> commands;
+    std::uint64_t plan_identity = 0;
+    std::uint64_t plan_revision = 0;
+    bool plan_initialized = false;
     nkgpu_result last_result = NKGPU_OK;
 
     ~State() { release_gpu(); }
 
     void release_gpu() noexcept {
-        if (!renderer.id)
-            return;
         for (auto &[id, resource] : geometry_resources) {
             (void)id;
-            if (resource.buffer.id)
+            if (renderer.id && resource.buffer.id)
                 (void)nkgpu_buffer_destroy(renderer, resource.buffer);
-            if (resource.index_buffer.id)
+            if (renderer.id && resource.index_buffer.id)
                 (void)nkgpu_buffer_destroy(renderer, resource.index_buffer);
         }
         for (auto &[id, resource] : material_resources) {
@@ -299,37 +307,42 @@ struct NativeKitGpuExecutor::State {
                 (void)nkgpu_sampler_destroy(renderer, resource.sampler);
         }
         for (auto &batch : batches) {
-            if (batch.buffer.id)
+            if (renderer.id && batch.buffer.id)
                 (void)nkgpu_buffer_destroy(renderer, batch.buffer);
         }
-        if (pick_color.id)
+        if (renderer.id && pick_color.id)
             (void)nkgpu_image_destroy(renderer, pick_color);
-        if (pick_subelement.id)
+        if (renderer.id && pick_subelement.id)
             (void)nkgpu_image_destroy(renderer, pick_subelement);
-        if (pick_depth_value.id)
+        if (renderer.id && pick_depth_value.id)
             (void)nkgpu_image_destroy(renderer, pick_depth_value);
-        if (pick_depth.id)
+        if (renderer.id && pick_depth.id)
             (void)nkgpu_image_destroy(renderer, pick_depth);
-        if (default_image.id)
+        if (renderer.id && default_image.id)
             (void)nkgpu_image_destroy(renderer, default_image);
-        if (default_sampler.id)
+        if (renderer.id && default_sampler.id)
             (void)nkgpu_sampler_destroy(renderer, default_sampler);
-        if (pipeline.id)
+        if (renderer.id && pipeline.id)
             (void)nkgpu_pipeline_destroy(renderer, pipeline);
-        if (indexed_pipeline.id)
+        if (renderer.id && indexed_pipeline.id)
             (void)nkgpu_pipeline_destroy(renderer, indexed_pipeline);
-        if (shader.id)
+        if (renderer.id && shader.id)
             (void)nkgpu_shader_destroy(renderer, shader);
-        if (pick_pipeline.id)
+        if (renderer.id && pick_pipeline.id)
             (void)nkgpu_pipeline_destroy(renderer, pick_pipeline);
-        if (pick_indexed_pipeline.id)
+        if (renderer.id && pick_indexed_pipeline.id)
             (void)nkgpu_pipeline_destroy(renderer, pick_indexed_pipeline);
-        if (pick_shader.id)
+        if (renderer.id && pick_shader.id)
             (void)nkgpu_shader_destroy(renderer, pick_shader);
         geometry_resources.clear();
         material_revisions.clear();
         material_resources.clear();
         batches.clear();
+        batch_instances.clear();
+        commands.clear();
+        plan_identity = 0;
+        plan_revision = 0;
+        plan_initialized = false;
         pipeline = {};
         indexed_pipeline = {};
         shader = {};
@@ -397,13 +410,12 @@ bool valid_geometry_payload(const GeometryResource &resource) {
 }
 
 template <class StateT> void destroy_batch_buffers(StateT &state) noexcept {
-    if (!state.renderer.id)
-        return;
     for (auto &batch : state.batches) {
-        if (batch.buffer.id)
+        if (state.renderer.id && batch.buffer.id)
             (void)nkgpu_buffer_destroy(state.renderer, batch.buffer);
     }
     state.batches.clear();
+    state.batch_instances.clear();
 }
 
 template <class StateT>
@@ -888,6 +900,16 @@ bool ensure_material(StateT &state, const SceneSnapshot &snapshot, const Materia
 }
 
 template <class StateT>
+void rebuild_batch_index(StateT &state) {
+    state.batch_instances.clear();
+    for (std::size_t batch_index = 0; batch_index < state.batches.size(); ++batch_index) {
+        const auto &batch = state.batches[batch_index];
+        for (std::size_t instance = 0; instance < batch.instances.size(); ++instance)
+            state.batch_instances[batch.instances[instance]] = {batch_index, instance};
+    }
+}
+
+template <class StateT>
 bool synchronize_batches(StateT &state, const RenderPlan &plan, GpuExecutionStats &stats) {
     const auto desired = desired_batches(plan);
     bool same_layout = desired.size() == state.batches.size();
@@ -913,6 +935,7 @@ bool synchronize_batches(StateT &state, const RenderPlan &plan, GpuExecutionStat
                 return false;
             state.batches.push_back(std::move(target));
         }
+        rebuild_batch_index(state);
         return true;
     }
 
@@ -933,6 +956,123 @@ bool synchronize_batches(StateT &state, const RenderPlan &plan, GpuExecutionStat
             ++stats.instance_records_updated;
         }
     }
+    rebuild_batch_index(state);
+    return true;
+}
+
+template <class StateT>
+bool prepare_geometry_resource(StateT &state, const GeometryResource &resource,
+                               GpuExecutionStats &stats) {
+    if (!valid_geometry_payload(resource))
+        return set_failure(state, stats, NKGPU_ERROR_INVALID_ARGUMENT);
+    if (state.renderer.id)
+        return ensure_geometry(state, resource, stats);
+
+    const auto found = state.geometry_resources.find(resource.id);
+    if (found == state.geometry_resources.end()) {
+        typename StateT::GeometryGpu cached;
+        cached.revision = resource.revision;
+        state.geometry_resources.emplace(resource.id, cached);
+        ++stats.geometry_resources_created;
+    } else if (found->second.revision != resource.revision) {
+        found->second.revision = resource.revision;
+        ++stats.geometry_resources_updated;
+    }
+    return true;
+}
+
+template <class StateT>
+void remove_geometry_resource(StateT &state, GeometryId id) noexcept {
+    const auto found = state.geometry_resources.find(id);
+    if (found == state.geometry_resources.end())
+        return;
+    if (state.renderer.id && found->second.buffer.id)
+        (void)nkgpu_buffer_destroy(state.renderer, found->second.buffer);
+    if (state.renderer.id && found->second.index_buffer.id)
+        (void)nkgpu_buffer_destroy(state.renderer, found->second.index_buffer);
+    state.geometry_resources.erase(found);
+}
+
+template <class StateT>
+bool prepare_changed_resources(StateT &state, const SceneSnapshot &snapshot,
+                               std::span<const GeometryId> geometries,
+                               std::span<const MaterialId> materials, GpuExecutionStats &stats) {
+    std::unordered_set<GeometryId> seen_geometries;
+    seen_geometries.reserve(geometries.size());
+    for (const auto id : geometries) {
+        if (!seen_geometries.insert(id).second)
+            continue;
+        const auto *resource = snapshot.find_geometry(id);
+        if (!resource) {
+            remove_geometry_resource(state, id);
+            continue;
+        }
+        if (!prepare_geometry_resource(state, *resource, stats))
+            return false;
+    }
+
+    std::unordered_set<MaterialId> seen_materials;
+    seen_materials.reserve(materials.size());
+    for (const auto id : materials) {
+        if (!seen_materials.insert(id).second)
+            continue;
+        const auto *resource = snapshot.find_material(id);
+        const auto found = state.material_revisions.find(id);
+        if (!resource) {
+            if (found != state.material_revisions.end())
+                state.material_revisions.erase(found);
+            continue;
+        }
+        if (found == state.material_revisions.end()) {
+            state.material_revisions.emplace(id, resource->revision);
+            ++stats.material_resources_created;
+        } else if (found->second != resource->revision) {
+            found->second = resource->revision;
+            ++stats.material_resources_updated;
+        }
+    }
+    return true;
+}
+
+template <class StateT>
+bool patch_instance_records(StateT &state, const RenderPlan &plan,
+                            std::span<const OccurrenceId> occurrences,
+                            GpuExecutionStats &stats) {
+    if (!state.renderer.id)
+        return true;
+    std::unordered_set<OccurrenceId> seen;
+    seen.reserve(occurrences.size());
+    for (const auto occurrence : occurrences) {
+        if (!seen.insert(occurrence).second)
+            continue;
+        const auto item_index = plan.item_index(occurrence);
+        if (item_index == static_cast<std::size_t>(-1))
+            continue;
+        const auto &item = plan.items()[item_index];
+        if (has_render_flag(item.flags, RenderFlags::Hidden) ||
+            has_render_flag(item.flags, RenderFlags::Culled))
+            continue;
+        const auto found = state.batch_instances.find(occurrence);
+        if (found == state.batch_instances.end() || found->second.batch >= state.batches.size())
+            return false;
+        if (item.transformIndex >= plan.transforms().size())
+            return false;
+        auto &batch = state.batches[found->second.batch];
+        const auto instance = found->second.instance;
+        if (instance >= batch.transform_revisions.size() || instance >= batch.instances.size())
+            return false;
+        const auto &transform = plan.transforms()[item.transformIndex];
+        if (transform.revision == batch.transform_revisions[instance])
+            continue;
+        const InstanceData data{transform.transform.matrix, encode_pick_id(item.pickId)};
+        const auto result = nkgpu_buffer_update(
+            state.renderer, batch.buffer, static_cast<std::uint32_t>(instance * instance_stride),
+            reinterpret_cast<const std::uint8_t *>(&data), instance_stride);
+        if (result != NKGPU_OK)
+            return set_failure(state, stats, result);
+        batch.transform_revisions[instance] = transform.revision;
+        ++stats.instance_records_updated;
+    }
     return true;
 }
 
@@ -940,22 +1080,8 @@ template <class StateT>
 bool prepare_resources(StateT &state, const RenderPlan &plan, const SceneSnapshot &snapshot,
                        GpuExecutionStats &stats) {
     for (const auto &resource : snapshot.geometries()) {
-        if (!valid_geometry_payload(resource))
-            return set_failure(state, stats, NKGPU_ERROR_INVALID_ARGUMENT);
-        const auto found = state.geometry_resources.find(resource.id);
-        if (!state.renderer.id) {
-            if (found == state.geometry_resources.end()) {
-                typename StateT::GeometryGpu cached;
-                cached.revision = resource.revision;
-                state.geometry_resources.emplace(resource.id, cached);
-                ++stats.geometry_resources_created;
-            } else if (found->second.revision != resource.revision) {
-                found->second.revision = resource.revision;
-                ++stats.geometry_resources_updated;
-            }
-        } else if (!ensure_geometry(state, resource, stats)) {
+        if (!prepare_geometry_resource(state, resource, stats))
             return false;
-        }
     }
     for (const auto &resource : snapshot.materials()) {
         const auto found = state.material_revisions.find(resource.id);
@@ -1130,22 +1256,110 @@ GpuExecutionStats NativeKitGpuExecutor::execute(const RenderPlan &plan,
                                                 const SceneSnapshot &snapshot) {
     GpuExecutionStats stats;
     state_->last_result = NKGPU_OK;
-    state_->commands.clear();
-    state_->commands.reserve(plan.items().size());
-    for (const auto &item : plan.items()) {
-        if (has_render_flag(item.flags, RenderFlags::Hidden) ||
-            has_render_flag(item.flags, RenderFlags::Culled))
-            continue;
-        state_->commands.push_back(
-            {item.occurrence, item.geometry, item.material, item.transformIndex});
+
+    struct DeltaWork {
+        bool full_rebuild = false;
+        bool layout_changed = false;
+        bool resource_delta_complete = true;
+        std::vector<OccurrenceId> transforms;
+        std::vector<GeometryId> geometries;
+        std::vector<MaterialId> materials;
+    } work;
+    auto collect_delta = [&work](const auto &delta) {
+        work.full_rebuild = work.full_rebuild || delta->full_rebuild;
+        work.layout_changed = work.layout_changed || delta->layout_changed;
+        work.resource_delta_complete =
+            work.resource_delta_complete && delta->resource_delta_complete;
+        work.transforms.insert(work.transforms.end(), delta->transforms.begin(),
+                               delta->transforms.end());
+        work.geometries.insert(work.geometries.end(), delta->geometries.begin(),
+                               delta->geometries.end());
+        work.materials.insert(work.materials.end(), delta->materials.begin(),
+                              delta->materials.end());
+    };
+
+    if (!state_->plan_initialized || state_->plan_identity != plan.gpu_identity_) {
+        work.full_rebuild = true;
+    } else if (plan.gpu_revision_ < state_->plan_revision) {
+        work.full_rebuild = true;
+    } else if (plan.gpu_revision_ > state_->plan_revision) {
+        bool reached_previous_revision = false;
+        for (auto delta = plan.gpu_delta_; delta; delta = delta->previous) {
+            if (delta->revision <= state_->plan_revision) {
+                reached_previous_revision = delta->revision == state_->plan_revision;
+                break;
+            }
+            collect_delta(delta);
+        }
+        if (!reached_previous_revision)
+            work.full_rebuild = true;
+    }
+    if (!work.resource_delta_complete)
+        work.full_rebuild = true;
+
+    if (plan.geometry_resources_revision_ != snapshot.geometry_resources_revision() ||
+        plan.material_resources_revision_ != snapshot.material_resources_revision()) {
+        ResourceChanges resource_changes;
+        if (snapshot.resource_changes_since(plan.geometry_resources_revision_,
+                                            plan.material_resources_revision_,
+                                            resource_changes)) {
+            work.geometries.insert(work.geometries.end(), resource_changes.geometries.begin(),
+                                   resource_changes.geometries.end());
+            work.materials.insert(work.materials.end(), resource_changes.materials.begin(),
+                                  resource_changes.materials.end());
+        } else {
+            work.full_rebuild = true;
+        }
+    }
+
+    if (work.full_rebuild || work.layout_changed) {
+        state_->commands.clear();
+        state_->commands.reserve(plan.items().size());
+        for (const auto &item : plan.items()) {
+            if (has_render_flag(item.flags, RenderFlags::Hidden) ||
+                has_render_flag(item.flags, RenderFlags::Culled))
+                continue;
+            state_->commands.push_back(
+                {item.occurrence, item.geometry, item.material, item.transformIndex});
+        }
     }
     stats.commands = state_->commands.size();
 
-    if (!prepare_resources(*state_, plan, snapshot, stats))
-        return stats;
+    if (work.full_rebuild) {
+        if (!prepare_resources(*state_, plan, snapshot, stats))
+            return stats;
+    } else {
+        if (!prepare_changed_resources(*state_, snapshot, work.geometries, work.materials,
+                                       stats))
+            return stats;
+        if (work.layout_changed) {
+            if (state_->renderer.id && !synchronize_batches(*state_, plan, stats))
+                return stats;
+        } else if (!patch_instance_records(*state_, plan, work.transforms, stats)) {
+            if (stats.result != NKGPU_OK)
+                return stats;
+            // A missing indexed instance means the delta history no longer matches the
+            // executor's batch layout. Reconcile from the complete current plan.
+            state_->commands.clear();
+            state_->commands.reserve(plan.items().size());
+            for (const auto &item : plan.items()) {
+                if (has_render_flag(item.flags, RenderFlags::Hidden) ||
+                    has_render_flag(item.flags, RenderFlags::Culled))
+                    continue;
+                state_->commands.push_back(
+                    {item.occurrence, item.geometry, item.material, item.transformIndex});
+            }
+            stats.commands = state_->commands.size();
+            if (!prepare_resources(*state_, plan, snapshot, stats))
+                return stats;
+        }
+    }
 
     if (!state_->renderer.id) {
         stats.draw_calls = stats.commands;
+        state_->plan_identity = plan.gpu_identity_;
+        state_->plan_revision = plan.gpu_revision_;
+        state_->plan_initialized = true;
         return stats;
     }
     for (const auto &batch : state_->batches) {
@@ -1225,6 +1439,11 @@ GpuExecutionStats NativeKitGpuExecutor::execute(const RenderPlan &plan,
     result = nkgpu_end_frame(state_->renderer);
     if (result != NKGPU_OK)
         set_failure(*state_, stats, result);
+    if (stats.result == NKGPU_OK) {
+        state_->plan_identity = plan.gpu_identity_;
+        state_->plan_revision = plan.gpu_revision_;
+        state_->plan_initialized = true;
+    }
     return stats;
 }
 

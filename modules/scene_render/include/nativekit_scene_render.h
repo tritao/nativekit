@@ -244,6 +244,7 @@ namespace nkscene {
 
 struct SceneView;
 class RenderPlan;
+class NativeKitGpuExecutor;
 namespace render_internal {
 void rebuild_batches(RenderPlan &plan);
 void build_items(RenderPlan &plan, const SceneSnapshot &snapshot, const SceneView &view);
@@ -587,6 +588,17 @@ class RenderPlan {
     }
 
   private:
+    struct GpuDelta {
+        std::uint64_t revision = 0;
+        bool full_rebuild = false;
+        bool layout_changed = false;
+        bool resource_delta_complete = true;
+        std::vector<OccurrenceId> transforms;
+        std::vector<GeometryId> geometries;
+        std::vector<MaterialId> materials;
+        std::shared_ptr<const GpuDelta> previous;
+    };
+
     struct BatchKey {
         GeometryId geometry;
         MaterialId material;
@@ -642,6 +654,9 @@ class RenderPlan {
     std::size_t culled_items_ = 0;
     std::size_t compile_count_ = 0;
     std::uint64_t culling_signature_ = 0;
+    std::uint64_t gpu_identity_ = 0;
+    std::uint64_t gpu_revision_ = 0;
+    std::shared_ptr<const GpuDelta> gpu_delta_;
     std::shared_ptr<SceneSpatialIndex> culling_index_;
     std::unordered_set<OccurrenceId> culling_dirty_occurrences_;
     std::unordered_set<OccurrenceId> culling_unbounded_occurrences_;
@@ -652,6 +667,7 @@ class RenderPlan {
                                              const SceneView &);
     friend NKSRENDER_API RenderUpdate refresh(RenderPlan &, const SceneSnapshot &,
                                               const SceneView &);
+    friend class NativeKitGpuExecutor;
     friend void render_internal::rebuild_batches(RenderPlan &plan);
     friend std::size_t render_internal::move_item_batch(RenderPlan &plan, std::size_t item_index,
                                                         GeometryId geometry, MaterialId material);

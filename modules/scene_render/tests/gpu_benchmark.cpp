@@ -212,6 +212,42 @@ int main() {
         assert(stats.commands == leaf_count);
         assert(stats.draw_calls == materials.size());
         print_stats("move 100", stats, update, move_hundred_time.count());
+
+        auto &updated_material = scene->material_store().create(materials[0]);
+        updated_material.edit_state().base_color = {0.2f, 0.8f, 0.4f, 1.0f};
+        scene->publish();
+        const auto material_start = Clock::now();
+        stats = executor.execute(plan, scene->snapshot());
+        const auto material_time = std::chrono::duration<double, std::milli>(
+            Clock::now() - material_start);
+        assert(stats.result == NKGPU_OK);
+        assert(stats.geometry_resources_created == 0);
+        assert(stats.geometry_resources_updated == 0);
+        assert(stats.material_resources_created == 0);
+        assert(stats.material_resources_updated == 1);
+        assert(stats.instance_buffers_created == 0);
+        assert(stats.instance_records_updated == 0);
+        assert(stats.commands == leaf_count);
+        assert(stats.draw_calls == materials.size());
+        print_stats("material", stats, {}, material_time.count());
+
+        auto &updated_geometry = scene->geometry_store().create(geometry);
+        updated_geometry.edit_payload().vertices[0].position[0] = -0.04f;
+        scene->publish();
+        const auto geometry_start = Clock::now();
+        stats = executor.execute(plan, scene->snapshot());
+        const auto geometry_time = std::chrono::duration<double, std::milli>(
+            Clock::now() - geometry_start);
+        assert(stats.result == NKGPU_OK);
+        assert(stats.geometry_resources_created == 0);
+        assert(stats.geometry_resources_updated == 1);
+        assert(stats.material_resources_created == 0);
+        assert(stats.material_resources_updated == 0);
+        assert(stats.instance_buffers_created == 0);
+        assert(stats.instance_records_updated == 0);
+        assert(stats.commands == leaf_count);
+        assert(stats.draw_calls == materials.size());
+        print_stats("geometry", stats, {}, geometry_time.count());
     }
 
 cleanup:

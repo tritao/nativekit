@@ -1,11 +1,14 @@
 #include "render_internal.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <unordered_set>
 
 namespace nkscene {
 
 namespace {
+
+std::atomic_uint64_t next_gpu_identity{1};
 
 bool culled(const SnapshotOccurrence &occurrence, const SceneCamera &camera,
             const SceneView &view) noexcept {
@@ -150,6 +153,13 @@ RenderPlan compile(const SceneSnapshot &snapshot, const SceneView &view) {
             plan.culled_occurrences_.insert(item.occurrence);
     }
     plan.compile_count_ = 1;
+    plan.gpu_identity_ = next_gpu_identity.fetch_add(1, std::memory_order_relaxed);
+    plan.gpu_revision_ = 1;
+    auto delta = std::make_shared<RenderPlan::GpuDelta>();
+    delta->revision = plan.gpu_revision_;
+    delta->full_rebuild = true;
+    delta->layout_changed = true;
+    plan.gpu_delta_ = std::move(delta);
     return plan;
 }
 
@@ -821,6 +831,20 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
     }
     result.visible_items = plan.visible_items_;
     result.culled_items = plan.culled_items_;
+
+    auto delta = std::make_shared<RenderPlan::GpuDelta>();
+    delta->revision = ++plan.gpu_revision_;
+    delta->layout_changed = result.geometry_rebuilt || result.rebuilt_batches != 0 ||
+                            result.patched_visibility != 0 || result.patched_materials != 0 ||
+                            result.patched_culling != 0;
+    delta->resource_delta_complete = resource_changes_complete;
+    delta->transforms = changes.world_transform_occurrences;
+    if (resource_changes_complete) {
+        delta->geometries = resource_changes.geometries;
+        delta->materials = resource_changes.materials;
+    }
+    delta->previous = plan.gpu_delta_;
+    plan.gpu_delta_ = std::move(delta);
     return result;
 }
 
