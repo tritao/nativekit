@@ -13,6 +13,7 @@ struct OccurrenceHandle {
     std::uint32_t generation = 0;
 
     constexpr bool valid() const noexcept { return generation != 0; }
+    friend constexpr bool operator==(OccurrenceHandle, OccurrenceHandle) noexcept = default;
 };
 
 class OccurrenceStore {

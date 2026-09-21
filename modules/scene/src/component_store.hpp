@@ -1,10 +1,10 @@
 #pragma once
 
-#include "ids.hpp"
+#include "occurrence_store.hpp"
 
 #include <cstdint>
-#include <unordered_map>
-#include <utility>
+#include <optional>
+#include <stdexcept>
 #include <vector>
 
 namespace nkscene {
@@ -12,66 +12,91 @@ namespace nkscene {
 template<class T>
 class ComponentStore {
 public:
-    bool contains(OccurrenceId id) const noexcept { return sparse.contains(id); }
-
-    T *find(OccurrenceId id) noexcept {
-        const auto found = sparse.find(id);
-        return found == sparse.end() ? nullptr : &dense_values[found->second];
+    bool contains(OccurrenceHandle handle) const noexcept {
+        return find(handle) != nullptr;
     }
 
-    const T *find(OccurrenceId id) const noexcept {
-        const auto found = sparse.find(id);
-        return found == sparse.end() ? nullptr : &dense_values[found->second];
+    T *find(OccurrenceHandle handle) noexcept {
+        auto *entry = slot(handle);
+        return entry && entry->value ? &*entry->value : nullptr;
     }
 
-    T &insert_or_assign(OccurrenceId id, T value) {
-        const auto found = sparse.find(id);
-        if (found != sparse.end()) {
-            dense_values[found->second] = std::move(value);
-            return dense_values[found->second];
-        }
-        const auto index = static_cast<std::uint32_t>(dense_values.size());
-        sparse.emplace(id, index);
-        dense_ids.push_back(id);
-        dense_values.push_back(std::move(value));
-        return dense_values.back();
+    const T *find(OccurrenceHandle handle) const noexcept {
+        const auto *entry = slot(handle);
+        return entry && entry->value ? &*entry->value : nullptr;
     }
 
-    bool erase(OccurrenceId id) noexcept {
-        const auto found = sparse.find(id);
-        if (found == sparse.end())
+    T &insert_or_assign(OccurrenceHandle handle, T value) {
+        auto &entry = ensure_slot(handle);
+        if (!entry.value)
+            ++size_;
+        entry.generation = handle.generation;
+        entry.value = std::move(value);
+        return *entry.value;
+    }
+
+    bool erase(OccurrenceHandle handle) noexcept {
+        auto *entry = slot(handle);
+        if (!entry || !entry->value)
             return false;
-        const auto index = found->second;
-        const auto last = dense_values.size() - 1;
-        if (index != last) {
-            dense_ids[index] = dense_ids[last];
-            dense_values[index] = std::move(dense_values[last]);
-            sparse[dense_ids[index]] = index;
-        }
-        dense_ids.pop_back();
-        dense_values.pop_back();
-        sparse.erase(found);
+        entry->value.reset();
+        --size_;
         return true;
     }
 
     void clear() noexcept {
-        dense_ids.clear();
-        dense_values.clear();
-        sparse.clear();
+        slots.clear();
+        size_ = 0;
     }
 
-    std::size_t size() const noexcept { return dense_values.size(); }
+    std::size_t size() const noexcept { return size_; }
 
     template<class Fn>
     void for_each(Fn &&fn) const {
-        for (std::size_t index = 0; index < dense_values.size(); ++index)
-            fn(dense_ids[index], dense_values[index]);
+        for (std::uint32_t index = 0; index < slots.size(); ++index) {
+            const auto &entry = slots[index];
+            if (entry.value)
+                fn(OccurrenceHandle{index, entry.generation}, *entry.value);
+        }
     }
 
 private:
-    std::vector<OccurrenceId> dense_ids;
-    std::vector<T> dense_values;
-    std::unordered_map<OccurrenceId, std::uint32_t> sparse;
+    struct Slot {
+        std::uint32_t generation = 0;
+        std::optional<T> value;
+    };
+
+    Slot *slot(OccurrenceHandle handle) noexcept {
+        if (!handle.valid() || handle.slot >= slots.size())
+            return nullptr;
+        auto &entry = slots[handle.slot];
+        return entry.generation == handle.generation ? &entry : nullptr;
+    }
+
+    const Slot *slot(OccurrenceHandle handle) const noexcept {
+        if (!handle.valid() || handle.slot >= slots.size())
+            return nullptr;
+        const auto &entry = slots[handle.slot];
+        return entry.generation == handle.generation ? &entry : nullptr;
+    }
+
+    Slot &ensure_slot(OccurrenceHandle handle) {
+        if (!handle.valid())
+            throw std::invalid_argument("cannot store a component for an invalid occurrence handle");
+        if (handle.slot >= slots.size())
+            slots.resize(static_cast<std::size_t>(handle.slot) + 1);
+        auto &entry = slots[handle.slot];
+        if (entry.generation != handle.generation) {
+            if (entry.value)
+                --size_;
+            entry.generation = handle.generation;
+            entry.value.reset();
+        }
+        return entry;
+    }
+
+    std::vector<Slot> slots;
+    std::size_t size_ = 0;
 };
 
 } // namespace nkscene

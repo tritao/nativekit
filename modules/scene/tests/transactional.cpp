@@ -23,11 +23,11 @@ LocalTransform translated(float x) {
     return transform;
 }
 
-void component_store_is_dense_and_sparse() {
+void component_store_is_slot_indexed_and_generation_safe() {
     ComponentStore<std::uint32_t> store;
-    const nkscene::OccurrenceId first{1};
-    const nkscene::OccurrenceId second{2};
-    const nkscene::OccurrenceId third{3};
+    const nkscene::OccurrenceHandle first{4, 1};
+    const nkscene::OccurrenceHandle second{8, 3};
+    const nkscene::OccurrenceHandle third{12, 2};
     store.insert_or_assign(first, 10);
     store.insert_or_assign(second, 20);
     store.insert_or_assign(third, 30);
@@ -38,6 +38,32 @@ void component_store_is_dense_and_sparse() {
     assert(*store.find(third) == 30);
     store.insert_or_assign(first, 11);
     assert(*store.find(first) == 11);
+
+    const nkscene::OccurrenceHandle reused{8, 4};
+    assert(store.find(reused) == nullptr);
+    store.insert_or_assign(reused, 40);
+    assert(store.find(second) == nullptr);
+    assert(*store.find(reused) == 40);
+}
+
+void occurrence_handles_reject_stale_components() {
+    nkscene::OccurrenceStore occurrences;
+    ComponentStore<std::uint32_t> store;
+    const auto first_id = occurrences.reserve_id();
+    const auto first = occurrences.create(first_id);
+    store.insert_or_assign(first, 10);
+    assert(*store.find(first) == 10);
+    assert(occurrences.destroy(first_id));
+
+    const auto second_id = occurrences.reserve_id();
+    const auto second = occurrences.create(second_id);
+    assert(second.slot == first.slot);
+    assert(second.generation != first.generation);
+    assert(store.erase(first));
+    assert(store.find(first) == nullptr);
+    store.insert_or_assign(second, 20);
+    assert(store.find(first) == nullptr);
+    assert(*store.find(second) == 20);
 }
 
 void changes_are_domain_precise() {
@@ -69,7 +95,8 @@ void changes_are_domain_precise() {
     assert(changes.revisions.material == 0);
     assert(changes.revisions.visibility == 0);
     assert(changes.revisions.source == 0);
-    assert(scene->transforms().find(first)->matrix[12] == 4.0f);
+    assert(scene->transforms().find(scene->occurrence_store().resolve(first))->matrix[12] ==
+           4.0f);
 
     Transaction source(scene);
     source.add_source_entity(first, nkscene::EntityId{42});
@@ -94,7 +121,8 @@ void changes_are_domain_precise() {
     invalid.add_transform(first, translated(9.0f));
     invalid.add_transform({999999}, translated(10.0f));
     assert(scene->commit(invalid, changes) == NKS_ERROR_STALE_ID);
-    assert(scene->transforms().find(first)->matrix[12] == 4.0f);
+    assert(scene->transforms().find(scene->occurrence_store().resolve(first))->matrix[12] ==
+           4.0f);
     assert(scene->revision() == 4);
 
     Transaction cycle(scene);
@@ -143,8 +171,9 @@ void shared_resources_do_not_follow_instance_transforms() {
     assert(changes.stats.dirty_world_transforms == 1);
     assert(changes.stats.dirty_bounds == 1);
     assert(scene->geometry_store().find(geometry)->revision == resource_revision);
-    assert(scene->world_transforms().find(occurrences.front())->transform.matrix[12] == 12.0f);
-    assert(scene->world_transforms().find(occurrences.front())->revision != 0);
+    const auto handle = scene->occurrence_store().resolve(occurrences.front());
+    assert(scene->world_transforms().find(handle)->transform.matrix[12] == 12.0f);
+    assert(scene->world_transforms().find(handle)->revision != 0);
 }
 
 void snapshots_are_immutable() {
@@ -214,7 +243,8 @@ void names_and_bulk_transforms_are_transactional() {
 } // namespace
 
 int main() {
-    component_store_is_dense_and_sparse();
+    component_store_is_slot_indexed_and_generation_safe();
+    occurrence_handles_reject_stale_components();
     changes_are_domain_precise();
     shared_resources_do_not_follow_instance_transforms();
     snapshots_are_immutable();

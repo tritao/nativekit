@@ -285,8 +285,6 @@ void Scene::recompute_world_transforms(ChangeSet &changes) {
     std::vector<OccurrenceId> pending;
     for (const auto &change : changes.changes) {
         if (has_domain(change.domains, ChangeDomain::Destroyed)) {
-            world_transforms_.erase(change.occurrence);
-            bounds.erase(change.occurrence);
             continue;
         }
         if (has_domain(change.domains, ChangeDomain::Created) ||
@@ -317,27 +315,30 @@ void Scene::recompute_world_transforms(ChangeSet &changes) {
         while (!stack.empty()) {
             const auto current = stack.back();
             stack.pop_back();
-            const auto *local = local_transforms.find(current);
+            const auto handle = occurrences.resolve(current);
+            const auto *local = local_transforms.find(handle);
             if (!local)
                 continue;
             LocalTransform world = *local;
             const auto parent = hierarchy.parent(current);
             if (parent.valid()) {
-                if (const auto *parent_world = world_transforms_.find(parent))
+                if (const auto *parent_world =
+                        world_transforms_.find(occurrences.resolve(parent)))
                     world = multiply(parent_world->transform, *local);
             }
-            world_transforms_.insert_or_assign(current, WorldTransform{world, revisions.scene + 1});
+            world_transforms_.insert_or_assign(handle,
+                                               WorldTransform{world, revisions.scene + 1});
             ++changes.stats.dirty_world_transforms;
-            if (const auto *geometry = geometry_refs.find(current)) {
+            if (const auto *geometry = geometry_refs.find(handle)) {
                 const auto *resource = geometries.find(geometry->id);
                 if (resource && resource->bounds.valid) {
-                    bounds.insert_or_assign(current, transformed_bounds(resource->bounds, world));
+                    bounds.insert_or_assign(handle, transformed_bounds(resource->bounds, world));
                     ++changes.stats.dirty_bounds;
                 } else {
-                    bounds.erase(current);
+                    bounds.erase(handle);
                 }
             } else {
-                bounds.erase(current);
+                bounds.erase(handle);
             }
             for (const auto child : hierarchy.children(current))
                 if (dirty.contains(child))
@@ -388,29 +389,29 @@ void Scene::publish_state() const {
     auto state = std::make_shared<PublishedSceneState>();
     state->revisions = revisions;
     state->occurrences.reserve(occurrences.size());
-    occurrences.for_each([&](OccurrenceId id, OccurrenceHandle) {
+    occurrences.for_each([&](OccurrenceId id, OccurrenceHandle handle) {
         SnapshotOccurrence occurrence;
         occurrence.occurrence = id;
-        if (const auto *source = source_entities.find(id))
+        if (const auto *source = source_entities.find(handle))
             occurrence.source = source->id;
-        if (const auto *name = names_.find(id))
+        if (const auto *name = names_.find(handle))
             occurrence.name = *name;
         occurrence.parent = hierarchy.parent(id);
-        if (const auto *local = local_transforms.find(id))
+        if (const auto *local = local_transforms.find(handle))
             occurrence.local_transform = *local;
-        if (const auto *world = world_transforms_.find(id))
+        if (const auto *world = world_transforms_.find(handle))
             occurrence.world_transform = *world;
-        if (const auto *geometry = geometry_refs.find(id))
+        if (const auto *geometry = geometry_refs.find(handle))
             occurrence.geometry = geometry->id;
-        if (const auto *material = material_refs.find(id))
+        if (const auto *material = material_refs.find(handle))
             occurrence.material = material->id;
-        if (const auto *camera = camera_refs_.find(id))
+        if (const auto *camera = camera_refs_.find(handle))
             occurrence.camera = camera->id;
-        if (const auto *light = light_refs_.find(id))
+        if (const auto *light = light_refs_.find(handle))
             occurrence.light = light->id;
-        if (const auto *visibility = visibilities_.find(id))
+        if (const auto *visibility = visibilities_.find(handle))
             occurrence.visible = visibility->visible;
-        if (const auto *bound = bounds.find(id))
+        if (const auto *bound = bounds.find(handle))
             occurrence.bounds = *bound;
         state->occurrences.push_back(occurrence);
     });
@@ -586,23 +587,24 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
             [&](const auto &value) {
                 using T = std::decay_t<decltype(value)>;
                 if constexpr (std::is_same_v<T, CreateOccurrence>) {
-                    occurrences.create(value.occurrence);
+                    const auto handle = occurrences.create(value.occurrence);
                     hierarchy.add(value.occurrence);
-                    local_transforms.insert_or_assign(value.occurrence, LocalTransform{});
-                    visibilities_.insert_or_assign(value.occurrence, Visibility{});
+                    local_transforms.insert_or_assign(handle, LocalTransform{});
+                    visibilities_.insert_or_assign(handle, Visibility{});
                     record_change(changes, change_indices, value.occurrence, ChangeDomain::Created);
                 } else if constexpr (std::is_same_v<T, DestroyOccurrence>) {
-                    source_entities.erase(value.occurrence);
-                    parent_components.erase(value.occurrence);
-                    local_transforms.erase(value.occurrence);
-                    world_transforms_.erase(value.occurrence);
-                    geometry_refs.erase(value.occurrence);
-                    material_refs.erase(value.occurrence);
-                    camera_refs_.erase(value.occurrence);
-                    light_refs_.erase(value.occurrence);
-                    visibilities_.erase(value.occurrence);
-                    names_.erase(value.occurrence);
-                    bounds.erase(value.occurrence);
+                    const auto handle = occurrences.resolve(value.occurrence);
+                    source_entities.erase(handle);
+                    parent_components.erase(handle);
+                    local_transforms.erase(handle);
+                    world_transforms_.erase(handle);
+                    geometry_refs.erase(handle);
+                    material_refs.erase(handle);
+                    camera_refs_.erase(handle);
+                    light_refs_.erase(handle);
+                    visibilities_.erase(handle);
+                    names_.erase(handle);
+                    bounds.erase(handle);
                     hierarchy.remove(value.occurrence);
                     occurrences.destroy(value.occurrence);
                     record_change(changes, change_indices, value.occurrence,
@@ -611,92 +613,101 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
                     const auto previous = hierarchy.parent(value.occurrence);
                     if (previous != value.parent) {
                         hierarchy.reparent(value.occurrence, value.parent);
-                        parent_components.insert_or_assign(value.occurrence, Parent{value.parent});
+                        parent_components.insert_or_assign(occurrences.resolve(value.occurrence),
+                                                           Parent{value.parent});
                         record_change(changes, change_indices, value.occurrence,
                                       ChangeDomain::Hierarchy);
                     }
                 } else if constexpr (std::is_same_v<T, SetTransform>) {
-                    auto *previous = local_transforms.find(value.occurrence);
+                    const auto handle = occurrences.resolve(value.occurrence);
+                    auto *previous = local_transforms.find(handle);
                     if (!previous || !transform_equal(*previous, value.transform)) {
-                        local_transforms.insert_or_assign(value.occurrence, value.transform);
+                        local_transforms.insert_or_assign(handle, value.transform);
                         record_change(changes, change_indices, value.occurrence,
                                       ChangeDomain::Transform);
                     }
                 } else if constexpr (std::is_same_v<T, SetGeometry>) {
-                    const auto *previous = geometry_refs.find(value.occurrence);
+                    const auto handle = occurrences.resolve(value.occurrence);
+                    const auto *previous = geometry_refs.find(handle);
                     if (!previous || previous->id != value.geometry) {
-                        geometry_refs.insert_or_assign(value.occurrence,
+                        geometry_refs.insert_or_assign(handle,
                                                        GeometryRef{value.geometry});
                         record_change(changes, change_indices, value.occurrence,
                                       ChangeDomain::Geometry);
                     }
                 } else if constexpr (std::is_same_v<T, SetMaterial>) {
-                    const auto *previous = material_refs.find(value.occurrence);
+                    const auto handle = occurrences.resolve(value.occurrence);
+                    const auto *previous = material_refs.find(handle);
                     if (!previous || previous->id != value.material) {
-                        material_refs.insert_or_assign(value.occurrence,
+                        material_refs.insert_or_assign(handle,
                                                        MaterialRef{value.material});
                         record_change(changes, change_indices, value.occurrence,
                                       ChangeDomain::Material);
                     }
                 } else if constexpr (std::is_same_v<T, SetCamera>) {
-                    const auto *previous = camera_refs_.find(value.occurrence);
+                    const auto handle = occurrences.resolve(value.occurrence);
+                    const auto *previous = camera_refs_.find(handle);
                     if (value.camera.valid()) {
                         if (!previous || previous->id != value.camera) {
-                            camera_refs_.insert_or_assign(value.occurrence,
+                            camera_refs_.insert_or_assign(handle,
                                                           CameraRef{value.camera});
                             record_change(changes, change_indices, value.occurrence,
                                           ChangeDomain::Camera);
                         }
                     } else if (previous) {
-                        camera_refs_.erase(value.occurrence);
+                        camera_refs_.erase(handle);
                         record_change(changes, change_indices, value.occurrence,
                                       ChangeDomain::Camera);
                     }
                 } else if constexpr (std::is_same_v<T, SetLight>) {
-                    const auto *previous = light_refs_.find(value.occurrence);
+                    const auto handle = occurrences.resolve(value.occurrence);
+                    const auto *previous = light_refs_.find(handle);
                     if (value.light.valid()) {
                         if (!previous || previous->id != value.light) {
-                            light_refs_.insert_or_assign(value.occurrence, LightRef{value.light});
+                            light_refs_.insert_or_assign(handle, LightRef{value.light});
                             record_change(changes, change_indices, value.occurrence,
                                           ChangeDomain::Light);
                         }
                     } else if (previous) {
-                        light_refs_.erase(value.occurrence);
+                        light_refs_.erase(handle);
                         record_change(changes, change_indices, value.occurrence,
                                       ChangeDomain::Light);
                     }
                 } else if constexpr (std::is_same_v<T, SetVisibility>) {
-                    const auto *previous = visibilities_.find(value.occurrence);
+                    const auto handle = occurrences.resolve(value.occurrence);
+                    const auto *previous = visibilities_.find(handle);
                     if (!previous || previous->visible != value.visible) {
-                        visibilities_.insert_or_assign(value.occurrence, Visibility{value.visible});
+                        visibilities_.insert_or_assign(handle, Visibility{value.visible});
                         record_change(changes, change_indices, value.occurrence,
                                       ChangeDomain::Visibility);
                     }
                 } else if constexpr (std::is_same_v<T, SetSourceEntity>) {
-                    const auto *previous = source_entities.find(value.occurrence);
+                    const auto handle = occurrences.resolve(value.occurrence);
+                    const auto *previous = source_entities.find(handle);
                     if (value.source.valid()) {
                         if (!previous || previous->id != value.source) {
-                            source_entities.insert_or_assign(value.occurrence,
+                            source_entities.insert_or_assign(handle,
                                                              SourceEntity{value.source});
                             record_change(changes, change_indices, value.occurrence,
                                           ChangeDomain::Source);
                         }
                     } else if (previous) {
-                        source_entities.erase(value.occurrence);
+                        source_entities.erase(handle);
                         record_change(changes, change_indices, value.occurrence,
                                       ChangeDomain::Source);
                     }
                 } else if constexpr (std::is_same_v<T, SetName>) {
-                    const auto *previous = names_.find(value.occurrence);
+                    const auto handle = occurrences.resolve(value.occurrence);
+                    const auto *previous = names_.find(handle);
                     if (value.name.empty()) {
                         if (previous) {
-                            names_.erase(value.occurrence);
+                            names_.erase(handle);
                             name_changed = true;
                             record_change(changes, change_indices, value.occurrence,
                                           ChangeDomain::Name);
                         }
                     } else if (!previous || *previous != value.name) {
-                        names_.insert_or_assign(value.occurrence, value.name);
+                        names_.insert_or_assign(handle, value.name);
                         name_changed = true;
                         record_change(changes, change_indices, value.occurrence,
                                       ChangeDomain::Name);
@@ -715,12 +726,12 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
                     }
                     if (changed) {
                         name_changed = true;
-                        source_entities.for_each(
-                            [&](OccurrenceId occurrence, const SourceEntity &source) {
-                                if (source.id == value.entity)
-                                    record_change(changes, change_indices, occurrence,
-                                                  ChangeDomain::Name);
-                            });
+                        occurrences.for_each([&](OccurrenceId occurrence, OccurrenceHandle handle) {
+                            const auto *source = source_entities.find(handle);
+                            if (source && source->id == value.entity)
+                                record_change(changes, change_indices, occurrence,
+                                              ChangeDomain::Name);
+                        });
                     }
                 }
             },
