@@ -18,10 +18,68 @@
 
 namespace nkscene {
 
-SceneSnapshot::SceneSnapshot() : state_(std::make_shared<PublishedSceneState>()) {}
+namespace {
+
+std::shared_ptr<const PublishedSceneState> empty_published_state() {
+    auto state = std::make_shared<PublishedSceneState>();
+    state->occurrences = std::make_shared<PublishedOccurrenceState>();
+    state->geometries = std::make_shared<std::vector<GeometryResource>>();
+    state->materials = std::make_shared<std::vector<MaterialResource>>();
+    state->images = std::make_shared<std::vector<ImageResource>>();
+    state->textures = std::make_shared<std::vector<TextureResource>>();
+    state->samplers = std::make_shared<std::vector<SamplerResource>>();
+    state->cameras = std::make_shared<std::vector<CameraResource>>();
+    state->lights = std::make_shared<std::vector<LightResource>>();
+    return state;
+}
+
+} // namespace
+
+SceneSnapshot::SceneSnapshot() : state_(empty_published_state()) {}
 
 SceneSnapshot::SceneSnapshot(std::shared_ptr<const PublishedSceneState> state)
     : state_(std::move(state)) {}
+
+const SnapshotMaterialization &SceneSnapshot::materialized() const {
+    auto &published_occurrences = *state_->occurrences;
+    auto cached =
+        std::atomic_load_explicit(&published_occurrences.materialized, std::memory_order_acquire);
+    if (!cached) {
+        auto next = std::make_shared<SnapshotMaterialization>();
+        for (const auto &page : published_occurrences.pages) {
+            for (const auto &occurrence : page->values) {
+                if (occurrence.occurrence.valid())
+                    next->occurrences.push_back(occurrence);
+            }
+        }
+        std::sort(next->occurrences.begin(), next->occurrences.end(),
+                  [](const SnapshotOccurrence &lhs, const SnapshotOccurrence &rhs) {
+                      return lhs.occurrence.value < rhs.occurrence.value;
+                  });
+        next->children_by_parent.reserve(next->occurrences.size());
+        next->occurrences_by_source.reserve(next->occurrences.size());
+        next->occurrences_by_geometry.reserve(next->occurrences.size());
+        next->occurrences_by_material.reserve(next->occurrences.size());
+        for (const auto &occurrence : next->occurrences) {
+            if (occurrence.parent.valid())
+                next->children_by_parent[occurrence.parent].push_back(occurrence.occurrence);
+            next->occurrences_by_source[occurrence.source].push_back(occurrence.occurrence);
+            if (occurrence.geometry.valid())
+                next->occurrences_by_geometry[occurrence.geometry].push_back(
+                    occurrence.occurrence);
+            if (occurrence.material.valid())
+                next->occurrences_by_material[occurrence.material].push_back(
+                    occurrence.occurrence);
+        }
+        std::shared_ptr<const SnapshotMaterialization> candidate = std::move(next);
+        std::atomic_compare_exchange_strong_explicit(
+            &published_occurrences.materialized, &cached, std::move(candidate),
+            std::memory_order_release, std::memory_order_acquire);
+        cached = std::atomic_load_explicit(&published_occurrences.materialized,
+                                           std::memory_order_acquire);
+    }
+    return *cached;
+}
 
 std::uint64_t SceneSnapshot::revision() const noexcept {
     return state_->revisions.scene;
@@ -32,47 +90,52 @@ const RevisionCounters &SceneSnapshot::revisions() const noexcept {
 }
 
 std::span<const SnapshotOccurrence> SceneSnapshot::occurrences() const noexcept {
-    return state_->occurrences;
+    return materialized().occurrences;
 }
 
 std::span<const OccurrenceId> SceneSnapshot::children(OccurrenceId parent) const noexcept {
-    const auto found = state_->children_by_parent.find(parent);
-    return found == state_->children_by_parent.end()
+    const auto &value = materialized();
+    const auto found = value.children_by_parent.find(parent);
+    return found == value.children_by_parent.end()
                ? std::span<const OccurrenceId>{}
                : std::span<const OccurrenceId>{found->second};
 }
 
 std::span<const OccurrenceId>
 SceneSnapshot::occurrences_for_source(EntityId source) const noexcept {
-    const auto found = state_->occurrences_by_source.find(source);
-    return found == state_->occurrences_by_source.end()
+    const auto &value = materialized();
+    const auto found = value.occurrences_by_source.find(source);
+    return found == value.occurrences_by_source.end()
                ? std::span<const OccurrenceId>{}
                : std::span<const OccurrenceId>{found->second};
 }
 
 std::span<const OccurrenceId>
 SceneSnapshot::occurrences_for_geometry(GeometryId geometry) const noexcept {
-    const auto found = state_->occurrences_by_geometry.find(geometry);
-    return found == state_->occurrences_by_geometry.end()
+    const auto &value = materialized();
+    const auto found = value.occurrences_by_geometry.find(geometry);
+    return found == value.occurrences_by_geometry.end()
                ? std::span<const OccurrenceId>{}
                : std::span<const OccurrenceId>{found->second};
 }
 
 std::span<const OccurrenceId>
 SceneSnapshot::occurrences_for_material(MaterialId material) const noexcept {
-    const auto found = state_->occurrences_by_material.find(material);
-    return found == state_->occurrences_by_material.end()
+    const auto &value = materialized();
+    const auto found = value.occurrences_by_material.find(material);
+    return found == value.occurrences_by_material.end()
                ? std::span<const OccurrenceId>{}
                : std::span<const OccurrenceId>{found->second};
 }
 
 const SnapshotOccurrence *SceneSnapshot::find(OccurrenceId id) const noexcept {
+    const auto &value = materialized();
     const auto found =
-        std::lower_bound(state_->occurrences.begin(), state_->occurrences.end(), id,
+        std::lower_bound(value.occurrences.begin(), value.occurrences.end(), id,
                          [](const SnapshotOccurrence &occurrence, OccurrenceId value) {
                              return occurrence.occurrence.value < value.value;
                          });
-    return found == state_->occurrences.end() || found->occurrence != id ? nullptr : &*found;
+    return found == value.occurrences.end() || found->occurrence != id ? nullptr : &*found;
 }
 
 std::string_view SceneSnapshot::name(OccurrenceId id) const noexcept {
@@ -88,87 +151,94 @@ std::string_view SceneSnapshot::entity_name(EntityId id) const noexcept {
 }
 
 std::span<const GeometryResource> SceneSnapshot::geometries() const noexcept {
-    return state_->geometries;
+    return *state_->geometries;
 }
 
 std::span<const MaterialResource> SceneSnapshot::materials() const noexcept {
-    return state_->materials;
+    return *state_->materials;
 }
 
 const GeometryResource *SceneSnapshot::find_geometry(GeometryId id) const noexcept {
-    const auto found = std::lower_bound(state_->geometries.begin(), state_->geometries.end(), id,
+    const auto &resources = *state_->geometries;
+    const auto found = std::lower_bound(resources.begin(), resources.end(), id,
                                         [](const GeometryResource &resource, GeometryId value) {
                                             return resource.id.value < value.value;
                                         });
-    return found == state_->geometries.end() || found->id != id ? nullptr : &*found;
+    return found == resources.end() || found->id != id ? nullptr : &*found;
 }
 
 const MaterialResource *SceneSnapshot::find_material(MaterialId id) const noexcept {
-    const auto found = std::lower_bound(state_->materials.begin(), state_->materials.end(), id,
+    const auto &resources = *state_->materials;
+    const auto found = std::lower_bound(resources.begin(), resources.end(), id,
                                         [](const MaterialResource &resource, MaterialId value) {
                                             return resource.id.value < value.value;
                                         });
-    return found == state_->materials.end() || found->id != id ? nullptr : &*found;
+    return found == resources.end() || found->id != id ? nullptr : &*found;
 }
 
 std::span<const ImageResource> SceneSnapshot::images() const noexcept {
-    return state_->images;
+    return *state_->images;
 }
 
 std::span<const TextureResource> SceneSnapshot::textures() const noexcept {
-    return state_->textures;
+    return *state_->textures;
 }
 
 std::span<const SamplerResource> SceneSnapshot::samplers() const noexcept {
-    return state_->samplers;
+    return *state_->samplers;
 }
 
 std::span<const CameraResource> SceneSnapshot::cameras() const noexcept {
-    return state_->cameras;
+    return *state_->cameras;
 }
 
 std::span<const LightResource> SceneSnapshot::lights() const noexcept {
-    return state_->lights;
+    return *state_->lights;
 }
 
 const ImageResource *SceneSnapshot::find_image(ImageId id) const noexcept {
-    const auto found = std::lower_bound(state_->images.begin(), state_->images.end(), id,
+    const auto &resources = *state_->images;
+    const auto found = std::lower_bound(resources.begin(), resources.end(), id,
                                         [](const ImageResource &resource, ImageId value) {
                                             return resource.id.value < value.value;
                                         });
-    return found == state_->images.end() || found->id != id ? nullptr : &*found;
+    return found == resources.end() || found->id != id ? nullptr : &*found;
 }
 
 const TextureResource *SceneSnapshot::find_texture(TextureId id) const noexcept {
-    const auto found = std::lower_bound(state_->textures.begin(), state_->textures.end(), id,
+    const auto &resources = *state_->textures;
+    const auto found = std::lower_bound(resources.begin(), resources.end(), id,
                                         [](const TextureResource &resource, TextureId value) {
                                             return resource.id.value < value.value;
                                         });
-    return found == state_->textures.end() || found->id != id ? nullptr : &*found;
+    return found == resources.end() || found->id != id ? nullptr : &*found;
 }
 
 const SamplerResource *SceneSnapshot::find_sampler(SamplerId id) const noexcept {
-    const auto found = std::lower_bound(state_->samplers.begin(), state_->samplers.end(), id,
+    const auto &resources = *state_->samplers;
+    const auto found = std::lower_bound(resources.begin(), resources.end(), id,
                                         [](const SamplerResource &resource, SamplerId value) {
                                             return resource.id.value < value.value;
                                         });
-    return found == state_->samplers.end() || found->id != id ? nullptr : &*found;
+    return found == resources.end() || found->id != id ? nullptr : &*found;
 }
 
 const CameraResource *SceneSnapshot::find_camera(CameraId id) const noexcept {
-    const auto found = std::lower_bound(state_->cameras.begin(), state_->cameras.end(), id,
+    const auto &resources = *state_->cameras;
+    const auto found = std::lower_bound(resources.begin(), resources.end(), id,
                                         [](const CameraResource &resource, CameraId value) {
                                             return resource.id.value < value.value;
                                         });
-    return found == state_->cameras.end() || found->id != id ? nullptr : &*found;
+    return found == resources.end() || found->id != id ? nullptr : &*found;
 }
 
 const LightResource *SceneSnapshot::find_light(LightId id) const noexcept {
-    const auto found = std::lower_bound(state_->lights.begin(), state_->lights.end(), id,
+    const auto &resources = *state_->lights;
+    const auto found = std::lower_bound(resources.begin(), resources.end(), id,
                                         [](const LightResource &resource, LightId value) {
                                             return resource.id.value < value.value;
                                         });
-    return found == state_->lights.end() || found->id != id ? nullptr : &*found;
+    return found == resources.end() || found->id != id ? nullptr : &*found;
 }
 
 namespace {
@@ -381,42 +451,103 @@ bool Scene::exists_after(const std::unordered_map<OccurrenceId, bool> &live,
 }
 
 Scene::Scene() : hierarchy(occurrences) {
-    publish_state();
+    publish_state(nullptr, {}, true);
 }
 
 GeometryId Scene::create_geometry() {
     const auto id = reserve_geometry_id();
     geometries.create(id);
-    publish_state();
+    publish_state(nullptr, {}, true);
     return id;
 }
 
 MaterialId Scene::create_material() {
     const auto id = reserve_material_id();
     materials.create(id);
-    publish_state();
+    publish_state(nullptr, {}, true);
     return id;
 }
 
 void Scene::destroy_geometry(GeometryId id) noexcept {
     if (geometries.destroy(id))
-        publish_state();
+        publish_state(nullptr, {}, true);
 }
 
 void Scene::destroy_material(MaterialId id) noexcept {
     if (materials.destroy(id))
-        publish_state();
+        publish_state(nullptr, {}, true);
 }
 
 void Scene::publish() const {
-    publish_state();
+    publish_state(nullptr, {}, true);
 }
 
-void Scene::publish_state() const {
+void Scene::publish_state(const ChangeSet *changes, std::span<const std::uint32_t> destroyed_slots,
+                          bool resources_changed) const {
+    const auto previous =
+        std::atomic_load_explicit(&published_, std::memory_order_acquire);
     auto state = std::make_shared<PublishedSceneState>();
     state->revisions = revisions;
-    state->occurrences.reserve(occurrences.size());
-    occurrences.for_each([&](OccurrenceId id, OccurrenceHandle handle) {
+    state->entity_names = entity_names;
+    if (previous && !resources_changed) {
+        state->geometries = previous->geometries;
+        state->materials = previous->materials;
+        state->images = previous->images;
+        state->textures = previous->textures;
+        state->samplers = previous->samplers;
+        state->cameras = previous->cameras;
+        state->lights = previous->lights;
+    } else {
+        const auto collect = []<class Store, class Resource>(const Store &store) {
+            auto resources = std::make_shared<std::vector<Resource>>();
+            resources->reserve(store.size());
+            append_resources(store, *resources);
+            return resources;
+        };
+        state->geometries = collect.template operator()<GeometryStore, GeometryResource>(geometries);
+        state->materials = collect.template operator()<MaterialStore, MaterialResource>(materials);
+        state->images = collect.template operator()<ImageStore, ImageResource>(images);
+        state->textures = collect.template operator()<TextureStore, TextureResource>(textures);
+        state->samplers = collect.template operator()<SamplerStore, SamplerResource>(samplers);
+        state->cameras = collect.template operator()<CameraStore, CameraResource>(cameras);
+        state->lights = collect.template operator()<LightStore, LightResource>(lights);
+    }
+
+    auto occurrence_state = previous && previous->occurrences
+                                ? std::make_shared<PublishedOccurrenceState>(*previous->occurrences)
+                                : std::make_shared<PublishedOccurrenceState>();
+    occurrence_state->slot_count = occurrences.slot_count();
+    const auto page_count =
+        (occurrence_state->slot_count + published_occurrence_page_capacity - 1) /
+        published_occurrence_page_capacity;
+    occurrence_state->pages.resize(page_count);
+
+    std::unordered_set<std::uint32_t> changed_slots;
+    std::unordered_map<std::uint32_t, OccurrenceHandle> active_handles;
+    const auto add_active = [&](OccurrenceId id) {
+        const auto handle = occurrences.resolve(id);
+        if (handle.valid()) {
+            changed_slots.insert(handle.slot);
+            active_handles[handle.slot] = handle;
+        }
+    };
+    if (!previous) {
+        occurrences.for_each([&](OccurrenceId id, OccurrenceHandle handle) {
+            changed_slots.insert(handle.slot);
+            active_handles[handle.slot] = handle;
+        });
+    } else if (changes) {
+        for (const auto &change : changes->changes)
+            add_active(change.occurrence);
+        for (const auto id : changes->world_transform_occurrences)
+            add_active(id);
+        for (const auto id : changes->effective_state_occurrences)
+            add_active(id);
+        for (const auto slot : destroyed_slots)
+            changed_slots.insert(slot);
+    }
+
+    const auto make_occurrence = [&](OccurrenceId id, OccurrenceHandle handle) {
         SnapshotOccurrence occurrence;
         occurrence.occurrence = id;
         if (const auto *source = source_entities.find(handle))
@@ -440,45 +571,28 @@ void Scene::publish_state() const {
             occurrence.visible = visibility->visible;
         if (const auto *bound = bounds.find(handle))
             occurrence.bounds = *bound;
-        state->occurrences.push_back(occurrence);
-    });
-    std::sort(state->occurrences.begin(), state->occurrences.end(),
-              [](const SnapshotOccurrence &lhs, const SnapshotOccurrence &rhs) {
-                  return lhs.occurrence.value < rhs.occurrence.value;
-              });
-    state->children_by_parent.reserve(state->occurrences.size());
-    state->occurrences_by_source.reserve(state->occurrences.size());
-    state->occurrences_by_geometry.reserve(state->occurrences.size());
-    state->occurrences_by_material.reserve(state->occurrences.size());
-    for (const auto &occurrence : state->occurrences) {
-        if (occurrence.parent.valid())
-            state->children_by_parent[occurrence.parent].push_back(occurrence.occurrence);
-        state->occurrences_by_source[occurrence.source].push_back(occurrence.occurrence);
-        if (occurrence.geometry.valid())
-            state->occurrences_by_geometry[occurrence.geometry].push_back(occurrence.occurrence);
-        if (occurrence.material.valid())
-            state->occurrences_by_material[occurrence.material].push_back(occurrence.occurrence);
+        return occurrence;
+    };
+
+    for (const auto slot : changed_slots) {
+        const auto page_index = slot / published_occurrence_page_capacity;
+        const auto offset = slot % published_occurrence_page_capacity;
+        auto page = std::make_shared<PublishedOccurrencePage>();
+        if (occurrence_state->pages[page_index])
+            *page = *occurrence_state->pages[page_index];
+        const auto active = active_handles.find(slot);
+        if (active == active_handles.end())
+            page->values[offset] = {};
+        else
+            page->values[offset] =
+                make_occurrence(occurrences.id(active->second), active->second);
+        occurrence_state->pages[page_index] = std::move(page);
     }
-    state->entity_names = entity_names;
-    geometries.for_each([&](GeometryId, const GeometryResource &resource) {
-        state->geometries.push_back(resource);
-    });
-    std::sort(state->geometries.begin(), state->geometries.end(),
-              [](const GeometryResource &lhs, const GeometryResource &rhs) {
-                  return lhs.id.value < rhs.id.value;
-              });
-    materials.for_each([&](MaterialId, const MaterialResource &resource) {
-        state->materials.push_back(resource);
-    });
-    std::sort(state->materials.begin(), state->materials.end(),
-              [](const MaterialResource &lhs, const MaterialResource &rhs) {
-                  return lhs.id.value < rhs.id.value;
-              });
-    append_resources(images, state->images);
-    append_resources(textures, state->textures);
-    append_resources(samplers, state->samplers);
-    append_resources(cameras, state->cameras);
-    append_resources(lights, state->lights);
+    if (!changed_slots.empty())
+        std::atomic_store_explicit(&occurrence_state->materialized,
+                                   std::shared_ptr<const SnapshotMaterialization>{},
+                                   std::memory_order_release);
+    state->occurrences = std::move(occurrence_state);
     std::shared_ptr<const PublishedSceneState> published = std::move(state);
     std::atomic_store_explicit(&published_, std::move(published), std::memory_order_release);
 }
@@ -619,6 +733,7 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
     bool name_changed = false;
     std::unordered_map<OccurrenceId, std::size_t> change_indices;
     change_indices.reserve(transaction.mutations().size());
+    std::vector<std::uint32_t> destroyed_slots;
     for (const auto &mutation : transaction.mutations()) {
         std::visit(
             [&](const auto &value) {
@@ -631,6 +746,7 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
                     record_change(changes, change_indices, value.occurrence, ChangeDomain::Created);
                 } else if constexpr (std::is_same_v<T, DestroyOccurrence>) {
                     const auto handle = occurrences.resolve(value.occurrence);
+                    destroyed_slots.push_back(handle.slot);
                     source_entities.erase(handle);
                     parent_components.erase(handle);
                     local_transforms.erase(handle);
@@ -859,7 +975,10 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
     }
     changes.scene_revision = revisions.scene;
     changes.revisions = revisions;
-    publish_state();
+    // Direct C++ resource-store edits are allowed before a transaction, so the
+    // resource tables are refreshed at commit publication as well. Occurrence
+    // pages remain copy-on-write and are the dominant publication cost.
+    publish_state(&changes, destroyed_slots, true);
     return NKS_OK;
 }
 

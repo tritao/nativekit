@@ -378,6 +378,7 @@ struct SnapshotOccurrence {
 
 class Scene;
 struct PublishedSceneState;
+struct SnapshotMaterialization;
 
 class NKS_API SceneSnapshot {
 public:
@@ -410,6 +411,7 @@ public:
 
 private:
     explicit SceneSnapshot(std::shared_ptr<const PublishedSceneState> state);
+    const SnapshotMaterialization &materialized() const;
 
     std::shared_ptr<const PublishedSceneState> state_;
     friend class Scene;

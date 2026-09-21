@@ -10,28 +10,48 @@
 #include "transaction.hpp"
 
 #include <cstdint>
+#include <array>
 #include <memory>
 #include <string>
+#include <span>
 #include <unordered_map>
 #include <vector>
 
 namespace nkscene {
 
-struct PublishedSceneState {
-    RevisionCounters revisions;
+constexpr std::size_t published_occurrence_page_capacity = 256;
+
+struct SnapshotMaterialization;
+
+struct PublishedOccurrencePage {
+    std::array<SnapshotOccurrence, published_occurrence_page_capacity> values{};
+};
+
+struct PublishedOccurrenceState {
+    std::size_t slot_count = 0;
+    std::vector<std::shared_ptr<const PublishedOccurrencePage>> pages;
+    mutable std::shared_ptr<const SnapshotMaterialization> materialized;
+};
+
+struct SnapshotMaterialization {
     std::vector<SnapshotOccurrence> occurrences;
     std::unordered_map<OccurrenceId, std::vector<OccurrenceId>> children_by_parent;
     std::unordered_map<EntityId, std::vector<OccurrenceId>> occurrences_by_source;
-    std::unordered_map<EntityId, std::string> entity_names;
     std::unordered_map<GeometryId, std::vector<OccurrenceId>> occurrences_by_geometry;
     std::unordered_map<MaterialId, std::vector<OccurrenceId>> occurrences_by_material;
-    std::vector<GeometryResource> geometries;
-    std::vector<MaterialResource> materials;
-    std::vector<ImageResource> images;
-    std::vector<TextureResource> textures;
-    std::vector<SamplerResource> samplers;
-    std::vector<CameraResource> cameras;
-    std::vector<LightResource> lights;
+};
+
+struct PublishedSceneState {
+    RevisionCounters revisions;
+    std::unordered_map<EntityId, std::string> entity_names;
+    std::shared_ptr<const PublishedOccurrenceState> occurrences;
+    std::shared_ptr<const std::vector<GeometryResource>> geometries;
+    std::shared_ptr<const std::vector<MaterialResource>> materials;
+    std::shared_ptr<const std::vector<ImageResource>> images;
+    std::shared_ptr<const std::vector<TextureResource>> textures;
+    std::shared_ptr<const std::vector<SamplerResource>> samplers;
+    std::shared_ptr<const std::vector<CameraResource>> cameras;
+    std::shared_ptr<const std::vector<LightResource>> lights;
 };
 
 class NKS_API Scene {
@@ -122,7 +142,8 @@ private:
     bool exists_after(const std::unordered_map<OccurrenceId, bool> &live,
                       OccurrenceId id) const noexcept;
     void recompute_world_transforms(ChangeSet &changes);
-    void publish_state() const;
+    void publish_state(const ChangeSet *changes, std::span<const std::uint32_t> destroyed_slots,
+                       bool resources_changed) const;
     void record_change(ChangeSet &changes, std::unordered_map<OccurrenceId, std::size_t> &indices,
                        OccurrenceId id, ChangeDomain domain);
 
