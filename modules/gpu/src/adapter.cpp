@@ -1282,11 +1282,12 @@ nkgpu_result nkgpu_query_image_format_support(nkgpu_renderer renderer, nkgpu_ima
     *out_support = make_image_format_support(format, selected_api->query_pixelformat(native_format),
                                              features, limits);
 #if defined(__EMSCRIPTEN__)
-    /* WebGL2 has no portable DEPTH_COMPONENT readPixels format. Depth
-       textures remain renderable, sampleable, and copyable via blit, but
-       depth readback needs a future shader-to-color conversion path. */
+    /* WebGL2 has no portable DEPTH_COMPONENT readPixels format. The GL
+       runtime converts floating depth through an internal RGBA8 pass, while
+       depth-stencil readback remains unavailable because stencil is not
+       sampleable through that path. */
     if (image_format_is_depth(format))
-        out_support->readback = 0;
+        out_support->readback = native_format == SG_PIXELFORMAT_DEPTH ? 1u : 0u;
 #endif
     return NKGPU_OK;
 }

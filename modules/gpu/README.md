@@ -191,12 +191,12 @@ WebGL build uses WebGL2 staging and synchronous readback, so it exposes the
 same transfer/readback operations but does not promise native asynchronous
 completion semantics. Per-format transfer capabilities are reported by
 `nkgpu_query_image_format_support()`: use its `copy` and `readback` fields in
-addition to the resource-usage fields. WebGL2 supports depth textures for
-rendering, sampling, and framebuffer copies, but its `readPixels()` contract
-does not include `DEPTH_COMPONENT` or `DEPTH_STENCIL`; depth image readback is
-therefore reported unavailable on Web. GLCore, D3D11, and Metal expose opaque
-timestamp queries when the runtime provides them; unsupported backends report
-that capability as unavailable.
+addition to the resource-usage fields. WebGL2 depth textures are read back
+through an internal shader-to-RGBA8 conversion, preserving floating-depth
+bit patterns through the same public readback API. Depth-stencil readback is
+not reported when the backend cannot sample stencil. GLCore, D3D11, and Metal
+expose opaque timestamp queries when the runtime provides them; unsupported
+backends report that capability as unavailable.
 
 ## Current GPU API
 
