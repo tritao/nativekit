@@ -3448,12 +3448,22 @@ class FrameworkSmoke {
 				return CommandResult.rejected("Missing active document");
 			routed++;
 			return CommandResult.executed();
+		}, new Shortcut(UiKey.K, UiModifier.Control)), "focused");
+		var globalRouted = 0;
+		routingCommands.register(new Command("global.command", "Global command", function() {
+			globalRouted++;
 		}, new Shortcut(UiKey.K, UiModifier.Control)));
+		routingRoot.commandScope = "focused";
 		var dispatcher = new EventDispatcher(focus, new InteractionStateStore(), routingCommands,
 			commandContext);
 		dispatcher.setRoot(routingRoot);
 		dispatcher.key(UiEventKind.KeyDown, UiKey.K, UiModifier.Control);
-		return routed == 1;
+		if (routed != 1 || globalRouted != 0 || dispatcher.lastCommandResult == null ||
+			!dispatcher.lastCommandResult.succeeded)
+			return false;
+		routingRoot.commandScope = null;
+		dispatcher.key(UiEventKind.KeyDown, UiKey.K, UiModifier.Control);
+		return routed == 1 && globalRouted == 1;
 	}
 
 	static function dockWorkspaceValid(uiContext:UiContext):Bool {
@@ -3493,7 +3503,8 @@ class FrameworkSmoke {
 		workspaceRoot = uiContext.submit(workspace, new LayoutFrame(640.0, 480.0));
 		if (workspaceRoot == null || inspectorBuilds != 1 || viewportBuilds != 1)
 			return false;
-		if (!model.dock("console", "viewport", DockDropZone.Center) ||
+		var dockedConsole = model.dock("console", "viewport", DockDropZone.Center);
+		if (!dockedConsole ||
 			!model.isOpen("console") || model.activePanelId != "console")
 			return false;
 		var snapshot = model.snapshot();
@@ -3523,6 +3534,28 @@ class FrameworkSmoke {
 		var storage = new SmokeDockStorage();
 		model.saveTo(storage, "editor");
 		if (!model.restoreFrom(storage, "editor") || model.restoreFrom(storage, "missing"))
+			return false;
+		var persisted = new DockWorkspaceModel();
+		persisted.register(new DockPanelDescriptor("known", "Known", function(_) {
+			return new Text("Known");
+		}, false));
+		persisted.register(new DockPanelDescriptor("removed", "Removed", function(_) {
+			return new Text("Removed");
+		}));
+		persisted.setDefaultLayout(DockNode.Tabs(["known", "removed"], "removed"));
+		var persistedJson = persisted.snapshotJson();
+		persisted.unregister("removed");
+		if (!persisted.restoreJson(persistedJson) || persisted.isOpen("removed") ||
+			!persisted.isOpen("known") || persisted.activePanelId != "known")
+			return false;
+		var fallback = new DockWorkspaceModel();
+		fallback.register(new DockPanelDescriptor("fallback", "Fallback", function(_) {
+			return new Text("Fallback");
+		}, false));
+		fallback.setDefaultLayout(DockNode.Panel("fallback"));
+		storage.save("broken", "not-json");
+		if (fallback.restoreFromOrDefault(storage, "broken") || !fallback.isOpen("fallback") ||
+			fallback.activePanelId != "fallback")
 			return false;
 		workspaceRoot = uiContext.submit(workspace, new LayoutFrame(640.0, 480.0));
 		var inspectorTab:Null<RenderNode> = null;

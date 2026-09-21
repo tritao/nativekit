@@ -47,6 +47,29 @@ class DockNodeTools {
 		};
 	}
 
+	/**
+	 * Removes panels that are no longer registered by an application and then
+	 * normalizes the remaining tree. This is intended for persisted layouts;
+	 * strict programmatic layouts should continue to use validate().
+	 */
+	public static function keepKnown(node:DockNode, known:Map<String, Bool>):DockNode {
+		if (node == null)
+			return DockNode.Empty;
+		return normalize(switch (node) {
+			case Empty: Empty;
+			case Panel(id): known != null && known.exists(id) ? Panel(id) : Empty;
+			case Tabs(ids, active):
+				var kept:Array<String> = [];
+				if (ids != null)
+					for (id in ids)
+						if (known != null && known.exists(id) && !containsId(kept, id))
+							kept.push(id);
+				Tabs(kept, containsId(kept, active) ? active : (kept.length == 0 ? null : kept[0]));
+			case Split(axis, ratio, first, second):
+				Split(axis, ratio, keepKnown(first, known), keepKnown(second, known));
+		});
+	}
+
 	public static function contains(node:DockNode, panelId:String):Bool {
 		if (node == null || panelId == null)
 			return false;

@@ -91,7 +91,8 @@ class DockWorkspace implements View {
 			function(panelId, event) interaction.beginTabDrag(panelId, event.pointerId, event.x, event.y),
 			function(panelId, event) interaction.moveTabDrag(panelId, event.pointerId, event.x, event.y),
 			function(panelId, event) interaction.endTabDrag(panelId, event.pointerId, event.x, event.y),
-			function(panelId, event) interaction.cancelTabDrag(panelId, event.pointerId));
+			function(panelId, event) interaction.cancelTabDrag(panelId, event.pointerId),
+			TabsSelectionMode.Controlled);
 	}
 
 	function buildSplit(axis:DockSplitAxis, ratio:Float, first:DockNode, second:DockNode,

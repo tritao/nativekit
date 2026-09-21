@@ -133,7 +133,7 @@ class DockWorkspaceModel {
 	/** Restores a serialized layout without coupling the UI module to storage. */
 	public function restoreJson(source:String):Bool {
 		var snapshot = DockWorkspaceSnapshotCodec.decode(source);
-		return snapshot != null && restore(snapshot);
+		return snapshot != null && restorePersisted(snapshot);
 	}
 
 	public function saveTo(storage:DockWorkspacePersistence, key:String):Void {
@@ -148,12 +148,46 @@ class DockWorkspaceModel {
 		return restoreJson(storage.load(key));
 	}
 
+	/**
+	 * Restores a saved layout, falling back to the registered default layout
+	 * when storage is absent, stale, or malformed. The return value indicates
+	 * whether persisted state was accepted.
+	 */
+	public function restoreFromOrDefault(storage:DockWorkspacePersistence, key:String):Bool {
+		if (restoreFrom(storage, key))
+			return true;
+		reset();
+		return false;
+	}
+
 	public function restore(snapshot:DockWorkspaceSnapshot):Bool {
 		if (snapshot == null || snapshot.version != DockWorkspaceSnapshot.CurrentVersion)
 			return false;
 		if (DockNodeTools.validate(snapshot.root, panelMap()) != null)
 			return false;
 		root = DockNodeTools.normalize(DockNodeTools.clone(snapshot.root));
+		activePanelId = snapshot.activePanelId != null && isOpen(snapshot.activePanelId) ?
+			snapshot.activePanelId : DockNodeTools.firstPanel(root);
+		touch();
+		return true;
+	}
+
+	/**
+	 * Restores persisted state across application revisions. Removed panels are
+	 * pruned, empty containers collapse, and the active panel is repaired. If
+	 * every persisted panel disappeared, the snapshot is rejected so callers
+	 * can use their default layout.
+	 */
+	public function restorePersisted(snapshot:DockWorkspaceSnapshot):Bool {
+		if (snapshot == null || snapshot.version != DockWorkspaceSnapshot.CurrentVersion)
+			return false;
+		var persistedIds = DockNodeTools.panelIds(snapshot.root);
+		var compatible = DockNodeTools.keepKnown(snapshot.root, panelMap());
+		if (persistedIds.length > 0 && DockNodeTools.firstPanel(compatible) == null)
+			return false;
+		if (DockNodeTools.validate(compatible, panelMap()) != null)
+			return false;
+		root = DockNodeTools.normalize(DockNodeTools.clone(compatible));
 		activePanelId = snapshot.activePanelId != null && isOpen(snapshot.activePanelId) ?
 			snapshot.activePanelId : DockNodeTools.firstPanel(root);
 		touch();

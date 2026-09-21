@@ -37,6 +37,8 @@ class RenderNode {
 	public var styleId:Null<String>;
 	public var styleClasses:Array<String>;
 	public var styleTags:Array<String>;
+	/** Optional command scope contributed by this node and its focused subtree. */
+	public var commandScope:Null<String>;
 	public var computedStyle:Null<ComputedStyle>;
 	public var tabIndex:Int;
 	/** Cursor intent used while this node is hovered or holds pointer capture. */
@@ -82,6 +84,7 @@ class RenderNode {
 		styleId = null;
 		styleClasses = [];
 		styleTags = [];
+		commandScope = null;
 		computedStyle = null;
 		tabIndex = 0;
 		cursor = null;

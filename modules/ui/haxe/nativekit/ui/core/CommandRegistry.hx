@@ -131,12 +131,45 @@ class CommandRegistry {
 	/** Dispatches a key chord with context and returns the command outcome. */
 	public function dispatchContext(key:Int, modifiers:Int,
 			context:Null<CommandContext>):CommandResult {
+		return dispatchContextInScopes(key, modifiers, context, null);
+	}
+
+	/**
+	 * Dispatches through focused-node scopes before the registry's active scopes.
+	 * The supplied path is ordered from root to focused node; the deepest scope
+	 * therefore wins without mutating the registry's persistent scope stack.
+	 */
+	public function dispatchContextInScopes(key:Int, modifiers:Int,
+			context:Null<CommandContext>, pathScopes:Null<Array<String>>):CommandResult {
 		var normalized = Shortcut.normalizeModifiers(modifiers);
 		var actual = context == null ? new CommandContext() : context;
+		var scopes:Array<String> = [];
+		var seen:Map<String, Bool> = new Map();
+		if (pathScopes != null) {
+			var pathIndex = pathScopes.length - 1;
+			while (pathIndex >= 0) {
+				var pathScope = pathScopes[pathIndex];
+				if (pathScope != null && pathScope.length > 0) {
+					validateScope(pathScope);
+					if (!seen.exists(pathScope)) {
+						scopes.push(pathScope);
+						seen.set(pathScope, true);
+					}
+				}
+				pathIndex--;
+			}
+		}
+		var activeIndex = activeScopeStack.length - 1;
+		while (activeIndex >= 0) {
+			var activeScope = activeScopeStack[activeIndex];
+			if (!seen.exists(activeScope)) {
+				scopes.push(activeScope);
+				seen.set(activeScope, true);
+			}
+			activeIndex--;
+		}
 		var disabled:Null<CommandResult> = null;
-		var scopeIndex = activeScopeStack.length - 1;
-		while (scopeIndex >= 0) {
-			var scope = activeScopeStack[scopeIndex];
+		for (scope in scopes) {
 			var commandIndex = commandOrder.length - 1;
 			while (commandIndex >= 0) {
 				var id = commandOrder[commandIndex];
@@ -156,7 +189,6 @@ class CommandRegistry {
 				}
 				commandIndex--;
 			}
-			scopeIndex--;
 		}
 		return disabled == null ? CommandResult.notHandled() : disabled;
 	}

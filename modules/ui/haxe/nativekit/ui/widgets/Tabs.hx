@@ -25,6 +25,8 @@ class Tabs implements View {
 	final key:Key;
 	public final items:Array<TabItem>;
 	public var selectedKey:String;
+	/** Whether selection is retained locally or supplied by the caller. */
+	public var selectionMode(default, null):TabsSelectionMode;
 	public final style:LayoutStyle;
 	public var onChange:String->Void;
 	public var hasChangeHandler(default, null):Bool;
@@ -39,10 +41,12 @@ class Tabs implements View {
 			?onTabDragStart:String->UiEvent->Void,
 			?onTabDragMove:String->UiEvent->Void,
 			?onTabDragEnd:String->UiEvent->Void,
-			?onTabDragCancel:String->UiEvent->Void) {
+			?onTabDragCancel:String->UiEvent->Void,
+			?selectionMode:TabsSelectionMode) {
 		this.key = new Key(key);
 		this.items = items == null ? [] : items.copy();
 		this.selectedKey = selectedKey == null ? "" : selectedKey;
+		this.selectionMode = selectionMode == null ? TabsSelectionMode.Local : selectionMode;
 		this.style = style == null ? defaultStyle() : style.copy();
 		hasChangeHandler = onChange != null;
 		this.onChange = onChange == null ? function(_) {} : onChange;
@@ -61,7 +65,8 @@ class Tabs implements View {
 	public function build(context:BuildContext):RenderNode {
 		return context.withScope(key, function() {
 			var state:State<String> = context.state(context.id("selected-tab"), selectedKey);
-			var active:String = state.value;
+			var active:String = selectionMode == TabsSelectionMode.Controlled ?
+				selectedKey : state.value;
 			if (!isEnabled(active))
 				active = firstEnabled();
 			if (active != state.value)

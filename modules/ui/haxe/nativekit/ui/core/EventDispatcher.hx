@@ -20,6 +20,10 @@ class EventDispatcher {
 	var hitTestProvider:Null<Float->Float->Array<RenderNode>>;
 	var pointerCaptureHandler:Null<Bool->Void>;
 	var platformPointerCaptured:Bool;
+	/** Outcome of the most recent routed command invocation. */
+	public var lastCommandResult(default, null):Null<CommandResult>;
+	/** Optional host hook for command palettes, status bars, and diagnostics. */
+	public var onCommandResult:Null<CommandResult->Void>;
 
 	public function new(focus:FocusManager, ?interactionStates:InteractionStateStore,
 			?commandRegistry:CommandRegistry, ?commandContext:CommandContext) {
@@ -36,6 +40,8 @@ class EventDispatcher {
 		hitTestProvider = null;
 		pointerCaptureHandler = null;
 		platformPointerCaptured = false;
+		lastCommandResult = null;
+		onCommandResult = null;
 	}
 
 	/** Installs the application-level shortcut route used after widget dispatch. */
@@ -219,14 +225,14 @@ class EventDispatcher {
 	public function key(kind:String, key:Int, modifiers:Int = 0, scancode:Int = 0):Void {
 		var node = focus.focusedNode();
 		if (node == null) {
-			if (kind == UiEventKind.KeyDown && commandRegistry != null)
-				commandRegistry.dispatchContext(key, modifiers, commandContext);
+			if (kind == UiEventKind.KeyDown)
+				routeCommand(key, modifiers, []);
 			return;
 		}
 		var path = HitTest.pathTo(node);
 		if (path.length == 0) {
-			if (kind == UiEventKind.KeyDown && commandRegistry != null)
-				commandRegistry.dispatchContext(key, modifiers, commandContext);
+			if (kind == UiEventKind.KeyDown)
+				routeCommand(key, modifiers, []);
 			return;
 		}
 		var event = new UiEvent(kind, node.id, 0.0, 0.0, 0.0, 0.0, 0, key,
@@ -234,8 +240,7 @@ class EventDispatcher {
 		dispatchPath(path, event);
 		if (event.defaultPrevented)
 			return;
-		if (kind == UiEventKind.KeyDown && commandRegistry != null &&
-			commandRegistry.dispatchContext(key, modifiers, commandContext).succeeded) {
+		if (kind == UiEventKind.KeyDown && routeCommand(key, modifiers, path)) {
 			event.preventDefault();
 			return;
 		}
@@ -243,8 +248,22 @@ class EventDispatcher {
 			(kind == UiEventKind.KeyDown || kind == UiEventKind.KeyRepeat))
 			moveFocus((modifiers & UiModifier.Shift) != 0);
 		else if (kind == UiEventKind.KeyDown && (key == UiKey.Enter || key == UiKey.Space))
-			dispatchPath(path, new UiEvent(UiEventKind.Activate, node.id, 0.0, 0.0,
+				dispatchPath(path, new UiEvent(UiEventKind.Activate, node.id, 0.0, 0.0,
 				0.0, 0.0, 0, key, modifiers, null, null, scancode));
+	}
+
+	function routeCommand(key:Int, modifiers:Int, path:Array<RenderNode>):Bool {
+		if (commandRegistry == null)
+			return false;
+		var scopes:Array<String> = [];
+		for (entry in path)
+			if (entry.commandScope != null)
+				scopes.push(entry.commandScope);
+		lastCommandResult = commandRegistry.dispatchContextInScopes(key, modifiers,
+			commandContext, scopes);
+		if (onCommandResult != null)
+			onCommandResult(lastCommandResult);
+		return lastCommandResult.succeeded;
 	}
 
 	public function text(kind:String, text:Null<String>, data:Dynamic = null):Void {
