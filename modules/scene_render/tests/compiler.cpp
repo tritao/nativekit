@@ -413,6 +413,19 @@ void scene_view_source_filters_are_incremental() {
     assert(second_item->material == material_two);
     assert(!nkscene::has_render_flag(second_item->flags,
                                      nkscene::RenderFlags::Hidden));
+
+    nkscene::SceneView first_isolation;
+    first_isolation.filter.isolated_sources.push_back(nkscene::EntityId{42});
+    auto isolation_plan = nkscene::compile(snapshot, nkscene::SceneView{});
+    auto isolation_update = nkscene::refresh(isolation_plan, snapshot, first_isolation);
+    assert(!isolation_update.plan_rebuilt);
+    assert(isolation_update.patched_visibility == 1);
+    auto second_isolation = first_isolation;
+    second_isolation.filter.isolated_sources = {nkscene::EntityId{84}};
+    isolation_update = nkscene::refresh(isolation_plan, snapshot, second_isolation);
+    assert(!isolation_update.plan_rebuilt);
+    assert(isolation_update.patched_visibility == 2);
+    assert(isolation_plan.visible_items() == 1);
 }
 
 void scene_view_camera_culling_is_incremental() {
@@ -614,6 +627,123 @@ void scene_view_clip_planes_are_incremental() {
     assert(plan.clip_planes().size() == 2);
 }
 
+void scene_view_culling_uses_spatial_candidates() {
+    auto scene = std::make_shared<Scene>();
+    const auto geometry = scene->reserve_geometry_id();
+    auto &geometry_resource = scene->geometry_store().create(geometry);
+    geometry_resource.bounds.valid = true;
+    geometry_resource.bounds.minimum = {-0.25f, -0.25f, -0.25f};
+    geometry_resource.bounds.maximum = {0.25f, 0.25f, 0.25f};
+    const auto material = scene->reserve_material_id();
+    scene->material_store().create(material);
+
+    std::vector<nkscene::OccurrenceId> occurrences;
+    occurrences.reserve(100);
+    Transaction create(scene);
+    for (std::size_t index = 0; index < 100; ++index) {
+        const auto occurrence = scene->reserve_occurrence_id();
+        occurrences.push_back(occurrence);
+        create.add_create(occurrence);
+    }
+    ChangeSet changes;
+    assert(scene->commit(create, changes) == NKS_OK);
+    create.close();
+
+    Transaction configure(scene);
+    for (std::size_t index = 0; index < occurrences.size(); ++index) {
+        configure.add_geometry(occurrences[index], geometry);
+        configure.add_material(occurrences[index], material);
+        configure.add_transform(occurrences[index], translated(static_cast<float>(index * 4)));
+    }
+    assert(scene->commit(configure, changes) == NKS_OK);
+    configure.close();
+
+    nkscene::SceneView first_view;
+    first_view.clip_planes.push_back({{1.0f, 0.0f, 0.0f}, -300.0f, true});
+    const auto snapshot = scene->snapshot();
+    auto plan = nkscene::compile(snapshot, first_view);
+    assert(plan.items().size() == occurrences.size());
+
+    auto second_view = first_view;
+    second_view.clip_planes.front() = {{-1.0f, 0.0f, 0.0f}, 10.0f, true};
+    const auto update = nkscene::refresh(plan, snapshot, second_view);
+    assert(!update.plan_rebuilt);
+    assert(update.culling_candidates < plan.items().size());
+    assert(update.patched_culling > 0);
+    assert(update.culling_candidates == 28);
+    assert(update.visible_items == 3);
+}
+
+void mixed_hierarchy_and_empty_batches_remain_incremental() {
+    auto scene = std::make_shared<Scene>();
+    const auto geometry = scene->reserve_geometry_id();
+    auto &geometry_resource = scene->geometry_store().create(geometry);
+    geometry_resource.bounds.valid = true;
+    geometry_resource.bounds.minimum = {-0.5f, -0.5f, -0.5f};
+    geometry_resource.bounds.maximum = {0.5f, 0.5f, 0.5f};
+    const auto material_one = scene->reserve_material_id();
+    const auto material_two = scene->reserve_material_id();
+    scene->material_store().create(material_one);
+    scene->material_store().create(material_two);
+    const auto root = scene->reserve_occurrence_id();
+    const auto group = scene->reserve_occurrence_id();
+    const auto first = scene->reserve_occurrence_id();
+    const auto second = scene->reserve_occurrence_id();
+
+    Transaction create(scene);
+    create.add_create(root);
+    create.add_create(group);
+    create.add_create(first);
+    create.add_create(second);
+    ChangeSet changes;
+    assert(scene->commit(create, changes) == NKS_OK);
+    create.close();
+    Transaction configure(scene);
+    configure.add_parent(group, root);
+    configure.add_parent(first, group);
+    configure.add_parent(second, group);
+    configure.add_geometry(first, geometry);
+    configure.add_material(first, material_one);
+    configure.add_geometry(second, geometry);
+    configure.add_material(second, material_two);
+    assert(scene->commit(configure, changes) == NKS_OK);
+    configure.close();
+
+    const auto snapshot = scene->snapshot();
+    nkscene::SceneView base_view;
+    auto plan = nkscene::compile(snapshot, base_view);
+    assert(plan.items().size() == 2);
+    assert(plan.batches().size() == 2);
+
+    Transaction merge_batch(scene);
+    merge_batch.add_material(first, material_two);
+    assert(scene->commit(merge_batch, changes) == NKS_OK);
+    merge_batch.close();
+    auto merged = nkscene::update(plan, scene->snapshot(), changes, base_view);
+    assert(!merged.plan_rebuilt);
+    assert(plan.batches().size() == 1);
+    assert(plan.batches().front().instances.size() == 2);
+
+    Transaction split_batch(scene);
+    split_batch.add_material(first, material_one);
+    assert(scene->commit(split_batch, changes) == NKS_OK);
+    split_batch.close();
+    auto split = nkscene::update(plan, scene->snapshot(), changes, base_view);
+    assert(!split.plan_rebuilt);
+    assert(plan.batches().size() == 2);
+    assert(plan.batches()[0].instances.size() == 1);
+    assert(plan.batches()[1].instances.size() == 1);
+
+    nkscene::SceneView hidden_view = base_view;
+    hidden_view.visibility_overrides.push_back({root, false});
+    const auto hidden = nkscene::refresh(plan, scene->snapshot(), hidden_view);
+    assert(!hidden.plan_rebuilt);
+    assert(hidden.patched_visibility == 2);
+    assert(plan.visible_items() == 0);
+    for (const auto &item : plan.items())
+        assert(nkscene::has_render_flag(item.flags, nkscene::RenderFlags::Hidden));
+}
+
 void spatial_queries_and_cpu_picking_are_snapshot_bound() {
     auto scene = std::make_shared<Scene>();
     const auto geometry = scene->reserve_geometry_id();
@@ -669,6 +799,11 @@ void spatial_queries_and_cpu_picking_are_snapshot_bound() {
     assert(left.size() == 1);
     assert(left.front() == first);
 
+    const std::array<std::array<float, 4>, 1> left_plane = {{{-1.0f, 0.0f, 0.0f, -1.0f}}};
+    const auto frustum_left = index.query_frustum(left_plane);
+    assert(frustum_left.size() == 1);
+    assert(frustum_left.front() == first);
+
     nkscene::Bounds all_bounds;
     all_bounds.valid = true;
     all_bounds.minimum = {-3.0f, -1.0f, -1.0f};
@@ -707,6 +842,8 @@ int main() {
     scene_view_camera_culling_is_incremental();
     scene_resource_camera_is_used_for_render_view();
     scene_view_clip_planes_are_incremental();
+    scene_view_culling_uses_spatial_candidates();
+    mixed_hierarchy_and_empty_batches_remain_incremental();
     spatial_queries_and_cpu_picking_are_snapshot_bound();
     constexpr std::size_t count = 50000;
     auto scene = std::make_shared<Scene>();

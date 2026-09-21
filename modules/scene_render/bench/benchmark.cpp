@@ -74,12 +74,14 @@ TimedViewUpdate run_view(const char *name, RenderPlan &plan,
 void print(const TimedViewUpdate &result) {
     std::printf(
         "%-18s %8.3f ms  view(rebuild=%d geometry=%d instances=%zu visibility=%zu "
-        "materials=%zu resources(g=%zu m=%zu) culling=%zu batches=%zu visible=%zu culled=%zu)\n",
+        "materials=%zu resources(g=%zu m=%zu) culling=%zu candidates=%zu batches=%zu "
+        "visible=%zu culled=%zu)\n",
         result.name, result.milliseconds, result.render.plan_rebuilt,
         result.render.geometry_rebuilt, result.render.patched_instances,
         result.render.patched_visibility, result.render.patched_materials,
         result.render.updated_geometry_resources, result.render.updated_material_resources,
-        result.render.patched_culling, result.render.rebuilt_batches,
+        result.render.patched_culling, result.render.culling_candidates,
+        result.render.rebuilt_batches,
         result.render.visible_items, result.render.culled_items);
 }
 
@@ -134,6 +136,8 @@ constexpr std::size_t source_count = 500;
         configure.add_parent(leaves[index], groups[index % groups.size()]);
         configure.add_geometry(leaves[index], geometry);
         configure.add_material(leaves[index], materials[index % materials.size()]);
+        configure.add_transform(leaves[index],
+                                translated(static_cast<float>((index % group_count) * 4)));
         configure.add_source_entity(leaves[index],
                                     nkscene::EntityId{(index % source_count) + 1});
     }
@@ -323,6 +327,18 @@ constexpr std::size_t source_count = 500;
     assert(presentation_plan.clip_planes().size() == 2);
     print(view_result);
 
+    nkscene::SceneView camera_view = presentation_view;
+    camera_view.clip_planes = {{{1.0f, 0.0f, 0.0f}, -150.0f, true}};
+    auto camera_plan = nkscene::compile(presentation_snapshot, camera_view);
+    auto shifted_camera_view = camera_view;
+    shifted_camera_view.clip_planes.front() = {{-1.0f, 0.0f, 0.0f}, 1.0f, true};
+    view_result = run_view("view culling index", camera_plan, presentation_snapshot,
+                           shifted_camera_view);
+    assert(!view_result.render.plan_rebuilt);
+    assert(view_result.render.culling_candidates < camera_plan.items().size());
+    assert(view_result.render.patched_culling > 0);
+    print(view_result);
+
     nkscene::SceneView source_view = presentation_view;
     const nkscene::EntityId material_source{42};
     const nkscene::EntityId hidden_source{84};
@@ -372,6 +388,16 @@ constexpr std::size_t source_count = 500;
     assert(view_result.render.updated_geometry_resources == 0);
     assert(view_result.render.updated_material_resources == 0);
     assert(view_result.render.visible_items == retained_by_isolation);
+    print(view_result);
+
+    auto switched_isolation_view = isolation_view;
+    switched_isolation_view.filter.isolated_sources = {hidden_source};
+    view_result = run_view("view isolation switch", isolation_plan, presentation_snapshot,
+                           switched_isolation_view);
+    assert(!view_result.render.plan_rebuilt);
+    assert(view_result.render.patched_visibility > 0);
+    assert(view_result.render.patched_culling == 0);
+    assert(view_result.render.culling_candidates == 0);
     print(view_result);
 
     assert(scene->geometry_store().find(geometry)->revision == geometry_revision);
