@@ -139,6 +139,29 @@ queries root keys and default-expansion state across the root set. Anchor
 preservation for corrected extents and a bulk root-metadata path are planned
 follow-ups rather than prerequisites for using the current implementation.
 
+## Remaining virtualization and integration work
+
+The current branch intentionally leaves these follow-ups explicit:
+
+1. Add anchor-preserving correction when measured variable-height rows change
+   the prefix before the viewport.
+2. Add optional exact extent summaries or prefix support so `maxScrollY` and
+   `scrollTo` can converge without requiring every row to be visited.
+3. Add a bulk/range root-metadata API for TreeView so large root sets do not
+   require one-by-one root-key and default-expansion queries at startup.
+4. Audit accessibility, rendering, picking, and raster-cache consumers against
+   the shared resolved snapshot metadata, removing any parallel geometry rules.
+5. Rebase or merge the branch onto current `main`, then rerun the native UI
+   suite, Haxe framework smoke, virtualization/hit-test benchmarks, and UI
+   visual regressions before publication.
+
+`ListView` and `VirtualGrid` remain separate public controls: ListView owns
+one-dimensional model-backed collections, while VirtualGrid owns two-axis
+table/grid windows. They should continue sharing internal virtualization
+primitives rather than becoming one combined widget. `VirtualList` can remain
+as a small fixed-row primitive while callers migrate to a uniform ListView
+model where model semantics are needed.
+
 For a static or mostly static Haxe tree, `UiContext.submitCached(build, frame,
 cacheKey)` can reuse the previously submitted tree and layout. Reuse is
 invalidated by state, interaction, stylesheet/theme, animation, and gesture
