@@ -8,11 +8,15 @@ import nativekit.ui.core.View;
  * Keys must remain stable for an item while it is present in the model. The
  * revision is incremented by the model when count, keys, extents, or item
  * content change. `extentRevisionAt` must change whenever `extentAt` can
- * return a different value for that item.
+ * return a different value for that item. `estimatedExtent` is used for
+ * unmeasured items; declare `extentIsUniform` when it is exact for every item
+ * so the list can skip all extent callbacks.
  */
 interface ListViewModel {
 	function count():Int;
 	function keyAt(index:Int):String;
+	function estimatedExtent():Float;
+	function extentIsUniform():Bool;
 	function extentAt(index:Int):Float;
 	function extentRevisionAt(index:Int):Int;
 	function buildItem(index:Int):View;
