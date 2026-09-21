@@ -14,18 +14,6 @@
 
 namespace {
 
-#ifdef __EMSCRIPTEN__
-void report_frame_backend_stage(int stage) {
-    // clang-format off
-    EM_ASM({
-        document.documentElement.dataset.nativekitFrameBackendResult = "stage-" + $0;
-    }, stage);
-    // clang-format on
-}
-#else
-void report_frame_backend_stage(int) {}
-#endif
-
 struct FrameProbe {
     nk_surface_frame frame = NK_INVALID_HANDLE;
     nk_surface_frame_target target{};
@@ -53,9 +41,7 @@ void run_frame_probe(void *data) {
     probe.surface_api_violations = nk::core::render_surface_api_violations();
 }
 
-void render_noop(void *) {}
-
-int run_frame(nk_window window, nk_surface surface, bool cancel, int32_t width, int32_t height) {
+bool run_frame(nk_window window, nk_surface surface, bool cancel, int32_t width, int32_t height) {
     nk_surface_frame frame = NK_INVALID_HANDLE;
     nk_surface_frame_target target{};
     target.struct_size = sizeof(target);
@@ -64,29 +50,25 @@ int run_frame(nk_window window, nk_surface surface, bool cancel, int32_t width, 
         target.height <= 0 || !target.device.id || !target.native_context) {
         if (frame != NK_INVALID_HANDLE)
             (void)nk_surface_cancel_frame(frame);
-        return 10;
+        return false;
     }
 
     FrameProbe probe{frame, target};
-    const nk_result dispatched =
-        nk::core::dispatch_to_render_sync(&run_frame_probe, &probe, sizeof(probe));
-    if (dispatched != NK_OK) {
+    if (nk::core::dispatch_to_render_sync(&run_frame_probe, &probe, sizeof(probe)) != NK_OK) {
         (void)nk_surface_cancel_frame(frame);
-        return 20 + (-static_cast<int>(dispatched) * 100);
+        return false;
     }
     if (!probe.render_executor || probe.bind != NK_OK || probe.submit != NK_OK ||
         probe.unbind != NK_OK || probe.surface_api_violations != 0) {
         (void)nk_surface_cancel_frame(frame);
-        return 30 + (!probe.render_executor ? 1 : 0) + (probe.bind != NK_OK ? 2 : 0) +
-               (probe.submit != NK_OK ? 4 : 0) + (probe.unbind != NK_OK ? 8 : 0) +
-               (probe.surface_api_violations != 0 ? 16 : 0);
+        return false;
     }
 
     const nk_result closed =
         cancel ? nk_surface_cancel_frame(frame) : nk_surface_present_frame(frame);
     if (closed != NK_OK)
-        return 40;
-    return nk_window_set_bounds(window, 0, 0, width, height) == NK_OK ? 0 : 50;
+        return false;
+    return nk_window_set_bounds(window, 0, 0, width, height) == NK_OK;
 }
 
 } // namespace
@@ -95,12 +77,8 @@ int main() {
     nk_init_options init{};
     init.struct_size = sizeof(init);
     init.api_version = NK_API_VERSION;
-    const nk_result initialized = nk_init(&init);
-    if (initialized != NK_OK) {
-        report_frame_backend_stage(100 - static_cast<int>(initialized));
-        return 100 - static_cast<int>(initialized);
-    }
-    report_frame_backend_stage(100);
+    if (nk_init(&init) != NK_OK)
+        return 1;
 
     nk_window_options window_options{};
     window_options.struct_size = sizeof(window_options);
@@ -112,18 +90,8 @@ int main() {
     int result = 0;
 
     const nk_result window_created = nk_window_create(&window_options, &window);
-    if (window_created != NK_OK) {
-        result = 200 - static_cast<int>(window_created);
-        report_frame_backend_stage(result);
-    } else {
-        report_frame_backend_stage(150);
-        if (nk::core::dispatch_to_render_sync(&render_noop, nullptr, 1) != NK_OK) {
-            result = 175;
-            report_frame_backend_stage(result);
-        } else {
-            report_frame_backend_stage(176);
-        }
-    }
+    if (window_created != NK_OK)
+        result = 2;
 
     nk_surface_options surface_options{};
     surface_options.struct_size = sizeof(surface_options);
@@ -135,10 +103,7 @@ int main() {
     if (!result)
         surface_created = nk_surface_create(window, &surface_options, &surface);
     if (!result && surface_created != NK_OK) {
-        result = 300 - static_cast<int>(surface_created);
-        report_frame_backend_stage(result);
-    } else if (!result) {
-        report_frame_backend_stage(250);
+        result = 3;
     }
 
     if (!result) {
@@ -146,17 +111,12 @@ int main() {
            ticket close path and makes shutdown begin with no open frame. */
         const int32_t sizes[][2] = {{320, 240}, {480, 270}, {640, 360}, {320, 240}};
         for (size_t index = 0; index < sizeof(sizes) / sizeof(sizes[0]); ++index) {
-            const int frame_result =
-                run_frame(window, surface, index == 1, sizes[index][0], sizes[index][1]);
-            if (frame_result != 0) {
-                result = frame_result;
-                report_frame_backend_stage(result);
+            if (!run_frame(window, surface, index == 1, sizes[index][0], sizes[index][1])) {
+                result = 4;
                 break;
             }
         }
     }
-
-    report_frame_backend_stage(900);
 
     if (surface != NK_INVALID_HANDLE && nk_surface_destroy(surface) != NK_OK && !result)
         result = 5;
@@ -168,7 +128,7 @@ int main() {
     // clang-format off
     EM_ASM({
         document.documentElement.dataset.nativekitFrameBackendResult =
-            $0 === 0 ? "passed" : "failed-" + $0;
+            $0 === 0 ? "passed" : "failed";
     }, result);
     // clang-format on
 #endif
