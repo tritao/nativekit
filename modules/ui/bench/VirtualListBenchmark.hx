@@ -4,6 +4,7 @@ import LayoutFrame;
 import LayoutSession;
 import LayoutStyle;
 import nativekit.ui.core.UiContext;
+import nativekit.ui.debug.UiFrameMetrics;
 import nativekit.ui.core.View;
 import nativekit.ui.widgets.ListView;
 import nativekit.ui.widgets.ListViewModel;
@@ -31,9 +32,80 @@ class VirtualListBenchmark {
 		fonts.add(fontPath);
 		var valid = run(fonts, 10000) && run(fonts, 100000) &&
 			runModel(fonts, 10000) && runModel(fonts, 100000) &&
-			runTree(fonts, 100000);
+			runTree(fonts, 100000) &&
+			runSubmitComparison(fonts, 10000) &&
+			runSubmitComparison(fonts, 100000);
 		fonts.dispose();
 		return valid ? 0 : 1;
+	}
+
+	/** Compares rebuilding the same virtual tree with retained submission reuse. */
+	static function runSubmitComparison(fonts:FontCollection, itemCount:Int):Bool {
+		var frame = new LayoutFrame(viewportWidth, viewportHeight);
+		var fullController = new ScrollController();
+		var fullStyle = new LayoutStyle();
+		fullStyle.width = LayoutAxis.fixed(viewportWidth);
+		fullStyle.height = LayoutAxis.fixed(viewportHeight);
+		var fullRows:Array<Int> = [];
+		var fullContext = new UiContext(LayoutSession.create(), fonts);
+		var fullList = new VirtualList('submit-full-$itemCount', itemCount, itemHeight,
+			function(index) {
+				fullRows.push(index);
+				return new Text('Row $index');
+			}, fullStyle, null, fullController, viewportHeight);
+		fullContext.submit(fullList, frame);
+		var fullSeconds = 0.0;
+		var fullNodes = 0;
+		for (_ in 0...samples) {
+			fullRows.resize(0);
+			var started = Sys.time();
+			fullContext.submit(fullList, frame);
+			fullSeconds += Sys.time() - started;
+			var metrics:Null<UiFrameMetrics> = fullContext.frameMetrics;
+			if (metrics == null || metrics.reusedSubmission || metrics.nodeCount <= 0)
+				return false;
+			fullNodes += metrics.nodeCount;
+		}
+		fullContext.dispose();
+
+		var retainedController = new ScrollController();
+		var retainedStyle = new LayoutStyle();
+		retainedStyle.width = LayoutAxis.fixed(viewportWidth);
+		retainedStyle.height = LayoutAxis.fixed(viewportHeight);
+		var retainedRows:Array<Int> = [];
+		var retainedContext = new UiContext(LayoutSession.create(), fonts);
+		var retainedList = new VirtualList('submit-retained-$itemCount', itemCount, itemHeight,
+			function(index) {
+				retainedRows.push(index);
+				return new Text('Row $index');
+			}, retainedStyle, null, retainedController, viewportHeight);
+		retainedContext.submitCached(function() return retainedList, frame,
+			'submit-retained-$itemCount');
+		var retainedSeconds = 0.0;
+		var retainedNodes = 0;
+		var retainedFrames = 0;
+		for (_ in 0...samples) {
+			retainedRows.resize(0);
+			var started = Sys.time();
+			retainedContext.submitCached(function() return retainedList, frame,
+				'submit-retained-$itemCount');
+			retainedSeconds += Sys.time() - started;
+			var metrics:Null<UiFrameMetrics> = retainedContext.frameMetrics;
+			if (metrics == null || !metrics.reusedSubmission || !metrics.nativeLayoutReused ||
+				metrics.nodeCount <= 0 || retainedRows.length != 0)
+				return false;
+			retainedNodes += metrics.nodeCount;
+			retainedFrames++;
+		}
+		retainedContext.dispose();
+
+		var fullMicros = fullSeconds * 1000000.0 / samples;
+		var retainedMicros = retainedSeconds * 1000000.0 / samples;
+		var speedup = retainedMicros <= 0.0 ? 0.0 : fullMicros / retainedMicros;
+		Sys.println('submit_compare items=$itemCount full_us=$fullMicros retained_us=$retainedMicros ' +
+			'speedup=$speedup full_nodes=${fullNodes / samples} retained_nodes=${retainedNodes / samples} ' +
+			'retained_frames=$retainedFrames');
+		return retainedFrames == samples;
 	}
 
 	static function run(fonts:FontCollection, itemCount:Int):Bool {
