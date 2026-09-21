@@ -180,12 +180,14 @@ struct GeometryResource {
     std::shared_ptr<const SubelementTable> subelements = std::make_shared<SubelementTable>();
 
     GeometryPayload &edit_payload() {
+        ++revision;
         auto next = std::make_shared<GeometryPayload>(*payload);
         payload = next;
         return *next;
     }
 
     SubelementTable &edit_subelements() {
+        ++revision;
         auto next = std::make_shared<SubelementTable>(*subelements);
         subelements = next;
         return *next;
@@ -284,6 +286,7 @@ struct MaterialResource {
     std::shared_ptr<const MaterialState> state = std::make_shared<MaterialState>();
 
     MaterialState &edit_state() {
+        ++revision;
         auto next = std::make_shared<MaterialState>(*state);
         state = next;
         return *next;

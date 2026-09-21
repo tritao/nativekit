@@ -45,12 +45,16 @@ void published_payloads_are_shared_and_snapshot_safe() {
     assert(before.find_material(material)->state == same.find_material(material)->state);
 
     auto &updated_geometry = scene->geometry_store().create(geometry);
+    const auto before_geometry_revision = before_geometry->revision;
     updated_geometry.edit_payload().vertices[0].position[0] = 7.0f;
     auto &updated_material = scene->material_store().create(material);
+    const auto before_material_revision = before_material->revision;
     updated_material.edit_state().base_color[2] = 0.1f;
     scene->publish();
 
     const auto after = scene->snapshot();
+    assert(after.find_geometry(geometry)->revision > before_geometry_revision);
+    assert(after.find_material(material)->revision > before_material_revision);
     assert(after.find_geometry(geometry)->payload->vertices[0].position[0] == 7.0f);
     assert(after.find_material(material)->state->base_color[2] == 0.1f);
     assert(before.find_geometry(geometry)->payload->vertices[0].position[0] == 0.0f);
