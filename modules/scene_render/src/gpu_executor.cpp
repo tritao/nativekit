@@ -125,9 +125,10 @@ bool decode_vertex_stream(const GeometryVertexStream &stream, std::size_t index,
             out[component] = static_cast<float>(source[component]) / 255.0f;
         return true;
     case VertexFormat::Snorm8x4:
-        for (std::size_t component = 0; component < 4; ++component)
-            out[component] = std::max(-1.0f, static_cast<float>(static_cast<std::int8_t>(source[component])) /
-                                                127.0f);
+        for (std::size_t component = 0; component < 4; ++component) {
+            const auto value = static_cast<float>(static_cast<std::int8_t>(source[component]));
+            out[component] = std::max(-1.0f, value / 127.0f);
+        }
         return true;
     }
     return false;
@@ -175,8 +176,7 @@ std::array<float, 4> scene_lighting(const SceneSnapshot &snapshot) noexcept {
             continue;
         const auto &matrix = occurrence.world_transform.transform.matrix;
         std::array<float, 3> direction{-matrix[0], -matrix[1], -matrix[2]};
-        const auto length = std::sqrt(direction[0] * direction[0] +
-                                      direction[1] * direction[1] +
+        const auto length = std::sqrt(direction[0] * direction[0] + direction[1] * direction[1] +
                                       direction[2] * direction[2]);
         if (length > 1.0e-6f)
             for (auto &component : direction)
@@ -813,9 +813,9 @@ bool ensure_default_material_resources(StateT &state, GpuExecutionStats &stats) 
             return set_failure(state, stats, result);
     }
     if (!state.default_sampler.id) {
-        const auto result = nkgpu_sampler_create(
-            state.renderer, NKGPU_FILTER_LINEAR, NKGPU_FILTER_LINEAR, NKGPU_WRAP_REPEAT,
-            NKGPU_WRAP_REPEAT, &state.default_sampler);
+        const auto result = nkgpu_sampler_create(state.renderer, NKGPU_FILTER_LINEAR,
+                                                  NKGPU_FILTER_LINEAR, NKGPU_WRAP_REPEAT,
+                                                  NKGPU_WRAP_REPEAT, &state.default_sampler);
         if (result != NKGPU_OK)
             return set_failure(state, stats, result);
     }
@@ -1179,10 +1179,9 @@ GpuExecutionStats NativeKitGpuExecutor::execute(const RenderPlan &plan,
         if (material) {
             material_data.base_color = material->base_color;
             material_data.base_color[3] *= material->opacity;
-            material_data.surface_params = {material->metallic, material->roughness,
-                                            material->alpha_cutoff,
-                                            static_cast<float>(static_cast<std::uint32_t>(
-                                                material->alpha_mode))};
+            material_data.surface_params = {
+                material->metallic, material->roughness, material->alpha_cutoff,
+                static_cast<float>(static_cast<std::uint32_t>(material->alpha_mode))};
             material_data.emissive = {material->emissive[0], material->emissive[1],
                                       material->emissive[2], 1.0f};
         }
@@ -1210,9 +1209,8 @@ GpuExecutionStats NativeKitGpuExecutor::execute(const RenderPlan &plan,
             (result = nkgpu_apply_sampler(state_->renderer, 0, material_gpu->second.sampler)) !=
                 NKGPU_OK ||
             (result = nkgpu_apply_uniform_data(
-                 state_->renderer, 0,
-                 reinterpret_cast<const std::uint8_t *>(&material_data), sizeof(material_data))) !=
-                NKGPU_OK ||
+                 state_->renderer, 0, reinterpret_cast<const std::uint8_t *>(&material_data),
+                 sizeof(material_data))) != NKGPU_OK ||
             (result = nkgpu_apply_uniform_data(state_->renderer, 2,
                                                reinterpret_cast<const std::uint8_t *>(&clip_data),
                                                sizeof(clip_data))) != NKGPU_OK ||

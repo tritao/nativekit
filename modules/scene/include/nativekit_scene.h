@@ -169,11 +169,7 @@ typedef struct nkscene_geometry_data {
 
 enum { NKS_MATERIAL_OPAQUE = 1u << 0, NKS_MATERIAL_DOUBLE_SIDED = 1u << 1 };
 
-enum {
-    NKS_MATERIAL_ALPHA_OPAQUE = 1,
-    NKS_MATERIAL_ALPHA_MASK = 2,
-    NKS_MATERIAL_ALPHA_BLEND = 3
-};
+enum { NKS_MATERIAL_ALPHA_OPAQUE = 1, NKS_MATERIAL_ALPHA_MASK = 2, NKS_MATERIAL_ALPHA_BLEND = 3 };
 
 typedef enum nkscene_image_format {
     NKS_IMAGE_FORMAT_R8 = 1,
@@ -402,12 +398,13 @@ NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_source_occurrence(
     nkscene_snapshot snapshot, nkscene_entity_id source, uint64_t index,
     nkscene_occurrence_id *out_occurrence NK_OUT);
 /** Returns a name borrowed from the snapshot and valid until it is destroyed. */
-NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_name(
-    nkscene_snapshot snapshot, nkscene_occurrence_id occurrence,
-    const char **out_name);
+NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_name(nkscene_snapshot snapshot,
+                                                          nkscene_occurrence_id occurrence,
+                                                          const char **out_name);
 /** Returns a source-entity name borrowed from the snapshot and valid until it is destroyed. */
-NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_entity_name(
-    nkscene_snapshot snapshot, nkscene_entity_id entity, const char **out_name);
+NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_entity_name(nkscene_snapshot snapshot,
+                                                                 nkscene_entity_id entity,
+                                                                 const char **out_name);
 NKS_API void NKS_CALL nkscene_change_set_destroy(nkscene_change_set changes);
 NKS_API nkscene_result NKS_CALL nkscene_change_set_get_revision(nkscene_change_set changes,
                                                                 uint64_t *out_revision NK_OUT);
@@ -437,23 +434,27 @@ NKS_API nkscene_result NKS_CALL nkscene_image_set_data(nkscene_scene scene,
 NKS_API nkscene_result NKS_CALL nkscene_texture_create(nkscene_scene scene,
                                                        nkscene_texture_id *out_texture NK_OUT);
 NKS_API void NKS_CALL nkscene_texture_destroy(nkscene_scene scene, nkscene_texture_id texture);
-NKS_API nkscene_result NKS_CALL nkscene_texture_set_data(
-    nkscene_scene scene, nkscene_texture_id texture, const nkscene_texture_data *data);
+NKS_API nkscene_result NKS_CALL nkscene_texture_set_data(nkscene_scene scene,
+                                                         nkscene_texture_id texture,
+                                                         const nkscene_texture_data *data);
 NKS_API nkscene_result NKS_CALL nkscene_sampler_create(nkscene_scene scene,
                                                        nkscene_sampler_id *out_sampler NK_OUT);
 NKS_API void NKS_CALL nkscene_sampler_destroy(nkscene_scene scene, nkscene_sampler_id sampler);
-NKS_API nkscene_result NKS_CALL nkscene_sampler_set_data(
-    nkscene_scene scene, nkscene_sampler_id sampler, const nkscene_sampler_data *data);
+NKS_API nkscene_result NKS_CALL nkscene_sampler_set_data(nkscene_scene scene,
+                                                         nkscene_sampler_id sampler,
+                                                         const nkscene_sampler_data *data);
 NKS_API nkscene_result NKS_CALL nkscene_camera_create(nkscene_scene scene,
                                                       nkscene_camera_id *out_camera NK_OUT);
 NKS_API void NKS_CALL nkscene_camera_destroy(nkscene_scene scene, nkscene_camera_id camera);
-NKS_API nkscene_result NKS_CALL nkscene_camera_set_data(
-    nkscene_scene scene, nkscene_camera_id camera, const nkscene_camera_data *data);
+NKS_API nkscene_result NKS_CALL nkscene_camera_set_data(nkscene_scene scene,
+                                                        nkscene_camera_id camera,
+                                                        const nkscene_camera_data *data);
 NKS_API nkscene_result NKS_CALL nkscene_light_create(nkscene_scene scene,
                                                      nkscene_light_id *out_light NK_OUT);
 NKS_API void NKS_CALL nkscene_light_destroy(nkscene_scene scene, nkscene_light_id light);
-NKS_API nkscene_result NKS_CALL nkscene_light_set_data(
-    nkscene_scene scene, nkscene_light_id light, const nkscene_light_data *data);
+NKS_API nkscene_result NKS_CALL nkscene_light_set_data(nkscene_scene scene,
+                                                       nkscene_light_id light,
+                                                       const nkscene_light_data *data);
 
 #ifdef __cplusplus
 }

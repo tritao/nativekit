@@ -71,8 +71,9 @@ std::string_view SceneSnapshot::name(OccurrenceId id) const noexcept {
 
 std::string_view SceneSnapshot::entity_name(EntityId id) const noexcept {
     const auto found = state_->entity_names.find(id);
-    return found == state_->entity_names.end() ? std::string_view{}
-                                                : std::string_view{found->second};
+    if (found == state_->entity_names.end())
+        return {};
+    return found->second;
 }
 
 std::span<const GeometryResource> SceneSnapshot::geometries() const noexcept {
@@ -242,8 +243,7 @@ std::uint32_t primitive_width(nkscene_primitive_type primitive) noexcept {
 }
 
 bool valid_vertex_semantic(nkscene_vertex_semantic semantic) noexcept {
-    return semantic >= NKS_VERTEX_SEMANTIC_POSITION &&
-        semantic <= NKS_VERTEX_SEMANTIC_COLOR0;
+    return semantic >= NKS_VERTEX_SEMANTIC_POSITION && semantic <= NKS_VERTEX_SEMANTIC_COLOR0;
 }
 
 std::size_t image_format_size(nkscene_image_format format) noexcept {
@@ -267,7 +267,7 @@ bool valid_sampler_filter(nkscene_sampler_filter filter) noexcept {
 
 bool valid_sampler_wrap(nkscene_sampler_wrap wrap) noexcept {
     return wrap == NKS_SAMPLER_WRAP_REPEAT || wrap == NKS_SAMPLER_WRAP_CLAMP_TO_EDGE ||
-        wrap == NKS_SAMPLER_WRAP_MIRRORED_REPEAT;
+           wrap == NKS_SAMPLER_WRAP_MIRRORED_REPEAT;
 }
 
 } // namespace
@@ -626,7 +626,8 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
                     const auto *previous = camera_refs_.find(value.occurrence);
                     if (value.camera.valid()) {
                         if (!previous || previous->id != value.camera) {
-                            camera_refs_.insert_or_assign(value.occurrence, CameraRef{value.camera});
+                            camera_refs_.insert_or_assign(value.occurrence,
+                                                          CameraRef{value.camera});
                             record_change(changes, change_indices, value.occurrence,
                                           ChangeDomain::Camera);
                         }
@@ -665,7 +666,7 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
                                           ChangeDomain::Source);
                         }
                     } else if (previous) {
-                    source_entities.erase(value.occurrence);
+                        source_entities.erase(value.occurrence);
                         record_change(changes, change_indices, value.occurrence,
                                       ChangeDomain::Source);
                     }
@@ -995,7 +996,8 @@ nkscene_result NKS_CALL nkscene_tx_set_transform(nkscene_transaction handle,
 }
 
 nkscene_result NKS_CALL nkscene_tx_set_transforms(
-    nkscene_transaction handle, const nkscene_transform_update *updates, uint32_t update_count) {
+    nkscene_transaction handle, const nkscene_transform_update *updates,
+    uint32_t update_count) {
     if (update_count != 0 && !updates)
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = nkscene::registry();
@@ -1028,8 +1030,8 @@ nkscene_result NKS_CALL nkscene_tx_set_geometry(nkscene_transaction handle,
 }
 
 nkscene_result NKS_CALL nkscene_tx_set_material(nkscene_transaction handle,
-                                                 nkscene_occurrence_id occurrence,
-                                                 nkscene_material_id material) {
+                                                nkscene_occurrence_id occurrence,
+                                                nkscene_material_id material) {
     auto &state = nkscene::registry();
     std::lock_guard lock(state.mutex);
     std::shared_ptr<nkscene::Transaction> transaction;
@@ -1041,8 +1043,8 @@ nkscene_result NKS_CALL nkscene_tx_set_material(nkscene_transaction handle,
 }
 
 nkscene_result NKS_CALL nkscene_tx_set_camera(nkscene_transaction handle,
-                                               nkscene_occurrence_id occurrence,
-                                               nkscene_camera_id camera) {
+                                              nkscene_occurrence_id occurrence,
+                                              nkscene_camera_id camera) {
     auto &state = nkscene::registry();
     std::lock_guard lock(state.mutex);
     std::shared_ptr<nkscene::Transaction> transaction;
@@ -1054,8 +1056,8 @@ nkscene_result NKS_CALL nkscene_tx_set_camera(nkscene_transaction handle,
 }
 
 nkscene_result NKS_CALL nkscene_tx_set_light(nkscene_transaction handle,
-                                              nkscene_occurrence_id occurrence,
-                                              nkscene_light_id light) {
+                                             nkscene_occurrence_id occurrence,
+                                             nkscene_light_id light) {
     auto &state = nkscene::registry();
     std::lock_guard lock(state.mutex);
     std::shared_ptr<nkscene::Transaction> transaction;
@@ -1341,15 +1343,15 @@ void NKS_CALL nkscene_material_destroy(nkscene_scene scene, nkscene_material_id 
 
 nkscene_result NKS_CALL nkscene_geometry_set_data(nkscene_scene scene, nkscene_geometry_id geometry,
                                                   const nkscene_geometry_data *data) {
-    constexpr auto minimum_size = offsetof(nkscene_geometry_data, subelement_count) +
-        sizeof(data->subelement_count);
+    constexpr auto minimum_size =
+        offsetof(nkscene_geometry_data, subelement_count) + sizeof(data->subelement_count);
     if (!data || data->struct_size < minimum_size)
         return NKS_ERROR_INVALID_ARGUMENT;
     const auto has_stream_fields = data->struct_size >= sizeof(nkscene_geometry_data);
     const auto stream_count = has_stream_fields ? data->stream_count : 0;
-    const auto primitive = has_stream_fields && data->primitive_type != 0
-        ? data->primitive_type
-        : NKS_PRIMITIVE_TRIANGLES;
+    auto primitive = NKS_PRIMITIVE_TRIANGLES;
+    if (has_stream_fields && data->primitive_type != 0)
+        primitive = data->primitive_type;
     const auto width = nkscene::primitive_width(primitive);
     if (!width || (stream_count != 0 && !data->streams) ||
         (stream_count == 0 && data->vertex_count != 0 && !data->vertices) ||
@@ -1374,8 +1376,7 @@ nkscene_result NKS_CALL nkscene_geometry_set_data(nkscene_scene scene, nkscene_g
             if (!element_size || !semantics.insert(input.semantic).second)
                 return NKS_ERROR_INVALID_ARGUMENT;
             const auto stride = input.stride == 0 ? element_size : input.stride;
-            if (stride < element_size ||
-                (input.count != 0 && !input.data) ||
+            if (stride < element_size || (input.count != 0 && !input.data) ||
                 input.count > std::numeric_limits<std::size_t>::max() / stride)
                 return NKS_ERROR_INVALID_ARGUMENT;
             if (input.semantic == NKS_VERTEX_SEMANTIC_POSITION) {
@@ -1401,10 +1402,9 @@ nkscene_result NKS_CALL nkscene_geometry_set_data(nkscene_scene scene, nkscene_g
                 return NKS_ERROR_INVALID_ARGUMENT;
 
         vertices.resize(vertex_count);
-        const auto position = std::find_if(
-            streams.begin(), streams.end(), [](const auto &stream) {
-                return stream.semantic == nkscene::VertexSemantic::Position;
-            });
+        const auto position = std::find_if(streams.begin(), streams.end(), [](const auto &stream) {
+            return stream.semantic == nkscene::VertexSemantic::Position;
+        });
         for (std::uint32_t index = 0; index < vertex_count; ++index) {
             std::memcpy(vertices[index].position.data(),
                         position->data.data() + static_cast<std::size_t>(index) * position->stride,
@@ -1414,8 +1414,7 @@ nkscene_result NKS_CALL nkscene_geometry_set_data(nkscene_scene scene, nkscene_g
         vertices.resize(vertex_count);
         for (uint32_t index = 0; index < vertex_count; ++index)
             std::copy(std::begin(data->vertices[index].position),
-                      std::end(data->vertices[index].position),
-                      vertices[index].position.begin());
+                      std::end(data->vertices[index].position), vertices[index].position.begin());
         nkscene::GeometryVertexStream position;
         position.semantic = nkscene::VertexSemantic::Position;
         position.format = nkscene::VertexFormat::Float32x3;
@@ -1502,9 +1501,11 @@ nkscene_result NKS_CALL nkscene_material_set_data(nkscene_scene scene, nkscene_m
     resource.emissive_texture = {data->emissive_texture.value};
     resource.occlusion_texture = {data->occlusion_texture.value};
     resource.sampler = {data->sampler.value};
-    const nkscene::TextureId textures[] = {
-        resource.base_color_texture, resource.metallic_roughness_texture,
-        resource.normal_texture, resource.emissive_texture, resource.occlusion_texture};
+    const nkscene::TextureId textures[] = {resource.base_color_texture,
+                                           resource.metallic_roughness_texture,
+                                           resource.normal_texture,
+                                           resource.emissive_texture,
+                                           resource.occlusion_texture};
     for (const auto texture : textures)
         if (texture.valid() && !owner->texture_store().find(texture))
             return NKS_ERROR_STALE_ID;
@@ -1513,8 +1514,7 @@ nkscene_result NKS_CALL nkscene_material_set_data(nkscene_scene scene, nkscene_m
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_image_create(nkscene_scene scene,
-                                             nkscene_image_id *out_image) {
+nkscene_result NKS_CALL nkscene_image_create(nkscene_scene scene, nkscene_image_id *out_image) {
     if (!out_image)
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = nkscene::registry();
@@ -1536,9 +1536,8 @@ void NKS_CALL nkscene_image_destroy(nkscene_scene scene, nkscene_image_id image)
 
 nkscene_result NKS_CALL nkscene_image_set_data(nkscene_scene scene, nkscene_image_id image,
                                                const nkscene_image_data *data) {
-    if (!data || data->struct_size < sizeof(nkscene_image_data) || !data->width ||
-        !data->height || !nkscene::image_format_size(data->format) ||
-        (data->data_size != 0 && !data->data))
+    if (!data || data->struct_size < sizeof(nkscene_image_data) || !data->width || !data->height ||
+        !nkscene::image_format_size(data->format) || (data->data_size != 0 && !data->data))
         return NKS_ERROR_INVALID_ARGUMENT;
     const auto mip_count = data->mip_count == 0 ? 1u : data->mip_count;
     auto &state = nkscene::registry();
@@ -1581,8 +1580,7 @@ void NKS_CALL nkscene_texture_destroy(nkscene_scene scene, nkscene_texture_id te
         owner->destroy_texture({texture.value});
 }
 
-nkscene_result NKS_CALL nkscene_texture_set_data(nkscene_scene scene,
-                                                 nkscene_texture_id texture,
+nkscene_result NKS_CALL nkscene_texture_set_data(nkscene_scene scene, nkscene_texture_id texture,
                                                  const nkscene_texture_data *data) {
     if (!data || data->struct_size < sizeof(nkscene_texture_data))
         return NKS_ERROR_INVALID_ARGUMENT;
@@ -1620,8 +1618,7 @@ void NKS_CALL nkscene_sampler_destroy(nkscene_scene scene, nkscene_sampler_id sa
         owner->destroy_sampler({sampler.value});
 }
 
-nkscene_result NKS_CALL nkscene_sampler_set_data(nkscene_scene scene,
-                                                 nkscene_sampler_id sampler,
+nkscene_result NKS_CALL nkscene_sampler_set_data(nkscene_scene scene, nkscene_sampler_id sampler,
                                                  const nkscene_sampler_data *data) {
     if (!data || data->struct_size < sizeof(nkscene_sampler_data) ||
         !nkscene::valid_sampler_filter(data->min_filter) ||
@@ -1646,8 +1643,7 @@ nkscene_result NKS_CALL nkscene_sampler_set_data(nkscene_scene scene,
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_camera_create(nkscene_scene scene,
-                                              nkscene_camera_id *out_camera) {
+nkscene_result NKS_CALL nkscene_camera_create(nkscene_scene scene, nkscene_camera_id *out_camera) {
     if (!out_camera)
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = nkscene::registry();
@@ -1667,8 +1663,7 @@ void NKS_CALL nkscene_camera_destroy(nkscene_scene scene, nkscene_camera_id came
         owner->destroy_camera({camera.value});
 }
 
-nkscene_result NKS_CALL nkscene_camera_set_data(nkscene_scene scene,
-                                                nkscene_camera_id camera,
+nkscene_result NKS_CALL nkscene_camera_set_data(nkscene_scene scene, nkscene_camera_id camera,
                                                 const nkscene_camera_data *data) {
     if (!data || data->struct_size < sizeof(nkscene_camera_data) ||
         (data->projection != NKS_CAMERA_PERSPECTIVE &&
@@ -1695,8 +1690,7 @@ nkscene_result NKS_CALL nkscene_camera_set_data(nkscene_scene scene,
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_light_create(nkscene_scene scene,
-                                             nkscene_light_id *out_light) {
+nkscene_result NKS_CALL nkscene_light_create(nkscene_scene scene, nkscene_light_id *out_light) {
     if (!out_light)
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = nkscene::registry();
@@ -1720,8 +1714,9 @@ nkscene_result NKS_CALL nkscene_light_set_data(nkscene_scene scene, nkscene_ligh
                                                const nkscene_light_data *data) {
     if (!data || data->struct_size < sizeof(nkscene_light_data) ||
         (data->type != NKS_LIGHT_DIRECTIONAL && data->type != NKS_LIGHT_POINT &&
-         data->type != NKS_LIGHT_SPOT) || data->intensity < 0.0f || data->range <= 0.0f ||
-        data->inner_cone_angle < 0.0f || data->outer_cone_angle < data->inner_cone_angle)
+         data->type != NKS_LIGHT_SPOT) ||
+        data->intensity < 0.0f || data->range <= 0.0f || data->inner_cone_angle < 0.0f ||
+        data->outer_cone_angle < data->inner_cone_angle)
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = nkscene::registry();
     std::lock_guard lock(state.mutex);

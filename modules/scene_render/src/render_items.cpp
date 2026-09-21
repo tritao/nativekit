@@ -80,18 +80,30 @@ std::array<float, 16> scene_camera_view(const LocalTransform &transform) noexcep
     const auto forward = normalized(column(transform, 0));
     const auto up = normalized(column(transform, 2));
     const auto right = normalized(cross(forward, up));
-    return {right[0], up[0], forward[0], 0.0f,
-            right[1], up[1], forward[1], 0.0f,
-            right[2], up[2], forward[2], 0.0f,
-            -dot(right, position), -dot(up, position), -dot(forward, position), 1.0f};
+    return {right[0],
+            up[0],
+            forward[0],
+            0.0f,
+            right[1],
+            up[1],
+            forward[1],
+            0.0f,
+            right[2],
+            up[2],
+            forward[2],
+            0.0f,
+            -dot(right, position),
+            -dot(up, position),
+            -dot(forward, position),
+            1.0f};
 }
 
 SceneCamera camera_from_occurrence(const SnapshotOccurrence &occurrence,
                                    const CameraResource &resource) noexcept {
     SceneCamera result;
     result.enabled = true;
-    result.view_projection = multiply(
-        scene_camera_projection(resource), scene_camera_view(occurrence.world_transform.transform));
+    result.view_projection = multiply(scene_camera_projection(resource),
+                                      scene_camera_view(occurrence.world_transform.transform));
     return result;
 }
 
