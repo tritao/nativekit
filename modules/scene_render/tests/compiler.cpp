@@ -4,8 +4,10 @@
 #include "scene_shader_sources.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <memory>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -853,6 +855,71 @@ void spatial_queries_and_cpu_picking_are_snapshot_bound() {
     assert(!index.pick_ray(hidden_ray).occurrence.valid());
 }
 
+void render_snapshots_are_concurrent_reader_safe() {
+    constexpr std::size_t count = 256;
+    constexpr std::size_t reader_count = 3;
+    constexpr std::size_t writer_iterations = 48;
+
+    auto scene = std::make_shared<Scene>();
+    const auto geometry = scene->reserve_geometry_id();
+    scene->geometry_store().create(geometry);
+    const auto material = scene->reserve_material_id();
+    scene->material_store().create(material);
+
+    std::vector<nkscene::OccurrenceId> occurrences;
+    occurrences.reserve(count);
+    Transaction create(scene);
+    for (std::size_t index = 0; index < count; ++index) {
+        const auto occurrence = scene->reserve_occurrence_id();
+        occurrences.push_back(occurrence);
+        create.add_create(occurrence);
+    }
+    ChangeSet changes;
+    assert(scene->commit(create, changes) == NKS_OK);
+    create.close();
+
+    Transaction configure(scene);
+    for (const auto occurrence : occurrences) {
+        configure.add_geometry(occurrence, geometry);
+        configure.add_material(occurrence, material);
+    }
+    assert(scene->commit(configure, changes) == NKS_OK);
+    configure.close();
+
+    std::atomic<bool> stop = false;
+    std::atomic<bool> failed = false;
+    std::vector<std::thread> readers;
+    readers.reserve(reader_count);
+    for (std::size_t index = 0; index < reader_count; ++index) {
+        readers.emplace_back([&] {
+            while (!stop.load(std::memory_order_acquire)) {
+                const auto snapshot = scene->snapshot();
+                const auto plan = nkscene::compile(snapshot, {});
+                if (snapshot.occurrences().size() != count || plan.items().size() != count ||
+                    !snapshot.find(occurrences[count / 2])) {
+                    failed.store(true, std::memory_order_release);
+                    return;
+                }
+                std::this_thread::yield();
+            }
+        });
+    }
+
+    for (std::size_t iteration = 0; iteration < writer_iterations; ++iteration) {
+        nkscene::LocalTransform transform;
+        transform.matrix[12] = static_cast<float>(iteration);
+        Transaction move(scene);
+        move.add_transform(occurrences[iteration % occurrences.size()], transform);
+        assert(scene->commit(move, changes) == NKS_OK);
+        move.close();
+    }
+
+    stop.store(true, std::memory_order_release);
+    for (auto &reader : readers)
+        reader.join();
+    assert(!failed.load(std::memory_order_acquire));
+}
+
 } // namespace
 
 int main() {
@@ -867,6 +934,7 @@ int main() {
     scene_view_culling_uses_spatial_candidates();
     mixed_hierarchy_and_empty_batches_remain_incremental();
     spatial_queries_and_cpu_picking_are_snapshot_bound();
+    render_snapshots_are_concurrent_reader_safe();
     constexpr std::size_t count = 50000;
     auto scene = std::make_shared<Scene>();
     const auto geometry = scene->reserve_geometry_id();

@@ -1265,16 +1265,16 @@ bool NativeKitGpuExecutor::synchronize(const RenderPlan &plan, const SceneSnapsh
         std::vector<MaterialId> materials;
     } work;
     auto collect_delta = [&work](const auto &delta) {
-        work.full_rebuild = work.full_rebuild || delta->full_rebuild;
-        work.layout_changed = work.layout_changed || delta->layout_changed;
+        work.full_rebuild = work.full_rebuild || delta.full_rebuild;
+        work.layout_changed = work.layout_changed || delta.layout_changed;
         work.resource_delta_complete =
-            work.resource_delta_complete && delta->resource_delta_complete;
-        work.transforms.insert(work.transforms.end(), delta->transforms.begin(),
-                               delta->transforms.end());
-        work.geometries.insert(work.geometries.end(), delta->geometries.begin(),
-                               delta->geometries.end());
-        work.materials.insert(work.materials.end(), delta->materials.begin(),
-                              delta->materials.end());
+            work.resource_delta_complete && delta.resource_delta_complete;
+        work.transforms.insert(work.transforms.end(), delta.transforms.begin(),
+                               delta.transforms.end());
+        work.geometries.insert(work.geometries.end(), delta.geometries.begin(),
+                               delta.geometries.end());
+        work.materials.insert(work.materials.end(), delta.materials.begin(),
+                              delta.materials.end());
     };
 
     if (!state_->plan_initialized || state_->plan_identity != plan.gpu_identity_) {
@@ -1282,16 +1282,24 @@ bool NativeKitGpuExecutor::synchronize(const RenderPlan &plan, const SceneSnapsh
     } else if (plan.gpu_revision_ < state_->plan_revision) {
         work.full_rebuild = true;
     } else if (plan.gpu_revision_ > state_->plan_revision) {
-        bool reached_previous_revision = false;
-        for (auto delta = plan.gpu_delta_; delta; delta = delta->previous) {
-            if (delta->revision <= state_->plan_revision) {
-                reached_previous_revision = delta->revision == state_->plan_revision;
-                break;
-            }
-            collect_delta(delta);
-        }
-        if (!reached_previous_revision)
+        auto expected_revision = state_->plan_revision + 1;
+        if (plan.gpu_delta_history_.empty() ||
+            expected_revision < plan.gpu_delta_history_start_) {
             work.full_rebuild = true;
+        } else {
+            for (const auto &delta : plan.gpu_delta_history_) {
+                if (delta.revision < expected_revision)
+                    continue;
+                if (delta.revision != expected_revision) {
+                    work.full_rebuild = true;
+                    break;
+                }
+                collect_delta(delta);
+                ++expected_revision;
+            }
+            if (expected_revision != plan.gpu_revision_ + 1)
+                work.full_rebuild = true;
+        }
     }
     if (!work.resource_delta_complete)
         work.full_rebuild = true;
@@ -1310,6 +1318,9 @@ bool NativeKitGpuExecutor::synchronize(const RenderPlan &plan, const SceneSnapsh
             work.full_rebuild = true;
         }
     }
+
+    if (work.full_rebuild)
+        ++stats.full_rebuilds;
 
     if (work.full_rebuild || work.layout_changed) {
         state_->commands.clear();
@@ -1339,6 +1350,7 @@ bool NativeKitGpuExecutor::synchronize(const RenderPlan &plan, const SceneSnapsh
                 return false;
             // A missing indexed instance means the delta history no longer matches the
             // executor's batch layout. Reconcile from the complete current plan.
+            ++stats.full_rebuilds;
             state_->commands.clear();
             state_->commands.reserve(plan.items().size());
             for (const auto &item : plan.items()) {

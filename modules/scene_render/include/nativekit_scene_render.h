@@ -559,6 +559,8 @@ struct GpuExecutionStats {
     std::size_t instance_records_updated = 0;
     std::size_t commands = 0;
     std::size_t draw_calls = 0;
+    /** Number of complete executor reconciliations performed by this call. */
+    std::size_t full_rebuilds = 0;
 };
 
 class RenderPlan {
@@ -589,6 +591,8 @@ class RenderPlan {
     }
 
   private:
+    static constexpr std::size_t gpu_delta_history_limit = 64;
+
     struct GpuDelta {
         std::uint64_t revision = 0;
         bool full_rebuild = false;
@@ -597,7 +601,6 @@ class RenderPlan {
         std::vector<OccurrenceId> transforms;
         std::vector<GeometryId> geometries;
         std::vector<MaterialId> materials;
-        std::shared_ptr<const GpuDelta> previous;
     };
 
     struct BatchKey {
@@ -657,7 +660,8 @@ class RenderPlan {
     std::uint64_t culling_signature_ = 0;
     std::uint64_t gpu_identity_ = 0;
     std::uint64_t gpu_revision_ = 0;
-    std::shared_ptr<const GpuDelta> gpu_delta_;
+    std::uint64_t gpu_delta_history_start_ = 0;
+    std::vector<GpuDelta> gpu_delta_history_;
     std::shared_ptr<SceneSpatialIndex> culling_index_;
     std::unordered_set<OccurrenceId> culling_dirty_occurrences_;
     std::unordered_set<OccurrenceId> culling_unbounded_occurrences_;

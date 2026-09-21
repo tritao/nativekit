@@ -46,8 +46,9 @@ void print_stats(const char *name, const nkscene::GpuExecutionStats &stats,
                  const nkscene::RenderUpdate &update, double milliseconds) {
     std::printf(
         "%-10s %8.3f ms  plan(rebuild=%d instances=%zu) "
-        "gpu(geometry=%zu/%zu materials=%zu/%zu buffers=%zu records=%zu draws=%zu)\n",
+        "gpu(rebuilds=%zu geometry=%zu/%zu materials=%zu/%zu buffers=%zu records=%zu draws=%zu)\n",
         name, milliseconds, update.plan_rebuilt, update.patched_instances,
+        stats.full_rebuilds,
         stats.geometry_resources_created, stats.geometry_resources_updated,
         stats.material_resources_created, stats.material_resources_updated,
         stats.instance_buffers_created, stats.instance_records_updated, stats.draw_calls);
@@ -169,8 +170,8 @@ int main() {
         nkscene::PickResult pick_result;
         nkgpu_result pick_error = NKGPU_OK;
         std::uint32_t pick_state = NKS_RENDER_PICK_PENDING;
-        for (int attempt = 0; attempt < 100 && pick_state == NKS_RENDER_PICK_PENDING;
-             ++attempt) {
+        const auto pick_deadline = Clock::now() + std::chrono::seconds(5);
+        while (Clock::now() < pick_deadline && pick_state == NKS_RENDER_PICK_PENDING) {
             pick_state = executor.poll_pick_pixel(*pick_request, plan, scene->snapshot(),
                                                    &pick_result, &pick_error);
             if (pick_state == NKS_RENDER_PICK_PENDING)

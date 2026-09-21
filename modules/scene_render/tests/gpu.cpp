@@ -322,6 +322,22 @@ int main() {
         assert(stats.geometry_resources_created == 1);
         assert(stats.geometry_resources_updated == 0);
         assert(stats.draw_calls == 1);
+
+        for (std::size_t iteration = 0; iteration < 70; ++iteration) {
+            nkscene::LocalTransform lagged_transform;
+            lagged_transform.matrix[12] = 0.25f + static_cast<float>(iteration) * 0.01f;
+            Transaction lagged_move(scene);
+            lagged_move.add_transform(occurrence, lagged_transform);
+            assert(scene->commit(lagged_move, changes) == NKS_OK);
+            lagged_move.close();
+            const auto lagged_update = nkscene::update(plan, scene->snapshot(), changes, view);
+            assert(!lagged_update.plan_rebuilt);
+        }
+        stats = executor.execute(plan, scene->snapshot());
+        assert(stats.result == NKGPU_OK);
+        assert(stats.full_rebuilds == 1);
+        assert(stats.instance_records_updated == 1);
+        assert(stats.draw_calls == 1);
     }
 
     {
