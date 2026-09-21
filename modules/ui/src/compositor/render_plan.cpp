@@ -240,13 +240,13 @@ bool valid_embed_clip(const RenderPlanEmbedOptions &options) {
 void place_main_command(RenderCommand &command, const RenderPlanEmbedOptions &options) {
     const bool implicit_extent = command.kind == RenderCommandKind::CompositeTarget &&
                                  (command.width <= 0.0f || command.height <= 0.0f);
-    // Custom paint commands already carry the resolved node transform from
-    // the Canvas display list. Only compositor-owned target composites are
-    // local to the embedded plan and need the embedding placement applied.
+    // Custom paint commands are recorded in node-local coordinates. Draw
+    // commands receive the explicit command transform below, while
+    // compositor-owned target composites receive the embedding placement.
     if (command.kind == RenderCommandKind::CompositeTarget && !implicit_extent)
         command.transform = compose_transform(options.placement, command.transform);
 
-    if (options.has_command_transform) {
+    if (options.has_command_transform && command.kind != RenderCommandKind::CompositeTarget) {
         command.transform = compose_transform(options.command_transform, command.transform);
         if (command.has_scissor) {
             const EmbedBounds transformed =

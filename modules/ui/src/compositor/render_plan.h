@@ -140,7 +140,8 @@ struct RenderPlanEmbedError {
 /**
  * Appends a local custom-paint plan to a destination plan.
  *
- * Custom draw commands in the source main pass are placed with `placement`.
+ * Compositor-owned target composites in the source main pass are placed with
+ * `placement`; custom draw commands use `command_transform` when supplied.
  * Bounded intermediate targets retain their local drawing coordinates while
  * their logical origin is moved into the destination coordinate space. This
  * keeps rasterization local and makes the final composite responsible for the

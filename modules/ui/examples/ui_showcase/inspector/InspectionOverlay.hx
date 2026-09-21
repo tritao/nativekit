@@ -3,6 +3,7 @@ package inspector;
 import Canvas;
 import LayoutAxis;
 import LayoutStyle;
+import Point;
 import Rect;
 import ResolvedLayoutItem;
 import UiExplorer;
@@ -25,10 +26,10 @@ class InspectionOverlay {
 		var style = new LayoutStyle();
 		style.width = LayoutAxis.grow();
 		style.height = LayoutAxis.grow();
-		var highlight = new CanvasView("inspector-highlight", function(canvas, _) {
+		var highlight = new CanvasView("inspector-highlight", function(canvas, overlayGeometry) {
 			var root = explorer.context.root;
 			var node = root == null ? null : root.find(new WidgetId(highlightId));
-			drawHighlight(canvas, node == null ? null : node.resolved);
+			drawHighlight(canvas, node == null ? null : node.resolved, overlayGeometry);
 		}, style, null, false);
 		layers.push(new StackChild("inspector-highlight-layer", highlight, 0.0, 0.0, 32767));
 	}
@@ -113,17 +114,27 @@ class InspectionOverlay {
 		return isPreviewPoint(explorer, centerX, centerY);
 	}
 
-	static function drawHighlight(canvas:Canvas, geometry:Null<ResolvedLayoutItem>):Void {
-		if (geometry == null || geometry.width <= 0.0 || geometry.height <= 0.0)
+	static function drawHighlight(canvas:Canvas, geometry:Null<ResolvedLayoutItem>,
+			overlay:ResolvedLayoutItem):Void {
+		if (geometry == null || overlay == null || geometry.width <= 0.0 || geometry.height <= 0.0)
 			return;
-		var left = Math.max(geometry.x, geometry.clipBounds.x);
-		var top = Math.max(geometry.y, geometry.clipBounds.y);
-		var right = Math.min(geometry.x + geometry.width,
+		var viewportBounds = geometry.viewportBounds();
+		var left = Math.max(viewportBounds.x, geometry.clipBounds.x);
+		var top = Math.max(viewportBounds.y, geometry.clipBounds.y);
+		var right = Math.min(viewportBounds.x + viewportBounds.width,
 			geometry.clipBounds.x + geometry.clipBounds.width);
-		var bottom = Math.min(geometry.y + geometry.height,
+		var bottom = Math.min(viewportBounds.y + viewportBounds.height,
 			geometry.clipBounds.y + geometry.clipBounds.height);
 		if (right <= left || bottom <= top)
 			return;
+		var topLeft = overlay.viewportToLocal(new Point(left, top));
+		var topRight = overlay.viewportToLocal(new Point(right, top));
+		var bottomLeft = overlay.viewportToLocal(new Point(left, bottom));
+		var bottomRight = overlay.viewportToLocal(new Point(right, bottom));
+		left = Math.min(Math.min(topLeft.x, topRight.x), Math.min(bottomLeft.x, bottomRight.x));
+		top = Math.min(Math.min(topLeft.y, topRight.y), Math.min(bottomLeft.y, bottomRight.y));
+		right = Math.max(Math.max(topLeft.x, topRight.x), Math.max(bottomLeft.x, bottomRight.x));
+		bottom = Math.max(Math.max(topLeft.y, topRight.y), Math.max(bottomLeft.y, bottomRight.y));
 		var edge = Math.min(2.0, Math.min((right - left) * 0.5, (bottom - top) * 0.5));
 		var outline = UiExplorer.color(0.29, 0.92, 0.72, 0.95);
 		canvas.fillRectIfPositive(new Rect(left, top, right - left, edge), outline);

@@ -15,7 +15,10 @@ import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.Semantics;
 import nativekit.ui.style.StyleTarget;
 
-/** Custom Haxe-painted region with ordinary Haxe-routed input handlers. */
+/**
+ * Custom Haxe-painted region with ordinary Haxe-routed input handlers.
+ * Painters draw in local coordinates; native layout places the retained list.
+ */
 class CanvasView implements View {
 	public final key:String;
 	public final label:Null<String>;

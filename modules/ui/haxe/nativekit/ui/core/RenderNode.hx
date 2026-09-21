@@ -232,9 +232,11 @@ class RenderNode {
 	}
 
 	/**
-	 * Adds a custom paint callback. A cache key opts the callback into retained
-	 * display-list reuse; it must change whenever the callback's output can
-	 * change for reasons other than geometry or computed style.
+	 * Adds a custom paint callback. The callback draws in node-local coordinates
+	 * with (0, 0) at the node's top-left corner; native layout owns placement,
+	 * transforms, and ancestor clipping. A cache key opts the callback into
+	 * retained display-list reuse and must change whenever its local output can
+	 * change for reasons other than size or computed style.
 	 */
 	public function onPaint(handler:Canvas->ResolvedLayoutItem->Void,
 			?cacheKey:String):RenderNode {
@@ -321,6 +323,24 @@ class RenderNode {
 		return result;
 	}
 
+	/** Fingerprint for local compositor metadata; transforms are native placement. */
+	@:allow(nativekit.ui.core.UiContext)
+	function retainedCompositeKey():Null<String> {
+		if (!hasCompositePaint())
+			return null;
+		var style = computedStyle == null ? new ComputedStyle() : computedStyle;
+		var effects = style.get(StyleProperty.Effects);
+		var backdropEffects = style.get(StyleProperty.BackdropEffects);
+		var mask = style.get(StyleProperty.Mask);
+		var maskKey = mask == null ? "" : mask.describe();
+		if (mask != null && mask.image != null)
+			maskKey += ":image=" + mask.image.identity;
+		return "opacity:" + Std.string(style.get(StyleProperty.Opacity)) +
+			"|effects:" + (effects == null ? "" : effects.key()) +
+			"|backdrop:" + (backdropEffects == null ? "" : backdropEffects.key()) +
+			"|mask:" + maskKey;
+	}
+
 	@:allow(nativekit.ui.core.UiContext)
 	function setResolved(item:Null<ResolvedLayoutItem>):Void {
 		resolved = item;
@@ -371,7 +391,7 @@ class RenderNode {
 		var backdropEffects = style.get(StyleProperty.BackdropEffects);
 		var hasBackdropEffects = backdropEffects != null && backdropEffects.effects.length > 0;
 		var mask = style.get(StyleProperty.Mask);
-		canvas.beginLayer(opacity, CompositeMode.SourceOver, resolved.bounds(),
+		canvas.beginLayer(opacity, CompositeMode.SourceOver, resolved.localBounds(),
 			hasEffects ? effects : null, mask, hasBackdropEffects ? backdropEffects : null);
 		canvas.endLayer();
 		return true;

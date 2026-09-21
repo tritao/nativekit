@@ -136,6 +136,14 @@ class LayoutSessionSmoke {
 		renderable.paint(measuredItem);
 		if (paintCalls != 1)
 			return 49;
+		measuredNode.style.transform = Transform2D.identity().translated(12.0, 6.0);
+		resolved = session.submit(root, frame);
+		if (paintCalls != 1)
+			return 50;
+		measuredNode.style.transform = Transform2D.identity();
+		resolved = session.submit(root, frame);
+		if (paintCalls != 1)
+			return 51;
 		measureContent.invalidate();
 		renderable.paint(measuredItem);
 		if (paintCalls != 2)
