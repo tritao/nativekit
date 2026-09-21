@@ -1005,6 +1005,43 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
     for (std::size_t order = 0; order < paint_indices.size(); ++order)
         out.items[paint_indices[order]].paint_order = order + 1;
 
+    // Hit testing can walk children in reverse paint order and stop once a
+    // confirmed candidate outranks every remaining sibling subtree. Keep this
+    // ordering beside the resolved snapshot so queries do not sort per event.
+    out.hit_child_indices.clear();
+    out.hit_child_indices.reserve(out.child_indices.size());
+    const auto build_hit_order = [&](auto &&self, std::size_t index) -> uint64_t {
+        auto &item = out.items[index];
+        std::vector<uint32_t> children;
+        children.reserve(item.child_count);
+        for (uint32_t child_offset = 0; child_offset < item.child_count; ++child_offset) {
+            const std::size_t child_slot = static_cast<std::size_t>(item.child_offset) + child_offset;
+            if (child_slot >= out.child_indices.size())
+                continue;
+            const uint32_t child = out.child_indices[child_slot];
+            if (child >= out.items.size())
+                continue;
+            self(self, child);
+            children.push_back(child);
+        }
+        std::sort(children.begin(), children.end(), [&](uint32_t left, uint32_t right) {
+            if (out.items[left].subtree_paint_order != out.items[right].subtree_paint_order)
+                return out.items[left].subtree_paint_order > out.items[right].subtree_paint_order;
+            return left > right;
+        });
+        item.hit_child_offset = static_cast<uint32_t>(out.hit_child_indices.size());
+        item.hit_child_count = static_cast<uint32_t>(children.size());
+        out.hit_child_indices.insert(out.hit_child_indices.end(), children.begin(), children.end());
+
+        uint64_t maximum = item.visible && item.hit_self ? item.paint_order : 0;
+        if (item.visible && item.hit_children)
+            for (const uint32_t child : children)
+                maximum = std::max(maximum, out.items[child].subtree_paint_order);
+        item.subtree_paint_order = maximum;
+        return maximum;
+    };
+    build_hit_order(build_hit_order, root);
+
     return true;
 }
 

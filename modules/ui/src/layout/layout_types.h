@@ -258,6 +258,9 @@ struct LayoutItem {
     /** Range into LayoutSnapshot::child_indices for direct children. */
     uint32_t child_offset = 0;
     uint32_t child_count = 0;
+    /** Range into LayoutSnapshot::hit_child_indices ordered by paint priority. */
+    uint32_t hit_child_offset = 0;
+    uint32_t hit_child_count = 0;
     /** Node-local bounds, always rooted at (0, 0). */
     LayoutRect local_bounds{};
     /** Axis-aligned viewport bounds after the cumulative transform. */
@@ -268,6 +271,8 @@ struct LayoutItem {
     LayoutTransform inverse_transform{};
     /** Native paint-order key; larger values are painted later. */
     uint64_t paint_order = 0;
+    /** Highest reachable paint-order key in this hit-test subtree. */
+    uint64_t subtree_paint_order = 0;
     int32_t z_index = 0;
     bool positioned_absolute = false;
     bool hit_self = true;
@@ -329,6 +334,7 @@ struct LayoutTextLayout {
 struct LayoutSnapshot {
     std::vector<LayoutItem> items;
     std::vector<uint32_t> child_indices;
+    std::vector<uint32_t> hit_child_indices;
     std::vector<LayoutPrimitive> primitives;
     std::vector<LayoutTextLayout> text_layouts;
 

@@ -333,10 +333,14 @@ bool same_geometry(const LayoutSnapshot &left, const LayoutSnapshot &right) {
             a.has_baseline != b.has_baseline || a.index != b.index ||
             a.parent_index != b.parent_index || a.child_offset != b.child_offset ||
             a.child_count != b.child_count || a.paint_order != b.paint_order ||
+            a.hit_child_offset != b.hit_child_offset || a.hit_child_count != b.hit_child_count ||
+            a.subtree_paint_order != b.subtree_paint_order ||
             a.z_index != b.z_index || a.positioned_absolute != b.positioned_absolute ||
             a.hit_self != b.hit_self || a.hit_children != b.hit_children)
             return false;
     }
+    if (left.hit_child_indices != right.hit_child_indices)
+        return false;
     for (std::size_t index = 0; index < left.primitives.size(); ++index) {
         const LayoutPrimitive &a = left.primitives[index];
         const LayoutPrimitive &b = right.primitives[index];

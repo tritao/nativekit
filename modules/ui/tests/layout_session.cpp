@@ -131,6 +131,30 @@ std::vector<uint8_t> transaction_with_nodes(uint32_t node_count) {
     return bytes;
 }
 
+std::vector<uint8_t> overlapping_transaction() {
+    auto bytes = transaction_with_nodes(3);
+    const auto record = [](uint32_t index) {
+        return NKUI_LAYOUT_TRANSACTION_HEADER_BYTES +
+               static_cast<std::size_t>(index) * NKUI_LAYOUT_NODE_RECORD_BYTES;
+    };
+    for (uint32_t index = 1; index < 3; ++index) {
+        const std::size_t offset = record(index);
+        write_u32(bytes, offset + NKUI_LAYOUT_NODE_FLAGS_OFFSET,
+                  NKUI_LAYOUT_NODE_VISIBLE | NKUI_LAYOUT_NODE_FLOATING);
+        write_u32(bytes, offset + NKUI_LAYOUT_NODE_WIDTH_SIZING_OFFSET,
+                  NKUI_LAYOUT_SIZING_FIXED);
+        write_float(bytes, offset + NKUI_LAYOUT_NODE_WIDTH_VALUE_OFFSET, 100.0f);
+        write_u32(bytes, offset + NKUI_LAYOUT_NODE_HEIGHT_SIZING_OFFSET,
+                  NKUI_LAYOUT_SIZING_FIXED);
+        write_float(bytes, offset + NKUI_LAYOUT_NODE_HEIGHT_VALUE_OFFSET, 100.0f);
+        write_float(bytes, offset + NKUI_LAYOUT_NODE_POSITION_X_OFFSET, 20.0f);
+        write_float(bytes, offset + NKUI_LAYOUT_NODE_POSITION_Y_OFFSET, 20.0f);
+    }
+    write_i32(bytes, record(1) + NKUI_LAYOUT_NODE_Z_INDEX_OFFSET, 1);
+    write_i32(bytes, record(2) + NKUI_LAYOUT_NODE_Z_INDEX_OFFSET, 5);
+    return bytes;
+}
+
 struct MeasureState {
     uint32_t calls = 0;
     nkui_layout_session session{};
@@ -232,6 +256,32 @@ int main() {
             NKUI_ERROR_INVALID_ARGUMENT ||
         hit_count != 2)
         return 60;
+
+    const auto overlapping = overlapping_transaction();
+    if (nkui_layout_session_submit(session, overlapping.data(), overlapping.size(), &frame) !=
+        NKUI_OK)
+        return 61;
+    uint32_t overlapping_path[3] = {};
+    hit_count = 3;
+    if (nkui_layout_session_hit_test_into(session, 40.0f, 40.0f,
+                                           reinterpret_cast<uint8_t *>(overlapping_path),
+                                           sizeof(overlapping_path), &hit_count) != NKUI_OK ||
+        hit_count != 2 || overlapping_path[0] != 1 || overlapping_path[1] != 3)
+        return 62;
+
+    auto disabled_top = overlapping;
+    const std::size_t top_record =
+        NKUI_LAYOUT_TRANSACTION_HEADER_BYTES + 2 * NKUI_LAYOUT_NODE_RECORD_BYTES;
+    write_u32(disabled_top, top_record + NKUI_LAYOUT_NODE_FLAGS_OFFSET,
+              NKUI_LAYOUT_NODE_VISIBLE | NKUI_LAYOUT_NODE_FLOATING |
+                  NKUI_LAYOUT_NODE_HIT_SELF_DISABLED);
+    if (nkui_layout_session_submit(session, disabled_top.data(), disabled_top.size(), &frame) !=
+            NKUI_OK ||
+        nkui_layout_session_hit_test_into(session, 40.0f, 40.0f,
+                                           reinterpret_cast<uint8_t *>(overlapping_path),
+                                           sizeof(overlapping_path), &hit_count) != NKUI_OK ||
+        hit_count != 2 || overlapping_path[0] != 1 || overlapping_path[1] != 2)
+        return 63;
 
     auto hidden_hit = bytes;
     const std::size_t hidden_panel_record =

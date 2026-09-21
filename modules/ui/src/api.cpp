@@ -2103,23 +2103,40 @@ void visit_hit_test(const nkui::LayoutSnapshot &snapshot, uint32_t index, float 
     }
 
     path.push_back(item.id);
+    bool self_tested = false;
+    const auto test_self = [&] {
+        if (self_tested)
+            return;
+        self_tested = true;
+        if (!item.hit_self || (candidate.found && item.paint_order <= candidate.paint_order))
+            return;
+        if (precisely_hits_self(item, x, y, stats)) {
+            candidate.found = true;
+            candidate.paint_order = item.paint_order;
+            candidate.index = item.index;
+        }
+    };
+
     if (item.hit_children) {
-        for (uint32_t child_offset = 0; child_offset < item.child_count; ++child_offset) {
-            const uint32_t child_index = item.child_offset + child_offset;
-            if (child_index >= snapshot.child_indices.size())
+        for (uint32_t child_offset = 0; child_offset < item.hit_child_count; ++child_offset) {
+            const std::size_t child_slot =
+                static_cast<std::size_t>(item.hit_child_offset) + child_offset;
+            if (child_slot >= snapshot.hit_child_indices.size())
                 break;
-            visit_hit_test(snapshot, snapshot.child_indices[child_index], x, y, path, candidate,
-                           stats);
+            const uint32_t child_index = snapshot.hit_child_indices[child_slot];
+            if (child_index >= snapshot.items.size())
+                continue;
+            const auto &child = snapshot.items[child_index];
+            const uint64_t child_subtree_paint_order = child.subtree_paint_order;
+            if (item.hit_self && item.paint_order > child_subtree_paint_order)
+                test_self();
+            if (candidate.found && child_subtree_paint_order <= candidate.paint_order)
+                break;
+            visit_hit_test(snapshot, child_index, x, y, path, candidate, stats);
         }
     }
 
-    if (item.hit_self && precisely_hits_self(item, x, y, stats) &&
-        (!candidate.found || item.paint_order > candidate.paint_order ||
-         (item.paint_order == candidate.paint_order && item.index > candidate.index))) {
-        candidate.found = true;
-        candidate.paint_order = item.paint_order;
-        candidate.index = item.index;
-    }
+    test_self();
     path.pop_back();
 }
 
