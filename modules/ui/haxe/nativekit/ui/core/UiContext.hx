@@ -247,6 +247,7 @@ class UiContext {
 		if (root != null)
 			root.walk(function(node) previousById.set(node.id.value, node));
 		var nativeLayoutReused = !styleInvalidation.nativeLayoutRequired;
+		var nativeTransformPatched = false;
 		if (nativeLayoutReused)
 			next.walk(function(node) {
 				var previous = previousById.get(node.id.value);
@@ -262,6 +263,10 @@ class UiContext {
 				if (previousResolved != null)
 					resolved.push(previousResolved);
 			});
+		} else if (styleInvalidation.transformOnly) {
+			resolved = session.updateTransforms(next.layout);
+			nativeLayoutReused = true;
+			nativeTransformPatched = true;
 		} else
 			resolved = session.submit(next.layout, frame);
 		diagnosticStage = 6;
@@ -353,7 +358,7 @@ class UiContext {
 			styleInvalidation.compositeInvalidatedNodes, styleInvalidation.semanticsInvalidatedNodes,
 			styleInvalidation.hitGeometryInvalidatedNodes,
 				Sys.time() - submitStartedAt, !nativeLayoutReused, nativeLayoutReused,
-				resolvedGeometryChangedNodes, resolvedGeometryReusedNodes);
+				resolvedGeometryChangedNodes, resolvedGeometryReusedNodes, nativeTransformPatched);
 		diagnosticStage = 0;
 		return next;
 	}

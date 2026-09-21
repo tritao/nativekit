@@ -2718,8 +2718,14 @@ class FrameworkSmoke {
 		var transformStyle = new LayoutStyle();
 		transformStyle.width = LayoutAxis.fixed(120.0);
 		transformStyle.height = LayoutAxis.fixed(48.0);
-		var transformCanvas = CanvasView.simple("transform-animation", function(_) {},
-			transformStyle);
+		var transformChildStyle = new LayoutStyle();
+		transformChildStyle.width = LayoutAxis.fixed(120.0);
+		transformChildStyle.height = LayoutAxis.fixed(48.0);
+		var transformChild = CanvasView.simple("transform-animation-child", function(_) {},
+			transformChildStyle);
+		var transformCanvas = new Column("transform-animation", [
+			new KeyedView("child", transformChild)
+		], transformStyle);
 		var transformFrame = new LayoutFrame(256.0, 192.0);
 		transformFrame.deltaSeconds = 0.0;
 		var transformRoot = context.submit(transformCanvas, transformFrame);
@@ -2736,9 +2742,12 @@ class FrameworkSmoke {
 		transformFrame.deltaSeconds = 0.5;
 		transformRoot = context.submit(transformCanvas, transformFrame);
 		var transformGeometry:ResolvedLayoutItem = cast transformRoot.resolved;
+		var transformChildGeometry:Null<ResolvedLayoutItem> = transformRoot.children.length == 0 ?
+			null : transformRoot.children[0].resolved;
 		var transformMetrics:Null<UiFrameMetrics> = context.frameMetrics;
 		if (transformMetrics == null || transformMetrics.layoutInvalidatedNodes != 0 ||
-			!transformMetrics.nativeLayoutSubmitted || transformMetrics.nativeLayoutReused ||
+			transformMetrics.nativeLayoutSubmitted || !transformMetrics.nativeLayoutReused ||
+			!transformMetrics.nativeTransformPatched ||
 			transformMetrics.compositeInvalidatedNodes <= 0 ||
 			transformMetrics.hitGeometryInvalidatedNodes <= 0 ||
 			transformGeometry.width != transformWidth ||
@@ -2746,10 +2755,11 @@ class FrameworkSmoke {
 			transformGeometry.transform.tx == 0.0 ||
 			transformRoot.contentRevision != initialContentRevision ||
 			transformRoot.geometryRevision <= initialGeometryRevision ||
-			transformRoot.compositeRevision <= initialCompositeRevision)
+			transformRoot.compositeRevision <= initialCompositeRevision ||
+			transformChildGeometry == null || transformChildGeometry.transform.tx == 0.0)
 			return 241;
 		var opacitySheet = new StyleSheet("RevisionOpacity");
-		opacitySheet.rule(StyleSelector.widget("canvas"), [StyleValue.opacity(0.5)]);
+		opacitySheet.rule(StyleSelector.widget("column"), [StyleValue.opacity(0.5)]);
 		context.setStyleSheet(opacitySheet);
 		transformFrame.deltaSeconds = 0.0;
 		var opacityRoot = context.submit(transformCanvas, transformFrame);
@@ -2764,7 +2774,7 @@ class FrameworkSmoke {
 		var opacityMetrics:Null<UiFrameMetrics> = context.frameMetrics;
 		if (opacityMetrics == null || opacityMetrics.nativeLayoutSubmitted ||
 			!opacityMetrics.nativeLayoutReused || opacityMetrics.resolvedGeometryChangedNodes != 0 ||
-			opacityMetrics.resolvedGeometryReusedNodes != 1)
+			opacityMetrics.resolvedGeometryReusedNodes != 2)
 			return 243;
 		context.setStyleSheet(new StyleSheet("Application"));
 		var spring = new SpringController(0.0, 180.0, 24.0, 1.0, 0.001,

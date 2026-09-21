@@ -19,12 +19,14 @@ class UiStyleInvalidationMetrics {
 	public final treeChanged:Bool;
 	/** Whether this frame requires a fresh native layout/render snapshot. */
 	public final nativeLayoutRequired:Bool;
+	/** Whether only transforms/origins changed and native layout can be skipped. */
+	public final transformOnly:Bool;
 
 	function new(styleChangedNodes:Int, styleUnchangedNodes:Int, invalidationFlags:Int,
 			layoutInvalidatedNodes:Int, textLayoutInvalidatedNodes:Int,
 			paintInvalidatedNodes:Int, compositeInvalidatedNodes:Int,
 			semanticsInvalidatedNodes:Int, hitGeometryInvalidatedNodes:Int,
-			treeChanged:Bool, nativeLayoutRequired:Bool) {
+			treeChanged:Bool, nativeLayoutRequired:Bool, transformOnly:Bool) {
 		this.styleChangedNodes = styleChangedNodes;
 		this.styleUnchangedNodes = styleUnchangedNodes;
 		this.invalidationFlags = invalidationFlags;
@@ -36,6 +38,7 @@ class UiStyleInvalidationMetrics {
 		this.hitGeometryInvalidatedNodes = hitGeometryInvalidatedNodes;
 		this.treeChanged = treeChanged;
 		this.nativeLayoutRequired = nativeLayoutRequired;
+		this.transformOnly = transformOnly;
 	}
 
 	/** Compares current nodes against the prior submitted tree without touching layout. */
@@ -54,6 +57,7 @@ class UiStyleInvalidationMetrics {
 		var semanticsInvalidatedNodes = 0;
 		var hitGeometryInvalidatedNodes = 0;
 		var treeChanged = previous == null && current != null;
+		var transformOnly = previous != null && current != null;
 		var currentById = new Map<Int, RenderNode>();
 		if (current != null)
 			current.walk(function(node) {
@@ -86,6 +90,9 @@ class UiStyleInvalidationMetrics {
 				if (UiDirtyFlag.contains(flags, UiDirtyFlag.NeedsComposite)) compositeInvalidatedNodes++;
 				if (UiDirtyFlag.contains(flags, UiDirtyFlag.NeedsSemantics)) semanticsInvalidatedNodes++;
 				if (UiDirtyFlag.contains(flags, UiDirtyFlag.NeedsHitGeometry)) hitGeometryInvalidatedNodes++;
+				if ((flags & (UiDirtyFlag.NeedsBuild | UiDirtyFlag.NeedsTextLayout |
+					UiDirtyFlag.NeedsLayout | UiDirtyFlag.NeedsPaint)) != 0)
+					transformOnly = false;
 			});
 		if (previous != null)
 			for (id in previousById.keys())
@@ -97,11 +104,14 @@ class UiStyleInvalidationMetrics {
 		var nativeWork = UiDirtyFlag.NeedsBuild | UiDirtyFlag.NeedsTextLayout |
 			UiDirtyFlag.NeedsLayout | UiDirtyFlag.NeedsPaint | UiDirtyFlag.NeedsHitGeometry;
 		var nativeLayoutRequired = (invalidationFlags & nativeWork) != 0;
+		transformOnly = transformOnly && !treeChanged &&
+			UiDirtyFlag.contains(invalidationFlags, UiDirtyFlag.NeedsComposite) &&
+			UiDirtyFlag.contains(invalidationFlags, UiDirtyFlag.NeedsHitGeometry);
 
 		return new UiStyleInvalidationMetrics(styleChangedNodes, styleUnchangedNodes, invalidationFlags,
 			layoutInvalidatedNodes, textLayoutInvalidatedNodes, paintInvalidatedNodes,
 			compositeInvalidatedNodes, semanticsInvalidatedNodes, hitGeometryInvalidatedNodes,
-			treeChanged, nativeLayoutRequired);
+			treeChanged, nativeLayoutRequired, transformOnly);
 	}
 
 	static function sameChildOrder(previous:RenderNode, current:RenderNode):Bool {

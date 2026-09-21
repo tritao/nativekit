@@ -42,6 +42,10 @@ class LayoutEngine {
     bool layout(const std::vector<LayoutNode> &nodes, float width, float height,
                 float delta_seconds, LayoutSnapshot &out, LayoutError *error = nullptr);
 
+    /** Updates transforms and dependent world geometry without rerunning Clay layout. */
+    bool update_transforms(const std::vector<LayoutNode> &nodes, LayoutSnapshot &snapshot,
+                           LayoutError *error = nullptr);
+
   private:
     struct Impl;
     std::unique_ptr<Impl> impl_;

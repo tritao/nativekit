@@ -67,6 +67,21 @@ class LayoutSession {
 		UiResult.check(NativeKitUI.nkui_layout_session_submit_slice(value, transactionBytes, 0,
 			transaction.byteLength(), nativeFrame),
 			"layoutSession.submit");
+		return readResolvedItems();
+	}
+
+	/** Updates only transforms and dependent world geometry for the last tree. */
+	public function updateTransforms(root:LayoutNode):Array<ResolvedLayoutItem> {
+		ensureLive();
+		if (root == null)
+			throw "Transform update requires a root layout node";
+		var transactionBytes:Bytes = transaction.encodeInto(root);
+		UiResult.check(NativeKitUI.nkui_layout_session_update_transforms(value, transactionBytes),
+			"layoutSession.updateTransforms");
+		return readResolvedItems();
+	}
+
+	function readResolvedItems():Array<ResolvedLayoutItem> {
 		var result = NativeKitUI.nkui_layout_session_get_resolved_items(value);
 		UiResult.check(result.status, "layoutSession.resolvedItems");
 		var bytes:Bytes = result.out_buffer;

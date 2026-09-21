@@ -205,6 +205,7 @@ struct LayoutSessionState : std::enable_shared_from_this<LayoutSessionState> {
     nkui::LayoutRenderCompiler compiler;
     nkui::LayoutRenderFrame frame;
     nkui::LayoutSnapshot snapshot;
+    std::vector<nkui::LayoutNode> submitted_nodes;
     std::unordered_map<uint32_t, nkui_display_list> custom_paints;
     std::unordered_map<uint32_t, nkui_display_list> custom_paint_composites;
     std::unordered_map<uint32_t, nkui_layout_cache_policy> cache_policies;
@@ -1085,6 +1086,49 @@ bool read_layout_transaction(const uint8_t *bytes, uint32_t byte_count,
         }
     }
     return true;
+}
+
+bool same_layout_axis(const nkui::LayoutAxis &left, const nkui::LayoutAxis &right) {
+    return left.sizing == right.sizing && left.value == right.value && left.min == right.min &&
+           left.max == right.max && left.grow_weight == right.grow_weight;
+}
+
+bool same_layout_color(const nkui::LayoutColor &left, const nkui::LayoutColor &right) {
+    return left.red == right.red && left.green == right.green && left.blue == right.blue &&
+           left.alpha == right.alpha;
+}
+
+bool same_layout_transform_inputs(const nkui::LayoutNode &left, const nkui::LayoutNode &right) {
+    const auto &a = left.style;
+    const auto &b = right.style;
+    return left.id == right.id && left.parent == right.parent &&
+           left.visual_kind == right.visual_kind && left.text == right.text &&
+           same_layout_color(left.text_color, right.text_color) &&
+           left.text_style.family == right.text_style.family &&
+           left.text_style.font_size == right.text_style.font_size &&
+           left.text_style.letter_spacing == right.text_style.letter_spacing &&
+           left.paragraph_style.wrap == right.paragraph_style.wrap &&
+           left.paragraph_style.alignment == right.paragraph_style.alignment &&
+           left.paragraph_style.line_height == right.paragraph_style.line_height &&
+           left.paragraph_style.direction == right.paragraph_style.direction &&
+           left.hit_self == right.hit_self && left.hit_children == right.hit_children &&
+           left.measure_version == right.measure_version &&
+           same_layout_axis(a.width, b.width) && same_layout_axis(a.height, b.height) &&
+           a.aspect_ratio == b.aspect_ratio && a.direction == b.direction &&
+           a.padding_left == b.padding_left && a.padding_right == b.padding_right &&
+           a.padding_top == b.padding_top && a.padding_bottom == b.padding_bottom &&
+           a.child_gap == b.child_gap && a.row_gap == b.row_gap && a.column_gap == b.column_gap &&
+           a.wrap_mode == b.wrap_mode && a.align_self == b.align_self &&
+           a.child_align_x == b.child_align_x && a.child_align_y == b.child_align_y &&
+           a.child_distribution == b.child_distribution && a.positioning == b.positioning &&
+           a.position_x == b.position_x && a.position_y == b.position_y &&
+           a.z_index == b.z_index && a.clip_to_parent == b.clip_to_parent &&
+           same_layout_color(a.background, b.background) &&
+           a.radius_top_left == b.radius_top_left && a.radius_top_right == b.radius_top_right &&
+           a.radius_bottom_left == b.radius_bottom_left &&
+           a.radius_bottom_right == b.radius_bottom_right &&
+           a.clip_horizontal == b.clip_horizontal && a.clip_vertical == b.clip_vertical &&
+           a.visible == b.visible;
 }
 
 nkui_result allocate_resource(nkui::ResourceKind kind, nkui_resource *out, ResourceSlot **out_slot);
@@ -2158,6 +2202,7 @@ extern "C" nkui_result nkui_layout_session_submit(nkui_layout_session session,
                                &error))
         return NKUI_ERROR_INVALID_TRANSACTION;
     state->snapshot = std::move(snapshot);
+    state->submitted_nodes = nodes;
     state->submitted = true;
     std::lock_guard<std::mutex> lists_lock(lists_mutex);
     for (auto it = state->custom_paints.begin(); it != state->custom_paints.end();) {
@@ -2190,6 +2235,38 @@ extern "C" nkui_result nkui_layout_session_submit(nkui_layout_session session,
         else
             it = state->cache_policies.erase(it);
     }
+    return NKUI_OK;
+}
+
+extern "C" nkui_result nkui_layout_session_update_transforms(
+    nkui_layout_session session, const uint8_t *transaction, uint32_t transaction_bytes) {
+    if (active_measure_session)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::shared_ptr<LayoutSessionState> pinned_state;
+    {
+        std::lock_guard<std::mutex> lock(layout_sessions_mutex);
+        auto *resolved = resolve(session);
+        if (!resolved)
+            return NKUI_ERROR_INVALID_HANDLE;
+        const auto slot = static_cast<uint16_t>(session.id);
+        pinned_state = layout_sessions[slot - 1].session;
+    }
+    auto *state = pinned_state.get();
+    std::unique_lock<std::mutex> session_lock(state->mutex);
+    if (!state->submitted)
+        return NKUI_ERROR_INVALID_ARGUMENT;
+    std::vector<nkui::LayoutNode> nodes;
+    if (!read_layout_transaction(transaction, transaction_bytes, nodes) ||
+        nodes.size() != state->submitted_nodes.size())
+        return NKUI_ERROR_INVALID_TRANSACTION;
+    for (std::size_t index = 0; index < nodes.size(); ++index) {
+        if (!same_layout_transform_inputs(state->submitted_nodes[index], nodes[index]))
+            return NKUI_ERROR_INVALID_TRANSACTION;
+    }
+    nkui::LayoutError error{};
+    if (!state->engine->update_transforms(nodes, state->snapshot, &error))
+        return NKUI_ERROR_INVALID_TRANSACTION;
+    state->submitted_nodes = std::move(nodes);
     return NKUI_OK;
 }
 

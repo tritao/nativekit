@@ -21,6 +21,8 @@ class UiFrameMetrics {
 	public final nativeLayoutSubmitted:Bool;
 	/** Whether the previous native layout/render snapshot was reused. */
 	public final nativeLayoutReused:Bool;
+	/** Whether the native snapshot was updated through the transform-only path. */
+	public final nativeTransformPatched:Bool;
 	/** Nodes whose resolved geometry changed and notified geometry consumers. */
 	public final resolvedGeometryChangedNodes:Int;
 	/** Nodes whose previous resolved geometry object was retained. */
@@ -44,7 +46,8 @@ class UiFrameMetrics {
 			submitSeconds:Float, nativeLayoutSubmitted:Bool = true,
 			nativeLayoutReused:Bool = false,
 			resolvedGeometryChangedNodes:Int = 0,
-			resolvedGeometryReusedNodes:Int = 0) {
+			resolvedGeometryReusedNodes:Int = 0,
+			nativeTransformPatched:Bool = false) {
 		this.frameNumber = frameNumber;
 		this.nodeCount = nodeCount;
 		this.styleResolutions = styleResolutions;
@@ -62,6 +65,7 @@ class UiFrameMetrics {
 		this.hitGeometryInvalidatedNodes = hitGeometryInvalidatedNodes;
 		this.nativeLayoutSubmitted = nativeLayoutSubmitted;
 		this.nativeLayoutReused = nativeLayoutReused;
+		this.nativeTransformPatched = nativeTransformPatched;
 		this.resolvedGeometryChangedNodes = resolvedGeometryChangedNodes;
 		this.resolvedGeometryReusedNodes = resolvedGeometryReusedNodes;
 		this.submitSeconds = submitSeconds;

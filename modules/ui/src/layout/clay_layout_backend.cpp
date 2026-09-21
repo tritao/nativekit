@@ -1008,6 +1008,184 @@ bool LayoutEngine::Impl::layout(const std::vector<LayoutNode> &nodes, float widt
     return true;
 }
 
+bool LayoutEngine::update_transforms(const std::vector<LayoutNode> &nodes,
+                                     LayoutSnapshot &snapshot, LayoutError *error) {
+    if (error)
+        *error = {};
+    if (nodes.empty() || snapshot.items.size() != nodes.size()) {
+        if (error)
+            error->message = "transform update does not match the submitted layout";
+        return false;
+    }
+
+    std::size_t root = nodes.size();
+    for (std::size_t index = 0; index < nodes.size(); ++index) {
+        const auto &item = snapshot.items[index];
+        const auto &node = nodes[index];
+        if (item.id != node.id || item.index != index ||
+            (node.parent < 0) != (item.parent_index == kInvalidLayoutIndex) ||
+            (node.parent >= 0 && static_cast<std::size_t>(node.parent) != item.parent_index)) {
+            if (error) {
+                error->node_index = index;
+                error->message = "transform update changed the layout tree";
+            }
+            return false;
+        }
+        if (node.parent < 0) {
+            if (root != nodes.size()) {
+                if (error) {
+                    error->node_index = index;
+                    error->message = "transform update has multiple roots";
+                }
+                return false;
+            }
+            root = index;
+        }
+    }
+    if (root == nodes.size()) {
+        if (error)
+            error->message = "transform update has no root";
+        return false;
+    }
+
+    const LayoutRect viewport = snapshot.items[root].clip_bounds;
+    std::vector<uint8_t> visited(nodes.size(), 0);
+    const auto resolve_geometry = [&](auto &&self, std::size_t index,
+                                      LayoutTransform parent_transform, bool parent_visible,
+                                      LayoutRect parent_clip, LayoutRect parent_bounds) -> bool {
+        if (index >= nodes.size() || visited[index]) {
+            if (error) {
+                error->node_index = index < nodes.size() ? index : 0;
+                error->message = "transform update contains an invalid layout tree";
+            }
+            return false;
+        }
+        visited[index] = 1;
+        auto &item = snapshot.items[index];
+        const auto &node = nodes[index];
+        const LayoutRect node_bounds_rect = item.bounds;
+        const float origin_x =
+            node_bounds_rect.x + node_bounds_rect.width * node.style.transform_origin_x;
+        const float origin_y =
+            node_bounds_rect.y + node_bounds_rect.height * node.style.transform_origin_y;
+        const LayoutTransform to_origin = translated(origin_x, origin_y);
+        const LayoutTransform from_origin = translated(-origin_x, -origin_y);
+        const LayoutTransform local_transform =
+            compose(compose(to_origin, node.style.transform), from_origin);
+        const LayoutTransform transform = compose(parent_transform, local_transform);
+        const bool visible = parent_visible && node.style.visible;
+        const LayoutRect transformed = transform_bounds(node_bounds_rect, transform);
+        LayoutRect item_clip = parent_clip;
+        if (node.style.positioning == LayoutPositioning::Absolute && node.style.clip_to_parent) {
+            const LayoutRect transformed_parent_bounds =
+                transform_bounds(parent_bounds, parent_transform);
+            item_clip = intersect_axes(item_clip, transformed_parent_bounds, true, true);
+        }
+        const float determinant = transform.a * transform.d - transform.b * transform.c;
+        if (!finite_transform(transform) || !std::isfinite(determinant) ||
+            std::abs(determinant) < 0.000001f || !std::isfinite(transformed.x) ||
+            !std::isfinite(transformed.y) || !std::isfinite(transformed.width) ||
+            !std::isfinite(transformed.height)) {
+            if (error) {
+                error->node_index = index;
+                error->message = "layout transform is not finite and invertible";
+            }
+            return false;
+        }
+        if (!inverse_transform(transform, item.inverse_transform)) {
+            if (error) {
+                error->node_index = index;
+                error->message = "layout transform inverse could not be resolved";
+            }
+            return false;
+        }
+        if (!axis_aligned(transform) && (node.style.clip_horizontal || node.style.clip_vertical)) {
+            if (error) {
+                error->node_index = index;
+                error->message = "rotated or skewed clipping is not supported";
+            }
+            return false;
+        }
+
+        item.clip_bounds = item_clip;
+        item.transform = transform;
+        item.world_bounds = transformed;
+        item.visible = visible;
+        item.hit_self = node.hit_self;
+        item.hit_children = node.hit_children;
+        item.content_revision = node.content_revision;
+        item.geometry_revision = node.geometry_revision;
+        item.composite_revision = node.composite_revision;
+
+        LayoutRect child_clip = item_clip;
+        if (node.style.clip_horizontal || node.style.clip_vertical)
+            child_clip = intersect_axes(child_clip, transformed, node.style.clip_horizontal,
+                                        node.style.clip_vertical);
+        for (uint32_t child_offset = 0; child_offset < item.child_count; ++child_offset) {
+            const std::size_t child_slot = static_cast<std::size_t>(item.child_offset) + child_offset;
+            if (child_slot >= snapshot.child_indices.size()) {
+                if (error) {
+                    error->node_index = index;
+                    error->message = "transform update has invalid child indices";
+                }
+                return false;
+            }
+            const std::size_t child = snapshot.child_indices[child_slot];
+            if (child >= nodes.size() || nodes[child].parent != static_cast<int32_t>(index) ||
+                !self(self, child, transform, visible, child_clip, node_bounds_rect))
+                return false;
+        }
+        LayoutRect subtree = item.hit_self && item.visible
+                                 ? intersect_rect(item.world_bounds, item.clip_bounds)
+                                 : LayoutRect{};
+        if (item.hit_children && item.visible) {
+            for (uint32_t child_offset = 0; child_offset < item.child_count; ++child_offset) {
+                const std::size_t child_slot = static_cast<std::size_t>(item.child_offset) + child_offset;
+                if (child_slot >= snapshot.child_indices.size()) {
+                    if (error) {
+                        error->node_index = index;
+                        error->message = "transform update has invalid child indices";
+                    }
+                    return false;
+                }
+                const std::size_t child = snapshot.child_indices[child_slot];
+                if (child >= nodes.size()) {
+                    if (error) {
+                        error->node_index = index;
+                        error->message = "transform update has an invalid child";
+                    }
+                    return false;
+                }
+                subtree = union_rect(subtree, snapshot.items[child].subtree_hit_bounds);
+            }
+        }
+        item.subtree_hit_bounds = subtree;
+        return true;
+    };
+
+    if (!resolve_geometry(resolve_geometry, root, LayoutTransform{}, true, viewport, viewport) ||
+        std::any_of(visited.begin(), visited.end(), [](uint8_t value) { return value == 0; })) {
+        if (error && !error->message)
+            error->message = "transform update did not visit every layout node";
+        return false;
+    }
+
+    for (auto &primitive : snapshot.primitives) {
+        const auto item = std::find_if(snapshot.items.begin(), snapshot.items.end(),
+                                       [&](const LayoutItem &value) {
+                                           return value.id == primitive.node_id;
+                                       });
+        if (item == snapshot.items.end())
+            continue;
+        primitive.transform = item->transform;
+        primitive.visible = item->visible;
+        primitive.content_revision = item->content_revision;
+        primitive.geometry_revision = item->geometry_revision;
+        primitive.composite_revision = item->composite_revision;
+    }
+    return true;
+}
+
 LayoutEngine::LayoutEngine(std::size_t initial_capacity)
     : impl_(std::make_unique<Impl>(initial_capacity)) {}
 
