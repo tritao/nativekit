@@ -44,8 +44,11 @@ class Transaction {
 
 	public function setTransforms(updates:Array<TransformUpdate>):Void {
 		ensureOpen();
+		var values:Array<nkscene_transform_update> = [];
 		for (update in updates)
-			update.apply(this);
+			values.push(update.nativeValue());
+		check(NativeKitScene.nkscene_tx_set_transforms(owner.borrow(), values),
+			"transaction.setTransforms");
 	}
 
 	public function setName(occurrence:Occurrence, name:String):Void {

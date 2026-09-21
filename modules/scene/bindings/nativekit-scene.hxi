@@ -113,7 +113,7 @@ interface NativeKitScene @target("portable-abi64") @library("nativekit_scene") {
 	extern fn nkscene_tx_set_parent(transaction: nkscene_transaction, occurrence: nkscene_occurrence_id, parent: nkscene_occurrence_id) -> nkscene_result;
 	extern fn nkscene_tx_set_source_entity(transaction: nkscene_transaction, occurrence: nkscene_occurrence_id, source: nkscene_entity_id) -> nkscene_result;
 	extern fn nkscene_tx_set_transform(transaction: nkscene_transaction, occurrence: nkscene_occurrence_id, transform: ptr<const<nkscene_transform>>) -> nkscene_result;
-	extern fn nkscene_tx_set_transforms(transaction: nkscene_transaction, updates: ptr<const<nkscene_transform_update>>, update_count: u32) -> nkscene_result;
+	extern fn nkscene_tx_set_transforms(transaction: nkscene_transaction, updates: ptr<const<nkscene_transform_update>> @in_array("update_count"), update_count: u32) -> nkscene_result;
 	extern fn nkscene_tx_set_visibility(transaction: nkscene_transaction, occurrence: nkscene_occurrence_id, visible: u32) -> nkscene_result;
 	struct nkscene_bounds @layout(28, 4) {
 		minimum: array<f32, 3> @offset(0);

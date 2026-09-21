@@ -352,7 +352,7 @@ NKS_API nkscene_result NKS_CALL nkscene_tx_set_transform(nkscene_transaction tra
                                                          const nkscene_transform *transform);
 NKS_API nkscene_result NKS_CALL nkscene_tx_set_transforms(
     nkscene_transaction transaction,
-    const nkscene_transform_update *updates NK_BORROWED_ARRAY(update_count),
+    const nkscene_transform_update *updates NK_IN_ARRAY(update_count),
     uint32_t update_count);
 NKS_API nkscene_result NKS_CALL nkscene_tx_set_geometry(nkscene_transaction transaction,
                                                         nkscene_occurrence_id occurrence,
