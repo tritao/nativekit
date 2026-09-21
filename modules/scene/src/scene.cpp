@@ -9,6 +9,7 @@
 #include <cstring>
 #include <limits>
 #include <mutex>
+#include <span>
 #include <type_traits>
 #include <unordered_set>
 #include <utility>
@@ -20,6 +21,7 @@ struct SceneSnapshot::State {
     RevisionCounters revisions;
     std::vector<SnapshotOccurrence> occurrences;
     std::unordered_map<EntityId, std::vector<OccurrenceId>> occurrences_by_source;
+    std::unordered_map<EntityId, std::string> entity_names;
     std::vector<GeometryResource> geometries;
     std::vector<MaterialResource> materials;
 };
@@ -55,6 +57,17 @@ const SnapshotOccurrence *SceneSnapshot::find(OccurrenceId id) const noexcept {
                              return occurrence.occurrence.value < value.value;
                          });
     return found == state_->occurrences.end() || found->occurrence != id ? nullptr : &*found;
+}
+
+std::string_view SceneSnapshot::name(OccurrenceId id) const noexcept {
+    const auto *occurrence = find(id);
+    return occurrence ? std::string_view{occurrence->name} : std::string_view{};
+}
+
+std::string_view SceneSnapshot::entity_name(EntityId id) const noexcept {
+    const auto found = state_->entity_names.find(id);
+    return found == state_->entity_names.end() ? std::string_view{}
+                                                : std::string_view{found->second};
 }
 
 std::span<const GeometryResource> SceneSnapshot::geometries() const noexcept {
@@ -217,6 +230,8 @@ SceneSnapshot Scene::snapshot() const {
         occurrence.occurrence = id;
         if (const auto *source = source_entities.find(id))
             occurrence.source = source->id;
+        if (const auto *name = names_.find(id))
+            occurrence.name = *name;
         occurrence.parent = hierarchy.parent(id);
         if (const auto *local = local_transforms.find(id))
             occurrence.local_transform = *local;
@@ -239,6 +254,7 @@ SceneSnapshot Scene::snapshot() const {
     state->occurrences_by_source.reserve(state->occurrences.size());
     for (const auto &occurrence : state->occurrences)
         state->occurrences_by_source[occurrence.source].push_back(occurrence.occurrence);
+    state->entity_names = entity_names;
     geometries.for_each([&](GeometryId, const GeometryResource &resource) {
         state->geometries.push_back(resource);
     });
@@ -310,6 +326,12 @@ nkscene_result Scene::validate(const Transaction &transaction) const noexcept {
                 } else if constexpr (std::is_same_v<T, SetSourceEntity>) {
                     if (!value.occurrence.valid() || !exists_after(live, value.occurrence))
                         result = NKS_ERROR_STALE_ID;
+                } else if constexpr (std::is_same_v<T, SetName>) {
+                    if (!value.occurrence.valid() || !exists_after(live, value.occurrence))
+                        result = NKS_ERROR_STALE_ID;
+                } else if constexpr (std::is_same_v<T, SetEntityName>) {
+                    if (!value.entity.valid())
+                        result = NKS_ERROR_STALE_ID;
                 }
             },
             mutation);
@@ -372,6 +394,7 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
         return validation;
 
     changes = {};
+    bool name_changed = false;
     std::unordered_map<OccurrenceId, std::size_t> change_indices;
     change_indices.reserve(transaction.mutations().size());
     for (const auto &mutation : transaction.mutations()) {
@@ -392,6 +415,7 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
                     geometry_refs.erase(value.occurrence);
                     material_refs.erase(value.occurrence);
                     visibilities_.erase(value.occurrence);
+                    names_.erase(value.occurrence);
                     bounds.erase(value.occurrence);
                     hierarchy.remove(value.occurrence);
                     occurrences.destroy(value.occurrence);
@@ -445,9 +469,45 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
                                           ChangeDomain::Source);
                         }
                     } else if (previous) {
-                        source_entities.erase(value.occurrence);
+                    source_entities.erase(value.occurrence);
                         record_change(changes, change_indices, value.occurrence,
                                       ChangeDomain::Source);
+                    }
+                } else if constexpr (std::is_same_v<T, SetName>) {
+                    const auto *previous = names_.find(value.occurrence);
+                    if (value.name.empty()) {
+                        if (previous) {
+                            names_.erase(value.occurrence);
+                            name_changed = true;
+                            record_change(changes, change_indices, value.occurrence,
+                                          ChangeDomain::Name);
+                        }
+                    } else if (!previous || *previous != value.name) {
+                        names_.insert_or_assign(value.occurrence, value.name);
+                        name_changed = true;
+                        record_change(changes, change_indices, value.occurrence,
+                                      ChangeDomain::Name);
+                    }
+                } else if constexpr (std::is_same_v<T, SetEntityName>) {
+                    const auto previous = entity_names.find(value.entity);
+                    bool changed = false;
+                    if (value.name.empty()) {
+                        if (previous != entity_names.end()) {
+                            entity_names.erase(previous);
+                            changed = true;
+                        }
+                    } else if (previous == entity_names.end() || previous->second != value.name) {
+                        entity_names.insert_or_assign(value.entity, value.name);
+                        changed = true;
+                    }
+                    if (changed) {
+                        name_changed = true;
+                        source_entities.for_each([&](OccurrenceId occurrence,
+                                                     const SourceEntity &source) {
+                            if (source.id == value.entity)
+                                record_change(changes, change_indices, occurrence,
+                                              ChangeDomain::Name);
+                        });
                     }
                 }
             },
@@ -455,7 +515,7 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
     }
     changes.stats.changed_occurrences = changes.changes.size();
     recompute_world_transforms(changes);
-    if (!changes.changes.empty()) {
+    if (!changes.changes.empty() || name_changed) {
         auto &revision = revisions;
         ++revision.scene;
         bool hierarchy_changed = false;
@@ -465,6 +525,7 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
         bool visibility_changed = false;
         bool bounds_changed = false;
         bool source_changed = false;
+        bool names_changed = name_changed;
         for (const auto &change : changes.changes) {
             hierarchy_changed = hierarchy_changed ||
                                 has_domain(change.domains, ChangeDomain::Created) ||
@@ -480,6 +541,7 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
                 visibility_changed || has_domain(change.domains, ChangeDomain::Visibility);
             bounds_changed = bounds_changed || has_domain(change.domains, ChangeDomain::Bounds);
             source_changed = source_changed || has_domain(change.domains, ChangeDomain::Source);
+            names_changed = names_changed || has_domain(change.domains, ChangeDomain::Name);
         }
         if (hierarchy_changed)
             ++revision.hierarchy;
@@ -495,6 +557,8 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
             ++revision.bounds;
         if (source_changed)
             ++revision.source;
+        if (names_changed)
+            ++revision.name;
     }
     changes.scene_revision = revisions.scene;
     changes.revisions = revisions;
@@ -724,6 +788,26 @@ nkscene_result NKS_CALL nkscene_tx_set_transform(nkscene_transaction handle,
     return NKS_OK;
 }
 
+nkscene_result NKS_CALL nkscene_tx_set_transforms(
+    nkscene_transaction handle, const nkscene_transform_update *updates, uint32_t update_count) {
+    if (update_count != 0 && !updates)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    std::shared_ptr<nkscene::Transaction> transaction;
+    const auto result = nkscene::require_transaction(handle, transaction);
+    if (result != NKS_OK)
+        return result;
+    std::vector<nkscene::TransformUpdate> converted;
+    converted.reserve(update_count);
+    for (uint32_t index = 0; index < update_count; ++index) {
+        converted.push_back({{updates[index].occurrence.value},
+                             nkscene::from_public_transform(updates[index].transform)});
+    }
+    transaction->add_transforms(std::span<const nkscene::TransformUpdate>{converted});
+    return NKS_OK;
+}
+
 nkscene_result NKS_CALL nkscene_tx_set_geometry(nkscene_transaction handle,
                                                 nkscene_occurrence_id occurrence,
                                                 nkscene_geometry_id geometry) {
@@ -773,6 +857,34 @@ nkscene_result NKS_CALL nkscene_tx_set_source_entity(nkscene_transaction handle,
     if (result != NKS_OK)
         return result;
     transaction->add_source_entity({occurrence.value}, {source.value});
+    return NKS_OK;
+}
+
+nkscene_result NKS_CALL nkscene_tx_set_name(nkscene_transaction handle,
+                                            nkscene_occurrence_id occurrence, const char *name) {
+    if (!name)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    std::shared_ptr<nkscene::Transaction> transaction;
+    const auto result = nkscene::require_transaction(handle, transaction);
+    if (result != NKS_OK)
+        return result;
+    transaction->add_name({occurrence.value}, name);
+    return NKS_OK;
+}
+
+nkscene_result NKS_CALL nkscene_tx_set_entity_name(nkscene_transaction handle,
+                                                   nkscene_entity_id entity, const char *name) {
+    if (!entity.value || !name)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    std::shared_ptr<nkscene::Transaction> transaction;
+    const auto result = nkscene::require_transaction(handle, transaction);
+    if (result != NKS_OK)
+        return result;
+    transaction->add_entity_name({entity.value}, name);
     return NKS_OK;
 }
 
@@ -897,6 +1009,40 @@ nkscene_snapshot_get_source_occurrence(nkscene_snapshot snapshot, nkscene_entity
     if (index >= occurrences.size())
         return NKS_ERROR_INVALID_ARGUMENT;
     *out_occurrence = {occurrences[static_cast<std::size_t>(index)].value};
+    return NKS_OK;
+}
+
+nkscene_result NKS_CALL nkscene_snapshot_get_name(nkscene_snapshot snapshot,
+                                                  nkscene_occurrence_id occurrence,
+                                                  const char **out_name) {
+    if (!out_name)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    *out_name = nullptr;
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    const auto value = state.snapshots.get(nkscene::unpack_handle(snapshot));
+    if (!value)
+        return NKS_ERROR_INVALID_HANDLE;
+    const auto *info = value->find({occurrence.value});
+    if (!info)
+        return NKS_ERROR_STALE_ID;
+    *out_name = info->name.c_str();
+    return NKS_OK;
+}
+
+nkscene_result NKS_CALL nkscene_snapshot_get_entity_name(nkscene_snapshot snapshot,
+                                                         nkscene_entity_id entity,
+                                                         const char **out_name) {
+    if (!out_name || !entity.value)
+        return NKS_ERROR_INVALID_ARGUMENT;
+    *out_name = nullptr;
+    auto &state = nkscene::registry();
+    std::lock_guard lock(state.mutex);
+    const auto value = state.snapshots.get(nkscene::unpack_handle(snapshot));
+    if (!value)
+        return NKS_ERROR_INVALID_HANDLE;
+    const auto name = value->entity_name({entity.value});
+    *out_name = name.empty() ? "" : name.data();
     return NKS_OK;
 }
 

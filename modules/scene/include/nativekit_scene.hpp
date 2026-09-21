@@ -8,6 +8,8 @@
 #include <functional>
 #include <memory>
 #include <span>
+#include <string>
+#include <string_view>
 #include <vector>
 
 namespace nkscene {
@@ -47,6 +49,11 @@ struct LocalTransform {
 struct WorldTransform {
     LocalTransform transform;
     std::uint64_t revision = 0;
+};
+
+struct TransformUpdate {
+    OccurrenceId occurrence;
+    LocalTransform transform;
 };
 
 struct Bounds {
@@ -128,7 +135,8 @@ enum class ChangeDomain : std::uint32_t {
     Material = 1u << 5,
     Visibility = 1u << 6,
     Bounds = 1u << 7,
-    Source = 1u << 8
+    Source = 1u << 8,
+    Name = 1u << 9
 };
 
 constexpr ChangeDomain operator|(ChangeDomain lhs, ChangeDomain rhs) noexcept {
@@ -159,6 +167,7 @@ struct RevisionCounters {
     std::uint64_t visibility = 0;
     std::uint64_t bounds = 0;
     std::uint64_t source = 0;
+    std::uint64_t name = 0;
 };
 
 struct ChangeStats {
@@ -179,6 +188,7 @@ struct ChangeSet {
 struct SnapshotOccurrence {
     OccurrenceId occurrence;
     EntityId source;
+    std::string name;
     OccurrenceId parent;
     LocalTransform local_transform;
     WorldTransform world_transform;
@@ -199,6 +209,8 @@ public:
     std::span<const SnapshotOccurrence> occurrences() const noexcept;
     std::span<const OccurrenceId> occurrences_for_source(EntityId source) const noexcept;
     const SnapshotOccurrence *find(OccurrenceId id) const noexcept;
+    std::string_view name(OccurrenceId id) const noexcept;
+    std::string_view entity_name(EntityId id) const noexcept;
     std::span<const GeometryResource> geometries() const noexcept;
     std::span<const MaterialResource> materials() const noexcept;
     const GeometryResource *find_geometry(GeometryId id) const noexcept;

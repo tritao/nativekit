@@ -35,8 +35,9 @@ extern "C" {
 /* Runtime handles and stable identifiers                                    */
 /* ------------------------------------------------------------------------- */
 
-/* Runtime handles are generation-checked tokens. They are intentionally
- * separate from stable scene identifiers, which identify scene data. */
+/* Runtime handles are generation-checked temporary tokens. They are
+ * intentionally separate from stable scene identifiers, which identify scene
+ * data and may be persisted by an application. */
 typedef uint32_t nkscene_scene NK_HANDLE NK_HANDLE_DESTROY(nkscene_scene_destroy);
 
 typedef uint32_t nkscene_transaction NK_HANDLE NK_HANDLE_DESTROY(nkscene_transaction_cancel);
@@ -53,6 +54,19 @@ typedef struct nkscene_entity_id {
     uint64_t value;
 } nkscene_entity_id;
 
+/*
+ * Scene contract:
+ *   lengths are meters, angles are radians, and time is seconds;
+ *   the world is right-handed with +Z up;
+ *   +X is the forward direction where a forward convention is needed;
+ *   transforms are column-major 4x4 matrices multiplying column vectors;
+ *   translation is stored at matrix[12], matrix[13], and matrix[14].
+ *
+ * An entity identifies logical/source data. An occurrence identifies one
+ * instantiated scene occurrence of that entity. Runtime handles above are
+ * neither entity nor occurrence identities.
+ */
+
 typedef struct nkscene_geometry_id {
     uint64_t value;
 } nkscene_geometry_id;
@@ -64,6 +78,11 @@ typedef struct nkscene_material_id {
 typedef struct nkscene_transform {
     float matrix[16];
 } nkscene_transform;
+
+typedef struct nkscene_transform_update {
+    nkscene_occurrence_id occurrence;
+    nkscene_transform transform;
+} nkscene_transform_update;
 
 typedef struct nkscene_bounds {
     float minimum[3];
@@ -178,6 +197,10 @@ NKS_API nkscene_result NKS_CALL nkscene_tx_set_parent(nkscene_transaction transa
 NKS_API nkscene_result NKS_CALL nkscene_tx_set_transform(nkscene_transaction transaction,
                                                          nkscene_occurrence_id occurrence,
                                                          const nkscene_transform *transform);
+NKS_API nkscene_result NKS_CALL nkscene_tx_set_transforms(
+    nkscene_transaction transaction,
+    const nkscene_transform_update *updates NK_BORROWED_ARRAY(update_count),
+    uint32_t update_count);
 NKS_API nkscene_result NKS_CALL nkscene_tx_set_geometry(nkscene_transaction transaction,
                                                         nkscene_occurrence_id occurrence,
                                                         nkscene_geometry_id geometry);
@@ -190,6 +213,12 @@ NKS_API nkscene_result NKS_CALL nkscene_tx_set_visibility(nkscene_transaction tr
 NKS_API nkscene_result NKS_CALL nkscene_tx_set_source_entity(nkscene_transaction transaction,
                                                              nkscene_occurrence_id occurrence,
                                                              nkscene_entity_id source);
+NKS_API nkscene_result NKS_CALL nkscene_tx_set_name(nkscene_transaction transaction,
+                                                    nkscene_occurrence_id occurrence,
+                                                    const char *name);
+NKS_API nkscene_result NKS_CALL nkscene_tx_set_entity_name(nkscene_transaction transaction,
+                                                           nkscene_entity_id entity,
+                                                           const char *name);
 
 /* ------------------------------------------------------------------------- */
 /* Snapshots and changes                                                     */
@@ -213,6 +242,13 @@ NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_source_occurrence_count(
 NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_source_occurrence(
     nkscene_snapshot snapshot, nkscene_entity_id source, uint64_t index,
     nkscene_occurrence_id *out_occurrence NK_OUT);
+/** Returns a name borrowed from the snapshot and valid until it is destroyed. */
+NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_name(
+    nkscene_snapshot snapshot, nkscene_occurrence_id occurrence,
+    const char **out_name);
+/** Returns a source-entity name borrowed from the snapshot and valid until it is destroyed. */
+NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_entity_name(
+    nkscene_snapshot snapshot, nkscene_entity_id entity, const char **out_name);
 NKS_API void NKS_CALL nkscene_change_set_destroy(nkscene_change_set changes);
 NKS_API nkscene_result NKS_CALL nkscene_change_set_get_revision(nkscene_change_set changes,
                                                                 uint64_t *out_revision NK_OUT);

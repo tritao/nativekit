@@ -5,6 +5,8 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <span>
+#include <string>
 #include <variant>
 #include <vector>
 
@@ -70,9 +72,19 @@ struct SetSourceEntity {
     EntityId source;
 };
 
+struct SetName {
+    OccurrenceId occurrence;
+    std::string name;
+};
+
+struct SetEntityName {
+    EntityId entity;
+    std::string name;
+};
+
 using Mutation = std::variant<CreateOccurrence, DestroyOccurrence, SetParent,
                               SetTransform, SetGeometry, SetMaterial, SetVisibility,
-                              SetSourceEntity>;
+                              SetSourceEntity, SetName, SetEntityName>;
 
 class Transaction {
 public:
@@ -90,6 +102,11 @@ public:
     void add_transform(OccurrenceId id, const LocalTransform &transform) {
         mutations_.emplace_back(SetTransform{id, transform});
     }
+    void add_transforms(std::span<const TransformUpdate> updates) {
+        mutations_.reserve(mutations_.size() + updates.size());
+        for (const auto &update : updates)
+            add_transform(update.occurrence, update.transform);
+    }
     void add_geometry(OccurrenceId id, GeometryId geometry) {
         mutations_.emplace_back(SetGeometry{id, geometry});
     }
@@ -101,6 +118,12 @@ public:
     }
     void add_source_entity(OccurrenceId id, EntityId source) {
         mutations_.emplace_back(SetSourceEntity{id, source});
+    }
+    void add_name(OccurrenceId id, std::string name) {
+        mutations_.emplace_back(SetName{id, std::move(name)});
+    }
+    void add_entity_name(EntityId id, std::string name) {
+        mutations_.emplace_back(SetEntityName{id, std::move(name)});
     }
 
     const std::vector<Mutation> &mutations() const noexcept { return mutations_; }

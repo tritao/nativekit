@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <stdint.h>
+#include <string.h>
 
 static nkscene_transform translated(float x) {
     nkscene_transform result = {0};
@@ -28,9 +29,16 @@ int main(void) {
     assert(nkscene_tx_set_parent(transaction, first, group) == NKS_OK);
     assert(nkscene_tx_set_parent(transaction, second, group) == NKS_OK);
     const nkscene_transform first_transform = translated(-2.0f);
-    assert(nkscene_tx_set_transform(transaction, first, &first_transform) == NKS_OK);
+    const nkscene_transform second_transform = translated(3.0f);
+    const nkscene_transform_update transform_updates[] = {
+        {first, first_transform},
+        {second, second_transform},
+    };
+    assert(nkscene_tx_set_transforms(transaction, transform_updates, 2) == NKS_OK);
     const nkscene_entity_id first_source = {42};
     assert(nkscene_tx_set_source_entity(transaction, first, first_source) == NKS_OK);
+    assert(nkscene_tx_set_name(transaction, first, "panda_link0") == NKS_OK);
+    assert(nkscene_tx_set_entity_name(transaction, first_source, "RobotLink") == NKS_OK);
     assert(nkscene_transaction_commit(transaction) == NKS_OK);
 
     nkscene_snapshot snapshot = {0};
@@ -59,9 +67,18 @@ int main(void) {
             found_second = 1;
             assert(info.parent.value == group.value);
             assert(info.source.value == 0);
+            assert(info.world_transform.matrix[12] == 3.0f);
         }
     }
     assert(found_group && found_first && found_second);
+
+    const char *name = NULL;
+    assert(nkscene_snapshot_get_name(snapshot, first, &name) == NKS_OK);
+    assert(name != NULL);
+    assert(strcmp(name, "panda_link0") == 0);
+    assert(nkscene_snapshot_get_entity_name(snapshot, first_source, &name) == NKS_OK);
+    assert(name != NULL);
+    assert(strcmp(name, "RobotLink") == 0);
     assert(nkscene_snapshot_get_occurrence(snapshot, count, &info) ==
            NKS_ERROR_INVALID_ARGUMENT);
 
