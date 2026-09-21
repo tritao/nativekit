@@ -444,8 +444,9 @@ int main() {
             (nkui_renderer_get_stats(renderer, &custom_cache_first) != NKUI_OK ||
              custom_cache_first.raster_cache_misses <= root_cache_moved.raster_cache_misses ||
              custom_cache_first.raster_cache_entries == 0 ||
-             custom_cache_first.raster_cache_bytes == 0)) {
-            std::fprintf(stderr, "custom paint did not populate the raster cache\n");
+             custom_cache_first.raster_cache_bytes == 0 ||
+             custom_cache_first.custom_paint_nodes == 0)) {
+            std::fprintf(stderr, "custom paint did not compile and populate the raster cache\n");
             result = 25;
         }
         if (!result) {
@@ -487,14 +488,27 @@ int main() {
                                  custom_cache_repeated.raster_cache_hits));
                 result = 29;
             }
+            if (!result && custom_cache_repeated.custom_paint_nodes !=
+                               custom_cache_first.custom_paint_nodes) {
+                std::fprintf(stderr,
+                             "unchanged custom paint was recompiled: %llu -> %llu\n",
+                             static_cast<unsigned long long>(custom_cache_first.custom_paint_nodes),
+                             static_cast<unsigned long long>(
+                                 custom_cache_repeated.custom_paint_nodes));
+                result = 36;
+            }
             if (!result) {
                 const auto elapsed_ns =
                     std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed).count();
-                std::printf("custom raster repeat: %d frames, %llu hits, %lld ns/frame\n",
+                std::printf("custom raster repeat: %d frames, %llu hits, %llu compiled plans, "
+                            "%lld ns/frame\n",
                              repeated_frames,
                              static_cast<unsigned long long>(
                                  custom_cache_repeated.raster_cache_hits -
                                  custom_cache_first.raster_cache_hits),
+                             static_cast<unsigned long long>(
+                                 custom_cache_repeated.custom_paint_nodes -
+                                 custom_cache_first.custom_paint_nodes),
                              static_cast<long long>(elapsed_ns / repeated_frames));
             }
         }
@@ -542,6 +556,8 @@ int main() {
             if (!result &&
                 (custom_cache_pressure.raster_cache_misses <
                      custom_cache_scaled.raster_cache_misses + pressure_frames ||
+                 custom_cache_pressure.custom_paint_nodes <
+                     custom_cache_scaled.custom_paint_nodes + pressure_frames ||
                  custom_cache_pressure.raster_cache_entries > 16 ||
                  custom_cache_pressure.raster_cache_bytes > 64u * 1024u * 1024u)) {
                 std::fprintf(stderr,

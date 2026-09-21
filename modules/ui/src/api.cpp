@@ -80,6 +80,7 @@ struct DisplayListSlot {
     std::vector<nkui::ResourceId> resources;
     uint32_t custom_refs = 0;
     uint16_t generation = 1;
+    uint64_t revision = 1;
 };
 
 struct FontEntry {
@@ -207,6 +208,13 @@ struct LayoutSessionState : std::enable_shared_from_this<LayoutSessionState> {
     std::unordered_map<uint32_t, nkui_display_list> custom_paints;
     std::unordered_map<uint32_t, nkui_display_list> custom_paint_composites;
     std::unordered_map<uint32_t, nkui_layout_cache_policy> cache_policies;
+    struct CustomPlanCacheEntry {
+        uint32_t list_handle = 0;
+        uint64_t list_revision = 0;
+        nkui::ResourceId compile_target{};
+        nkui::RenderPlan plan;
+    };
+    std::unordered_map<uint32_t, CustomPlanCacheEntry> custom_plan_cache;
     std::vector<uint32_t> hit_test_traversal_path;
     std::vector<uint32_t> hit_test_candidate_path;
     nkui_layout_hit_test_stats hit_test_stats{};
@@ -1495,6 +1503,7 @@ void release_custom_paints(LayoutSessionState &session) {
     session.custom_paints.clear();
     session.custom_paint_composites.clear();
     session.cache_policies.clear();
+    session.custom_plan_cache.clear();
 }
 
 void release_custom_paint(std::unordered_map<uint32_t, nkui_display_list> &paints,
@@ -1629,6 +1638,8 @@ extern "C" nkui_result nkui_display_list_reset(nkui_display_list list) {
         return NKUI_ERROR_INVALID_HANDLE;
     release_display_resources(*slot);
     slot->list->reset();
+    if (++slot->revision == 0)
+        slot->revision = 1;
     return NKUI_OK;
 }
 
@@ -1659,6 +1670,8 @@ extern "C" nkui_result nkui_display_list_submit(nkui_display_list list, const ui
     }
     release_display_resources(*slot);
     slot->resources = std::move(retained);
+    if (++slot->revision == 0)
+        slot->revision = 1;
     return NKUI_OK;
 }
 
@@ -1901,6 +1914,7 @@ nkui_layout_session_clear_custom_paint(nkui_layout_session session, uint32_t nod
     if (!state)
         return NKUI_ERROR_INVALID_HANDLE;
     release_custom_paint(state->custom_paints, node_id);
+    state->custom_plan_cache.erase(node_id);
     return NKUI_OK;
 }
 
@@ -3539,29 +3553,54 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
             has_backdrop = has_backdrop || list_slot->list->has_backdrop_effects();
     }
     const nkui::ResourceId compile_target = has_backdrop ? backdrop_root_target() : main_target;
-    std::vector<std::pair<uint32_t, nkui::RenderPlan>> custom_plan_storage;
+    std::vector<uint32_t> compiled_custom_nodes;
+    std::vector<uint32_t> custom_plan_nodes;
+    std::vector<std::pair<uint32_t, const nkui::RenderPlan *>> custom_plan_storage;
     nkui::LayoutRenderCompiler::CustomPaintPlans custom_plans;
     nkui::LayoutRenderCompiler::CustomPaintComposites custom_composites;
     nkui::LayoutRenderCompiler::RasterPaintNodes raster_paint_nodes;
     {
-        custom_plan_storage.reserve(session_state->custom_paints.size());
+        compiled_custom_nodes.reserve(session_state->custom_paints.size());
+        custom_plan_nodes.reserve(session_state->custom_paints.size());
+        session_state->custom_plan_cache.reserve(session_state->custom_paints.size() * 2 + 1);
         custom_composites.reserve(session_state->custom_paint_composites.size());
         for (const auto &[node_id, list_handle] : session_state->custom_paints) {
             const auto *item = session_state->snapshot.find(node_id);
             auto *list_slot = resolve(list_handle);
             if (!item || !list_slot)
                 return NKUI_ERROR_INVALID_HANDLE;
-            nkui::RenderPlan custom_plan;
-            nkui::Compositor custom_compositor;
-            nkui::CompositorError compositor_error{};
-            if (!custom_compositor.compile(*list_slot->list, compile_target, custom_plan,
-                                           &compositor_error))
+            auto cached = session_state->custom_plan_cache.find(node_id);
+            const bool cache_hit =
+                cached != session_state->custom_plan_cache.end() &&
+                cached->second.list_handle == list_handle.id &&
+                cached->second.list_revision == list_slot->revision &&
+                cached->second.compile_target.value == compile_target.value;
+            if (!cache_hit) {
+                nkui::RenderPlan custom_plan;
+                nkui::Compositor custom_compositor;
+                nkui::CompositorError compositor_error{};
+                if (!custom_compositor.compile(*list_slot->list, compile_target, custom_plan,
+                                               &compositor_error))
+                    return NKUI_ERROR_INVALID_TRANSACTION;
+                auto &entry = session_state->custom_plan_cache[node_id];
+                entry.list_handle = list_handle.id;
+                entry.list_revision = list_slot->revision;
+                entry.compile_target = compile_target;
+                entry.plan = std::move(custom_plan);
+                compiled_custom_nodes.push_back(node_id);
+            }
+            custom_plan_nodes.push_back(node_id);
+        }
+        custom_plan_storage.reserve(custom_plan_nodes.size());
+        for (const auto node_id : custom_plan_nodes) {
+            const auto cached = session_state->custom_plan_cache.find(node_id);
+            if (cached == session_state->custom_plan_cache.end())
                 return NKUI_ERROR_INVALID_TRANSACTION;
-            custom_plan_storage.emplace_back(node_id, std::move(custom_plan));
+            custom_plan_storage.emplace_back(node_id, &cached->second.plan);
         }
         custom_plans.reserve(custom_plan_storage.size());
         for (const auto &[node_id, custom_plan] : custom_plan_storage) {
-            custom_plans.emplace(node_id, &custom_plan);
+            custom_plans.emplace(node_id, custom_plan);
         }
         for (const auto &[node_id, list_handle] : session_state->custom_paint_composites) {
             auto *list_slot = resolve(list_handle);
@@ -3587,9 +3626,12 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
     auto &plan = session_state->frame.plan();
     add_effect_cache_pixel_scale(plan, frame_info->pixel_scale);
     accumulate_render_plan_stats(renderer_slot->stats, plan);
+    for (const auto node_id : compiled_custom_nodes) {
+        (void)node_id;
+        ++renderer_slot->stats.custom_paint_nodes;
+    }
     for (const auto &[node_id, custom_plan] : custom_plan_storage) {
         (void)custom_plan;
-        ++renderer_slot->stats.custom_paint_nodes;
         const auto found = session_state->custom_paints.find(node_id);
         if (found != session_state->custom_paints.end())
             if (auto *list_slot = resolve(found->second))
