@@ -13,8 +13,8 @@ The Haxe widgets own composition, state, focus, event handling, and semantics.
 Each frame follows the `UiContext.submit → native layout → render` path on both
 desktop and WebAssembly. Text & Input includes multilingual editing and sends
 selection, composition, and caret state to NativeKit's platform IME bridge.
-Scrolling & Data demonstrates a fixed-row `VirtualList` with 10,000 items and
-reports the visible row range.
+Scrolling & Data demonstrates a model-backed `ListView` with 10,000 items and
+reports the visible row range while materializing only the viewport window.
 
 The Graphics Lab page opens the existing typed-graphics scene. That scene keeps
 its vector paths, Bézier curves, stroke caps and joins, solid and linear

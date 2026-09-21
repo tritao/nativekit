@@ -41,8 +41,8 @@ class WidgetDocsRegistry {
 			};
 			case AccessibilityRole.List, AccessibilityRole.ListItem: {
 				description: "A list container or a realized item within a data-oriented view.",
-				behavior: "The virtual list builds only visible fixed-height rows plus a small overscan window.",
-				code: 'new VirtualList("rows", count, rowHeight, buildRow, style)'
+				behavior: "The model-backed list builds only visible rows plus a small overscan window, preserves stable item keys, and exposes collection semantics.",
+				code: 'new ListView("rows", model, style, controller, viewportHeight)'
 			};
 			case AccessibilityRole.Image: {
 				description: "A rendered image with an optional accessible name.",

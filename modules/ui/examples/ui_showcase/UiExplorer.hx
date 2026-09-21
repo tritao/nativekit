@@ -50,7 +50,7 @@ import nativekit.ui.widgets.TextField;
 import nativekit.ui.widgets.SizedBox;
 import nativekit.ui.core.TextStyleOverride;
 import TextWrap;
-import nativekit.ui.widgets.VirtualList;
+import nativekit.ui.widgets.ListView;
 import nativekit.ui.widgets.WindowChrome;
 import ExplorerCatalog;
 import pages.DecorationsPage;
@@ -107,7 +107,7 @@ class UiExplorer {
 	final onOpenGraphics:Void->Void;
 	final onOpenWindowDemo:Null<Void->Bool>;
 	final onThemeChanged:Null<Bool->Void>;
-	final virtualList:VirtualList;
+	final listView:ListView;
 	final tweenController:AnimationController;
 	final springController:SpringController;
 	final staticSubmitReuse:Bool;
@@ -162,7 +162,7 @@ class UiExplorer {
 		pixelScale = 1.0;
 		frame = new LayoutFrame(width, height);
 		frameInfo = new FrameInfo(width, height, framebufferWidth, framebufferHeight, pixelScale);
-		virtualList = ListsPage.createVirtualList(this);
+		listView = ListsPage.createListView(this);
 		tweenController = new AnimationController(context.animations, function(value) {
 			state.gestures.tweenValue = value;
 		});
