@@ -26,6 +26,19 @@ class UiDirtyFlag {
 		return result;
 	}
 
+	/** Expands source invalidations into the downstream work they require. */
+	public static function normalize(flags:Int):Int {
+		var result = flags;
+		if (contains(result, NeedsBuild))
+			result |= NeedsStyle | NeedsTextLayout | NeedsLayout | NeedsPaint |
+				NeedsComposite | NeedsSemantics | NeedsHitGeometry;
+		if (contains(result, NeedsTextLayout))
+			result |= NeedsLayout | NeedsPaint | NeedsHitGeometry;
+		if (contains(result, NeedsLayout))
+			result |= NeedsHitGeometry;
+		return result;
+	}
+
 	public static inline function contains(flags:Int, flag:Int):Bool
 		return (flags & flag) != 0;
 }

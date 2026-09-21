@@ -2153,6 +2153,25 @@ class FrameworkSmoke {
 			themedTextRoot.layout.paragraphStyle.direction != TextDirection.Ltr ||
 			themedTextRoot.layout.textColor != theme.body.color)
 			return 214;
+		var letterSpacingSheet = new StyleSheet("LetterSpacingInvalidation");
+		letterSpacingSheet.rule(StyleSelector.widget("text"), [StyleValue.letterSpacing(0.75)]);
+		context.setStyleSheet(letterSpacingSheet);
+		context.submit(new Text("Dirty propagation"), new LayoutFrame(256.0, 192.0));
+		var letterSpacingMetrics:Null<UiFrameMetrics> = context.frameMetrics;
+		if (letterSpacingMetrics == null || letterSpacingMetrics.textLayoutInvalidatedNodes <= 0 ||
+			letterSpacingMetrics.layoutInvalidatedNodes <= 0 ||
+			letterSpacingMetrics.paintInvalidatedNodes <= 0 ||
+			letterSpacingMetrics.hitGeometryInvalidatedNodes <= 0 ||
+			!UiDirtyFlag.contains(letterSpacingMetrics.styleInvalidationFlags,
+				UiDirtyFlag.NeedsTextLayout) ||
+			!UiDirtyFlag.contains(letterSpacingMetrics.styleInvalidationFlags,
+				UiDirtyFlag.NeedsLayout) ||
+			!UiDirtyFlag.contains(letterSpacingMetrics.styleInvalidationFlags,
+				UiDirtyFlag.NeedsPaint) ||
+			!UiDirtyFlag.contains(letterSpacingMetrics.styleInvalidationFlags,
+				UiDirtyFlag.NeedsHitGeometry))
+			return 225;
+		context.setStyleSheet(new StyleSheet("Application"));
 		var roleRoot = context.submit(new Column("text-roles", [
 			new KeyedView("body", new Text("Body")),
 			new KeyedView("heading", new Text("Heading", null, null, null, TextRole.Heading)),

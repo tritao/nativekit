@@ -486,6 +486,16 @@ class RenderNode {
 			focusable != previous.focusable || focusTrap != previous.focusTrap ||
 			tabIndex != previous.tabIndex)
 			invalidationFlags |= UiDirtyFlag.NeedsSemantics;
+		invalidationFlags = UiDirtyFlag.normalize(invalidationFlags);
+		if (UiDirtyFlag.contains(invalidationFlags, UiDirtyFlag.NeedsPaint) ||
+			UiDirtyFlag.contains(invalidationFlags, UiDirtyFlag.NeedsTextLayout))
+			contentChanged = true;
+		if (UiDirtyFlag.contains(invalidationFlags, UiDirtyFlag.NeedsLayout) ||
+			UiDirtyFlag.contains(invalidationFlags, UiDirtyFlag.NeedsTextLayout) ||
+			UiDirtyFlag.contains(invalidationFlags, UiDirtyFlag.NeedsHitGeometry))
+			geometryChanged = true;
+		if (UiDirtyFlag.contains(invalidationFlags, UiDirtyFlag.NeedsComposite))
+			compositeChanged = true;
 		if (contentChanged)
 			contentRevision++;
 		if (geometryChanged)

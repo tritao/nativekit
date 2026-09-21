@@ -93,7 +93,7 @@ class UiStyleInvalidationMetrics {
 					treeChanged = true;
 
 		if (treeChanged)
-			invalidationFlags |= UiDirtyFlag.NeedsBuild;
+			invalidationFlags = UiDirtyFlag.normalize(invalidationFlags | UiDirtyFlag.NeedsBuild);
 		var nativeWork = UiDirtyFlag.NeedsBuild | UiDirtyFlag.NeedsTextLayout |
 			UiDirtyFlag.NeedsLayout | UiDirtyFlag.NeedsPaint | UiDirtyFlag.NeedsHitGeometry;
 		var nativeLayoutRequired = (invalidationFlags & nativeWork) != 0;
