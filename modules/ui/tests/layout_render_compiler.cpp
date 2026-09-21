@@ -301,6 +301,55 @@ int main() {
     if (path_commands < 2 || text_commands != expected_text_commands)
         return 11;
 
+    // Prepared rectangle geometry is retained independently of compositing
+    // metadata: composite-only changes reuse it, while content and geometry
+    // revisions rebuild the affected preparation.
+    const auto before_reuse = compiler.stats();
+    LayoutRenderFrame cached_frame;
+    if (!compiler.compile(snapshot, main_target, 1.5f, cached_frame, &compile_error, false,
+                          engine.text_engine()))
+        return 12;
+    const auto after_reuse = compiler.stats();
+    if (after_reuse.prepared_path_cache_hits <= before_reuse.prepared_path_cache_hits ||
+        after_reuse.prepared_path_builds != before_reuse.prepared_path_builds)
+        return 12;
+
+    LayoutSnapshot composite_snapshot = snapshot;
+    for (auto &item : composite_snapshot.items)
+        ++item.composite_revision;
+    for (auto &primitive : composite_snapshot.primitives)
+        ++primitive.composite_revision;
+    LayoutRenderFrame composite_frame;
+    if (!compiler.compile(composite_snapshot, main_target, 1.5f, composite_frame, &compile_error,
+                          false, engine.text_engine()))
+        return 12;
+    const auto after_composite = compiler.stats();
+    if (after_composite.prepared_path_cache_hits <= after_reuse.prepared_path_cache_hits ||
+        after_composite.prepared_path_builds != after_reuse.prepared_path_builds)
+        return 12;
+
+    LayoutSnapshot content_snapshot = snapshot;
+    for (auto &primitive : content_snapshot.primitives)
+        ++primitive.content_revision;
+    LayoutRenderFrame content_frame;
+    if (!compiler.compile(content_snapshot, main_target, 1.5f, content_frame, &compile_error,
+                          false, engine.text_engine()))
+        return 12;
+    const auto after_content = compiler.stats();
+    if (after_content.prepared_path_cache_misses <= after_composite.prepared_path_cache_misses)
+        return 12;
+
+    LayoutSnapshot geometry_snapshot = snapshot;
+    for (auto &primitive : geometry_snapshot.primitives)
+        ++primitive.geometry_revision;
+    LayoutRenderFrame geometry_frame;
+    if (!compiler.compile(geometry_snapshot, main_target, 1.5f, geometry_frame, &compile_error,
+                          false, engine.text_engine()))
+        return 12;
+    const auto after_geometry = compiler.stats();
+    if (after_geometry.prepared_path_cache_misses <= after_content.prepared_path_cache_misses)
+        return 12;
+
     // RTL lines keep a non-zero horizontal line origin in Skribidi. Verify
     // that the compiled glyphs retain it, so they remain aligned with the
     // selection rectangles painted in the text item's coordinate space.

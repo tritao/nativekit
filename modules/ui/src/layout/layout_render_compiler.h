@@ -82,6 +82,12 @@ class LayoutRenderCompiler {
     using CustomPaintComposites = std::unordered_map<uint32_t, const DisplayList *>;
     using RasterPaintNodes = std::unordered_set<uint32_t>;
 
+    struct CompileStats {
+        uint64_t prepared_path_cache_hits = 0;
+        uint64_t prepared_path_cache_misses = 0;
+        uint64_t prepared_path_builds = 0;
+    };
+
     LayoutRenderCompiler();
     void set_font_collection(std::shared_ptr<FontCollection> fonts);
     bool add_font(const char *path, FontFamily family = FontFamily::Default);
@@ -96,8 +102,12 @@ class LayoutRenderCompiler {
                  const RasterPaintNodes *raster_paint_nodes = nullptr,
                  const CustomPaintComposites *custom_composites = nullptr) const;
 
+    const CompileStats &stats() const { return stats_; }
+
   private:
     std::shared_ptr<FontCollection> fonts_;
+    mutable std::unordered_map<uint64_t, std::shared_ptr<PreparedPath>> prepared_path_cache_;
+    mutable CompileStats stats_;
 };
 
 } // namespace nkui

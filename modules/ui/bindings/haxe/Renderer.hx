@@ -50,7 +50,9 @@ class Renderer {
 		var stats = result.out_stats;
 		return new RendererStats(stats.get_path_preparations(), stats.get_path_cache_hits(), stats.get_path_cache_misses(),
 			stats.get_path_vertices_generated(), stats.get_path_geometry_bytes_allocated(), stats.get_path_tessellation_nanoseconds(),
-			stats.get_path_geometry_bytes_retained(), stats.get_raster_cache_hits(), stats.get_raster_cache_misses(),
+			stats.get_path_geometry_bytes_retained(), stats.get_layout_path_cache_hits(),
+			stats.get_layout_path_cache_misses(), stats.get_layout_path_preparations(),
+			stats.get_raster_cache_hits(), stats.get_raster_cache_misses(),
 			stats.get_raster_cache_entries(), stats.get_raster_cache_bytes());
 	}
 
@@ -87,6 +89,9 @@ class RendererStats {
 	public final pathGeometryBytesAllocated:haxe.Int64;
 	public final pathTessellationNanoseconds:haxe.Int64;
 	public final pathGeometryBytesRetained:haxe.Int64;
+	public final layoutPathCacheHits:haxe.Int64;
+	public final layoutPathCacheMisses:haxe.Int64;
+	public final layoutPathPreparations:haxe.Int64;
 	public final rasterCacheHits:haxe.Int64;
 	public final rasterCacheMisses:haxe.Int64;
 	public final rasterCacheEntries:haxe.Int64;
@@ -94,6 +99,7 @@ class RendererStats {
 
 	public function new(pathPreparations:haxe.Int64, pathCacheHits:haxe.Int64, pathCacheMisses:haxe.Int64, pathVerticesGenerated:haxe.Int64,
 		pathGeometryBytesAllocated:haxe.Int64, pathTessellationNanoseconds:haxe.Int64, pathGeometryBytesRetained:haxe.Int64,
+		layoutPathCacheHits:haxe.Int64, layoutPathCacheMisses:haxe.Int64, layoutPathPreparations:haxe.Int64,
 		rasterCacheHits:haxe.Int64, rasterCacheMisses:haxe.Int64, rasterCacheEntries:haxe.Int64,
 		rasterCacheBytes:haxe.Int64) {
 		this.pathPreparations = pathPreparations;
@@ -103,6 +109,9 @@ class RendererStats {
 		this.pathGeometryBytesAllocated = pathGeometryBytesAllocated;
 		this.pathTessellationNanoseconds = pathTessellationNanoseconds;
 		this.pathGeometryBytesRetained = pathGeometryBytesRetained;
+		this.layoutPathCacheHits = layoutPathCacheHits;
+		this.layoutPathCacheMisses = layoutPathCacheMisses;
+		this.layoutPathPreparations = layoutPathPreparations;
 		this.rasterCacheHits = rasterCacheHits;
 		this.rasterCacheMisses = rasterCacheMisses;
 		this.rasterCacheEntries = rasterCacheEntries;

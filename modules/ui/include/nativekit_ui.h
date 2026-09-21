@@ -252,6 +252,12 @@ typedef struct nkui_renderer_stats {
     uint64_t render_submission_execution_ns;
     /** Cumulative time from frame acquisition until platform frame close, in nanoseconds. */
     uint64_t render_submission_acquire_to_present_ns;
+    /** Layout rectangle preparations reused from the retained compiler cache. */
+    uint64_t layout_path_cache_hits;
+    /** Layout rectangle preparations rejected by the retained compiler cache. */
+    uint64_t layout_path_cache_misses;
+    /** Layout rectangle geometries actually tessellated by the layout compiler. */
+    uint64_t layout_path_preparations;
 } nkui_renderer_stats;
 
 /** 16-bit opcode identifying one display-list command record. */

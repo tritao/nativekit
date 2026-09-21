@@ -3613,11 +3613,21 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
                 raster_paint_nodes.insert(node_id);
     }
     nkui::LayoutRenderCompileError compile_error{};
+    const auto compiler_stats_before = session_state->compiler.stats();
     if (!session_state->compiler.compile(
             session_state->snapshot, compile_target, frame_info->pixel_scale, session_state->frame,
             &compile_error, load_existing != 0, session_state->engine->text_engine(), &custom_plans,
             &raster_paint_nodes, &custom_composites))
         return NKUI_ERROR_INVALID_TRANSACTION;
+    const auto compiler_stats_after = session_state->compiler.stats();
+    renderer_slot->stats.layout_path_cache_hits +=
+        compiler_stats_after.prepared_path_cache_hits -
+        compiler_stats_before.prepared_path_cache_hits;
+    renderer_slot->stats.layout_path_cache_misses +=
+        compiler_stats_after.prepared_path_cache_misses -
+        compiler_stats_before.prepared_path_cache_misses;
+    renderer_slot->stats.layout_path_preparations +=
+        compiler_stats_after.prepared_path_builds - compiler_stats_before.prepared_path_builds;
 
     if (has_backdrop)
         append_backdrop_window_composite(session_state->frame.plan(), compile_target, main_target,

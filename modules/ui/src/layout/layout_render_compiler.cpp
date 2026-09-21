@@ -182,6 +182,14 @@ uint64_t primitive_content_generation(const LayoutPrimitive &primitive,
     return hash ? hash : 1;
 }
 
+uint64_t prepared_path_cache_key(uint64_t content_generation, uint32_t geometry_revision,
+                                 float pixel_scale) {
+    uint64_t hash = content_generation;
+    hash_u32(hash, geometry_revision);
+    hash_float(hash, pixel_scale);
+    return hash ? hash : 1;
+}
+
 std::array<float, 6> device_transform(const LayoutTransform &transform, float pixel_scale) {
     return {transform.a * pixel_scale, transform.b * pixel_scale,  transform.c * pixel_scale,
             transform.d * pixel_scale, transform.tx * pixel_scale, transform.ty * pixel_scale};
@@ -778,34 +786,48 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                 }
                 if (transient_slot > kMaxTransientSlot)
                     return fail(error, index, "layout render resource limit exceeded");
-                auto prepared = std::make_shared<PreparedPath>();
-                NanoVGPath path;
-                append_rounded_rect(path, primitive.bounds, primitive);
-                PathPreparationParams params;
-                params.device_pixel_ratio = pixel_scale;
                 const LayoutTransform draw_transform = draw_transform_for(primitive);
-                params.transform = device_transform(draw_transform, pixel_scale);
-                PreparedGeometry geometry;
-                if (!path.valid() || !prepared || !prepare_fill(path, params, geometry) ||
-                    !prepared->set(PreparedPathKind::Fill, geometry, solid_paint(primitive.color)))
-                    return fail(error, index, "layout rectangle preparation failed");
-                const ResourceId id = make_resource_id(ResourceKind::Path, kTransientGeneration,
-                                                       static_cast<uint16_t>(transient_slot++));
                 auto generation_primitive = primitive;
                 generation_primitive.transform = draw_transform;
                 const uint64_t content_generation =
                     primitive_content_generation(generation_primitive);
+                const uint64_t cache_key = prepared_path_cache_key(
+                    content_generation, primitive.geometry_revision, pixel_scale);
+                std::shared_ptr<PreparedPath> prepared;
+                const auto cached = prepared_path_cache_.find(cache_key);
+                if (cached != prepared_path_cache_.end()) {
+                    prepared = cached->second;
+                    ++stats_.prepared_path_cache_hits;
+                } else {
+                    ++stats_.prepared_path_cache_misses;
+                    if (prepared_path_cache_.size() >= 512)
+                        prepared_path_cache_.clear();
+                    prepared = std::make_shared<PreparedPath>();
+                    NanoVGPath path;
+                    append_rounded_rect(path, primitive.bounds, primitive);
+                    PathPreparationParams params;
+                    params.device_pixel_ratio = pixel_scale;
+                    params.transform = device_transform(draw_transform, pixel_scale);
+                    PreparedGeometry geometry;
+                    if (!path.valid() || !prepared || !prepare_fill(path, params, geometry) ||
+                        !prepared->set(PreparedPathKind::Fill, geometry,
+                                       solid_paint(primitive.color)))
+                        return fail(error, index, "layout rectangle preparation failed");
+                    prepared_path_cache_.emplace(cache_key, prepared);
+                    ++stats_.prepared_path_builds;
+                }
+                const ResourceId id = make_resource_id(ResourceKind::Path, kTransientGeneration,
+                                                       static_cast<uint16_t>(transient_slot++));
                 if (!out.resources_.bind_path(id, *prepared, 0, content_generation))
                     return fail(error, index, "layout path resource binding failed");
-                out.paths_.push_back(std::move(prepared));
-                if (!out.owned_resources_.bind_path(id, out.paths_.back(), 0, content_generation))
+                out.paths_.push_back(prepared);
+                if (!out.owned_resources_.bind_path(id, prepared, 0, content_generation))
                     out.sealable_ = false;
                 RenderCommand command{RenderCommandKind::Path, id};
                 command.content_generation = content_generation;
                 if (!clips.empty())
                     set_scissor(command, clip_for(clips.back()), pixel_scale);
                 out.plan_.passes[current_main_pass].commands.push_back(std::move(command));
-                out.paths_.push_back(std::move(prepared));
                 if (!append_custom_for_primitive(index))
                     return false;
                 close_raster_if_last(index);

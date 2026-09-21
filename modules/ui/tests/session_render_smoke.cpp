@@ -271,7 +271,8 @@ int main() {
         } else if (nkui_renderer_get_stats(renderer, &root_cache_first) != NKUI_OK ||
                    root_cache_first.raster_cache_misses == 0 ||
                    root_cache_first.raster_cache_entries == 0 ||
-                   root_cache_first.raster_cache_bytes == 0) {
+                   root_cache_first.raster_cache_bytes == 0 ||
+                   root_cache_first.layout_path_cache_misses == 0) {
             std::fprintf(stderr, "initial raster cache render did not populate a cache entry\n");
             result = 14;
         }
@@ -294,6 +295,11 @@ int main() {
                          static_cast<unsigned long long>(root_cache_first.raster_cache_hits),
                          static_cast<unsigned long long>(root_cache_repeated.raster_cache_hits));
             result = 17;
+        }
+        if (!result && root_cache_repeated.layout_path_cache_hits <
+                           root_cache_first.layout_path_cache_hits + repeated_frames) {
+            std::fprintf(stderr, "repeated layout renders did not reuse prepared paths\n");
+            result = 37;
         }
         if (!result) {
             const auto elapsed_ns =
