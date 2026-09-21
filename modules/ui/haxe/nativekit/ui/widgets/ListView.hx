@@ -19,7 +19,11 @@ import nativekit.ui.semantics.AccessibilityRole;
 import nativekit.ui.semantics.AccessibilityState;
 import nativekit.ui.semantics.Semantics;
 
-/** Model-backed variable-extent list that materializes only its viewport window. */
+/**
+ * Model-backed variable-extent list that materializes only its viewport
+ * window. Unmeasured rows use the model estimate until they enter that
+ * window, so variable-height scroll positions can converge as rows are seen.
+ */
 class ListView implements View {
 	public final key:String;
 	public final model:ListViewModel;

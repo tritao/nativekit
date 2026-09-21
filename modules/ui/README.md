@@ -105,7 +105,7 @@ showcase and framework tests live under `modules/ui/examples/ui_haxeon` and
 `modules/ui/tests/haxeon`; generated bindings are checked with
 `modules/ui/tools/check-hxi.sh`.
 
-The fixed-row virtualization path can be measured independently with:
+The virtualization paths can be measured independently with:
 
 ```sh
 HAXEON_DIR=/path/to/realtime-haxe \
@@ -113,15 +113,31 @@ NATIVEKIT_BUILD_DIR=/path/to/build-ui \
 modules/ui/tools/benchmark-haxeon-virtual-list.sh
 ```
 
-This runs 10,000- and 100,000-item lists, reports the built row/node window
-and submit time, and fails if the logical item count increases the materialized
-viewport beyond its overscan bound.
+This runs 10,000- and 100,000-item fixed, model-backed, and tree collections,
+reports the built row/node window, model extent/child calls, and submit time,
+and fails if the logical item count increases the materialized viewport beyond
+its overscan bound.
 
 `VirtualViewport` contains the fixed-extent range math used by `VirtualList`;
 `VirtualGrid` composes it on both axes, so table and grid widgets can reuse the
 same windowing primitive without duplicating scroll-boundary behavior.
 `TableView` adds fixed-width `TableColumn` metadata, sticky headers, row
 selection, and accessible grid/row/cell semantics on top of that body.
+
+Model-backed `ListView` and `TreeView` use an estimated extent for items that
+have not entered the materialization window. Models must provide a positive
+`estimatedExtent()` and report `extentIsUniform()` when that estimate is exact
+for every item; uniform models skip extent callbacks entirely. Model revisions
+must still change whenever keys, structure, content, or extents change.
+
+This lazy path is safe for fixed-height models and for variable-height models
+whose estimates are acceptable during convergence. Until an unmeasured
+variable-height region is visited, `maxScrollY` and `scrollTo` can be
+approximate, and measuring rows above the viewport can move the visual anchor.
+TreeView also indexes collapsed branches lazily, but its initial setup still
+queries root keys and default-expansion state across the root set. Anchor
+preservation for corrected extents and a bulk root-metadata path are planned
+follow-ups rather than prerequisites for using the current implementation.
 
 For a static or mostly static Haxe tree, `UiContext.submitCached(build, frame,
 cacheKey)` can reuse the previously submitted tree and layout. Reuse is

@@ -10,7 +10,8 @@ import nativekit.ui.core.View;
  * content change. `extentRevisionAt` must change whenever `extentAt` can
  * return a different value for that item. `estimatedExtent` is used for
  * unmeasured items; declare `extentIsUniform` when it is exact for every item
- * so the list can skip all extent callbacks.
+ * so the list can skip all extent callbacks. Variable-height models should
+ * expect scroll range and anchor corrections to converge as rows are seen.
  */
 interface ListViewModel {
 	function count():Int;
