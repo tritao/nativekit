@@ -19,7 +19,7 @@ jobs:
       - name: Configure GTK offscreen render executor
         run: >-
           cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=Debug
-          -DNK_BUILD_SHARED=OFF -DNK_BUILD_EXAMPLES=OFF -DNK_BUILD_TESTS=ON
+          -DNK_BUILD_SHARED=OFF -DNK_BUILD_EXAMPLES=ON -DNK_BUILD_TESTS=ON
           -DNK_BUILD_GPU=ON -DNK_BUILD_UI=ON -DNK_ENABLE_NO_EXCEPTIONS=ON
           -DNK_GTK_THREADED_RENDER=ON
       - name: Build GTK threaded-render tests
@@ -27,10 +27,11 @@ jobs:
           cmake --build build --target nativekit_gtk_threaded_target
           nativekit_gtk_surface_frame nativekit_gtk_surface_request_frame
           nativekit_gtk_surface_frame_transaction nativekit_ui_backend_smoke_test
+          nativekit_ui_showcase_surface_smoke_test
       - name: Run GTK offscreen target and lifecycle tests
         run: >-
           ctest --test-dir build --output-on-failure --timeout 120
-          -R '^(gtk_threaded_target|gtk_surface_frame|gtk_surface_request_frame|gtk_surface_frame_transaction|nativekit_ui_backend_smoke)$'
+          -R '^(gtk_threaded_target|gtk_surface_frame|gtk_surface_request_frame|gtk_surface_frame_transaction|nativekit_ui_backend_smoke|nativekit_ui_showcase_surface_smoke)$'
 
   linux-contract:
     runs-on: ubuntu-latest
