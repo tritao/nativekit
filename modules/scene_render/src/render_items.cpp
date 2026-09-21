@@ -3,7 +3,6 @@
 #include <array>
 #include <cmath>
 #include <functional>
-#include <unordered_map>
 #include <unordered_set>
 
 namespace nkscene::render_internal {
@@ -161,13 +160,9 @@ EffectiveState effective_state(const SceneSnapshot &snapshot, const SceneView &v
     result.visible.reserve(occurrences.size());
     result.material.reserve(occurrences.size());
 
-    std::unordered_map<OccurrenceId, std::vector<OccurrenceId>> children;
-    children.reserve(occurrences.size());
     for (const auto &occurrence : occurrences) {
         result.in_view.emplace(occurrence.occurrence, false);
         result.material.emplace(occurrence.occurrence, occurrence.material);
-        if (occurrence.parent.valid())
-            children[occurrence.parent].push_back(occurrence.occurrence);
     }
 
     std::unordered_map<OccurrenceId, bool> visibility_overrides;
@@ -208,10 +203,8 @@ EffectiveState effective_state(const SceneSnapshot &snapshot, const SceneView &v
             const auto parent = snapshot.find(current)->parent;
             if (parent.valid())
                 pending.push_back(parent);
-            const auto child_found = children.find(current);
-            if (child_found != children.end())
-                for (const auto child : child_found->second)
-                    pending.push_back(child);
+            for (const auto child : snapshot.children(current))
+                pending.push_back(child);
         }
     }
     const bool isolation_active =
@@ -262,10 +255,7 @@ EffectiveState effective_state(const SceneSnapshot &snapshot, const SceneView &v
             result.in_view[start] = true;
             result.visible[start] = visible;
         }
-        const auto child_found = children.find(start);
-        if (child_found == children.end())
-            return;
-        for (const auto child : child_found->second)
+        for (const auto child : snapshot.children(start))
             self(child, visible, selected, self);
     };
 
@@ -366,6 +356,8 @@ void build_items(RenderPlan &plan, const SceneSnapshot &snapshot, const SceneVie
     const auto camera = camera_for_snapshot(snapshot, view);
     plan.items_.clear();
     plan.transforms_.clear();
+    plan.item_by_occurrence_.clear();
+    plan.items_by_source_.clear();
     plan.visible_items_ = 0;
     plan.culled_items_ = 0;
     plan.view_projection_ = camera.view_projection;
@@ -395,16 +387,11 @@ void build_items(RenderPlan &plan, const SceneSnapshot &snapshot, const SceneVie
         } else if (state.visible.at(occurrence.occurrence)) {
             ++plan.visible_items_;
         }
+        const auto item_index = plan.items_.size();
         plan.items_.push_back(item);
+        plan.item_by_occurrence_.emplace(item.occurrence, item_index);
+        plan.items_by_source_[occurrence.source].push_back(item_index);
     }
-}
-
-std::unordered_map<OccurrenceId, std::size_t> item_indices(const RenderPlan &plan) {
-    std::unordered_map<OccurrenceId, std::size_t> result;
-    result.reserve(plan.items_.size());
-    for (std::size_t index = 0; index < plan.items_.size(); ++index)
-        result.emplace(plan.items_[index].occurrence, index);
-    return result;
 }
 
 } // namespace nkscene::render_internal

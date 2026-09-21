@@ -355,6 +355,9 @@ void scene_view_source_filters_are_incremental() {
     const auto snapshot = scene->snapshot();
     nkscene::SceneView base_view;
     auto plan = nkscene::compile(snapshot, base_view);
+    assert(plan.item_index(first) != static_cast<std::size_t>(-1));
+    assert(plan.items_for_source(nkscene::EntityId{42}).size() == 1);
+    assert(plan.items_for_source(nkscene::EntityId{84}).size() == 1);
     nkscene::SceneView source_view = base_view;
     source_view.filter.source_visibility_overrides.push_back(
         {nkscene::EntityId{84}, false});
@@ -744,6 +747,7 @@ int main() {
     const auto compile_count = plan.compile_count();
     const auto first = occurrences.front();
     const auto first_item = plan.items().front();
+    assert(plan.item_index(first) == 0);
     assert(plan.transforms()[first_item.transformIndex].transform.matrix[12] == 0.0f);
 
     Transaction move(scene);

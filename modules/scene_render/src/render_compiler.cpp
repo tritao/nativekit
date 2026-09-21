@@ -113,14 +113,13 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
     for (const auto &resource : snapshot.materials())
         plan.material_revisions_.emplace(resource.id, resource.revision);
 
-    const auto indices = render_internal::item_indices(plan);
     bool batches_dirty = false;
     for (const auto &change : changes.changes) {
-        const auto item_found = indices.find(change.occurrence);
+        const auto item_index = plan.item_index(change.occurrence);
         const auto *snapshot_occurrence = snapshot.find(change.occurrence);
-        if (item_found == indices.end() || !snapshot_occurrence)
+        if (item_index == static_cast<std::size_t>(-1) || !snapshot_occurrence)
             continue;
-        auto &item = plan.items_[item_found->second];
+        auto &item = plan.items_[item_index];
         if (has_domain(change.domains, ChangeDomain::Transform) ||
             has_domain(change.domains, ChangeDomain::Hierarchy)) {
             plan.transforms_[item.transformIndex] = snapshot_occurrence->world_transform;

@@ -246,7 +246,6 @@ class RenderPlan;
 namespace render_internal {
 void rebuild_batches(RenderPlan &plan);
 void build_items(RenderPlan &plan, const SceneSnapshot &snapshot, const SceneView &view);
-std::unordered_map<OccurrenceId, std::size_t> item_indices(const RenderPlan &plan);
 } // namespace render_internal
 
 struct VisibilityOverride {
@@ -559,6 +558,16 @@ class RenderPlan {
     std::span<const RenderItem> items() const noexcept { return items_; }
     std::span<const WorldTransform> transforms() const noexcept { return transforms_; }
     std::span<const InstanceBatch> batches() const noexcept { return batches_; }
+    std::size_t item_index(OccurrenceId occurrence) const noexcept {
+        const auto found = item_by_occurrence_.find(occurrence);
+        return found == item_by_occurrence_.end() ? invalid_item_index : found->second;
+    }
+    std::span<const std::size_t> items_for_source(EntityId source) const noexcept {
+        const auto found = items_by_source_.find(source);
+        return found == items_by_source_.end()
+                   ? std::span<const std::size_t>{}
+                   : std::span<const std::size_t>{found->second};
+    }
     std::size_t compile_count() const noexcept { return compile_count_; }
     std::size_t visible_items() const noexcept { return visible_items_; }
     std::size_t culled_items() const noexcept { return culled_items_; }
@@ -568,11 +577,16 @@ class RenderPlan {
     }
 
   private:
+    static constexpr std::size_t invalid_item_index = static_cast<std::size_t>(-1);
     std::uint64_t source_revision_ = 0;
     std::uint64_t view_signature_ = 0;
     std::vector<RenderItem> items_;
     std::vector<WorldTransform> transforms_;
     std::vector<InstanceBatch> batches_;
+    std::unordered_map<OccurrenceId, std::size_t> item_by_occurrence_;
+    std::unordered_map<EntityId, std::vector<std::size_t>> items_by_source_;
+    std::unordered_map<GeometryId, std::vector<std::size_t>> batches_by_geometry_;
+    std::unordered_map<MaterialId, std::vector<std::size_t>> batches_by_material_;
     std::unordered_map<GeometryId, std::uint64_t> geometry_revisions_;
     std::unordered_map<MaterialId, std::uint64_t> material_revisions_;
     OccurrenceId view_root_;
@@ -593,8 +607,6 @@ class RenderPlan {
     friend void render_internal::rebuild_batches(RenderPlan &plan);
     friend void render_internal::build_items(RenderPlan &plan, const SceneSnapshot &snapshot,
                                              const SceneView &view);
-    friend std::unordered_map<OccurrenceId, std::size_t>
-    render_internal::item_indices(const RenderPlan &plan);
 };
 
 NKSRENDER_API RenderPlan compile(const SceneSnapshot &snapshot, const SceneView &view);
