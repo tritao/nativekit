@@ -257,6 +257,233 @@ struct WebShowcase {
     int framebuffer_height = 0;
     int result = 0;
 
+#if defined(__EMSCRIPTEN__)
+    bool web_readback_equals(nkgpu_renderer gpu, nkgpu_image image, uint32_t mip_level,
+                             uint32_t width, uint32_t height,
+                             const std::vector<uint8_t> &expected) {
+        nkgpu_image_readback_desc desc{};
+        desc.struct_size = sizeof(desc);
+        desc.image = image;
+        desc.mip_level = mip_level;
+        desc.width = width;
+        desc.height = height;
+        nkgpu_readback request{};
+        if (nkgpu_readback_begin_image(gpu, &desc, &request) != NKGPU_OK)
+            return false;
+        nkgpu_readback_info info{};
+        info.struct_size = sizeof(info);
+        bool success = false;
+        for (int poll = 0; poll != 1000; ++poll) {
+            if (nkgpu_readback_query(gpu, request, &info) != NKGPU_OK)
+                break;
+            if (info.state != NKGPU_READBACK_PENDING)
+                break;
+        }
+        std::vector<uint8_t> actual(expected.size());
+        uint32_t size = 0;
+        if (info.state == NKGPU_READBACK_READY && info.size == expected.size() &&
+            nkgpu_readback_read(gpu, request, actual.data(), static_cast<uint32_t>(actual.size()),
+                                &size) == NKGPU_OK) {
+            success = size == expected.size() && actual == expected;
+        }
+        nkgpu_readback_destroy(gpu, request);
+        return success;
+    }
+
+    bool web_buffer_readback_equals(nkgpu_renderer gpu, nkgpu_buffer buffer,
+                                    const std::vector<uint8_t> &expected) {
+        nkgpu_buffer_readback_desc desc{};
+        desc.struct_size = sizeof(desc);
+        desc.buffer = buffer;
+        desc.size = static_cast<uint32_t>(expected.size());
+        nkgpu_readback request{};
+        if (nkgpu_readback_begin_buffer(gpu, &desc, &request) != NKGPU_OK)
+            return false;
+        nkgpu_readback_info info{};
+        info.struct_size = sizeof(info);
+        bool success = false;
+        for (int poll = 0; poll != 1000; ++poll) {
+            if (nkgpu_readback_query(gpu, request, &info) != NKGPU_OK)
+                break;
+            if (info.state != NKGPU_READBACK_PENDING)
+                break;
+        }
+        std::vector<uint8_t> actual(expected.size());
+        uint32_t size = 0;
+        if (info.state == NKGPU_READBACK_READY && info.size == expected.size() &&
+            nkgpu_readback_read(gpu, request, actual.data(), static_cast<uint32_t>(actual.size()),
+                                &size) == NKGPU_OK) {
+            success = size == expected.size() && actual == expected;
+        }
+        nkgpu_readback_destroy(gpu, request);
+        return success;
+    }
+
+    bool web_format_transfer_smoke(nkgpu_renderer gpu, const nkgpu_features &features,
+                                   nkgpu_image_format format,
+                                   const std::vector<uint8_t> &expected) {
+        nkgpu_image_format_support support{};
+        support.struct_size = sizeof(support);
+        if (nkgpu_query_image_format_support(gpu, format, &support) != NKGPU_OK)
+            return false;
+        if (!support.sampled || !support.copy || !support.readback)
+            return true;
+
+        nkgpu_image_desc desc{};
+        desc.struct_size = sizeof(desc);
+        desc.width = 2;
+        desc.height = 2;
+        desc.format = format;
+        desc.usage = NKGPU_IMAGE_SAMPLED;
+        desc.data = expected.data();
+        desc.data_size = static_cast<uint32_t>(expected.size());
+        nkgpu_image source{};
+        nkgpu_image destination{};
+        bool success = nkgpu_image_create_desc(gpu, &desc, &source) == NKGPU_OK;
+        if (success)
+            success = nkgpu_image_create_desc(gpu, &desc, &destination) == NKGPU_OK;
+        if (success) {
+            nkgpu_image_copy_desc copy{};
+            copy.struct_size = sizeof(copy);
+            copy.source = source;
+            copy.destination = destination;
+            copy.width = 2;
+            copy.height = 2;
+            success = nkgpu_image_copy(gpu, &copy) == NKGPU_OK;
+        }
+        if (success)
+            success = web_readback_equals(gpu, destination, 0, 2, 2, expected);
+
+        if (success && features.image_to_buffer) {
+            nkgpu_buffer_desc buffer_desc{};
+            buffer_desc.struct_size = sizeof(buffer_desc);
+            buffer_desc.size = static_cast<uint32_t>(expected.size());
+            buffer_desc.usage = NKGPU_BUFFER_TRANSFER;
+            nkgpu_buffer buffer{};
+            success = nkgpu_buffer_create_desc(gpu, &buffer_desc, &buffer) == NKGPU_OK;
+            if (success) {
+                nkgpu_buffer_image_copy_desc copy{};
+                copy.struct_size = sizeof(copy);
+                copy.buffer = buffer;
+                copy.image = destination;
+                copy.width = 2;
+                copy.height = 2;
+                success = nkgpu_image_to_buffer(gpu, &copy) == NKGPU_OK;
+            }
+            if (success && features.buffer_readback)
+                success = web_buffer_readback_equals(gpu, buffer, expected);
+            if (buffer.id)
+                nkgpu_buffer_destroy(gpu, buffer);
+        }
+        if (destination.id)
+            nkgpu_image_destroy(gpu, destination);
+        if (source.id)
+            nkgpu_image_destroy(gpu, source);
+        return success;
+    }
+
+    bool web_mip_readback_smoke(nkgpu_renderer gpu, const nkgpu_features &features) {
+        nkgpu_image_format_support support{};
+        support.struct_size = sizeof(support);
+        if (nkgpu_query_image_format_support(gpu, NKGPU_IMAGEFORMAT_R32F, &support) != NKGPU_OK)
+            return false;
+        if (!support.sampled || !support.copy || !support.readback)
+            return true;
+
+        std::vector<uint8_t> data(4 * 4 * sizeof(float) + 2 * 2 * sizeof(float));
+        float mip_zero[16] = {0.0f, 0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f,
+                              0.8f, 0.9f, 1.0f, 1.1f, 1.2f, 1.3f, 1.4f, 1.5f};
+        float mip_one[4] = {2.0f, 2.1f, 2.2f, 2.3f};
+        std::memcpy(data.data(), mip_zero, sizeof(mip_zero));
+        std::memcpy(data.data() + sizeof(mip_zero), mip_one, sizeof(mip_one));
+        const std::vector<uint8_t> expected_mip_one(data.begin() + sizeof(mip_zero), data.end());
+
+        nkgpu_image_desc desc{};
+        desc.struct_size = sizeof(desc);
+        desc.width = 4;
+        desc.height = 4;
+        desc.format = NKGPU_IMAGEFORMAT_R32F;
+        desc.usage = NKGPU_IMAGE_SAMPLED;
+        desc.mip_count = 2;
+        desc.data = data.data();
+        desc.data_size = static_cast<uint32_t>(data.size());
+        nkgpu_image source{};
+        nkgpu_image destination{};
+        bool success = nkgpu_image_create_desc(gpu, &desc, &source) == NKGPU_OK;
+        if (success)
+            success = nkgpu_image_create_desc(gpu, &desc, &destination) == NKGPU_OK;
+        if (success) {
+            nkgpu_image_copy_desc copy{};
+            copy.struct_size = sizeof(copy);
+            copy.source = source;
+            copy.source_mip = 1;
+            copy.destination = destination;
+            copy.destination_mip = 1;
+            copy.width = 2;
+            copy.height = 2;
+            success = nkgpu_image_copy(gpu, &copy) == NKGPU_OK;
+        }
+        if (success)
+            success = web_readback_equals(gpu, destination, 1, 2, 2, expected_mip_one);
+        if (success && features.image_to_buffer) {
+            nkgpu_buffer_desc buffer_desc{};
+            buffer_desc.struct_size = sizeof(buffer_desc);
+            buffer_desc.size = static_cast<uint32_t>(expected_mip_one.size());
+            buffer_desc.usage = NKGPU_BUFFER_TRANSFER;
+            nkgpu_buffer buffer{};
+            success = nkgpu_buffer_create_desc(gpu, &buffer_desc, &buffer) == NKGPU_OK;
+            if (success) {
+                nkgpu_buffer_image_copy_desc copy{};
+                copy.struct_size = sizeof(copy);
+                copy.buffer = buffer;
+                copy.image = destination;
+                copy.mip_level = 1;
+                copy.width = 2;
+                copy.height = 2;
+                success = nkgpu_image_to_buffer(gpu, &copy) == NKGPU_OK;
+            }
+            if (success && features.buffer_readback)
+                success = web_buffer_readback_equals(gpu, buffer, expected_mip_one);
+            if (buffer.id)
+                nkgpu_buffer_destroy(gpu, buffer);
+        }
+        if (destination.id)
+            nkgpu_image_destroy(gpu, destination);
+        if (source.id)
+            nkgpu_image_destroy(gpu, source);
+        return success;
+    }
+
+    bool web_depth_stencil_capability_smoke(nkgpu_renderer gpu) {
+        nkgpu_image_format_support support{};
+        support.struct_size = sizeof(support);
+        if (nkgpu_query_image_format_support(gpu, NKGPU_IMAGEFORMAT_DEPTH24_STENCIL8,
+                                             &support) != NKGPU_OK || support.readback)
+            return false;
+        nkgpu_image_desc desc{};
+        desc.struct_size = sizeof(desc);
+        desc.width = 1;
+        desc.height = 1;
+        desc.format = NKGPU_IMAGEFORMAT_DEPTH24_STENCIL8;
+        desc.usage = NKGPU_IMAGE_SAMPLED | NKGPU_IMAGE_DEPTH_STENCIL;
+        nkgpu_image image{};
+        if (nkgpu_image_create_desc(gpu, &desc, &image) != NKGPU_OK)
+            return true;
+        nkgpu_image_readback_desc readback_desc{};
+        readback_desc.struct_size = sizeof(readback_desc);
+        readback_desc.image = image;
+        readback_desc.width = 1;
+        readback_desc.height = 1;
+        nkgpu_readback request{};
+        const bool unsupported = nkgpu_readback_begin_image(gpu, &readback_desc, &request) ==
+                                 NKGPU_ERROR_UNSUPPORTED;
+        if (request.id)
+            nkgpu_readback_destroy(gpu, request);
+        nkgpu_image_destroy(gpu, image);
+        return unsupported;
+    }
+#endif
+
     bool gpu_offscreen_smoke() {
         nkgpu_renderer gpu{};
         if (nkgpu_renderer_create(surface, &gpu) != NKGPU_OK)
@@ -499,6 +726,30 @@ struct WebShowcase {
             if (!success)
                 break;
         }
+
+#if defined(__EMSCRIPTEN__)
+        if (success) {
+            const std::vector<uint8_t> rgba16f = {
+                0x00, 0x3c, 0x00, 0x38, 0x00, 0x34, 0x00, 0x3c,
+                0x00, 0x3c, 0x00, 0x38, 0x00, 0x34, 0x00, 0x3c,
+                0x00, 0x3c, 0x00, 0x38, 0x00, 0x34, 0x00, 0x3c,
+                0x00, 0x3c, 0x00, 0x38, 0x00, 0x34, 0x00, 0x3c,
+            };
+            const std::vector<uint8_t> r32f = {
+                0x00, 0x00, 0x80, 0x3e, 0x00, 0x00, 0x00, 0x3f,
+                0x00, 0x00, 0x40, 0x3f, 0x00, 0x00, 0x80, 0x3f,
+            };
+            const std::vector<uint8_t> r32_uint = {
+                0x78, 0x56, 0x34, 0x12, 0xf0, 0xde, 0xbc, 0x9a,
+                0xef, 0xcd, 0xab, 0x90, 0x01, 0x23, 0x45, 0x67,
+            };
+            success = web_format_transfer_smoke(gpu, features, NKGPU_IMAGEFORMAT_RGBA16F, rgba16f) &&
+                      web_format_transfer_smoke(gpu, features, NKGPU_IMAGEFORMAT_R32F, r32f) &&
+                      web_format_transfer_smoke(gpu, features, NKGPU_IMAGEFORMAT_R32_UINT, r32_uint) &&
+                      web_mip_readback_smoke(gpu, features) &&
+                      web_depth_stencil_capability_smoke(gpu);
+        }
+#endif
 
         nkgpu_renderer_destroy(gpu);
         return success;
