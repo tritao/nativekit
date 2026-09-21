@@ -139,6 +139,18 @@ if(NK_BUILD_TESTS)
         set_tests_properties(nativekit_gpu_compute_readback_smoke PROPERTIES
             LABELS "graphics;gpu;readback"
             TIMEOUT 30)
+
+        add_executable(nativekit_gpu_timestamp_smoke_test tests/timestamp_smoke.cpp)
+        target_compile_features(nativekit_gpu_timestamp_smoke_test PRIVATE cxx_std_17)
+        target_include_directories(nativekit_gpu_timestamp_smoke_test PRIVATE
+            "${PROJECT_SOURCE_DIR}/src")
+        target_link_libraries(nativekit_gpu_timestamp_smoke_test PRIVATE NativeKit::gpu
+            NativeKit::nativekit)
+        add_test(NAME nativekit_gpu_timestamp_smoke
+            COMMAND $<TARGET_FILE:nativekit_gpu_timestamp_smoke_test>)
+        set_tests_properties(nativekit_gpu_timestamp_smoke PROPERTIES
+            LABELS "graphics;gpu;timestamp"
+            TIMEOUT 30)
     endif()
 
     if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN AND NK_BACKEND_GTK_AVAILABLE)
@@ -176,6 +188,19 @@ if(NK_BUILD_TESTS)
                 COMMAND ${NKGPU_XVFB_RUN} -a $<TARGET_FILE:nativekit_gpu_compute_readback_smoke_test>)
             set_tests_properties(nativekit_gpu_compute_readback_smoke PROPERTIES
                 LABELS "graphics;gpu;readback"
+                TIMEOUT 120
+                ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1;NO_AT_BRIDGE=1")
+
+            add_executable(nativekit_gpu_timestamp_smoke_test tests/timestamp_smoke.cpp)
+            target_compile_features(nativekit_gpu_timestamp_smoke_test PRIVATE cxx_std_17)
+            target_include_directories(nativekit_gpu_timestamp_smoke_test PRIVATE
+                "${PROJECT_SOURCE_DIR}/src")
+            target_link_libraries(nativekit_gpu_timestamp_smoke_test PRIVATE NativeKit::gpu
+                NativeKit::nativekit)
+            add_test(NAME nativekit_gpu_timestamp_smoke
+                COMMAND ${NKGPU_XVFB_RUN} -a $<TARGET_FILE:nativekit_gpu_timestamp_smoke_test>)
+            set_tests_properties(nativekit_gpu_timestamp_smoke PROPERTIES
+                LABELS "graphics;gpu;timestamp"
                 TIMEOUT 120
                 ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1;NO_AT_BRIDGE=1")
 

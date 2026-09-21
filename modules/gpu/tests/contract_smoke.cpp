@@ -302,6 +302,19 @@ int main() {
         invalid_cube_desc.layer_count = 7;
         EXPECT_RESULT(nkgpu_image_create_desc(first, &invalid_cube_desc, &invalid_cube),
                       NKGPU_ERROR_INVALID_ARGUMENT);
+        const uint32_t non_square_cube_pixels[12] = {};
+        invalid_cube_desc.type = NKGPU_IMAGETYPE_CUBE;
+        invalid_cube_desc.layer_count = 6;
+        invalid_cube_desc.width = 2;
+        invalid_cube_desc.height = 1;
+        invalid_cube_desc.data = reinterpret_cast<const uint8_t *>(non_square_cube_pixels);
+        invalid_cube_desc.data_size = sizeof(non_square_cube_pixels);
+        EXPECT_RESULT(nkgpu_image_create_desc(first, &invalid_cube_desc, &invalid_cube),
+                      NKGPU_ERROR_INVALID_ARGUMENT);
+        invalid_cube_desc.width = 1;
+        invalid_cube_desc.height = 1;
+        invalid_cube_desc.data = nullptr;
+        invalid_cube_desc.data_size = 0;
         invalid_cube_desc.type = NKGPU_IMAGETYPE_CUBE;
         invalid_cube_desc.layer_count = 6;
         invalid_cube_desc.usage = NKGPU_IMAGE_SAMPLED | NKGPU_IMAGE_RENDER_TARGET;
