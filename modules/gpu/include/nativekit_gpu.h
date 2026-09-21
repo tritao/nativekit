@@ -1450,18 +1450,18 @@ NKGPU_API nkgpu_result nkgpu_image_get_graphics_image(nkgpu_renderer renderer, n
 NKGPU_API nkgpu_result nkgpu_buffer_copy(nkgpu_renderer renderer,
                                          const nkgpu_buffer_copy_desc *desc);
 
-/** Copies a 2D region between compatible images. */
+/** Copies a 2D region between compatible 2D or array images. Cube images return UNSUPPORTED. */
 NKGPU_API nkgpu_result nkgpu_image_copy(nkgpu_renderer renderer, const nkgpu_image_copy_desc *desc);
 
-/** Uploads a buffer region into an image. */
+/** Uploads a buffer region into a 2D or array image. Cube images return UNSUPPORTED. */
 NKGPU_API nkgpu_result nkgpu_buffer_to_image(nkgpu_renderer renderer,
                                              const nkgpu_buffer_image_copy_desc *desc);
 
-/** Downloads an image region into a buffer in top-to-bottom row order. */
+/** Downloads a 2D or array image region into a buffer in top-to-bottom row order. */
 NKGPU_API nkgpu_result nkgpu_image_to_buffer(nkgpu_renderer renderer,
                                              const nkgpu_buffer_image_copy_desc *desc);
 
-/** Begins an asynchronous readback of an image rectangle. */
+/** Begins an asynchronous readback of a 2D or array image rectangle. */
 NKGPU_API nkgpu_result nkgpu_readback_begin_image(nkgpu_renderer renderer,
                                                   const nkgpu_image_readback_desc *desc,
                                                   nkgpu_readback *out_readback NKGPU_OUT);
