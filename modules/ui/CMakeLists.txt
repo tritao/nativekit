@@ -373,6 +373,17 @@ if(NK_BUILD_EXAMPLES)
         NKUI_TEST_FONT_PATH="${NKUI_C_API_FONT_PATH}")
     target_link_libraries(nativekit_ui_c_api PRIVATE NativeKit::ui NativeKit::nativekit
         NativeKit::gpu)
+    if(NK_BUILD_TESTS)
+        add_executable(nativekit_ui_showcase_surface_smoke_test
+            tests/showcase_surface_smoke.cpp)
+        target_compile_definitions(nativekit_ui_showcase_surface_smoke_test PRIVATE
+            NKGPU_TESTING=1)
+        target_compile_features(nativekit_ui_showcase_surface_smoke_test PRIVATE cxx_std_20)
+        target_include_directories(nativekit_ui_showcase_surface_smoke_test PRIVATE
+            "${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/modules/gpu/src")
+        target_link_libraries(nativekit_ui_showcase_surface_smoke_test PRIVATE
+            NativeKit::ui NativeKit::nativekit NativeKit::gpu)
+    endif()
     if(EMSCRIPTEN)
         add_custom_command(TARGET nativekit_ui_c_api POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E make_directory
@@ -394,6 +405,15 @@ if(NK_BUILD_EXAMPLES)
             set_tests_properties(nativekit_ui_c_api_smoke PROPERTIES
                 LABELS "graphics;ui;abi"
                 TIMEOUT 15
+                ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
+        endif()
+        if(NKUI_C_API_XVFB_RUN AND TARGET nativekit_ui_showcase_surface_smoke_test)
+            add_test(NAME nativekit_ui_showcase_surface_smoke
+                COMMAND ${NKUI_C_API_XVFB_RUN} -a
+                    $<TARGET_FILE:nativekit_ui_showcase_surface_smoke_test>)
+            set_tests_properties(nativekit_ui_showcase_surface_smoke PROPERTIES
+                LABELS "graphics;ui;showcase;sealed"
+                TIMEOUT 45
                 ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
         endif()
     endif()
