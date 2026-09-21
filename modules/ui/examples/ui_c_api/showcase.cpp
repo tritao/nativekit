@@ -284,12 +284,11 @@ struct WebShowcase {
                 success = false;
                 break;
             }
-
             const bool depth = format == NKGPU_IMAGEFORMAT_DEPTH32F;
             const bool renderable = depth ? support.depth_stencil != 0
                                           : support.render_target != 0;
             const bool required = format == NKGPU_IMAGEFORMAT_RGBA8;
-            if (!renderable || !support.sampled) {
+            if (!renderable || !support.sampled || !support.copy) {
                 if (required)
                     success = false;
                 continue;
@@ -353,7 +352,7 @@ struct WebShowcase {
                 success = nkgpu_image_copy(gpu, &copy) == NKGPU_OK;
             }
 
-            if (success) {
+            if (success && support.readback) {
                 nkgpu_image_readback_desc readback_desc{};
                 readback_desc.struct_size = sizeof(readback_desc);
                 readback_desc.image = destination;
@@ -362,8 +361,20 @@ struct WebShowcase {
                 success = nkgpu_readback_begin_image(gpu, &readback_desc, &readback) == NKGPU_OK;
             }
 
+            if (success && !support.readback) {
+                nkgpu_image_readback_desc readback_desc{};
+                readback_desc.struct_size = sizeof(readback_desc);
+                readback_desc.image = destination;
+                readback_desc.width = 2;
+                readback_desc.height = 2;
+                nkgpu_readback unsupported_readback{};
+                success = nkgpu_readback_begin_image(gpu, &readback_desc,
+                                                     &unsupported_readback) ==
+                          NKGPU_ERROR_UNSUPPORTED;
+            }
+
             nkgpu_readback_info readback_info{};
-            if (success) {
+            if (success && support.readback) {
                 readback_info.struct_size = sizeof(readback_info);
                 for (int poll = 0; poll != 1000; ++poll) {
                     if (nkgpu_readback_query(gpu, readback, &readback_info) != NKGPU_OK) {
@@ -379,7 +390,7 @@ struct WebShowcase {
                                                         : 4u);
             }
 
-            if (success) {
+            if (success && support.readback) {
                 uint8_t pixels[64]{};
                 uint32_t size = 0;
                 success = nkgpu_readback_read(gpu, readback, pixels, sizeof(pixels), &size) ==

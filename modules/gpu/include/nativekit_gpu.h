@@ -530,6 +530,10 @@ typedef struct nkgpu_image_format_support {
     uint32_t multisample;
     uint32_t depth_stencil;
     uint32_t storage;
+    /** Whether image-to-image copies are supported for this format. */
+    uint32_t copy;
+    /** Whether image readback is supported for this format. */
+    uint32_t readback;
 } nkgpu_image_format_support;
 
 /** Describes a buffer-to-buffer transfer. */

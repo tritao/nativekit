@@ -883,6 +883,8 @@ static nkgpu_image_format_support make_image_format_support(nkgpu_image_format f
                               (native.read || native.write)
                           ? 1u
                           : 0u;
+    support.copy = (support.sampled || support.render_target || support.depth_stencil) ? 1u : 0u;
+    support.readback = support.copy ? 1u : 0u;
     return support;
 }
 
@@ -1279,6 +1281,13 @@ nkgpu_result nkgpu_query_image_format_support(nkgpu_renderer renderer, nkgpu_ima
     const sg_limits limits = selected_api->query_limits();
     *out_support = make_image_format_support(format, selected_api->query_pixelformat(native_format),
                                              features, limits);
+#if defined(__EMSCRIPTEN__)
+    /* WebGL2 has no portable DEPTH_COMPONENT readPixels format. Depth
+       textures remain renderable, sampleable, and copyable via blit, but
+       depth readback needs a future shader-to-color conversion path. */
+    if (image_format_is_depth(format))
+        out_support->readback = 0;
+#endif
     return NKGPU_OK;
 }
 
@@ -4000,6 +4009,14 @@ nkgpu_result nkgpu_image_to_buffer(nkgpu_renderer r, const nkgpu_buffer_image_co
     auto *image = image_pool.get(desc->image);
     if (!buffer || !image || buffer->value.owner != r || image->value.owner != r)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign buffer-image handle");
+    nkgpu_image_format_support format_support{};
+    format_support.struct_size = sizeof(format_support);
+    const nkgpu_result format_result =
+        nkgpu_query_image_format_support(r, image->value.format, &format_support);
+    if (format_result != NKGPU_OK)
+        return format_result;
+    if (!format_support.readback)
+        return fail(NKGPU_ERROR_UNSUPPORTED, "image-to-buffer is unsupported for this format");
     uint32_t row_pitch = 0;
     const nkgpu_result valid =
         validate_buffer_image_copy(*desc, buffer->value, image->value, row_pitch);
@@ -4026,6 +4043,14 @@ nkgpu_result nkgpu_readback_begin_image(nkgpu_renderer r, const nkgpu_image_read
     auto *image = image_pool.get(desc->image);
     if (!image || image->value.owner != r)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign readback image");
+    nkgpu_image_format_support format_support{};
+    format_support.struct_size = sizeof(format_support);
+    const nkgpu_result format_result =
+        nkgpu_query_image_format_support(r, image->value.format, &format_support);
+    if (format_result != NKGPU_OK)
+        return format_result;
+    if (!format_support.readback)
+        return fail(NKGPU_ERROR_UNSUPPORTED, "image readback is unsupported for this format");
     if (!image_transfer_shape_supported(image->value))
         return fail(NKGPU_ERROR_UNSUPPORTED, "cube image readback is unavailable");
     if (image->value.sample_count != 1)
