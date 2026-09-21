@@ -10,6 +10,8 @@ class EventDispatcher {
 	var root:Null<RenderNode>;
 	final focus:FocusManager;
 	final interactionStates:InteractionStateStore;
+	var commandRegistry:Null<CommandRegistry>;
+	var commandContext:CommandContext;
 	var hoverPaths:Map<Int, Array<RenderNode>>;
 	final pointerLocations:Map<Int, PointerLocation>;
 	final pressedIds:Map<Int, WidgetId>;
@@ -19,9 +21,12 @@ class EventDispatcher {
 	var pointerCaptureHandler:Null<Bool->Void>;
 	var platformPointerCaptured:Bool;
 
-	public function new(focus:FocusManager, ?interactionStates:InteractionStateStore) {
+	public function new(focus:FocusManager, ?interactionStates:InteractionStateStore,
+			?commandRegistry:CommandRegistry, ?commandContext:CommandContext) {
 		this.focus = focus;
 		this.interactionStates = interactionStates == null ? new InteractionStateStore() : interactionStates;
+		this.commandRegistry = commandRegistry;
+		this.commandContext = commandContext == null ? new CommandContext() : commandContext;
 		root = null;
 		hoverPaths = new Map();
 		pointerLocations = new Map();
@@ -32,6 +37,14 @@ class EventDispatcher {
 		pointerCaptureHandler = null;
 		platformPointerCaptured = false;
 	}
+
+	/** Installs the application-level shortcut route used after widget dispatch. */
+	public function setCommandRegistry(registry:Null<CommandRegistry>):Void
+		commandRegistry = registry;
+
+	/** Updates the context passed to command shortcuts. */
+	public function setCommandContext(context:Null<CommandContext>):Void
+		commandContext = context == null ? new CommandContext() : context;
 
 	/** Installs the current resolved-scene geometric picker. */
 	public function setHitTestProvider(provider:Null<Float->Float->Array<RenderNode>>):Void
@@ -203,16 +216,27 @@ class EventDispatcher {
 
 	public function key(kind:String, key:Int, modifiers:Int = 0, scancode:Int = 0):Void {
 		var node = focus.focusedNode();
-		if (node == null)
+		if (node == null) {
+			if (kind == UiEventKind.KeyDown && commandRegistry != null)
+				commandRegistry.dispatchContext(key, modifiers, commandContext);
 			return;
+		}
 		var path = HitTest.pathTo(node);
-		if (path.length == 0)
+		if (path.length == 0) {
+			if (kind == UiEventKind.KeyDown && commandRegistry != null)
+				commandRegistry.dispatchContext(key, modifiers, commandContext);
 			return;
+		}
 		var event = new UiEvent(kind, node.id, 0.0, 0.0, 0.0, 0.0, 0, key,
 			modifiers, null, null, scancode);
 		dispatchPath(path, event);
 		if (event.defaultPrevented)
 			return;
+		if (kind == UiEventKind.KeyDown && commandRegistry != null &&
+			commandRegistry.dispatchContext(key, modifiers, commandContext).succeeded) {
+			event.preventDefault();
+			return;
+		}
 		if (key == UiKey.Tab &&
 			(kind == UiEventKind.KeyDown || kind == UiEventKind.KeyRepeat))
 			moveFocus((modifiers & UiModifier.Shift) != 0);

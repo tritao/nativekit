@@ -47,6 +47,14 @@ import NativeKitEventDecoderTests;
 import nativekit.ui.core.NativeInputAdapter;
 import nativekit.ui.core.CursorShape as UiCursorShape;
 import nativekit.ui.core.CachePolicy;
+import nativekit.ui.core.Command;
+import nativekit.ui.core.CommandContext;
+import nativekit.ui.core.CommandParameters;
+import nativekit.ui.core.CommandRegistry;
+import nativekit.ui.core.CommandResult;
+import nativekit.ui.core.EditorDocument;
+import nativekit.ui.core.EditHistory;
+import nativekit.ui.core.EditOperation;
 import nativekit.ui.core.EventDispatcher;
 import nativekit.ui.core.FocusManager;
 import nativekit.ui.core.HitTest;
@@ -62,6 +70,7 @@ import nativekit.ui.core.UiModifier;
 import nativekit.ui.core.UiTouchData;
 import nativekit.ui.core.WidgetId;
 import nativekit.ui.core.View;
+import nativekit.ui.core.Shortcut;
 import nativekit.ui.semantics.AccessibilityAction;
 import nativekit.ui.semantics.AccessibilityBridge;
 import nativekit.ui.semantics.AccessibilityRole;
@@ -199,6 +208,8 @@ class FrameworkSmoke {
 		var context = new UiContext(session, fonts);
 		if (context.buildContext.fonts != fonts)
 			return 30;
+		if (!commandHistoryValid(context))
+			return 230;
 		var emptyEditor = new TextEditorState(fonts, "");
 		if (Utf8Text.length(emptyEditor.text) != 0)
 			return 38;
@@ -3184,6 +3195,151 @@ class FrameworkSmoke {
 				new Rect(-100.0, -100.0, 200.0, 200.0),
 				new Rect(0.0, 0.0, 0.0, 0.0), singular, 0.0);
 		return !singularItem.hitTest(0.0, 0.0) && nestedSceneSemanticsValid();
+	}
+
+	static function commandHistoryValid(uiContext:UiContext):Bool {
+		var history = new EditHistory();
+		var value = 0;
+		var latest = 1;
+		var first = new EditOperation("Move", function() value = latest,
+			function() value = 0, "drag", function(next) {
+				latest = cast next.mergeData;
+				return true;
+			}, 1);
+		if (!history.apply(first) || value != 1 || history.undoCount != 1)
+			return false;
+		var second = new EditOperation("Move", function() value = 2,
+			function() value = 1, "drag", null, 2);
+		if (!history.apply(second) || value != 2 || history.undoCount != 1)
+			return false;
+		if (!history.undo() || value != 0 || history.canUndo || !history.canRedo)
+			return false;
+		if (!history.redo() || value != 2 || !history.canUndo || history.canRedo)
+			return false;
+
+		history.clear();
+		value = 0;
+		var transaction = history.begin("Transform");
+		transaction.apply(new EditOperation("Translate X", function() value = 4,
+			function() value = 0));
+		transaction.apply(new EditOperation("Translate Y", function() value = 9,
+			function() value = 4));
+		if (!transaction.commit() || value != 9 || history.undoCount != 1 ||
+			history.undoLabel() != "Transform")
+			return false;
+		if (!history.undo() || value != 0 || !history.redo() || value != 9)
+			return false;
+		history.clear();
+		value = 0;
+		var dragStart = history.begin("Drag", "drag-transaction");
+		dragStart.apply(new EditOperation("Move", function() value = 4, function() value = 0));
+		if (!dragStart.commit())
+			return false;
+		var dragEnd = history.begin("Drag", "drag-transaction");
+		dragEnd.apply(new EditOperation("Move", function() value = 9, function() value = 4));
+		if (!dragEnd.commit() || history.undoCount != 1 || value != 9 ||
+			!history.undo() || value != 0)
+			return false;
+
+		var document = new EditorDocument("scene");
+		var documentValue = 0;
+		if (document.isDirty || !document.apply(new EditOperation("Set value",
+			function() documentValue = 7, function() documentValue = 0)) ||
+			documentValue != 7 || !document.isDirty)
+			return false;
+		document.markSaved();
+		if (document.isDirty || !document.undo() || documentValue != 0 || !document.isDirty ||
+			!document.redo() || documentValue != 7 || document.isDirty)
+			return false;
+
+		var registry = new CommandRegistry();
+		var globalRuns = 0;
+		var scopedRuns = 0;
+		var enabled = true;
+		var checked = false;
+		registry.register(new Command("save", "Save", function() globalRuns++,
+			new Shortcut(UiKey.S, UiModifier.Control), function() return enabled,
+			function() return checked));
+		if (!registry.dispatch(UiKey.S, UiModifier.Control) || globalRuns != 1 ||
+			!registry.get("save").isEnabled() || registry.get("save").isChecked())
+			return false;
+		checked = true;
+		if (!registry.get("save").isChecked())
+			return false;
+		registry.pushScope("viewport");
+		registry.register(new Command("viewport.save", "Save viewport", function() scopedRuns++,
+			new Shortcut(UiKey.S, UiModifier.Control)), "viewport");
+		if (!registry.dispatch(UiKey.S, UiModifier.Control) || scopedRuns != 1 ||
+			globalRuns != 1 || !registry.popScope("viewport"))
+			return false;
+		enabled = false;
+		if (registry.dispatch(UiKey.S, UiModifier.Control))
+			return false;
+
+		var parameters = new CommandParameters();
+		parameters.setString("property", "mass");
+		var commandContext = new CommandContext(document, ["body-1"], "main-viewport",
+			parameters, "property-editor");
+		uiContext.setCommandContext(commandContext);
+		if (uiContext.commandContext != commandContext ||
+			uiContext.buildContext.commandContext != commandContext)
+			return false;
+		var contextualRuns = 0;
+		var contextualRegistry = new CommandRegistry();
+		contextualRegistry.register(Command.contextual("property.reset", "Reset property",
+			function(context) {
+				if (context.document != document || !context.hasSelected("body-1") ||
+					context.parameters.getString("property") != "mass")
+					return CommandResult.rejected("Wrong command context");
+				contextualRuns++;
+				return CommandResult.executed();
+			}, new Shortcut(UiKey.R, UiModifier.Control), function(context) {
+				return context.document == document && context.hasSelection;
+			}));
+		var contextualResult = contextualRegistry.dispatchContext(UiKey.R, UiModifier.Control,
+			commandContext);
+		if (!contextualResult.succeeded || contextualRuns != 1)
+			return false;
+		var wrongContextResult = contextualRegistry.executeContext("property.reset",
+			new CommandContext(null, ["other"], "other-viewport"));
+		if (wrongContextResult.succeeded || wrongContextResult.status == null)
+			return false;
+
+		var documentHistory = new CommandRegistry();
+		documentHistory.installDocumentHistoryCommands(document);
+		var undoResult = documentHistory.dispatchContext(UiKey.Z, UiModifier.Control, commandContext);
+		if (!undoResult.succeeded || documentValue != 0 || !document.isDirty)
+			return false;
+		var redoResult = documentHistory.dispatchContext(UiKey.Y, UiModifier.Control, commandContext);
+		if (!redoResult.succeeded || documentValue != 7 || document.isDirty)
+			return false;
+
+		var focus = new FocusManager();
+		var routingRoot = new RenderNode(new WidgetId(940));
+		var routingTarget = new RenderNode(new WidgetId(941));
+		var broadClip = new Rect(-100.0, -100.0, 200.0, 200.0);
+		routingRoot.resolved = new ResolvedLayoutItem(940, 1, 0.0, 0.0, 100.0, 100.0,
+			broadClip, new Rect(0.0, 0.0, 0.0, 0.0), Transform2D.identity(), 0.0);
+		routingTarget.resolved = new ResolvedLayoutItem(941, 1, 0.0, 0.0, 100.0, 100.0,
+			broadClip, new Rect(0.0, 0.0, 0.0, 0.0), Transform2D.identity(), 0.0);
+		routingTarget.focusable = true;
+		routingRoot.add(routingTarget);
+		focus.rebuild(routingRoot);
+		if (!focus.focus(routingTarget.id))
+			return false;
+		var routed = 0;
+		var routingCommands = new CommandRegistry();
+		routingCommands.register(Command.contextual("focus.command", "Focus command", function(context) {
+			if (context.document != document)
+				return CommandResult.rejected("Missing active document");
+			routed++;
+			return CommandResult.executed();
+		}, new Shortcut(UiKey.K, UiModifier.Control)));
+		var dispatcher = new EventDispatcher(focus, new InteractionStateStore(), routingCommands,
+			commandContext);
+		dispatcher.setRoot(routingRoot);
+		dispatcher.key(UiEventKind.KeyDown, UiKey.K, UiModifier.Control);
+		return routed == 1;
 	}
 
 	/** Covers the shared Haxe scene policy around transforms, clipping, order, and events. */

@@ -44,6 +44,10 @@ class UiContext {
 	public final gestures:GestureArena;
 	public final animations:AnimationScheduler;
 	public final interactionStates:InteractionStateStore;
+	/** Application commands and shortcut scopes owned by this UI context. */
+	public final commands:CommandRegistry;
+	/** Current document/selection context used by command-bound UI. */
+	public var commandContext(default, null):CommandContext;
 	public var root(default, null):Null<RenderNode>;
 	/** Called when an active animation needs another host frame. */
 	public var onAnimationFrameRequested:Null<Void->Void>;
@@ -52,6 +56,7 @@ class UiContext {
 	var submittedStyleRevision:Int;
 	var submittedAnimationRevision:Int;
 	var submittedGestureRevision:Int;
+	var submittedCommandRevision:Int;
 	var submittedNodeCount:Int;
 	var submittedBuildKey:Null<String>;
 	var submittedTheme:Null<Theme>;
@@ -90,12 +95,15 @@ class UiContext {
 		gestures = new GestureArena();
 		animations = new AnimationScheduler();
 		interactionStates = new InteractionStateStore();
+		commands = new CommandRegistry();
+		commandContext = new CommandContext();
 		buildContext = new BuildContext(stateStore, fonts, textInput, clipboard, theme,
-			gestures, animations, null, interactionStates);
+			gestures, animations, null, interactionStates, commands);
+		buildContext.setCommandContext(commandContext);
 		if (fonts != null)
 			this.session.setFonts(fonts);
 		focus = new FocusManager();
-		events = new EventDispatcher(focus, interactionStates);
+		events = new EventDispatcher(focus, interactionStates, commands, commandContext);
 		root = null;
 		onAnimationFrameRequested = null;
 		submittedStateRevision = -1;
@@ -103,6 +111,7 @@ class UiContext {
 		submittedStyleRevision = -1;
 		submittedAnimationRevision = -1;
 		submittedGestureRevision = -1;
+		submittedCommandRevision = -1;
 		submittedNodeCount = 0;
 		submittedBuildKey = null;
 		submittedTheme = null;
@@ -135,6 +144,14 @@ class UiContext {
 		};
 		lastFrameMetrics = null;
 		frameNumber = 0;
+	}
+
+	/** Sets the active document/selection context for contextual commands. */
+	public function setCommandContext(context:Null<CommandContext>):Void {
+		commandContext = context == null ? new CommandContext() : context;
+		buildContext.setCommandContext(commandContext);
+		events.setCommandContext(commandContext);
+		commands.refresh();
 	}
 
 	/** Sets fonts for text-aware widgets and the native layout session. */
@@ -333,6 +350,7 @@ class UiContext {
 		submittedStyleRevision = buildContext.styleRevision;
 		submittedAnimationRevision = animations.revision;
 		submittedGestureRevision = gestures.revision;
+		submittedCommandRevision = commands.revision;
 		submittedNodeCount = nodeCount;
 		submittedBuildKey = cacheKey;
 		submittedTheme = buildContext.theme;
@@ -703,6 +721,7 @@ class UiContext {
 	function canReuseSubmittedFrame(cacheKey:String):Bool {
 		return root != null && submittedBuildKey == cacheKey && dirtyFlags == UiDirtyFlag.None &&
 			animations.revision == submittedAnimationRevision && gestures.revision == submittedGestureRevision &&
+			commands.revision == submittedCommandRevision &&
 			buildContext.theme == submittedTheme &&
 			buildContext.styleSheet == submittedStyleSheet;
 	}
@@ -783,6 +802,10 @@ class UiContext {
 			result |= UiDirtyFlag.NeedsStyle | UiDirtyFlag.NeedsTextLayout | UiDirtyFlag.NeedsLayout |
 				UiDirtyFlag.NeedsPaint | UiDirtyFlag.NeedsComposite | UiDirtyFlag.NeedsSemantics |
 				UiDirtyFlag.NeedsHitGeometry;
+		if (commands.revision != submittedCommandRevision)
+			result |= UiDirtyFlag.NeedsBuild | UiDirtyFlag.NeedsStyle | UiDirtyFlag.NeedsTextLayout |
+				UiDirtyFlag.NeedsLayout | UiDirtyFlag.NeedsPaint | UiDirtyFlag.NeedsComposite |
+				UiDirtyFlag.NeedsSemantics | UiDirtyFlag.NeedsHitGeometry;
 		if (animations.activeCount > 0)
 			result |= UiDirtyFlag.NeedsComposite;
 		return result;

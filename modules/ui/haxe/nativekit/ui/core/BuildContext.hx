@@ -23,6 +23,10 @@ class BuildContext {
 	public final gestures:GestureArena;
 	public final animations:AnimationScheduler;
 	public final interactionStates:InteractionStateStore;
+	/** Application commands available to command-bound widgets. */
+	public final commands:CommandRegistry;
+	/** Invocation context shared by command-bound widgets in this frame. */
+	public var commandContext(default, null):CommandContext;
 	public final styleResolver:StyleResolver;
 	public final environment:StyleEnvironment;
 	public var theme(default, null):Theme;
@@ -39,7 +43,7 @@ class BuildContext {
 	public function new(stateStore:StateStore, ?fonts:FontCollection, ?textInput:TextInputBridge,
 			?clipboard:ClipboardService, ?theme:Theme, ?gestures:GestureArena,
 			?animations:AnimationScheduler, ?styleSheet:StyleSheet,
-			?interactionStates:InteractionStateStore) {
+			?interactionStates:InteractionStateStore, ?commands:CommandRegistry) {
 		if (stateStore == null)
 			throw "Build context requires a state store";
 		this.stateStore = stateStore;
@@ -50,6 +54,8 @@ class BuildContext {
 		this.gestures = gestures == null ? new GestureArena() : gestures;
 		this.animations = animations == null ? new AnimationScheduler() : animations;
 		this.interactionStates = interactionStates == null ? new InteractionStateStore() : interactionStates;
+		this.commands = commands == null ? new CommandRegistry() : commands;
+		this.commandContext = new CommandContext();
 		this.styleResolver = new StyleResolver(this.animations);
 		this.environment = new StyleEnvironment();
 		this.theme = theme == null ? new Theme() : theme;
@@ -63,6 +69,10 @@ class BuildContext {
 		scope = new KeyScope();
 		textStyleStack = [ResolvedTextStyle.fromTheme(this.theme)];
 	}
+
+	/** Updates the context passed to command-bound widgets. */
+	public function setCommandContext(context:Null<CommandContext>):Void
+		commandContext = context == null ? new CommandContext() : context;
 
 	/** Replaces the palette used by subsequently built widgets. */
 	public function setTheme(theme:Theme):Void {

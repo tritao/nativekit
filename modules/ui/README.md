@@ -130,6 +130,46 @@ revisions; `frame.deltaSeconds` is still advanced by the animation and gesture
 systems, but ordinary frame-time jitter does not invalidate an otherwise static
 submission. The cache key must identify the caller's build inputs.
 
+## Commands, shortcuts, and edit history
+
+`UiContext.commands` is the application command surface for menus, toolbars,
+command palettes, and keyboard shortcuts. Commands are grouped into scopes;
+the most recently activated scope wins, so a viewport or modal editor can
+override a global action without replacing it:
+
+```haxe
+var history = new EditHistory();
+context.commands.installHistoryCommands(history);
+context.commands.register(new Command("scene.delete", "Delete",
+    function() deleteSelection(),
+    new Shortcut(UiKey.Delete)));
+
+context.commands.pushScope("viewport");
+// ... build the viewport/editor UI ...
+context.commands.popScope("viewport");
+```
+
+`Command` exposes enabled and checked predicates for command-bound controls.
+When application state changes outside a command action, call
+`context.commands.refresh()` so cached UI submissions are invalidated.
+`EventDispatcher` routes unhandled key-down chords to the active command
+registry, while focused widgets can consume a key event first.
+
+Contextual commands use `CommandContext` to receive the active
+`EditorDocument`, selected object IDs, viewport ID, typed parameter accessors,
+and invocation source. Set it once per active editor context with
+`context.setCommandContext(...)`; widgets can read the same value through
+`BuildContext.commandContext`.
+
+`EditHistory` supports direct edits, compound transactions, undo/redo, and
+continuous-edit coalescing. Give adjacent edits the same coalescing key and
+merge their final state in the operation's merge callback to keep a drag or
+slider gesture as one undo step. `EditHistory` can then be bound to the
+standard Ctrl+Z/Ctrl+Y commands above. For document-owned edits, use
+`EditorDocument.apply(...)` or `EditorDocument.begin(...)`; its savepoint
+state makes undoing back to the saved history state clear the document's dirty
+flag.
+
 ## Frame building and sealed plans
 
 One frame has three stages: layout and recording build a display list, the
