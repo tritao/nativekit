@@ -1,0 +1,17 @@
+{
+	"version": 1,
+	"package": { "name": "nativekit" },
+	"sourceRoots": ["bindings/haxe"],
+	"scopeSourceRoots": false,
+	"ffi": {
+		"interfaces": [
+			"bindings/haxe/nativekit.hxi",
+			"modules/gpu/bindings/nativekit-gpu.hxi"
+		],
+		"projections": [
+			"bindings/haxe/nativekit.hxmap",
+			"modules/gpu/bindings/nativekit-gpu.hxmap"
+		]
+	},
+	"target": "host"
+}
