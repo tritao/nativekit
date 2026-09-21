@@ -23,6 +23,26 @@ constexpr std::size_t invalid_item_index = static_cast<std::size_t>(-1);
 
 } // namespace
 
+void render_internal::capture_view_policy(RenderPlan &plan, const SceneView &view) {
+    plan.view_override_occurrences_.clear();
+    plan.view_override_occurrences_.reserve(view.visibility_overrides.size() +
+                                            view.material_overrides.size() +
+                                            view.selection_material_overrides.size() +
+                                            view.hover_material_overrides.size());
+    for (const auto &override : view.visibility_overrides)
+        plan.view_override_occurrences_.push_back(override.occurrence);
+    for (const auto &override : view.material_overrides)
+        plan.view_override_occurrences_.push_back(override.occurrence);
+    for (const auto &override : view.selection_material_overrides)
+        plan.view_override_occurrences_.push_back(override.occurrence);
+    for (const auto &override : view.hover_material_overrides)
+        plan.view_override_occurrences_.push_back(override.occurrence);
+    plan.view_global_policy_ = view.include_invisible || !view.filter.isolated_sources.empty() ||
+                               !view.filter.source_visibility_overrides.empty() ||
+                               !view.filter.source_material_overrides.empty() ||
+                               !view.filter.isolated_occurrences.empty();
+}
+
 RenderPlan compile(const SceneSnapshot &snapshot, const SceneView &view) {
     RenderPlan plan;
     render_internal::build_items(plan, snapshot, view);
@@ -36,6 +56,8 @@ RenderPlan compile(const SceneSnapshot &snapshot, const SceneView &view) {
     }
     plan.source_revision_ = snapshot.revision();
     plan.view_signature_ = render_internal::view_signature(view);
+    plan.presentation_signature_ = render_internal::presentation_signature(view);
+    render_internal::capture_view_policy(plan, view);
     plan.view_root_ = view.root;
     plan.culling_signature_ = render_internal::culling_signature(view);
     plan.geometry_revisions_.reserve(snapshot.geometries().size());
@@ -52,16 +74,35 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
                     const SceneView &view) {
     RenderUpdate result;
     const auto next_view_signature = render_internal::view_signature(view);
+    const auto next_presentation_signature = render_internal::presentation_signature(view);
     const auto next_culling_signature = render_internal::culling_signature(view);
-    const bool view_changed = plan.view_signature_ != next_view_signature;
+    const bool presentation_changed = plan.presentation_signature_ != next_presentation_signature;
     const bool culling_changed = plan.culling_signature_ != next_culling_signature;
+    const bool scene_effective_change =
+        has_domain_in(changes, ChangeDomain::Hierarchy) ||
+        has_domain_in(changes, ChangeDomain::Visibility) ||
+        has_domain_in(changes, ChangeDomain::Material) ||
+        has_domain_in(changes, ChangeDomain::Source);
+    const bool scene_hierarchy_or_source_change =
+        has_domain_in(changes, ChangeDomain::Hierarchy) ||
+        has_domain_in(changes, ChangeDomain::Source);
+    const bool current_global_policy =
+        view.include_invisible || !view.filter.isolated_sources.empty() ||
+        !view.filter.source_visibility_overrides.empty() ||
+        !view.filter.source_material_overrides.empty() ||
+        !view.filter.isolated_occurrences.empty();
+    const bool local_policy = !plan.view_global_policy_ && !current_global_policy;
+    const bool local_scene_effective_change =
+        local_policy && !scene_hierarchy_or_source_change &&
+        (has_domain_in(changes, ChangeDomain::Visibility) ||
+         has_domain_in(changes, ChangeDomain::Material));
+    const bool local_presentation_change =
+        local_policy && presentation_changed && !scene_hierarchy_or_source_change;
+    const bool local_effective_change = local_scene_effective_change || local_presentation_change;
     const bool topology_changed = has_domain_in(changes, ChangeDomain::Created) ||
                                   has_domain_in(changes, ChangeDomain::Destroyed);
-    const bool effective_state_dirty = view_changed ||
-                                       has_domain_in(changes, ChangeDomain::Hierarchy) ||
-                                       has_domain_in(changes, ChangeDomain::Visibility) ||
-                                       has_domain_in(changes, ChangeDomain::Material) ||
-                                       has_domain_in(changes, ChangeDomain::Source);
+    const bool effective_state_dirty = !local_effective_change &&
+                                       (presentation_changed || scene_effective_change);
     const auto effective = effective_state_dirty ? render_internal::effective_state(snapshot, view)
                                                  : render_internal::EffectiveState{};
     std::unordered_set<GeometryId> changed_geometry_resources;
@@ -150,7 +191,6 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
         }
     };
 
-    bool batches_dirty = false;
     for (const auto &change : changes.changes) {
         const auto item_index = plan.item_index(change.occurrence);
         const auto *snapshot_occurrence = snapshot.find(change.occurrence);
@@ -162,19 +202,13 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
             remove_index(plan.items_by_geometry_, item.geometry, item_index);
             item.geometry = snapshot_occurrence->geometry;
             plan.items_by_geometry_[item.geometry].push_back(item_index);
-            batches_dirty = true;
+            result.rebuilt_batches +=
+                render_internal::move_item_batch(plan, item_index, item.geometry, item.material);
             result.geometry_rebuilt = true;
         }
         if (has_domain(change.domains, ChangeDomain::Source) &&
             plan.item_sources_[item_index] != snapshot_occurrence->source) {
-            for (auto found = plan.items_by_source_.begin(); found != plan.items_by_source_.end();) {
-                auto &items = found->second;
-                items.erase(std::remove(items.begin(), items.end(), item_index), items.end());
-                if (items.empty())
-                    found = plan.items_by_source_.erase(found);
-                else
-                    ++found;
-            }
+            remove_index(plan.items_by_source_, plan.item_sources_[item_index], item_index);
             plan.item_sources_[item_index] = snapshot_occurrence->source;
             plan.items_by_source_[snapshot_occurrence->source].push_back(item_index);
         }
@@ -192,18 +226,123 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
         }
     }
 
-    std::vector<OccurrenceId> effective_targets;
-    std::unordered_set<OccurrenceId> effective_target_set;
-    const auto add_effective_target = [&](OccurrenceId occurrence) {
-        if (effective_target_set.insert(occurrence).second)
-            effective_targets.push_back(occurrence);
-    };
-    for (const auto occurrence : changes.effective_state_occurrences)
-        add_effective_target(occurrence);
-    if (view_changed)
-        for (const auto &item : plan.items_)
-            add_effective_target(item.occurrence);
-    if (effective_state_dirty) {
+    if (local_effective_change) {
+        std::unordered_set<OccurrenceId> local_targets;
+        for (const auto occurrence : plan.view_override_occurrences_)
+            local_targets.insert(occurrence);
+        if (local_scene_effective_change) {
+            for (const auto occurrence : changes.effective_state_occurrences)
+                local_targets.insert(occurrence);
+            for (const auto &change : changes.changes)
+                local_targets.insert(change.occurrence);
+        }
+        const auto add_current_target = [&local_targets](OccurrenceId occurrence) {
+            local_targets.insert(occurrence);
+        };
+        for (const auto &override : view.visibility_overrides)
+            add_current_target(override.occurrence);
+        for (const auto &override : view.material_overrides)
+            add_current_target(override.occurrence);
+        for (const auto &override : view.selection_material_overrides)
+            add_current_target(override.occurrence);
+        for (const auto &override : view.hover_material_overrides)
+            add_current_target(override.occurrence);
+
+        std::unordered_map<OccurrenceId, bool> visibility_overrides;
+        visibility_overrides.reserve(view.visibility_overrides.size());
+        for (const auto &override : view.visibility_overrides)
+            visibility_overrides[override.occurrence] = override.visible;
+        std::unordered_map<OccurrenceId, MaterialId> material_overrides;
+        material_overrides.reserve(view.material_overrides.size() +
+                                   view.selection_material_overrides.size() +
+                                   view.hover_material_overrides.size());
+        for (const auto &override : view.material_overrides)
+            material_overrides[override.occurrence] = override.material;
+        for (const auto &override : view.selection_material_overrides)
+            material_overrides[override.occurrence] = override.material;
+        for (const auto &override : view.hover_material_overrides)
+            material_overrides[override.occurrence] = override.material;
+
+        std::vector<std::size_t> local_items;
+        std::unordered_set<std::size_t> local_item_set;
+        const auto add_subtree = [&](OccurrenceId occurrence, const auto &self) -> void {
+            const auto item_index = plan.item_index(occurrence);
+            if (item_index != invalid_item_index && local_item_set.insert(item_index).second)
+                local_items.push_back(item_index);
+            const auto found = plan.items_by_parent_.find(occurrence);
+            if (found == plan.items_by_parent_.end())
+                return;
+            for (const auto child_index : found->second)
+                self(plan.items_[child_index].occurrence, self);
+        };
+        for (const auto occurrence : local_targets)
+            add_subtree(occurrence, add_subtree);
+
+        std::unordered_map<OccurrenceId, bool> desired_visibility;
+        const auto visible = [&](OccurrenceId occurrence, const auto &self) -> bool {
+            const auto cached = desired_visibility.find(occurrence);
+            if (cached != desired_visibility.end())
+                return cached->second;
+            const auto *value = snapshot.find(occurrence);
+            if (!value)
+                return false;
+            bool result = value->visible;
+            const auto override_found = visibility_overrides.find(occurrence);
+            if (override_found != visibility_overrides.end())
+                result = override_found->second;
+            if (value->parent.valid())
+                result = result && self(value->parent, self);
+            desired_visibility.emplace(occurrence, result);
+            return result;
+        };
+
+        for (const auto item_index : local_items) {
+            auto &item = plan.items_[item_index];
+            const auto *occurrence = snapshot.find(item.occurrence);
+            if (!occurrence)
+                continue;
+            const auto next_visible = visible(item.occurrence, visible);
+            const auto was_visible = !has_render_flag(item.flags, RenderFlags::Hidden);
+            if (next_visible != was_visible) {
+                const auto before = item.flags;
+                if (next_visible)
+                    item.flags = static_cast<RenderFlags>(
+                        static_cast<std::uint32_t>(item.flags) &
+                        ~static_cast<std::uint32_t>(RenderFlags::Hidden));
+                else
+                    item.flags |= RenderFlags::Hidden;
+                adjust_counts(before, item.flags);
+                ++result.patched_visibility;
+            }
+            const auto material_found = material_overrides.find(item.occurrence);
+            const auto next_material = material_found == material_overrides.end()
+                                           ? occurrence->material
+                                           : material_found->second;
+            if (!snapshot.find_material(next_material)) {
+                ++invalidated_items;
+                continue;
+            }
+            if (next_material != item.material) {
+                remove_index(plan.items_by_material_, item.material, item_index);
+                item.material = next_material;
+                plan.items_by_material_[item.material].push_back(item_index);
+                ++result.patched_materials;
+                result.rebuilt_batches += render_internal::move_item_batch(
+                    plan, item_index, item.geometry, item.material);
+            }
+        }
+    } else if (effective_state_dirty) {
+        std::vector<OccurrenceId> effective_targets;
+        std::unordered_set<OccurrenceId> effective_target_set;
+        const auto add_effective_target = [&](OccurrenceId occurrence) {
+            if (effective_target_set.insert(occurrence).second)
+                effective_targets.push_back(occurrence);
+        };
+        for (const auto occurrence : changes.effective_state_occurrences)
+            add_effective_target(occurrence);
+        if (presentation_changed)
+            for (const auto &item : plan.items_)
+                add_effective_target(item.occurrence);
         for (const auto occurrence_id : effective_targets) {
             const auto item_index = plan.item_index(occurrence_id);
             if (item_index == invalid_item_index || !effective.visible.contains(occurrence_id))
@@ -232,7 +371,8 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
                 item.material = material;
                 plan.items_by_material_[item.material].push_back(item_index);
                 ++result.patched_materials;
-                batches_dirty = true;
+                result.rebuilt_batches +=
+                    render_internal::move_item_batch(plan, item_index, item.geometry, item.material);
             }
         }
     }
@@ -274,12 +414,10 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
         adjust_counts(before, item.flags);
         ++result.patched_culling;
     }
-    if (batches_dirty) {
-        render_internal::rebuild_batches(plan);
-        result.rebuilt_batches = plan.batches_.size();
-    }
     plan.source_revision_ = snapshot.revision();
     plan.view_signature_ = next_view_signature;
+    plan.presentation_signature_ = next_presentation_signature;
+    render_internal::capture_view_policy(plan, view);
     plan.view_root_ = view.root;
     plan.culling_signature_ = next_culling_signature;
     plan.view_projection_ = camera.view_projection;

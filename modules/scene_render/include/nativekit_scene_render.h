@@ -246,6 +246,9 @@ class RenderPlan;
 namespace render_internal {
 void rebuild_batches(RenderPlan &plan);
 void build_items(RenderPlan &plan, const SceneSnapshot &snapshot, const SceneView &view);
+std::size_t move_item_batch(RenderPlan &plan, std::size_t item_index, GeometryId geometry,
+                            MaterialId material);
+void capture_view_policy(RenderPlan &plan, const SceneView &view);
 } // namespace render_internal
 
 struct VisibilityOverride {
@@ -577,21 +580,43 @@ class RenderPlan {
     }
 
   private:
+    struct BatchKey {
+        GeometryId geometry;
+        MaterialId material;
+
+        friend bool operator==(const BatchKey &, const BatchKey &) = default;
+    };
+
+    struct BatchKeyHash {
+        std::size_t operator()(const BatchKey &key) const noexcept {
+            const auto geometry = std::hash<std::uint64_t>{}(key.geometry.value);
+            const auto material = std::hash<std::uint64_t>{}(key.material.value);
+            return geometry ^ (material + 0x9e3779b9u + (geometry << 6) + (geometry >> 2));
+        }
+    };
+
     static constexpr std::size_t invalid_item_index = static_cast<std::size_t>(-1);
     std::uint64_t source_revision_ = 0;
     std::uint64_t view_signature_ = 0;
+    std::uint64_t presentation_signature_ = 0;
     std::vector<RenderItem> items_;
     std::vector<WorldTransform> transforms_;
     std::vector<EntityId> item_sources_;
     std::vector<InstanceBatch> batches_;
     std::unordered_map<OccurrenceId, std::size_t> item_by_occurrence_;
     std::unordered_map<EntityId, std::vector<std::size_t>> items_by_source_;
+    std::unordered_map<OccurrenceId, std::vector<std::size_t>> items_by_parent_;
     std::unordered_map<GeometryId, std::vector<std::size_t>> items_by_geometry_;
     std::unordered_map<MaterialId, std::vector<std::size_t>> items_by_material_;
     std::unordered_map<GeometryId, std::vector<std::size_t>> batches_by_geometry_;
     std::unordered_map<MaterialId, std::vector<std::size_t>> batches_by_material_;
+    std::unordered_map<BatchKey, std::size_t, BatchKeyHash> batch_by_key_;
+    std::vector<std::size_t> item_batch_;
+    std::vector<std::size_t> item_batch_position_;
     std::unordered_map<GeometryId, std::uint64_t> geometry_revisions_;
     std::unordered_map<MaterialId, std::uint64_t> material_revisions_;
+    std::vector<OccurrenceId> view_override_occurrences_;
+    bool view_global_policy_ = false;
     OccurrenceId view_root_;
     std::array<float, 16> view_projection_ = {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
                                               0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
@@ -608,6 +633,9 @@ class RenderPlan {
     friend NKSRENDER_API RenderUpdate refresh(RenderPlan &, const SceneSnapshot &,
                                               const SceneView &);
     friend void render_internal::rebuild_batches(RenderPlan &plan);
+    friend std::size_t render_internal::move_item_batch(RenderPlan &plan, std::size_t item_index,
+                                                        GeometryId geometry, MaterialId material);
+    friend void render_internal::capture_view_policy(RenderPlan &plan, const SceneView &view);
     friend void render_internal::build_items(RenderPlan &plan, const SceneSnapshot &snapshot,
                                              const SceneView &view);
 };

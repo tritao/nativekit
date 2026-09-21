@@ -273,7 +273,7 @@ EffectiveState effective_state(const SceneSnapshot &snapshot, const SceneView &v
     return result;
 }
 
-std::uint64_t view_signature(const SceneView &view) noexcept {
+std::uint64_t presentation_signature(const SceneView &view) noexcept {
     std::uint64_t hash = 1469598103934665603ull;
     const auto add = [&hash](std::uint64_t value) {
         hash ^= value;
@@ -317,6 +317,15 @@ std::uint64_t view_signature(const SceneView &view) noexcept {
     add(view.filter.isolated_occurrences.size());
     for (const auto occurrence : view.filter.isolated_occurrences)
         add(occurrence.value);
+    return hash;
+}
+
+std::uint64_t view_signature(const SceneView &view) noexcept {
+    std::uint64_t hash = presentation_signature(view);
+    const auto add = [&hash](std::uint64_t value) {
+        hash ^= value;
+        hash *= 1099511628211ull;
+    };
     add(view.camera.enabled ? 1 : 0);
     add(view.camera_occurrence.value);
     for (const auto value : view.camera.view_projection)
@@ -359,6 +368,7 @@ void build_items(RenderPlan &plan, const SceneSnapshot &snapshot, const SceneVie
     plan.item_sources_.clear();
     plan.item_by_occurrence_.clear();
     plan.items_by_source_.clear();
+    plan.items_by_parent_.clear();
     plan.items_by_geometry_.clear();
     plan.items_by_material_.clear();
     plan.visible_items_ = 0;
@@ -396,6 +406,8 @@ void build_items(RenderPlan &plan, const SceneSnapshot &snapshot, const SceneVie
         plan.item_sources_.push_back(occurrence.source);
         plan.item_by_occurrence_.emplace(item.occurrence, item_index);
         plan.items_by_source_[occurrence.source].push_back(item_index);
+        if (occurrence.parent.valid())
+            plan.items_by_parent_[occurrence.parent].push_back(item_index);
         plan.items_by_geometry_[item.geometry].push_back(item_index);
         plan.items_by_material_[item.material].push_back(item_index);
     }

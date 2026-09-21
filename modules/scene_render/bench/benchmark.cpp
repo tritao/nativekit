@@ -181,7 +181,9 @@ constexpr std::size_t source_count = 500;
     assert(!result.render.geometry_rebuilt);
     assert(result.render.patched_instances == 0);
     assert(result.render.patched_materials == 1);
-    assert(result.render.rebuilt_batches == materials.size());
+    // A material change patches the source and destination batches only; it
+    // must not rebuild every material batch in the plan.
+    assert(result.render.rebuilt_batches == 2);
     print(result);
 
     Transaction hide(scene);
