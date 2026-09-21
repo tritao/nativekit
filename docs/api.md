@@ -354,6 +354,23 @@ instead of a payload. Use `nk_plugin_event_query()` to decode either plugin
 event into an `nk_plugin_event_view`; its borrowed payload stays valid only until
 `nk_event_release()`.
 
+## Dynamic libraries
+
+Include `nativekit_library.h` for explicit loading of a local dynamic library.
+NativeKit does not scan application directories or load arbitrary files on its
+own. Pass an absolute `file://` URI in an `nk_resource` to
+`nk_library_open()`, resolve exported symbols with `nk_library_symbol()`, and
+release the generation-checked `nk_library` handle with `nk_library_close()`.
+The library remains loaded until it is closed or the runtime shuts down.
+
+This capability is advertised by `NK_CAP_DYNAMIC_LIBRARY` on Windows, Linux,
+macOS, Android, and iOS. Android loads libraries that are accessible to the
+application sandbox. iOS accepts only the executable inside an embedded,
+code-signed `.framework` bundle; standalone or downloaded `.dylib` files are
+rejected. Web builds report the capability as unavailable. Library creation,
+symbol lookup, and close follow the application-executor affinity of NativeKit
+resource creation.
+
 ## Custom-surface accessibility
 
 Include `nativekit_accessibility.h` when a graphics surface renders interactive

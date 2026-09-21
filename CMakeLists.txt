@@ -127,6 +127,7 @@ add_library(nativekit ${NK_LIBRARY_TYPE}
     src/core/file_watch.cpp
     src/core/clipboard_watch.cpp
     src/core/input.cpp
+    src/core/library.cpp
     src/core/joystick.cpp
     src/core/mobile.cpp
     src/core/menu.cpp
@@ -152,6 +153,10 @@ add_library(NativeKit::nativekit ALIAS nativekit)
 
 if(NOT ANDROID AND NOT EMSCRIPTEN)
     target_sources(nativekit PRIVATE src/core/resource_io.cpp)
+endif()
+
+if(CMAKE_DL_LIBS)
+    target_link_libraries(nativekit PRIVATE ${CMAKE_DL_LIBS})
 endif()
 
 target_compile_features(nativekit PRIVATE cxx_std_17)

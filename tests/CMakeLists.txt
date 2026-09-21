@@ -19,6 +19,18 @@ if(MSVC)
 endif()
 add_test(NAME core COMMAND nativekit_core_tests)
 
+if(WIN32 OR (APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS") OR
+   (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
+    add_library(nativekit_library_fixture SHARED unit/library_fixture.cpp)
+    add_executable(nativekit_library_tests unit/library_tests.cpp)
+    target_compile_features(nativekit_library_fixture PRIVATE cxx_std_17)
+    target_compile_features(nativekit_library_tests PRIVATE cxx_std_17)
+    target_link_libraries(nativekit_library_tests PRIVATE NativeKit::nativekit)
+    add_dependencies(nativekit_library_tests nativekit_library_fixture)
+    add_test(NAME library
+        COMMAND nativekit_library_tests $<TARGET_FILE:nativekit_library_fixture>)
+endif()
+
 add_executable(nativekit_time_tests unit/time_tests.cpp)
 target_compile_features(nativekit_time_tests PRIVATE cxx_std_17)
 target_link_libraries(nativekit_time_tests PRIVATE NativeKit::nativekit)

@@ -53,7 +53,8 @@ constexpr mask k_known_capabilities =
     cap(NK_CAP_HTTP_STREAMING) | cap(NK_CAP_SURFACE_FRAME_CALLBACK) |
     cap(NK_CAP_WINDOW_CUSTOM_DECORATIONS) | cap(NK_CAP_SENSORS) | cap(NK_CAP_HAPTICS) |
     cap(NK_CAP_GAMEPAD_RUMBLE) | cap(NK_CAP_NATIVE_VIEW) | cap(NK_CAP_FILE_WATCH) |
-    cap(NK_CAP_CLIPBOARD_WATCH) | cap(NK_CAP_APPLICATION_MENU) | cap(NK_CAP_TRANSPORT);
+    cap(NK_CAP_CLIPBOARD_WATCH) | cap(NK_CAP_APPLICATION_MENU) | cap(NK_CAP_TRANSPORT) |
+    cap(NK_CAP_DYNAMIC_LIBRARY);
 
 constexpr mask k_new_system_capabilities =
     cap(NK_CAP_SYSTEM_INFO) | cap(NK_CAP_APPLICATION_PATH) | cap(NK_CAP_APPLICATION_STORAGE) |
@@ -74,7 +75,7 @@ constexpr mask k_desktop_common =
     cap(NK_CAP_WINDOW) | cap(NK_CAP_CLIPBOARD) | cap(NK_CAP_DRAG_DROP) | cap(NK_CAP_SHELL) |
     cap(NK_CAP_SYSTEM_APPEARANCE) | cap(NK_CAP_EXPORT_NATIVE_WINDOW) | cap(NK_CAP_NOTIFICATION) |
     cap(NK_CAP_INPUT) | cap(NK_CAP_CURSOR) | cap(NK_CAP_POINTER_CAPTURE) | cap(NK_CAP_RESOURCE_IO) |
-    cap(NK_CAP_SURFACE_FRAME_CALLBACK);
+    cap(NK_CAP_SURFACE_FRAME_CALLBACK) | cap(NK_CAP_DYNAMIC_LIBRARY);
 
 constexpr backend_contract platform_contract() {
 #if defined(NK_PARITY_BACKEND_LINUX)
@@ -123,7 +124,8 @@ constexpr backend_contract platform_contract() {
                 cap(NK_CAP_VULKAN_SURFACE) | cap(NK_CAP_RESOURCE_SHARING) |
                 cap(NK_CAP_RESOURCE_IO) | cap(NK_CAP_JOYSTICK) | cap(NK_CAP_SENSORS) |
                 cap(NK_CAP_HAPTICS) | cap(NK_CAP_GAMEPAD_RUMBLE) | cap(NK_CAP_ACCESSIBILITY) |
-                k_android_system_capabilities | cap(NK_CAP_SURFACE_FRAME_CALLBACK),
+                k_android_system_capabilities | cap(NK_CAP_SURFACE_FRAME_CALLBACK) |
+                cap(NK_CAP_DYNAMIC_LIBRARY),
             cap(NK_CAP_NATIVE_VIEW) | cap(NK_CAP_FILE_WATCH) | cap(NK_CAP_CLIPBOARD_WATCH),
             cap(NK_CAP_WINDOW) | cap(NK_CAP_EXPORT_NATIVE_WINDOW) | cap(NK_CAP_WRAP_NATIVE_WINDOW) |
                 cap(NK_CAP_WINDOW_GEOMETRY) | cap(NK_CAP_WINDOW_STYLING) | cap(NK_CAP_MONITOR) |
@@ -139,7 +141,7 @@ constexpr backend_contract platform_contract() {
                 k_ios_system_capabilities | cap(NK_CAP_ACCESSIBILITY) | cap(NK_CAP_DRAG_DROP) |
                 cap(NK_CAP_RESOURCE_SHARING) | cap(NK_CAP_JOYSTICK) | cap(NK_CAP_SENSORS) |
                 cap(NK_CAP_HAPTICS) | cap(NK_CAP_GAMEPAD_RUMBLE) |
-                cap(NK_CAP_SURFACE_FRAME_CALLBACK),
+                cap(NK_CAP_SURFACE_FRAME_CALLBACK) | cap(NK_CAP_DYNAMIC_LIBRARY),
             cap(NK_CAP_NATIVE_VIEW),
             cap(NK_CAP_WINDOW) | cap(NK_CAP_EXPORT_NATIVE_WINDOW) | cap(NK_CAP_WRAP_NATIVE_WINDOW) |
                 cap(NK_CAP_WINDOW_GEOMETRY) | cap(NK_CAP_WINDOW_STYLING) | cap(NK_CAP_MONITOR) |
@@ -163,12 +165,13 @@ constexpr backend_contract platform_contract() {
                 cap(NK_CAP_VULKAN_SURFACE) | cap(NK_CAP_D3D11_SURFACE) | cap(NK_CAP_METAL_SURFACE) |
                 cap(NK_CAP_APPLICATION_PATH) | cap(NK_CAP_APPLICATION_STORAGE) |
                 cap(NK_CAP_SYSTEM_FONTS) | cap(NK_CAP_WINDOW_CUSTOM_DECORATIONS) |
-                cap(NK_CAP_FILE_WATCH) | cap(NK_CAP_CLIPBOARD_WATCH) | cap(NK_CAP_APPLICATION_MENU),
+                cap(NK_CAP_FILE_WATCH) | cap(NK_CAP_CLIPBOARD_WATCH) | cap(NK_CAP_APPLICATION_MENU) |
+                cap(NK_CAP_DYNAMIC_LIBRARY),
             cap(NK_CAP_SYSTEM_APPEARANCE) | cap(NK_CAP_KEEP_AWAKE) |
                 cap(NK_CAP_DEVICE_ORIENTATION) | cap(NK_CAP_DISPLAY_ORIENTATION) |
                 cap(NK_CAP_SENSORS) | cap(NK_CAP_HAPTICS) | cap(NK_CAP_GAMEPAD_RUMBLE)};
 #else
-    return {"fallback stub", cap(NK_CAP_RESOURCE_IO),
+    return {"fallback stub", cap(NK_CAP_RESOURCE_IO) | cap(NK_CAP_DYNAMIC_LIBRARY),
             k_known_capabilities & ~(cap(NK_CAP_RESOURCE_IO) | k_new_system_capabilities |
                                      cap(NK_CAP_APPLICATION_MENU)),
             cap(NK_CAP_APPLICATION_MENU), k_new_system_capabilities};
@@ -201,7 +204,7 @@ struct capability_name {
     nk_capabilities value;
 };
 
-constexpr std::array<capability_name, 45> k_capability_names = {{
+constexpr std::array<capability_name, 46> k_capability_names = {{
     {"WINDOW", NK_CAP_WINDOW},
     {"WEBVIEW", NK_CAP_WEBVIEW},
     {"CLIPBOARD", NK_CAP_CLIPBOARD},
@@ -247,6 +250,7 @@ constexpr std::array<capability_name, 45> k_capability_names = {{
     {"CLIPBOARD_WATCH", NK_CAP_CLIPBOARD_WATCH},
     {"APPLICATION_MENU", NK_CAP_APPLICATION_MENU},
     {"TRANSPORT", NK_CAP_TRANSPORT},
+    {"DYNAMIC_LIBRARY", NK_CAP_DYNAMIC_LIBRARY},
 }};
 
 std::string_view trim(std::string_view value) {

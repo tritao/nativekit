@@ -624,6 +624,10 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 * The backend supports general TCP, UDP, local, or WebSocket transports.
 		 */
 		NK_CAP_TRANSPORT = 35184372088832;
+		/**
+		 * The backend can load a local dynamic library and resolve its symbols.
+		 */
+		NK_CAP_DYNAMIC_LIBRARY = 70368744177664;
 	}
 	/**
 	 * Flags carried by nk_clipboard_changed_event.

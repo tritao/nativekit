@@ -44,7 +44,7 @@ bool valid_event_struct(const nk_event *event) {
 namespace nk::core {
 
 nk_capabilities optional_capabilities() noexcept {
-    return nk::net::capabilities() | nk::transport::capabilities();
+    return dynamic_library_capabilities() | nk::net::capabilities() | nk::transport::capabilities();
 }
 
 nk_result require_ui_thread() noexcept {

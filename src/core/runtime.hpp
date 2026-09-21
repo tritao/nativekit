@@ -22,6 +22,8 @@ NK_INTERNAL_API std::uint64_t runtime_generation() noexcept;
 NK_INTERNAL_API bool is_runtime_generation(std::uint64_t generation) noexcept;
 /** Capabilities supplied by optional modules compiled into this library. */
 nk_capabilities optional_capabilities() noexcept;
+/** Capability supplied by the platform dynamic-library abstraction. */
+nk_capabilities dynamic_library_capabilities() noexcept;
 bool events_pending() noexcept;
 std::uint64_t wake_sequence() noexcept;
 bool wait_for_wake(std::uint64_t sequence, std::chrono::milliseconds timeout) noexcept;

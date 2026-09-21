@@ -58,6 +58,7 @@ changed in this review.
   cursor control.
 - `nativekit_accessibility.h`: semantic projection for custom-rendered surfaces.
 - `nativekit_resource.h`: URI resources, sharing, durable access, and streams.
+- `nativekit_library.h`: local dynamic-library loading and symbol resolution.
 - `nativekit_dialog.h`, `nativekit_clipboard.h`, and
   `nativekit_notification.h`: asynchronous operating-system services.
 - `nativekit_webview.h`: native child browsers, JSON messaging, evaluation, and

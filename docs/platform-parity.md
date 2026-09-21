@@ -78,6 +78,7 @@ Two public capability families are orthogonal to the table above:
 | Custom window decorations | Required | Required | Required | Not applicable | Not applicable | Not applicable |
 | Surface frame callbacks | Required | Required | Required | Required | Required | Required |
 | Native child views | Required | Required | Required | Required | Required | Platform-specific equivalent |
+| Dynamic library loading | Required | Required | Required | Platform-specific equivalent | Platform-specific equivalent | Not applicable |
 
 The mobile-host row explains why Android and iOS do not advertise
 `NK_CAP_WINDOW`: they attach a caller-owned native view instead of creating a
@@ -88,6 +89,11 @@ The native-child-view row is the end-state contract. Only GTK implements
 `nk_view_*` today; the other backends leave `NK_CAP_NATIVE_VIEW` clear, return
 `NK_ERROR_UNSUPPORTED`, and are tracked as deferred in `capability-snapshots.txt`
 until each one lands.
+
+Dynamic library loading is a platform-specific equivalent on mobile: Android
+loads application-accessible native libraries, while iOS loads only an
+embedded, code-signed framework executable. Neither platform permits NativeKit
+to scan for or load arbitrary downloaded code.
 
 ## Capability-bit mapping
 
@@ -108,6 +114,7 @@ needed; graphics API bits are alternatives within the GPU family.
 | Clipboard | `NK_CAP_CLIPBOARD` |
 | File watching | `NK_CAP_FILE_WATCH` |
 | Clipboard watching | `NK_CAP_CLIPBOARD_WATCH` |
+| Dynamic library loading | `NK_CAP_DYNAMIC_LIBRARY` |
 | Drag/drop | `NK_CAP_DRAG_DROP` |
 | Shell/open URI | `NK_CAP_SHELL` |
 | Appearance | `NK_CAP_SYSTEM_APPEARANCE` |
@@ -157,8 +164,8 @@ each milestone lands, the following gaps remain explicitly `Deferred`:
 | Linux/GTK | Windows, WebView, URI resource and message dialogs, clipboard and clipboard watching, file watching, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, custom window decorations, GPU, resource sharing via URI clipboard, resource I/O, monitors, joystick and evdev rumble, native export, X11 and Wayland native wrapping, accessibility, application menus through GTK GMenu/GAction export, surface frame callbacks | — |
 | Windows | Windows, WebView when WebView2 is available, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, custom window decorations, D3D11, resource sharing via URI clipboard, resource I/O, accessibility, monitors, joystick and XInput rumble, native export, Win32 native wrapping, native per-window application menus through Win32 HMENU, surface frame callbacks | file and clipboard watching |
 | macOS | Windows, WebView, URI resource and message dialogs, clipboard, URI clipboard, drag/drop and resource drops, shell, appearance, notifications, input, cursor/capture, geometry, styling, custom window decorations, Metal, resource sharing via `NSSharingServicePicker`, resource I/O, accessibility, monitors, joystick, native export, Cocoa native wrapping, surface frame callbacks | file and clipboard watching |
-| Android | Mobile host, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, GLES/Vulkan, resource sharing, resource I/O, joystick, sensors, system haptics, controller rumble, accessibility, surface frame callbacks, APK installation path, system fonts | sandbox file watching and clipboard watching |
-| iOS | Mobile host, WebView, dialogs, Metal, input, clipboard, URI clipboard, host drag/drop, shell, appearance, notifications, resource sharing, resource I/O, joystick, sensors, system haptics, controller haptics where exposed, accessibility, surface frame callbacks | sandbox file watching and clipboard watching |
+| Android | Mobile host, WebView, dialogs, clipboard, drag/drop, shell, appearance, notifications, input, GLES/Vulkan, resource sharing, resource I/O, dynamic library loading from application-accessible paths, joystick, sensors, system haptics, controller rumble, accessibility, surface frame callbacks, APK installation path, system fonts | sandbox file watching and clipboard watching |
+| iOS | Mobile host, WebView, dialogs, Metal, input, clipboard, URI clipboard, host drag/drop, shell, appearance, notifications, resource sharing, resource I/O, dynamic loading of embedded code-signed framework executables, joystick, sensors, system haptics, controller haptics where exposed, accessibility, surface frame callbacks | sandbox file watching and clipboard watching |
 | Web | Window, geometry and CSS-backed styling, clipboard and URI clipboard, drag/drop and resource drops, input, cursor/capture, GLES, shell URL opening, appearance, notifications, Gamepad API, resource picker equivalents, resource sharing via Web Share API, resource I/O, accessibility, surface frame callbacks, optional Device Motion and haptics APIs | — |
 
 The path-shaped iOS system-font and Web application/storage/system-font
@@ -246,4 +253,4 @@ table remains the definition of completion.
 
 The fallback stub used when a native desktop dependency is unavailable is not a
 platform backend. It is tested separately and advertises only the portable
-resource-I/O core.
+resource-I/O and dynamic-library core.

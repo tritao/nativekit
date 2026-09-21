@@ -29,6 +29,7 @@ enum class ResourceType : std::uint8_t {
     transport,
     listener,
     plugin,
+    library,
     menu,
     menu_item
 };
