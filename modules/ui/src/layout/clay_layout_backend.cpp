@@ -622,6 +622,30 @@ void append_primitive(LayoutSnapshot &snapshot, const Clay_RenderCommand &comman
     snapshot.primitives.push_back(std::move(primitive));
 }
 
+void patch_primitive_paint(const std::vector<LayoutNode> &nodes, LayoutSnapshot &snapshot) {
+    for (auto &primitive : snapshot.primitives) {
+        const auto item = std::find_if(snapshot.items.begin(), snapshot.items.end(),
+                                       [&](const LayoutItem &value) {
+                                           return value.id == primitive.node_id;
+                                       });
+        if (item == snapshot.items.end() || item->index >= nodes.size())
+            continue;
+        const auto &node = nodes[item->index];
+        if (primitive.kind == LayoutPrimitiveKind::Rectangle) {
+            primitive.color = node.style.background;
+            primitive.radius_top_left = node.style.radius_top_left;
+            primitive.radius_top_right = node.style.radius_top_right;
+            primitive.radius_bottom_left = node.style.radius_bottom_left;
+            primitive.radius_bottom_right = node.style.radius_bottom_right;
+        } else if (primitive.kind == LayoutPrimitiveKind::Text) {
+            primitive.color = node.text_color;
+        }
+        primitive.content_revision = node.content_revision;
+        primitive.geometry_revision = node.geometry_revision;
+        primitive.composite_revision = node.composite_revision;
+    }
+}
+
 } // namespace
 
 bool LayoutEngine::Impl::valid() const {
@@ -1207,6 +1231,7 @@ bool LayoutEngine::update_transforms(const std::vector<LayoutNode> &nodes,
         return false;
     }
 
+    patch_primitive_paint(nodes, snapshot);
     for (auto &primitive : snapshot.primitives) {
         const auto item = std::find_if(snapshot.items.begin(), snapshot.items.end(),
                                        [&](const LayoutItem &value) {
@@ -1216,9 +1241,6 @@ bool LayoutEngine::update_transforms(const std::vector<LayoutNode> &nodes,
             continue;
         primitive.transform = item->transform;
         primitive.visible = item->visible;
-        primitive.content_revision = item->content_revision;
-        primitive.geometry_revision = item->geometry_revision;
-        primitive.composite_revision = item->composite_revision;
     }
     return true;
 }

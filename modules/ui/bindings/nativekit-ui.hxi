@@ -753,12 +753,12 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	 */
 	extern fn nkui_layout_session_submit(session: nkui_layout_session, transaction: ptr<const<u8>> @in_array("transaction_bytes"), transaction_bytes: u32, frame: ptr<const<nkui_layout_frame_input>>) -> nkui_result;
 	/**
-	 * Updates only transforms and dependent world geometry for the submitted tree.
+	 * Updates transforms, paint inputs, revisions, and dependent world geometry.
 	 *
-	 * The transaction must retain the same tree, layout, text, paint, and hit
-	 * policy inputs as the previous submission. Transform matrices, transform
-	 * origins, and scene revisions may change. This preserves Clay layout and
-	 * text results while refreshing rendering and geometric picking metadata.
+	 * The transaction must retain the same tree, layout, text, and hit-policy
+	 * inputs as the previous submission. Transform matrices, paint inputs, and
+	 * scene revisions may change. This preserves Clay layout and text results
+	 * while refreshing rendering and geometric picking metadata.
 	 */
 	extern fn nkui_layout_session_update_transforms(session: nkui_layout_session, transaction: ptr<const<u8>> @in_array("transaction_bytes"), transaction_bytes: u32) -> nkui_result;
 	/**

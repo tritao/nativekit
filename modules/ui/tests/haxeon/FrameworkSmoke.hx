@@ -2776,6 +2776,17 @@ class FrameworkSmoke {
 			!opacityMetrics.nativeLayoutReused || opacityMetrics.resolvedGeometryChangedNodes != 0 ||
 			opacityMetrics.resolvedGeometryReusedNodes != 2 || !opacityMetrics.nativeTransformPatched)
 			return 243;
+		var paintSheet = new StyleSheet("RevisionPaint");
+		paintSheet.rule(StyleSelector.widget("column"),
+			[StyleValue.background(Color.rgba(0.16, 0.22, 0.3, 1.0))]);
+		context.setStyleSheet(paintSheet);
+		var paintRoot = context.submit(transformCanvas, transformFrame);
+		var paintMetrics:Null<UiFrameMetrics> = context.frameMetrics;
+		if (paintMetrics == null || paintMetrics.nativeLayoutSubmitted ||
+			!paintMetrics.nativeLayoutReused || !paintMetrics.nativeTransformPatched ||
+			paintMetrics.layoutInvalidatedNodes != 0 || paintMetrics.resolvedGeometryChangedNodes != 0 ||
+			paintMetrics.paintInvalidatedNodes <= 0 || paintRoot.geometryRevision != opacityRoot.geometryRevision)
+			return 244;
 		context.setStyleSheet(new StyleSheet("Application"));
 		var spring = new SpringController(0.0, 180.0, 24.0, 1.0, 0.001,
 			context.animations);

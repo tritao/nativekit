@@ -1093,17 +1093,11 @@ bool same_layout_axis(const nkui::LayoutAxis &left, const nkui::LayoutAxis &righ
            left.max == right.max && left.grow_weight == right.grow_weight;
 }
 
-bool same_layout_color(const nkui::LayoutColor &left, const nkui::LayoutColor &right) {
-    return left.red == right.red && left.green == right.green && left.blue == right.blue &&
-           left.alpha == right.alpha;
-}
-
 bool same_layout_transform_inputs(const nkui::LayoutNode &left, const nkui::LayoutNode &right) {
     const auto &a = left.style;
     const auto &b = right.style;
     return left.id == right.id && left.parent == right.parent &&
            left.visual_kind == right.visual_kind && left.text == right.text &&
-           same_layout_color(left.text_color, right.text_color) &&
            left.text_style.family == right.text_style.family &&
            left.text_style.font_size == right.text_style.font_size &&
            left.text_style.letter_spacing == right.text_style.letter_spacing &&
@@ -1123,12 +1117,7 @@ bool same_layout_transform_inputs(const nkui::LayoutNode &left, const nkui::Layo
            a.child_distribution == b.child_distribution && a.positioning == b.positioning &&
            a.position_x == b.position_x && a.position_y == b.position_y &&
            a.z_index == b.z_index && a.clip_to_parent == b.clip_to_parent &&
-           same_layout_color(a.background, b.background) &&
-           a.radius_top_left == b.radius_top_left && a.radius_top_right == b.radius_top_right &&
-           a.radius_bottom_left == b.radius_bottom_left &&
-           a.radius_bottom_right == b.radius_bottom_right &&
-           a.clip_horizontal == b.clip_horizontal && a.clip_vertical == b.clip_vertical &&
-           a.visible == b.visible;
+           a.clip_horizontal == b.clip_horizontal && a.clip_vertical == b.clip_vertical;
 }
 
 nkui_result allocate_resource(nkui::ResourceKind kind, nkui_resource *out, ResourceSlot **out_slot);

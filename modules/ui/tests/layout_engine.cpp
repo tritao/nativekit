@@ -106,6 +106,36 @@ int main(int argc, char **argv) {
     if (!panel_item || snapshot.items.size() != nodes.size())
         return 13;
 
+    // Paint-only changes update the retained snapshot without rerunning Clay
+    // layout or rebuilding text geometry.
+    auto paint_nodes = nodes;
+    paint_nodes[0].style.background = {0.15f, 0.2f, 0.3f, 1.0f};
+    paint_nodes[0].content_revision = 7;
+    paint_nodes[1].text_color = {0.8f, 0.2f, 0.1f, 1.0f};
+    if (!engine.update_transforms(paint_nodes, snapshot, &error))
+        return 51;
+    const auto patched_root_primitive = std::find_if(
+        snapshot.primitives.begin(), snapshot.primitives.end(),
+        [](const LayoutPrimitive &primitive) {
+            return primitive.node_id == 1 && primitive.kind == LayoutPrimitiveKind::Rectangle;
+        });
+    const auto patched_title_primitive = std::find_if(
+        snapshot.primitives.begin(), snapshot.primitives.end(),
+        [](const LayoutPrimitive &primitive) {
+            return primitive.node_id == 2 && primitive.kind == LayoutPrimitiveKind::Text;
+        });
+    const auto *patched_root_item = snapshot.find(1);
+    if (patched_root_primitive == snapshot.primitives.end() ||
+        patched_title_primitive == snapshot.primitives.end() || !patched_root_item ||
+        patched_root_item->content_revision != 7 ||
+        patched_root_primitive->color.red != 0.15f ||
+        patched_root_primitive->color.green != 0.2f ||
+        patched_root_primitive->color.blue != 0.3f ||
+        patched_title_primitive->color.red != 0.8f ||
+        patched_title_primitive->color.green != 0.2f ||
+        patched_title_primitive->color.blue != 0.1f)
+        return 52;
+
     LayoutNode geometry_root = box(300, -1);
     geometry_root.style.width = {LayoutSizing::Fixed, 100.0f};
     geometry_root.style.height = {LayoutSizing::Fixed, 80.0f};

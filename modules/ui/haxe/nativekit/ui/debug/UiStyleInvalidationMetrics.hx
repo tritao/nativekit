@@ -101,8 +101,10 @@ class UiStyleInvalidationMetrics {
 
 		if (treeChanged)
 			invalidationFlags = UiDirtyFlag.normalize(invalidationFlags | UiDirtyFlag.NeedsBuild);
+		// Native paint inputs can be patched onto the retained snapshot. Layout,
+		// text, and hit-geometry changes still require a fresh native submission.
 		var nativeWork = UiDirtyFlag.NeedsBuild | UiDirtyFlag.NeedsTextLayout |
-			UiDirtyFlag.NeedsLayout | UiDirtyFlag.NeedsPaint | UiDirtyFlag.NeedsHitGeometry;
+			UiDirtyFlag.NeedsLayout | UiDirtyFlag.NeedsHitGeometry;
 		var nativeLayoutRequired = (invalidationFlags & nativeWork) != 0;
 		transformOnly = transformOnly && !treeChanged &&
 			UiDirtyFlag.contains(invalidationFlags, UiDirtyFlag.NeedsComposite) &&

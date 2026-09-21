@@ -400,12 +400,12 @@ NKUI_API nkui_result NK_CALL nkui_layout_session_submit(
     nkui_layout_session session, const uint8_t *transaction NKUI_IN_ARRAY(transaction_bytes),
     uint32_t transaction_bytes, const nkui_layout_frame_input *frame);
 
-/** Updates only transforms and dependent world geometry for the submitted tree.
+/** Updates transforms, paint inputs, revisions, and dependent world geometry.
  *
- * The transaction must retain the same tree, layout, text, paint, and hit
- * policy inputs as the previous submission. Transform matrices, transform
- * origins, and scene revisions may change. This preserves Clay layout and
- * text results while refreshing rendering and geometric picking metadata.
+ * The transaction must retain the same tree, layout, text, and hit-policy
+ * inputs as the previous submission. Transform matrices, paint inputs, and
+ * scene revisions may change. This preserves Clay layout and text results
+ * while refreshing rendering and geometric picking metadata.
  */
 NKUI_API nkui_result NK_CALL nkui_layout_session_update_transforms(
     nkui_layout_session session, const uint8_t *transaction NKUI_IN_ARRAY(transaction_bytes),

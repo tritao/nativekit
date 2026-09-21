@@ -70,7 +70,7 @@ class LayoutSession {
 		return readResolvedItems();
 	}
 
-	/** Updates transforms, retained scene revisions, and dependent world geometry. */
+	/** Updates transforms, paint inputs, retained scene revisions, and world geometry. */
 	public function updateTransforms(root:LayoutNode):Array<ResolvedLayoutItem> {
 		ensureLive();
 		if (root == null)

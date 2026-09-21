@@ -258,7 +258,8 @@ class UiContext {
 		var resolved:Array<ResolvedLayoutItem> = [];
 		var nativeScenePatchRequired = !styleInvalidation.treeChanged &&
 			!styleInvalidation.nativeLayoutRequired &&
-			UiDirtyFlag.contains(styleInvalidation.invalidationFlags, UiDirtyFlag.NeedsComposite);
+			(styleInvalidation.invalidationFlags &
+				(UiDirtyFlag.NeedsPaint | UiDirtyFlag.NeedsComposite)) != 0;
 		if (nativeLayoutReused) {
 			if (nativeScenePatchRequired) {
 				session.updateTransforms(next.layout);
