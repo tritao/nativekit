@@ -1538,7 +1538,7 @@ class FrameworkSmoke {
 		if (treeSemantics.role != AccessibilityRole.Tree || treeSemantics.setSize <= 100000 ||
 			treeBuiltKeys.length == 0 || treeBuiltKeys.length > 16 ||
 			treeBuiltKeys[0] != "root:0" || !tree.isExpanded("root:0") ||
-			treeModel.extentCalls > 16)
+			treeModel.extentCalls > 16 || treeModel.childCalls >= 100000)
 			return 168;
 		if (!tree.select("root:0:child:2") || treeSelection != "root:0:child:2")
 			return 169;
@@ -3970,10 +3970,12 @@ private class SmokeListModel implements ListViewModel {
 private class SmokeTreeModel implements TreeViewModel {
 	final builtKeys:Array<String>;
 	public var extentCalls:Int;
+	public var childCalls:Int;
 
 	public function new(builtKeys:Array<String>) {
 		this.builtKeys = builtKeys;
 		extentCalls = 0;
+		childCalls = 0;
 	}
 
 	public function rootCount():Int
@@ -3983,7 +3985,10 @@ private class SmokeTreeModel implements TreeViewModel {
 		return 'root:$index';
 
 	public function childCount(parentKey:String):Int
+	{
+		childCalls++;
 		return parentKey == "root:0" ? 3 : 0;
+	}
 
 	public function childKeyAt(parentKey:String, index:Int):String
 		return '$parentKey:child:$index';
