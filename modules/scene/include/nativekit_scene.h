@@ -348,7 +348,8 @@ NKS_API nkscene_result NKS_CALL nkscene_tx_set_transform(nkscene_transaction tra
                                                          const nkscene_transform *transform);
 NKS_API nkscene_result NKS_CALL nkscene_tx_set_transforms(
     nkscene_transaction transaction,
-    const nkscene_transform_update *updates NK_IN_ARRAY(update_count),
+    const nkscene_transform_update *updates
+        NK_IN_ARRAY(update_count),
     uint32_t update_count);
 NKS_API nkscene_result NKS_CALL nkscene_tx_set_geometry(nkscene_transaction transaction,
                                                         nkscene_occurrence_id occurrence,
@@ -428,8 +429,7 @@ NKS_API nkscene_result NKS_CALL nkscene_material_set_data(nkscene_scene scene,
 NKS_API nkscene_result NKS_CALL nkscene_image_create(nkscene_scene scene,
                                                      nkscene_image_id *out_image NK_OUT);
 NKS_API void NKS_CALL nkscene_image_destroy(nkscene_scene scene, nkscene_image_id image);
-NKS_API nkscene_result NKS_CALL nkscene_image_set_data(nkscene_scene scene,
-                                                       nkscene_image_id image,
+NKS_API nkscene_result NKS_CALL nkscene_image_set_data(nkscene_scene scene, nkscene_image_id image,
                                                        const nkscene_image_data *data);
 NKS_API nkscene_result NKS_CALL nkscene_texture_create(nkscene_scene scene,
                                                        nkscene_texture_id *out_texture NK_OUT);
@@ -452,8 +452,7 @@ NKS_API nkscene_result NKS_CALL nkscene_camera_set_data(nkscene_scene scene,
 NKS_API nkscene_result NKS_CALL nkscene_light_create(nkscene_scene scene,
                                                      nkscene_light_id *out_light NK_OUT);
 NKS_API void NKS_CALL nkscene_light_destroy(nkscene_scene scene, nkscene_light_id light);
-NKS_API nkscene_result NKS_CALL nkscene_light_set_data(nkscene_scene scene,
-                                                       nkscene_light_id light,
+NKS_API nkscene_result NKS_CALL nkscene_light_set_data(nkscene_scene scene, nkscene_light_id light,
                                                        const nkscene_light_data *data);
 
 #ifdef __cplusplus

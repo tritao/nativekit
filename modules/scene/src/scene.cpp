@@ -229,6 +229,16 @@ std::size_t vertex_format_size(nkscene_vertex_format format) noexcept {
     }
 }
 
+template <class Store, class Resource>
+void append_resources(const Store &store, std::vector<Resource> &resources) {
+    store.for_each([&](auto, const Resource &resource) {
+        resources.push_back(resource);
+    });
+    std::sort(resources.begin(), resources.end(), [](const Resource &lhs, const Resource &rhs) {
+        return lhs.id.value < rhs.id.value;
+    });
+}
+
 std::uint32_t primitive_width(nkscene_primitive_type primitive) noexcept {
     switch (primitive) {
     case NKS_PRIMITIVE_TRIANGLES:
@@ -396,41 +406,11 @@ SceneSnapshot Scene::snapshot() const {
               [](const MaterialResource &lhs, const MaterialResource &rhs) {
                   return lhs.id.value < rhs.id.value;
               });
-    images.for_each([&](ImageId, const ImageResource &resource) {
-        state->images.push_back(resource);
-    });
-    std::sort(state->images.begin(), state->images.end(),
-              [](const ImageResource &lhs, const ImageResource &rhs) {
-                  return lhs.id.value < rhs.id.value;
-              });
-    textures.for_each([&](TextureId, const TextureResource &resource) {
-        state->textures.push_back(resource);
-    });
-    std::sort(state->textures.begin(), state->textures.end(),
-              [](const TextureResource &lhs, const TextureResource &rhs) {
-                  return lhs.id.value < rhs.id.value;
-              });
-    samplers.for_each([&](SamplerId, const SamplerResource &resource) {
-        state->samplers.push_back(resource);
-    });
-    std::sort(state->samplers.begin(), state->samplers.end(),
-              [](const SamplerResource &lhs, const SamplerResource &rhs) {
-                  return lhs.id.value < rhs.id.value;
-              });
-    cameras.for_each([&](CameraId, const CameraResource &resource) {
-        state->cameras.push_back(resource);
-    });
-    std::sort(state->cameras.begin(), state->cameras.end(),
-              [](const CameraResource &lhs, const CameraResource &rhs) {
-                  return lhs.id.value < rhs.id.value;
-              });
-    lights.for_each([&](LightId, const LightResource &resource) {
-        state->lights.push_back(resource);
-    });
-    std::sort(state->lights.begin(), state->lights.end(),
-              [](const LightResource &lhs, const LightResource &rhs) {
-                  return lhs.id.value < rhs.id.value;
-              });
+    append_resources(images, state->images);
+    append_resources(textures, state->textures);
+    append_resources(samplers, state->samplers);
+    append_resources(cameras, state->cameras);
+    append_resources(lights, state->lights);
     return SceneSnapshot(std::move(state));
 }
 
@@ -699,12 +679,12 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
                     }
                     if (changed) {
                         name_changed = true;
-                        source_entities.for_each([&](OccurrenceId occurrence,
-                                                     const SourceEntity &source) {
-                            if (source.id == value.entity)
-                                record_change(changes, change_indices, occurrence,
-                                              ChangeDomain::Name);
-                        });
+                        source_entities.for_each(
+                            [&](OccurrenceId occurrence, const SourceEntity &source) {
+                                if (source.id == value.entity)
+                                    record_change(changes, change_indices, occurrence,
+                                                  ChangeDomain::Name);
+                            });
                     }
                 }
             },
@@ -995,9 +975,9 @@ nkscene_result NKS_CALL nkscene_tx_set_transform(nkscene_transaction handle,
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_tx_set_transforms(
-    nkscene_transaction handle, const nkscene_transform_update *updates,
-    uint32_t update_count) {
+nkscene_result NKS_CALL nkscene_tx_set_transforms(nkscene_transaction handle,
+                                                 const nkscene_transform_update *updates,
+                                                 uint32_t update_count) {
     if (update_count != 0 && !updates)
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = nkscene::registry();
@@ -1501,11 +1481,9 @@ nkscene_result NKS_CALL nkscene_material_set_data(nkscene_scene scene, nkscene_m
     resource.emissive_texture = {data->emissive_texture.value};
     resource.occlusion_texture = {data->occlusion_texture.value};
     resource.sampler = {data->sampler.value};
-    const nkscene::TextureId textures[] = {resource.base_color_texture,
-                                           resource.metallic_roughness_texture,
-                                           resource.normal_texture,
-                                           resource.emissive_texture,
-                                           resource.occlusion_texture};
+    const nkscene::TextureId textures[] = {
+        resource.base_color_texture, resource.metallic_roughness_texture, resource.normal_texture,
+        resource.emissive_texture, resource.occlusion_texture};
     for (const auto texture : textures)
         if (texture.valid() && !owner->texture_store().find(texture))
             return NKS_ERROR_STALE_ID;
