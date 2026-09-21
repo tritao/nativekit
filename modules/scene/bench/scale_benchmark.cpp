@@ -4,6 +4,7 @@
 #include <cassert>
 #include <chrono>
 #include <cstdio>
+#include <cstdint>
 #include <memory>
 #include <thread>
 #include <vector>
@@ -87,9 +88,23 @@ int main() {
     assert(scene->hierarchy_index().children(occurrences[1]).size() == 1);
     assert(scene->hierarchy_index().children(occurrences.front()).size() == occurrence_count - 2);
 
+    nkscene::ComponentStore<std::uint32_t> sparse_components;
+    sparse_components.insert_or_assign(
+        {static_cast<std::uint32_t>(occurrence_count - 1), 1}, 7);
+    std::uint64_t sparse_checksum = 0;
+    const auto sparse_start = std::chrono::steady_clock::now();
+    for (int iteration = 0; iteration < 512; ++iteration)
+        sparse_components.for_each([&](nkscene::OccurrenceHandle, std::uint32_t value) {
+            sparse_checksum += value;
+        });
+    const auto sparse_elapsed = std::chrono::duration<double, std::micro>(
+        std::chrono::steady_clock::now() - sparse_start);
+    assert(sparse_checksum == 512 * 7);
+
     std::printf("scale occurrences=%zu create=%.3f ms hierarchy=%.3f ms move=%.3f us "
-                "reparent=%.3f ms readers=%d\n",
+                "reparent=%.3f ms sparse=%.3f us readers=%d\n",
                 occurrence_count, create_elapsed.count(), hierarchy_elapsed.count(),
-                move_elapsed.count(), reparent_elapsed.count(), reader_count);
+                move_elapsed.count(), reparent_elapsed.count(), sparse_elapsed.count(),
+                reader_count);
     return 0;
 }

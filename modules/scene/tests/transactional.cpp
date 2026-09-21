@@ -44,6 +44,26 @@ void component_store_is_slot_indexed_and_generation_safe() {
     store.insert_or_assign(reused, 40);
     assert(store.find(second) == nullptr);
     assert(*store.find(reused) == 40);
+
+    std::size_t visited = 0;
+    store.for_each([&](nkscene::OccurrenceHandle handle, std::uint32_t value) {
+        ++visited;
+        assert(store.find(handle) && *store.find(handle) == value);
+    });
+    assert(visited == store.size());
+
+    ComponentStore<std::uint32_t> sparse;
+    const nkscene::OccurrenceHandle distant{1'000'000, 7};
+    sparse.insert_or_assign(distant, 99);
+    for (int iteration = 0; iteration < 64; ++iteration) {
+        visited = 0;
+        sparse.for_each([&](nkscene::OccurrenceHandle handle, std::uint32_t value) {
+            ++visited;
+            assert(handle == distant);
+            assert(value == 99);
+        });
+        assert(visited == 1);
+    }
 }
 
 void occurrence_handles_reject_stale_components() {
