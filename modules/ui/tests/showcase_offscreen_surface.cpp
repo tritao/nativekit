@@ -221,16 +221,29 @@ bool ShowcaseOffscreenSurface::render_on_executor(const nk_surface_frame_target 
         if (nkgpu_buffer_end(index_builder, &index_buffer_) != NKGPU_OK)
             return false;
     }
-    if (target_.id && (width_ != width || height_ != height)) {
-        if (nkgpu_render_target_destroy(renderer_, target_) != NKGPU_OK)
+    if (target_image_.id && (width_ != width || height_ != height)) {
+        if (nkgpu_image_destroy(renderer_, target_image_) != NKGPU_OK ||
+            nkgpu_image_destroy(renderer_, depth_image_) != NKGPU_OK)
             return false;
-        target_ = {};
+        target_image_ = {};
+        depth_image_ = {};
         image_ = {};
     }
-    if (!target_.id) {
-        if (nkgpu_render_target_create(renderer_, static_cast<uint32_t>(width),
-                                       static_cast<uint32_t>(height), 1, &target_) != NKGPU_OK ||
-            nkgpu_render_target_get_image(renderer_, target_, &image_) != NKGPU_OK)
+    if (!target_image_.id) {
+        nkgpu_image_desc color_desc{};
+        color_desc.struct_size = sizeof(color_desc);
+        color_desc.width = static_cast<uint32_t>(width);
+        color_desc.height = static_cast<uint32_t>(height);
+        color_desc.format = NKGPU_IMAGEFORMAT_RGBA8;
+        color_desc.usage = NKGPU_IMAGE_SAMPLED | NKGPU_IMAGE_RENDER_TARGET;
+        color_desc.sample_count = 1;
+        color_desc.layer_count = 1;
+        nkgpu_image_desc depth_desc = color_desc;
+        depth_desc.format = NKGPU_IMAGEFORMAT_DEPTH24_STENCIL8;
+        depth_desc.usage = NKGPU_IMAGE_DEPTH_STENCIL;
+        if (nkgpu_image_create_desc(renderer_, &color_desc, &target_image_) != NKGPU_OK ||
+            nkgpu_image_create_desc(renderer_, &depth_desc, &depth_image_) != NKGPU_OK ||
+            nkgpu_image_get_graphics_image(renderer_, target_image_, &image_) != NKGPU_OK)
             return false;
         width_ = width;
         height_ = height;
@@ -242,8 +255,20 @@ bool ShowcaseOffscreenSurface::render_on_executor(const nk_surface_frame_target 
         return false;
     const bool frame_started = nkgpu_frame_begin_with_target(renderer_, &frame_target) == NKGPU_OK;
     bool success = frame_started;
+    nkgpu_render_pass_desc pass{};
+    pass.struct_size = sizeof(pass);
+    pass.color_count = 1;
+    pass.colors[0].image = target_image_;
+    pass.colors[0].action.load_action = NKGPU_LOADACTION_CLEAR;
+    pass.colors[0].action.store_action = NKGPU_STOREACTION_STORE;
+    pass.colors[0].action.clear_color = {0.0f, 0.0f, 0.0f, 0.0f};
+    pass.depth_stencil = depth_image_;
+    pass.depth_stencil_action.load_action = NKGPU_LOADACTION_CLEAR;
+    pass.depth_stencil_action.store_action = NKGPU_STOREACTION_STORE;
+    pass.depth_stencil_action.clear_depth = 1.0f;
+    pass.depth_stencil_action.clear_stencil = 0;
     if (success)
-        success = nkgpu_begin_target_pass(renderer_, target_, 1) == NKGPU_OK;
+        success = nkgpu_begin_render_pass(renderer_, &pass) == NKGPU_OK;
     if (success)
         success = nkgpu_apply_pipeline(renderer_, pipeline_) == NKGPU_OK;
     if (success)
@@ -262,8 +287,10 @@ bool ShowcaseOffscreenSurface::render_on_executor(const nk_surface_frame_target 
 }
 
 void ShowcaseOffscreenSurface::destroy_on_executor() {
-    if (target_.id)
-        (void)nkgpu_render_target_destroy(renderer_, target_);
+    if (target_image_.id)
+        (void)nkgpu_image_destroy(renderer_, target_image_);
+    if (depth_image_.id)
+        (void)nkgpu_image_destroy(renderer_, depth_image_);
     if (index_buffer_.id)
         (void)nkgpu_buffer_destroy(renderer_, index_buffer_);
     if (pipeline_.id)
@@ -272,7 +299,8 @@ void ShowcaseOffscreenSurface::destroy_on_executor() {
         (void)nkgpu_shader_destroy(renderer_, shader_);
     if (renderer_.id)
         (void)nkgpu_renderer_destroy(renderer_);
-    target_ = {};
+    target_image_ = {};
+    depth_image_ = {};
     image_ = {};
     index_buffer_ = {};
     pipeline_ = {};

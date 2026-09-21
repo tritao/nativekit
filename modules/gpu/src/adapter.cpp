@@ -3285,43 +3285,6 @@ nkgpu_result nkgpu_begin_window_pass(nkgpu_renderer h, uint32_t width, uint32_t 
     s->value.bindings = {};
     return NKGPU_OK;
 }
-nkgpu_result nkgpu_begin_target_pass(nkgpu_renderer h, nkgpu_render_target target_handle,
-                                     uint32_t clear) {
-    auto *renderer = renderer_pool.get(h);
-    auto *target = render_target_pool.get(target_handle);
-    if (!renderer || !target || target->value.owner != h)
-        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign render target");
-    const nkgpu_result executor = require_renderer_executor(h, renderer->value);
-    if (executor != NKGPU_OK)
-        return executor;
-    if (clear > 1)
-        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid target clear flag");
-    if (renderer->value.state == RendererState::Lost)
-        return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
-    if (renderer->value.state != RendererState::FrameActive || renderer->value.in_pass ||
-        active_renderer != h)
-        return fail(NKGPU_ERROR_WRONG_STATE, "target pass requires a frame with no active pass");
-    const nkgpu_result activated = activate_renderer(h);
-    if (activated != NKGPU_OK)
-        return activated;
-    sg_pass pass{};
-    pass.action.colors[0].load_action = clear ? SG_LOADACTION_CLEAR : SG_LOADACTION_LOAD;
-    pass.action.colors[0].clear_value = {0.0f, 0.0f, 0.0f, 0.0f};
-    if (target->value.depth.id) {
-        pass.action.depth = {SG_LOADACTION_CLEAR, SG_STOREACTION_STORE, 1.0f};
-        pass.action.stencil = {SG_LOADACTION_CLEAR, SG_STOREACTION_STORE, 0};
-        pass.attachments.depth_stencil = target->value.depth_attachment;
-    }
-    pass.attachments.colors[0] = target->value.color_attachment;
-    sg_begin_pass(&pass);
-    renderer->value.in_pass = true;
-    ++renderer->value.passes;
-    renderer->value.active_target = target_handle;
-    renderer->value.pass_width = target->value.width;
-    renderer->value.pass_height = target->value.height;
-    renderer->value.bindings = {};
-    return NKGPU_OK;
-}
 nkgpu_result nkgpu_end_pass(nkgpu_renderer h) {
     auto *renderer = renderer_pool.get(h);
     if (!renderer)

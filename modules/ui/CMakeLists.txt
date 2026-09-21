@@ -178,7 +178,8 @@ if(NK_BUILD_TESTS)
         src/display_list/display_list.cpp
         src/prepare/nanovg_recorder.cpp
         src/prepare/nanovg_path.cpp
-        src/render/frame_resources.cpp)
+        src/render/frame_resources.cpp
+        src/render/sealed_render_plan.cpp)
     target_include_directories(nativekit_ui_frame_resources_test PRIVATE
         src "${PROJECT_SOURCE_DIR}/include")
     target_link_libraries(nativekit_ui_frame_resources_test PRIVATE
@@ -373,7 +374,8 @@ if(NK_BUILD_EXAMPLES)
         NativeKit::gpu)
     if(NK_BUILD_TESTS AND NOT EMSCRIPTEN)
         add_executable(nativekit_ui_showcase_surface_smoke_test
-            tests/showcase_surface_smoke.cpp)
+            tests/showcase_surface_smoke.cpp
+            tests/showcase_offscreen_surface.cpp)
         target_compile_definitions(nativekit_ui_showcase_surface_smoke_test PRIVATE
             NKGPU_TESTING=1)
         target_compile_features(nativekit_ui_showcase_surface_smoke_test PRIVATE cxx_std_20)

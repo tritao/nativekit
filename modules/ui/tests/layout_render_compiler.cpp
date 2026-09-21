@@ -160,6 +160,19 @@ class RecordingRenderer final : public UiRenderer {
     std::string error;
 };
 
+bool execute_built_plan(UiRenderer &renderer, const RenderPlan &plan,
+                        const OwnedFrameResources &resources, const WindowTarget &window,
+                        RenderExecutionError *error) {
+    RenderPlanSealError seal_error;
+    const auto sealed = SealedRenderPlan::seal(plan, resources, &seal_error);
+    if (!sealed) {
+        if (error)
+            error->message = seal_error.message;
+        return false;
+    }
+    return execute_render_plan(renderer, *sealed, window, error);
+}
+
 } // namespace
 
 int main() {
@@ -615,11 +628,11 @@ int main() {
     subtree_frame_target.width = 480;
     subtree_frame_target.height = 300;
     RenderExecutionError subtree_execution_error;
-    if (!execute_render_plan(subtree_backend, subtree_frame.plan(), subtree_frame.resources(),
-                             {main_target, subtree_frame_target}, &subtree_execution_error) ||
-        !execute_render_plan(subtree_backend, moved_subtree_frame.plan(),
-                             moved_subtree_frame.resources(),
-                             {main_target, subtree_frame_target}, &subtree_execution_error) ||
+    if (!execute_built_plan(subtree_backend, subtree_frame.plan(), subtree_frame.owned_resources(),
+                            {main_target, subtree_frame_target}, &subtree_execution_error) ||
+        !execute_built_plan(subtree_backend, moved_subtree_frame.plan(),
+                            moved_subtree_frame.owned_resources(),
+                            {main_target, subtree_frame_target}, &subtree_execution_error) ||
         subtree_backend.raster_cache_hits != 1)
         return 127;
 
@@ -637,14 +650,14 @@ int main() {
                           engine.text_engine(), nullptr, &subtree_paints))
         return 128;
     RecordingRenderer revision_backend;
-    if (!execute_render_plan(revision_backend, subtree_frame.plan(), subtree_frame.resources(),
-                             {main_target, subtree_frame_target}, &subtree_execution_error) ||
-        !execute_render_plan(revision_backend, moved_subtree_frame.plan(),
-                             moved_subtree_frame.resources(),
-                             {main_target, subtree_frame_target}, &subtree_execution_error) ||
-        !execute_render_plan(revision_backend, content_changed_subtree_frame.plan(),
-                             content_changed_subtree_frame.resources(),
-                             {main_target, subtree_frame_target}, &subtree_execution_error) ||
+    if (!execute_built_plan(revision_backend, subtree_frame.plan(), subtree_frame.owned_resources(),
+                            {main_target, subtree_frame_target}, &subtree_execution_error) ||
+        !execute_built_plan(revision_backend, moved_subtree_frame.plan(),
+                            moved_subtree_frame.owned_resources(),
+                            {main_target, subtree_frame_target}, &subtree_execution_error) ||
+        !execute_built_plan(revision_backend, content_changed_subtree_frame.plan(),
+                            content_changed_subtree_frame.owned_resources(),
+                            {main_target, subtree_frame_target}, &subtree_execution_error) ||
         revision_backend.raster_cache_hits != 1)
         return 128;
 
@@ -665,11 +678,11 @@ int main() {
         return 130;
     RecordingRenderer custom_revision_backend;
     if (!mixed_frame.resources().bind_path(custom_path, mixed_prepared, 0, 1) ||
-        !execute_render_plan(custom_revision_backend, mixed_frame.plan(), mixed_frame.resources(),
-                             {main_target, subtree_frame_target}, &subtree_execution_error) ||
-        !execute_render_plan(custom_revision_backend, custom_content_frame.plan(),
-                             custom_content_frame.resources(),
-                             {main_target, subtree_frame_target}, &subtree_execution_error) ||
+        !execute_built_plan(custom_revision_backend, mixed_frame.plan(), mixed_frame.owned_resources(),
+                            {main_target, subtree_frame_target}, &subtree_execution_error) ||
+        !execute_built_plan(custom_revision_backend, custom_content_frame.plan(),
+                            custom_content_frame.owned_resources(),
+                            {main_target, subtree_frame_target}, &subtree_execution_error) ||
         custom_revision_backend.raster_cache_hits != 0)
         return 130;
 
@@ -683,9 +696,9 @@ int main() {
     if (!compiler.compile(composite_changed_snapshot, main_target, 1.5f,
                           composite_changed_subtree_frame, &compile_error, false,
                           engine.text_engine(), nullptr, &subtree_paints) ||
-        !execute_render_plan(revision_backend, composite_changed_subtree_frame.plan(),
-                             composite_changed_subtree_frame.resources(),
-                             {main_target, subtree_frame_target}, &subtree_execution_error) ||
+        !execute_built_plan(revision_backend, composite_changed_subtree_frame.plan(),
+                            composite_changed_subtree_frame.owned_resources(),
+                            {main_target, subtree_frame_target}, &subtree_execution_error) ||
         revision_backend.raster_cache_hits != 2)
         return 129;
 
@@ -698,18 +711,19 @@ int main() {
     subtree_raster_pass.target_descriptor.height =
         std::max(1, static_cast<int>(std::ceil(subtree_raster_pass.target_descriptor.logical_height *
                                                2.0f)));
-    if (!execute_render_plan(subtree_backend, subtree_frame.plan(), subtree_frame.resources(),
-                             {main_target, subtree_frame_target}, &subtree_execution_error) ||
+    if (!execute_built_plan(subtree_backend, subtree_frame.plan(), subtree_frame.owned_resources(),
+                            {main_target, subtree_frame_target}, &subtree_execution_error) ||
         subtree_backend.raster_cache_hits != 1 ||
-        !execute_render_plan(subtree_backend, subtree_frame.plan(), subtree_frame.resources(),
-                             {main_target, subtree_frame_target}, &subtree_execution_error) ||
+        !execute_built_plan(subtree_backend, subtree_frame.plan(), subtree_frame.owned_resources(),
+                            {main_target, subtree_frame_target}, &subtree_execution_error) ||
         subtree_backend.raster_cache_hits != 2)
         return 127;
     RecordingRenderer mixed_backend;
-    if (!execute_render_plan(mixed_backend, mixed_frame.plan(), mixed_frame.resources(),
-                             {main_target, subtree_frame_target}, &subtree_execution_error) ||
-        !execute_render_plan(mixed_backend, moved_mixed_frame.plan(), moved_mixed_frame.resources(),
-                             {main_target, subtree_frame_target}, &subtree_execution_error) ||
+    if (!execute_built_plan(mixed_backend, mixed_frame.plan(), mixed_frame.owned_resources(),
+                            {main_target, subtree_frame_target}, &subtree_execution_error) ||
+        !execute_built_plan(mixed_backend, moved_mixed_frame.plan(),
+                            moved_mixed_frame.owned_resources(),
+                            {main_target, subtree_frame_target}, &subtree_execution_error) ||
         mixed_backend.raster_cache_hits != 1)
         return 30;
     RenderPlan changed_custom_plan = moved_custom_plan;
@@ -720,9 +734,9 @@ int main() {
                           &compile_error, false, engine.text_engine(), &changed_custom_paints,
                           &raster_paints) ||
         !changed_mixed_frame.resources().bind_path(custom_path, mixed_prepared, 0, 1) ||
-        !execute_render_plan(mixed_backend, changed_mixed_frame.plan(),
-                             changed_mixed_frame.resources(),
-                             {main_target, subtree_frame_target}, &subtree_execution_error) ||
+        !execute_built_plan(mixed_backend, changed_mixed_frame.plan(),
+                            changed_mixed_frame.owned_resources(),
+                            {main_target, subtree_frame_target}, &subtree_execution_error) ||
         mixed_backend.raster_cache_hits != 1)
         return 31;
 
@@ -773,12 +787,12 @@ int main() {
         !moved_nested_mixed_frame.resources().bind_path(custom_path, mixed_prepared, 0, 1))
         return 32;
     RecordingRenderer nested_mixed_backend;
-    if (!execute_render_plan(nested_mixed_backend, nested_mixed_frame.plan(),
-                             nested_mixed_frame.resources(),
-                             {main_target, nested_frame_target}, &nested_execution_error) ||
-        !execute_render_plan(nested_mixed_backend, moved_nested_mixed_frame.plan(),
-                             moved_nested_mixed_frame.resources(),
-                             {main_target, nested_frame_target}, &nested_execution_error) ||
+    if (!execute_built_plan(nested_mixed_backend, nested_mixed_frame.plan(),
+                            nested_mixed_frame.owned_resources(),
+                            {main_target, nested_frame_target}, &nested_execution_error) ||
+        !execute_built_plan(nested_mixed_backend, moved_nested_mixed_frame.plan(),
+                            moved_nested_mixed_frame.owned_resources(),
+                            {main_target, nested_frame_target}, &nested_execution_error) ||
         nested_mixed_backend.raster_cache_hits != 1)
         return 32;
 
@@ -833,13 +847,13 @@ int main() {
     if (!effect_mask_frame.resources().bind_path(custom_path, mixed_prepared, 0, 1))
         return 133;
     RecordingRenderer effect_mask_backend;
-    const bool effect_mask_first = execute_render_plan(
-        effect_mask_backend, effect_mask_frame.plan(), effect_mask_frame.resources(),
+    const bool effect_mask_first = execute_built_plan(
+        effect_mask_backend, effect_mask_frame.plan(), effect_mask_frame.owned_resources(),
         {main_target, nested_frame_target}, &nested_execution_error);
-    const bool effect_mask_second = effect_mask_first && execute_render_plan(
+    const bool effect_mask_second = effect_mask_first && execute_built_plan(
                                                        effect_mask_backend,
                                                        effect_mask_frame.plan(),
-                                                       effect_mask_frame.resources(),
+                                                       effect_mask_frame.owned_resources(),
                                                        {main_target, nested_frame_target},
                                                        &nested_execution_error);
     if (!effect_mask_first || !effect_mask_second || effect_mask_backend.effect_count != 1 ||
@@ -854,9 +868,9 @@ int main() {
                           &compile_error, false, engine.text_engine(),
                           &changed_effect_mask_paints, &raster_paints) ||
         !changed_effect_mask_frame.resources().bind_path(custom_path, mixed_prepared, 0, 1) ||
-        !execute_render_plan(effect_mask_backend, changed_effect_mask_frame.plan(),
-                             changed_effect_mask_frame.resources(),
-                             {main_target, nested_frame_target}, &nested_execution_error) ||
+        !execute_built_plan(effect_mask_backend, changed_effect_mask_frame.plan(),
+                            changed_effect_mask_frame.owned_resources(),
+                            {main_target, nested_frame_target}, &nested_execution_error) ||
         effect_mask_backend.effect_count != 2 || effect_mask_backend.mask_count != 3 ||
         effect_mask_backend.raster_cache_hits != 1)
         return 135;
@@ -1126,8 +1140,8 @@ int main() {
     raster_cache_plan.dependencies.push_back({raster_cache_target, cache_main});
     RecordingRenderer raster_cache_backend;
     auto execute_raster_cache_plan = [&] {
-        return execute_render_plan(raster_cache_backend, raster_cache_plan, cache_resources,
-                                   {cache_main, frame_target}, &execution_error);
+        return execute_built_plan(raster_cache_backend, raster_cache_plan, cache_resources,
+                                  {cache_main, frame_target}, &execution_error);
     };
     if (!execute_raster_cache_plan() || !execute_raster_cache_plan() ||
         raster_cache_backend.raster_cache_hits != 1 || raster_cache_backend.image_count != 1)

@@ -73,6 +73,11 @@ class FrameResources {
  */
 class OwnedFrameResources final : public FrameResources {
   public:
+    OwnedFrameResources() = default;
+    OwnedFrameResources(const OwnedFrameResources &) = default;
+    OwnedFrameResources &operator=(const OwnedFrameResources &) = default;
+    OwnedFrameResources(OwnedFrameResources &&) noexcept = default;
+    OwnedFrameResources &operator=(OwnedFrameResources &&) noexcept = default;
     bool bind_path(ResourceId id, std::shared_ptr<const PreparedPath> path,
                    uint32_t operation_index, uint64_t content_generation = 0);
     bool bind_image(ResourceId id, std::shared_ptr<const PreparedTexture> image,

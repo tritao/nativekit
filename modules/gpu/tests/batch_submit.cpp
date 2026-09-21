@@ -195,7 +195,6 @@ void run_physical_batch(void *user_data) {
     nkgpu_batch worker_batch{};
     std::atomic<nkgpu_result> worker_result{NKGPU_OK};
     std::thread worker;
-    nkgpu_render_target offscreen{};
     const float vertices[] = {-1.0f, -1.0f, 3.0f, -1.0f, -1.0f, 3.0f};
     const bool gles = task.target.api == NK_GRAPHICS_OPENGL_ES;
     const char *vertex_source = gles ? "#version 300 es\n"
@@ -270,19 +269,6 @@ void run_physical_batch(void *user_data) {
     CHECK_GPU(nkgpu_batch_destroy(batch), NKGPU_OK);
     batch = {};
 
-    CHECK_GPU(nkgpu_render_target_create(renderer, 16, 16, 1, &offscreen), NKGPU_OK);
-    CHECK_GPU(nkgpu_batch_begin(renderer, &batch), NKGPU_OK);
-    {
-        nkgpu_batch_pass pass{};
-        pass.struct_size = sizeof(pass);
-        pass.kind = NKGPU_BATCH_PASS_TARGET;
-        pass.target = offscreen;
-        pass.clear = 1;
-        CHECK_GPU(nkgpu_batch_append_pass(batch, &pass), NKGPU_OK);
-    }
-    CHECK_GPU(nkgpu_batch_seal(batch), NKGPU_OK);
-    CHECK_GPU(nkgpu_batch_submit(renderer, batch, &task.target), NKGPU_OK);
-
     /* Submission is render-executor-only, but the sealed batch remains usable
        after a worker observes the affinity error. */
     CHECK_GPU(nkgpu_batch_begin(renderer, &worker_batch), NKGPU_OK);
@@ -316,8 +302,6 @@ physical_cleanup:
         (void)nkgpu_batch_destroy(worker_batch);
     if (batch.id)
         (void)nkgpu_batch_destroy(batch);
-    if (offscreen.id && renderer.id)
-        (void)nkgpu_render_target_destroy(renderer, offscreen);
     if (buffer.id && renderer.id)
         (void)nkgpu_buffer_destroy(renderer, buffer);
     if (pipeline.id && renderer.id)

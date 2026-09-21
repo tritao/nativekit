@@ -60,7 +60,8 @@ void run_physical_contract(void *user_data) {
     auto &task = *static_cast<PhysicalContractTask *>(user_data);
     nkgpu_renderer first{};
     nkgpu_renderer second{};
-    nkgpu_render_target target{};
+    nkgpu_image target_image{};
+    nkgpu_image_desc target_desc{};
     nk_graphics_image retained_image{};
     nkgpu_shader shader{};
     nkgpu_pipeline pipeline{};
@@ -94,12 +95,17 @@ void run_physical_contract(void *user_data) {
     CHECK_GPU(nkgpu_renderer_create_for_frame_target(task.surface, &task.target, &second),
               NKGPU_OK);
 
-    /* Every pool mutation, including render-target allocation, belongs to
+    /* Every pool mutation, including render-target image allocation, belongs to
        RENDER.  Exercise the rejection before any GPU state is active so a
        failed worker call cannot leave a partially inserted pool slot. */
     wrong_thread = std::thread([&] {
-        nkgpu_render_target ignored{};
-        wrong_thread_result = nkgpu_render_target_create(first, 8, 8, 0, &ignored);
+        nkgpu_image_desc ignored_desc{};
+        ignored_desc.struct_size = sizeof(ignored_desc);
+        ignored_desc.width = ignored_desc.height = 8;
+        ignored_desc.format = NKGPU_IMAGEFORMAT_RGBA8;
+        ignored_desc.usage = NKGPU_IMAGE_SAMPLED | NKGPU_IMAGE_RENDER_TARGET;
+        nkgpu_image ignored{};
+        wrong_thread_result = nkgpu_image_create_desc(first, &ignored_desc, &ignored);
     });
     wrong_thread.join();
     if (wrong_thread_result.load() != NKGPU_ERROR_WRONG_THREAD) {
@@ -112,15 +118,17 @@ void run_physical_contract(void *user_data) {
     CHECK_GPU(nkgpu_end_frame(first), NKGPU_ERROR_WRONG_STATE);
     CHECK_GPU(nkgpu_frame_begin_with_target(first, &task.target), NKGPU_OK);
     CHECK_GPU(nkgpu_frame_begin_with_target(second, &task.target), NKGPU_ERROR_WRONG_STATE);
-    CHECK_GPU(nkgpu_end_render_target(first), NKGPU_ERROR_WRONG_STATE);
+    CHECK_GPU(nkgpu_end_pass(first), NKGPU_ERROR_WRONG_STATE);
     CHECK_GPU(nkgpu_renderer_destroy(first), NKGPU_ERROR_WRONG_STATE);
     CHECK_GPU(nkgpu_end_frame_deferred_present(first), NKGPU_OK);
 
-    CHECK_GPU(nkgpu_render_target_create(first, 16, 16, 1, &target), NKGPU_OK);
-    CHECK_GPU(nkgpu_render_target_get_image(first, target, &retained_image), NKGPU_OK);
+    target_desc.struct_size = sizeof(target_desc);
+    target_desc.width = target_desc.height = 16;
+    target_desc.format = NKGPU_IMAGEFORMAT_RGBA8;
+    target_desc.usage = NKGPU_IMAGE_SAMPLED | NKGPU_IMAGE_RENDER_TARGET;
+    CHECK_GPU(nkgpu_image_create_desc(first, &target_desc, &target_image), NKGPU_OK);
+    CHECK_GPU(nkgpu_image_get_graphics_image(first, target_image, &retained_image), NKGPU_OK);
     CHECK_GPU(nk_graphics_image_retain(retained_image), NKGPU_OK);
-    CHECK_GPU(nkgpu_render_target_destroy(first, target), NKGPU_OK);
-    target = {};
     {
         nk_graphics_image_info info{};
         info.struct_size = sizeof(info);
@@ -132,6 +140,8 @@ void run_physical_contract(void *user_data) {
     }
     CHECK_GPU(nk_graphics_image_release(retained_image), NK_OK);
     retained_image = {};
+    CHECK_GPU(nkgpu_image_destroy(first, target_image), NKGPU_OK);
+    target_image = {};
 
     CHECK_GPU(nkgpu_shader_create(first, NKGPU_SHADERLANGUAGE_GLSL, vertex_source, fragment_source,
                                   &shader),
@@ -185,6 +195,8 @@ physical_cleanup:
         (void)nkgpu_shader_destroy(first, shader);
     if (retained_image.id)
         (void)nk_graphics_image_release(retained_image);
+    if (target_image.id && first.id)
+        (void)nkgpu_image_destroy(first, target_image);
     if (first.id)
         (void)nkgpu_renderer_destroy(first);
     if (second.id)

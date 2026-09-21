@@ -95,7 +95,7 @@ struct RenderTask {
     nkgpu_renderer producer{};
     nkgpu_image image_resource{};
     nk_graphics_image image{};
-    std::array<nkgpu_render_target, 4> published_targets{};
+    std::array<nkgpu_image, 4> published_targets{};
     std::array<nk_graphics_image, 4> published_images{};
 };
 
@@ -278,14 +278,34 @@ void destroy_offscreen_resources(RenderTask &task) noexcept {
 
 void create_published_images(RenderTask &task) noexcept {
     for (size_t index = 0; index < task.published_targets.size(); ++index) {
-        if (nkgpu_render_target_create(task.producer, 32, 32, 0, &task.published_targets[index]) !=
-                NKGPU_OK ||
-            nkgpu_begin_render_target(task.producer, task.published_targets[index], 1) !=
-                NKGPU_OK ||
-            nkgpu_end_render_target(task.producer) != NKGPU_OK ||
-            nkgpu_render_target_get_image(task.producer, task.published_targets[index],
-                                          &task.published_images[index]) != NKGPU_OK)
+        nkgpu_image_desc desc{};
+        desc.struct_size = sizeof(desc);
+        desc.width = desc.height = 32;
+        desc.format = NKGPU_IMAGEFORMAT_RGBA8;
+        desc.usage = NKGPU_IMAGE_SAMPLED | NKGPU_IMAGE_RENDER_TARGET;
+        if (nkgpu_image_create_desc(task.producer, &desc, &task.published_targets[index]) !=
+            NKGPU_OK) {
             return;
+        }
+        nkgpu_render_pass_desc pass{};
+        pass.struct_size = sizeof(pass);
+        pass.color_count = 1;
+        pass.colors[0].image = task.published_targets[index];
+        pass.colors[0].action.load_action = NKGPU_LOADACTION_CLEAR;
+        pass.colors[0].action.store_action = NKGPU_STOREACTION_STORE;
+        pass.colors[0].action.clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
+        const nkgpu_result frame =
+            nk::core::render_executor_physical()
+                ? nkgpu_frame_begin_with_target(task.producer, &task.target)
+                : nkgpu_frame_begin(task.producer);
+        if (frame != NKGPU_OK ||
+            nkgpu_begin_render_pass(task.producer, &pass) != NKGPU_OK ||
+            nkgpu_end_pass(task.producer) != NKGPU_OK ||
+            nkgpu_end_frame_deferred_present(task.producer) != NKGPU_OK ||
+            nkgpu_image_get_graphics_image(task.producer, task.published_targets[index],
+                                            &task.published_images[index]) != NKGPU_OK) {
+            return;
+        }
     }
     task.success = true;
 }
@@ -293,7 +313,7 @@ void create_published_images(RenderTask &task) noexcept {
 void destroy_published_images(RenderTask &task) noexcept {
     for (auto &published_target : task.published_targets) {
         if (published_target.id)
-            (void)nkgpu_render_target_destroy(task.producer, published_target);
+            (void)nkgpu_image_destroy(task.producer, published_target);
         published_target = {};
     }
     task.published_images = {};
@@ -584,8 +604,13 @@ int main() {
         goto cleanup;
     }
     if (nk::core::render_executor_physical()) {
-        nkgpu_render_target wrong_thread_target{};
-        if (!check(nkgpu_render_target_create(producer, 4, 4, 0, &wrong_thread_target) ==
+        nkgpu_image_desc wrong_thread_desc{};
+        wrong_thread_desc.struct_size = sizeof(wrong_thread_desc);
+        wrong_thread_desc.width = wrong_thread_desc.height = 4;
+        wrong_thread_desc.format = NKGPU_IMAGEFORMAT_RGBA8;
+        wrong_thread_desc.usage = NKGPU_IMAGE_SAMPLED | NKGPU_IMAGE_RENDER_TARGET;
+        nkgpu_image wrong_thread_image{};
+        if (!check(nkgpu_image_create_desc(producer, &wrong_thread_desc, &wrong_thread_image) ==
                        NKGPU_ERROR_WRONG_THREAD,
                    "reject platform mutation of render-owned renderer")) {
             result = 8;
@@ -642,6 +667,7 @@ int main() {
        the sealed plans retain the image generation they captured and that
        only the newest pending plan survives replacement. */
     published_task.producer = producer;
+    published_task.target = setup_target;
     published_task.function = &create_published_images;
     published_setup_ok = dispatch_render_task(published_task);
     if (!check(published_setup_ok, "create retained producer images")) {

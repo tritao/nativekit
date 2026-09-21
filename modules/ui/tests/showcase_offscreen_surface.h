@@ -23,7 +23,8 @@ class ShowcaseOffscreenSurface {
     nkui_resource resource_{};
     nk_graphics_image image_{};
     nkgpu_renderer renderer_{};
-    nkgpu_render_target target_{};
+    nkgpu_image target_image_{};
+    nkgpu_image depth_image_{};
     nkgpu_shader shader_{};
     nkgpu_pipeline pipeline_{};
     nkgpu_buffer index_buffer_{};
