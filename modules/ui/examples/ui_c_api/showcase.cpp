@@ -403,6 +403,93 @@ struct WebShowcase {
                 }
             }
 
+            if (success && support.readback && depth) {
+                nkgpu_readback_destroy(gpu, readback);
+                readback = {};
+                nkgpu_image_readback_desc rectangle_desc{};
+                rectangle_desc.struct_size = sizeof(rectangle_desc);
+                rectangle_desc.image = destination;
+                rectangle_desc.x = 1;
+                rectangle_desc.y = 1;
+                rectangle_desc.width = 1;
+                rectangle_desc.height = 1;
+                success = nkgpu_readback_begin_image(gpu, &rectangle_desc, &readback) == NKGPU_OK;
+                nkgpu_readback_info rectangle_info{};
+                if (success) {
+                    rectangle_info.struct_size = sizeof(rectangle_info);
+                    success = nkgpu_readback_query(gpu, readback, &rectangle_info) == NKGPU_OK &&
+                              rectangle_info.state == NKGPU_READBACK_READY &&
+                              rectangle_info.size == sizeof(uint32_t);
+                }
+                if (success) {
+                    uint32_t depth_bits = 0;
+                    uint32_t rectangle_size = 0;
+                    success = nkgpu_readback_read(
+                                  gpu, readback, reinterpret_cast<uint8_t *>(&depth_bits),
+                                  sizeof(depth_bits), &rectangle_size) == NKGPU_OK &&
+                              rectangle_size == sizeof(depth_bits) &&
+                              depth_bits == 0x3f800000u;
+                }
+            }
+
+            if (success && support.readback && depth && features.image_to_buffer &&
+                features.buffer_readback) {
+                nkgpu_buffer_desc buffer_desc{};
+                buffer_desc.struct_size = sizeof(buffer_desc);
+                buffer_desc.size = sizeof(uint32_t);
+                buffer_desc.usage = NKGPU_BUFFER_TRANSFER;
+                nkgpu_buffer buffer{};
+                success = nkgpu_buffer_create_desc(gpu, &buffer_desc, &buffer) == NKGPU_OK;
+                if (success) {
+                    nkgpu_buffer_image_copy_desc copy_desc{};
+                    copy_desc.struct_size = sizeof(copy_desc);
+                    copy_desc.buffer = buffer;
+                    copy_desc.image = destination;
+                    copy_desc.x = 1;
+                    copy_desc.y = 1;
+                    copy_desc.width = 1;
+                    copy_desc.height = 1;
+                    success = nkgpu_image_to_buffer(gpu, &copy_desc) == NKGPU_OK;
+                }
+                if (success) {
+                    nkgpu_buffer_readback_desc buffer_readback_desc{};
+                    buffer_readback_desc.struct_size = sizeof(buffer_readback_desc);
+                    buffer_readback_desc.buffer = buffer;
+                    buffer_readback_desc.size = sizeof(uint32_t);
+                    nkgpu_readback buffer_readback{};
+                    success = nkgpu_readback_begin_buffer(gpu, &buffer_readback_desc,
+                                                          &buffer_readback) == NKGPU_OK;
+                    nkgpu_readback_info buffer_info{};
+                    if (success) {
+                        buffer_info.struct_size = sizeof(buffer_info);
+                        for (int poll = 0; poll != 1000; ++poll) {
+                            if (nkgpu_readback_query(gpu, buffer_readback, &buffer_info) != NKGPU_OK) {
+                                success = false;
+                                break;
+                            }
+                            if (buffer_info.state != NKGPU_READBACK_PENDING)
+                                break;
+                        }
+                        success = success && buffer_info.state == NKGPU_READBACK_READY &&
+                                  buffer_info.size == sizeof(uint32_t);
+                    }
+                    if (success) {
+                        uint32_t depth_bits = 0;
+                        uint32_t buffer_size = 0;
+                        success = nkgpu_readback_read(
+                                      gpu, buffer_readback,
+                                      reinterpret_cast<uint8_t *>(&depth_bits), sizeof(depth_bits),
+                                      &buffer_size) == NKGPU_OK &&
+                                  buffer_size == sizeof(depth_bits) &&
+                                  depth_bits == 0x3f800000u;
+                    }
+                    if (buffer_readback.id)
+                        nkgpu_readback_destroy(gpu, buffer_readback);
+                }
+                if (buffer.id)
+                    nkgpu_buffer_destroy(gpu, buffer);
+            }
+
             if (readback.id)
                 nkgpu_readback_destroy(gpu, readback);
             if (destination.id)

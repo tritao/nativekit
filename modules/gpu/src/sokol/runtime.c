@@ -128,6 +128,84 @@ enum {
 #ifndef GL_QUERY_RESULT_AVAILABLE
 #define GL_QUERY_RESULT_AVAILABLE 0x8867
 #endif
+#ifndef GL_COMPILE_STATUS
+#define GL_COMPILE_STATUS 0x8B81
+#endif
+#ifndef GL_LINK_STATUS
+#define GL_LINK_STATUS 0x8B82
+#endif
+#ifndef GL_RGBA8
+#define GL_RGBA8 0x8058
+#endif
+#ifndef GL_TEXTURE_MIN_FILTER
+#define GL_TEXTURE_MIN_FILTER 0x2801
+#endif
+#ifndef GL_TEXTURE_MAG_FILTER
+#define GL_TEXTURE_MAG_FILTER 0x2800
+#endif
+#ifndef GL_TEXTURE_WRAP_S
+#define GL_TEXTURE_WRAP_S 0x2802
+#endif
+#ifndef GL_TEXTURE_WRAP_T
+#define GL_TEXTURE_WRAP_T 0x2803
+#endif
+#ifndef GL_NEAREST
+#define GL_NEAREST 0x2600
+#endif
+#ifndef GL_CLAMP_TO_EDGE
+#define GL_CLAMP_TO_EDGE 0x812F
+#endif
+#ifndef GL_CURRENT_PROGRAM
+#define GL_CURRENT_PROGRAM 0x8B8D
+#endif
+#ifndef GL_VERTEX_ARRAY_BINDING
+#define GL_VERTEX_ARRAY_BINDING 0x85B5
+#endif
+#ifndef GL_ACTIVE_TEXTURE
+#define GL_ACTIVE_TEXTURE 0x84E0
+#endif
+#ifndef GL_TEXTURE_BINDING_2D
+#define GL_TEXTURE_BINDING_2D 0x8069
+#endif
+#ifndef GL_SAMPLER_BINDING
+#define GL_SAMPLER_BINDING 0x8919
+#endif
+#ifndef GL_VIEWPORT
+#define GL_VIEWPORT 0x0BA2
+#endif
+#ifndef GL_TEXTURE0
+#define GL_TEXTURE0 0x84C0
+#endif
+#ifndef GL_TRIANGLES
+#define GL_TRIANGLES 0x0004
+#endif
+#ifndef GL_SCISSOR_TEST
+#define GL_SCISSOR_TEST 0x0C11
+#endif
+#ifndef GL_DEPTH_TEST
+#define GL_DEPTH_TEST 0x0B71
+#endif
+#ifndef GL_STENCIL_TEST
+#define GL_STENCIL_TEST 0x0B90
+#endif
+#ifndef GL_BLEND
+#define GL_BLEND 0x0BE2
+#endif
+#ifndef GL_CULL_FACE
+#define GL_CULL_FACE 0x0B44
+#endif
+#ifndef GL_RASTERIZER_DISCARD
+#define GL_RASTERIZER_DISCARD 0x8C89
+#endif
+#ifndef GL_DRAW_FRAMEBUFFER
+#define GL_DRAW_FRAMEBUFFER 0x8CA9
+#endif
+
+#if defined(__EMSCRIPTEN__)
+static GLuint webgl_depth_readback_program;
+static GLuint webgl_depth_readback_vao;
+static GLuint webgl_depth_readback_sampler;
+#endif
 
 static uint32_t readback_token(uint32_t index, uint32_t generation) {
     return (generation << 16) | (index + 1u);
@@ -170,6 +248,228 @@ static void clear_gl_errors(void) {
     while (glGetError() != GL_NO_ERROR) {
     }
 }
+
+#if defined(__EMSCRIPTEN__)
+static int webgl_depth_readback_setup(void) {
+    if (webgl_depth_readback_program && webgl_depth_readback_vao &&
+        webgl_depth_readback_sampler)
+        return 1;
+
+    static const char *vertex_source =
+        "#version 300 es\n"
+        "out vec2 uv;\n"
+        "void main() {\n"
+        "    vec2 p[3] = vec2[3](vec2(-1.0, -1.0), vec2(3.0, -1.0),\n"
+        "                         vec2(-1.0, 3.0));\n"
+        "    gl_Position = vec4(p[gl_VertexID], 0.0, 1.0);\n"
+        "    uv = p[gl_VertexID] * 0.5 + 0.5;\n"
+        "}\n";
+    static const char *fragment_source =
+        "#version 300 es\n"
+        "precision highp float;\n"
+        "precision highp int;\n"
+        "uniform sampler2D depth_texture;\n"
+        "uniform vec2 uv_origin;\n"
+        "uniform vec2 uv_scale;\n"
+        "uniform float mip_level;\n"
+        "in vec2 uv;\n"
+        "layout(location = 0) out vec4 color;\n"
+        "void main() {\n"
+        "    float depth = textureLod(depth_texture, uv_origin + uv * uv_scale, mip_level).r;\n"
+        "    uint bits = floatBitsToUint(depth);\n"
+        "    color = vec4(float((bits >> 24u) & 255u) / 255.0,\n"
+        "                 float((bits >> 16u) & 255u) / 255.0,\n"
+        "                 float((bits >> 8u) & 255u) / 255.0,\n"
+        "                 float(bits & 255u) / 255.0);\n"
+        "}\n";
+    GLuint vertex_shader = 0;
+    GLuint fragment_shader = 0;
+    GLuint program = 0;
+    GLint status = 0;
+    clear_gl_errors();
+    vertex_shader = glCreateShader(GL_VERTEX_SHADER);
+    fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
+    if (!vertex_shader || !fragment_shader)
+        goto fail;
+    glShaderSource(vertex_shader, 1, &vertex_source, 0);
+    glCompileShader(vertex_shader);
+    glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &status);
+    if (!status)
+        goto fail;
+    glShaderSource(fragment_shader, 1, &fragment_source, 0);
+    glCompileShader(fragment_shader);
+    glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &status);
+    if (!status)
+        goto fail;
+    program = glCreateProgram();
+    if (!program)
+        goto fail;
+    glAttachShader(program, vertex_shader);
+    glAttachShader(program, fragment_shader);
+    glLinkProgram(program);
+    glGetProgramiv(program, GL_LINK_STATUS, &status);
+    if (!status)
+        goto fail;
+    glGenVertexArrays(1, &webgl_depth_readback_vao);
+    glGenSamplers(1, &webgl_depth_readback_sampler);
+    if (!webgl_depth_readback_vao || !webgl_depth_readback_sampler)
+        goto fail;
+    glSamplerParameteri(webgl_depth_readback_sampler, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glSamplerParameteri(webgl_depth_readback_sampler, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glSamplerParameteri(webgl_depth_readback_sampler, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glSamplerParameteri(webgl_depth_readback_sampler, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    webgl_depth_readback_program = program;
+    glDeleteShader(vertex_shader);
+    glDeleteShader(fragment_shader);
+    if (glGetError() == GL_NO_ERROR)
+        return 1;
+    glDeleteProgram(webgl_depth_readback_program);
+    glDeleteVertexArrays(1, &webgl_depth_readback_vao);
+    glDeleteSamplers(1, &webgl_depth_readback_sampler);
+    webgl_depth_readback_program = 0;
+    webgl_depth_readback_vao = 0;
+    webgl_depth_readback_sampler = 0;
+    clear_gl_errors();
+    return 0;
+
+fail:
+    if (vertex_shader)
+        glDeleteShader(vertex_shader);
+    if (fragment_shader)
+        glDeleteShader(fragment_shader);
+    if (program)
+        glDeleteProgram(program);
+    if (webgl_depth_readback_vao)
+        glDeleteVertexArrays(1, &webgl_depth_readback_vao);
+    if (webgl_depth_readback_sampler)
+        glDeleteSamplers(1, &webgl_depth_readback_sampler);
+    webgl_depth_readback_vao = 0;
+    webgl_depth_readback_sampler = 0;
+    webgl_depth_readback_program = 0;
+    clear_gl_errors();
+    return 0;
+}
+
+static int webgl_depth_readback(uint32_t source_mip, uint32_t source_texture, GLenum source_target,
+                                uint32_t source_width,
+                                uint32_t source_height, uint32_t source_x, uint32_t source_y,
+                                uint32_t width, uint32_t height, uint8_t *output) {
+    if (!output || source_target != GL_TEXTURE_2D || !source_width || !source_height ||
+        width > 0x7FFFFFFFu || height > 0x7FFFFFFFu ||
+        !webgl_depth_readback_setup())
+        return 0;
+
+    const size_t row_size = (size_t)width * 4u;
+    const size_t packed_size = row_size * height;
+    if (!row_size || row_size / 4u != width || packed_size / row_size != height)
+        return 0;
+    uint8_t *packed = (uint8_t *)malloc(packed_size);
+    if (!packed)
+        return 0;
+
+    GLint old_read_framebuffer = 0;
+    GLint old_draw_framebuffer = 0;
+    GLint old_program = 0;
+    GLint old_vao = 0;
+    GLint old_active_texture = 0;
+    GLint old_texture = 0;
+    GLint old_sampler = 0;
+    GLint old_viewport[4] = {0, 0, 0, 0};
+    GLuint framebuffer = 0;
+    GLuint color_texture = 0;
+    int success = 0;
+    clear_gl_errors();
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &old_read_framebuffer);
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &old_draw_framebuffer);
+    glGetIntegerv(GL_CURRENT_PROGRAM, &old_program);
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &old_vao);
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &old_active_texture);
+    glGetIntegerv(GL_VIEWPORT, old_viewport);
+    glActiveTexture(GL_TEXTURE0);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &old_texture);
+    glGetIntegerv(GL_SAMPLER_BINDING, &old_sampler);
+    glGenTextures(1, &color_texture);
+    glBindTexture(GL_TEXTURE_2D, color_texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, (GLsizei)width, (GLsizei)height, 0, GL_RGBA,
+                 GL_UNSIGNED_BYTE, 0);
+    glGenFramebuffers(1, &framebuffer);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, framebuffer);
+    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+                           color_texture, 0);
+    const GLenum draw_buffer = GL_COLOR_ATTACHMENT0;
+    glDrawBuffers(1, &draw_buffer);
+    if (glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        goto cleanup;
+
+    glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_STENCIL_TEST);
+    glDisable(GL_BLEND);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_RASTERIZER_DISCARD);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glUseProgram(webgl_depth_readback_program);
+    glBindVertexArray(webgl_depth_readback_vao);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(source_target, source_texture);
+    glBindSampler(0, webgl_depth_readback_sampler);
+    const GLint depth_texture =
+        glGetUniformLocation(webgl_depth_readback_program, "depth_texture");
+    const GLint uv_origin = glGetUniformLocation(webgl_depth_readback_program, "uv_origin");
+    const GLint uv_scale = glGetUniformLocation(webgl_depth_readback_program, "uv_scale");
+    const GLint mip_level = glGetUniformLocation(webgl_depth_readback_program, "mip_level");
+    const GLfloat origin[2] = {(GLfloat)source_x / (GLfloat)source_width,
+                               (GLfloat)(source_height - source_y) / (GLfloat)source_height};
+    const GLfloat scale[2] = {(GLfloat)width / (GLfloat)source_width,
+                              -(GLfloat)height / (GLfloat)source_height};
+    const GLfloat level = (GLfloat)source_mip;
+    glUniform1i(depth_texture, 0);
+    glUniform2fv(uv_origin, 1, origin);
+    glUniform2fv(uv_scale, 1, scale);
+    glUniform1fv(mip_level, 1, &level);
+    glViewport(0, 0, (GLsizei)width, (GLsizei)height);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glReadPixels(0, 0, (GLsizei)width, (GLsizei)height, GL_RGBA, GL_UNSIGNED_BYTE, packed);
+    glPixelStorei(GL_PACK_ALIGNMENT, 4);
+    if (glGetError() != GL_NO_ERROR)
+        goto cleanup;
+    for (uint32_t row = 0; row < height; ++row) {
+        const uint8_t *source_row = packed + (size_t)row * row_size;
+        uint8_t *destination_row = output + (size_t)(height - row - 1u) * row_size;
+        for (uint32_t column = 0; column < width; ++column) {
+            const uint8_t *pixel = source_row + (size_t)column * 4u;
+            const uint32_t bits = ((uint32_t)pixel[0] << 24) | ((uint32_t)pixel[1] << 16) |
+                                  ((uint32_t)pixel[2] << 8) | (uint32_t)pixel[3];
+            memcpy(destination_row + (size_t)column * 4u, &bits, sizeof(bits));
+        }
+    }
+    success = 1;
+
+cleanup:
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)old_read_framebuffer);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, (GLuint)old_draw_framebuffer);
+    glUseProgram((GLuint)old_program);
+    glBindVertexArray((GLuint)old_vao);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, (GLuint)old_texture);
+    glBindSampler(0, (GLuint)old_sampler);
+    glActiveTexture((GLenum)old_active_texture);
+    glViewport(old_viewport[0], old_viewport[1], old_viewport[2], old_viewport[3]);
+    if (framebuffer)
+        glDeleteFramebuffers(1, &framebuffer);
+    if (color_texture)
+        glDeleteTextures(1, &color_texture);
+    const GLenum error = glGetError();
+    free(packed);
+    return success && error == GL_NO_ERROR;
+}
+#endif
 
 static int image_format_io(sg_pixel_format format, GLenum *out_format, GLenum *out_type,
                            uint32_t *out_bytes) {
@@ -592,6 +892,35 @@ static uint32_t nk_sokol_image_to_buffer(sg_image source, uint32_t mip_level, ui
         height > image_height - y || width > UINT32_MAX / bytes || row_pitch < width * bytes ||
         row_pitch % bytes != 0)
         return 0;
+#if defined(__EMSCRIPTEN__)
+    if (sg_query_image_pixelformat(source) == SG_PIXELFORMAT_DEPTH) {
+        const size_t temporary_size = (size_t)width * height * 4u;
+        if (!temporary_size || temporary_size / 4u / height != width)
+            return 0;
+        uint8_t *temporary = (uint8_t *)malloc(temporary_size);
+        if (!temporary)
+            return 0;
+        int converted = webgl_depth_readback(
+            mip_level, texture, target, image_width, image_height, x, y, width, height, temporary);
+        if (converted) {
+            GLint old_copy_write_buffer = 0;
+            clear_gl_errors();
+            glGetIntegerv(GL_COPY_WRITE_BUFFER_BINDING, &old_copy_write_buffer);
+            glBindBuffer(GL_COPY_WRITE_BUFFER, destination_buffer);
+            const size_t tight_row = (size_t)width * 4u;
+            for (uint32_t row = 0; row < height; ++row) {
+                glBufferSubData(GL_COPY_WRITE_BUFFER,
+                                (GLintptr)(destination_offset + row * row_pitch),
+                                (GLsizeiptr)tight_row, temporary + (size_t)row * tight_row);
+            }
+            glBindBuffer(GL_COPY_WRITE_BUFFER, (GLuint)old_copy_write_buffer);
+            converted = glGetError() == GL_NO_ERROR;
+        }
+        free(temporary);
+        sg_reset_state_cache();
+        return converted;
+    }
+#endif
     const size_t temporary_size = (size_t)width * height * bytes;
     uint8_t *temporary = (uint8_t *)malloc(temporary_size);
     if (!temporary)
@@ -669,37 +998,47 @@ static uint32_t nk_sokol_readback_begin(sg_image source, uint32_t mip_level, uin
     slot->data = (uint8_t *)malloc(size);
     if (!slot->data)
         return 0;
-    clear_gl_errors();
-    GLint old_read_framebuffer = 0;
-    GLuint framebuffer = 0;
-    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &old_read_framebuffer);
-    glGenFramebuffers(1, &framebuffer);
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
-    glFramebufferTexture2D(GL_READ_FRAMEBUFFER,
-                           image_attachment(sg_query_image_pixelformat(source)), target, texture,
-                           (GLint)mip_level);
-    const GLenum status = glCheckFramebufferStatus(GL_READ_FRAMEBUFFER);
-    if (status == GL_FRAMEBUFFER_COMPLETE) {
-        const GLint gl_y = (GLint)image_height - (GLint)y - (GLint)height;
-        glPixelStorei(GL_PACK_ALIGNMENT, 1);
-        glReadPixels((GLint)x, gl_y, (GLsizei)width, (GLsizei)height, format, type, slot->data);
-        glPixelStorei(GL_PACK_ALIGNMENT, 4);
-        for (uint32_t row = 0; row < height / 2; ++row) {
-            uint8_t *top = slot->data + (size_t)row * row_pitch;
-            uint8_t *bottom = slot->data + (size_t)(height - row - 1) * row_pitch;
-            for (uint32_t byte = 0; byte < row_pitch; ++byte) {
-                const uint8_t value = top[byte];
-                top[byte] = bottom[byte];
-                bottom[byte] = value;
+    if (sg_query_image_pixelformat(source) == SG_PIXELFORMAT_DEPTH) {
+        if (!webgl_depth_readback(mip_level, texture, target, image_width, image_height, x, y,
+                                  width, height, slot->data)) {
+            readback_release(slot);
+            sg_reset_state_cache();
+            return 0;
+        }
+    } else {
+        clear_gl_errors();
+        GLint old_read_framebuffer = 0;
+        GLuint framebuffer = 0;
+        glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &old_read_framebuffer);
+        glGenFramebuffers(1, &framebuffer);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
+        glFramebufferTexture2D(GL_READ_FRAMEBUFFER,
+                               image_attachment(sg_query_image_pixelformat(source)), target,
+                               texture, (GLint)mip_level);
+        const GLenum status = glCheckFramebufferStatus(GL_READ_FRAMEBUFFER);
+        if (status == GL_FRAMEBUFFER_COMPLETE) {
+            const GLint gl_y = (GLint)image_height - (GLint)y - (GLint)height;
+            glPixelStorei(GL_PACK_ALIGNMENT, 1);
+            glReadPixels((GLint)x, gl_y, (GLsizei)width, (GLsizei)height, format, type,
+                         slot->data);
+            glPixelStorei(GL_PACK_ALIGNMENT, 4);
+            for (uint32_t row = 0; row < height / 2; ++row) {
+                uint8_t *top = slot->data + (size_t)row * row_pitch;
+                uint8_t *bottom = slot->data + (size_t)(height - row - 1) * row_pitch;
+                for (uint32_t byte = 0; byte < row_pitch; ++byte) {
+                    const uint8_t value = top[byte];
+                    top[byte] = bottom[byte];
+                    bottom[byte] = value;
+                }
             }
         }
-    }
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)old_read_framebuffer);
-    glDeleteFramebuffers(1, &framebuffer);
-    if (status != GL_FRAMEBUFFER_COMPLETE || glGetError() != GL_NO_ERROR) {
-        readback_release(slot);
-        sg_reset_state_cache();
-        return 0;
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)old_read_framebuffer);
+        glDeleteFramebuffers(1, &framebuffer);
+        if (status != GL_FRAMEBUFFER_COMPLETE || glGetError() != GL_NO_ERROR) {
+            readback_release(slot);
+            sg_reset_state_cache();
+            return 0;
+        }
     }
 #else
     clear_gl_errors();
@@ -1062,6 +1401,17 @@ void nk_sokol_runtime_release(void) {
         for (uint32_t i = 0; i < NK_SOKOL_READBACK_CAPACITY; ++i)
             if (readbacks[i].active)
                 readback_release(&readbacks[i]);
+#if defined(__EMSCRIPTEN__)
+        if (webgl_depth_readback_program)
+            glDeleteProgram(webgl_depth_readback_program);
+        if (webgl_depth_readback_vao)
+            glDeleteVertexArrays(1, &webgl_depth_readback_vao);
+        if (webgl_depth_readback_sampler)
+            glDeleteSamplers(1, &webgl_depth_readback_sampler);
+        webgl_depth_readback_program = 0;
+        webgl_depth_readback_vao = 0;
+        webgl_depth_readback_sampler = 0;
+#endif
 #elif defined(SOKOL_D3D11)
         nk_sokol_d3d11_transfer_shutdown();
 #elif defined(SOKOL_METAL)
