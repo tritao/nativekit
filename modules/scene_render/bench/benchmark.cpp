@@ -403,5 +403,35 @@ constexpr std::size_t source_count = 500;
     assert(scene->geometry_store().find(geometry)->revision == geometry_revision);
     for (std::size_t index = 0; index < materials.size(); ++index)
         assert(scene->material_store().find(materials[index])->revision == material_revisions[index]);
+
+    constexpr std::size_t unused_geometry_count = 4096;
+    constexpr std::size_t unused_material_count = 4096;
+    for (std::size_t index = 0; index < unused_geometry_count; ++index) {
+        const auto unused_geometry = scene->reserve_geometry_id();
+        scene->geometry_store().create(unused_geometry);
+    }
+    for (std::size_t index = 0; index < unused_material_count; ++index) {
+        const auto unused_material = scene->reserve_material_id();
+        scene->material_store().create(unused_material);
+    }
+    scene->publish();
+
+    const auto resource_snapshot = scene->snapshot();
+    auto resource_plan = nkscene::compile(resource_snapshot, presentation_view);
+    scene->geometry_store().find(geometry)->edit_payload().vertices[0].position[1] += 0.25f;
+    scene->material_store().find(materials[0])->edit_state().opacity = 0.75f;
+    scene->publish();
+    const auto resource_result = run_view("resource delta", resource_plan, scene->snapshot(),
+                                         presentation_view);
+    assert(!resource_result.render.plan_rebuilt);
+    assert(!resource_result.render.geometry_rebuilt);
+    assert(resource_result.render.updated_geometry_resources == 1);
+    assert(resource_result.render.updated_material_resources == 1);
+    assert(resource_result.render.patched_instances == 0);
+    assert(resource_result.render.patched_visibility == 0);
+    assert(resource_result.render.patched_materials == 0);
+    assert(resource_result.render.patched_culling == 0);
+    assert(resource_result.render.rebuilt_batches == 0);
+    print(resource_result);
     return 0;
 }

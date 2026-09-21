@@ -211,30 +211,63 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
         plan.geometry_resources_revision_ != snapshot.geometry_resources_revision();
     const bool material_resources_changed =
         plan.material_resources_revision_ != snapshot.material_resources_revision();
+    ResourceChanges resource_changes;
+    const bool resource_changes_complete = snapshot.resource_changes_since(
+        plan.geometry_resources_revision_, plan.material_resources_revision_, resource_changes);
     std::unordered_set<GeometryId> changed_geometry_resources;
     std::unordered_set<MaterialId> changed_material_resources;
     std::size_t invalidated_items = 0;
     if (geometry_resources_changed) {
-        for (const auto &resource : snapshot.geometries()) {
-            const auto found = plan.geometry_revisions_.find(resource.id);
-            if (found != plan.geometry_revisions_.end() && found->second != resource.revision &&
-                plan.items_by_geometry_.contains(resource.id))
-                changed_geometry_resources.insert(resource.id);
+        if (resource_changes_complete) {
+            for (const auto geometry : resource_changes.geometries) {
+                const auto *resource = snapshot.find_geometry(geometry);
+                if (resource) {
+                    const auto found = plan.geometry_revisions_.find(geometry);
+                    if (found != plan.geometry_revisions_.end() &&
+                        found->second != resource->revision &&
+                        plan.items_by_geometry_.contains(geometry))
+                        changed_geometry_resources.insert(geometry);
+                } else if (plan.items_by_geometry_.contains(geometry)) {
+                    invalidated_items += plan.items_by_geometry_.at(geometry).size();
+                }
+            }
+        } else {
+            for (const auto &resource : snapshot.geometries()) {
+                const auto found = plan.geometry_revisions_.find(resource.id);
+                if (found != plan.geometry_revisions_.end() && found->second != resource.revision &&
+                    plan.items_by_geometry_.contains(resource.id))
+                    changed_geometry_resources.insert(resource.id);
+            }
+            for (const auto &[geometry, unused] : plan.geometry_revisions_)
+                if (!snapshot.find_geometry(geometry) && plan.items_by_geometry_.contains(geometry))
+                    invalidated_items += plan.items_by_geometry_.at(geometry).size();
         }
-        for (const auto &[geometry, unused] : plan.geometry_revisions_)
-            if (!snapshot.find_geometry(geometry) && plan.items_by_geometry_.contains(geometry))
-                invalidated_items += plan.items_by_geometry_.at(geometry).size();
     }
     if (material_resources_changed) {
-        for (const auto &resource : snapshot.materials()) {
-            const auto found = plan.material_revisions_.find(resource.id);
-            if (found != plan.material_revisions_.end() && found->second != resource.revision &&
-                plan.items_by_material_.contains(resource.id))
-                changed_material_resources.insert(resource.id);
+        if (resource_changes_complete) {
+            for (const auto material : resource_changes.materials) {
+                const auto *resource = snapshot.find_material(material);
+                if (resource) {
+                    const auto found = plan.material_revisions_.find(material);
+                    if (found != plan.material_revisions_.end() &&
+                        found->second != resource->revision &&
+                        plan.items_by_material_.contains(material))
+                        changed_material_resources.insert(material);
+                } else if (plan.items_by_material_.contains(material)) {
+                    invalidated_items += plan.items_by_material_.at(material).size();
+                }
+            }
+        } else {
+            for (const auto &resource : snapshot.materials()) {
+                const auto found = plan.material_revisions_.find(resource.id);
+                if (found != plan.material_revisions_.end() && found->second != resource.revision &&
+                    plan.items_by_material_.contains(resource.id))
+                    changed_material_resources.insert(resource.id);
+            }
+            for (const auto &[material, unused] : plan.material_revisions_)
+                if (!snapshot.find_material(material) && plan.items_by_material_.contains(material))
+                    invalidated_items += plan.items_by_material_.at(material).size();
         }
-        for (const auto &[material, unused] : plan.material_revisions_)
-            if (!snapshot.find_material(material) && plan.items_by_material_.contains(material))
-                invalidated_items += plan.items_by_material_.at(material).size();
     }
     for (const auto &change : changes.changes) {
         const auto item_index = plan.item_index(change.occurrence);
@@ -265,17 +298,35 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
     result.updated_geometry_resources = changed_geometry_resources.size();
     result.updated_material_resources = changed_material_resources.size();
     if (geometry_resources_changed) {
-        plan.geometry_revisions_.clear();
-        plan.geometry_revisions_.reserve(snapshot.geometries().size());
-        for (const auto &resource : snapshot.geometries())
-            plan.geometry_revisions_.emplace(resource.id, resource.revision);
+        if (resource_changes_complete) {
+            for (const auto geometry : resource_changes.geometries) {
+                if (const auto *resource = snapshot.find_geometry(geometry))
+                    plan.geometry_revisions_[geometry] = resource->revision;
+                else
+                    plan.geometry_revisions_.erase(geometry);
+            }
+        } else {
+            plan.geometry_revisions_.clear();
+            plan.geometry_revisions_.reserve(snapshot.geometries().size());
+            for (const auto &resource : snapshot.geometries())
+                plan.geometry_revisions_.emplace(resource.id, resource.revision);
+        }
         plan.geometry_resources_revision_ = snapshot.geometry_resources_revision();
     }
     if (material_resources_changed) {
-        plan.material_revisions_.clear();
-        plan.material_revisions_.reserve(snapshot.materials().size());
-        for (const auto &resource : snapshot.materials())
-            plan.material_revisions_.emplace(resource.id, resource.revision);
+        if (resource_changes_complete) {
+            for (const auto material : resource_changes.materials) {
+                if (const auto *resource = snapshot.find_material(material))
+                    plan.material_revisions_[material] = resource->revision;
+                else
+                    plan.material_revisions_.erase(material);
+            }
+        } else {
+            plan.material_revisions_.clear();
+            plan.material_revisions_.reserve(snapshot.materials().size());
+            for (const auto &resource : snapshot.materials())
+                plan.material_revisions_.emplace(resource.id, resource.revision);
+        }
         plan.material_resources_revision_ = snapshot.material_resources_revision();
     }
 
