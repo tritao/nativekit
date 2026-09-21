@@ -6,14 +6,41 @@ interface NativeKitScene @target("portable-abi64") @library("nativekit_scene") {
 	const NKS_ERROR_INVALID_STATE = -4;
 	const NKS_ERROR_OUT_OF_MEMORY = -6;
 	const NKS_ERROR_STALE_ID = -3;
+	const NKS_MATERIAL_ALPHA_BLEND = 3;
+	const NKS_MATERIAL_ALPHA_MASK = 2;
+	const NKS_MATERIAL_ALPHA_OPAQUE = 1;
 	const NKS_MATERIAL_DOUBLE_SIDED = 2;
 	const NKS_MATERIAL_OPAQUE = 1;
 	const NKS_OK = 0;
 	const NKS_SCENE_SNAPSHOT_OCCURRENCE_PAGE_CAPACITY = 64;
+	enum nkscene_camera_projection : c_int {
+		NKS_CAMERA_PERSPECTIVE = 1;
+		NKS_CAMERA_ORTHOGRAPHIC = 2;
+	}
+	enum nkscene_image_format : c_int {
+		NKS_IMAGE_FORMAT_R8 = 1;
+		NKS_IMAGE_FORMAT_RGBA8 = 2;
+		NKS_IMAGE_FORMAT_RGBA16F = 3;
+		NKS_IMAGE_FORMAT_R32F = 4;
+	}
+	enum nkscene_light_type : c_int {
+		NKS_LIGHT_DIRECTIONAL = 1;
+		NKS_LIGHT_POINT = 2;
+		NKS_LIGHT_SPOT = 3;
+	}
 	enum nkscene_primitive_type : c_int {
 		NKS_PRIMITIVE_TRIANGLES = 1;
 		NKS_PRIMITIVE_LINES = 2;
 		NKS_PRIMITIVE_POINTS = 3;
+	}
+	enum nkscene_sampler_filter : c_int {
+		NKS_SAMPLER_FILTER_NEAREST = 1;
+		NKS_SAMPLER_FILTER_LINEAR = 2;
+	}
+	enum nkscene_sampler_wrap : c_int {
+		NKS_SAMPLER_WRAP_REPEAT = 1;
+		NKS_SAMPLER_WRAP_CLAMP_TO_EDGE = 2;
+		NKS_SAMPLER_WRAP_MIRRORED_REPEAT = 3;
 	}
 	enum nkscene_vertex_format : c_int {
 		NKS_VERTEX_FORMAT_FLOAT32X2 = 1;
@@ -30,14 +57,26 @@ interface NativeKitScene @target("portable-abi64") @library("nativekit_scene") {
 		NKS_VERTEX_SEMANTIC_TEXCOORD1 = 5;
 		NKS_VERTEX_SEMANTIC_COLOR0 = 6;
 	}
+	extern fn nkscene_camera_create(scene: nkscene_scene, out_camera: ptr<nkscene_camera_id> @out) -> nkscene_result;
+	extern fn nkscene_camera_destroy(scene: nkscene_scene, camera: nkscene_camera_id) -> void;
+	extern fn nkscene_camera_set_data(scene: nkscene_scene, camera: nkscene_camera_id, data: ptr<const<nkscene_camera_data>>) -> nkscene_result;
 	extern fn nkscene_change_set_destroy(changes: nkscene_change_set) -> void;
 	extern fn nkscene_change_set_get_revision(changes: nkscene_change_set, out_revision: ptr<u64> @out) -> nkscene_result;
 	extern fn nkscene_geometry_create(scene: nkscene_scene, out_geometry: ptr<nkscene_geometry_id> @out) -> nkscene_result;
 	extern fn nkscene_geometry_destroy(scene: nkscene_scene, geometry: nkscene_geometry_id) -> void;
 	extern fn nkscene_geometry_set_data(scene: nkscene_scene, geometry: nkscene_geometry_id, data: ptr<const<nkscene_geometry_data>>) -> nkscene_result;
+	extern fn nkscene_image_create(scene: nkscene_scene, out_image: ptr<nkscene_image_id> @out) -> nkscene_result;
+	extern fn nkscene_image_destroy(scene: nkscene_scene, image: nkscene_image_id) -> void;
+	extern fn nkscene_image_set_data(scene: nkscene_scene, image: nkscene_image_id, data: ptr<const<nkscene_image_data>>) -> nkscene_result;
+	extern fn nkscene_light_create(scene: nkscene_scene, out_light: ptr<nkscene_light_id> @out) -> nkscene_result;
+	extern fn nkscene_light_destroy(scene: nkscene_scene, light: nkscene_light_id) -> void;
+	extern fn nkscene_light_set_data(scene: nkscene_scene, light: nkscene_light_id, data: ptr<const<nkscene_light_data>>) -> nkscene_result;
 	extern fn nkscene_material_create(scene: nkscene_scene, out_material: ptr<nkscene_material_id> @out) -> nkscene_result;
 	extern fn nkscene_material_destroy(scene: nkscene_scene, material: nkscene_material_id) -> void;
 	extern fn nkscene_material_set_data(scene: nkscene_scene, material: nkscene_material_id, data: ptr<const<nkscene_material_data>>) -> nkscene_result;
+	extern fn nkscene_sampler_create(scene: nkscene_scene, out_sampler: ptr<nkscene_sampler_id> @out) -> nkscene_result;
+	extern fn nkscene_sampler_destroy(scene: nkscene_scene, sampler: nkscene_sampler_id) -> void;
+	extern fn nkscene_sampler_set_data(scene: nkscene_scene, sampler: nkscene_sampler_id, data: ptr<const<nkscene_sampler_data>>) -> nkscene_result;
 	extern fn nkscene_scene_create(out_scene: ptr<nkscene_scene> @out @owned) -> nkscene_result;
 	extern fn nkscene_scene_destroy(scene: nkscene_scene) -> void;
 	extern fn nkscene_scene_snapshot(scene: nkscene_scene, out_snapshot: ptr<nkscene_snapshot> @out @owned) -> nkscene_result;
@@ -56,14 +95,19 @@ interface NativeKitScene @target("portable-abi64") @library("nativekit_scene") {
 	extern fn nkscene_snapshot_get_revision(snapshot: nkscene_snapshot, out_revision: ptr<u64> @out) -> nkscene_result;
 	extern fn nkscene_snapshot_get_source_occurrence(snapshot: nkscene_snapshot, source: nkscene_entity_id, index: u64, out_occurrence: ptr<nkscene_occurrence_id> @out) -> nkscene_result;
 	extern fn nkscene_snapshot_get_source_occurrence_count(snapshot: nkscene_snapshot, source: nkscene_entity_id, out_count: ptr<u64> @out) -> nkscene_result;
+	extern fn nkscene_texture_create(scene: nkscene_scene, out_texture: ptr<nkscene_texture_id> @out) -> nkscene_result;
+	extern fn nkscene_texture_destroy(scene: nkscene_scene, texture: nkscene_texture_id) -> void;
+	extern fn nkscene_texture_set_data(scene: nkscene_scene, texture: nkscene_texture_id, data: ptr<const<nkscene_texture_data>>) -> nkscene_result;
 	extern fn nkscene_transaction_begin(scene: nkscene_scene, out_transaction: ptr<nkscene_transaction> @out @owned) -> nkscene_result;
 	extern fn nkscene_transaction_cancel(transaction: nkscene_transaction) -> void;
 	extern fn nkscene_transaction_commit(transaction: nkscene_transaction) -> nkscene_result;
 	extern fn nkscene_transaction_commit_with_changes(transaction: nkscene_transaction, out_changes: ptr<nkscene_change_set> @out @owned) -> nkscene_result;
 	extern fn nkscene_tx_create_occurrence(transaction: nkscene_transaction, out_occurrence: ptr<nkscene_occurrence_id>) -> nkscene_result;
 	extern fn nkscene_tx_destroy_occurrence(transaction: nkscene_transaction, occurrence: nkscene_occurrence_id) -> nkscene_result;
+	extern fn nkscene_tx_set_camera(transaction: nkscene_transaction, occurrence: nkscene_occurrence_id, camera: nkscene_camera_id) -> nkscene_result;
 	extern fn nkscene_tx_set_entity_name(transaction: nkscene_transaction, entity: nkscene_entity_id, name: ptr<const<c_char>>) -> nkscene_result;
 	extern fn nkscene_tx_set_geometry(transaction: nkscene_transaction, occurrence: nkscene_occurrence_id, geometry: nkscene_geometry_id) -> nkscene_result;
+	extern fn nkscene_tx_set_light(transaction: nkscene_transaction, occurrence: nkscene_occurrence_id, light: nkscene_light_id) -> nkscene_result;
 	extern fn nkscene_tx_set_material(transaction: nkscene_transaction, occurrence: nkscene_occurrence_id, material: nkscene_material_id) -> nkscene_result;
 	extern fn nkscene_tx_set_name(transaction: nkscene_transaction, occurrence: nkscene_occurrence_id, name: ptr<const<c_char>>) -> nkscene_result;
 	extern fn nkscene_tx_set_parent(transaction: nkscene_transaction, occurrence: nkscene_occurrence_id, parent: nkscene_occurrence_id) -> nkscene_result;
@@ -75,6 +119,18 @@ interface NativeKitScene @target("portable-abi64") @library("nativekit_scene") {
 		minimum: array<f32, 3> @offset(0);
 		maximum: array<f32, 3> @offset(12);
 		valid: u32 @offset(24);
+	}
+	struct nkscene_camera_data @layout(28, 4) {
+		struct_size: u32 @offset(0) @struct_size;
+		projection: nkscene_camera_projection @offset(4);
+		fov_y: f32 @offset(8);
+		orthographic_height: f32 @offset(12);
+		near_plane: f32 @offset(16);
+		far_plane: f32 @offset(20);
+		aspect_ratio: f32 @offset(24);
+	}
+	struct nkscene_camera_id @layout(8, 8) {
+		value: u64 @offset(0);
 	}
 	struct nkscene_entity_id @layout(8, 8) {
 		value: u64 @offset(0);
@@ -101,11 +157,46 @@ interface NativeKitScene @target("portable-abi64") @library("nativekit_scene") {
 	struct nkscene_geometry_vertex @layout(12, 4) {
 		position: array<f32, 3> @offset(0);
 	}
-	struct nkscene_material_data @layout(28, 4) {
+	struct nkscene_image_data @layout(40, 8) {
+		struct_size: u32 @offset(0) @struct_size;
+		width: u32 @offset(4);
+		height: u32 @offset(8);
+		format: nkscene_image_format @offset(12);
+		mip_count: u32 @offset(16);
+		data: ptr<const<void>> @offset(24) @borrowed @length_field("data_size");
+		data_size: u32 @offset(32);
+	}
+	struct nkscene_image_id @layout(8, 8) {
+		value: u64 @offset(0);
+	}
+	struct nkscene_light_data @layout(36, 4) {
+		struct_size: u32 @offset(0) @struct_size;
+		type: nkscene_light_type @offset(4);
+		color: array<f32, 3> @offset(8);
+		intensity: f32 @offset(20);
+		range: f32 @offset(24);
+		inner_cone_angle: f32 @offset(28);
+		outer_cone_angle: f32 @offset(32);
+	}
+	struct nkscene_light_id @layout(8, 8) {
+		value: u64 @offset(0);
+	}
+	struct nkscene_material_data @layout(104, 8) {
 		struct_size: u32 @offset(0) @struct_size;
 		base_color: array<f32, 4> @offset(4);
 		opacity: f32 @offset(20);
 		flags: u32 @offset(24);
+		metallic: f32 @offset(28);
+		roughness: f32 @offset(32);
+		emissive: array<f32, 3> @offset(36);
+		alpha_cutoff: f32 @offset(48);
+		alpha_mode: u32 @offset(52);
+		base_color_texture: nkscene_texture_id @offset(56);
+		metallic_roughness_texture: nkscene_texture_id @offset(64);
+		normal_texture: nkscene_texture_id @offset(72);
+		emissive_texture: nkscene_texture_id @offset(80);
+		occlusion_texture: nkscene_texture_id @offset(88);
+		sampler: nkscene_sampler_id @offset(96);
 	}
 	struct nkscene_material_id @layout(8, 8) {
 		value: u64 @offset(0);
@@ -113,10 +204,22 @@ interface NativeKitScene @target("portable-abi64") @library("nativekit_scene") {
 	struct nkscene_occurrence_id @layout(8, 8) {
 		value: u64 @offset(0);
 	}
+	struct nkscene_sampler_data @layout(28, 4) {
+		struct_size: u32 @offset(0) @struct_size;
+		min_filter: nkscene_sampler_filter @offset(4);
+		mag_filter: nkscene_sampler_filter @offset(8);
+		wrap_u: nkscene_sampler_wrap @offset(12);
+		wrap_v: nkscene_sampler_wrap @offset(16);
+		wrap_w: nkscene_sampler_wrap @offset(20);
+		max_anisotropy: f32 @offset(24);
+	}
+	struct nkscene_sampler_id @layout(8, 8) {
+		value: u64 @offset(0);
+	}
 	/**
 	 * Read-only occurrence state captured by a scene snapshot.
 	 */
-	struct nkscene_snapshot_occurrence @layout(216, 8) {
+	struct nkscene_snapshot_occurrence @layout(232, 8) {
 		struct_size: u32 @offset(0) @struct_size;
 		occurrence: nkscene_occurrence_id @offset(8);
 		source: nkscene_entity_id @offset(16);
@@ -126,13 +229,15 @@ interface NativeKitScene @target("portable-abi64") @library("nativekit_scene") {
 		world_transform_revision: u64 @offset(160);
 		geometry: nkscene_geometry_id @offset(168);
 		material: nkscene_material_id @offset(176);
-		visible: u32 @offset(184);
-		bounds: nkscene_bounds @offset(188);
+		camera: nkscene_camera_id @offset(184);
+		light: nkscene_light_id @offset(192);
+		visible: u32 @offset(200);
+		bounds: nkscene_bounds @offset(204);
 	}
 	/**
 	 * Fixed-size page used to transfer snapshot occurrences across the C ABI.
 	 */
-	struct nkscene_snapshot_occurrence_page @layout(13848, 8) {
+	struct nkscene_snapshot_occurrence_page @layout(14872, 8) {
 		struct_size: u32 @offset(0) @struct_size;
 		start_index: u64 @offset(8);
 		count: u32 @offset(16);
@@ -142,6 +247,13 @@ interface NativeKitScene @target("portable-abi64") @library("nativekit_scene") {
 		first_primitive: u32 @offset(0);
 		primitive_count: u32 @offset(4);
 		subelement: u32 @offset(8);
+	}
+	struct nkscene_texture_data @layout(16, 8) {
+		struct_size: u32 @offset(0) @struct_size;
+		image: nkscene_image_id @offset(8);
+	}
+	struct nkscene_texture_id @layout(8, 8) {
+		value: u64 @offset(0);
 	}
 	struct nkscene_transform @layout(64, 4) {
 		matrix: array<f32, 16> @offset(0);

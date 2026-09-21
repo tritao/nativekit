@@ -30,6 +30,14 @@ struct MaterialRef {
     MaterialId id;
 };
 
+struct CameraRef {
+    CameraId id;
+};
+
+struct LightRef {
+    LightId id;
+};
+
 struct Visibility {
     bool visible = true;
 };
@@ -62,6 +70,16 @@ struct SetMaterial {
     MaterialId material;
 };
 
+struct SetCamera {
+    OccurrenceId occurrence;
+    CameraId camera;
+};
+
+struct SetLight {
+    OccurrenceId occurrence;
+    LightId light;
+};
+
 struct SetVisibility {
     OccurrenceId occurrence;
     bool visible;
@@ -83,8 +101,8 @@ struct SetEntityName {
 };
 
 using Mutation = std::variant<CreateOccurrence, DestroyOccurrence, SetParent,
-                              SetTransform, SetGeometry, SetMaterial, SetVisibility,
-                              SetSourceEntity, SetName, SetEntityName>;
+                              SetTransform, SetGeometry, SetMaterial, SetCamera, SetLight,
+                              SetVisibility, SetSourceEntity, SetName, SetEntityName>;
 
 class Transaction {
 public:
@@ -112,6 +130,12 @@ public:
     }
     void add_material(OccurrenceId id, MaterialId material) {
         mutations_.emplace_back(SetMaterial{id, material});
+    }
+    void add_camera(OccurrenceId id, CameraId camera) {
+        mutations_.emplace_back(SetCamera{id, camera});
+    }
+    void add_light(OccurrenceId id, LightId light) {
+        mutations_.emplace_back(SetLight{id, light});
     }
     void add_visibility(OccurrenceId id, bool visible) {
         mutations_.emplace_back(SetVisibility{id, visible});

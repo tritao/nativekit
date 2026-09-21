@@ -21,6 +21,11 @@ public:
     OccurrenceId reserve_occurrence_id() noexcept { return occurrences.reserve_id(); }
     GeometryId reserve_geometry_id() noexcept { return GeometryId{next_geometry_id++}; }
     MaterialId reserve_material_id() noexcept { return MaterialId{next_material_id++}; }
+    ImageId reserve_image_id() noexcept { return ImageId{next_image_id++}; }
+    TextureId reserve_texture_id() noexcept { return TextureId{next_texture_id++}; }
+    SamplerId reserve_sampler_id() noexcept { return SamplerId{next_sampler_id++}; }
+    CameraId reserve_camera_id() noexcept { return CameraId{next_camera_id++}; }
+    LightId reserve_light_id() noexcept { return LightId{next_light_id++}; }
     GeometryId create_geometry() {
         const auto id = reserve_geometry_id();
         geometries.create(id);
@@ -31,8 +36,38 @@ public:
         materials.create(id);
         return id;
     }
+    ImageId create_image() {
+        const auto id = reserve_image_id();
+        images.create(id);
+        return id;
+    }
+    TextureId create_texture() {
+        const auto id = reserve_texture_id();
+        textures.create(id);
+        return id;
+    }
+    SamplerId create_sampler() {
+        const auto id = reserve_sampler_id();
+        samplers.create(id);
+        return id;
+    }
+    CameraId create_camera() {
+        const auto id = reserve_camera_id();
+        cameras.create(id);
+        return id;
+    }
+    LightId create_light() {
+        const auto id = reserve_light_id();
+        lights.create(id);
+        return id;
+    }
     void destroy_geometry(GeometryId id) noexcept { geometries.destroy(id); }
     void destroy_material(MaterialId id) noexcept { materials.destroy(id); }
+    void destroy_image(ImageId id) noexcept { images.destroy(id); }
+    void destroy_texture(TextureId id) noexcept { textures.destroy(id); }
+    void destroy_sampler(SamplerId id) noexcept { samplers.destroy(id); }
+    void destroy_camera(CameraId id) noexcept { cameras.destroy(id); }
+    void destroy_light(LightId id) noexcept { lights.destroy(id); }
     std::size_t occurrence_count() const noexcept { return occurrences.size(); }
     bool contains(OccurrenceId id) const noexcept { return occurrences.contains(id); }
 
@@ -49,11 +84,23 @@ public:
         return world_transforms_;
     }
     const ComponentStore<Visibility> &visibilities() const noexcept { return visibilities_; }
+    const ComponentStore<CameraRef> &camera_refs() const noexcept { return camera_refs_; }
+    const ComponentStore<LightRef> &light_refs() const noexcept { return light_refs_; }
     const ComponentStore<std::string> &names() const noexcept { return names_; }
     const GeometryStore &geometry_store() const noexcept { return geometries; }
     const MaterialStore &material_store() const noexcept { return materials; }
     GeometryStore &geometry_store() noexcept { return geometries; }
     MaterialStore &material_store() noexcept { return materials; }
+    ImageStore &image_store() noexcept { return images; }
+    TextureStore &texture_store() noexcept { return textures; }
+    SamplerStore &sampler_store() noexcept { return samplers; }
+    CameraStore &camera_store() noexcept { return cameras; }
+    LightStore &light_store() noexcept { return lights; }
+    const ImageStore &image_store() const noexcept { return images; }
+    const TextureStore &texture_store() const noexcept { return textures; }
+    const SamplerStore &sampler_store() const noexcept { return samplers; }
+    const CameraStore &camera_store() const noexcept { return cameras; }
+    const LightStore &light_store() const noexcept { return lights; }
 
 private:
     nkscene_result validate(const Transaction &transaction) const noexcept;
@@ -70,6 +117,8 @@ private:
     ComponentStore<WorldTransform> world_transforms_;
     ComponentStore<GeometryRef> geometry_refs;
     ComponentStore<MaterialRef> material_refs;
+    ComponentStore<CameraRef> camera_refs_;
+    ComponentStore<LightRef> light_refs_;
     ComponentStore<Visibility> visibilities_;
     ComponentStore<std::string> names_;
     std::unordered_map<EntityId, std::string> entity_names;
@@ -77,8 +126,18 @@ private:
     HierarchyIndex hierarchy;
     GeometryStore geometries;
     MaterialStore materials;
+    ImageStore images;
+    TextureStore textures;
+    SamplerStore samplers;
+    CameraStore cameras;
+    LightStore lights;
     std::uint64_t next_geometry_id = 1;
     std::uint64_t next_material_id = 1;
+    std::uint64_t next_image_id = 1;
+    std::uint64_t next_texture_id = 1;
+    std::uint64_t next_sampler_id = 1;
+    std::uint64_t next_camera_id = 1;
+    std::uint64_t next_light_id = 1;
     RevisionCounters revisions;
 };
 

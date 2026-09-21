@@ -75,6 +75,26 @@ typedef struct nkscene_material_id {
     uint64_t value;
 } nkscene_material_id;
 
+typedef struct nkscene_image_id {
+    uint64_t value;
+} nkscene_image_id;
+
+typedef struct nkscene_texture_id {
+    uint64_t value;
+} nkscene_texture_id;
+
+typedef struct nkscene_sampler_id {
+    uint64_t value;
+} nkscene_sampler_id;
+
+typedef struct nkscene_camera_id {
+    uint64_t value;
+} nkscene_camera_id;
+
+typedef struct nkscene_light_id {
+    uint64_t value;
+} nkscene_light_id;
+
 typedef struct nkscene_transform {
     float matrix[16];
 } nkscene_transform;
@@ -149,12 +169,103 @@ typedef struct nkscene_geometry_data {
 
 enum { NKS_MATERIAL_OPAQUE = 1u << 0, NKS_MATERIAL_DOUBLE_SIDED = 1u << 1 };
 
+enum {
+    NKS_MATERIAL_ALPHA_OPAQUE = 1,
+    NKS_MATERIAL_ALPHA_MASK = 2,
+    NKS_MATERIAL_ALPHA_BLEND = 3
+};
+
+typedef enum nkscene_image_format {
+    NKS_IMAGE_FORMAT_R8 = 1,
+    NKS_IMAGE_FORMAT_RGBA8 = 2,
+    NKS_IMAGE_FORMAT_RGBA16F = 3,
+    NKS_IMAGE_FORMAT_R32F = 4
+} nkscene_image_format;
+
+typedef enum nkscene_sampler_filter {
+    NKS_SAMPLER_FILTER_NEAREST = 1,
+    NKS_SAMPLER_FILTER_LINEAR = 2
+} nkscene_sampler_filter;
+
+typedef enum nkscene_sampler_wrap {
+    NKS_SAMPLER_WRAP_REPEAT = 1,
+    NKS_SAMPLER_WRAP_CLAMP_TO_EDGE = 2,
+    NKS_SAMPLER_WRAP_MIRRORED_REPEAT = 3
+} nkscene_sampler_wrap;
+
+typedef struct nkscene_image_data {
+    uint32_t struct_size NK_STRUCT_SIZE;
+    uint32_t width;
+    uint32_t height;
+    nkscene_image_format format;
+    uint32_t mip_count;
+    const void *data NK_BORROWED_BUFFER(data_size);
+    uint32_t data_size;
+} nkscene_image_data;
+
+typedef struct nkscene_texture_data {
+    uint32_t struct_size NK_STRUCT_SIZE;
+    nkscene_image_id image;
+} nkscene_texture_data;
+
+typedef struct nkscene_sampler_data {
+    uint32_t struct_size NK_STRUCT_SIZE;
+    nkscene_sampler_filter min_filter;
+    nkscene_sampler_filter mag_filter;
+    nkscene_sampler_wrap wrap_u;
+    nkscene_sampler_wrap wrap_v;
+    nkscene_sampler_wrap wrap_w;
+    float max_anisotropy;
+} nkscene_sampler_data;
+
 typedef struct nkscene_material_data {
     uint32_t struct_size NK_STRUCT_SIZE;
     float base_color[4];
     float opacity;
     uint32_t flags;
+    float metallic;
+    float roughness;
+    float emissive[3];
+    float alpha_cutoff;
+    uint32_t alpha_mode;
+    nkscene_texture_id base_color_texture;
+    nkscene_texture_id metallic_roughness_texture;
+    nkscene_texture_id normal_texture;
+    nkscene_texture_id emissive_texture;
+    nkscene_texture_id occlusion_texture;
+    nkscene_sampler_id sampler;
 } nkscene_material_data;
+
+typedef enum nkscene_camera_projection {
+    NKS_CAMERA_PERSPECTIVE = 1,
+    NKS_CAMERA_ORTHOGRAPHIC = 2
+} nkscene_camera_projection;
+
+typedef struct nkscene_camera_data {
+    uint32_t struct_size NK_STRUCT_SIZE;
+    nkscene_camera_projection projection;
+    float fov_y;
+    float orthographic_height;
+    float near_plane;
+    float far_plane;
+    float aspect_ratio;
+} nkscene_camera_data;
+
+typedef enum nkscene_light_type {
+    NKS_LIGHT_DIRECTIONAL = 1,
+    NKS_LIGHT_POINT = 2,
+    NKS_LIGHT_SPOT = 3
+} nkscene_light_type;
+
+typedef struct nkscene_light_data {
+    uint32_t struct_size NK_STRUCT_SIZE;
+    nkscene_light_type type;
+    float color[3];
+    float intensity;
+    float range;
+    float inner_cone_angle;
+    float outer_cone_angle;
+} nkscene_light_data;
 
 /** Read-only occurrence state captured by a scene snapshot. */
 typedef struct nkscene_snapshot_occurrence {
@@ -167,6 +278,8 @@ typedef struct nkscene_snapshot_occurrence {
     uint64_t world_transform_revision;
     nkscene_geometry_id geometry;
     nkscene_material_id material;
+    nkscene_camera_id camera;
+    nkscene_light_id light;
     uint32_t visible NK_BOOL32;
     nkscene_bounds bounds;
 } nkscene_snapshot_occurrence;
@@ -203,6 +316,11 @@ enum {
 #define NKS_INVALID_ENTITY ((nkscene_entity_id){0})
 #define NKS_INVALID_GEOMETRY ((nkscene_geometry_id){0})
 #define NKS_INVALID_MATERIAL ((nkscene_material_id){0})
+#define NKS_INVALID_IMAGE ((nkscene_image_id){0})
+#define NKS_INVALID_TEXTURE ((nkscene_texture_id){0})
+#define NKS_INVALID_SAMPLER ((nkscene_sampler_id){0})
+#define NKS_INVALID_CAMERA ((nkscene_camera_id){0})
+#define NKS_INVALID_LIGHT ((nkscene_light_id){0})
 
 /* ------------------------------------------------------------------------- */
 /* Scene lifecycle                                                           */
@@ -242,6 +360,12 @@ NKS_API nkscene_result NKS_CALL nkscene_tx_set_geometry(nkscene_transaction tran
 NKS_API nkscene_result NKS_CALL nkscene_tx_set_material(nkscene_transaction transaction,
                                                         nkscene_occurrence_id occurrence,
                                                         nkscene_material_id material);
+NKS_API nkscene_result NKS_CALL nkscene_tx_set_camera(nkscene_transaction transaction,
+                                                      nkscene_occurrence_id occurrence,
+                                                      nkscene_camera_id camera);
+NKS_API nkscene_result NKS_CALL nkscene_tx_set_light(nkscene_transaction transaction,
+                                                     nkscene_occurrence_id occurrence,
+                                                     nkscene_light_id light);
 NKS_API nkscene_result NKS_CALL nkscene_tx_set_visibility(nkscene_transaction transaction,
                                                           nkscene_occurrence_id occurrence,
                                                           uint32_t visible);
@@ -304,6 +428,32 @@ NKS_API nkscene_result NKS_CALL nkscene_geometry_set_data(nkscene_scene scene,
 NKS_API nkscene_result NKS_CALL nkscene_material_set_data(nkscene_scene scene,
                                                           nkscene_material_id material,
                                                           const nkscene_material_data *data);
+NKS_API nkscene_result NKS_CALL nkscene_image_create(nkscene_scene scene,
+                                                     nkscene_image_id *out_image NK_OUT);
+NKS_API void NKS_CALL nkscene_image_destroy(nkscene_scene scene, nkscene_image_id image);
+NKS_API nkscene_result NKS_CALL nkscene_image_set_data(nkscene_scene scene,
+                                                       nkscene_image_id image,
+                                                       const nkscene_image_data *data);
+NKS_API nkscene_result NKS_CALL nkscene_texture_create(nkscene_scene scene,
+                                                       nkscene_texture_id *out_texture NK_OUT);
+NKS_API void NKS_CALL nkscene_texture_destroy(nkscene_scene scene, nkscene_texture_id texture);
+NKS_API nkscene_result NKS_CALL nkscene_texture_set_data(
+    nkscene_scene scene, nkscene_texture_id texture, const nkscene_texture_data *data);
+NKS_API nkscene_result NKS_CALL nkscene_sampler_create(nkscene_scene scene,
+                                                       nkscene_sampler_id *out_sampler NK_OUT);
+NKS_API void NKS_CALL nkscene_sampler_destroy(nkscene_scene scene, nkscene_sampler_id sampler);
+NKS_API nkscene_result NKS_CALL nkscene_sampler_set_data(
+    nkscene_scene scene, nkscene_sampler_id sampler, const nkscene_sampler_data *data);
+NKS_API nkscene_result NKS_CALL nkscene_camera_create(nkscene_scene scene,
+                                                      nkscene_camera_id *out_camera NK_OUT);
+NKS_API void NKS_CALL nkscene_camera_destroy(nkscene_scene scene, nkscene_camera_id camera);
+NKS_API nkscene_result NKS_CALL nkscene_camera_set_data(
+    nkscene_scene scene, nkscene_camera_id camera, const nkscene_camera_data *data);
+NKS_API nkscene_result NKS_CALL nkscene_light_create(nkscene_scene scene,
+                                                     nkscene_light_id *out_light NK_OUT);
+NKS_API void NKS_CALL nkscene_light_destroy(nkscene_scene scene, nkscene_light_id light);
+NKS_API nkscene_result NKS_CALL nkscene_light_set_data(
+    nkscene_scene scene, nkscene_light_id light, const nkscene_light_data *data);
 
 #ifdef __cplusplus
 }
