@@ -620,6 +620,8 @@ class RenderPlan {
     std::vector<std::size_t> item_batch_position_;
     std::unordered_map<GeometryId, std::uint64_t> geometry_revisions_;
     std::unordered_map<MaterialId, std::uint64_t> material_revisions_;
+    std::uint64_t geometry_resources_revision_ = 0;
+    std::uint64_t material_resources_revision_ = 0;
     std::vector<OccurrenceId> view_override_occurrences_;
     std::vector<EntityId> view_source_policy_sources_;
     std::vector<EntityId> view_isolation_sources_;

@@ -401,6 +401,8 @@ public:
     std::span<const SamplerResource> samplers() const noexcept;
     std::span<const CameraResource> cameras() const noexcept;
     std::span<const LightResource> lights() const noexcept;
+    std::uint64_t geometry_resources_revision() const noexcept;
+    std::uint64_t material_resources_revision() const noexcept;
     const GeometryResource *find_geometry(GeometryId id) const noexcept;
     const MaterialResource *find_material(MaterialId id) const noexcept;
     const ImageResource *find_image(ImageId id) const noexcept;

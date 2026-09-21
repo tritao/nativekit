@@ -136,6 +136,8 @@ RenderPlan compile(const SceneSnapshot &snapshot, const SceneView &view) {
     plan.material_revisions_.reserve(snapshot.materials().size());
     for (const auto &resource : snapshot.materials())
         plan.material_revisions_.emplace(resource.id, resource.revision);
+    plan.geometry_resources_revision_ = snapshot.geometry_resources_revision();
+    plan.material_resources_revision_ = snapshot.material_resources_revision();
     plan.culling_index_ = std::make_shared<SceneSpatialIndex>(snapshot);
     plan.culling_dirty_occurrences_.clear();
     plan.culling_unbounded_occurrences_.clear();
@@ -205,27 +207,35 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
                                        (presentation_changed || scene_effective_change);
     const auto effective = effective_state_dirty ? render_internal::effective_state(snapshot, view)
                                                  : render_internal::EffectiveState{};
+    const bool geometry_resources_changed =
+        plan.geometry_resources_revision_ != snapshot.geometry_resources_revision();
+    const bool material_resources_changed =
+        plan.material_resources_revision_ != snapshot.material_resources_revision();
     std::unordered_set<GeometryId> changed_geometry_resources;
     std::unordered_set<MaterialId> changed_material_resources;
     std::size_t invalidated_items = 0;
-    for (const auto &resource : snapshot.geometries()) {
-        const auto found = plan.geometry_revisions_.find(resource.id);
-        if (found != plan.geometry_revisions_.end() && found->second != resource.revision &&
-            plan.items_by_geometry_.contains(resource.id))
-            changed_geometry_resources.insert(resource.id);
+    if (geometry_resources_changed) {
+        for (const auto &resource : snapshot.geometries()) {
+            const auto found = plan.geometry_revisions_.find(resource.id);
+            if (found != plan.geometry_revisions_.end() && found->second != resource.revision &&
+                plan.items_by_geometry_.contains(resource.id))
+                changed_geometry_resources.insert(resource.id);
+        }
+        for (const auto &[geometry, unused] : plan.geometry_revisions_)
+            if (!snapshot.find_geometry(geometry) && plan.items_by_geometry_.contains(geometry))
+                invalidated_items += plan.items_by_geometry_.at(geometry).size();
     }
-    for (const auto &resource : snapshot.materials()) {
-        const auto found = plan.material_revisions_.find(resource.id);
-        if (found != plan.material_revisions_.end() && found->second != resource.revision &&
-            plan.items_by_material_.contains(resource.id))
-            changed_material_resources.insert(resource.id);
+    if (material_resources_changed) {
+        for (const auto &resource : snapshot.materials()) {
+            const auto found = plan.material_revisions_.find(resource.id);
+            if (found != plan.material_revisions_.end() && found->second != resource.revision &&
+                plan.items_by_material_.contains(resource.id))
+                changed_material_resources.insert(resource.id);
+        }
+        for (const auto &[material, unused] : plan.material_revisions_)
+            if (!snapshot.find_material(material) && plan.items_by_material_.contains(material))
+                invalidated_items += plan.items_by_material_.at(material).size();
     }
-    for (const auto &[geometry, unused] : plan.geometry_revisions_)
-        if (!snapshot.find_geometry(geometry) && plan.items_by_geometry_.contains(geometry))
-            invalidated_items += plan.items_by_geometry_.at(geometry).size();
-    for (const auto &[material, unused] : plan.material_revisions_)
-        if (!snapshot.find_material(material) && plan.items_by_material_.contains(material))
-            invalidated_items += plan.items_by_material_.at(material).size();
     for (const auto &change : changes.changes) {
         const auto item_index = plan.item_index(change.occurrence);
         const auto *occurrence = snapshot.find(change.occurrence);
@@ -254,14 +264,20 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
 
     result.updated_geometry_resources = changed_geometry_resources.size();
     result.updated_material_resources = changed_material_resources.size();
-    plan.geometry_revisions_.clear();
-    plan.geometry_revisions_.reserve(snapshot.geometries().size());
-    for (const auto &resource : snapshot.geometries())
-        plan.geometry_revisions_.emplace(resource.id, resource.revision);
-    plan.material_revisions_.clear();
-    plan.material_revisions_.reserve(snapshot.materials().size());
-    for (const auto &resource : snapshot.materials())
-        plan.material_revisions_.emplace(resource.id, resource.revision);
+    if (geometry_resources_changed) {
+        plan.geometry_revisions_.clear();
+        plan.geometry_revisions_.reserve(snapshot.geometries().size());
+        for (const auto &resource : snapshot.geometries())
+            plan.geometry_revisions_.emplace(resource.id, resource.revision);
+        plan.geometry_resources_revision_ = snapshot.geometry_resources_revision();
+    }
+    if (material_resources_changed) {
+        plan.material_revisions_.clear();
+        plan.material_revisions_.reserve(snapshot.materials().size());
+        for (const auto &resource : snapshot.materials())
+            plan.material_revisions_.emplace(resource.id, resource.revision);
+        plan.material_resources_revision_ = snapshot.material_resources_revision();
+    }
 
     const auto remove_index = [](auto &index, const auto key, std::size_t item_index) {
         const auto found = index.find(key);
@@ -754,6 +770,8 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const Chang
 RenderUpdate refresh(RenderPlan &plan, const SceneSnapshot &snapshot, const SceneView &view) {
     RenderUpdate result;
     if (plan.source_revision() == snapshot.revision() &&
+        plan.geometry_resources_revision_ == snapshot.geometry_resources_revision() &&
+        plan.material_resources_revision_ == snapshot.material_resources_revision() &&
         plan.view_signature_ == render_internal::view_signature(view)) {
         result.visible_items = plan.visible_items_;
         result.culled_items = plan.culled_items_;

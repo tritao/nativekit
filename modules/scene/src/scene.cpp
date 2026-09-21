@@ -172,6 +172,14 @@ std::span<const MaterialResource> SceneSnapshot::materials() const noexcept {
     return *state_->materials;
 }
 
+std::uint64_t SceneSnapshot::geometry_resources_revision() const noexcept {
+    return state_->geometry_resources_revision;
+}
+
+std::uint64_t SceneSnapshot::material_resources_revision() const noexcept {
+    return state_->material_resources_revision;
+}
+
 const GeometryResource *SceneSnapshot::find_geometry(GeometryId id) const noexcept {
     const auto &resources = *state_->geometries;
     const auto found = std::lower_bound(resources.begin(), resources.end(), id,
@@ -505,23 +513,39 @@ void Scene::publish_state(const ChangeSet *changes, std::span<const std::uint32_
     state->entity_names = entity_names;
     state->geometry_store_revision = geometries.revision();
     state->material_store_revision = materials.revision();
-    if (previous && !resources_changed) {
+    const bool geometry_resources_changed =
+        !previous || (resources_changed &&
+                      (previous->geometry_store_revision != geometries.revision() ||
+                       !geometries.revisions_match(*previous->geometries)));
+    const bool material_resources_changed =
+        !previous || (resources_changed &&
+                      (previous->material_store_revision != materials.revision() ||
+                       !materials.revisions_match(*previous->materials)));
+    state->geometry_resources_revision =
+        previous ? previous->geometry_resources_revision + geometry_resources_changed : 1;
+    state->material_resources_revision =
+        previous ? previous->material_resources_revision + material_resources_changed : 1;
+    const auto collect = []<class Store, class Resource>(const Store &store) {
+        auto resources = std::make_shared<std::vector<Resource>>();
+        resources->reserve(store.size());
+        append_resources(store, *resources);
+        return resources;
+    };
+    if (previous && !geometry_resources_changed)
         state->geometries = previous->geometries;
+    else
+        state->geometries = collect.template operator()<GeometryStore, GeometryResource>(geometries);
+    if (previous && !material_resources_changed)
         state->materials = previous->materials;
+    else
+        state->materials = collect.template operator()<MaterialStore, MaterialResource>(materials);
+    if (previous && !resources_changed) {
         state->images = previous->images;
         state->textures = previous->textures;
         state->samplers = previous->samplers;
         state->cameras = previous->cameras;
         state->lights = previous->lights;
     } else {
-        const auto collect = []<class Store, class Resource>(const Store &store) {
-            auto resources = std::make_shared<std::vector<Resource>>();
-            resources->reserve(store.size());
-            append_resources(store, *resources);
-            return resources;
-        };
-        state->geometries = collect.template operator()<GeometryStore, GeometryResource>(geometries);
-        state->materials = collect.template operator()<MaterialStore, MaterialResource>(materials);
         state->images = collect.template operator()<ImageStore, ImageResource>(images);
         state->textures = collect.template operator()<TextureStore, TextureResource>(textures);
         state->samplers = collect.template operator()<SamplerStore, SamplerResource>(samplers);
