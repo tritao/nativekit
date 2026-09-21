@@ -3012,7 +3012,7 @@ nk_result NK_CALL nk_surface_create(nk_handle window_handle, const nk_surface_op
             context_options.stencil = (options->flags & NK_SURFACE_STENCIL) != 0;
 #if defined(NK_WEB_THREADED_RENDER)
             context_options.explicit_swap = true;
-            context_options.render_via_offscreen_backbuffer = true;
+            context_options.render_via_offscreen_backbuffer = false;
             /* RENDER owns the transferred OffscreenCanvas. Proxy fallback
                would synchronously call PLATFORM while PLATFORM waits for
                this render task, deadlocking surface creation. */
