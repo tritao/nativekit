@@ -835,7 +835,7 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_buffer_end(builder: nkgpu_buffer_builder, out_buffer: ptr<nkgpu_buffer> @out) -> nkgpu_result;
 	/**
-	 * Uploads a buffer region into an image.
+	 * Uploads a buffer region into a 2D or array image. Cube images return UNSUPPORTED.
 	 */
 	extern fn nkgpu_buffer_to_image(renderer: nkgpu_renderer, desc: ptr<const<nkgpu_buffer_image_copy_desc>>) -> nkgpu_result;
 	/**
@@ -898,7 +898,7 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_image_begin(renderer: nkgpu_renderer, width: u32, height: u32, out_builder: ptr<nkgpu_image_builder> @out) -> nkgpu_result;
 	/**
-	 * Copies a 2D region between compatible images.
+	 * Copies a 2D region between compatible 2D or array images. Cube images return UNSUPPORTED.
 	 */
 	extern fn nkgpu_image_copy(renderer: nkgpu_renderer, desc: ptr<const<nkgpu_image_copy_desc>>) -> nkgpu_result;
 	/**
@@ -929,7 +929,7 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_image_get_graphics_image(renderer: nkgpu_renderer, image: nkgpu_image, out_image: ptr<nk_graphics_image> @out) -> nkgpu_result;
 	/**
-	 * Downloads an image region into a buffer in top-to-bottom row order.
+	 * Downloads a 2D or array image region into a buffer in top-to-bottom row order.
 	 */
 	extern fn nkgpu_image_to_buffer(renderer: nkgpu_renderer, desc: ptr<const<nkgpu_buffer_image_copy_desc>>) -> nkgpu_result;
 	/**
@@ -1051,7 +1051,7 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_readback_begin_buffer(renderer: nkgpu_renderer, desc: ptr<const<nkgpu_buffer_readback_desc>>, out_readback: ptr<nkgpu_readback> @out) -> nkgpu_result;
 	/**
-	 * Begins an asynchronous readback of an image rectangle.
+	 * Begins an asynchronous readback of a 2D or array image rectangle.
 	 */
 	extern fn nkgpu_readback_begin_image(renderer: nkgpu_renderer, desc: ptr<const<nkgpu_image_readback_desc>>, out_readback: ptr<nkgpu_readback> @out) -> nkgpu_result;
 	/**
@@ -1127,14 +1127,18 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_shader_begin_compute(renderer: nkgpu_renderer, language: nkgpu_shader_language, compute_source: utf8, out_builder: ptr<nkgpu_shader_builder> @out) -> nkgpu_result;
 	/**
-	 * Sets the compute threadgroup dimensions used by Metal. The product of
-	 * `x`, `y`, and `z` must be a positive multiple of 32.
-	 */
-	extern fn nkgpu_shader_compute_threads(builder: nkgpu_shader_builder, x: u32, y: u32, z: u32) -> nkgpu_result;
-	/**
 	 * Adds generalized resource metadata to a shader builder.
 	 */
 	extern fn nkgpu_shader_binding(builder: nkgpu_shader_builder, desc: ptr<const<nkgpu_shader_binding_desc>>) -> nkgpu_result;
+	/**
+	 * Sets the compute threadgroup dimensions used by Metal.
+	 *
+	 * The product of `x`, `y`, and `z` must be a positive multiple of 32. This
+	 * metadata is ignored by other backends, but supplying it for every compute
+	 * shader keeps shader construction backend-agnostic. Call this before
+	 * nkgpu_shader_end().
+	 */
+	extern fn nkgpu_shader_compute_threads(builder: nkgpu_shader_builder, x: u32, y: u32, z: u32) -> nkgpu_result;
 	/**
 	 * Creates a shader from NUL-terminated vertex and fragment shader source.
 	 *
@@ -1158,6 +1162,8 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	extern fn nkgpu_shader_end(builder: nkgpu_shader_builder, out_shader: ptr<nkgpu_shader> @out) -> nkgpu_result;
 	/**
 	 * Describes a storage-buffer binding with explicit read-only metadata.
+	 * Metal shader sources bind view slot `n` at `[[buffer(8 + n)]]`; the other
+	 * source languages use the view slot directly in their storage-buffer binding.
 	 */
 	extern fn nkgpu_shader_storage_buffer(builder: nkgpu_shader_builder, view_slot: u32, stage: nkgpu_shader_stage, readonly: u32) -> nkgpu_result;
 	/**
@@ -1455,7 +1461,9 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	}
 	/**
 	 * Descriptor for a 2D, array, cube, or cube-array image.
-	 * Cube arrays are portable six-layer groups.
+	 * Cube dimensions must be square. Cube data is packed per mip level in face order
+	 * +X, -X, +Y, -Y, +Z, -Z; cube arrays repeat that six-face order for each cube.
+	 * Cube arrays are portable six-layer groups and are sampled as array textures.
 	 */
 	struct nkgpu_image_desc @layout(56, 8) {
 		struct_size: u32 @offset(0) @struct_size;
