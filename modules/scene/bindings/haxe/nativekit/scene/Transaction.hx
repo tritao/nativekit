@@ -48,6 +48,20 @@ class Transaction {
 			update.apply(this);
 	}
 
+	public function setName(occurrence:Occurrence, name:String):Void {
+		ensureOpen();
+		check(NativeKitScene.nkscene_tx_set_name(owner.borrow(), occurrence.nativeValue(), name),
+			"transaction.setName");
+	}
+
+	public function setEntityName(entity:haxe.Int64, name:String):Void {
+		ensureOpen();
+		var value = new nkscene_entity_id();
+		value.set_value(entity);
+		check(NativeKitScene.nkscene_tx_set_entity_name(owner.borrow(), value, name),
+			"transaction.setEntityName");
+	}
+
 	public function setGeometry(occurrence:Occurrence, geometry:Geometry):Void {
 		ensureOpen();
 		check(NativeKitScene.nkscene_tx_set_geometry(owner.borrow(), occurrence.nativeValue(), geometry.id()),

@@ -116,6 +116,8 @@ class Main {
 			lightOccurrence = transaction.createOccurrence();
 		transaction.setParent(first, group);
 		transaction.setParent(second, group);
+		transaction.setName(group, "World");
+		transaction.setEntityName(haxe.Int64.ofInt(42), "Panda");
 		transaction.setGeometry(first, geometry);
 		transaction.setGeometry(second, geometry);
 		transaction.setMaterial(first, material);
