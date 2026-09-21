@@ -278,10 +278,10 @@ typedef struct nkscene_snapshot_occurrence {
     uint64_t world_transform_revision;
     nkscene_geometry_id geometry;
     nkscene_material_id material;
-    nkscene_camera_id camera;
-    nkscene_light_id light;
     uint32_t visible NK_BOOL32;
     nkscene_bounds bounds;
+    nkscene_camera_id camera;
+    nkscene_light_id light;
 } nkscene_snapshot_occurrence;
 
 enum { NKS_SCENE_SNAPSHOT_OCCURRENCE_PAGE_CAPACITY = 64u };
