@@ -41,17 +41,19 @@ public:
         return handle;
     }
 
-    bool destroy(OccurrenceId id) noexcept {
-        const auto found = by_id.find(id);
-        if (found == by_id.end())
+    bool destroy(OccurrenceHandle handle) noexcept {
+        if (!handle.valid() || handle.slot >= slots.size())
             return false;
-        const auto slot = found->second.slot;
-        auto &entry = slots[slot];
+        auto &entry = slots[handle.slot];
+        if (!entry.live || entry.generation != handle.generation)
+            return false;
         entry.live = false;
-        by_id.erase(found);
-        free_slots.push_back(slot);
+        by_id.erase(entry.id);
+        free_slots.push_back(handle.slot);
         return true;
     }
+
+    bool destroy(OccurrenceId id) noexcept { return destroy(resolve(id)); }
 
     OccurrenceHandle resolve(OccurrenceId id) const noexcept {
         const auto found = by_id.find(id);

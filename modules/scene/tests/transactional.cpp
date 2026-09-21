@@ -207,6 +207,44 @@ void changes_are_domain_precise() {
     assert(scene->hierarchy_index().parent(second) == nkscene::invalid_occurrence);
 }
 
+void one_transaction_reuses_generation_safe_handles() {
+    auto scene = std::make_shared<Scene>();
+    const auto root = scene->reserve_occurrence_id();
+    const auto child = scene->reserve_occurrence_id();
+    const auto transient = scene->reserve_occurrence_id();
+
+    Transaction mutation(scene);
+    mutation.add_create(root);
+    mutation.add_create(child);
+    mutation.add_parent(child, root);
+    mutation.add_transform(child, translated(8.0f));
+    mutation.add_visibility(child, false);
+    mutation.add_source_entity(child, nkscene::EntityId{17});
+    nkscene::ChangeSet changes;
+    assert(scene->commit(mutation, changes) == NKS_OK);
+    mutation.close();
+
+    const auto snapshot = scene->snapshot();
+    const auto *value = snapshot.find(child);
+    assert(value);
+    assert(value->parent == root);
+    assert(value->world_transform.transform.matrix[12] == 8.0f);
+    assert(!value->visible);
+    assert(value->source == nkscene::EntityId{17});
+
+    Transaction create_and_destroy(scene);
+    create_and_destroy.add_create(transient);
+    create_and_destroy.add_transform(transient, translated(4.0f));
+    create_and_destroy.add_destroy(transient);
+    assert(scene->commit(create_and_destroy, changes) == NKS_OK);
+    create_and_destroy.close();
+    assert(!scene->contains(transient));
+    assert(changes.changes.size() == 1);
+    assert(has_domain(changes.changes.front().domains, ChangeDomain::Created));
+    assert(has_domain(changes.changes.front().domains, ChangeDomain::Transform));
+    assert(has_domain(changes.changes.front().domains, ChangeDomain::Destroyed));
+}
+
 void shared_resources_do_not_follow_instance_transforms() {
     constexpr std::size_t count = 50000;
     auto scene = std::make_shared<Scene>();
@@ -321,6 +359,7 @@ int main() {
     occurrence_handles_reject_stale_components();
     hierarchy_links_are_slot_indexed();
     changes_are_domain_precise();
+    one_transaction_reuses_generation_safe_handles();
     shared_resources_do_not_follow_instance_transforms();
     snapshots_are_immutable();
     names_and_bulk_transforms_are_transactional();

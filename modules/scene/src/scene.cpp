@@ -449,9 +449,20 @@ bool valid_sampler_wrap(nkscene_sampler_wrap wrap) noexcept {
 
 } // namespace
 
-void Scene::recompute_world_transforms(ChangeSet &changes) {
-    std::unordered_set<OccurrenceId> dirty;
-    std::vector<OccurrenceId> pending;
+void Scene::recompute_world_transforms(ChangeSet &changes,
+                                       const TransactionOverlay &overlay) {
+    struct PendingOccurrence {
+        OccurrenceId id;
+        OccurrenceHandle handle;
+    };
+    const auto handle_for = [&](OccurrenceId id) {
+        const auto found = overlay.indices.find(id);
+        return found == overlay.indices.end()
+                   ? occurrences.resolve(id)
+                   : overlay.entries[found->second].handle;
+    };
+    std::unordered_map<OccurrenceId, OccurrenceHandle> dirty;
+    std::vector<PendingOccurrence> pending;
     for (const auto &change : changes.changes) {
         if (has_domain(change.domains, ChangeDomain::Destroyed)) {
             continue;
@@ -459,71 +470,67 @@ void Scene::recompute_world_transforms(ChangeSet &changes) {
         if (has_domain(change.domains, ChangeDomain::Created) ||
             has_domain(change.domains, ChangeDomain::Transform) ||
             has_domain(change.domains, ChangeDomain::Hierarchy) ||
-            has_domain(change.domains, ChangeDomain::Geometry))
-            pending.push_back(change.occurrence);
+            has_domain(change.domains, ChangeDomain::Geometry)) {
+            const auto handle = handle_for(change.occurrence);
+            if (handle.valid())
+                pending.push_back({change.occurrence, handle});
+        }
     }
     while (!pending.empty()) {
         const auto current = pending.back();
         pending.pop_back();
-        if (!dirty.insert(current).second)
+        if (!dirty.emplace(current.id, current.handle).second)
             continue;
-        hierarchy.for_each_child(occurrences.resolve(current),
-                                [&](OccurrenceId child, OccurrenceHandle) {
-                                    pending.push_back(child);
-                                });
+        hierarchy.for_each_child(current.handle, [&](OccurrenceId child, OccurrenceHandle handle) {
+            pending.push_back({child, handle});
+        });
     }
 
-    std::vector<OccurrenceId> roots;
+    std::vector<PendingOccurrence> roots;
     roots.reserve(dirty.size());
-    for (const auto id : dirty) {
-        const auto parent = hierarchy.parent_handle(occurrences.resolve(id));
+    for (const auto &[id, handle] : dirty) {
+        const auto parent = hierarchy.parent_handle(handle);
         const auto parent_id = occurrences.id(parent);
         if (!parent.valid() || !dirty.contains(parent_id))
-            roots.push_back(id);
+            roots.push_back({id, handle});
     }
-    std::vector<OccurrenceId> stack;
+    std::vector<PendingOccurrence> stack;
     for (const auto root : roots) {
         stack.push_back(root);
         while (!stack.empty()) {
             const auto current = stack.back();
             stack.pop_back();
-            const auto handle = occurrences.resolve(current);
-            const auto *local = local_transforms.find(handle);
+            const auto *local = local_transforms.find(current.handle);
             if (!local)
                 continue;
             LocalTransform world = *local;
-            const auto parent = hierarchy.parent_handle(handle);
+            const auto parent = hierarchy.parent_handle(current.handle);
             if (parent.valid()) {
                 if (const auto *parent_world = world_transforms_.find(parent))
                     world = multiply(parent_world->transform, *local);
             }
-            world_transforms_.insert_or_assign(handle,
+            world_transforms_.insert_or_assign(current.handle,
                                                WorldTransform{world, revisions.scene + 1});
             ++changes.stats.dirty_world_transforms;
-            changes.world_transform_occurrences.push_back(current);
-            if (const auto *geometry = geometry_refs.find(handle)) {
+            changes.world_transform_occurrences.push_back(current.id);
+            if (const auto *geometry = geometry_refs.find(current.handle)) {
                 const auto *resource = geometries.find(geometry->id);
                 if (resource && resource->bounds.valid) {
-                    bounds.insert_or_assign(handle, transformed_bounds(resource->bounds, world));
+                    bounds.insert_or_assign(current.handle,
+                                            transformed_bounds(resource->bounds, world));
                     ++changes.stats.dirty_bounds;
                 } else {
-                    bounds.erase(handle);
+                    bounds.erase(current.handle);
                 }
             } else {
-                bounds.erase(handle);
+                bounds.erase(current.handle);
             }
-            hierarchy.for_each_child(handle, [&](OccurrenceId child, OccurrenceHandle) {
+            hierarchy.for_each_child(current.handle, [&](OccurrenceId child, OccurrenceHandle handle) {
                 if (dirty.contains(child))
-                    stack.push_back(child);
+                    stack.push_back({child, handle});
             });
         }
     }
-}
-
-bool Scene::exists_after(const std::unordered_map<OccurrenceId, bool> &live,
-                         OccurrenceId id) const noexcept {
-    const auto found = live.find(id);
-    return found == live.end() ? occurrences.contains(id) : found->second;
 }
 
 Scene::Scene() : hierarchy(occurrences) {
@@ -748,9 +755,31 @@ SceneSnapshot Scene::snapshot() const {
         std::atomic_load_explicit(&published_, std::memory_order_acquire));
 }
 
-nkscene_result Scene::validate(const Transaction &transaction) const noexcept {
-    std::unordered_map<OccurrenceId, bool> live;
-    std::unordered_map<OccurrenceId, OccurrenceId> final_parents;
+nkscene_result Scene::validate(const Transaction &transaction,
+                               TransactionOverlay &overlay) const noexcept {
+    overlay.indices.clear();
+    overlay.entries.clear();
+    overlay.indices.reserve(transaction.mutations().size() * 2);
+    overlay.entries.reserve(transaction.mutations().size() * 2);
+
+    // Stable IDs are the public transaction ABI. Resolve each one at the
+    // transaction boundary and keep the rest of validation slot-oriented.
+    const auto ensure_entry = [&](OccurrenceId id) -> std::size_t {
+        const auto found = overlay.indices.find(id);
+        if (found != overlay.indices.end())
+            return found->second;
+
+        TransactionOverlay::Entry entry;
+        entry.id = id;
+        entry.handle = occurrences.resolve(id);
+        entry.live = entry.handle.valid();
+        if (entry.live)
+            entry.parent = occurrences.id(hierarchy.parent_handle(entry.handle));
+        const auto index = overlay.entries.size();
+        overlay.entries.push_back(entry);
+        overlay.indices.emplace(id, index);
+        return index;
+    };
 
     for (const auto &mutation : transaction.mutations()) {
         nkscene_result result = NKS_OK;
@@ -758,58 +787,63 @@ nkscene_result Scene::validate(const Transaction &transaction) const noexcept {
             [&](const auto &value) {
                 using T = std::decay_t<decltype(value)>;
                 if constexpr (std::is_same_v<T, CreateOccurrence>) {
-                    const bool valid = value.occurrence.valid() &&
-                                       !occurrences.contains(value.occurrence) &&
-                                       !live.contains(value.occurrence);
-                    if (valid) {
-                        live.emplace(value.occurrence, true);
-                        final_parents.emplace(value.occurrence, invalid_occurrence);
-                    } else {
+                    if (!value.occurrence.valid()) {
                         result = NKS_ERROR_INVALID_ARGUMENT;
+                        return;
                     }
+                    const auto index = ensure_entry(value.occurrence);
+                    auto &entry = overlay.entries[index];
+                    // A destroyed occurrence cannot be recreated in the same
+                    // transaction; this preserves the original ID semantics.
+                    if (entry.live || entry.handle.valid() || entry.created) {
+                        result = NKS_ERROR_INVALID_ARGUMENT;
+                        return;
+                    }
+                    entry.live = true;
+                    entry.created = true;
+                    entry.parent = invalid_occurrence;
                 } else if constexpr (std::is_same_v<T, DestroyOccurrence>) {
-                    const bool valid =
-                        value.occurrence.valid() && exists_after(live, value.occurrence);
-                    if (valid) {
-                        live[value.occurrence] = false;
-                    } else {
+                    if (!value.occurrence.valid()) {
                         result = NKS_ERROR_STALE_ID;
+                        return;
                     }
+                    auto &entry = overlay.entries[ensure_entry(value.occurrence)];
+                    if (!entry.live)
+                        result = NKS_ERROR_STALE_ID;
+                    else
+                        entry.live = false;
                 } else if constexpr (std::is_same_v<T, SetParent>) {
-                    const bool valid_target =
-                        value.occurrence.valid() && exists_after(live, value.occurrence);
+                    if (!value.occurrence.valid()) {
+                        result = NKS_ERROR_STALE_ID;
+                        return;
+                    }
+                    const auto target_index = ensure_entry(value.occurrence);
+                    const auto parent_index = value.parent.valid()
+                                                  ? ensure_entry(value.parent)
+                                                  : std::size_t{};
+                    auto &target = overlay.entries[target_index];
                     const bool valid_parent =
-                        value.parent == invalid_occurrence || exists_after(live, value.parent);
-                    if (!valid_target || !valid_parent) {
+                        !value.parent.valid() || overlay.entries[parent_index].live;
+                    if (!target.live || !valid_parent) {
                         result = NKS_ERROR_STALE_ID;
                     } else if (value.occurrence == value.parent) {
                         result = NKS_ERROR_HIERARCHY_CYCLE;
                     } else {
-                        final_parents[value.occurrence] = value.parent;
+                        target.parent = value.parent;
                     }
-                } else if constexpr (std::is_same_v<T, SetTransform>) {
-                    if (!value.occurrence.valid() || !exists_after(live, value.occurrence))
-                        result = NKS_ERROR_STALE_ID;
-                } else if constexpr (std::is_same_v<T, SetGeometry>) {
-                    if (!value.occurrence.valid() || !exists_after(live, value.occurrence))
-                        result = NKS_ERROR_STALE_ID;
-                } else if constexpr (std::is_same_v<T, SetMaterial>) {
-                    if (!value.occurrence.valid() || !exists_after(live, value.occurrence))
-                        result = NKS_ERROR_STALE_ID;
-                } else if constexpr (std::is_same_v<T, SetCamera>) {
-                    if (!value.occurrence.valid() || !exists_after(live, value.occurrence))
-                        result = NKS_ERROR_STALE_ID;
-                } else if constexpr (std::is_same_v<T, SetLight>) {
-                    if (!value.occurrence.valid() || !exists_after(live, value.occurrence))
-                        result = NKS_ERROR_STALE_ID;
-                } else if constexpr (std::is_same_v<T, SetVisibility>) {
-                    if (!value.occurrence.valid() || !exists_after(live, value.occurrence))
-                        result = NKS_ERROR_STALE_ID;
-                } else if constexpr (std::is_same_v<T, SetSourceEntity>) {
-                    if (!value.occurrence.valid() || !exists_after(live, value.occurrence))
+                } else if constexpr (std::is_same_v<T, SetTransform> ||
+                                     std::is_same_v<T, SetGeometry> ||
+                                     std::is_same_v<T, SetMaterial> ||
+                                     std::is_same_v<T, SetCamera> ||
+                                     std::is_same_v<T, SetLight> ||
+                                     std::is_same_v<T, SetVisibility> ||
+                                     std::is_same_v<T, SetSourceEntity>) {
+                    if (!value.occurrence.valid() ||
+                        !overlay.entries[ensure_entry(value.occurrence)].live)
                         result = NKS_ERROR_STALE_ID;
                 } else if constexpr (std::is_same_v<T, SetName>) {
-                    if (!value.occurrence.valid() || !exists_after(live, value.occurrence))
+                    if (!value.occurrence.valid() ||
+                        !overlay.entries[ensure_entry(value.occurrence)].live)
                         result = NKS_ERROR_STALE_ID;
                 } else if constexpr (std::is_same_v<T, SetEntityName>) {
                     if (!value.entity.valid())
@@ -821,36 +855,40 @@ nkscene_result Scene::validate(const Transaction &transaction) const noexcept {
             return result;
     }
 
-    for (const auto &[id, is_live] : live) {
-        if (is_live)
+    // A live child may not be left attached to an occurrence destroyed by the
+    // same transaction. Newly-created links are checked by the parent walk
+    // below; existing links can be inspected directly through their handles.
+    for (std::size_t index = 0; index < overlay.entries.size(); ++index) {
+        const auto entry_id = overlay.entries[index].id;
+        const auto entry_handle = overlay.entries[index].handle;
+        if (overlay.entries[index].live || !entry_handle.valid())
             continue;
-        for (const auto child : hierarchy.children(id)) {
-            if (exists_after(live, child) &&
-                (!final_parents.contains(child) || final_parents.at(child) == id))
-                return NKS_ERROR_INVALID_ARGUMENT;
-        }
+        bool invalid_attachment = false;
+        hierarchy.for_each_child(entry_handle, [&](OccurrenceId child, OccurrenceHandle) {
+            const auto child_index = ensure_entry(child);
+            const auto &child_entry = overlay.entries[child_index];
+            if (child_entry.live && child_entry.parent == entry_id)
+                invalid_attachment = true;
+        });
+        if (invalid_attachment)
+            return NKS_ERROR_INVALID_ARGUMENT;
     }
 
-    auto parent_of = [&](OccurrenceId id) {
-        const auto found = final_parents.find(id);
-        return found == final_parents.end() ? hierarchy.parent(id) : found->second;
-    };
-
-    std::vector<OccurrenceId> candidates;
-    candidates.reserve(final_parents.size() + live.size());
-    for (const auto &[id, unused] : final_parents)
-        candidates.push_back(id);
-    for (const auto &[id, unused] : live)
-        candidates.push_back(id);
-    for (const auto start : candidates) {
-        if (!exists_after(live, start))
+    // Walk the final parent overlay. This validates both pre-existing links
+    // and links between occurrences created earlier in this transaction.
+    for (std::size_t start_index = 0; start_index < overlay.entries.size(); ++start_index) {
+        const auto &start = overlay.entries[start_index];
+        if (!start.live)
             continue;
         std::unordered_set<OccurrenceId> visited;
-        for (auto current = start; current.valid(); current = parent_of(current)) {
-            if (!exists_after(live, current))
+        for (auto current = start.id; current.valid();) {
+            const auto current_index = ensure_entry(current);
+            const auto &entry = overlay.entries[current_index];
+            if (!entry.live)
                 return NKS_ERROR_STALE_ID;
             if (!visited.insert(current).second)
                 return NKS_ERROR_HIERARCHY_CYCLE;
+            current = entry.parent;
         }
     }
     return NKS_OK;
@@ -871,7 +909,8 @@ void Scene::record_change(ChangeSet &changes,
 nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes) {
     if (!transaction.active() || transaction.scene().get() != this)
         return NKS_ERROR_INVALID_STATE;
-    const auto validation = validate(transaction);
+    TransactionOverlay overlay;
+    const auto validation = validate(transaction, overlay);
     if (validation != NKS_OK)
         return validation;
 
@@ -880,18 +919,24 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
     std::unordered_map<OccurrenceId, std::size_t> change_indices;
     change_indices.reserve(transaction.mutations().size());
     std::vector<std::uint32_t> destroyed_slots;
+    const auto entry_for = [&](OccurrenceId id) -> TransactionOverlay::Entry & {
+        return overlay.entries[overlay.indices.at(id)];
+    };
     for (const auto &mutation : transaction.mutations()) {
         std::visit(
             [&](const auto &value) {
                 using T = std::decay_t<decltype(value)>;
                 if constexpr (std::is_same_v<T, CreateOccurrence>) {
                     const auto handle = occurrences.create(value.occurrence);
+                    auto &entry = entry_for(value.occurrence);
+                    entry.handle = handle;
+                    entry.live = true;
                     hierarchy.add(handle);
                     local_transforms.insert_or_assign(handle, LocalTransform{});
                     visibilities_.insert_or_assign(handle, Visibility{});
                     record_change(changes, change_indices, value.occurrence, ChangeDomain::Created);
                 } else if constexpr (std::is_same_v<T, DestroyOccurrence>) {
-                    const auto handle = occurrences.resolve(value.occurrence);
+                    const auto handle = entry_for(value.occurrence).handle;
                     destroyed_slots.push_back(handle.slot);
                     source_entities.erase(handle);
                     parent_components.erase(handle);
@@ -905,21 +950,24 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
                     names_.erase(handle);
                     bounds.erase(handle);
                     hierarchy.remove(handle);
-                    occurrences.destroy(value.occurrence);
+                    occurrences.destroy(handle);
                     record_change(changes, change_indices, value.occurrence,
                                   ChangeDomain::Destroyed);
                 } else if constexpr (std::is_same_v<T, SetParent>) {
-                    const auto previous = hierarchy.parent(value.occurrence);
+                    auto &target = entry_for(value.occurrence);
+                    const auto target_handle = target.handle;
+                    const auto previous = occurrences.id(hierarchy.parent_handle(target_handle));
                     if (previous != value.parent) {
-                        hierarchy.reparent(occurrences.resolve(value.occurrence),
-                                           occurrences.resolve(value.parent));
-                        parent_components.insert_or_assign(occurrences.resolve(value.occurrence),
-                                                           Parent{value.parent});
+                        const auto parent_handle =
+                            value.parent.valid() ? entry_for(value.parent).handle
+                                                 : OccurrenceHandle{};
+                        hierarchy.reparent(target_handle, parent_handle);
+                        parent_components.insert_or_assign(target_handle, Parent{value.parent});
                         record_change(changes, change_indices, value.occurrence,
                                       ChangeDomain::Hierarchy);
                     }
                 } else if constexpr (std::is_same_v<T, SetTransform>) {
-                    const auto handle = occurrences.resolve(value.occurrence);
+                    const auto handle = entry_for(value.occurrence).handle;
                     auto *previous = local_transforms.find(handle);
                     if (!previous || !transform_equal(*previous, value.transform)) {
                         local_transforms.insert_or_assign(handle, value.transform);
@@ -927,7 +975,7 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
                                       ChangeDomain::Transform);
                     }
                 } else if constexpr (std::is_same_v<T, SetGeometry>) {
-                    const auto handle = occurrences.resolve(value.occurrence);
+                    const auto handle = entry_for(value.occurrence).handle;
                     const auto *previous = geometry_refs.find(handle);
                     if (!previous || previous->id != value.geometry) {
                         geometry_refs.insert_or_assign(handle,
@@ -936,7 +984,7 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
                                       ChangeDomain::Geometry);
                     }
                 } else if constexpr (std::is_same_v<T, SetMaterial>) {
-                    const auto handle = occurrences.resolve(value.occurrence);
+                    const auto handle = entry_for(value.occurrence).handle;
                     const auto *previous = material_refs.find(handle);
                     if (!previous || previous->id != value.material) {
                         material_refs.insert_or_assign(handle,
@@ -974,7 +1022,7 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
                                       ChangeDomain::Light);
                     }
                 } else if constexpr (std::is_same_v<T, SetVisibility>) {
-                    const auto handle = occurrences.resolve(value.occurrence);
+                    const auto handle = entry_for(value.occurrence).handle;
                     const auto *previous = visibilities_.find(handle);
                     if (!previous || previous->visible != value.visible) {
                         visibilities_.insert_or_assign(handle, Visibility{value.visible});
@@ -982,7 +1030,7 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
                                       ChangeDomain::Visibility);
                     }
                 } else if constexpr (std::is_same_v<T, SetSourceEntity>) {
-                    const auto handle = occurrences.resolve(value.occurrence);
+                    const auto handle = entry_for(value.occurrence).handle;
                     const auto *previous = source_entities.find(handle);
                     if (value.source.valid()) {
                         if (!previous || previous->id != value.source) {
@@ -1038,24 +1086,32 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
             mutation);
     }
     changes.stats.changed_occurrences = changes.changes.size();
-    recompute_world_transforms(changes);
+    recompute_world_transforms(changes, overlay);
     std::unordered_set<OccurrenceId> effective_state_seen;
     const auto mark_effective = [&](OccurrenceId occurrence) {
         if (effective_state_seen.insert(occurrence).second)
             changes.effective_state_occurrences.push_back(occurrence);
     };
     const auto mark_effective_subtree = [&](OccurrenceId root) {
-        std::vector<OccurrenceId> pending{root};
+        struct PendingOccurrence {
+            OccurrenceId id;
+            OccurrenceHandle handle;
+        };
+        const auto found = overlay.indices.find(root);
+        const auto root_handle = found == overlay.indices.end()
+                                     ? occurrences.resolve(root)
+                                     : overlay.entries[found->second].handle;
+        std::vector<PendingOccurrence> pending{{root, root_handle}};
         while (!pending.empty()) {
             const auto current = pending.back();
             pending.pop_back();
-            if (effective_state_seen.contains(current))
+            if (effective_state_seen.contains(current.id))
                 continue;
-            mark_effective(current);
-            hierarchy.for_each_child(occurrences.resolve(current),
-                                     [&](OccurrenceId child, OccurrenceHandle) {
-                                         pending.push_back(child);
-                                     });
+            mark_effective(current.id);
+            hierarchy.for_each_child(current.handle, [&](OccurrenceId child,
+                                                         OccurrenceHandle handle) {
+                pending.push_back({child, handle});
+            });
         }
     };
     for (const auto &change : changes.changes) {

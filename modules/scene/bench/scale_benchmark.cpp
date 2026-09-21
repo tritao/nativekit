@@ -42,6 +42,21 @@ int main() {
     assert(changes.stats.changed_occurrences == occurrence_count - 2);
     assert(scene->snapshot().children(occurrences.front()).size() == occurrence_count - 2);
 
+    constexpr std::size_t batch_mutation_count = 50'000;
+    nkscene::Transaction batch_move(scene);
+    for (std::size_t index = 2; index < 2 + batch_mutation_count; ++index) {
+        nkscene::LocalTransform transform;
+        transform.matrix[12] = 1.0f;
+        batch_move.add_transform(occurrences[index], transform);
+    }
+    const auto batch_start = std::chrono::steady_clock::now();
+    assert(scene->commit(batch_move, changes) == NKS_OK);
+    batch_move.close();
+    const auto batch_elapsed = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - batch_start);
+    assert(changes.stats.changed_occurrences == batch_mutation_count);
+    assert(changes.stats.dirty_world_transforms == batch_mutation_count);
+
     const auto before = scene->snapshot();
     std::atomic<bool> failed = false;
     std::vector<std::thread> readers;
@@ -101,10 +116,10 @@ int main() {
         std::chrono::steady_clock::now() - sparse_start);
     assert(sparse_checksum == 512 * 7);
 
-    std::printf("scale occurrences=%zu create=%.3f ms hierarchy=%.3f ms move=%.3f us "
-                "reparent=%.3f ms sparse=%.3f us readers=%d\n",
+    std::printf("scale occurrences=%zu create=%.3f ms hierarchy=%.3f ms batch=%zu/%.3f ms "
+                "move=%.3f us reparent=%.3f ms sparse=%.3f us readers=%d\n",
                 occurrence_count, create_elapsed.count(), hierarchy_elapsed.count(),
-                move_elapsed.count(), reparent_elapsed.count(), sparse_elapsed.count(),
-                reader_count);
+                batch_mutation_count, batch_elapsed.count(), move_elapsed.count(),
+                reparent_elapsed.count(), sparse_elapsed.count(), reader_count);
     return 0;
 }

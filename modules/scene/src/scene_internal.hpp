@@ -155,10 +155,23 @@ public:
     void publish() const;
 
 private:
-    nkscene_result validate(const Transaction &transaction) const noexcept;
-    bool exists_after(const std::unordered_map<OccurrenceId, bool> &live,
-                      OccurrenceId id) const noexcept;
-    void recompute_world_transforms(ChangeSet &changes);
+    struct TransactionOverlay {
+        struct Entry {
+            OccurrenceId id;
+            OccurrenceHandle handle;
+            OccurrenceId parent = invalid_occurrence;
+            bool live = false;
+            bool created = false;
+        };
+
+        std::unordered_map<OccurrenceId, std::size_t> indices;
+        std::vector<Entry> entries;
+    };
+
+    nkscene_result validate(const Transaction &transaction,
+                            TransactionOverlay &overlay) const noexcept;
+    void recompute_world_transforms(ChangeSet &changes,
+                                    const TransactionOverlay &overlay);
     void publish_state(const ChangeSet *changes,
                        std::span<const std::uint32_t> destroyed_slots) const;
     void record_change(ChangeSet &changes, std::unordered_map<OccurrenceId, std::size_t> &indices,
