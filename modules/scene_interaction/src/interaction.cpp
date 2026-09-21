@@ -62,26 +62,25 @@ SceneInteraction::~SceneInteraction() = default;
 SceneInteraction::SceneInteraction(SceneInteraction &&) noexcept = default;
 SceneInteraction &SceneInteraction::operator=(SceneInteraction &&) noexcept = default;
 
-nkgpu_result SceneInteraction::request_hover(NativeKitGpuExecutor &executor,
-                                             const RenderPlan &plan,
-                                             const SceneSnapshot &snapshot,
-                                             std::uint32_t width, std::uint32_t height,
-                                             std::uint32_t x, std::uint32_t y) {
+nkgpu_result SceneInteraction::request_hover(NativeKitGpuExecutor &executor, const RenderPlan &plan,
+                                             const SceneSnapshot &snapshot, std::uint32_t width,
+                                             std::uint32_t height, std::uint32_t x,
+                                             std::uint32_t y) {
     hover_request_.reset();
     return executor.begin_pick_pixel(plan, snapshot, width, height, x, y, hover_request_);
 }
 
 InteractionHoverState SceneInteraction::poll_hover(NativeKitGpuExecutor &executor,
-                                                    const RenderPlan &plan,
-                                                    const SceneSnapshot &snapshot,
-                                                    nkgpu_result &out_error) {
+                                                   const RenderPlan &plan,
+                                                   const SceneSnapshot &snapshot,
+                                                   nkgpu_result &out_error) {
     out_error = NKGPU_OK;
     if (!hover_request_)
         return InteractionHoverState::Idle;
 
     PickResult result;
-    const auto state = executor.poll_pick_pixel(
-        *hover_request_, plan, snapshot, &result, &out_error);
+    const auto state =
+        executor.poll_pick_pixel(*hover_request_, plan, snapshot, &result, &out_error);
     const auto hover_state = static_cast<InteractionHoverState>(state);
     if (hover_state == InteractionHoverState::Ready) {
         if (result.occurrence.valid())
@@ -96,7 +95,9 @@ InteractionHoverState SceneInteraction::poll_hover(NativeKitGpuExecutor &executo
     return hover_state;
 }
 
-void SceneInteraction::cancel_hover() noexcept { hover_request_.reset(); }
+void SceneInteraction::cancel_hover() noexcept {
+    hover_request_.reset();
+}
 
 void SceneInteraction::apply_pick(const PickResult &pick_result, SelectionMode mode) {
     if (pick_result.occurrence.valid())
@@ -110,7 +111,9 @@ void SceneInteraction::select(OccurrenceId occurrence, SelectionMode mode) {
     apply_selection(selected_, occurrence, mode);
 }
 
-void SceneInteraction::clear_selection() noexcept { selected_.clear(); }
+void SceneInteraction::clear_selection() noexcept {
+    selected_.clear();
+}
 
 void SceneInteraction::synchronize(const SceneSnapshot &snapshot) {
     std::erase_if(selected_, [&snapshot](OccurrenceId occurrence) {
@@ -120,9 +123,13 @@ void SceneInteraction::synchronize(const SceneSnapshot &snapshot) {
         hovered_.reset();
 }
 
-std::optional<PickResult> SceneInteraction::hovered() const { return hovered_; }
+std::optional<PickResult> SceneInteraction::hovered() const {
+    return hovered_;
+}
 
-std::span<const OccurrenceId> SceneInteraction::selected() const noexcept { return selected_; }
+std::span<const OccurrenceId> SceneInteraction::selected() const noexcept {
+    return selected_;
+}
 
 bool SceneInteraction::is_selected(OccurrenceId occurrence) const noexcept {
     return std::find(selected_.begin(), selected_.end(), occurrence) != selected_.end();
@@ -169,7 +176,7 @@ RuntimeHandle unpack_handle(std::uint32_t value) noexcept {
 }
 
 class InteractionHandles {
-public:
+  public:
     RuntimeHandle create(std::shared_ptr<CInteractionState> value) {
         if (free_slots_.empty()) {
             if (slots_.size() >= handle_index_mask)
@@ -202,7 +209,7 @@ public:
         return result;
     }
 
-private:
+  private:
     struct Entry {
         std::shared_ptr<CInteractionState> value;
         std::uint32_t generation = 1;
@@ -210,8 +217,8 @@ private:
 
     bool valid(RuntimeHandle handle) const noexcept {
         return handle.valid() && handle.slot < slots_.size() &&
-            slots_[handle.slot].generation == handle.generation &&
-            slots_[handle.slot].value != nullptr;
+               slots_[handle.slot].generation == handle.generation &&
+               slots_[handle.slot].value != nullptr;
     }
 
     std::vector<Entry> slots_;
@@ -234,10 +241,10 @@ std::shared_ptr<CInteractionState> resolve(std::uint32_t handle) {
     return state.interactions.get(unpack_handle(handle));
 }
 
-void apply_selection(std::vector<nkscene_occurrence_id> &selected,
-                     nkscene_occurrence_id occurrence, std::uint32_t mode) {
-    const auto found = std::find_if(
-        selected.begin(), selected.end(), [occurrence](nkscene_occurrence_id value) {
+void apply_selection(std::vector<nkscene_occurrence_id> &selected, nkscene_occurrence_id occurrence,
+                     std::uint32_t mode) {
+    const auto found =
+        std::find_if(selected.begin(), selected.end(), [occurrence](nkscene_occurrence_id value) {
             return value.value == occurrence.value;
         });
     if (occurrence.value == 0) {
@@ -293,10 +300,11 @@ void NKS_CALL nkscene_interaction_destroy(nkscene_interaction interaction) {
     }
 }
 
-nkscene_result NKS_CALL nkscene_interaction_request_hover(
-    nkscene_interaction interaction, nkscene_render_executor executor,
-    nkscene_render_plan plan, nkscene_snapshot snapshot, uint32_t width, uint32_t height,
-    uint32_t x, uint32_t y) {
+nkscene_result NKS_CALL nkscene_interaction_request_hover(nkscene_interaction interaction,
+                                                          nkscene_render_executor executor,
+                                                          nkscene_render_plan plan,
+                                                          nkscene_snapshot snapshot, uint32_t width,
+                                                          uint32_t height, uint32_t x, uint32_t y) {
     const auto state = resolve(interaction);
     if (!state)
         return NKS_ERROR_INVALID_HANDLE;
@@ -305,17 +313,19 @@ nkscene_result NKS_CALL nkscene_interaction_request_hover(
         state->hover_request = 0;
     }
     nkscene_render_pick_request request = 0;
-    const auto result = nkscene_render_executor_pick_pixel_begin(
-        executor, plan, snapshot, width, height, x, y, &request);
+    const auto result = nkscene_render_executor_pick_pixel_begin(executor, plan, snapshot, width,
+                                                                 height, x, y, &request);
     if (result == NKS_OK)
         state->hover_request = request;
     return result;
 }
 
-nkscene_result NKS_CALL nkscene_interaction_poll_hover(
-    nkscene_interaction interaction, nkscene_render_executor executor,
-    nkscene_render_plan plan, nkscene_snapshot snapshot, uint32_t *out_state,
-    nkgpu_result *out_error, nkscene_render_pick_result *out_result) {
+nkscene_result NKS_CALL nkscene_interaction_poll_hover(nkscene_interaction interaction,
+                                                       nkscene_render_executor executor,
+                                                       nkscene_render_plan plan,
+                                                       nkscene_snapshot snapshot,
+                                                       uint32_t *out_state, nkgpu_result *out_error,
+                                                       nkscene_render_pick_result *out_result) {
     if (!out_state || !out_error || !out_result)
         return NKS_ERROR_INVALID_ARGUMENT;
     *out_state = NKS_INTERACTION_HOVER_FAILED;
@@ -361,8 +371,9 @@ void NKS_CALL nkscene_interaction_cancel_hover(nkscene_interaction interaction) 
     state->hover_request = 0;
 }
 
-nkscene_result NKS_CALL nkscene_interaction_apply_pick(
-    nkscene_interaction interaction, const nkscene_render_pick_result *pick, uint32_t mode) {
+nkscene_result NKS_CALL nkscene_interaction_apply_pick(nkscene_interaction interaction,
+                                                       const nkscene_render_pick_result *pick,
+                                                       uint32_t mode) {
     if (!pick)
         return NKS_ERROR_INVALID_ARGUMENT;
     nkscene::SelectionMode ignored;
@@ -379,8 +390,9 @@ nkscene_result NKS_CALL nkscene_interaction_apply_pick(
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_interaction_select(
-    nkscene_interaction interaction, nkscene_occurrence_id occurrence, uint32_t mode) {
+nkscene_result NKS_CALL nkscene_interaction_select(nkscene_interaction interaction,
+                                                   nkscene_occurrence_id occurrence,
+                                                   uint32_t mode) {
     nkscene::SelectionMode ignored;
     if (occurrence.value == 0 || !nkscene::selection_mode(mode, ignored))
         return NKS_ERROR_INVALID_ARGUMENT;
@@ -397,8 +409,8 @@ void NKS_CALL nkscene_interaction_clear_selection(nkscene_interaction interactio
         state->selected.clear();
 }
 
-nkscene_result NKS_CALL nkscene_interaction_synchronize(
-    nkscene_interaction interaction, nkscene_snapshot snapshot) {
+nkscene_result NKS_CALL nkscene_interaction_synchronize(nkscene_interaction interaction,
+                                                        nkscene_snapshot snapshot) {
     const auto state = resolve(interaction);
     if (!state)
         return NKS_ERROR_INVALID_HANDLE;
@@ -422,9 +434,9 @@ nkscene_result NKS_CALL nkscene_interaction_synchronize(
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_interaction_get_hover(
-    nkscene_interaction interaction, uint32_t *out_has_hover,
-    nkscene_render_pick_result *out_result) {
+nkscene_result NKS_CALL nkscene_interaction_get_hover(nkscene_interaction interaction,
+                                                      uint32_t *out_has_hover,
+                                                      nkscene_render_pick_result *out_result) {
     if (!out_has_hover || !out_result)
         return NKS_ERROR_INVALID_ARGUMENT;
     *out_has_hover = 0;
@@ -439,8 +451,8 @@ nkscene_result NKS_CALL nkscene_interaction_get_hover(
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_interaction_get_selection_count(
-    nkscene_interaction interaction, uint64_t *out_count) {
+nkscene_result NKS_CALL nkscene_interaction_get_selection_count(nkscene_interaction interaction,
+                                                                uint64_t *out_count) {
     if (!out_count)
         return NKS_ERROR_INVALID_ARGUMENT;
     const auto state = resolve(interaction);
@@ -450,8 +462,9 @@ nkscene_result NKS_CALL nkscene_interaction_get_selection_count(
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_interaction_get_selected(
-    nkscene_interaction interaction, uint64_t index, nkscene_occurrence_id *out_occurrence) {
+nkscene_result NKS_CALL nkscene_interaction_get_selected(nkscene_interaction interaction,
+                                                         uint64_t index,
+                                                         nkscene_occurrence_id *out_occurrence) {
     if (!out_occurrence)
         return NKS_ERROR_INVALID_ARGUMENT;
     const auto state = resolve(interaction);
@@ -463,20 +476,20 @@ nkscene_result NKS_CALL nkscene_interaction_get_selected(
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_interaction_is_selected(
-    nkscene_interaction interaction, nkscene_occurrence_id occurrence, uint32_t *out_selected) {
+nkscene_result NKS_CALL nkscene_interaction_is_selected(nkscene_interaction interaction,
+                                                        nkscene_occurrence_id occurrence,
+                                                        uint32_t *out_selected) {
     if (!out_selected)
         return NKS_ERROR_INVALID_ARGUMENT;
     const auto state = resolve(interaction);
     if (!state)
         return NKS_ERROR_INVALID_HANDLE;
-    *out_selected = std::any_of(
-                        state->selected.begin(), state->selected.end(),
-                        [occurrence](nkscene_occurrence_id value) {
-                            return value.value == occurrence.value;
-                        })
-        ? 1u
-        : 0u;
+    *out_selected = std::any_of(state->selected.begin(), state->selected.end(),
+                                [occurrence](nkscene_occurrence_id value) {
+                                    return value.value == occurrence.value;
+                                })
+                        ? 1u
+                        : 0u;
     return NKS_OK;
 }
 

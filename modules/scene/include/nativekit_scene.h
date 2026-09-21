@@ -117,9 +117,7 @@ typedef struct nkscene_snapshot_occurrence {
     nkscene_bounds bounds;
 } nkscene_snapshot_occurrence;
 
-enum {
-    NKS_SCENE_SNAPSHOT_OCCURRENCE_PAGE_CAPACITY = 64u
-};
+enum { NKS_SCENE_SNAPSHOT_OCCURRENCE_PAGE_CAPACITY = 64u };
 
 /** Fixed-size page used to transfer snapshot occurrences across the C ABI. */
 typedef struct nkscene_snapshot_occurrence_page {
@@ -189,9 +187,9 @@ NKS_API nkscene_result NKS_CALL nkscene_tx_set_material(nkscene_transaction tran
 NKS_API nkscene_result NKS_CALL nkscene_tx_set_visibility(nkscene_transaction transaction,
                                                           nkscene_occurrence_id occurrence,
                                                           uint32_t visible);
-NKS_API nkscene_result NKS_CALL nkscene_tx_set_source_entity(
-    nkscene_transaction transaction, nkscene_occurrence_id occurrence,
-    nkscene_entity_id source);
+NKS_API nkscene_result NKS_CALL nkscene_tx_set_source_entity(nkscene_transaction transaction,
+                                                             nkscene_occurrence_id occurrence,
+                                                             nkscene_entity_id source);
 
 /* ------------------------------------------------------------------------- */
 /* Snapshots and changes                                                     */
@@ -202,17 +200,16 @@ nkscene_scene_snapshot(nkscene_scene scene, nkscene_snapshot *out_snapshot NK_OU
 NKS_API void NKS_CALL nkscene_snapshot_destroy(nkscene_snapshot snapshot);
 NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_revision(nkscene_snapshot snapshot,
                                                               uint64_t *out_revision NK_OUT);
-NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_occurrence_count(
-    nkscene_snapshot snapshot, uint64_t *out_count NK_OUT);
-NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_occurrence(
-    nkscene_snapshot snapshot, uint64_t index,
-    nkscene_snapshot_occurrence *out_occurrence NK_INOUT);
-NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_occurrence_page(
-    nkscene_snapshot snapshot, uint64_t start_index,
-    nkscene_snapshot_occurrence_page *out_page NK_INOUT);
+NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_occurrence_count(nkscene_snapshot snapshot,
+                                                                      uint64_t *out_count NK_OUT);
+NKS_API nkscene_result NKS_CALL
+nkscene_snapshot_get_occurrence(nkscene_snapshot snapshot, uint64_t index,
+                                nkscene_snapshot_occurrence *out_occurrence NK_INOUT);
+NKS_API nkscene_result NKS_CALL
+nkscene_snapshot_get_occurrence_page(nkscene_snapshot snapshot, uint64_t start_index,
+                                     nkscene_snapshot_occurrence_page *out_page NK_INOUT);
 NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_source_occurrence_count(
-    nkscene_snapshot snapshot, nkscene_entity_id source,
-    uint64_t *out_count NK_OUT);
+    nkscene_snapshot snapshot, nkscene_entity_id source, uint64_t *out_count NK_OUT);
 NKS_API nkscene_result NKS_CALL nkscene_snapshot_get_source_occurrence(
     nkscene_snapshot snapshot, nkscene_entity_id source, uint64_t index,
     nkscene_occurrence_id *out_occurrence NK_OUT);

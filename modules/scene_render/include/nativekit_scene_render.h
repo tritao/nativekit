@@ -35,10 +35,10 @@ extern "C" {
 typedef uint32_t nkscene_render_plan NK_HANDLE NK_HANDLE_DESTROY(nkscene_render_plan_destroy);
 typedef uint32_t
     nkscene_render_executor NK_HANDLE NK_HANDLE_DESTROY(nkscene_render_executor_destroy);
-typedef uint32_t nkscene_render_spatial_index NK_HANDLE
-    NK_HANDLE_DESTROY(nkscene_render_spatial_index_destroy);
-typedef uint32_t nkscene_render_pick_request NK_HANDLE
-    NK_HANDLE_DESTROY(nkscene_render_pick_request_destroy);
+typedef uint32_t
+    nkscene_render_spatial_index NK_HANDLE NK_HANDLE_DESTROY(nkscene_render_spatial_index_destroy);
+typedef uint32_t
+    nkscene_render_pick_request NK_HANDLE NK_HANDLE_DESTROY(nkscene_render_pick_request_destroy);
 
 typedef struct nkscene_render_visibility_override {
     nkscene_occurrence_id occurrence;
@@ -84,19 +84,18 @@ typedef struct nkscene_render_view {
     nkscene_render_camera camera;
     const nkscene_render_clip_plane *clip_planes NK_BORROWED_ARRAY(clip_plane_count);
     uint32_t clip_plane_count;
-    const nkscene_render_material_override *selection_overrides
-        NK_BORROWED_ARRAY(selection_override_count);
+    const nkscene_render_material_override *
+        selection_overrides NK_BORROWED_ARRAY(selection_override_count);
     uint32_t selection_override_count;
-    const nkscene_render_material_override *hover_overrides
-        NK_BORROWED_ARRAY(hover_override_count);
+    const nkscene_render_material_override *hover_overrides NK_BORROWED_ARRAY(hover_override_count);
     uint32_t hover_override_count;
     const nkscene_entity_id *isolated_sources NK_BORROWED_ARRAY(isolated_source_count);
     uint32_t isolated_source_count;
-    const nkscene_render_source_visibility_override *source_visibility_overrides
-        NK_BORROWED_ARRAY(source_visibility_override_count);
+    const nkscene_render_source_visibility_override *
+        source_visibility_overrides NK_BORROWED_ARRAY(source_visibility_override_count);
     uint32_t source_visibility_override_count;
-    const nkscene_render_source_material_override *source_material_overrides
-        NK_BORROWED_ARRAY(source_material_override_count);
+    const nkscene_render_source_material_override *
+        source_material_overrides NK_BORROWED_ARRAY(source_material_override_count);
     uint32_t source_material_override_count;
 } nkscene_render_view;
 
@@ -173,16 +172,14 @@ NKSRENDER_API nkscene_result NKS_CALL nkscene_render_plan_pick(
 /** Builds a read-only spatial index for one immutable scene snapshot. */
 NKSRENDER_API nkscene_result NKS_CALL nkscene_render_spatial_index_create(
     nkscene_snapshot snapshot, nkscene_render_spatial_index *out_index NK_OUT NK_OWNED);
-NKSRENDER_API void NKS_CALL nkscene_render_spatial_index_destroy(
-    nkscene_render_spatial_index index);
+NKSRENDER_API void NKS_CALL
+nkscene_render_spatial_index_destroy(nkscene_render_spatial_index index);
 NKSRENDER_API nkscene_result NKS_CALL nkscene_render_spatial_index_get_revision(
     nkscene_render_spatial_index index, uint64_t *out_revision NK_OUT);
 NKSRENDER_API nkscene_result NKS_CALL nkscene_render_spatial_index_query_bounds(
-    nkscene_render_spatial_index index, const nkscene_bounds *bounds,
-    uint64_t *out_count NK_OUT);
+    nkscene_render_spatial_index index, const nkscene_bounds *bounds, uint64_t *out_count NK_OUT);
 NKSRENDER_API nkscene_result NKS_CALL nkscene_render_spatial_index_query_ray(
-    nkscene_render_spatial_index index, const nkscene_render_ray *ray,
-    uint64_t *out_count NK_OUT);
+    nkscene_render_spatial_index index, const nkscene_render_ray *ray, uint64_t *out_count NK_OUT);
 NKSRENDER_API nkscene_result NKS_CALL nkscene_render_spatial_index_get_occurrence(
     nkscene_render_spatial_index index, uint64_t result_index,
     nkscene_render_spatial_occurrence *out_result NK_OUT);
@@ -212,15 +209,14 @@ NKSRENDER_API nkscene_result NKS_CALL nkscene_render_executor_pick_pixel_begin(
     nkscene_render_executor executor, nkscene_render_plan plan, nkscene_snapshot snapshot,
     uint32_t width, uint32_t height, uint32_t x, uint32_t y,
     nkscene_render_pick_request *out_request NK_OUT NK_OWNED);
-NKSRENDER_API void NKS_CALL nkscene_render_pick_request_destroy(
-    nkscene_render_pick_request request);
+NKSRENDER_API void NKS_CALL
+nkscene_render_pick_request_destroy(nkscene_render_pick_request request);
 /** Polls an asynchronous pick without blocking. A ready result is valid only for the
  * supplied current plan and snapshot; otherwise the state is stale. */
 NKSRENDER_API nkscene_result NKS_CALL nkscene_render_executor_pick_pixel_poll(
     nkscene_render_executor executor, nkscene_render_pick_request request,
-    nkscene_render_plan current_plan, nkscene_snapshot current_snapshot,
-    uint32_t *out_state NK_OUT, nkgpu_result *out_error NK_OUT,
-    nkscene_render_pick_result *out_result NK_OUT);
+    nkscene_render_plan current_plan, nkscene_snapshot current_snapshot, uint32_t *out_state NK_OUT,
+    nkgpu_result *out_error NK_OUT, nkscene_render_pick_result *out_result NK_OUT);
 
 #ifdef __cplusplus
 }
@@ -277,11 +273,8 @@ struct ClipPlane {
 
 struct SceneCamera {
     bool enabled = false;
-    std::array<float, 16> view_projection{
-        1.0f, 0.0f, 0.0f, 0.0f,
-        0.0f, 1.0f, 0.0f, 0.0f,
-        0.0f, 0.0f, 1.0f, 0.0f,
-        0.0f, 0.0f, 0.0f, 1.0f};
+    std::array<float, 16> view_projection{1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+                                          0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
 };
 
 struct SceneView {
@@ -339,9 +332,9 @@ struct SceneView {
     }
 
     void set_source_visibility_override(EntityId source, bool visible) {
-        const auto found = std::find_if(
-            source_visibility_overrides.begin(), source_visibility_overrides.end(),
-            [source](const auto &value) { return value.source == source; });
+        const auto found =
+            std::find_if(source_visibility_overrides.begin(), source_visibility_overrides.end(),
+                         [source](const auto &value) { return value.source == source; });
         if (found != source_visibility_overrides.end())
             found->visible = visible;
         else
@@ -349,29 +342,26 @@ struct SceneView {
     }
 
     void set_source_material_override(EntityId source, MaterialId material) {
-        const auto found = std::find_if(
-            source_material_overrides.begin(), source_material_overrides.end(),
-            [source](const auto &value) { return value.source == source; });
+        const auto found =
+            std::find_if(source_material_overrides.begin(), source_material_overrides.end(),
+                         [source](const auto &value) { return value.source == source; });
         if (found != source_material_overrides.end())
             found->material = material;
         else
             source_material_overrides.push_back({source, material});
     }
 
-    void clear_selection_material_overrides() noexcept {
-        selection_material_overrides.clear();
-    }
+    void clear_selection_material_overrides() noexcept { selection_material_overrides.clear(); }
 
-    void clear_hover_material_overrides() noexcept {
-        hover_material_overrides.clear();
-    }
+    void clear_hover_material_overrides() noexcept { hover_material_overrides.clear(); }
 
-private:
+  private:
     static void set_material_override_in(std::vector<MaterialOverride> &overrides,
                                          OccurrenceId occurrence, MaterialId material) {
-        const auto found = std::find_if(
-            overrides.begin(), overrides.end(),
-            [occurrence](const auto &value) { return value.occurrence == occurrence; });
+        const auto found =
+            std::find_if(overrides.begin(), overrides.end(), [occurrence](const auto &value) {
+                return value.occurrence == occurrence;
+            });
         if (found != overrides.end())
             found->material = material;
         else
@@ -450,7 +440,7 @@ struct PickResult {
 };
 
 class NKSRENDER_API GpuPickRequest {
-public:
+  public:
     GpuPickRequest() = default;
     ~GpuPickRequest();
     GpuPickRequest(GpuPickRequest &&) noexcept;
@@ -458,7 +448,7 @@ public:
     GpuPickRequest(const GpuPickRequest &) = delete;
     GpuPickRequest &operator=(const GpuPickRequest &) = delete;
 
-private:
+  private:
     friend class NativeKitGpuExecutor;
     struct State;
     std::unique_ptr<State> state_;
@@ -470,7 +460,7 @@ struct Ray {
 };
 
 class NKSRENDER_API SceneSpatialIndex {
-public:
+  public:
     explicit SceneSpatialIndex(const SceneSnapshot &snapshot);
     ~SceneSpatialIndex();
     SceneSpatialIndex(SceneSpatialIndex &&) noexcept;
@@ -485,7 +475,7 @@ public:
     OccurrenceId query_result(std::size_t index) const noexcept;
     PickResult pick_ray(const Ray &) const;
 
-private:
+  private:
     struct State;
     std::unique_ptr<State> state_;
 };
@@ -510,7 +500,7 @@ struct GpuExecutionStats {
 };
 
 class RenderPlan {
-public:
+  public:
     static constexpr std::size_t max_clip_planes = 32;
 
     std::uint64_t source_revision() const noexcept { return source_revision_; }
@@ -521,9 +511,7 @@ public:
     std::size_t compile_count() const noexcept { return compile_count_; }
     std::size_t visible_items() const noexcept { return visible_items_; }
     std::size_t culled_items() const noexcept { return culled_items_; }
-    const std::array<float, 16> &view_projection() const noexcept {
-        return view_projection_;
-    }
+    const std::array<float, 16> &view_projection() const noexcept { return view_projection_; }
     std::span<const std::array<float, 4>> clip_planes() const noexcept {
         return {clip_planes_.data(), clip_plane_count_};
     }
@@ -537,11 +525,8 @@ public:
     std::unordered_map<GeometryId, std::uint64_t> geometry_revisions_;
     std::unordered_map<MaterialId, std::uint64_t> material_revisions_;
     OccurrenceId view_root_;
-    std::array<float, 16> view_projection_ = {
-        1.0f, 0.0f, 0.0f, 0.0f,
-        0.0f, 1.0f, 0.0f, 0.0f,
-        0.0f, 0.0f, 1.0f, 0.0f,
-        0.0f, 0.0f, 0.0f, 1.0f};
+    std::array<float, 16> view_projection_ = {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+                                              0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
     std::array<std::array<float, 4>, max_clip_planes> clip_planes_{};
     std::uint32_t clip_plane_count_ = 0;
     std::size_t visible_items_ = 0;
@@ -600,8 +585,8 @@ class NKSRENDER_API NativeKitGpuExecutor {
                                   std::uint32_t height, std::uint32_t x, std::uint32_t y,
                                   std::shared_ptr<GpuPickRequest> &out_request);
     std::uint32_t poll_pick_pixel(GpuPickRequest &, const RenderPlan &current_plan,
-                                   const SceneSnapshot &current_snapshot, PickResult *out_result,
-                                   nkgpu_result *out_error);
+                                  const SceneSnapshot &current_snapshot, PickResult *out_result,
+                                  nkgpu_result *out_error);
     std::span<const GpuCommand> commands() const noexcept;
 
   private:

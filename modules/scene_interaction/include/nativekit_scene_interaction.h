@@ -34,8 +34,7 @@ extern "C" {
 /* Runtime handles and interaction state                                     */
 /* ------------------------------------------------------------------------- */
 
-typedef uint32_t nkscene_interaction NK_HANDLE
-    NK_HANDLE_DESTROY(nkscene_interaction_destroy);
+typedef uint32_t nkscene_interaction NK_HANDLE NK_HANDLE_DESTROY(nkscene_interaction_destroy);
 
 enum {
     NKS_INTERACTION_SELECTION_REPLACE = 0,
@@ -55,50 +54,45 @@ enum {
 /* Interaction lifecycle                                                     */
 /* ------------------------------------------------------------------------- */
 
-NKSINTERACTION_API nkscene_result NKS_CALL nkscene_interaction_create(
-    nkscene_interaction *out_interaction NK_OUT NK_OWNED);
-NKSINTERACTION_API void NKS_CALL nkscene_interaction_destroy(
-    nkscene_interaction interaction);
+NKSINTERACTION_API nkscene_result NKS_CALL
+nkscene_interaction_create(nkscene_interaction *out_interaction NK_OUT NK_OWNED);
+NKSINTERACTION_API void NKS_CALL nkscene_interaction_destroy(nkscene_interaction interaction);
 
 /* ------------------------------------------------------------------------- */
 /* Asynchronous hover                                                        */
 /* ------------------------------------------------------------------------- */
 
 NKSINTERACTION_API nkscene_result NKS_CALL nkscene_interaction_request_hover(
-    nkscene_interaction interaction, nkscene_render_executor executor,
-    nkscene_render_plan plan, nkscene_snapshot snapshot, uint32_t width,
-    uint32_t height, uint32_t x, uint32_t y);
+    nkscene_interaction interaction, nkscene_render_executor executor, nkscene_render_plan plan,
+    nkscene_snapshot snapshot, uint32_t width, uint32_t height, uint32_t x, uint32_t y);
 NKSINTERACTION_API nkscene_result NKS_CALL nkscene_interaction_poll_hover(
-    nkscene_interaction interaction, nkscene_render_executor executor,
-    nkscene_render_plan plan, nkscene_snapshot snapshot, uint32_t *out_state NK_OUT,
-    nkgpu_result *out_error NK_OUT, nkscene_render_pick_result *out_result NK_OUT);
-NKSINTERACTION_API void NKS_CALL nkscene_interaction_cancel_hover(
-    nkscene_interaction interaction);
+    nkscene_interaction interaction, nkscene_render_executor executor, nkscene_render_plan plan,
+    nkscene_snapshot snapshot, uint32_t *out_state NK_OUT, nkgpu_result *out_error NK_OUT,
+    nkscene_render_pick_result *out_result NK_OUT);
+NKSINTERACTION_API void NKS_CALL nkscene_interaction_cancel_hover(nkscene_interaction interaction);
 
 /* ------------------------------------------------------------------------- */
 /* Selection state                                                           */
 /* ------------------------------------------------------------------------- */
 
 NKSINTERACTION_API nkscene_result NKS_CALL nkscene_interaction_apply_pick(
-    nkscene_interaction interaction, const nkscene_render_pick_result *pick,
-    uint32_t mode);
+    nkscene_interaction interaction, const nkscene_render_pick_result *pick, uint32_t mode);
 NKSINTERACTION_API nkscene_result NKS_CALL nkscene_interaction_select(
     nkscene_interaction interaction, nkscene_occurrence_id occurrence, uint32_t mode);
-NKSINTERACTION_API void NKS_CALL nkscene_interaction_clear_selection(
-    nkscene_interaction interaction);
-NKSINTERACTION_API nkscene_result NKS_CALL nkscene_interaction_synchronize(
-    nkscene_interaction interaction, nkscene_snapshot snapshot);
-NKSINTERACTION_API nkscene_result NKS_CALL nkscene_interaction_get_hover(
-    nkscene_interaction interaction, uint32_t *out_has_hover NK_OUT,
-    nkscene_render_pick_result *out_result NK_OUT);
+NKSINTERACTION_API void NKS_CALL
+nkscene_interaction_clear_selection(nkscene_interaction interaction);
+NKSINTERACTION_API nkscene_result NKS_CALL
+nkscene_interaction_synchronize(nkscene_interaction interaction, nkscene_snapshot snapshot);
+NKSINTERACTION_API nkscene_result NKS_CALL
+nkscene_interaction_get_hover(nkscene_interaction interaction, uint32_t *out_has_hover NK_OUT,
+                              nkscene_render_pick_result *out_result NK_OUT);
 NKSINTERACTION_API nkscene_result NKS_CALL nkscene_interaction_get_selection_count(
     nkscene_interaction interaction, uint64_t *out_count NK_OUT);
 NKSINTERACTION_API nkscene_result NKS_CALL nkscene_interaction_get_selected(
-    nkscene_interaction interaction, uint64_t index,
-    nkscene_occurrence_id *out_occurrence NK_OUT);
-NKSINTERACTION_API nkscene_result NKS_CALL nkscene_interaction_is_selected(
-    nkscene_interaction interaction, nkscene_occurrence_id occurrence,
-    uint32_t *out_selected NK_OUT);
+    nkscene_interaction interaction, uint64_t index, nkscene_occurrence_id *out_occurrence NK_OUT);
+NKSINTERACTION_API nkscene_result NKS_CALL
+nkscene_interaction_is_selected(nkscene_interaction interaction, nkscene_occurrence_id occurrence,
+                                uint32_t *out_selected NK_OUT);
 
 #ifdef __cplusplus
 }
@@ -136,7 +130,7 @@ enum class InteractionHoverState : std::uint32_t {
  * current immutable snapshot and render plan when polling asynchronous hover.
  */
 class NKSINTERACTION_API SceneInteraction {
-public:
+  public:
     SceneInteraction() = default;
     ~SceneInteraction();
     SceneInteraction(SceneInteraction &&) noexcept;
@@ -144,11 +138,11 @@ public:
     SceneInteraction(const SceneInteraction &) = delete;
     SceneInteraction &operator=(const SceneInteraction &) = delete;
 
-    nkgpu_result request_hover(NativeKitGpuExecutor &, const RenderPlan &,
-                               const SceneSnapshot &, std::uint32_t width,
-                               std::uint32_t height, std::uint32_t x, std::uint32_t y);
+    nkgpu_result request_hover(NativeKitGpuExecutor &, const RenderPlan &, const SceneSnapshot &,
+                               std::uint32_t width, std::uint32_t height, std::uint32_t x,
+                               std::uint32_t y);
     InteractionHoverState poll_hover(NativeKitGpuExecutor &, const RenderPlan &,
-                                      const SceneSnapshot &, nkgpu_result &out_error);
+                                     const SceneSnapshot &, nkgpu_result &out_error);
     void cancel_hover() noexcept;
 
     void apply_pick(const PickResult &, SelectionMode mode);
@@ -160,7 +154,7 @@ public:
     std::span<const OccurrenceId> selected() const noexcept;
     bool is_selected(OccurrenceId) const noexcept;
 
-private:
+  private:
     std::shared_ptr<GpuPickRequest> hover_request_;
     std::optional<PickResult> hovered_;
     std::vector<OccurrenceId> selected_;

@@ -40,11 +40,12 @@ std::span<const SnapshotOccurrence> SceneSnapshot::occurrences() const noexcept 
     return state_->occurrences;
 }
 
-std::span<const OccurrenceId> SceneSnapshot::occurrences_for_source(EntityId source) const noexcept {
+std::span<const OccurrenceId>
+SceneSnapshot::occurrences_for_source(EntityId source) const noexcept {
     const auto found = state_->occurrences_by_source.find(source);
     return found == state_->occurrences_by_source.end()
-        ? std::span<const OccurrenceId>{}
-        : std::span<const OccurrenceId>{found->second};
+               ? std::span<const OccurrenceId>{}
+               : std::span<const OccurrenceId>{found->second};
 }
 
 const SnapshotOccurrence *SceneSnapshot::find(OccurrenceId id) const noexcept {
@@ -439,7 +440,7 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
                     if (value.source.valid()) {
                         if (!previous || previous->id != value.source) {
                             source_entities.insert_or_assign(value.occurrence,
-                                                              SourceEntity{value.source});
+                                                             SourceEntity{value.source});
                             record_change(changes, change_indices, value.occurrence,
                                           ChangeDomain::Source);
                         }
@@ -762,9 +763,9 @@ nkscene_result NKS_CALL nkscene_tx_set_visibility(nkscene_transaction handle,
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_tx_set_source_entity(
-    nkscene_transaction handle, nkscene_occurrence_id occurrence,
-    nkscene_entity_id source) {
+nkscene_result NKS_CALL nkscene_tx_set_source_entity(nkscene_transaction handle,
+                                                     nkscene_occurrence_id occurrence,
+                                                     nkscene_entity_id source) {
     auto &state = nkscene::registry();
     std::lock_guard lock(state.mutex);
     std::shared_ptr<nkscene::Transaction> transaction;
@@ -810,8 +811,8 @@ nkscene_result NKS_CALL nkscene_snapshot_get_revision(nkscene_snapshot snapshot,
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_snapshot_get_occurrence_count(
-    nkscene_snapshot snapshot, uint64_t *out_count) {
+nkscene_result NKS_CALL nkscene_snapshot_get_occurrence_count(nkscene_snapshot snapshot,
+                                                              uint64_t *out_count) {
     if (!out_count)
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = nkscene::registry();
@@ -824,8 +825,7 @@ nkscene_result NKS_CALL nkscene_snapshot_get_occurrence_count(
 }
 
 nkscene_result NKS_CALL nkscene_snapshot_get_occurrence(
-    nkscene_snapshot snapshot, uint64_t index,
-    nkscene_snapshot_occurrence *out_occurrence) {
+    nkscene_snapshot snapshot, uint64_t index, nkscene_snapshot_occurrence *out_occurrence) {
     if (!out_occurrence)
         return NKS_ERROR_INVALID_ARGUMENT;
     if (out_occurrence->struct_size < sizeof(nkscene_snapshot_occurrence))
@@ -844,8 +844,7 @@ nkscene_result NKS_CALL nkscene_snapshot_get_occurrence(
 }
 
 nkscene_result NKS_CALL nkscene_snapshot_get_occurrence_page(
-    nkscene_snapshot snapshot, uint64_t start_index,
-    nkscene_snapshot_occurrence_page *out_page) {
+    nkscene_snapshot snapshot, uint64_t start_index, nkscene_snapshot_occurrence_page *out_page) {
     if (!out_page || out_page->struct_size < sizeof(nkscene_snapshot_occurrence_page))
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = nkscene::registry();
@@ -860,8 +859,8 @@ nkscene_result NKS_CALL nkscene_snapshot_get_occurrence_page(
         return NKS_OK;
     }
     const auto remaining = occurrences.size() - static_cast<std::size_t>(start_index);
-    const auto count = std::min<std::size_t>(
-        remaining, NKS_SCENE_SNAPSHOT_OCCURRENCE_PAGE_CAPACITY);
+    const auto count =
+        std::min<std::size_t>(remaining, NKS_SCENE_SNAPSHOT_OCCURRENCE_PAGE_CAPACITY);
     out_page->count = static_cast<uint32_t>(count);
     for (std::size_t index = 0; index < count; ++index)
         nkscene::copy_snapshot_occurrence(
@@ -870,8 +869,9 @@ nkscene_result NKS_CALL nkscene_snapshot_get_occurrence_page(
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_snapshot_get_source_occurrence_count(
-    nkscene_snapshot snapshot, nkscene_entity_id source, uint64_t *out_count) {
+nkscene_result NKS_CALL nkscene_snapshot_get_source_occurrence_count(nkscene_snapshot snapshot,
+                                                                     nkscene_entity_id source,
+                                                                     uint64_t *out_count) {
     if (!out_count)
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = nkscene::registry();
@@ -883,9 +883,9 @@ nkscene_result NKS_CALL nkscene_snapshot_get_source_occurrence_count(
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_snapshot_get_source_occurrence(
-    nkscene_snapshot snapshot, nkscene_entity_id source, uint64_t index,
-    nkscene_occurrence_id *out_occurrence) {
+nkscene_result NKS_CALL
+nkscene_snapshot_get_source_occurrence(nkscene_snapshot snapshot, nkscene_entity_id source,
+                                       uint64_t index, nkscene_occurrence_id *out_occurrence) {
     if (!out_occurrence)
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = nkscene::registry();

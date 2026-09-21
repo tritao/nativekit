@@ -22,21 +22,20 @@ bool culled_by_camera(const Bounds &bounds, const SceneCamera &camera) noexcept 
     if (!camera.enabled || !bounds.valid)
         return false;
     const auto &m = camera.view_projection;
-    const std::array<std::array<float, 4>, 6> planes = {{
-        {m[0] + m[3], m[4] + m[7], m[8] + m[11], m[12] + m[15]},
-        {m[3] - m[0], m[7] - m[4], m[11] - m[8], m[15] - m[12]},
-        {m[1] + m[3], m[5] + m[7], m[9] + m[11], m[13] + m[15]},
-        {m[3] - m[1], m[7] - m[5], m[11] - m[9], m[15] - m[13]},
-        {m[2] + m[3], m[6] + m[7], m[10] + m[11], m[14] + m[15]},
-        {m[3] - m[2], m[7] - m[6], m[11] - m[10], m[15] - m[14]}}};
+    const std::array<std::array<float, 4>, 6> planes = {
+        {{m[0] + m[3], m[4] + m[7], m[8] + m[11], m[12] + m[15]},
+         {m[3] - m[0], m[7] - m[4], m[11] - m[8], m[15] - m[12]},
+         {m[1] + m[3], m[5] + m[7], m[9] + m[11], m[13] + m[15]},
+         {m[3] - m[1], m[7] - m[5], m[11] - m[9], m[15] - m[13]},
+         {m[2] + m[3], m[6] + m[7], m[10] + m[11], m[14] + m[15]},
+         {m[3] - m[2], m[7] - m[6], m[11] - m[10], m[15] - m[14]}}};
     for (const auto &plane : planes)
         if (outside_plane(bounds, plane))
             return true;
     return false;
 }
 
-bool culled_by_clip_planes(const Bounds &bounds,
-                           std::span<const ClipPlane> planes) noexcept {
+bool culled_by_clip_planes(const Bounds &bounds, std::span<const ClipPlane> planes) noexcept {
     if (!bounds.valid)
         return false;
     for (const auto &plane : planes) {
@@ -45,8 +44,7 @@ bool culled_by_clip_planes(const Bounds &bounds,
         const auto x = plane.normal[0] >= 0.0f ? bounds.maximum[0] : bounds.minimum[0];
         const auto y = plane.normal[1] >= 0.0f ? bounds.maximum[1] : bounds.minimum[1];
         const auto z = plane.normal[2] >= 0.0f ? bounds.maximum[2] : bounds.minimum[2];
-        if (plane.normal[0] * x + plane.normal[1] * y + plane.normal[2] * z +
-                plane.distance < 0.0f)
+        if (plane.normal[0] * x + plane.normal[1] * y + plane.normal[2] * z + plane.distance < 0.0f)
             return true;
     }
     return false;
@@ -102,14 +100,11 @@ EffectiveState effective_state(const SceneSnapshot &snapshot, const SceneView &v
     for (const auto &occurrence : occurrences) {
         const auto found = std::find_if(
             view.source_material_overrides.begin(), view.source_material_overrides.end(),
-            [&occurrence](const auto &override) {
-                return override.source == occurrence.source;
-            });
+            [&occurrence](const auto &override) { return override.source == occurrence.source; });
         if (found != view.source_material_overrides.end())
             result.material[occurrence.occurrence] = found->material;
     }
-    const auto apply_material_layer = [&material_overrides](
-                                          const auto &overrides) {
+    const auto apply_material_layer = [&material_overrides](const auto &overrides) {
         for (const auto &override : overrides)
             material_overrides[override.occurrence] = override.material;
     };
@@ -242,9 +237,8 @@ void build_items(RenderPlan &plan, const SceneSnapshot &snapshot, const SceneVie
     plan.transforms_.clear();
     plan.visible_items_ = 0;
     plan.culled_items_ = 0;
-    plan.view_projection_ = view.camera.enabled
-        ? view.camera.view_projection
-        : SceneCamera{}.view_projection;
+    plan.view_projection_ =
+        view.camera.enabled ? view.camera.view_projection : SceneCamera{}.view_projection;
     plan.items_.reserve(snapshot.occurrences().size());
     plan.transforms_.reserve(snapshot.occurrences().size());
     for (const auto &occurrence : snapshot.occurrences()) {

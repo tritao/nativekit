@@ -28,30 +28,28 @@ nkscene_result copy_view(const nkscene_render_view *input, nkscene::SceneView &o
     constexpr auto legacy_size = offsetof(nkscene_render_view, selection_overrides);
     if (input->struct_size < legacy_size)
         return NKS_ERROR_INVALID_ARGUMENT;
-    const bool has_selection_overrides = input->struct_size >=
-        offsetof(nkscene_render_view, selection_override_count) +
-        sizeof(input->selection_override_count);
-    const bool has_hover_overrides = input->struct_size >=
-        offsetof(nkscene_render_view, hover_override_count) +
-        sizeof(input->hover_override_count);
-    const bool has_isolated_sources = input->struct_size >=
-        offsetof(nkscene_render_view, isolated_source_count) +
-        sizeof(input->isolated_source_count);
-    const bool has_source_visibility_overrides = input->struct_size >=
-        offsetof(nkscene_render_view, source_visibility_override_count) +
-        sizeof(input->source_visibility_override_count);
-    const bool has_source_material_overrides = input->struct_size >=
-        offsetof(nkscene_render_view, source_material_override_count) +
-        sizeof(input->source_material_override_count);
+    const bool has_selection_overrides =
+        input->struct_size >= offsetof(nkscene_render_view, selection_override_count) +
+                                  sizeof(input->selection_override_count);
+    const bool has_hover_overrides =
+        input->struct_size >=
+        offsetof(nkscene_render_view, hover_override_count) + sizeof(input->hover_override_count);
+    const bool has_isolated_sources =
+        input->struct_size >=
+        offsetof(nkscene_render_view, isolated_source_count) + sizeof(input->isolated_source_count);
+    const bool has_source_visibility_overrides =
+        input->struct_size >= offsetof(nkscene_render_view, source_visibility_override_count) +
+                                  sizeof(input->source_visibility_override_count);
+    const bool has_source_material_overrides =
+        input->struct_size >= offsetof(nkscene_render_view, source_material_override_count) +
+                                  sizeof(input->source_material_override_count);
     if ((input->visibility_override_count != 0 && !input->visibility_overrides) ||
         (input->material_override_count != 0 && !input->material_overrides) ||
         (input->clip_plane_count != 0 && !input->clip_planes) ||
         (has_selection_overrides && input->selection_override_count != 0 &&
          !input->selection_overrides) ||
-        (has_hover_overrides && input->hover_override_count != 0 &&
-         !input->hover_overrides) ||
-        (has_isolated_sources && input->isolated_source_count != 0 &&
-         !input->isolated_sources) ||
+        (has_hover_overrides && input->hover_override_count != 0 && !input->hover_overrides) ||
+        (has_isolated_sources && input->isolated_source_count != 0 && !input->isolated_sources) ||
         (has_source_visibility_overrides && input->source_visibility_override_count != 0 &&
          !input->source_visibility_overrides) ||
         (has_source_material_overrides && input->source_material_override_count != 0 &&
@@ -318,8 +316,7 @@ nkscene_result NKS_CALL nkscene_render_spatial_index_get_revision(
 }
 
 nkscene_result NKS_CALL nkscene_render_spatial_index_query_bounds(
-    nkscene_render_spatial_index index_handle, const nkscene_bounds *bounds,
-    uint64_t *out_count) {
+    nkscene_render_spatial_index index_handle, const nkscene_bounds *bounds, uint64_t *out_count) {
     if (!bounds || !out_count)
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = registry();
@@ -338,8 +335,7 @@ nkscene_result NKS_CALL nkscene_render_spatial_index_query_bounds(
 }
 
 nkscene_result NKS_CALL nkscene_render_spatial_index_query_ray(
-    nkscene_render_spatial_index index_handle, const nkscene_render_ray *ray,
-    uint64_t *out_count) {
+    nkscene_render_spatial_index index_handle, const nkscene_render_ray *ray, uint64_t *out_count) {
     if (!ray || !out_count)
         return NKS_ERROR_INVALID_ARGUMENT;
     auto &state = registry();
@@ -395,8 +391,8 @@ nkscene_result NKS_CALL nkscene_render_spatial_index_pick_ray(
     return NKS_OK;
 }
 
-nkscene_result NKS_CALL nkscene_render_executor_create(
-    nkgpu_renderer renderer, nkscene_render_executor *out_executor) {
+nkscene_result NKS_CALL nkscene_render_executor_create(nkgpu_renderer renderer,
+                                                       nkscene_render_executor *out_executor) {
     if (!out_executor)
         return NKS_ERROR_INVALID_ARGUMENT;
     *out_executor = 0;
@@ -514,8 +510,8 @@ nkscene_result NKS_CALL nkscene_render_executor_pick_pixel_begin(
         return NKS_ERROR_INVALID_HANDLE;
 
     std::shared_ptr<nkscene::GpuPickRequest> request;
-    const auto gpu_result = executor->begin_pick_pixel(
-        *plan, *snapshot, width, height, x, y, request);
+    const auto gpu_result =
+        executor->begin_pick_pixel(*plan, *snapshot, width, height, x, y, request);
     if (gpu_result != NKGPU_OK)
         return NKS_ERROR_INVALID_STATE;
     const auto handle = state.pick_requests.create(std::move(request));

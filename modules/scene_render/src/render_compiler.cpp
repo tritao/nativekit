@@ -9,14 +9,13 @@ namespace {
 
 bool culled(const SnapshotOccurrence &occurrence, const SceneView &view) noexcept {
     return render_internal::culled_by_camera(occurrence.bounds, view.camera) ||
-        render_internal::culled_by_clip_planes(occurrence.bounds, view.clip_planes);
+           render_internal::culled_by_clip_planes(occurrence.bounds, view.clip_planes);
 }
 
 bool has_domain_in(const ChangeSet &changes, ChangeDomain domain) noexcept {
-    return std::any_of(changes.changes.begin(), changes.changes.end(),
-                       [domain](const SceneChange &change) {
-                           return has_domain(change.domains, domain);
-                       });
+    return std::any_of(
+        changes.changes.begin(), changes.changes.end(),
+        [domain](const SceneChange &change) { return has_domain(change.domains, domain); });
 }
 
 } // namespace
@@ -46,22 +45,21 @@ RenderPlan compile(const SceneSnapshot &snapshot, const SceneView &view) {
     return plan;
 }
 
-RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot,
-                    const ChangeSet &changes, const SceneView &view) {
+RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot, const ChangeSet &changes,
+                    const SceneView &view) {
     RenderUpdate result;
     const auto next_view_signature = render_internal::view_signature(view);
     const auto next_culling_signature = render_internal::culling_signature(view);
     const bool view_changed = plan.view_signature_ != next_view_signature;
     const bool culling_changed = plan.culling_signature_ != next_culling_signature;
     const bool topology_changed = has_domain_in(changes, ChangeDomain::Created) ||
-        has_domain_in(changes, ChangeDomain::Destroyed);
+                                  has_domain_in(changes, ChangeDomain::Destroyed);
     const bool effective_state_dirty = view_changed ||
-        has_domain_in(changes, ChangeDomain::Hierarchy) ||
-        has_domain_in(changes, ChangeDomain::Visibility) ||
-        has_domain_in(changes, ChangeDomain::Material);
-    const auto effective = effective_state_dirty
-        ? render_internal::effective_state(snapshot, view)
-        : render_internal::EffectiveState{};
+                                       has_domain_in(changes, ChangeDomain::Hierarchy) ||
+                                       has_domain_in(changes, ChangeDomain::Visibility) ||
+                                       has_domain_in(changes, ChangeDomain::Material);
+    const auto effective = effective_state_dirty ? render_internal::effective_state(snapshot, view)
+                                                 : render_internal::EffectiveState{};
     std::unordered_set<GeometryId> changed_geometry_resources;
     std::unordered_set<MaterialId> changed_material_resources;
     std::size_t invalidated_items = 0;
@@ -71,11 +69,10 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot,
         const auto *material = snapshot.find_material(item.material);
         const auto desired_geometry = occurrence ? occurrence->geometry : invalid_geometry;
         const auto desired_material = occurrence && effective_state_dirty
-            ? effective.material.at(item.occurrence)
-            : item.material;
+                                          ? effective.material.at(item.occurrence)
+                                          : item.material;
         if (!occurrence || !geometry || !material ||
-            (desired_geometry != item.geometry &&
-             !snapshot.find_geometry(desired_geometry)) ||
+            (desired_geometry != item.geometry && !snapshot.find_geometry(desired_geometry)) ||
             !snapshot.find_material(desired_material)) {
             ++invalidated_items;
             continue;
@@ -90,12 +87,11 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot,
             changed_material_resources.insert(item.material);
     }
     if (topology_changed || plan.source_revision() > snapshot.revision() ||
-        plan.view_root_ != view.root ||
-        invalidated_items != 0 ||
-        (view.root.valid() && std::any_of(
-             changes.changes.begin(), changes.changes.end(), [](const SceneChange &change) {
-                 return has_domain(change.domains, ChangeDomain::Hierarchy);
-             }))) {
+        plan.view_root_ != view.root || invalidated_items != 0 ||
+        (view.root.valid() &&
+         std::any_of(changes.changes.begin(), changes.changes.end(), [](const SceneChange &change) {
+             return has_domain(change.domains, ChangeDomain::Hierarchy);
+         }))) {
         plan = compile(snapshot, view);
         result.plan_rebuilt = true;
         result.invalidated_items = invalidated_items;
@@ -134,10 +130,10 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot,
             result.geometry_rebuilt = true;
         }
     }
-    const bool world_transforms_changed = std::any_of(
-        changes.changes.begin(), changes.changes.end(), [](const SceneChange &change) {
+    const bool world_transforms_changed =
+        std::any_of(changes.changes.begin(), changes.changes.end(), [](const SceneChange &change) {
             return has_domain(change.domains, ChangeDomain::Transform) ||
-                has_domain(change.domains, ChangeDomain::Hierarchy);
+                   has_domain(change.domains, ChangeDomain::Hierarchy);
         });
     if (world_transforms_changed) {
         for (auto &item : plan.items_) {
@@ -157,9 +153,9 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot,
             const auto was_visible = !has_render_flag(item.flags, RenderFlags::Hidden);
             if (visible != was_visible) {
                 if (visible)
-                    item.flags = static_cast<RenderFlags>(
-                        static_cast<std::uint32_t>(item.flags) &
-                        ~static_cast<std::uint32_t>(RenderFlags::Hidden));
+                    item.flags =
+                        static_cast<RenderFlags>(static_cast<std::uint32_t>(item.flags) &
+                                                 ~static_cast<std::uint32_t>(RenderFlags::Hidden));
                 else
                     item.flags |= RenderFlags::Hidden;
                 ++result.patched_visibility;
@@ -174,9 +170,9 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot,
     }
 
     const bool scene_culling_dirty = has_domain_in(changes, ChangeDomain::Transform) ||
-        has_domain_in(changes, ChangeDomain::Hierarchy) ||
-        has_domain_in(changes, ChangeDomain::Geometry) ||
-        has_domain_in(changes, ChangeDomain::Bounds);
+                                     has_domain_in(changes, ChangeDomain::Hierarchy) ||
+                                     has_domain_in(changes, ChangeDomain::Geometry) ||
+                                     has_domain_in(changes, ChangeDomain::Bounds);
     if (culling_changed || scene_culling_dirty) {
         for (auto &item : plan.items_) {
             const auto *occurrence = snapshot.find(item.occurrence);
@@ -189,9 +185,9 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot,
             if (item_culled)
                 item.flags |= RenderFlags::Culled;
             else
-                item.flags = static_cast<RenderFlags>(
-                    static_cast<std::uint32_t>(item.flags) &
-                    ~static_cast<std::uint32_t>(RenderFlags::Culled));
+                item.flags =
+                    static_cast<RenderFlags>(static_cast<std::uint32_t>(item.flags) &
+                                             ~static_cast<std::uint32_t>(RenderFlags::Culled));
             ++result.patched_culling;
         }
     }
@@ -203,9 +199,8 @@ RenderUpdate update(RenderPlan &plan, const SceneSnapshot &snapshot,
     plan.view_signature_ = next_view_signature;
     plan.view_root_ = view.root;
     plan.culling_signature_ = next_culling_signature;
-    plan.view_projection_ = view.camera.enabled
-        ? view.camera.view_projection
-        : SceneCamera{}.view_projection;
+    plan.view_projection_ =
+        view.camera.enabled ? view.camera.view_projection : SceneCamera{}.view_projection;
     plan.clip_plane_count_ = 0;
     for (const auto &plane : view.clip_planes) {
         if (!plane.enabled || plan.clip_plane_count_ == RenderPlan::max_clip_planes)

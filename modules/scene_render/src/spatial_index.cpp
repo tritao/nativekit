@@ -73,9 +73,9 @@ bool overlaps(const Bounds &lhs, const Bounds &rhs) noexcept {
 }
 
 bool normalize_ray(const Ray &ray, Ray &normalized) noexcept {
-    const auto length = std::sqrt(ray.direction.x * ray.direction.x +
-                                  ray.direction.y * ray.direction.y +
-                                  ray.direction.z * ray.direction.z);
+    const auto length =
+        std::sqrt(ray.direction.x * ray.direction.x + ray.direction.y * ray.direction.y +
+                  ray.direction.z * ray.direction.z);
     if (!(length > 1.0e-8f))
         return false;
     normalized.origin = ray.origin;
@@ -111,13 +111,12 @@ bool ray_hits_bounds(const Ray &ray, const Bounds &bounds) noexcept {
 
 Vec3 transform_point(const LocalTransform &transform, const GeometryVertex &vertex) noexcept {
     const auto &point = vertex.position;
-    return {
-        transform.matrix[0] * point[0] + transform.matrix[4] * point[1] +
-            transform.matrix[8] * point[2] + transform.matrix[12],
-        transform.matrix[1] * point[0] + transform.matrix[5] * point[1] +
-            transform.matrix[9] * point[2] + transform.matrix[13],
-        transform.matrix[2] * point[0] + transform.matrix[6] * point[1] +
-            transform.matrix[10] * point[2] + transform.matrix[14]};
+    return {transform.matrix[0] * point[0] + transform.matrix[4] * point[1] +
+                transform.matrix[8] * point[2] + transform.matrix[12],
+            transform.matrix[1] * point[0] + transform.matrix[5] * point[1] +
+                transform.matrix[9] * point[2] + transform.matrix[13],
+            transform.matrix[2] * point[0] + transform.matrix[6] * point[1] +
+                transform.matrix[10] * point[2] + transform.matrix[14]};
 }
 
 Vec3 subtract(Vec3 lhs, Vec3 rhs) noexcept {
@@ -167,7 +166,7 @@ std::uint32_t vertex_index(const GeometryPayload &payload, std::size_t index) no
     return payload.indexed() ? payload.indices[index] : static_cast<std::uint32_t>(index);
 }
 
-template<class Visitor>
+template <class Visitor>
 void visit_bounds(const std::vector<Node> &nodes, const std::vector<Entry> &entries,
                   std::uint32_t node_index, const Bounds &query, Visitor &&visitor) {
     if (node_index == invalid_node || !overlaps(nodes[node_index].bounds, query))
@@ -183,7 +182,7 @@ void visit_bounds(const std::vector<Node> &nodes, const std::vector<Entry> &entr
     visit_bounds(nodes, entries, node.right, query, visitor);
 }
 
-template<class Visitor>
+template <class Visitor>
 void visit_ray(const std::vector<Node> &nodes, const std::vector<Entry> &entries,
                std::uint32_t node_index, const Ray &ray, Visitor &&visitor) {
     if (node_index == invalid_node || !ray_hits_bounds(ray, nodes[node_index].bounds))
@@ -217,8 +216,7 @@ SceneSpatialIndex::SceneSpatialIndex(const SceneSnapshot &snapshot)
     for (const auto &occurrence : snapshot.occurrences())
         if (occurrence.bounds.valid)
             state_->entries.push_back({occurrence.occurrence, occurrence.bounds});
-    const auto build_node = [&](auto &&self, std::size_t first,
-                                std::size_t last) -> std::uint32_t {
+    const auto build_node = [&](auto &&self, std::size_t first, std::size_t last) -> std::uint32_t {
         const auto node_index = static_cast<std::uint32_t>(state_->nodes.size());
         state_->nodes.emplace_back();
         Bounds node_bounds;
@@ -311,25 +309,25 @@ PickResult SceneSpatialIndex::pick_ray(const Ray &ray) const {
             continue;
         const auto primitive_count = geometry->payload.element_count() / 3;
         for (std::size_t primitive = 0; primitive < primitive_count; ++primitive) {
-            const auto first_index = static_cast<std::size_t>(
-                vertex_index(geometry->payload, primitive * 3));
-            const auto second_index = static_cast<std::size_t>(
-                vertex_index(geometry->payload, primitive * 3 + 1));
-            const auto third_index = static_cast<std::size_t>(
-                vertex_index(geometry->payload, primitive * 3 + 2));
+            const auto first_index =
+                static_cast<std::size_t>(vertex_index(geometry->payload, primitive * 3));
+            const auto second_index =
+                static_cast<std::size_t>(vertex_index(geometry->payload, primitive * 3 + 1));
+            const auto third_index =
+                static_cast<std::size_t>(vertex_index(geometry->payload, primitive * 3 + 2));
             if (first_index >= geometry->payload.vertices.size() ||
                 second_index >= geometry->payload.vertices.size() ||
                 third_index >= geometry->payload.vertices.size())
                 continue;
             float distance = 0.0f;
-            if (!ray_hits_triangle(
-                    normalized, transform_point(occurrence->world_transform.transform,
-                                                geometry->payload.vertices[first_index]),
-                    transform_point(occurrence->world_transform.transform,
-                                    geometry->payload.vertices[second_index]),
-                    transform_point(occurrence->world_transform.transform,
-                                    geometry->payload.vertices[third_index]),
-                    distance) ||
+            if (!ray_hits_triangle(normalized,
+                                   transform_point(occurrence->world_transform.transform,
+                                                   geometry->payload.vertices[first_index]),
+                                   transform_point(occurrence->world_transform.transform,
+                                                   geometry->payload.vertices[second_index]),
+                                   transform_point(occurrence->world_transform.transform,
+                                                   geometry->payload.vertices[third_index]),
+                                   distance) ||
                 distance >= best_distance)
                 continue;
             best_distance = distance;
