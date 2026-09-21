@@ -126,9 +126,10 @@ class Main {
 		transaction.setSourceEntity(second, haxe.Int64.ofInt(84));
 		transaction.setCamera(cameraOccurrence, camera);
 		transaction.setLight(lightOccurrence, light);
-		transaction.setTransforms([new TransformUpdate(first,
-			Transform.identity().translated(-0.65, 0.0, 0.0))]);
-		transaction.setTransform(second, Transform.identity().translated(0.65, 0.0, 0.0));
+		transaction.setTransforms([
+			new TransformUpdate(first, Transform.identity().translated(-0.65, 0.0, 0.0)),
+			new TransformUpdate(second, Transform.identity().translated(0.65, 0.0, 0.0))
+		]);
 		var changes = transaction.commitWithChanges(),
 			snapshot = scene.snapshot(),
 			view = new SceneView().setRoot(group).setViewProjection(Transform.identity())
