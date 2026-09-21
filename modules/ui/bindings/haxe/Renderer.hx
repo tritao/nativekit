@@ -52,6 +52,8 @@ class Renderer {
 			stats.get_path_vertices_generated(), stats.get_path_geometry_bytes_allocated(), stats.get_path_tessellation_nanoseconds(),
 			stats.get_path_geometry_bytes_retained(), stats.get_layout_path_cache_hits(),
 			stats.get_layout_path_cache_misses(), stats.get_layout_path_preparations(),
+			stats.get_layout_glyph_cache_hits(), stats.get_layout_glyph_cache_misses(),
+			stats.get_layout_glyph_preparations(),
 			stats.get_raster_cache_hits(), stats.get_raster_cache_misses(),
 			stats.get_raster_cache_entries(), stats.get_raster_cache_bytes());
 	}
@@ -92,6 +94,9 @@ class RendererStats {
 	public final layoutPathCacheHits:haxe.Int64;
 	public final layoutPathCacheMisses:haxe.Int64;
 	public final layoutPathPreparations:haxe.Int64;
+	public final layoutGlyphCacheHits:haxe.Int64;
+	public final layoutGlyphCacheMisses:haxe.Int64;
+	public final layoutGlyphPreparations:haxe.Int64;
 	public final rasterCacheHits:haxe.Int64;
 	public final rasterCacheMisses:haxe.Int64;
 	public final rasterCacheEntries:haxe.Int64;
@@ -100,6 +105,7 @@ class RendererStats {
 	public function new(pathPreparations:haxe.Int64, pathCacheHits:haxe.Int64, pathCacheMisses:haxe.Int64, pathVerticesGenerated:haxe.Int64,
 		pathGeometryBytesAllocated:haxe.Int64, pathTessellationNanoseconds:haxe.Int64, pathGeometryBytesRetained:haxe.Int64,
 		layoutPathCacheHits:haxe.Int64, layoutPathCacheMisses:haxe.Int64, layoutPathPreparations:haxe.Int64,
+		layoutGlyphCacheHits:haxe.Int64, layoutGlyphCacheMisses:haxe.Int64, layoutGlyphPreparations:haxe.Int64,
 		rasterCacheHits:haxe.Int64, rasterCacheMisses:haxe.Int64, rasterCacheEntries:haxe.Int64,
 		rasterCacheBytes:haxe.Int64) {
 		this.pathPreparations = pathPreparations;
@@ -112,6 +118,9 @@ class RendererStats {
 		this.layoutPathCacheHits = layoutPathCacheHits;
 		this.layoutPathCacheMisses = layoutPathCacheMisses;
 		this.layoutPathPreparations = layoutPathPreparations;
+		this.layoutGlyphCacheHits = layoutGlyphCacheHits;
+		this.layoutGlyphCacheMisses = layoutGlyphCacheMisses;
+		this.layoutGlyphPreparations = layoutGlyphPreparations;
 		this.rasterCacheHits = rasterCacheHits;
 		this.rasterCacheMisses = rasterCacheMisses;
 		this.rasterCacheEntries = rasterCacheEntries;

@@ -3628,6 +3628,14 @@ extern "C" nkui_result nkui_layout_session_render_frame(nkui_renderer renderer,
         compiler_stats_before.prepared_path_cache_misses;
     renderer_slot->stats.layout_path_preparations +=
         compiler_stats_after.prepared_path_builds - compiler_stats_before.prepared_path_builds;
+    renderer_slot->stats.layout_glyph_cache_hits +=
+        compiler_stats_after.prepared_glyph_cache_hits -
+        compiler_stats_before.prepared_glyph_cache_hits;
+    renderer_slot->stats.layout_glyph_cache_misses +=
+        compiler_stats_after.prepared_glyph_cache_misses -
+        compiler_stats_before.prepared_glyph_cache_misses;
+    renderer_slot->stats.layout_glyph_preparations +=
+        compiler_stats_after.prepared_glyph_builds - compiler_stats_before.prepared_glyph_builds;
 
     if (has_backdrop)
         append_backdrop_window_composite(session_state->frame.plan(), compile_target, main_target,

@@ -182,8 +182,8 @@ uint64_t primitive_content_generation(const LayoutPrimitive &primitive,
     return hash ? hash : 1;
 }
 
-uint64_t prepared_path_cache_key(uint64_t content_generation, uint32_t geometry_revision,
-                                 float pixel_scale) {
+uint64_t prepared_cache_key(uint64_t content_generation, uint32_t geometry_revision,
+                            float pixel_scale) {
     uint64_t hash = content_generation;
     hash_u32(hash, geometry_revision);
     hash_float(hash, pixel_scale);
@@ -791,7 +791,7 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                 generation_primitive.transform = draw_transform;
                 const uint64_t content_generation =
                     primitive_content_generation(generation_primitive);
-                const uint64_t cache_key = prepared_path_cache_key(
+                const uint64_t cache_key = prepared_cache_key(
                     content_generation, primitive.geometry_revision, pixel_scale);
                 std::shared_ptr<PreparedPath> prepared;
                 const auto cached = prepared_path_cache_.find(cache_key);
@@ -868,37 +868,47 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                     if (!text->layout_utf8(primitive.text.c_str(), width, options))
                         return fail(error, index, "layout text shaping failed");
                 }
-                auto glyphs = std::make_unique<PreparedGlyphs>();
-                const bool prepared =
-                    text_layout
-                        ? text->prepare_glyphs_for_line(text_layout->id, primitive.text_line_index,
-                                                        0.0f, 0.0f, pixel_scale, GlyphMode::Alpha,
-                                                        *glyphs)
-                        : text->prepare_glyphs(0.0f, 0.0f, pixel_scale, GlyphMode::Alpha, *glyphs);
-                if (!prepared)
-                    return fail(error, index, "layout glyph preparation failed");
-                tint_glyphs(*glyphs, primitive.color);
-                const ResourceId id =
-                    make_resource_id(ResourceKind::TextLayout, kTransientGeneration,
-                                     static_cast<uint16_t>(transient_slot++));
                 const LayoutTransform draw_transform = draw_transform_for(primitive);
                 auto generation_primitive = primitive;
                 generation_primitive.transform = draw_transform;
+                const uint64_t request_generation = primitive_content_generation(
+                    generation_primitive, text, text->layout_generation());
+                const uint64_t cache_key = prepared_cache_key(
+                    request_generation, primitive.geometry_revision, pixel_scale);
+                std::shared_ptr<PreparedGlyphs> glyphs;
+                const auto cached = prepared_glyph_cache_.find(cache_key);
+                if (cached != prepared_glyph_cache_.end() &&
+                    text->prepared_glyphs_current(*cached->second)) {
+                    glyphs = cached->second;
+                    ++stats_.prepared_glyph_cache_hits;
+                } else {
+                    ++stats_.prepared_glyph_cache_misses;
+                    if (cached != prepared_glyph_cache_.end())
+                        prepared_glyph_cache_.erase(cached);
+                    if (prepared_glyph_cache_.size() >= 256)
+                        prepared_glyph_cache_.clear();
+                    glyphs = std::make_shared<PreparedGlyphs>();
+                    const bool prepared =
+                        text_layout
+                            ? text->prepare_glyphs_for_line(
+                                  text_layout->id, primitive.text_line_index, 0.0f, 0.0f,
+                                  pixel_scale, GlyphMode::Alpha, *glyphs)
+                            : text->prepare_glyphs(0.0f, 0.0f, pixel_scale, GlyphMode::Alpha,
+                                                   *glyphs);
+                    if (!prepared)
+                        return fail(error, index, "layout glyph preparation failed");
+                    tint_glyphs(*glyphs, primitive.color);
+                    prepared_glyph_cache_.emplace(cache_key, glyphs);
+                    ++stats_.prepared_glyph_builds;
+                }
+                const ResourceId id =
+                    make_resource_id(ResourceKind::TextLayout, kTransientGeneration,
+                                     static_cast<uint16_t>(transient_slot++));
                 const uint64_t content_generation = primitive_content_generation(
                     generation_primitive, text, glyphs->layout_generation);
                 if (!out.resources_.bind_text(id, *glyphs, content_generation))
                     return fail(error, index, "layout text resource binding failed");
-                const GlyphTint tint{
-                    color_byte(primitive.color.red), color_byte(primitive.color.green),
-                    color_byte(primitive.color.blue), color_byte(primitive.color.alpha)};
-                auto snapshot = text_layout
-                                    ? text->published_glyphs_for_line(
-                                          text_layout->id, primitive.text_line_index, 0.0f, 0.0f,
-                                          pixel_scale, GlyphMode::Alpha, tint)
-                                    : text->published_glyphs(text->active_layout_id(), 0.0f, 0.0f,
-                                                             pixel_scale, GlyphMode::Alpha, tint);
-                if (!snapshot ||
-                    !out.owned_resources_.bind_text(id, std::move(snapshot), content_generation))
+                if (!out.owned_resources_.bind_text(id, glyphs, content_generation))
                     out.sealable_ = false;
                 RenderCommand command{RenderCommandKind::GlyphBatch,
                                       id,
@@ -911,7 +921,7 @@ bool LayoutRenderCompiler::compile(const LayoutSnapshot &snapshot, ResourceId ma
                 if (!clips.empty())
                     set_scissor(command, clip_for(clips.back()), pixel_scale);
                 out.plan_.passes[current_main_pass].commands.push_back(std::move(command));
-                out.glyphs_.push_back(std::move(glyphs));
+                out.glyphs_.push_back(glyphs);
                 if (!append_custom_for_primitive(index))
                     return false;
                 close_raster_if_last(index);

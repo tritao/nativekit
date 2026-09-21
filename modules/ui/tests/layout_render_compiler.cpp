@@ -311,7 +311,9 @@ int main() {
         return 12;
     const auto after_reuse = compiler.stats();
     if (after_reuse.prepared_path_cache_hits <= before_reuse.prepared_path_cache_hits ||
-        after_reuse.prepared_path_builds != before_reuse.prepared_path_builds)
+        after_reuse.prepared_path_builds != before_reuse.prepared_path_builds ||
+        after_reuse.prepared_glyph_cache_hits <= before_reuse.prepared_glyph_cache_hits ||
+        after_reuse.prepared_glyph_builds != before_reuse.prepared_glyph_builds)
         return 12;
 
     LayoutSnapshot composite_snapshot = snapshot;
@@ -325,7 +327,9 @@ int main() {
         return 12;
     const auto after_composite = compiler.stats();
     if (after_composite.prepared_path_cache_hits <= after_reuse.prepared_path_cache_hits ||
-        after_composite.prepared_path_builds != after_reuse.prepared_path_builds)
+        after_composite.prepared_path_builds != after_reuse.prepared_path_builds ||
+        after_composite.prepared_glyph_cache_hits <= after_reuse.prepared_glyph_cache_hits ||
+        after_composite.prepared_glyph_builds != after_reuse.prepared_glyph_builds)
         return 12;
 
     LayoutSnapshot content_snapshot = snapshot;
@@ -336,7 +340,8 @@ int main() {
                           false, engine.text_engine()))
         return 12;
     const auto after_content = compiler.stats();
-    if (after_content.prepared_path_cache_misses <= after_composite.prepared_path_cache_misses)
+    if (after_content.prepared_path_cache_misses <= after_composite.prepared_path_cache_misses ||
+        after_content.prepared_glyph_cache_misses <= after_composite.prepared_glyph_cache_misses)
         return 12;
 
     LayoutSnapshot geometry_snapshot = snapshot;
@@ -347,7 +352,8 @@ int main() {
                           false, engine.text_engine()))
         return 12;
     const auto after_geometry = compiler.stats();
-    if (after_geometry.prepared_path_cache_misses <= after_content.prepared_path_cache_misses)
+    if (after_geometry.prepared_path_cache_misses <= after_content.prepared_path_cache_misses ||
+        after_geometry.prepared_glyph_cache_misses <= after_content.prepared_glyph_cache_misses)
         return 12;
 
     // RTL lines keep a non-zero horizontal line origin in Skribidi. Verify

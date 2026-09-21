@@ -72,7 +72,7 @@ class LayoutRenderFrame {
     std::unique_ptr<TextEngine> text_engine_;
     TextEngine *text_engine_source_ = nullptr;
     std::vector<std::shared_ptr<PreparedPath>> paths_;
-    std::vector<std::unique_ptr<PreparedGlyphs>> glyphs_;
+    std::vector<std::shared_ptr<PreparedGlyphs>> glyphs_;
 };
 
 /** Compiles NativeKit-owned layout output into the backend-neutral render plan. */
@@ -86,6 +86,9 @@ class LayoutRenderCompiler {
         uint64_t prepared_path_cache_hits = 0;
         uint64_t prepared_path_cache_misses = 0;
         uint64_t prepared_path_builds = 0;
+        uint64_t prepared_glyph_cache_hits = 0;
+        uint64_t prepared_glyph_cache_misses = 0;
+        uint64_t prepared_glyph_builds = 0;
     };
 
     LayoutRenderCompiler();
@@ -107,6 +110,7 @@ class LayoutRenderCompiler {
   private:
     std::shared_ptr<FontCollection> fonts_;
     mutable std::unordered_map<uint64_t, std::shared_ptr<PreparedPath>> prepared_path_cache_;
+    mutable std::unordered_map<uint64_t, std::shared_ptr<PreparedGlyphs>> prepared_glyph_cache_;
     mutable CompileStats stats_;
 };
 

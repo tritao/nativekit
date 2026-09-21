@@ -1467,7 +1467,7 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 	/**
 	 * Preparation and geometry-cache counters for one renderer.
 	 */
-	struct nkui_renderer_stats @layout(560, 8) {
+	struct nkui_renderer_stats @layout(584, 8) {
 		/**
 		 * Set to sizeof(nkui_renderer_stats) when returned by the API.
 		 */
@@ -1748,6 +1748,18 @@ interface NativeKitUI @target("portable-abi64") @library("nativekit_ui") @depend
 		 * Layout rectangle geometries actually tessellated by the layout compiler.
 		 */
 		layout_path_preparations: u64 @offset(552);
+		/**
+		 * Prepared glyph batches reused from the retained compiler cache.
+		 */
+		layout_glyph_cache_hits: u64 @offset(560);
+		/**
+		 * Prepared glyph batches rejected by the retained compiler cache.
+		 */
+		layout_glyph_cache_misses: u64 @offset(568);
+		/**
+		 * Glyph batches actually prepared by the layout compiler.
+		 */
+		layout_glyph_preparations: u64 @offset(576);
 	}
 	/**
 	 * Payload for NKUI_COMMAND_SET_PAINT and resource-only draw commands.

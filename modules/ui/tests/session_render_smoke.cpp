@@ -272,7 +272,8 @@ int main() {
                    root_cache_first.raster_cache_misses == 0 ||
                    root_cache_first.raster_cache_entries == 0 ||
                    root_cache_first.raster_cache_bytes == 0 ||
-                   root_cache_first.layout_path_cache_misses == 0) {
+                   root_cache_first.layout_path_cache_misses == 0 ||
+                   root_cache_first.layout_glyph_cache_misses == 0) {
             std::fprintf(stderr, "initial raster cache render did not populate a cache entry\n");
             result = 14;
         }
@@ -300,6 +301,11 @@ int main() {
                            root_cache_first.layout_path_cache_hits + repeated_frames) {
             std::fprintf(stderr, "repeated layout renders did not reuse prepared paths\n");
             result = 37;
+        }
+        if (!result && root_cache_repeated.layout_glyph_cache_hits <
+                           root_cache_first.layout_glyph_cache_hits + repeated_frames) {
+            std::fprintf(stderr, "repeated layout renders did not reuse prepared glyphs\n");
+            result = 38;
         }
         if (!result) {
             const auto elapsed_ns =

@@ -258,6 +258,12 @@ typedef struct nkui_renderer_stats {
     uint64_t layout_path_cache_misses;
     /** Layout rectangle geometries actually tessellated by the layout compiler. */
     uint64_t layout_path_preparations;
+    /** Prepared glyph batches reused from the retained compiler cache. */
+    uint64_t layout_glyph_cache_hits;
+    /** Prepared glyph batches rejected by the retained compiler cache. */
+    uint64_t layout_glyph_cache_misses;
+    /** Glyph batches actually prepared by the layout compiler. */
+    uint64_t layout_glyph_preparations;
 } nkui_renderer_stats;
 
 /** 16-bit opcode identifying one display-list command record. */
