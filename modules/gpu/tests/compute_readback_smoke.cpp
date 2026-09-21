@@ -184,7 +184,7 @@ int main() {
         language = NKGPU_SHADERLANGUAGE_MSL;
         source = "#include <metal_stdlib>\n"
                  "using namespace metal;\n"
-                 "kernel void main0(device uint* values [[buffer(0)]],\n"
+                 "kernel void main0(device uint* values [[buffer(8)]],\n"
                  "                   uint3 id [[thread_position_in_grid]]) {\n"
                  "    values[id.x] = values[id.x] * 3u + 1u;\n"
                  "}\n";
