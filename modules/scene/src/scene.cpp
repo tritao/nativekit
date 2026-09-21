@@ -180,6 +180,46 @@ std::uint64_t SceneSnapshot::material_resources_revision() const noexcept {
     return state_->material_resources_revision;
 }
 
+bool SceneSnapshot::resource_changes_since(std::uint64_t geometry_revision,
+                                            std::uint64_t material_revision,
+                                            ResourceChanges &changes) const {
+    changes = {};
+    const auto current_geometry_revision = geometry_resources_revision();
+    const auto current_material_revision = material_resources_revision();
+    if (geometry_revision > current_geometry_revision ||
+        material_revision > current_material_revision)
+        return false;
+
+    std::unordered_set<GeometryId> geometry_ids;
+    std::unordered_set<MaterialId> material_ids;
+    bool geometry_reached = geometry_revision == current_geometry_revision;
+    bool material_reached = material_revision == current_material_revision;
+    for (auto delta = state_->resource_delta; delta && (!geometry_reached || !material_reached);
+         delta = delta->previous) {
+        if (!geometry_reached) {
+            if (delta->geometry_revision > geometry_revision)
+                for (const auto id : delta->geometries)
+                    if (geometry_ids.insert(id).second)
+                        changes.geometries.push_back(id);
+            if (delta->geometry_revision <= geometry_revision)
+                geometry_reached = true;
+        }
+        if (!material_reached) {
+            if (delta->material_revision > material_revision)
+                for (const auto id : delta->materials)
+                    if (material_ids.insert(id).second)
+                        changes.materials.push_back(id);
+            if (delta->material_revision <= material_revision)
+                material_reached = true;
+        }
+        if (!delta->previous) {
+            geometry_reached = geometry_reached || geometry_revision == 0;
+            material_reached = material_reached || material_revision == 0;
+        }
+    }
+    return geometry_reached && material_reached;
+}
+
 const GeometryResource *SceneSnapshot::find_geometry(GeometryId id) const noexcept {
     const auto &resources = *state_->geometries;
     const auto found = std::lower_bound(resources.begin(), resources.end(), id,
@@ -473,39 +513,39 @@ bool Scene::exists_after(const std::unordered_map<OccurrenceId, bool> &live,
 }
 
 Scene::Scene() : hierarchy(occurrences) {
-    publish_state(nullptr, {}, true);
+    publish_state(nullptr, {});
 }
 
 GeometryId Scene::create_geometry() {
     const auto id = reserve_geometry_id();
     geometries.create(id);
-    publish_state(nullptr, {}, true);
+    publish_state(nullptr, {});
     return id;
 }
 
 MaterialId Scene::create_material() {
     const auto id = reserve_material_id();
     materials.create(id);
-    publish_state(nullptr, {}, true);
+    publish_state(nullptr, {});
     return id;
 }
 
 void Scene::destroy_geometry(GeometryId id) noexcept {
     if (geometries.destroy(id))
-        publish_state(nullptr, {}, true);
+        publish_state(nullptr, {});
 }
 
 void Scene::destroy_material(MaterialId id) noexcept {
     if (materials.destroy(id))
-        publish_state(nullptr, {}, true);
+        publish_state(nullptr, {});
 }
 
 void Scene::publish() const {
-    publish_state(nullptr, {}, true);
+    publish_state(nullptr, {});
 }
 
-void Scene::publish_state(const ChangeSet *changes, std::span<const std::uint32_t> destroyed_slots,
-                          bool resources_changed) const {
+void Scene::publish_state(const ChangeSet *changes,
+                          std::span<const std::uint32_t> destroyed_slots) const {
     const auto previous =
         std::atomic_load_explicit(&published_, std::memory_order_acquire);
     auto state = std::make_shared<PublishedSceneState>();
@@ -514,24 +554,33 @@ void Scene::publish_state(const ChangeSet *changes, std::span<const std::uint32_
     state->geometry_store_revision = geometries.revision();
     state->material_store_revision = materials.revision();
     const bool geometry_resources_changed =
-        !previous || (resources_changed &&
-                      (previous->geometry_store_revision != geometries.revision() ||
-                       !geometries.revisions_match(*previous->geometries)));
+        !previous || previous->geometry_store_revision != geometries.revision();
     const bool material_resources_changed =
-        !previous || (resources_changed &&
-                      (previous->material_store_revision != materials.revision() ||
-                       !materials.revisions_match(*previous->materials)));
-    state->geometry_resources_revision =
-        previous ? previous->geometry_resources_revision + geometry_resources_changed : 1;
-    state->material_resources_revision =
-        previous ? previous->material_resources_revision + material_resources_changed : 1;
+        !previous || previous->material_store_revision != materials.revision();
+    state->geometry_resources_revision = state->geometry_store_revision;
+    state->material_resources_revision = state->material_store_revision;
+    if (!previous || geometry_resources_changed || material_resources_changed) {
+        auto resource_delta = std::make_shared<PublishedResourceDelta>();
+        resource_delta->geometry_revision = state->geometry_resources_revision;
+        resource_delta->material_revision = state->material_resources_revision;
+        resource_delta->previous = previous ? previous->resource_delta : nullptr;
+        geometries.changes_since(previous ? previous->geometry_store_revision : 0,
+                                 resource_delta->geometries);
+        materials.changes_since(previous ? previous->material_store_revision : 0,
+                                resource_delta->materials);
+        state->resource_delta = std::move(resource_delta);
+    } else {
+        state->resource_delta = previous->resource_delta;
+    }
+    geometries.discard_mutations_through(state->geometry_store_revision);
+    materials.discard_mutations_through(state->material_store_revision);
     const auto collect = []<class Store, class Resource>(const Store &store) {
         auto resources = std::make_shared<std::vector<Resource>>();
         resources->reserve(store.size());
         append_resources(store, *resources);
         return resources;
     };
-    if (previous && !geometry_resources_changed)
+    if (previous && !geometry_resources_changed) {
         state->geometries = previous->geometries;
     else
         state->geometries = collect.template operator()<GeometryStore, GeometryResource>(geometries);
@@ -539,7 +588,7 @@ void Scene::publish_state(const ChangeSet *changes, std::span<const std::uint32_
         state->materials = previous->materials;
     else
         state->materials = collect.template operator()<MaterialStore, MaterialResource>(materials);
-    if (previous && !resources_changed) {
+    if (previous && !geometry_resources_changed && !material_resources_changed) {
         state->images = previous->images;
         state->textures = previous->textures;
         state->samplers = previous->samplers;
@@ -1020,16 +1069,7 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
     }
     changes.scene_revision = revisions.scene;
     changes.revisions = revisions;
-    const auto published =
-        std::atomic_load_explicit(&published_, std::memory_order_acquire);
-    bool resources_changed =
-        !published || published->geometry_store_revision != geometries.revision() ||
-        published->material_store_revision != materials.revision();
-    if (!resources_changed)
-        resources_changed =
-            !geometries.revisions_match(*published->geometries) ||
-            !materials.revisions_match(*published->materials);
-    publish_state(&changes, destroyed_slots, resources_changed);
+    publish_state(&changes, destroyed_slots);
     return NKS_OK;
 }
 

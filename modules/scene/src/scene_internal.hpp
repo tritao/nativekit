@@ -23,6 +23,14 @@ constexpr std::size_t published_occurrence_page_capacity = 256;
 
 struct SnapshotMaterialization;
 
+struct PublishedResourceDelta {
+    std::uint64_t geometry_revision = 0;
+    std::uint64_t material_revision = 0;
+    std::vector<GeometryId> geometries;
+    std::vector<MaterialId> materials;
+    std::shared_ptr<const PublishedResourceDelta> previous;
+};
+
 struct PublishedOccurrencePage {
     std::array<SnapshotOccurrence, published_occurrence_page_capacity> values{};
 };
@@ -50,6 +58,7 @@ struct PublishedSceneState {
     std::uint64_t material_store_revision = 0;
     std::uint64_t geometry_resources_revision = 0;
     std::uint64_t material_resources_revision = 0;
+    std::shared_ptr<const PublishedResourceDelta> resource_delta;
     std::shared_ptr<const PublishedOccurrenceState> occurrences;
     std::shared_ptr<const std::vector<GeometryResource>> geometries;
     std::shared_ptr<const std::vector<MaterialResource>> materials;
@@ -148,8 +157,8 @@ private:
     bool exists_after(const std::unordered_map<OccurrenceId, bool> &live,
                       OccurrenceId id) const noexcept;
     void recompute_world_transforms(ChangeSet &changes);
-    void publish_state(const ChangeSet *changes, std::span<const std::uint32_t> destroyed_slots,
-                       bool resources_changed) const;
+    void publish_state(const ChangeSet *changes,
+                       std::span<const std::uint32_t> destroyed_slots) const;
     void record_change(ChangeSet &changes, std::unordered_map<OccurrenceId, std::size_t> &indices,
                        OccurrenceId id, ChangeDomain domain);
 

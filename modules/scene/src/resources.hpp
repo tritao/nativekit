@@ -4,25 +4,34 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <span>
+#include <memory>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 namespace nkscene {
 
 class GeometryStore {
 public:
     GeometryResource &create(GeometryId id) {
-        auto [found, inserted] = resources.emplace(id, GeometryResource{id});
-        if (!inserted)
+        auto found = resources.find(id);
+        if (found != resources.end()) {
             ++found->second.revision;
-        ++revision_counter;
-        return found->second;
+            found->second.mutation_state = mutation_state;
+            mutation_state->mark(id);
+            return found->second;
+        }
+        GeometryResource resource{id};
+        resource.mutation_state = mutation_state;
+        auto [inserted, unused] = resources.emplace(id, std::move(resource));
+        mutation_state->mark(id);
+        return inserted->second;
     }
 
     bool destroy(GeometryId id) noexcept {
         if (resources.erase(id) == 0)
             return false;
-        ++revision_counter;
+        mutation_state->mark(id);
         return true;
     }
 
@@ -37,17 +46,14 @@ public:
     }
 
     std::size_t size() const noexcept { return resources.size(); }
-    std::uint64_t revision() const noexcept { return revision_counter; }
+    std::uint64_t revision() const noexcept { return mutation_state->current_revision(); }
 
-    bool revisions_match(std::span<const GeometryResource> published) const noexcept {
-        if (published.size() != resources.size())
-            return false;
-        for (const auto &resource : published) {
-            const auto found = resources.find(resource.id);
-            if (found == resources.end() || found->second.revision != resource.revision)
-                return false;
-        }
-        return true;
+    void changes_since(std::uint64_t previous_revision, std::vector<GeometryId> &out) const {
+        mutation_state->changes_since(previous_revision, out);
+    }
+
+    void discard_mutations_through(std::uint64_t revision) const {
+        mutation_state->discard_through(revision);
     }
 
     template<class Fn>
@@ -58,23 +64,31 @@ public:
 
 private:
     std::unordered_map<GeometryId, GeometryResource> resources;
-    std::uint64_t revision_counter = 0;
+    std::shared_ptr<ResourceMutationState<GeometryId>> mutation_state =
+        std::make_shared<ResourceMutationState<GeometryId>>();
 };
 
 class MaterialStore {
 public:
     MaterialResource &create(MaterialId id) {
-        auto [found, inserted] = resources.emplace(id, MaterialResource{id});
-        if (!inserted)
+        auto found = resources.find(id);
+        if (found != resources.end()) {
             ++found->second.revision;
-        ++revision_counter;
-        return found->second;
+            found->second.mutation_state = mutation_state;
+            mutation_state->mark(id);
+            return found->second;
+        }
+        MaterialResource resource{id};
+        resource.mutation_state = mutation_state;
+        auto [inserted, unused] = resources.emplace(id, std::move(resource));
+        mutation_state->mark(id);
+        return inserted->second;
     }
 
     bool destroy(MaterialId id) noexcept {
         if (resources.erase(id) == 0)
             return false;
-        ++revision_counter;
+        mutation_state->mark(id);
         return true;
     }
 
@@ -89,17 +103,14 @@ public:
     }
 
     std::size_t size() const noexcept { return resources.size(); }
-    std::uint64_t revision() const noexcept { return revision_counter; }
+    std::uint64_t revision() const noexcept { return mutation_state->current_revision(); }
 
-    bool revisions_match(std::span<const MaterialResource> published) const noexcept {
-        if (published.size() != resources.size())
-            return false;
-        for (const auto &resource : published) {
-            const auto found = resources.find(resource.id);
-            if (found == resources.end() || found->second.revision != resource.revision)
-                return false;
-        }
-        return true;
+    void changes_since(std::uint64_t previous_revision, std::vector<MaterialId> &out) const {
+        mutation_state->changes_since(previous_revision, out);
+    }
+
+    void discard_mutations_through(std::uint64_t revision) const {
+        mutation_state->discard_through(revision);
     }
 
     template<class Fn>
@@ -110,7 +121,8 @@ public:
 
 private:
     std::unordered_map<MaterialId, MaterialResource> resources;
-    std::uint64_t revision_counter = 0;
+    std::shared_ptr<ResourceMutationState<MaterialId>> mutation_state =
+        std::make_shared<ResourceMutationState<MaterialId>>();
 };
 
 template<class Resource, class Id>

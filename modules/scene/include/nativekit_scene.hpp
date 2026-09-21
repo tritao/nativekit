@@ -2,17 +2,62 @@
 
 #include "nativekit_scene.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace nkscene {
+
+template<class Id>
+struct ResourceMutationState {
+    void mark(Id id) {
+        std::lock_guard lock(mutex);
+        changes.emplace_back(revision + 1, id);
+        ++revision;
+    }
+
+    std::uint64_t current_revision() const noexcept {
+        std::lock_guard lock(mutex);
+        return revision;
+    }
+
+    void changes_since(std::uint64_t previous_revision, std::vector<Id> &out) const {
+        std::lock_guard lock(mutex);
+        const auto found = std::upper_bound(
+            changes.begin(), changes.end(), previous_revision,
+            [](std::uint64_t value, const auto &change) { return value < change.first; });
+        out.reserve(out.size() + static_cast<std::size_t>(changes.end() - found));
+        for (auto current = found; current != changes.end(); ++current)
+            out.push_back(current->second);
+    }
+
+    void discard_through(std::uint64_t through_revision) {
+        std::lock_guard lock(mutex);
+        const auto first_retained = std::upper_bound(
+            changes.begin(), changes.end(), through_revision,
+            [](std::uint64_t value, const auto &change) { return value < change.first; });
+        changes.erase(changes.begin(), first_retained);
+    }
+
+    mutable std::mutex mutex;
+    std::uint64_t revision = 0;
+    std::vector<std::pair<std::uint64_t, Id>> changes;
+};
+
+template<class Id>
+void mark_resource_mutation(const std::shared_ptr<ResourceMutationState<Id>> &state, Id id) {
+    if (state)
+        state->mark(id);
+}
 
 template<class Tag>
 struct Id {
@@ -178,9 +223,11 @@ struct GeometryResource {
     Bounds bounds;
     std::shared_ptr<const GeometryPayload> payload = std::make_shared<GeometryPayload>();
     std::shared_ptr<const SubelementTable> subelements = std::make_shared<SubelementTable>();
+    std::shared_ptr<ResourceMutationState<GeometryId>> mutation_state;
 
     GeometryPayload &edit_payload() {
         ++revision;
+        mark_resource_mutation(mutation_state, id);
         auto next = std::make_shared<GeometryPayload>(*payload);
         payload = next;
         return *next;
@@ -188,6 +235,7 @@ struct GeometryResource {
 
     SubelementTable &edit_subelements() {
         ++revision;
+        mark_resource_mutation(mutation_state, id);
         auto next = std::make_shared<SubelementTable>(*subelements);
         subelements = next;
         return *next;
@@ -284,9 +332,11 @@ struct MaterialResource {
     MaterialId id;
     std::uint64_t revision = 1;
     std::shared_ptr<const MaterialState> state = std::make_shared<MaterialState>();
+    std::shared_ptr<ResourceMutationState<MaterialId>> mutation_state;
 
     MaterialState &edit_state() {
         ++revision;
+        mark_resource_mutation(mutation_state, id);
         auto next = std::make_shared<MaterialState>(*state);
         state = next;
         return *next;
@@ -361,6 +411,11 @@ struct ChangeSet {
     std::vector<OccurrenceId> effective_state_occurrences;
 };
 
+struct ResourceChanges {
+    std::vector<GeometryId> geometries;
+    std::vector<MaterialId> materials;
+};
+
 struct SnapshotOccurrence {
     OccurrenceId occurrence;
     EntityId source;
@@ -403,6 +458,9 @@ public:
     std::span<const LightResource> lights() const noexcept;
     std::uint64_t geometry_resources_revision() const noexcept;
     std::uint64_t material_resources_revision() const noexcept;
+    bool resource_changes_since(std::uint64_t geometry_revision,
+                                std::uint64_t material_revision,
+                                ResourceChanges &changes) const;
     const GeometryResource *find_geometry(GeometryId id) const noexcept;
     const MaterialResource *find_material(MaterialId id) const noexcept;
     const ImageResource *find_image(ImageId id) const noexcept;
