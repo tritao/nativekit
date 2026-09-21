@@ -66,11 +66,44 @@ struct GeometryVertex {
     std::array<float, 3> position{};
 };
 
+enum class VertexSemantic : std::uint32_t {
+    Position = NKS_VERTEX_SEMANTIC_POSITION,
+    Normal = NKS_VERTEX_SEMANTIC_NORMAL,
+    Tangent = NKS_VERTEX_SEMANTIC_TANGENT,
+    Texcoord0 = NKS_VERTEX_SEMANTIC_TEXCOORD0,
+    Texcoord1 = NKS_VERTEX_SEMANTIC_TEXCOORD1,
+    Color0 = NKS_VERTEX_SEMANTIC_COLOR0
+};
+
+enum class VertexFormat : std::uint32_t {
+    Float32x2 = NKS_VERTEX_FORMAT_FLOAT32X2,
+    Float32x3 = NKS_VERTEX_FORMAT_FLOAT32X3,
+    Float32x4 = NKS_VERTEX_FORMAT_FLOAT32X4,
+    Unorm8x4 = NKS_VERTEX_FORMAT_UNORM8X4,
+    Snorm8x4 = NKS_VERTEX_FORMAT_SNORM8X4
+};
+
+enum class PrimitiveType : std::uint32_t {
+    Triangles = NKS_PRIMITIVE_TRIANGLES,
+    Lines = NKS_PRIMITIVE_LINES,
+    Points = NKS_PRIMITIVE_POINTS
+};
+
+struct GeometryVertexStream {
+    VertexSemantic semantic = VertexSemantic::Position;
+    VertexFormat format = VertexFormat::Float32x3;
+    std::uint32_t stride = 0;
+    std::uint32_t count = 0;
+    std::vector<std::byte> data;
+};
+
 struct GeometryPayload {
     /** Positions are object-local and use a tightly packed float3 layout. */
     std::vector<GeometryVertex> vertices;
+    std::vector<GeometryVertexStream> streams;
     /** Optional uint32 triangle indices. Empty means sequential triangles. */
     std::vector<std::uint32_t> indices;
+    PrimitiveType primitive_type = PrimitiveType::Triangles;
 
     std::size_t element_count() const noexcept {
         return indices.empty() ? vertices.size() : indices.size();
