@@ -298,15 +298,18 @@ void Scene::recompute_world_transforms(ChangeSet &changes) {
         pending.pop_back();
         if (!dirty.insert(current).second)
             continue;
-        for (const auto child : hierarchy.children(current))
-            pending.push_back(child);
+        hierarchy.for_each_child(occurrences.resolve(current),
+                                [&](OccurrenceId child, OccurrenceHandle) {
+                                    pending.push_back(child);
+                                });
     }
 
     std::vector<OccurrenceId> roots;
     roots.reserve(dirty.size());
     for (const auto id : dirty) {
-        const auto parent = hierarchy.parent(id);
-        if (!parent.valid() || !dirty.contains(parent))
+        const auto parent = hierarchy.parent_handle(occurrences.resolve(id));
+        const auto parent_id = occurrences.id(parent);
+        if (!parent.valid() || !dirty.contains(parent_id))
             roots.push_back(id);
     }
     std::vector<OccurrenceId> stack;
@@ -320,10 +323,9 @@ void Scene::recompute_world_transforms(ChangeSet &changes) {
             if (!local)
                 continue;
             LocalTransform world = *local;
-            const auto parent = hierarchy.parent(current);
+            const auto parent = hierarchy.parent_handle(handle);
             if (parent.valid()) {
-                if (const auto *parent_world =
-                        world_transforms_.find(occurrences.resolve(parent)))
+                if (const auto *parent_world = world_transforms_.find(parent))
                     world = multiply(parent_world->transform, *local);
             }
             world_transforms_.insert_or_assign(handle,
@@ -340,9 +342,10 @@ void Scene::recompute_world_transforms(ChangeSet &changes) {
             } else {
                 bounds.erase(handle);
             }
-            for (const auto child : hierarchy.children(current))
+            hierarchy.for_each_child(handle, [&](OccurrenceId child, OccurrenceHandle) {
                 if (dirty.contains(child))
                     stack.push_back(child);
+            });
         }
     }
 }
@@ -353,7 +356,7 @@ bool Scene::exists_after(const std::unordered_map<OccurrenceId, bool> &live,
     return found == live.end() ? occurrences.contains(id) : found->second;
 }
 
-Scene::Scene() {
+Scene::Scene() : hierarchy(occurrences) {
     publish_state();
 }
 
@@ -588,7 +591,7 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
                 using T = std::decay_t<decltype(value)>;
                 if constexpr (std::is_same_v<T, CreateOccurrence>) {
                     const auto handle = occurrences.create(value.occurrence);
-                    hierarchy.add(value.occurrence);
+                    hierarchy.add(handle);
                     local_transforms.insert_or_assign(handle, LocalTransform{});
                     visibilities_.insert_or_assign(handle, Visibility{});
                     record_change(changes, change_indices, value.occurrence, ChangeDomain::Created);
@@ -605,14 +608,15 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
                     visibilities_.erase(handle);
                     names_.erase(handle);
                     bounds.erase(handle);
-                    hierarchy.remove(value.occurrence);
+                    hierarchy.remove(handle);
                     occurrences.destroy(value.occurrence);
                     record_change(changes, change_indices, value.occurrence,
                                   ChangeDomain::Destroyed);
                 } else if constexpr (std::is_same_v<T, SetParent>) {
                     const auto previous = hierarchy.parent(value.occurrence);
                     if (previous != value.parent) {
-                        hierarchy.reparent(value.occurrence, value.parent);
+                        hierarchy.reparent(occurrences.resolve(value.occurrence),
+                                           occurrences.resolve(value.parent));
                         parent_components.insert_or_assign(occurrences.resolve(value.occurrence),
                                                            Parent{value.parent});
                         record_change(changes, change_indices, value.occurrence,

@@ -58,6 +58,14 @@ public:
         return found == by_id.end() ? OccurrenceHandle{} : found->second;
     }
 
+    OccurrenceId id(OccurrenceHandle handle) const noexcept {
+        if (!handle.valid() || handle.slot >= slots.size())
+            return invalid_occurrence;
+        const auto &entry = slots[handle.slot];
+        return entry.live && entry.generation == handle.generation ? entry.id
+                                                                     : invalid_occurrence;
+    }
+
     bool contains(OccurrenceId id) const noexcept { return by_id.contains(id); }
     std::size_t size() const noexcept { return by_id.size(); }
 

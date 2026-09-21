@@ -66,6 +66,60 @@ void occurrence_handles_reject_stale_components() {
     assert(*store.find(second) == 20);
 }
 
+void hierarchy_links_are_slot_indexed() {
+    auto scene = std::make_shared<Scene>();
+    const auto root = scene->reserve_occurrence_id();
+    const auto first = scene->reserve_occurrence_id();
+    const auto second = scene->reserve_occurrence_id();
+    Transaction create(scene);
+    create.add_create(root);
+    create.add_create(first);
+    create.add_create(second);
+    nkscene::ChangeSet changes;
+    assert(scene->commit(create, changes) == NKS_OK);
+    create.close();
+
+    Transaction group(scene);
+    group.add_parent(first, root);
+    group.add_parent(second, root);
+    assert(scene->commit(group, changes) == NKS_OK);
+    group.close();
+    auto root_children = scene->hierarchy_index().children(root);
+    assert(root_children.size() == 2);
+    assert(root_children[0] == first);
+    assert(root_children[1] == second);
+    assert(scene->hierarchy_index().is_descendant(second, root));
+
+    Transaction nest(scene);
+    nest.add_parent(first, second);
+    assert(scene->commit(nest, changes) == NKS_OK);
+    nest.close();
+    root_children = scene->hierarchy_index().children(root);
+    assert(root_children.size() == 1 && root_children.front() == second);
+    const auto second_children = scene->hierarchy_index().children(second);
+    assert(second_children.size() == 1 && second_children.front() == first);
+    assert(scene->hierarchy_index().is_descendant(first, root));
+
+    Transaction invalid_destroy(scene);
+    invalid_destroy.add_destroy(second);
+    assert(scene->commit(invalid_destroy, changes) == NKS_ERROR_INVALID_ARGUMENT);
+    invalid_destroy.close();
+
+    Transaction detach_and_destroy(scene);
+    detach_and_destroy.add_parent(first, nkscene::invalid_occurrence);
+    detach_and_destroy.add_destroy(second);
+    assert(scene->commit(detach_and_destroy, changes) == NKS_OK);
+    detach_and_destroy.close();
+    assert(scene->hierarchy_index().parent(first) == nkscene::invalid_occurrence);
+
+    const auto replacement = scene->reserve_occurrence_id();
+    Transaction recreate(scene);
+    recreate.add_create(replacement);
+    assert(scene->commit(recreate, changes) == NKS_OK);
+    recreate.close();
+    assert(scene->hierarchy_index().parent(replacement) == nkscene::invalid_occurrence);
+}
+
 void changes_are_domain_precise() {
     auto scene = std::make_shared<Scene>();
     const auto first = scene->reserve_occurrence_id();
@@ -245,6 +299,7 @@ void names_and_bulk_transforms_are_transactional() {
 int main() {
     component_store_is_slot_indexed_and_generation_safe();
     occurrence_handles_reject_stale_components();
+    hierarchy_links_are_slot_indexed();
     changes_are_domain_precise();
     shared_resources_do_not_follow_instance_transforms();
     snapshots_are_immutable();
