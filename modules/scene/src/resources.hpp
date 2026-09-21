@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <unordered_map>
 
 namespace nkscene {
@@ -37,6 +38,17 @@ public:
 
     std::size_t size() const noexcept { return resources.size(); }
     std::uint64_t revision() const noexcept { return revision_counter; }
+
+    bool revisions_match(std::span<const GeometryResource> published) const noexcept {
+        if (published.size() != resources.size())
+            return false;
+        for (const auto &resource : published) {
+            const auto found = resources.find(resource.id);
+            if (found == resources.end() || found->second.revision != resource.revision)
+                return false;
+        }
+        return true;
+    }
 
     template<class Fn>
     void for_each(Fn &&fn) const {
@@ -78,6 +90,17 @@ public:
 
     std::size_t size() const noexcept { return resources.size(); }
     std::uint64_t revision() const noexcept { return revision_counter; }
+
+    bool revisions_match(std::span<const MaterialResource> published) const noexcept {
+        if (published.size() != resources.size())
+            return false;
+        for (const auto &resource : published) {
+            const auto found = resources.find(resource.id);
+            if (found == resources.end() || found->second.revision != resource.revision)
+                return false;
+        }
+        return true;
+    }
 
     template<class Fn>
     void for_each(Fn &&fn) const {

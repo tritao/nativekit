@@ -998,9 +998,13 @@ nkscene_result Scene::commit(const Transaction &transaction, ChangeSet &changes)
     changes.revisions = revisions;
     const auto published =
         std::atomic_load_explicit(&published_, std::memory_order_acquire);
-    const bool resources_changed =
+    bool resources_changed =
         !published || published->geometry_store_revision != geometries.revision() ||
         published->material_store_revision != materials.revision();
+    if (!resources_changed)
+        resources_changed =
+            !geometries.revisions_match(*published->geometries) ||
+            !materials.revisions_match(*published->materials);
     publish_state(&changes, destroyed_slots, resources_changed);
     return NKS_OK;
 }

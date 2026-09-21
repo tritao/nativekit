@@ -59,6 +59,19 @@ void published_payloads_are_shared_and_snapshot_safe() {
     assert(after.find_material(material)->state->base_color[2] == 0.1f);
     assert(before.find_geometry(geometry)->payload->vertices[0].position[0] == 0.0f);
     assert(before.find_material(material)->state->base_color[2] == 0.8f);
+
+    const auto before_direct_edit = scene->snapshot();
+    auto &direct_payload = scene->geometry_store().find(geometry)->edit_payload();
+    direct_payload.vertices[0].position[0] = 11.0f;
+    Transaction move(scene);
+    nkscene::LocalTransform transform;
+    transform.matrix[12] = 2.0f;
+    move.add_transform(occurrence, transform);
+    assert(scene->commit(move, changes) == NKS_OK);
+    move.close();
+    const auto after_direct_edit = scene->snapshot();
+    assert(after_direct_edit.find_geometry(geometry)->payload->vertices[0].position[0] == 11.0f);
+    assert(before_direct_edit.find_geometry(geometry)->payload->vertices[0].position[0] == 7.0f);
 }
 
 void readers_can_hold_old_snapshots_during_commits() {
