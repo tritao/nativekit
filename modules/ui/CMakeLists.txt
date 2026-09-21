@@ -373,7 +373,7 @@ if(NK_BUILD_EXAMPLES)
         NKUI_TEST_FONT_PATH="${NKUI_C_API_FONT_PATH}")
     target_link_libraries(nativekit_ui_c_api PRIVATE NativeKit::ui NativeKit::nativekit
         NativeKit::gpu)
-    if(NK_BUILD_TESTS)
+    if(NK_BUILD_TESTS AND NOT EMSCRIPTEN)
         add_executable(nativekit_ui_showcase_surface_smoke_test
             tests/showcase_surface_smoke.cpp)
         target_compile_definitions(nativekit_ui_showcase_surface_smoke_test PRIVATE
@@ -407,7 +407,8 @@ if(NK_BUILD_EXAMPLES)
                 TIMEOUT 15
                 ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
         endif()
-        if(NKUI_C_API_XVFB_RUN AND TARGET nativekit_ui_showcase_surface_smoke_test)
+        if(NKUI_C_API_XVFB_RUN AND NOT EMSCRIPTEN AND
+           TARGET nativekit_ui_showcase_surface_smoke_test)
             add_test(NAME nativekit_ui_showcase_surface_smoke
                 COMMAND ${NKUI_C_API_XVFB_RUN} -a
                     $<TARGET_FILE:nativekit_ui_showcase_surface_smoke_test>)
