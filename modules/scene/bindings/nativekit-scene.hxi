@@ -229,10 +229,10 @@ interface NativeKitScene @target("portable-abi64") @library("nativekit_scene") {
 		world_transform_revision: u64 @offset(160);
 		geometry: nkscene_geometry_id @offset(168);
 		material: nkscene_material_id @offset(176);
-		camera: nkscene_camera_id @offset(184);
-		light: nkscene_light_id @offset(192);
-		visible: u32 @offset(200);
-		bounds: nkscene_bounds @offset(204);
+		visible: u32 @offset(184);
+		bounds: nkscene_bounds @offset(188);
+		camera: nkscene_camera_id @offset(216);
+		light: nkscene_light_id @offset(224);
 	}
 	/**
 	 * Fixed-size page used to transfer snapshot occurrences across the C ABI.
