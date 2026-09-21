@@ -16,7 +16,6 @@
 #include <cstring>
 #include <limits>
 #include <memory>
-#include <new>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -49,26 +48,6 @@ bool frame_loop_active = false;
 bool device_orientation_callback_installed = false;
 bool orientation_callback_installed = false;
 bool resize_callback_installed = false;
-
-#if defined(NK_WEB_THREADED_RENDER)
-struct CanvasResizeRequest {
-    std::string selector;
-    nk::web::CanvasSize size{};
-};
-
-void resize_canvas_on_render(void *data) noexcept {
-    auto *request = static_cast<CanvasResizeRequest *>(data);
-    if (!request)
-        return;
-    (void)(emscripten_set_canvas_element_size(
-               request->selector.c_str(), request->size.framebuffer_width,
-               request->size.framebuffer_height) == EMSCRIPTEN_RESULT_SUCCESS);
-}
-
-void destroy_canvas_resize_request(void *data) noexcept {
-    delete static_cast<CanvasResizeRequest *>(data);
-}
-#endif
 
 constexpr int k_appearance_supported = 1;
 constexpr int k_appearance_dark = 1 << 1;
@@ -2215,18 +2194,11 @@ bool set_canvas_framebuffer_size(const char *selector, const CanvasSize &size) n
 #if defined(NK_WEB_THREADED_RENDER)
     if (nk::core::render_executor_physical() &&
         nk::core::executor_current() != NK_EXECUTOR_RENDER) {
-        auto *request = new (std::nothrow) CanvasResizeRequest;
-        if (!request)
-            return false;
-        request->selector = selector ? selector : "";
-        request->size = size;
-        const auto queued = nk::core::dispatch_to_render(&resize_canvas_on_render, request,
-                                                         &destroy_canvas_resize_request,
-                                                         sizeof(CanvasResizeRequest));
-        if (queued != NK_OK) {
-            delete request;
-            return false;
-        }
+        /* The transferred OffscreenCanvas is render-owned. Emscripten's
+           PLATFORM-side resize helper synchronously proxies to that owner,
+           which can deadlock before the first WebGL context exists. Keep the
+           logical size in NativeKit and let RENDER establish its drawable
+           dimensions when it binds the context. */
         return true;
     }
 #endif
