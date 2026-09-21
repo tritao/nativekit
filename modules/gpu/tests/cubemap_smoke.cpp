@@ -157,7 +157,7 @@ bool select_sources(nk_graphics_api api, ShaderSources &out) {
                "fragment float4 main0(VertexOut input [[stage_in]],\n"
                "                       texture2d_array<float> tex [[texture(0)]],\n"
                "                       sampler smp [[sampler(0)]]) {\n"
-               "    return tex.sample(smp,float3(0.5,0.5,6));\n"
+               "    return tex.sample(smp,float2(0.5,0.5),6u);\n"
                "}\n"};
         return true;
     default:
