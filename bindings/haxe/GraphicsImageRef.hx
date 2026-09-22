@@ -24,13 +24,25 @@ class GraphicsImageRef {
 	 * producer and must be released with dispose(). The caller must supply the
 	 * dimensions and API reported by that producer.
 	 */
-	@:allow(nativekit.gpu.Image, nativekit.gpu.RenderTarget)
+	@:allow(nativekit.gpu.Image, nativekit.gpu.RenderTarget, nativekit.scene.SceneRenderer)
 	private static function fromBorrowedHandle(value:GraphicsImage, width:Int, height:Int,
 		api:GraphicsApi):GraphicsImageRef {
 		if (width <= 0 || height <= 0)
 			throw "Graphics image dimensions must be positive";
 		NativeKit.nk_graphics_image_retain_checked(value);
 		return new GraphicsImageRef(value, width, height, api);
+	}
+
+	/** Retains a borrowed image returned across an ID-only module boundary. */
+	@:allow(nativekit.scene.SceneRenderer)
+	private static function fromBorrowedId(id:Int, width:Int, height:Int):GraphicsImageRef {
+		if (id == 0)
+			throw "Graphics image ID must be non-zero";
+		var value = new GraphicsImage(id);
+		var queried = NativeKit.nk_graphics_image_get_info(value);
+		if (queried.status != Result.Ok)
+			throw "Could not query the borrowed graphics image";
+		return fromBorrowedHandle(value, width, height, queried.out_info.get_api());
 	}
 
 	/** Creates another independently owned reference to this image. */
