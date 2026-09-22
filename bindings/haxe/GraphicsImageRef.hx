@@ -1,4 +1,5 @@
 import nativekit.ffi.NativeKit;
+import nativekit.ffi.NativeKitTypes;
 
 /** An explicitly retained, backend-neutral sampled graphics image reference. */
 class GraphicsImageRef {

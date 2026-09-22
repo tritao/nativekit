@@ -1,4 +1,5 @@
 import nativekit.ffi.NativeKit;
+import nativekit.ffi.NativeKitTypes;
 
 /** Synthetic payload tests for decoder validation and fallback behavior. */
 class NativeKitEventDecoderTests {

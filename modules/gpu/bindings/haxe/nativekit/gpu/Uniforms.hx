@@ -1,5 +1,5 @@
 package nativekit.gpu;
-import NativeKitGpu;
+import nativekit.ffi.NativeKitGpu;
 
 /** One consumed uniform block staged for the current renderer frame. */
 class Uniforms {

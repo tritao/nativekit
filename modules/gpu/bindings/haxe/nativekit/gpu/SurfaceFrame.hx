@@ -1,5 +1,6 @@
 package nativekit.gpu;
 import nativekit.ffi.NativeKit;
+import nativekit.ffi.NativeKitTypes;
 
 import NativeKitError;
 

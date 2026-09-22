@@ -1,6 +1,7 @@
 package nativekit.gpu;
-import NativeKitGpu;
+import nativekit.ffi.NativeKitGpu;
 import nativekit.ffi.NativeKit;
+import nativekit.ffi.NativeKitTypes;
 
 import NativeKitWindow;
 

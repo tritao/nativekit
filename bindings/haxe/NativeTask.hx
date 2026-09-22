@@ -1,4 +1,5 @@
 import nativekit.ffi.NativeKit;
+import nativekit.ffi.NativeKitTypes;
 import NativeKitError;
 
 /** Managed owner for a native task handle; it never supplies a worker callback. */

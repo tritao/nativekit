@@ -1,8 +1,9 @@
 import nativekit.ffi.NativeKit;
+import nativekit.ffi.NativeKitTypes;
 import NativeKitEventValue;
 import NativeKitRuntime;
 import NativeKitWindow;
-import NativeKitGpu;
+import nativekit.ffi.NativeKitGpu;
 import GraphicsImageRef;
 import nativekit.gpu.Buffer;
 import nativekit.gpu.BufferDesc;

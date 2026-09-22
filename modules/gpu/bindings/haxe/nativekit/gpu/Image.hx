@@ -1,5 +1,6 @@
 package nativekit.gpu;
-import NativeKitGpu;
+import nativekit.ffi.NativeKitGpu;
+import nativekit.ffi.NativeKitTypes;
 
 import haxe.io.Bytes;
 import GraphicsImageRef;

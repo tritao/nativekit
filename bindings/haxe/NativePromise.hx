@@ -1,4 +1,5 @@
 import nativekit.ffi.NativeKit;
+import nativekit.ffi.NativeKitTypes;
 import NativeKitRequestOutcome;
 
 /** Internal completion owner used by NativeKit task/request adapters. */

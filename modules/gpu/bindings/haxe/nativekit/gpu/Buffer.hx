@@ -1,5 +1,5 @@
 package nativekit.gpu;
-import NativeKitGpu;
+import nativekit.ffi.NativeKitGpu;
 
 import haxe.io.Bytes;
 import nativekit.gpu.Enums.BufferUsage;

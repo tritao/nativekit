@@ -1,4 +1,5 @@
 import nativekit.ffi.NativeKit;
+import nativekit.ffi.NativeKitTypes;
 enum NativeKitEventValue {
 	None;
 	ClipboardText(request:haxe.Int64, result:Result, text:String);

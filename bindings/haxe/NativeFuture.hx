@@ -1,4 +1,5 @@
 import nativekit.ffi.NativeKit;
+import nativekit.ffi.NativeKitTypes;
 import NativeKitRequestOutcome;
 
 /** A one-shot result completed by a NativeKit event. */

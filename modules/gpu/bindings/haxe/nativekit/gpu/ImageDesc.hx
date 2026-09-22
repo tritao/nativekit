@@ -1,6 +1,6 @@
 package nativekit.gpu;
 
-import NativeKitGpu;
+import nativekit.ffi.NativeKitGpu;
 import nativekit.gpu.Enums.ImageFormat;
 import nativekit.gpu.Enums.ImageType;
 import nativekit.gpu.Enums.ImageUsage;

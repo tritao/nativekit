@@ -1,4 +1,5 @@
 import nativekit.ffi.NativeKit;
+import nativekit.ffi.NativeKitTypes;
 import NativeKitWindow;
 
 /** Safe Haxe view of NativeKit's process-lifetime Vulkan extension names. */

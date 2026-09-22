@@ -1,4 +1,5 @@
 import nativekit.ffi.NativeKit;
+import nativekit.ffi.NativeKitTypes;
 import NativeKitError;
 
 /** Owns one graphics surface attached to a NativeKit window. */

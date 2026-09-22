@@ -1,6 +1,6 @@
 package nativekit.gpu;
 
-import NativeKitGpu;
+import nativekit.ffi.NativeKitGpu;
 
 /** Centralizes raw GPU-adapter result handling for the typed Haxe facade. */
 class GpuResult {

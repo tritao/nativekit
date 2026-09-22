@@ -1,5 +1,5 @@
 package nativekit.gpu;
-import NativeKitGpu;
+import nativekit.ffi.NativeKitGpu;
 
 import nativekit.gpu.Pipeline.PipelineBuilder;
 import nativekit.gpu.Shader.ShaderBuilder;

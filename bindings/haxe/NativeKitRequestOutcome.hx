@@ -1,4 +1,5 @@
 import nativekit.ffi.NativeKit;
+import nativekit.ffi.NativeKitTypes;
 /** Result of one asynchronous NativeKit request. */
 enum NativeKitRequestOutcome<T> {
 	/** The asynchronous operation completed successfully. */

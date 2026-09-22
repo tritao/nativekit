@@ -1,10 +1,17 @@
 {
 	"interface": "NativeKitGpu",
+	"package": "nativekit.ffi",
+	"modules": {
+		"functions": "NativeKitGpu"
+	},
 	"dependencyModules": {
 		"NativeKit": "nativekit.ffi.NativeKit"
 	},
+	"dependencyTypeModules": {
+		"NativeKit": "nativekit.ffi.NativeKitTypes"
+	},
 	"enumNames": {
-		"nk_graphics_api": "GraphicsApi",
+		"nk_graphics_api": "NativeKitTypes.GraphicsApi",
 		"nkgpu_result": "GpuStatus",
 		"nkgpu_backend": "Backend",
 		"nkgpu_vertex_format": "VertexFormat",
@@ -33,10 +40,10 @@
 		}
 	},
 	"typeNames": {
-		"nk_graphics_image": "GraphicsImage",
-		"nk_handle": "Handle",
-		"nk_surface_frame_target": "SurfaceFrameTarget",
-		"nk_window": "WindowHandle",
-		"nk_surface": "SurfaceHandle"
+		"nk_graphics_image": "NativeKitTypes.GraphicsImage",
+		"nk_handle": "NativeKitTypes.Handle",
+		"nk_surface_frame_target": "NativeKitTypes.SurfaceFrameTarget",
+		"nk_window": "NativeKitTypes.WindowHandle",
+		"nk_surface": "NativeKitTypes.SurfaceHandle"
 	}
 }

@@ -1,4 +1,5 @@
 import nativekit.ffi.NativeKit;
+import nativekit.ffi.NativeKitTypes;
 /** Immutable, fully managed snapshot passed to typed event decoders. */
 
 class NativeKitEventContext {

@@ -1,6 +1,6 @@
 package nativekit.gpu;
 
-import NativeKitGpu;
+import nativekit.ffi.NativeKitGpu;
 import nativekit.gpu.Enums.LoadAction;
 import nativekit.gpu.Enums.StoreAction;
 

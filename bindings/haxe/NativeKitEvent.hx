@@ -1,4 +1,5 @@
 import nativekit.ffi.NativeKit;
+import nativekit.ffi.NativeKitTypes;
 import NativeKitEventContext;
 import NativeKitEventValue;
 import NativeKitInputEvents;

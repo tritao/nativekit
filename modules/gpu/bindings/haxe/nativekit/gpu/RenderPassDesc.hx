@@ -1,6 +1,6 @@
 package nativekit.gpu;
 
-import NativeKitGpu;
+import nativekit.ffi.NativeKitGpu;
 
 /** One color attachment and its optional MSAA resolve image. */
 class ColorAttachment {

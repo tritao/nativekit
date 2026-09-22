@@ -1,6 +1,6 @@
 package nativekit.gpu;
 
-import NativeKitGpu;
+import nativekit.ffi.NativeKitGpu;
 
 /** Optional GPU capabilities exposed by one renderer. */
 class Features {

@@ -3,6 +3,7 @@
   "package": "nativekit.ffi",
   "modules": {
     "functions": "NativeKit",
+    "types": "NativeKitTypes",
     "constants": "NativeKitConstants"
   },
   "typePrefix": "nk_",

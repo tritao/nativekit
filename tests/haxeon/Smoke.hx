@@ -1,6 +1,6 @@
 import nativekit.ffi.NativeKitConstants;
 import nativekit.ffi.NativeKit;
-import GraphicsImageRef;
+import nativekit.ffi.NativeKitTypes;
 import NativeKitEventValue;
 import NativeKitEvents;
 import NativeKitEventBytes;
@@ -15,9 +15,6 @@ import NativePromise;
 class Smoke {
 	static function main():Int {
 		var graphicsApi:GraphicsApi = GraphicsApi.Opengl;
-		var unusedImageRef:Null<GraphicsImageRef> = null;
-		if (unusedImageRef != null)
-			return 19;
 		if (graphicsApi != GraphicsApi.Opengl)
 			return 17;
 		var graphicsInfo = new GraphicsImageInfo();

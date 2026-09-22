@@ -1,6 +1,6 @@
 package nativekit.gpu;
 
-import NativeKitGpu;
+import nativekit.ffi.NativeKitGpu;
 
 /** Portable operations supported by one image format on a renderer. */
 class ImageFormatSupport {
