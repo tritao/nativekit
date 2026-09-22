@@ -36,6 +36,7 @@
 #define NK_INOUT __attribute__((annotate("hxi:inout")))
 #define NK_OUT_BUFFER(size_parameter) __attribute__((annotate("hxi:out_buffer")))
 #define NK_IN_ARRAY(count_parameter) __attribute__((annotate("hxi:in_array")))
+#define NK_OUT_ARRAY(count_parameter) __attribute__((annotate("hxi:out_array")))
 #define NK_RETAINED __attribute__((annotate("hxi:retained")))
 #define NK_IN_UTF8_ARRAY(count_parameter)                                                          \
     __attribute__((annotate("hxi:in_array"))) __attribute__((annotate("hxi:utf8_array")))
@@ -63,6 +64,7 @@
 #define NK_INOUT
 #define NK_OUT_BUFFER(size_parameter)
 #define NK_IN_ARRAY(count_parameter)
+#define NK_OUT_ARRAY(count_parameter)
 #define NK_RETAINED
 #define NK_IN_UTF8_ARRAY(count_parameter)
 #define NK_OUT_UTF8_ARRAY(count_parameter)
