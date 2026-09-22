@@ -191,6 +191,8 @@ bool pick_resources(const char *selector, uint32_t route, nk_request_id request,
                     const char *suggested_name) noexcept;
 bool has_resource_handle(const char *uri) noexcept;
 bool write_resource(const char *uri, const void *data, uint32_t size) noexcept;
+bool commit_resource(const char *uri, const void *data, uint32_t size,
+                     nk_request_id request) noexcept;
 bool show_notification(nk_request_id request, const char *title, const char *body, const char *icon,
                        bool silent) noexcept;
 bool close_notification(nk_request_id request) noexcept;

@@ -28,6 +28,7 @@ bool is_terminal_request_event(const QueuedEvent &event) {
            event.kind == NK_EVENT_CLIPBOARD_FILES_COMPLETE ||
            event.kind == NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE ||
            event.kind == NK_EVENT_RESOURCE_DATA_COMPLETE ||
+           event.kind == NK_EVENT_RESOURCE_COMMIT_COMPLETE ||
            event.kind == NK_EVENT_SENSOR_PERMISSION_COMPLETE ||
            event.kind == NK_EVENT_HTTP_COMPLETE || event.kind == NK_EVENT_PLUGIN_COMPLETE ||
            event.kind == NK_EVENT_NOTIFICATION_DELIVERED ||

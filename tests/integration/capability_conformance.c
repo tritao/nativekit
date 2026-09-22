@@ -431,6 +431,8 @@ static int probe_resource_io(const char *path, const char *uri) {
     uint64_t transferred = 0;
     uint64_t position = UINT64_MAX;
     nk_resource_stream_info info = {0};
+    nk_request_id commit = NK_INVALID_REQUEST_ID;
+    nk_event commit_event = {0};
     info.struct_size = sizeof(info);
     if (!require_ok("nk_resource_open",
                     nk_resource_open(&resource,
@@ -447,10 +449,16 @@ static int probe_resource_io(const char *path, const char *uri) {
         transferred != sizeof(bytes) - 1 || memcmp(result, bytes, sizeof(bytes) - 1) != 0 ||
         !require_ok("nk_resource_stream_info_get", nk_resource_stream_info_get(stream, &info)) ||
         !(info.flags & NK_RESOURCE_STREAM_SEEKABLE) ||
+        !require_ok("nk_resource_commit", nk_resource_commit(stream, &commit)) ||
+        commit == NK_INVALID_REQUEST_ID ||
+        !wait_for_request(commit, &commit_event) ||
+        commit_event.kind != NK_EVENT_RESOURCE_COMMIT_COMPLETE || commit_event.result != NK_OK ||
         !require_ok("nk_resource_close", nk_resource_close(stream))) {
+        nk_event_release(&commit_event);
         remove(path);
         return 0;
     }
+    nk_event_release(&commit_event);
     if (!require_result("nk_resource_close(stale)", nk_resource_close(stream),
                         NK_ERROR_INVALID_HANDLE))
         return 0;

@@ -80,7 +80,7 @@ bool receive_message(nk_transport transport, const char *expected) {
 }
 
 std::uint16_t listen_port(nk_listener *out_listener, nk_transport_kind kind,
-                          const char *path = nullptr) {
+                          const char *path = nullptr, const char *subprotocols = nullptr) {
     for (std::uint16_t port = 39000; port != 39300; ++port) {
         nk_transport_options options{};
         options.struct_size = sizeof(options);
@@ -89,15 +89,17 @@ std::uint16_t listen_port(nk_listener *out_listener, nk_transport_kind kind,
         options.host = "127.0.0.1";
         options.port = port;
         options.path = path;
+        options.subprotocols = subprotocols;
         if (nk_transport_listen(&options, out_listener) == NK_OK)
             return port;
     }
     return 0;
 }
 
-void roundtrip(nk_transport_kind kind, const char *path = nullptr) {
+void roundtrip(nk_transport_kind kind, const char *path = nullptr,
+               const char *subprotocols = nullptr) {
     nk_listener listener = NK_INVALID_HANDLE;
-    const auto port = listen_port(&listener, kind, path);
+    const auto port = listen_port(&listener, kind, path, subprotocols);
     assert(port != 0);
 
     nk_transport_options connect_options{};
@@ -106,6 +108,7 @@ void roundtrip(nk_transport_kind kind, const char *path = nullptr) {
     connect_options.host = "127.0.0.1";
     connect_options.port = port;
     connect_options.path = path;
+    connect_options.subprotocols = subprotocols;
     connect_options.timeout_ms = 2000;
     nk_transport client = NK_INVALID_HANDLE;
     assert(nk_transport_connect(&connect_options, &client) == NK_OK);
@@ -131,6 +134,46 @@ void roundtrip(nk_transport_kind kind, const char *path = nullptr) {
     assert(nk_listener_close(listener) == NK_OK);
 }
 
+void contract_extensions() {
+    nk_transport_capabilities capabilities = 0;
+    assert(nk_transport_query_capabilities(NK_TRANSPORT_WEBSOCKET, &capabilities) == NK_OK);
+    assert((capabilities & NK_TRANSPORT_CAP_CLIENT) != 0);
+    assert((capabilities & NK_TRANSPORT_CAP_LISTENER) != 0);
+    assert((capabilities & NK_TRANSPORT_CAP_SUBPROTOCOL) != 0);
+    assert((capabilities & NK_TRANSPORT_CAP_SECURE_CLIENT) != 0);
+    assert(nk_transport_query_capabilities(0, &capabilities) == NK_ERROR_INVALID_ARGUMENT);
+    assert(capabilities == 0);
+
+    nk_transport_options options{};
+    options.struct_size = sizeof(options);
+    options.kind = NK_TRANSPORT_WEBSOCKET;
+    options.flags = NK_TRANSPORT_SECURE;
+    options.host = "127.0.0.1";
+    options.port = 443;
+    nk_transport transport = NK_INVALID_HANDLE;
+    assert(nk_transport_connect(&options, &transport) == NK_OK);
+    assert(nk_transport_close(transport) == NK_OK);
+
+    options = {};
+    options.struct_size = sizeof(options);
+    options.kind = NK_TRANSPORT_TCP;
+    options.host = "127.0.0.1";
+    options.port = 1;
+    options.subprotocols = "nativekit.v1";
+    assert(nk_transport_connect(&options, &transport) == NK_ERROR_INVALID_ARGUMENT);
+
+    /* Appended fields are not read from a caller compiled against v1. */
+    options = {};
+    options.struct_size = NK_TRANSPORT_OPTIONS_V1_SIZE;
+    options.kind = NK_TRANSPORT_TCP;
+    options.host = "127.0.0.1";
+    options.port = 1;
+    assert(nk_transport_connect(&options, &transport) == NK_OK);
+    assert(nk_transport_cancel(transport) == NK_OK);
+    assert(nk_transport_cancel(transport) == NK_OK);
+    assert(nk_transport_close(transport) == NK_OK);
+}
+
 } // namespace
 
 int main() {
@@ -141,9 +184,11 @@ int main() {
     assert(nk_init(&init) == NK_OK);
     assert((nk_get_capabilities() & NK_CAP_TRANSPORT) != 0);
 
+    contract_extensions();
+
     roundtrip(NK_TRANSPORT_TCP);
     roundtrip(NK_TRANSPORT_UDP);
-    roundtrip(NK_TRANSPORT_WEBSOCKET, "/nativekit");
+    roundtrip(NK_TRANSPORT_WEBSOCKET, "/nativekit", "nativekit.v2,nativekit.v1");
 #if !defined(_WIN32)
     roundtrip(NK_TRANSPORT_LOCAL, "/tmp/nativekit-transport-contract.sock");
 #endif

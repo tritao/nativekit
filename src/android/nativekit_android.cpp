@@ -2027,6 +2027,33 @@ nk_result NK_CALL nk_resource_close(nk_handle handle) {
     return NK_OK;
 }
 
+nk_result NK_CALL nk_resource_commit(nk_handle handle, nk_request_id *out_request) {
+    if (!out_request) {
+        nk::core::set_error("resource commit output is null");
+        return NK_ERROR_INVALID_ARGUMENT;
+    }
+    auto stream = resource_stream(handle);
+    if (!stream) {
+        nk::core::set_error("invalid Android resource stream handle");
+        return NK_ERROR_INVALID_HANDLE;
+    }
+    nk_result result = NK_OK;
+    {
+        std::lock_guard lock(stream->mutex);
+        if (!(stream->flags & NK_RESOURCE_STREAM_WRITABLE))
+            result = NK_ERROR_UNSUPPORTED;
+        else if (::fsync(stream->fd) != 0)
+            result = NK_ERROR_UNKNOWN;
+    }
+    *out_request = nk::core::next_request_id();
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_RESOURCE_COMMIT_COMPLETE;
+    event.request_id = *out_request;
+    event.source = handle;
+    event.result = result;
+    return nk::core::push_event(std::move(event));
+}
+
 nk_result NK_CALL nk_dialog_open_resource(nk_handle parent, const nk_file_dialog_options *options,
                                           nk_request_id *out_request) {
     return start_file_dialog(NK_DIALOG_OPEN_RESOURCE, parent, options, out_request);

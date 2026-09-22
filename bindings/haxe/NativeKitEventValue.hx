@@ -50,6 +50,7 @@ enum NativeKitEventValue {
 	Resources(kind:EventKind, request:haxe.Int64, result:Result, accepted:Bool, items:Array<NativeKitResource>);
 	ShareReceived(text:Null<String>, subject:Null<String>, items:Array<NativeKitResource>);
 	ResourceDrop(source:Handle, x:Float, y:Float, text:Null<String>, items:Array<NativeKitResource>);
+	ResourceCommit(request:haxe.Int64, result:Result, downloadInitiated:Bool);
 }
 
 class NativeKitTextEdit {

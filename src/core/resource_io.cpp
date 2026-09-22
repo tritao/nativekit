@@ -260,4 +260,27 @@ nk_result NK_CALL nk_resource_close(nk_handle handle) {
         return fail(NK_ERROR_INVALID_HANDLE, "invalid resource stream handle");
     return NK_OK;
 }
+
+nk_result NK_CALL nk_resource_commit(nk_handle handle, nk_request_id *out_request) {
+    if (!out_request)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "resource commit output is null");
+    auto resource = stream(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid resource stream handle");
+    {
+        std::lock_guard lock(resource->mutex);
+        if (!(resource->flags & NK_RESOURCE_STREAM_WRITABLE))
+            return fail(NK_ERROR_UNSUPPORTED, "resource stream is not writable");
+        resource->file.flush();
+        if (!resource->file)
+            return fail(NK_ERROR_UNKNOWN, "resource commit failed");
+    }
+    *out_request = nk::core::next_request_id();
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_RESOURCE_COMMIT_COMPLETE;
+    event.request_id = *out_request;
+    event.source = handle;
+    event.result = NK_OK;
+    return nk::core::push_event(std::move(event));
+}
 }

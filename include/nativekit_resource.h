@@ -32,6 +32,7 @@ enum NK_FLAGS(nk_resource_flags) {
 
 /** Access and creation flags accepted by nk_resource_open(). */
 typedef uint32_t nk_resource_open_flags;
+typedef uint32_t nk_resource_commit_flags;
 enum NK_FLAGS(nk_resource_open_flags) {
     /** Open the stream for reading. */
     NK_RESOURCE_OPEN_READ = 1u << 0,
@@ -41,6 +42,11 @@ enum NK_FLAGS(nk_resource_open_flags) {
     NK_RESOURCE_OPEN_CREATE = 1u << 2,
     /** Truncate an existing resource before writing. */
     NK_RESOURCE_OPEN_TRUNCATE = 1u << 3
+};
+
+enum NK_FLAGS(nk_resource_commit_flags) {
+    /** The browser initiated a download; completion of the external download is unknowable. */
+    NK_RESOURCE_COMMIT_DOWNLOAD_INITIATED = 1u << 0
 };
 
 /** Capabilities reported for an opened resource stream. */
@@ -290,7 +296,19 @@ NK_API nk_result NK_CALL nk_resource_write(nk_resource_stream stream, const void
 /** Moves the stream position and returns the resulting absolute byte offset. */
 NK_API nk_result NK_CALL nk_resource_seek(nk_resource_stream stream, int64_t offset,
                                           nk_seek_origin origin, uint64_t *out_position);
-/** Closes a resource stream and invalidates its handle. */
+/**
+ * Starts an asynchronous durable commit of the stream's current bytes. Success is reported
+ * only after the destination has completed its write and close operations. The commit owns
+ * a snapshot, continues if the stream is disposed, and completes exactly once through
+ * NK_EVENT_RESOURCE_COMMIT_COMPLETE. Request cancellation is not currently supported.
+ */
+NK_API nk_result NK_CALL nk_resource_commit(nk_resource_stream stream,
+                                            nk_request_id *out_request NK_OUT);
+/**
+ * Closes a resource stream and invalidates its handle. Closing does not imply durable commit.
+ * Browser callers that must retain unsaved state on failure must wait for a successful
+ * nk_resource_commit() completion before closing.
+ */
 NK_API nk_result NK_CALL nk_resource_close(nk_resource_stream stream);
 
 #ifdef __cplusplus

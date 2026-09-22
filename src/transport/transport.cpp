@@ -26,50 +26,13 @@
 #include <vector>
 
 #if defined(__EMSCRIPTEN__)
-
-namespace nk::transport {
-nk_capabilities capabilities() noexcept {
-    return 0;
-}
-void shutdown() noexcept {}
-} // namespace nk::transport
-
-extern "C" {
-
-nk_result NK_CALL nk_transport_connect(const nk_transport_options *, nk_transport *out_transport) {
-    if (out_transport)
-        *out_transport = NK_INVALID_HANDLE;
-    return NK_ERROR_UNSUPPORTED;
-}
-nk_result NK_CALL nk_transport_listen(const nk_transport_options *, nk_listener *out_listener) {
-    if (out_listener)
-        *out_listener = NK_INVALID_HANDLE;
-    return NK_ERROR_UNSUPPORTED;
-}
-nk_result NK_CALL nk_transport_send(nk_transport, const void *, uint64_t) {
-    return NK_ERROR_UNSUPPORTED;
-}
-nk_result NK_CALL nk_transport_receive(nk_transport, void *, uint64_t, uint64_t *out_received) {
-    if (out_received)
-        *out_received = 0;
-    return NK_ERROR_UNSUPPORTED;
-}
-nk_result NK_CALL nk_transport_close(nk_transport) {
-    return NK_ERROR_UNSUPPORTED;
-}
-nk_result NK_CALL nk_listener_close(nk_listener) {
-    return NK_ERROR_UNSUPPORTED;
-}
-nk_result NK_CALL nk_transport_event_data(const nk_event *, nk_transport_data_event *) {
-    return NK_ERROR_UNSUPPORTED;
-}
-nk_result NK_CALL nk_transport_event_accepted(const nk_event *, nk_transport_accepted_event *) {
-    return NK_ERROR_UNSUPPORTED;
-}
-
-} // extern "C"
+#include "transport_web.cpp"
 
 #else
+
+#if defined(NK_HAS_LIBWEBSOCKETS)
+#include <libwebsockets.h>
+#endif
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -133,6 +96,7 @@ struct TransportOptions {
     uint32_t backlog = default_backlog;
     uint64_t receive_buffer_size = default_buffer_size;
     uint64_t send_buffer_size = default_buffer_size;
+    std::string subprotocols;
 };
 
 nk_result fail(nk_result result, const char *message) noexcept {
@@ -162,12 +126,46 @@ bool valid_kind(nk_transport_kind kind) {
            kind == NK_TRANSPORT_LOCAL;
 }
 
+bool valid_subprotocols(std::string_view value) {
+    if (value.empty())
+        return true;
+    bool token_has_character = false;
+    for (const unsigned char character : value) {
+        if (character == ',') {
+            if (!token_has_character)
+                return false;
+            token_has_character = false;
+            continue;
+        }
+        if (character <= 0x20 || character >= 0x7f || character == '(' || character == ')' ||
+            character == '<' || character == '>' || character == '@' || character == ',' ||
+            character == ';' || character == ':' || character == '\\' || character == '"' ||
+            character == '/' || character == '[' || character == ']' || character == '?' ||
+            character == '=' || character == '{' || character == '}')
+            return false;
+        token_has_character = true;
+    }
+    return token_has_character;
+}
+
 bool copy_options(const nk_transport_options *input, TransportOptions &output, bool listening) {
-    if (!input || input->struct_size < sizeof(*input) || !valid_kind(input->kind) ||
-        (input->flags & ~(NK_TRANSPORT_REUSE_ADDRESS | NK_TRANSPORT_NO_DELAY)) != 0 ||
+    if (!input || input->struct_size < NK_TRANSPORT_OPTIONS_V1_SIZE || !valid_kind(input->kind) ||
+        (input->struct_size != NK_TRANSPORT_OPTIONS_V1_SIZE && input->struct_size < sizeof(*input)) ||
+        (input->flags & ~(NK_TRANSPORT_REUSE_ADDRESS | NK_TRANSPORT_NO_DELAY |
+                          NK_TRANSPORT_SECURE)) != 0 ||
         input->reserved0 != 0 || input->reserved[0] != 0 || input->reserved[1] != 0)
         return false;
     if (!copy_string(input->host, output.host) || !copy_string(input->path, output.path))
+        return false;
+    if (input->struct_size >= sizeof(*input)) {
+        if (input->reserved2[0] != 0 || input->reserved2[1] != 0 ||
+            !copy_string(input->subprotocols, output.subprotocols) ||
+            !valid_subprotocols(output.subprotocols))
+            return false;
+    }
+    if ((input->flags & NK_TRANSPORT_SECURE) != 0 && input->kind != NK_TRANSPORT_WEBSOCKET)
+        return false;
+    if (!output.subprotocols.empty() && input->kind != NK_TRANSPORT_WEBSOCKET)
         return false;
     if (input->kind == NK_TRANSPORT_LOCAL) {
 #if defined(_WIN32)
@@ -746,6 +744,7 @@ class TransportResource final : public nk::core::Resource,
     bool udp_peer_valid = false;
 
     std::atomic<bool> stopping{false};
+    std::atomic<bool> receive_overflow{false};
     std::mutex socket_mutex;
     std::mutex mutex;
     std::condition_variable condition;
@@ -764,6 +763,10 @@ class TransportResource final : public nk::core::Resource,
     std::vector<uint8_t> wire_input;
     std::vector<uint8_t> ws_fragment;
     uint8_t ws_fragment_opcode = 0;
+#if defined(NK_HAS_LIBWEBSOCKETS)
+    lws_context *lws_context_handle = nullptr;
+    lws *lws_handle = nullptr;
+#endif
 
     ~TransportResource() override {
         stop_and_join();
@@ -812,7 +815,7 @@ class TransportResource final : public nk::core::Resource,
     void emit_data() noexcept;
     void emit_writable() noexcept;
     void emit_connected() noexcept;
-    void receive_application(const uint8_t *data, std::size_t size) noexcept;
+    bool receive_application(const uint8_t *data, std::size_t size) noexcept;
     bool parse_websocket_frames() noexcept;
     bool read_socket() noexcept;
     bool write_socket() noexcept;
@@ -820,6 +823,9 @@ class TransportResource final : public nk::core::Resource,
     nk_result open_client_socket() noexcept;
     void finish(nk_result result) noexcept;
     void run() noexcept;
+#if defined(NK_HAS_LIBWEBSOCKETS)
+    void run_secure_websocket() noexcept;
+#endif
 
     bool read_http_headers(std::string &headers) noexcept {
         const auto deadline = clock_type::now() + std::chrono::milliseconds(options.timeout_ms);
@@ -1071,33 +1077,40 @@ void TransportResource::emit_connected() noexcept {
     (void)emit_simple(NK_EVENT_TRANSPORT_CONNECTED, handle);
 }
 
-void TransportResource::receive_application(const uint8_t *data, std::size_t size) noexcept {
+bool TransportResource::receive_application(const uint8_t *data, std::size_t size) noexcept {
     if (size == 0)
-        return;
+        return true;
 #if NK_ENABLE_NO_EXCEPTIONS
     {
         std::lock_guard lock(mutex);
-        if (state != State::open ||
-            size >
-                options.receive_buffer_size - std::min(options.receive_buffer_size, incoming_bytes))
-            return;
+        if (state != State::open)
+            return false;
+        if (size >
+            options.receive_buffer_size - std::min(options.receive_buffer_size, incoming_bytes)) {
+            receive_overflow.store(true, std::memory_order_release);
+            return false;
+        }
         incoming.emplace_back(data, data + size);
         incoming_bytes += size;
     }
 #else
     try {
         std::lock_guard lock(mutex);
-        if (state != State::open ||
-            size >
-                options.receive_buffer_size - std::min(options.receive_buffer_size, incoming_bytes))
-            return;
+        if (state != State::open)
+            return false;
+        if (size >
+            options.receive_buffer_size - std::min(options.receive_buffer_size, incoming_bytes)) {
+            receive_overflow.store(true, std::memory_order_release);
+            return false;
+        }
         incoming.emplace_back(data, data + size);
         incoming_bytes += size;
     } catch (...) {
-        return;
+        return false;
     }
 #endif
     emit_data();
+    return true;
 }
 
 bool TransportResource::parse_websocket_frames() noexcept {
@@ -1164,7 +1177,8 @@ bool TransportResource::parse_websocket_frames() noexcept {
                 return false;
             ws_fragment.insert(ws_fragment.end(), payload.begin(), payload.end());
             if (final) {
-                receive_application(ws_fragment.data(), ws_fragment.size());
+                if (!receive_application(ws_fragment.data(), ws_fragment.size()))
+                    return false;
                 ws_fragment.clear();
                 ws_fragment_opcode = 0;
             }
@@ -1175,7 +1189,8 @@ bool TransportResource::parse_websocket_frames() noexcept {
         if (ws_fragment_opcode != 0)
             return false;
         if (final) {
-            receive_application(payload.data(), payload.size());
+            if (!receive_application(payload.data(), payload.size()))
+                return false;
         } else {
             ws_fragment_opcode = opcode;
             ws_fragment = std::move(payload);
@@ -1204,8 +1219,7 @@ bool TransportResource::read_socket() noexcept {
                 udp_peer.size = peer_size;
                 udp_peer_valid = true;
             }
-            receive_application(bytes.data(), static_cast<std::size_t>(count));
-            return true;
+            return receive_application(bytes.data(), static_cast<std::size_t>(count));
         }
         return count == 0 || socket_would_block(socket_error()) ||
                socket_interrupted(socket_error());
@@ -1224,8 +1238,7 @@ bool TransportResource::read_socket() noexcept {
                               bytes.begin() + static_cast<std::ptrdiff_t>(count));
             return parse_websocket_frames();
         }
-        receive_application(bytes.data(), static_cast<std::size_t>(count));
-        return true;
+        return receive_application(bytes.data(), static_cast<std::size_t>(count));
     }
     if (count == 0)
         return false;
@@ -1301,11 +1314,32 @@ nk_result TransportResource::websocket_handshake() noexcept {
             !header_has_token(upgrade, "websocket") || !header_has_token(connection, "upgrade"))
             return NK_TRANSPORT_ERROR_PROTOCOL;
         const auto accept = websocket_accept(key);
-        const std::string response = "HTTP/1.1 101 Switching Protocols\r\n"
-                                     "Upgrade: websocket\r\n"
-                                     "Connection: Upgrade\r\n"
-                                     "Sec-WebSocket-Accept: " +
-                                     accept + "\r\n\r\n";
+        const auto offered = header_value(request, "sec-websocket-protocol");
+        std::string selected;
+        for (std::size_t start = 0; start < offered.size() && selected.empty();) {
+            const auto end = offered.find(',', start);
+            auto token = std::string_view(offered).substr(
+                start, end == std::string::npos ? end : end - start);
+            while (!token.empty() && token.front() == ' ')
+                token.remove_prefix(1);
+            while (!token.empty() && token.back() == ' ')
+                token.remove_suffix(1);
+            if (!token.empty() && header_has_token(options.subprotocols, token))
+                selected.assign(token);
+            if (end == std::string::npos)
+                break;
+            start = end + 1;
+        }
+        if (!offered.empty() && !options.subprotocols.empty() && selected.empty())
+            return NK_TRANSPORT_ERROR_PROTOCOL;
+        std::string response = "HTTP/1.1 101 Switching Protocols\r\n"
+                               "Upgrade: websocket\r\n"
+                               "Connection: Upgrade\r\n"
+                               "Sec-WebSocket-Accept: " +
+                               accept + "\r\n";
+        if (!selected.empty())
+            response += "Sec-WebSocket-Protocol: " + selected + "\r\n";
+        response += "\r\n";
         if (!send_all(socket, response.data(), response.size(), options.timeout_ms, stopping))
             return NK_TRANSPORT_ERROR_CONNECTION;
         if (!parse_websocket_frames())
@@ -1315,7 +1349,7 @@ nk_result TransportResource::websocket_handshake() noexcept {
 
     const std::string key = "dGhlIHNhbXBsZSBub25jZQ==";
     const std::string host = options.host + ":" + std::to_string(options.port);
-    const std::string request = "GET " + options.path +
+    std::string request = "GET " + options.path +
                                 " HTTP/1.1\r\n"
                                 "Host: " +
                                 host +
@@ -1325,16 +1359,21 @@ nk_result TransportResource::websocket_handshake() noexcept {
                                 "Sec-WebSocket-Key: " +
                                 key +
                                 "\r\n"
-                                "Sec-WebSocket-Version: 13\r\n\r\n";
+                                "Sec-WebSocket-Version: 13\r\n";
+    if (!options.subprotocols.empty())
+        request += "Sec-WebSocket-Protocol: " + options.subprotocols + "\r\n";
+    request += "\r\n";
     if (!send_all(socket, request.data(), request.size(), options.timeout_ms, stopping))
         return NK_TRANSPORT_ERROR_CONNECTION;
     std::string response;
     if (!read_http_headers(response))
         return NK_TRANSPORT_ERROR_PROTOCOL;
+    const auto selected = header_value(response, "sec-websocket-protocol");
     if (response.rfind("HTTP/1.1 101", 0) != 0 ||
         !header_has_token(header_value(response, "upgrade"), "websocket") ||
         !header_has_token(header_value(response, "connection"), "upgrade") ||
-        header_value(response, "sec-websocket-accept") != websocket_accept(key))
+        header_value(response, "sec-websocket-accept") != websocket_accept(key) ||
+        (!selected.empty() && !header_has_token(options.subprotocols, selected)))
         return NK_TRANSPORT_ERROR_PROTOCOL;
     if (!parse_websocket_frames())
         return static_cast<nk_result>(NK_TRANSPORT_ERROR_PROTOCOL);
@@ -1361,7 +1400,128 @@ void TransportResource::finish(nk_result result) noexcept {
                       result == NK_OK ? NK_TRANSPORT_ERROR_CLOSED : result);
 }
 
+#if defined(NK_HAS_LIBWEBSOCKETS)
+int secure_websocket_callback(lws *socket, lws_callback_reasons reason, void *, void *input,
+                              size_t size) {
+    auto *transport = static_cast<TransportResource *>(lws_get_opaque_user_data(socket));
+    if (!transport)
+        return 0;
+    switch (reason) {
+    case LWS_CALLBACK_CLIENT_ESTABLISHED:
+        transport->lws_handle = socket;
+        {
+            std::lock_guard lock(transport->mutex);
+            transport->state = TransportResource::State::open;
+        }
+        transport->emit_connected();
+        transport->emit_writable();
+        return 0;
+    case LWS_CALLBACK_CLIENT_RECEIVE:
+        if (!transport->receive_application(static_cast<const uint8_t *>(input), size)) {
+            if (transport->receive_overflow.load(std::memory_order_acquire))
+                transport->terminal_result = NK_TRANSPORT_ERROR_RECEIVE_OVERFLOW;
+            return -1;
+        }
+        return 0;
+    case LWS_CALLBACK_CLIENT_WRITEABLE: {
+        std::unique_lock lock(transport->mutex);
+        if (transport->outgoing.empty()) {
+            lock.unlock();
+            transport->emit_writable();
+            return 0;
+        }
+        auto payload = std::move(transport->outgoing.front());
+        transport->outgoing.pop_front();
+        transport->outgoing_bytes -= payload.size();
+        const bool more = !transport->outgoing.empty();
+        lock.unlock();
+        std::vector<unsigned char> framed(LWS_PRE + payload.size());
+        std::memcpy(framed.data() + LWS_PRE, payload.data(), payload.size());
+        if (lws_write(socket, framed.data() + LWS_PRE, payload.size(), LWS_WRITE_BINARY) < 0)
+            return -1;
+        if (more)
+            lws_callback_on_writable(socket);
+        else
+            transport->emit_writable();
+        return 0;
+    }
+    case LWS_CALLBACK_CLIENT_CONNECTION_ERROR:
+        transport->terminal_result = NK_TRANSPORT_ERROR_CONNECTION;
+        return 0;
+    case LWS_CALLBACK_CLIENT_CLOSED:
+        if (transport->terminal_result == NK_OK)
+            transport->terminal_result = NK_TRANSPORT_ERROR_CLOSED;
+        return 0;
+    default:
+        return 0;
+    }
+}
+
+void TransportResource::run_secure_websocket() noexcept {
+    lws_protocols protocols[2]{};
+    protocols[0].name = "nativekit";
+    protocols[0].callback = secure_websocket_callback;
+    lws_context_creation_info context_info{};
+    context_info.port = CONTEXT_PORT_NO_LISTEN;
+    context_info.protocols = protocols;
+    context_info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
+    lws_context_handle = lws_create_context(&context_info);
+    if (!lws_context_handle) {
+        finish(NK_TRANSPORT_ERROR_CONNECTION);
+        return;
+    }
+    lws_client_connect_info connect{};
+    connect.context = lws_context_handle;
+    connect.address = options.host.c_str();
+    connect.port = options.port ? options.port : 443;
+    connect.path = options.path.c_str();
+    connect.host = options.host.c_str();
+    connect.origin = options.host.c_str();
+    connect.protocol = options.subprotocols.empty() ? nullptr : options.subprotocols.c_str();
+    connect.local_protocol_name = "nativekit";
+    connect.ssl_connection = LCCSCF_USE_SSL;
+    connect.opaque_user_data = this;
+    lws_handle = lws_client_connect_via_info(&connect);
+    if (!lws_handle) {
+        lws_context_destroy(lws_context_handle);
+        lws_context_handle = nullptr;
+        finish(NK_TRANSPORT_ERROR_CONNECTION);
+        return;
+    }
+    const auto deadline = clock_type::now() + std::chrono::milliseconds(options.timeout_ms);
+    while (!stopping.load(std::memory_order_acquire)) {
+        if (state == State::connecting && clock_type::now() >= deadline) {
+            terminal_result = NK_TRANSPORT_ERROR_TIMEOUT;
+            break;
+        }
+        {
+            std::lock_guard lock(mutex);
+            if (!outgoing.empty() && lws_handle)
+                lws_callback_on_writable(lws_handle);
+        }
+        if (lws_service(lws_context_handle, 25) < 0)
+            break;
+        if (terminal_result != NK_OK)
+            break;
+    }
+    lws_context_destroy(lws_context_handle);
+    lws_context_handle = nullptr;
+    lws_handle = nullptr;
+    const auto result = stopping.load(std::memory_order_acquire)
+                            ? NK_TRANSPORT_ERROR_CANCELED
+                            : terminal_result == NK_OK ? NK_TRANSPORT_ERROR_CLOSED : terminal_result;
+    finish(result);
+}
+#endif
+
 void TransportResource::run() noexcept {
+#if defined(NK_HAS_LIBWEBSOCKETS)
+    if (!server_side && options.kind == NK_TRANSPORT_WEBSOCKET &&
+        (options.flags & NK_TRANSPORT_SECURE) != 0) {
+        run_secure_websocket();
+        return;
+    }
+#endif
     nk_result result = NK_OK;
     if (!server_side && !udp_server) {
         result = open_client_socket();
@@ -1395,7 +1555,9 @@ void TransportResource::run() noexcept {
             break;
         }
         if ((ready & 1) != 0 && !read_socket()) {
-            result = NK_TRANSPORT_ERROR_CLOSED;
+            result = receive_overflow.load(std::memory_order_acquire)
+                         ? NK_TRANSPORT_ERROR_RECEIVE_OVERFLOW
+                         : NK_TRANSPORT_ERROR_CLOSED;
             break;
         }
         if ((ready & 2) != 0 && !write_socket()) {
@@ -1540,6 +1702,23 @@ void shutdown() noexcept {
 
 extern "C" {
 
+nk_result NK_CALL nk_transport_query_capabilities(
+    nk_transport_kind kind, nk_transport_capabilities *out_capabilities) {
+    if (!out_capabilities)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "transport capability output is null");
+    *out_capabilities = 0;
+    if (!valid_kind(kind))
+        return fail(NK_ERROR_INVALID_ARGUMENT, "transport kind is invalid");
+    *out_capabilities = NK_TRANSPORT_CAP_CLIENT | NK_TRANSPORT_CAP_LISTENER;
+    if (kind == NK_TRANSPORT_WEBSOCKET) {
+        *out_capabilities |= NK_TRANSPORT_CAP_SUBPROTOCOL;
+#if defined(NK_HAS_LIBWEBSOCKETS)
+        *out_capabilities |= NK_TRANSPORT_CAP_SECURE_CLIENT;
+#endif
+    }
+    return NK_OK;
+}
+
 nk_result NK_CALL nk_transport_connect(const nk_transport_options *options,
                                        nk_transport *out_transport) {
     return nk::core::result_boundary("transport connect", [&]() -> nk_result {
@@ -1576,6 +1755,10 @@ nk_result NK_CALL nk_transport_listen(const nk_transport_options *options,
         if (!out_listener)
             return fail(NK_ERROR_INVALID_ARGUMENT, "listener output is null");
         *out_listener = NK_INVALID_HANDLE;
+        if (options && options->struct_size >= NK_TRANSPORT_OPTIONS_V1_SIZE &&
+            (options->flags & NK_TRANSPORT_SECURE) != 0)
+            return fail(NK_ERROR_UNSUPPORTED,
+                        "secure transport listeners are unsupported by this backend");
         TransportOptions copied;
         if (!copy_options(options, copied, true))
             return fail(NK_ERROR_INVALID_ARGUMENT, "listener options are invalid");
@@ -1626,7 +1809,8 @@ nk_result NK_CALL nk_transport_send(nk_transport handle, const void *data, uint6
 #endif
         if (size != 0)
             std::memcpy(payload.data(), data, static_cast<std::size_t>(size));
-        if (transport->options.kind == NK_TRANSPORT_WEBSOCKET)
+        if (transport->options.kind == NK_TRANSPORT_WEBSOCKET &&
+            (transport->options.flags & NK_TRANSPORT_SECURE) == 0)
             payload = websocket_frame(payload.data(), payload.size(), !transport->server_side, 2);
 
         std::lock_guard lock(transport->mutex);
@@ -1671,6 +1855,21 @@ nk_result NK_CALL nk_transport_receive(nk_transport handle, void *data, uint64_t
         if (transport->incoming.empty())
             transport->data_event_pending = false;
         transport->condition.notify_all();
+        return NK_OK;
+    });
+}
+
+nk_result NK_CALL nk_transport_cancel(nk_transport handle) {
+    return nk::core::result_boundary("transport cancel", [&]() -> nk_result {
+        auto transport = get_transport(handle);
+        if (!transport)
+            return fail(NK_ERROR_INVALID_HANDLE, "invalid transport handle");
+        {
+            std::lock_guard lock(transport->mutex);
+            if (transport->state == TransportResource::State::closed)
+                return NK_OK;
+        }
+        transport->stop_and_join();
         return NK_OK;
     });
 }

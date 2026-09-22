@@ -997,6 +997,18 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 */
 		NK_EVENT_APPLICATION_QUIT_REQUESTED = 511;
 		/**
+		 * Document visibility changed; flags is nonzero when visible.
+		 */
+		NK_EVENT_APPLICATION_VISIBILITY_CHANGED = 512;
+		/**
+		 * The browser page was hidden; delivery before termination is not guaranteed.
+		 */
+		NK_EVENT_APPLICATION_SUSPENDED = 513;
+		/**
+		 * A hidden or cached browser page became active again.
+		 */
+		NK_EVENT_APPLICATION_RESUMED = 514;
+		/**
 		 * The attached mobile host geometry or insets changed.
 		 */
 		NK_EVENT_MOBILE_HOST_GEOMETRY_CHANGED = 600;
@@ -1032,6 +1044,10 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 * An asynchronous URI resource load completed with raw byte data.
 		 */
 		NK_EVENT_RESOURCE_DATA_COMPLETE = 803;
+		/**
+		 * A resource stream commit completed; request_id identifies the commit.
+		 */
+		NK_EVENT_RESOURCE_COMMIT_COMPLETE = 804;
 		/**
 		 * HTTP response headers became available.
 		 */
@@ -2181,6 +2197,12 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 */
 		NK_POINTER_BUTTON_LAST = 7;
 	}
+	flags nk_resource_commit_flags : u32 {
+		/**
+		 * The browser initiated a download; completion of the external download is unknowable.
+		 */
+		NK_RESOURCE_COMMIT_DOWNLOAD_INITIATED = 1;
+	}
 	/**
 	 * Access and persistence flags attached to a URI resource.
 	 */
@@ -2308,6 +2330,10 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 * A task or asynchronous operation was cancelled before completion.
 		 */
 		NK_ERROR_CANCELLED = -14;
+		/**
+		 * The user or operating system denied access required by the operation.
+		 */
+		NK_ERROR_PERMISSION_DENIED = -15;
 	}
 	/**
 	 * Reference point used by nk_resource_seek().
@@ -2673,6 +2699,28 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 */
 		NK_TOUCH_TOOL_ERASER = 3;
 	}
+	flags nk_transport_capabilities : u32 {
+		/**
+		 * The kind can create outgoing connections on this platform.
+		 */
+		NK_TRANSPORT_CAP_CLIENT = 1;
+		/**
+		 * The kind can create listeners on this platform.
+		 */
+		NK_TRANSPORT_CAP_LISTENER = 2;
+		/**
+		 * Outgoing connections of this kind support NK_TRANSPORT_SECURE.
+		 */
+		NK_TRANSPORT_CAP_SECURE_CLIENT = 4;
+		/**
+		 * Listeners of this kind support NK_TRANSPORT_SECURE.
+		 */
+		NK_TRANSPORT_CAP_SECURE_LISTENER = 8;
+		/**
+		 * WebSocket subprotocol offers and negotiation are supported.
+		 */
+		NK_TRANSPORT_CAP_SUBPROTOCOL = 16;
+	}
 	/**
 	 * Transport-specific asynchronous error values stored in event.result.
 	 */
@@ -2685,6 +2733,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		NK_TRANSPORT_ERROR_WOULD_BLOCK = -205;
 		NK_TRANSPORT_ERROR_CLOSED = -206;
 		NK_TRANSPORT_ERROR_ADDRESS_IN_USE = -207;
+		NK_TRANSPORT_ERROR_RECEIVE_OVERFLOW = -208;
 	}
 	flags nk_transport_flags : u32 {
 		/**
@@ -2695,6 +2744,10 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 * Request TCP_NODELAY for TCP and WebSocket connections.
 		 */
 		NK_TRANSPORT_NO_DELAY = 2;
+		/**
+		 * Use TLS for a WebSocket client connection (wss://).
+		 */
+		NK_TRANSPORT_SECURE = 4;
 	}
 	enum nk_transport_kind : u32 {
 		/**
@@ -3250,9 +3303,18 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 */
 	extern fn nk_raw_pointer_motion_supported() -> nk_bool;
 	/**
-	 * Closes a resource stream and invalidates its handle.
+	 * Closes a resource stream and invalidates its handle. Closing does not imply durable commit.
+	 * Browser callers that must retain unsaved state on failure must wait for a successful
+	 * nk_resource_commit() completion before closing.
 	 */
 	extern fn nk_resource_close(stream: nk_resource_stream) -> nk_result;
+	/**
+	 * Starts an asynchronous durable commit of the stream's current bytes. Success is reported
+	 * only after the destination has completed its write and close operations. The commit owns
+	 * a snapshot, continues if the stream is disposed, and completes exactly once through
+	 * NK_EVENT_RESOURCE_COMMIT_COMPLETE. Request cancellation is not currently supported.
+	 */
+	extern fn nk_resource_commit(stream: nk_resource_stream, out_request: ptr<nk_request_id> @out) -> nk_result;
 	/**
 	 * Returns optional UTF-8 text from a resource-drop event.
 	 */
@@ -3655,11 +3717,24 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 */
 	extern fn nk_time_seconds() -> f64;
 	/**
-	 * Stops a transport, joins its worker, and releases its handle. This call is thread-safe.
+	 * Cancels connection/negotiation or closes an open connection without disposing its handle.
+	 * This call is thread-safe and idempotent until the terminal CLOSED event is observed.
+	 */
+	extern fn nk_transport_cancel(transport: nk_transport) -> nk_result;
+	/**
+	 * Cancels if necessary, waits for backend callbacks/workers, and releases the handle.
+	 * This call is thread-safe. Queued events can still name the numeric disposed handle;
+	 * callers must not use such events to access the disposed transport.
 	 */
 	extern fn nk_transport_close(transport: nk_transport) -> nk_result;
 	/**
 	 * Starts an asynchronous connection and returns its handle immediately.
+	 *
+	 * The call must be made on NativeKit's UI thread. Completion is asynchronous: the first
+	 * event for the handle is CONNECTED, or FAILED followed by CLOSED. After CONNECTED,
+	 * DATA and WRITABLE may repeat. There is exactly one CLOSED terminal event. Cancellation
+	 * produces CLOSED with NK_TRANSPORT_ERROR_CANCELED and no FAILED event. No event is
+	 * emitted for a handle after its CLOSED event.
 	 */
 	extern fn nk_transport_connect(options: ptr<const<nk_transport_options>>, out_transport: ptr<nk_transport> @out @owned) -> nk_result;
 	/**
@@ -3675,11 +3750,25 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 */
 	extern fn nk_transport_listen(options: ptr<const<nk_transport_options>>, out_listener: ptr<nk_listener> @out @owned) -> nk_result;
 	/**
+	 * Reports support for one transport kind without starting an operation.
+	 * Unknown kinds return NK_ERROR_INVALID_ARGUMENT and clear out_capabilities.
+	 */
+	extern fn nk_transport_query_capabilities(kind: nk_transport_kind, out_capabilities: ptr<nk_transport_capabilities> @out) -> nk_result;
+	/**
 	 * Reads currently buffered application bytes without blocking. This call is thread-safe.
+	 * DATA reports a snapshot of available bytes and may be coalesced. Call receive until it
+	 * returns NK_TRANSPORT_ERROR_WOULD_BLOCK. Receive overflow closes the connection with a
+	 * failure; application bytes are never silently discarded.
 	 */
 	extern fn nk_transport_receive(transport: nk_transport, data: ptr<void>, size: u64, out_received: ptr<u64> @out) -> nk_result;
 	/**
 	 * Copies bytes into the bounded asynchronous send queue. This call is thread-safe.
+	 * TCP, local, and WebSocket transports expose one reliable ordered byte stream; a send
+	 * does not define a receive boundary. UDP preserves datagram boundaries. WebSocket frame
+	 * boundaries are deliberately hidden. NK_ERROR_QUEUE_FULL means no bytes were accepted;
+	 * WRITABLE is emitted after a previously non-empty queue drains. In browsers the limit
+	 * includes bytes reported by WebSocket.bufferedAmount, but cannot bound buffering held
+	 * internally by the user agent.
 	 */
 	extern fn nk_transport_send(transport: nk_transport, data: ptr<const<void>>, size: u64) -> nk_result;
 	/**
@@ -5893,7 +5982,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	/**
 	 * Native transport configuration. Strings are read only during the call.
 	 */
-	struct nk_transport_options @layout(80, 8) {
+	struct nk_transport_options @layout(104, 8) {
 		/**
 		 * Set to sizeof(nk_transport_options) before calling.
 		 */
@@ -5942,6 +6031,17 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 * Reserved for compatible extensions; initialize to zero.
 		 */
 		reserved: array<u64, 2> @offset(64);
+		/**
+		 * Optional comma-separated WebSocket subprotocol tokens, in preference order.
+		 * Browsers pass these tokens to the WebSocket constructor. Native listeners select
+		 * the first client token that they also advertise. Authentication data does not
+		 * belong here and should be sent as application protocol messages.
+		 */
+		subprotocols: nullable<utf8> @offset(80);
+		/**
+		 * Reserved for compatible extensions; initialize to zero.
+		 */
+		reserved2: array<u64, 2> @offset(88);
 	}
 	/**
 	 * A display mode reported by a monitor backend.

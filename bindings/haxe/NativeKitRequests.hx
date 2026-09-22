@@ -61,6 +61,18 @@ class NativeKitRequests {
 		return trackResourceDialog("resource-directory dialog", request, handler);
 	}
 
+	/** Commits a writable stream; Success(true) means a download was only initiated. */
+	public function commitResource(stream:ResourceStreamHandle,
+		handler:NativeKitRequestOutcome<Bool>->Void):haxe.Int64 {
+		var request = NativeKit.nk_resource_commit_checked(stream);
+		track(request, function(value) switch value {
+			case ResourceCommit(_, result, downloadInitiated):
+				handler(resultOutcome(result, downloadInitiated));
+			case _: wrongEvent("resource commit");
+		});
+		return request;
+	}
+
 	public function messageDialog(parent:NativeKitWindow, options:MessageDialogOptions,
 		handler:NativeKitRequestOutcome<MessageResult>->Void):haxe.Int64 {
 		var request = NativeKit.nk_dialog_message_checked(new Handle(parent.nativeHandle().rawValue()), options);
@@ -173,6 +185,7 @@ class NativeKitRequests {
 			case NotificationActivated(id, _): Std.string(id);
 			case NotificationFailed(id, _): Std.string(id);
 			case Resources(_, id, _, _, _): Std.string(id);
+			case ResourceCommit(id, _, _): Std.string(id);
 			case _: null;
 		};
 		return key == "0" ? null : key;

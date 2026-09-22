@@ -194,6 +194,7 @@ struct WebResourceStream final : nk::core::Resource {
     std::vector<std::byte> data;
     uint64_t position = 0;
     uint32_t flags = 0;
+    bool commit_started = false;
 };
 
 struct PendingWebResourceWrite {
@@ -277,10 +278,16 @@ std::shared_ptr<WebResourceStream> get_resource_stream(nk_handle handle) {
 }
 
 constexpr std::string_view web_file_handle_uri_prefix = "nativekit-file-handle://";
+constexpr std::string_view web_download_uri_prefix = "nativekit-download://";
 
 bool is_web_file_handle_uri(const char *uri) {
     return uri && std::string_view(uri).compare(0, web_file_handle_uri_prefix.size(),
                                                 web_file_handle_uri_prefix) == 0;
+}
+
+bool is_web_download_uri(const char *uri) {
+    return uri && std::string_view(uri).compare(0, web_download_uri_prefix.size(),
+                                               web_download_uri_prefix) == 0;
 }
 
 void flush_web_resource_writes() noexcept {
@@ -2111,6 +2118,15 @@ std::shared_ptr<WebGamepadResource> lookup_web_gamepad(nk_handle handle) {
 
 extern "C" {
 
+EMSCRIPTEN_KEEPALIVE void nk_web_host_lifecycle(int type, uint32_t flags) {
+    nk::core::QueuedEvent event;
+    event.kind = type == 0   ? NK_EVENT_APPLICATION_VISIBILITY_CHANGED
+                 : type == 1 ? NK_EVENT_APPLICATION_SUSPENDED
+                             : NK_EVENT_APPLICATION_RESUMED;
+    event.flags = flags;
+    (void)nk::core::push_event(std::move(event));
+}
+
 nk_capabilities NK_CALL nk_get_capabilities(void) {
     auto capabilities = NK_CAP_WINDOW | NK_CAP_INPUT | NK_CAP_OPENGL_ES_SURFACE | NK_CAP_CURSOR |
                         NK_CAP_POINTER_CAPTURE | NK_CAP_CLIPBOARD | NK_CAP_WINDOW_GEOMETRY |
@@ -2541,9 +2557,9 @@ nk_result NK_CALL nk_resource_open(const nk_resource *resource, uint32_t flags,
             *out_stream = NK_INVALID_HANDLE;
             if ((flags & NK_RESOURCE_OPEN_READ) != 0)
                 return unsupported("browser resource reads use nk_resource_load_async");
-            if (!is_web_file_handle_uri(resource->uri))
+            if (!is_web_file_handle_uri(resource->uri) && !is_web_download_uri(resource->uri))
                 return unsupported("web resource streams require a retained file handle");
-            if (!nk::web::has_resource_handle(resource->uri))
+            if (is_web_file_handle_uri(resource->uri) && !nk::web::has_resource_handle(resource->uri))
                 return unsupported("browser file handle is no longer available");
 
             auto resource_stream = std::make_shared<WebResourceStream>();
@@ -2668,7 +2684,7 @@ nk_result NK_CALL nk_resource_close(nk_handle handle) {
             PendingWebResourceWrite write;
             {
                 std::lock_guard lock(resource->mutex);
-                if (resource->flags & NK_RESOURCE_STREAM_WRITABLE) {
+                if ((resource->flags & NK_RESOURCE_STREAM_WRITABLE) && !resource->commit_started) {
                     write.uri = resource->uri;
                     write.data = resource->data;
                 }
@@ -2682,6 +2698,46 @@ nk_result NK_CALL nk_resource_close(nk_handle handle) {
                                       "invalid web resource stream handle");
             return NK_OK;
         });
+}
+
+EMSCRIPTEN_KEEPALIVE void nk_web_host_resource_commit_complete(double request_value,
+                                                               nk_result result, uint32_t flags) {
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_RESOURCE_COMMIT_COMPLETE;
+    event.request_id = static_cast<nk_request_id>(request_value);
+    event.result = result;
+    event.flags = flags;
+    (void)nk::core::push_event(std::move(event));
+}
+
+nk_result NK_CALL nk_resource_commit(nk_handle handle, nk_request_id *out_request) {
+    if (!out_request)
+        return resource_error(NK_ERROR_INVALID_ARGUMENT, "resource commit output is null");
+    auto resource = get_resource_stream(handle);
+    if (!resource)
+        return NK_ERROR_INVALID_HANDLE;
+    std::string uri;
+    std::vector<std::byte> data;
+    {
+        std::lock_guard lock(resource->mutex);
+        if (!(resource->flags & NK_RESOURCE_STREAM_WRITABLE))
+            return resource_error(NK_ERROR_UNSUPPORTED, "web resource stream is not writable");
+        uri = resource->uri;
+        data = resource->data;
+        resource->commit_started = true;
+    }
+    if (data.size() > std::numeric_limits<uint32_t>::max())
+        return resource_error(NK_ERROR_PAYLOAD_TOO_LARGE, "web resource commit is too large");
+    const auto request = nk::core::next_request_id();
+    if (!nk::web::commit_resource(uri.c_str(), data.data(), static_cast<uint32_t>(data.size()),
+                                  request))
+        {
+            std::lock_guard lock(resource->mutex);
+            resource->commit_started = false;
+        }
+        return resource_error(NK_ERROR_UNSUPPORTED, "browser file commit is unavailable");
+    *out_request = request;
+    return NK_OK;
 }
 
 nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *out_window) {

@@ -1225,6 +1225,11 @@ EM_JS(void, nk_web_pick_resources,
                       openWithInput(kind === select_resource_directory);
                       return;
                   }
+                  if (kind === save_resource) {
+                      const name = encodeURIComponent(suggestedValue || "untitled");
+                      complete(result_ok, true, "nativekit-download://" + request + "/" + name);
+                      return;
+                  }
                   complete(result_unsupported, false, "");
               } catch (error) {
                   if (error && error.name === "AbortError")
@@ -1919,6 +1924,17 @@ EM_JS(int, nk_web_has_resource_handle, (const char *uri), {
     return handles[UTF8ToString(uri)] ? 1 : 0;
 });
 
+EM_JS(void, nk_web_install_lifecycle_handlers, (), {
+    if (Module._nkNativeKitLifecycleInstalled) return;
+    Module._nkNativeKitLifecycleInstalled = true;
+    document.addEventListener('visibilitychange', () =>
+        Module._nk_web_host_lifecycle(0, document.visibilityState === 'visible' ? 1 : 0));
+    window.addEventListener('pagehide', () => Module._nk_web_host_lifecycle(1, 0));
+    window.addEventListener('pageshow', event => {
+        if (event.persisted) Module._nk_web_host_lifecycle(2, 0);
+    });
+});
+
 EM_JS(int, nk_web_write_resource, (const char *uri, const void *data, uint32_t size), {
     const handles = Module._nkNativeKitResourceHandles || {};
     const handle = handles[UTF8ToString(uri)];
@@ -1934,6 +1950,46 @@ EM_JS(int, nk_web_write_resource, (const char *uri, const void *data, uint32_t s
         return 0;
     }
 });
+
+EM_JS(int, nk_web_commit_resource,
+      (const char *uri, const void *data, uint32_t size, double request), {
+          const uriText = UTF8ToString(uri);
+          if (uriText.startsWith("nativekit-download://")) {
+              const bytes = HEAPU8.slice(data, data + size);
+              const anchor = document.createElement("a");
+              const objectUrl = URL.createObjectURL(new Blob([bytes]));
+              anchor.href = objectUrl;
+              anchor.download = decodeURIComponent(uriText.substring(uriText.lastIndexOf("/") + 1));
+              anchor.style.display = "none";
+              document.body.appendChild(anchor);
+              anchor.click();
+              anchor.remove();
+              setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+              Module._nk_web_host_resource_commit_complete(request, 0, 1);
+              return 1;
+          }
+          const handles = Module._nkNativeKitResourceHandles || {};
+          const handle = handles[uriText];
+          if (!handle || !handle.createWritable)
+              return 0;
+          const bytes = HEAPU8.slice(data, data + size);
+          let operation;
+          try {
+              operation = handle.createWritable().then(writable =>
+                  writable.write(bytes).then(() => writable.close()));
+          } catch (_) {
+              return 0;
+          }
+          Promise.resolve(operation).then(
+              () => Module._nk_web_host_resource_commit_complete(request, 0, 0),
+              error => {
+                  const name = error && error.name;
+                  const result = name === "AbortError" ? -14 :
+                      (name === "NotAllowedError" || name === "SecurityError" ? -15 : -1);
+                  Module._nk_web_host_resource_commit_complete(request, result, 0);
+              });
+          return 1;
+      });
 
 // clang-format on
 
@@ -2320,6 +2376,12 @@ bool write_resource(const char *uri, const void *data, uint32_t size) noexcept {
     return nk_web_write_resource(uri, data, size) != 0;
 }
 
+bool commit_resource(const char *uri, const void *data, uint32_t size,
+                     nk_request_id request) noexcept {
+    return uri && (!size || data) && request != NK_INVALID_REQUEST_ID &&
+           nk_web_commit_resource(uri, data, size, static_cast<double>(request)) != 0;
+}
+
 bool create_webgl_context(const char *selector, const WebGLContextOptions &options,
                           EMSCRIPTEN_WEBGL_CONTEXT_HANDLE *out_context) noexcept {
     if (!out_context)
@@ -2552,6 +2614,7 @@ bool install_callbacks(const char *selector, uint32_t route, const HostCallbacks
                 NK_ORIENTATION_LANDSCAPE_RIGHT) != 0;
     }
     nk_web_install_drop_handlers(selector, static_cast<int>(route));
+    nk_web_install_lifecycle_handlers();
     return true;
 }
 

@@ -188,7 +188,9 @@ enum NK_ENUM(nk_result) {
     /** A payload exceeds the bounded size accepted by the target contract. */
     NK_ERROR_PAYLOAD_TOO_LARGE = -13,
     /** A task or asynchronous operation was cancelled before completion. */
-    NK_ERROR_CANCELLED = -14
+    NK_ERROR_CANCELLED = -14,
+    /** The user or operating system denied access required by the operation. */
+    NK_ERROR_PERMISSION_DENIED = -15
 };
 
 /* ------------------------------------------------------------------------- */
@@ -302,6 +304,12 @@ enum NK_ENUM(nk_event_kind) {
     NK_EVENT_MENU_ITEM_ACTIVATED = 510,
     /** The user requested that the application terminate. */
     NK_EVENT_APPLICATION_QUIT_REQUESTED = 511,
+    /** Document visibility changed; flags is nonzero when visible. */
+    NK_EVENT_APPLICATION_VISIBILITY_CHANGED = 512,
+    /** The browser page was hidden; delivery before termination is not guaranteed. */
+    NK_EVENT_APPLICATION_SUSPENDED = 513,
+    /** A hidden or cached browser page became active again. */
+    NK_EVENT_APPLICATION_RESUMED = 514,
     /** The attached mobile host geometry or insets changed. */
     NK_EVENT_MOBILE_HOST_GEOMETRY_CHANGED = 600,
     /** A graphics surface became ready for rendering. */
@@ -320,6 +328,8 @@ enum NK_ENUM(nk_event_kind) {
     NK_EVENT_RESOURCE_DROP = 802,
     /** An asynchronous URI resource load completed with raw byte data. */
     NK_EVENT_RESOURCE_DATA_COMPLETE = 803,
+    /** A resource stream commit completed; request_id identifies the commit. */
+    NK_EVENT_RESOURCE_COMMIT_COMPLETE = 804,
     /** HTTP response headers became available. */
     NK_EVENT_HTTP_HEADERS = 900,
     /** A streaming HTTP response has data available to read. */
