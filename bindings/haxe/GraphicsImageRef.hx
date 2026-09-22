@@ -1,6 +1,4 @@
-import NativeKit;
-import NativeKit.GraphicsApi;
-import NativeKit.GraphicsImage;
+import nativekit.ffi.NativeKit;
 
 /** An explicitly retained, backend-neutral sampled graphics image reference. */
 class GraphicsImageRef {

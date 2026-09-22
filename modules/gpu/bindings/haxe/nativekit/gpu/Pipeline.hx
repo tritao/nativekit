@@ -1,4 +1,5 @@
 package nativekit.gpu;
+import NativeKitGpu;
 
 import nativekit.gpu.Enums.IndexType;
 import nativekit.gpu.Enums.VertexFormat;

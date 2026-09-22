@@ -1,21 +1,7 @@
-import NativeKit;
-import NativeKit.EventKind;
-import NativeKit.GamepadAxisEvent;
-import NativeKit.GamepadButtonEvent;
-import NativeKit.JoystickAxisEvent;
-import NativeKit.JoystickButtonEvent;
-import NativeKit.JoystickHatEvent;
-import NativeKit.KeyEvent;
-import NativeKit.PointerButtonEvent;
-import NativeKit.PointerMoveEvent;
-import NativeKit.PointerScrollEvent;
-import NativeKit.TextEditEvent;
-import NativeKit.TextInputEvent;
-import NativeKit.TouchEvent;
+import nativekit.ffi.NativeKit;
 import NativeKitEventContext;
 import NativeKitEventBytes;
 import NativeKitEventValue;
-import NativeKitEventValue.NativeKitTextEdit;
 
 class NativeKitInputEvents {
 	public static function decode(c:NativeKitEventContext):Null<NativeKitEventValue> return switch c.kind {

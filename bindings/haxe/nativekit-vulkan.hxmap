@@ -1,6 +1,13 @@
 {
   "interface": "NativeKitVulkan",
+  "dependencyModules": {
+    "NativeKit": "nativekit.ffi.NativeKit"
+  },
   "typePrefix": "nk_",
   "functionPrefix": "nk_vulkan_",
-  "functionCase": "camel"
+  "functionCase": "camel",
+  "typeNames": {
+    "nk_window": "nativekit.ffi.WindowHandle",
+    "nk_result": "nativekit.ffi.Result"
+  }
 }

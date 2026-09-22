@@ -1,4 +1,4 @@
-import NativeKit.Result;
+import nativekit.ffi.NativeKit;
 
 /** A failed NativeKit operation with its machine-readable result and native diagnostic. */
 class NativeKitError extends haxe.Exception {

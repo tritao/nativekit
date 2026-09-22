@@ -1,6 +1,4 @@
-import NativeKit;
-import NativeKit.InitOptions;
-import NativeKit.WindowOptions;
+import nativekit.ffi.NativeKit;
 import NativeKitWindow;
 import NativeKitEvents;
 

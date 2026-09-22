@@ -1,11 +1,4 @@
-import NativeKit;
-import NativeKit.Handle;
-import NativeKit.WindowHandle;
-import NativeKit.OwnedWindowHandle;
-import NativeKit.SurfaceOptions;
-import NativeKit.WebviewOptions;
-import NativeKit.WindowDecorationRegion;
-import NativeKit.Result;
+import nativekit.ffi.NativeKit;
 import NativeKitError;
 import NativeKitSurface;
 import NativeKitWebView;

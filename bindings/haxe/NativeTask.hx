@@ -1,20 +1,20 @@
-import NativeKit;
+import nativekit.ffi.NativeKit;
 import NativeKitError;
 
 /** Managed owner for a native task handle; it never supplies a worker callback. */
 class NativeTask {
-	final value:NativeKit.TaskHandle;
+	final value:TaskHandle;
 	var disposed:Bool = false;
 
-	private function new(value:NativeKit.TaskHandle) this.value = value;
+	private function new(value:TaskHandle) this.value = value;
 
 	/** Adopts a handle returned by native code or a Haxeon native trampoline. */
-	public static function adopt(value:NativeKit.TaskHandle):NativeTask {
+	public static function adopt(value:TaskHandle):NativeTask {
 		if (value == null || value.rawValue() == 0) throw "NativeTask cannot adopt an invalid handle";
 		return new NativeTask(value);
 	}
 
-	public function nativeHandle():NativeKit.TaskHandle {
+	public function nativeHandle():TaskHandle {
 		ensureLive();
 		return value;
 	}
@@ -24,7 +24,7 @@ class NativeTask {
 		check(NativeKit.nk_task_cancel(value), "task.cancel");
 	}
 
-	public function state():NativeKit.TaskState {
+	public function state():TaskState {
 		ensureLive();
 		return NativeKit.nk_task_get_state_checked(value);
 	}
@@ -39,7 +39,7 @@ class NativeTask {
 
 	function ensureLive():Void if (disposed) throw "NativeTask has been disposed";
 
-	static function check(status:NativeKit.Result, operation:String):Void
-		if (status != NativeKit.Result.Ok)
+	static function check(status:Result, operation:String):Void
+		if (status != Result.Ok)
 			throw new NativeKitError(status, operation, NativeKit.nk_last_error());
 }

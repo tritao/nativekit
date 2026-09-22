@@ -1,8 +1,4 @@
-import NativeKit;
-import NativeKit.SurfaceHandle;
-import NativeKit.OwnedSurfaceHandle;
-import NativeKit.SurfaceFrameCallbackCallback;
-import NativeKit.Result;
+import nativekit.ffi.NativeKit;
 import NativeKitError;
 
 /** Owns one graphics surface attached to a NativeKit window. */

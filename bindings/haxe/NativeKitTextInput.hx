@@ -1,10 +1,5 @@
-import NativeKit;
-import NativeKit.TextInputState;
-import NativeKit.NativeKitConstants;
-import NativeKit.Result;
-import NativeKit.TextInputAction;
-import NativeKit.TextInputType;
-import NativeKit.Handle;
+import nativekit.ffi.NativeKit;
+import nativekit.ffi.NativeKitConstants;
 import NativeKitSurface;
 import NativeKitWindow;
 

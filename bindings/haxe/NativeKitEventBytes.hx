@@ -1,4 +1,4 @@
-import NativeKitEventValue.NativeKitResource;
+import NativeKitEventValue;
 
 /** Validates and decodes byte-oriented NativeKit event payloads. */
 class NativeKitEventBytes {

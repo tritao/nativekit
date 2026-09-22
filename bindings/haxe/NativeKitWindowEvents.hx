@@ -1,12 +1,4 @@
-import NativeKit;
-import NativeKit.EventKind;
-import NativeKit.Event;
-import NativeKit.SurfaceResizeEvent;
-import NativeKit.WindowFramebufferResizeEvent;
-import NativeKit.WindowMoveEvent;
-import NativeKit.WindowResizeEvent;
-import NativeKit.WindowScaleEvent;
-import NativeKit.WindowState;
+import nativekit.ffi.NativeKit;
 import NativeKitEventContext;
 import NativeKitEventBytes;
 import NativeKitEventValue;

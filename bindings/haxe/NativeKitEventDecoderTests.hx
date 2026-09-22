@@ -1,11 +1,4 @@
-import NativeKit.EventKind;
-import NativeKit.Handle;
-import NativeKit.InputAction;
-import NativeKit.JoystickHatFlags;
-import NativeKit.Key;
-import NativeKit.Modifiers;
-import NativeKit.NavigationError;
-import NativeKit.TextEditAction;
+import nativekit.ffi.NativeKit;
 
 /** Synthetic payload tests for decoder validation and fallback behavior. */
 class NativeKitEventDecoderTests {

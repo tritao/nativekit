@@ -1,7 +1,7 @@
 package nativekit.gpu;
+import NativeKitGpu;
 
 import haxe.io.Bytes;
-import NativeKit.GraphicsApi;
 import GraphicsImageRef;
 
 /** Renderer-owned RGBA8 sampled image. */

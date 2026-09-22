@@ -1,16 +1,17 @@
 package nativekit.gpu;
+import NativeKitGpu;
+import nativekit.ffi.NativeKit;
 
 import NativeKitWindow;
-import NativeKit.GraphicsApi;
 
 /** Owns a GPU-adapter surface associated with a NativeKit window. */
 class Surface {
 	final window:NativeKitWindow;
 	final renderers:Array<Renderer> = [];
-	var value:NativeKit.SurfaceHandle;
+	var value:SurfaceHandle;
 	var disposed:Bool = false;
 
-	private function new(window:NativeKitWindow, value:NativeKit.SurfaceHandle) {
+	private function new(window:NativeKitWindow, value:SurfaceHandle) {
 		this.window = window;
 		this.value = value;
 		window.registerDependent(function() {
@@ -34,20 +35,20 @@ class Surface {
 		return new Surface(window, made.out_surface);
 	}
 
-	public function nativeHandle():NativeKit.SurfaceHandle {
+	public function nativeHandle():SurfaceHandle {
 		ensureLive();
 		return value;
 	}
 
 	/** Acquires an immutable surface frame for explicit batch submission. */
-	public function acquireFrame():SurfaceFrame {
+	public function acquireFrame():nativekit.gpu.SurfaceFrame {
 		ensureLive();
-		var target = new NativeKit.SurfaceFrameTarget();
+		var target = new SurfaceFrameTarget();
 		target.set_struct_size(80);
 		var acquired = NativeKit.nk_surface_acquire_frame(value, target);
-		if (acquired.status != NativeKit.Result.Ok)
+		if (acquired.status != Result.Ok)
 			throw new NativeKitError(acquired.status, "surface.acquireFrame", NativeKit.nk_last_error());
-		return new SurfaceFrame(this, acquired.out_frame, acquired.out_target);
+		return new nativekit.gpu.SurfaceFrame(this, acquired.out_frame, acquired.out_target);
 	}
 
 	public function createRenderer():Renderer {

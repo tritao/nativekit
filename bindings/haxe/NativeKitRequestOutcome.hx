@@ -1,3 +1,4 @@
+import nativekit.ffi.NativeKit;
 /** Result of one asynchronous NativeKit request. */
 enum NativeKitRequestOutcome<T> {
 	/** The asynchronous operation completed successfully. */
@@ -5,5 +6,5 @@ enum NativeKitRequestOutcome<T> {
 	/** A user dismissed a dialog without selecting a result. */
 	Cancelled;
 	/** The operation failed; `message` is optional backend-specific detail. */
-	Failure(result:NativeKit.Result, message:Null<String>);
+	Failure(result:Result, message:Null<String>);
 }

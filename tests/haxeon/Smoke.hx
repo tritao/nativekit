@@ -1,5 +1,6 @@
-import NativeKit;
-import NativeKit.Result;
+import nativekit.ffi.NativeKitConstants;
+import nativekit.ffi.NativeKit;
+import GraphicsImageRef;
 import NativeKitEventValue;
 import NativeKitEvents;
 import NativeKitEventBytes;
@@ -7,26 +8,20 @@ import NativeKitEventDecoderTests;
 import NativeKitTextInput;
 import NativeKitRuntime;
 import NativeKitWindow;
-import NativeKit.NativeKitConstants;
-import NativeKit.InitOptions;
-import NativeKit.TextInputState;
-import NativeKit.Capabilities;
-import NativeKit.NotificationFlags;
-import NativeKit.DialogFilter;
-import NativeKit.FileDialogOptions;
-import NativeKit.Resource;
-import NativeKit.ShareOptions;
-import NativeKit.NotificationOptions;
-import NativeKit.WindowOptions;
-import NativeKit.WindowFlags;
-import NativeKit.WindowKind;
 import NativeKitRequestOutcome;
 import NativeFuture;
 import NativePromise;
-import NativeKitEvents.NativeKitEventSubscription;
 
 class Smoke {
 	static function main():Int {
+		var graphicsApi:GraphicsApi = GraphicsApi.Opengl;
+		var unusedImageRef:Null<GraphicsImageRef> = null;
+		if (unusedImageRef != null)
+			return 19;
+		if (graphicsApi != GraphicsApi.Opengl)
+			return 17;
+		var graphicsInfo = new GraphicsImageInfo();
+		graphicsInfo.set_api(graphicsApi);
 		if (NativeKit.nk_api_version() != NativeKitConstants.NK_API_VERSION)
 			return 1;
 
@@ -43,7 +38,7 @@ class Smoke {
 			return 2;
 		var resultErrorOk = false;
 		try
-			NativeKit.nk_window_show_checked(NativeKit.WindowHandle.invalid(), true)
+			NativeKit.nk_window_show_checked(WindowHandle.invalid(), true)
 		catch (error:NativeKitError)
 			resultErrorOk = error.result == Result.ErrorInvalidHandle && error.operation == "nk_window_show" && error.diagnostic != null;
 
@@ -109,7 +104,7 @@ class Smoke {
 		windowOptions.set_height(200);
 		windowOptions.set_title("NativeKit smoke");
 		windowOptions.set_flags(WindowFlags.Hidden);
-		windowOptions.set_owner(NativeKit.WindowHandle.invalid());
+		windowOptions.set_owner(WindowHandle.invalid());
 		windowOptions.set_kind(WindowKind.Normal);
 		var textFilter = new DialogFilter();
 		textFilter.set_patterns("*.txt;*.md");
@@ -162,7 +157,7 @@ class Smoke {
 			monitorOk = primary.out_monitor.isValid() && name.status == 0 && name.buffer != null;
 		}
 
-		var diagnosticOk = NativeKit.nk_window_destroy(NativeKit.WindowHandle.invalid()) == -3 && NativeKit.nk_last_error() != null;
+		var diagnosticOk = NativeKit.nk_window_destroy(WindowHandle.invalid()) == -3 && NativeKit.nk_last_error() != null;
 		runtime.dispose();
 		if (!events.isDisposed() || !lifetimeSubscription.isDisposed())
 			return 21;

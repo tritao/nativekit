@@ -1,6 +1,6 @@
 package nativekit.gpu;
+import nativekit.ffi.NativeKit;
 
-import NativeKit;
 import NativeKitError;
 
 /**
@@ -25,7 +25,7 @@ class SurfaceFrame {
 	public function present():Void {
 		ensureOpen();
 		var status = NativeKit.nk_surface_present_frame(value);
-		if (status != NativeKit.Result.Ok)
+		if (status != Result.Ok)
 			throw new NativeKitError(status, "surfaceFrame.present", NativeKit.nk_last_error());
 		finished = true;
 	}
@@ -34,7 +34,7 @@ class SurfaceFrame {
 	public function cancel():Void {
 		ensureOpen();
 		var status = NativeKit.nk_surface_cancel_frame(value);
-		if (status != NativeKit.Result.Ok)
+		if (status != Result.Ok)
 			throw new NativeKitError(status, "surfaceFrame.cancel", NativeKit.nk_last_error());
 		finished = true;
 	}

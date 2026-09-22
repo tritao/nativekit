@@ -1,4 +1,4 @@
-import NativeKit.EventKind;
+import nativekit.ffi.NativeKit;
 import NativeKitEventBytes;
 import NativeKitEventContext;
 import NativeKitEventValue;

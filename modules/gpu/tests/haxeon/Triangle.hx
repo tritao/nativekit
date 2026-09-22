@@ -1,7 +1,4 @@
-import NativeKit.GraphicsApi;
-import NativeKit.WindowOptions;
-import NativeKit.WindowFlags;
-import NativeKit.WindowKind;
+import nativekit.ffi.NativeKit;
 import NativeKitEventValue;
 import NativeKitRuntime;
 import NativeKitWindow;
@@ -39,11 +36,10 @@ import haxe.io.Bytes;
 
 class Triangle {
 	static function verifyGeneratedEnumMembers():Void {
-		var vertexFormat:NativeKitGpu.VertexFormat = NativeKitGpu.VertexFormat.Float;
-		var floatUniform:NativeKitGpu.UniformType = NativeKitGpu.UniformType.Float;
-		var intUniform:NativeKitGpu.UniformType = NativeKitGpu.UniformType.Int;
-		if (vertexFormat != NativeKitGpu.VertexFormat.Float || floatUniform != NativeKitGpu.UniformType.Float ||
-			intUniform != NativeKitGpu.UniformType.Int)
+		var vertexFormat:VertexFormat = VertexFormat.Float;
+		var floatUniform:UniformType = UniformType.Float;
+		var intUniform:UniformType = UniformType.Int;
+		if (vertexFormat != VertexFormat.Float || floatUniform != UniformType.Float || intUniform != UniformType.Int)
 			throw "generated GPU enum members changed values";
 	}
 
@@ -256,7 +252,7 @@ class Triangle {
 		windowOptions.set_height(600);
 		windowOptions.set_title("Haxeon: GPU over NativeKit");
 		windowOptions.set_flags(WindowFlags.Resizable);
-		windowOptions.set_owner(NativeKit.WindowHandle.invalid());
+		windowOptions.set_owner(WindowHandle.invalid());
 		windowOptions.set_kind(WindowKind.Normal);
 		var window:NativeKitWindow = runtime.createWindow(windowOptions);
 		var surface = Surface.create(window, 800, 600);

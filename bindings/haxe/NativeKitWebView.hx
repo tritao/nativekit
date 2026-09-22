@@ -1,9 +1,4 @@
-import NativeKit;
-import NativeKit.WebViewHandle;
-import NativeKit.OwnedWebViewHandle;
-import NativeKit.Handle;
-import NativeKit.Result;
-import NativeKit.WebviewOptions;
+import nativekit.ffi.NativeKit;
 import NativeKitError;
 
 /** Owns one native child WebView. */

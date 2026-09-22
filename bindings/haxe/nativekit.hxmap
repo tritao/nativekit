@@ -1,5 +1,10 @@
 {
   "interface": "NativeKit",
+  "package": "nativekit.ffi",
+  "modules": {
+    "functions": "NativeKit",
+    "constants": "NativeKitConstants"
+  },
   "typePrefix": "nk_",
 	"enumValuePrefixes": [
 		"NK_NOTIFICATION_"

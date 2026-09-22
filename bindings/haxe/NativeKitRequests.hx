@@ -1,10 +1,5 @@
+import nativekit.ffi.NativeKit;
 import NativeKitEventValue;
-import NativeKit;
-import NativeKit.MessageDialogOptions;
-import NativeKit.MessageResult;
-import NativeKit.Result;
-import NativeKit.FileDialogOptions;
-import NativeKitEventValue.NativeKitResource;
 import NativeKitRequestOutcome;
 import NativeKitWebView;
 import NativeKitWindow;
@@ -49,25 +44,25 @@ class NativeKitRequests {
 
 	public function openResource(parent:NativeKitWindow, configured:FileDialogOptions,
 		handler:NativeKitRequestOutcome<Array<NativeKitResource>>->Void):haxe.Int64 {
-		var request = NativeKit.nk_dialog_open_resource_checked(new NativeKit.Handle(parent.nativeHandle().rawValue()), configured);
+		var request = NativeKit.nk_dialog_open_resource_checked(new Handle(parent.nativeHandle().rawValue()), configured);
 		return trackResourceDialog("open-resource dialog", request, handler);
 	}
 
 	public function saveResource(parent:NativeKitWindow, configured:FileDialogOptions,
 		handler:NativeKitRequestOutcome<Array<NativeKitResource>>->Void):haxe.Int64 {
-		var request = NativeKit.nk_dialog_save_resource_checked(new NativeKit.Handle(parent.nativeHandle().rawValue()), configured);
+		var request = NativeKit.nk_dialog_save_resource_checked(new Handle(parent.nativeHandle().rawValue()), configured);
 		return trackResourceDialog("save-resource dialog", request, handler);
 	}
 
 	public function selectResourceDirectory(parent:NativeKitWindow, configured:FileDialogOptions,
 		handler:NativeKitRequestOutcome<Array<NativeKitResource>>->Void):haxe.Int64 {
-		var request = NativeKit.nk_dialog_select_resource_directory_checked(new NativeKit.Handle(parent.nativeHandle().rawValue()), configured);
+		var request = NativeKit.nk_dialog_select_resource_directory_checked(new Handle(parent.nativeHandle().rawValue()), configured);
 		return trackResourceDialog("resource-directory dialog", request, handler);
 	}
 
 	public function messageDialog(parent:NativeKitWindow, options:MessageDialogOptions,
 		handler:NativeKitRequestOutcome<MessageResult>->Void):haxe.Int64 {
-		var request = NativeKit.nk_dialog_message_checked(new NativeKit.Handle(parent.nativeHandle().rawValue()), options);
+		var request = NativeKit.nk_dialog_message_checked(new Handle(parent.nativeHandle().rawValue()), options);
 		track(request, function(value) switch value {
 			case DialogMessage(_, result, button):
 				handler(acceptedOutcome(result, button != MessageResult.None, button));
@@ -160,7 +155,7 @@ class NativeKitRequests {
 		handler:NativeKitRequestOutcome<Array<NativeKitResource>>->Void):haxe.Int64 {
 		track(request, function(value) switch value {
 			case Resources(kind, _, result, accepted, items):
-				if (kind != NativeKit.EventKind.DialogResourcesComplete) wrongEvent(name);
+				if (kind != EventKind.DialogResourcesComplete) wrongEvent(name);
 				handler(acceptedOutcome(result, accepted, items));
 			case _: wrongEvent(name);
 		});

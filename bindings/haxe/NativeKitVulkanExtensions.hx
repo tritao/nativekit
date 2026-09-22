@@ -1,4 +1,4 @@
-import NativeKit.Result;
+import nativekit.ffi.NativeKit;
 import NativeKitWindow;
 
 /** Safe Haxe view of NativeKit's process-lifetime Vulkan extension names. */
