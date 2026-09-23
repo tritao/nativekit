@@ -1,4 +1,6 @@
 package nativekit.gpu;
+
+import nativekit.gpu.GpuResult;
 import nativekit.ffi.NativeKitGpu;
 import nativekit.ffi.NativeKit;
 import nativekit.ffi.NativeKitTypes;

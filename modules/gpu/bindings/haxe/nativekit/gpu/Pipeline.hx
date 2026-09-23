@@ -1,4 +1,6 @@
 package nativekit.gpu;
+
+import nativekit.gpu.GpuResult;
 import nativekit.ffi.NativeKitGpu;
 
 import nativekit.gpu.Enums.IndexType;

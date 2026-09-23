@@ -1,5 +1,7 @@
 package nativekit.gpu;
 
+import nativekit.gpu.GpuResult;
+
 import nativekit.ffi.NativeKitGpu;
 import haxe.io.Bytes;
 import nativekit.gpu.Enums.ReadbackState;
