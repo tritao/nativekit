@@ -2674,6 +2674,47 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		NK_TOUCH_TOOL_ERASER = 3;
 	}
 	/**
+	 * Transport-specific asynchronous error values stored in event.result.
+	 */
+	enum nk_transport_error : i32 {
+		NK_TRANSPORT_ERROR_DNS = -200;
+		NK_TRANSPORT_ERROR_CONNECTION = -201;
+		NK_TRANSPORT_ERROR_TIMEOUT = -202;
+		NK_TRANSPORT_ERROR_PROTOCOL = -203;
+		NK_TRANSPORT_ERROR_CANCELED = -204;
+		NK_TRANSPORT_ERROR_WOULD_BLOCK = -205;
+		NK_TRANSPORT_ERROR_CLOSED = -206;
+		NK_TRANSPORT_ERROR_ADDRESS_IN_USE = -207;
+	}
+	flags nk_transport_flags : u32 {
+		/**
+		 * Allow a listener to reuse a recently released local address.
+		 */
+		NK_TRANSPORT_REUSE_ADDRESS = 1;
+		/**
+		 * Request TCP_NODELAY for TCP and WebSocket connections.
+		 */
+		NK_TRANSPORT_NO_DELAY = 2;
+	}
+	enum nk_transport_kind : u32 {
+		/**
+		 * Reliable ordered byte stream over an IP socket.
+		 */
+		NK_TRANSPORT_TCP = 1;
+		/**
+		 * Connected datagrams over an IP socket.
+		 */
+		NK_TRANSPORT_UDP = 2;
+		/**
+		 * RFC 6455 WebSocket frames over a plain TCP connection.
+		 */
+		NK_TRANSPORT_WEBSOCKET = 3;
+		/**
+		 * Reliable byte stream over a local operating-system socket.
+		 */
+		NK_TRANSPORT_LOCAL = 4;
+	}
+	/**
 	 * Creation flags for nk_view_create().
 	 */
 	flags nk_view_flags : u32 {
@@ -3087,6 +3128,10 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 * The returned string may be empty after a successful call.
 	 */
 	extern fn nk_last_error() -> utf8 @borrowed;
+	/**
+	 * Stops a listener, joins its accept worker, and releases its handle.
+	 */
+	extern fn nk_listener_close(listener: nk_listener) -> nk_result;
 	/**
 	 * Adds an item to the root when parent is zero, or to a submenu item.
 	 */
@@ -3609,6 +3654,34 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 * Returns monotonic time in seconds since the same unspecified epoch.
 	 */
 	extern fn nk_time_seconds() -> f64;
+	/**
+	 * Stops a transport, joins its worker, and releases its handle. This call is thread-safe.
+	 */
+	extern fn nk_transport_close(transport: nk_transport) -> nk_result;
+	/**
+	 * Starts an asynchronous connection and returns its handle immediately.
+	 */
+	extern fn nk_transport_connect(options: ptr<const<nk_transport_options>>, out_transport: ptr<nk_transport> @out @owned) -> nk_result;
+	/**
+	 * Decodes the payload of NK_EVENT_TRANSPORT_ACCEPTED.
+	 */
+	extern fn nk_transport_event_accepted(event: ptr<const<nk_event>>, out_accepted: ptr<nk_transport_accepted_event> @out) -> nk_result;
+	/**
+	 * Decodes the payload of NK_EVENT_TRANSPORT_DATA.
+	 */
+	extern fn nk_transport_event_data(event: ptr<const<nk_event>>, out_data: ptr<nk_transport_data_event> @out) -> nk_result;
+	/**
+	 * Binds an endpoint and reports accepted transports through the event queue.
+	 */
+	extern fn nk_transport_listen(options: ptr<const<nk_transport_options>>, out_listener: ptr<nk_listener> @out @owned) -> nk_result;
+	/**
+	 * Reads currently buffered application bytes without blocking. This call is thread-safe.
+	 */
+	extern fn nk_transport_receive(transport: nk_transport, data: ptr<void>, size: u64, out_received: ptr<u64> @out) -> nk_result;
+	/**
+	 * Copies bytes into the bounded asynchronous send queue. This call is thread-safe.
+	 */
+	extern fn nk_transport_send(transport: nk_transport, data: ptr<const<void>>, size: u64) -> nk_result;
 	/**
 	 * Publishes every pending change for this view's parent and makes the whole
 	 * sibling set the committed state. This preserves the legacy per-view entry
@@ -5800,6 +5873,77 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		reserved: u32 @offset(44);
 	}
 	/**
+	 * Transport created for an NK_EVENT_TRANSPORT_ACCEPTED event.
+	 */
+	struct nk_transport_accepted_event @layout(32, 8) {
+		struct_size: u32 @offset(0) @struct_size;
+		transport: nk_transport @offset(4);
+		kind: nk_transport_kind @offset(8);
+		reserved0: u32 @offset(12);
+		reserved: array<u64, 2> @offset(16);
+	}
+	/**
+	 * Bytes available when NK_EVENT_TRANSPORT_DATA is delivered.
+	 */
+	struct nk_transport_data_event @layout(32, 8) {
+		struct_size: u32 @offset(0) @struct_size;
+		available: u64 @offset(8);
+		reserved: array<u64, 2> @offset(16);
+	}
+	/**
+	 * Native transport configuration. Strings are read only during the call.
+	 */
+	struct nk_transport_options @layout(64, 8) {
+		/**
+		 * Set to sizeof(nk_transport_options) before calling.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		/**
+		 * Socket or framing protocol to use.
+		 */
+		kind: nk_transport_kind @offset(4);
+		/**
+		 * Combination of NK_TRANSPORT_* flags.
+		 */
+		flags: nk_transport_flags @offset(8);
+		/**
+		 * Host name or numeric address for IP transports; nullable when listening.
+		 */
+		host: nullable<utf8> @offset(12);
+		/**
+		 * TCP/UDP port. A zero port requests an ephemeral port for a listener.
+		 */
+		port: u16 @offset(16);
+		/**
+		 * Reserved; initialize to zero.
+		 */
+		reserved0: u16 @offset(18);
+		/**
+		 * Unix socket path for NK_TRANSPORT_LOCAL, or WebSocket resource path.
+		 */
+		path: nullable<utf8> @offset(20);
+		/**
+		 * Connection and handshake timeout; zero selects five seconds.
+		 */
+		timeout_ms: u32 @offset(24);
+		/**
+		 * Listener backlog; zero selects the platform default.
+		 */
+		backlog: u32 @offset(28);
+		/**
+		 * Maximum queued application bytes received by this transport.
+		 */
+		receive_buffer_size: u64 @offset(32);
+		/**
+		 * Maximum queued application bytes waiting to be sent.
+		 */
+		send_buffer_size: u64 @offset(40);
+		/**
+		 * Reserved for compatible extensions; initialize to zero.
+		 */
+		reserved: array<u64, 2> @offset(48);
+	}
+	/**
 	 * A display mode reported by a monitor backend.
 	 */
 	struct nk_video_mode @layout(56, 8) {
@@ -6199,6 +6343,10 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	handle nk_joystick : u32;
 	type nk_keep_awake = u32;
 	/**
+	 * A listening endpoint that produces NK_EVENT_TRANSPORT_ACCEPTED events.
+	 */
+	handle nk_listener : u32 @destroy("nk_listener_close");
+	/**
 	 * A live application menu tree.
 	 */
 	handle nk_menu : u32 @destroy("nk_menu_destroy");
@@ -6259,6 +6407,10 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 * Absolute Unicode code-point position used by the text-input API.
 	 */
 	type nk_text_position = u32;
+	/**
+	 * A connected or connecting byte/datagram transport.
+	 */
+	handle nk_transport : u32 @destroy("nk_transport_close");
 	/**
 	 * A NativeKit-owned native child view.
 	 *

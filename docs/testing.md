@@ -32,9 +32,9 @@ objects.
 compares the running backend's advertised mask with its own row. The Linux CI
 contract job also runs the shared capability conformance suite, while the
 Windows and macOS jobs run that suite through their native CTest matrices.
-The Web workflow builds the same snapshot checker as a browser-hosted artifact
-and runs it through the Chrome DevTools test harness alongside the Web
-accessibility and system-equivalent tests.
+The Web workflow builds the snapshot checker and NativeKit's Web integration
+tests as browser-hosted artifacts, then runs the capability, accessibility, and
+system-equivalent checks in Chrome.
 
 On Linux, `linux_notification_failure` runs in an isolated D-Bus session with
 no notification daemon. It verifies that an accepted asynchronous request
@@ -47,13 +47,21 @@ focused on generated-binding drift, configure/build/test failures, and validatin
 the existing renderer contract in
 [ADR 0010](decisions/0010-explicit-rendering-backends.md). The gate covers
 Windows D3D11 (x64, Win32, and ARM64), macOS Metal (Intel and Apple Silicon),
-Android API 23 and 36, and the Web smoke, visual, benchmark, and profiling
-checks.
+Android API 23 and 36, NativeKit's Web browser integration checks, and the
+Haxe binding audit with native smoke tests. UIKit showcase, visual, benchmark,
+and profiling tests run in the sibling `uikit` project.
 
 `NK_ENABLE_SANITIZERS=ON` enables AddressSanitizer and UndefinedBehaviorSanitizer.
 Leak detection remains enabled for the core tests. It is disabled only for the
 GTK integration process because GTK, Pango, and Fontconfig retain
 process-lifetime caches outside NativeKit's ownership.
+
+## Web task test
+
+When Emscripten tests are enabled, `nativekit_web_tasks` starts a yielding app
+task and verifies that it completes on the app executor. The browser workflow
+checks its completion marker through the same Chrome DevTools runner as the
+other Web integration tests.
 
 ## Web accessibility test
 
@@ -62,8 +70,8 @@ browser-hosted HTML integration binary. It publishes a small semantic tree,
 checks focus and text-range updates, dispatches a DOM activation, and verifies
 that the resulting `NK_EVENT_ACCESSIBILITY_ACTION` reaches NativeKit. Serve
 the generated HTML over HTTP and run it in the same browser environment used by
-the Web smoke tests. The sibling UIKit project's `tools/build-web.sh` builds
-this artifact and its `tools/test-web.sh` runs it with the UI browser suite.
+the Web tests. The NativeKit Web workflow builds and executes this artifact via
+`tools/test-web-backend.sh` and `tools/web_dataset_smoke.py`.
 
 ## Web system-equivalents test
 
@@ -73,10 +81,10 @@ appearance, notification, joystick, and resource-I/O capabilities, validates
 the appearance and URI input boundaries, performs an initial Gamepad
 enumeration, and exercises a writable retained-handle stream through a fake
 File System Access handle. The asynchronous flush is marked on the document
-for browser-runner assertions. UIKit's `tools/test-web.sh` checks that marker
-through the same Chrome DevTools session as the showcase smoke test. Resource pickers
-and notification permission prompts still require a user-activated browser test
-because browsers
+for browser-runner assertions. The NativeKit Web workflow checks that marker
+through the Chrome DevTools session used for its other browser integrations.
+Resource pickers and notification permission prompts still require a
+user-activated browser test because browsers
 intentionally reject those APIs outside a trusted user gesture.
 
 ## Android tests

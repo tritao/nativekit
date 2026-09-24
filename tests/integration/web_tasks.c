@@ -3,6 +3,10 @@
 
 #include <assert.h>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten/emscripten.h>
+#endif
+
 static int calls;
 
 static nk_task_step_result NK_CALL web_task_step(const nk_task_step_context *context,
@@ -43,5 +47,8 @@ int main(void) {
     assert(complete && calls == 2);
     assert(nk_task_destroy(task) == NK_OK);
     nk_shutdown();
+#ifdef __EMSCRIPTEN__
+    EM_ASM({ document.documentElement.dataset.nativekitTaskResult = "passed"; });
+#endif
     return 0;
 }

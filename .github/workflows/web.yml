@@ -4,195 +4,87 @@ on:
   push:
   pull_request:
 
-env:
-  HAXEON_DIR: ${{ github.workspace }}/vendor/haxeon
-
 jobs:
-  build:
+  bindings:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      HAXEON_DIR: ${{ github.workspace }}/haxeon
     steps:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
 
-      - name: Initialize Haxeon and its pinned dependencies
-        run: git -c submodule.vendor/haxeon.update=checkout submodule update --init --depth=1 --recursive vendor/haxeon
+      - name: Check out the pinned Haxeon toolchain
+        uses: actions/checkout@v7
+        with:
+          repository: tritao/haxeon
+          ref: d51ec9c7ce2180c205d60d993a9185ee13a58d27
+          path: haxeon
+          submodules: recursive
 
-      - name: Read pinned Haxeon revision
-        id: haxeon-revision
-        run: printf 'revision=%s\n' "$(git -C "$HAXEON_DIR" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Install Haxeon build dependencies
+      - name: Install NativeKit and Haxeon build dependencies
         run: >-
-          sudo apt-get update && sudo apt-get install -y libffi-dev libfontconfig1-dev
-          libgl1-mesa-dev libgles2-mesa-dev libgtk-3-dev libwebkit2gtk-4.1-dev
-          python3-fonttools xvfb
+          sudo apt-get update && sudo apt-get install -y
+          libffi-dev libfontconfig1-dev libgl1-mesa-dev libgles2-mesa-dev
+          libgtk-3-dev libwebkit2gtk-4.1-dev ninja-build python3-fonttools xvfb
 
-      - name: Cache web toolchain
+      - name: Cache Haxeon tools
         uses: actions/cache@v6
         with:
-          path: |
-            .tools
-            vendor/haxeon/.tools
-          key: web-tools-${{ runner.os }}-${{ runner.arch }}-${{ steps.haxeon-revision.outputs.revision }}-${{ hashFiles('tools/setup-emscripten.sh', 'tools/setup-web.sh', 'vendor/haxeon/cmake/Bootstrap.cmake') }}
+          path: haxeon/.tools
+          key: haxeon-tools-${{ runner.os }}-${{ runner.arch }}-d51ec9c7-${{ hashFiles('haxeon/scripts/bootstrap-tools.sh', 'haxeon/cmake/Bootstrap.cmake') }}
 
       - name: Install Haxeon toolchain
-        working-directory: vendor/haxeon
+        working-directory: haxeon
         run: ./scripts/bootstrap-tools.sh
 
-      - name: Run native Haxe binding and integration tests
+      - name: Audit Haxe bindings and run native smoke tests
         run: ./tools/test-haxe-bindings.sh
 
-      - name: Install web toolchain
-        run: ./tools/setup-web.sh
-
-      - name: Build WebGL2 showcase
-        run: ./tools/build-web.sh
-
-      - name: Upload Web build
-        uses: actions/upload-artifact@v7
-        with:
-          name: web-build
-          path: |
-            build-web/modules/ui/
-            build-web/tests/
-          if-no-files-found: error
-          retention-days: 1
-
-  test:
-    needs: build
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Download Web build
-        uses: actions/download-artifact@v8
-        with:
-          name: web-build
-          path: build-web
-
-      - name: Install Chrome
-        uses: browser-actions/setup-chrome@v2
-        with:
-          chrome-version: stable
-
-      - name: Run browser smoke and conformance test
-        run: ./tools/test-web.sh
-
-      - name: Run Haxeon browser smoke test
-        run: ./tools/test-web-haxeon.sh
-
-      - name: Benchmark production Haxeon Showcase
-        run: |
-          mkdir -p out/web-benchmarks
-          NATIVEKIT_WEB_BENCHMARK_MODE=core \
-          NATIVEKIT_WEB_BENCHMARK_JSON=out/web-benchmarks/core-full.json \
-            ./tools/benchmark-web-haxeon.sh
-          NATIVEKIT_WEB_BENCHMARK_MODE=browser \
-          NATIVEKIT_WEB_BENCHMARK_JSON=out/web-benchmarks/browser-full.json \
-            ./tools/benchmark-web-haxeon.sh
-
-      - name: Upload Wasm benchmark reports
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: haxeon-wasm-benchmarks
-          path: out/web-benchmarks/*.json
-          if-no-files-found: ignore
-
-  visual:
-    needs: build
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Download Web build
-        uses: actions/download-artifact@v8
-        with:
-          name: web-build
-          path: build-web
-
-      - name: Install Chrome
-        uses: browser-actions/setup-chrome@v2
-        with:
-          chrome-version: stable
-
-      - name: Run Haxeon visual regression tests
-        run: ./tools/test-web-visual.sh
-
-      - name: Upload visual regression differences
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: haxeon-visual-diffs
-          path: build-web/visual-diffs/
-          if-no-files-found: ignore
-
-  profile:
+  browser:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      EMSDK_VERSION: 6.0.9
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: recursive
 
-      - name: Initialize Haxeon and its pinned dependencies
-        run: git -c submodule.vendor/haxeon.update=checkout submodule update --init --depth=1 --recursive vendor/haxeon
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
 
-      - name: Read pinned Haxeon revision
-        id: haxeon-revision
-        run: printf 'revision=%s\n' "$(git -C "$HAXEON_DIR" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Install Haxeon build dependencies
-        run: >-
-          sudo apt-get update && sudo apt-get install -y libffi-dev libfontconfig1-dev
-          libgl1-mesa-dev libgles2-mesa-dev libgtk-3-dev libwebkit2gtk-4.1-dev
-          python3-fonttools xvfb
-
-      - name: Cache web toolchain
+      - name: Cache Emscripten SDK
         uses: actions/cache@v6
         with:
-          path: |
-            .tools
-            vendor/haxeon/.tools
-          key: web-tools-${{ runner.os }}-${{ runner.arch }}-${{ steps.haxeon-revision.outputs.revision }}-${{ hashFiles('tools/setup-emscripten.sh', 'tools/setup-web.sh', 'vendor/haxeon/cmake/Bootstrap.cmake') }}
+          path: .tools/emsdk
+          key: emsdk-${{ runner.os }}-${{ runner.arch }}-${{ env.EMSDK_VERSION }}
 
-      - name: Install Haxeon toolchain
-        working-directory: vendor/haxeon
-        run: ./scripts/bootstrap-tools.sh
+      - name: Install Web toolchain
+        run: ./tools/setup-web.sh
+
+      - name: Configure NativeKit Web tests
+        run: |
+          source .tools/emsdk/emsdk_env.sh
+          emcmake cmake -S . -B build-web -GNinja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DNK_BUILD_SHARED=OFF \
+            -DNK_BUILD_EXAMPLES=OFF \
+            -DNK_BUILD_TESTS=ON \
+            -DNK_BUILD_GPU=OFF
+
+      - name: Build NativeKit Web integration tests
+        run: |
+          source .tools/emsdk/emsdk_env.sh
+          cmake --build build-web --parallel 2 --target \
+            nativekit_platform_parity \
+            nativekit_web_accessibility \
+            nativekit_web_system_equivalents \
+            nativekit_web_tasks
 
       - name: Install Chrome
         uses: browser-actions/setup-chrome@v2
         with:
           chrome-version: stable
 
-      - name: Install web toolchain
-        run: ./tools/setup-web.sh
-
-      - name: Build allocator-instrumented Haxeon Showcase
-        run: NKUI_HAXEON_MEMORY_STATS=ON ./tools/build-web.sh
-
-      - name: Profile representative Haxeon workloads
-        run: |
-          mkdir -p out/web-benchmarks
-          for scenario in static text-heavy editing full; do
-            NATIVEKIT_WEB_ARTIFACT_DIR=build-web/modules/ui \
-            NATIVEKIT_WEB_BENCHMARK_MODE=core \
-            NATIVEKIT_WEB_BENCHMARK_PROFILE=1 \
-            NATIVEKIT_WEB_BENCHMARK_SCENARIO="$scenario" \
-            NATIVEKIT_WEB_BENCHMARK_WARMUP=30 \
-            NATIVEKIT_WEB_BENCHMARK_FRAMES=120 \
-            NATIVEKIT_WEB_BENCHMARK_JSON="out/web-benchmarks/profile-$scenario.json" \
-              ./tools/benchmark-web-haxeon.sh
-          done
-
-      - name: Upload Wasm profile reports
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: haxeon-wasm-profiles
-          path: out/web-benchmarks/*.json
-          if-no-files-found: ignore
+      - name: Run NativeKit browser integration tests
+        run: ./tools/test-web-backend.sh build-web
