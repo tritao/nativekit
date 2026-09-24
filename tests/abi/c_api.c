@@ -30,6 +30,11 @@
 
 _Static_assert(NK_GRAPHICS_D3D11 == 4, "D3D11 graphics API value is stable");
 _Static_assert(NK_GRAPHICS_METAL == 5, "Metal graphics API value is stable");
+_Static_assert(sizeof(nk_text_edit_event) == 48, "text edit event ABI size changed");
+_Static_assert(offsetof(nk_text_edit_event, selection_affinity) == 36,
+               "text edit affinity ABI offset changed");
+_Static_assert(offsetof(nk_text_edit_event, history_kind) == 40,
+               "text edit history ABI offset changed");
 _Static_assert(sizeof(nk_surface_frame_target) == 80,
                "surface frame target keeps its versioned 40-byte prefix and token tail");
 _Static_assert(offsetof(nk_surface_frame_target, native_device) == 40,

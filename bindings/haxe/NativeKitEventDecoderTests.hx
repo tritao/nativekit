@@ -42,12 +42,17 @@ class NativeKitEventDecoderTests {
 		putU32(editPayload, 12, 1); putU32(editPayload, 16, 2);
 		putU32(editPayload, 20, 2); putU32(editPayload, 24, 2);
 		putU32(editPayload, 28, 1); putU32(editPayload, 32, 2);
+		putU32(editPayload, 36, 1); putU32(editPayload, 40, 6);
 		editPayload.set(48, 0xc3); editPayload.set(49, 0xa9);
 		var editContext = new NativeKitEventContext(EventKind.TextEdit, handle(9), zero, 0, 0, 0, editPayload);
 		var editOk = switch NativeKitEvent.decodeContext(editContext) {
-			case TextEdit(source, edit): source.rawValue() == 9 && edit.action == TextEditAction.Compose && edit.text == "é" && edit.replaceStart == 1 && edit.compositionEnd == 2;
+			case TextEdit(source, edit): source.rawValue() == 9 && edit.action == TextEditAction.Compose && edit.text == "é" && edit.replaceStart == 1 && edit.compositionEnd == 2 && edit.selectionAffinity == 1 && edit.historyKind == 6;
 			case _: false;
 		};
+		var invalidEditMetadata = editPayload.sub(0, editPayload.length);
+		putU32(invalidEditMetadata, 40, 7);
+		var invalidEditMetadataContext = new NativeKitEventContext(EventKind.TextEdit,
+			handle(9), zero, 0, 0, 0, invalidEditMetadata);
 		var invalidUtf8 = haxe.io.Bytes.alloc(50);
 		putU32(invalidUtf8, 4, 48); putU32(invalidUtf8, 8, 2);
 		invalidUtf8.set(48, 0xc0); invalidUtf8.set(49, 0x80);
@@ -113,6 +118,7 @@ class NativeKitEventDecoderTests {
 			&& throws(function() { NativeKitEventBytes.decodeResourceList(badResource, 0); })
 			&& throws(function() { NativeKitInputEvents.decode(shortKey); })
 			&& throws(function() { NativeKitInputEvents.decode(shortEdit); })
+			&& throws(function() { NativeKitInputEvents.decode(invalidEditMetadataContext); })
 			&& throws(function() { NativeKitInputEvents.decode(unterminatedAccessibilityContext); })
 			&& throws(function() { NativeKitWindowEvents.decode(shortWindow); })
 			&& throws(function() { NativeKitEventBytes.readUtf8Slice(invalidUtf8,48,2,48); });

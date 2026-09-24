@@ -25,6 +25,7 @@
 #include "core/runtime.hpp"
 #include "core/sensor_internal.hpp"
 #include "core/system_internal.hpp"
+#include "core/text_edit_transaction.hpp"
 #include "android/nativekit_android_internal.hpp"
 
 #include <jni.h>
@@ -3763,6 +3764,11 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnTextEdit(
     payload.selection_end = position(selection_end);
     payload.composition_start = position(composition_start);
     payload.composition_end = position(composition_end);
+    payload.history_kind = nk::core::infer_text_edit_history_kind(
+        payload.action, resource->text_input_state.selection_start,
+        resource->text_input_state.selection_end, payload.replace_start,
+        payload.replace_end,
+        resource->text_input_state.composition_start != NK_TEXT_POSITION_NONE);
     nk::core::QueuedEvent event;
     event.kind = NK_EVENT_TEXT_EDIT;
     event.source = resource->handle;

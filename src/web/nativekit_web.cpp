@@ -24,6 +24,7 @@
 #include "core/sensor_internal.hpp"
 #include "core/task.hpp"
 #include "core/resource_events.hpp"
+#include "core/text_edit_transaction.hpp"
 #include "web/gamepad.hpp"
 #include "web/host.h"
 
@@ -1450,6 +1451,10 @@ void queue_text_edit(WebSurfaceResource &surface, nk_text_edit_action action,
     payload.selection_end = selection_end;
     payload.composition_start = composition_start;
     payload.composition_end = composition_end;
+    payload.history_kind = nk::core::infer_text_edit_history_kind(
+        action, surface.text_input_state.selection_start,
+        surface.text_input_state.selection_end, replace_start, replace_end,
+        surface.text_input_state.composition_start != NK_TEXT_POSITION_NONE);
 
     nk::core::QueuedEvent queued;
     queued.kind = NK_EVENT_TEXT_EDIT;
