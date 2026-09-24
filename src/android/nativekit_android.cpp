@@ -2323,7 +2323,9 @@ nk_result NK_CALL nk_surface_set_text_input_geometry(
         if (!result)
             return nullptr;
         std::vector<jfloat> values;
+#if !NK_ENABLE_NO_EXCEPTIONS
         try {
+#endif
             values.reserve(rectangles.size() * 4);
             for (const auto &rect : rectangles) {
                 values.push_back(rect.x);
@@ -2331,10 +2333,12 @@ nk_result NK_CALL nk_surface_set_text_input_geometry(
                 values.push_back(rect.width);
                 values.push_back(rect.height);
             }
+#if !NK_ENABLE_NO_EXCEPTIONS
         } catch (...) {
             env->DeleteLocalRef(result);
             return nullptr;
         }
+#endif
         if (!values.empty())
             env->SetFloatArrayRegion(result, 0, static_cast<jsize>(values.size()), values.data());
         return result;
