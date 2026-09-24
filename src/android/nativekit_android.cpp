@@ -2305,14 +2305,21 @@ nk_result NK_CALL nk_surface_set_text_input_geometry(
     if (!resource->text_input_state_set)
         return NK_ERROR_INVALID_ARGUMENT;
     nk::core::TextInputGeometry geometry;
-    if (!nk::core::decode_text_input_geometry(
-            selection_start, selection_end, composition_start, composition_end,
-            selection_rects, selection_rect_bytes, composition_rects, composition_rect_bytes,
-            &geometry) ||
-        !nk::core::text_input_geometry_matches_state(geometry, resource->text_input_state)) {
-        nk::core::set_error("text input geometry ranges do not match the current state");
-        return NK_ERROR_INVALID_ARGUMENT;
-    }
+    const auto decode_result = nk::core::result_boundary(
+        "unexpected error while decoding Android text input geometry", [&]() -> nk_result {
+            if (!nk::core::decode_text_input_geometry(
+                    selection_start, selection_end, composition_start, composition_end,
+                    selection_rects, selection_rect_bytes, composition_rects,
+                    composition_rect_bytes, &geometry) ||
+                !nk::core::text_input_geometry_matches_state(geometry,
+                                                               resource->text_input_state)) {
+                nk::core::set_error("text input geometry ranges do not match the current state");
+                return NK_ERROR_INVALID_ARGUMENT;
+            }
+            return NK_OK;
+        });
+    if (decode_result != NK_OK)
+        return decode_result;
     auto *env = environment();
     if (!env)
         return NK_ERROR_UNKNOWN;

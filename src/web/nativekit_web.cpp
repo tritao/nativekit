@@ -3433,12 +3433,20 @@ nk_result NK_CALL nk_surface_set_text_input_geometry(
     if (!surface->text_input_state_set)
         return invalid_argument("text input state must be set first");
     nk::core::TextInputGeometry geometry;
-    if (!nk::core::decode_text_input_geometry(
-            selection_start, selection_end, composition_start, composition_end,
-            selection_rects, selection_rect_bytes, composition_rects, composition_rect_bytes,
-            &geometry) ||
-        !nk::core::text_input_geometry_matches_state(geometry, surface->text_input_state))
-        return invalid_argument("text input geometry ranges do not match the current state");
+    const auto decode_result = nk::core::result_boundary(
+        "unexpected error while decoding web text input geometry", [&]() -> nk_result {
+            if (!nk::core::decode_text_input_geometry(
+                    selection_start, selection_end, composition_start, composition_end,
+                    selection_rects, selection_rect_bytes, composition_rects,
+                    composition_rect_bytes, &geometry) ||
+                !nk::core::text_input_geometry_matches_state(geometry,
+                                                               surface->text_input_state))
+                return invalid_argument(
+                    "text input geometry ranges do not match the current state");
+            return NK_OK;
+        });
+    if (decode_result != NK_OK)
+        return decode_result;
     surface->text_input_selection_rects = std::move(geometry.selection_rects);
     surface->text_input_composition_rects = std::move(geometry.composition_rects);
     surface->text_input_selection_range_rects = std::move(geometry.selection_range_rects);
