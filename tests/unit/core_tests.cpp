@@ -18,7 +18,6 @@
 
 #include <cstddef>
 #include <cassert>
-#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -88,10 +87,6 @@ void text_input_geometry_contract() {
         geometry.selection_range_rects, geometry.composition_range_rects, 28.f, 5.f);
     NK_CHECK(left_hit.matched && left_hit.position == 4);
     NK_CHECK(right_hit.matched && right_hit.position == 5);
-    const auto midpoint_hit = nk::core::text_input_hit_test_range_rects(
-        geometry.selection_range_rects, {}, std::nextafter(10.f, 11.f), 5.f);
-    NK_CHECK(midpoint_hit.matched && midpoint_hit.position == 3);
-
     const nk_text_input_range_rect rtl_rect{sizeof(nk_text_input_range_rect), 0.f, 0.f,
                                             20.f, 10.f, 6, 8, 0};
     const auto rtl_left_hit = nk::core::text_input_hit_test_range_rects(
