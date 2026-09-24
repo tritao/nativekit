@@ -6,6 +6,7 @@
 
 #include <assert.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -72,6 +73,7 @@ int main(void) {
     assert(nk_window_get_native(window, &native) == NK_OK);
     assert(native.kind == NK_NATIVE_WINDOW_COCOA);
     assert(native.view != 0);
+    NSView *native_view = (__bridge NSView *)(void *)native.view;
     id<NSTextInputClient> input_view = (__bridge id<NSTextInputClient>)(void *)native.view;
 
     const char initial_text[] = "A\xF0\x9F\x98\x80\xE6\x97\xA5\xE6\x9C\xAC";
@@ -95,8 +97,24 @@ int main(void) {
                (const uint8_t *)&selection_rect, sizeof(selection_rect), NULL, 0) == NK_OK);
     NSRect selection_screen_rect =
         [input_view firstRectForCharacterRange:NSMakeRange(1, 2) actualRange:nullptr];
-    assert([input_view characterIndexForPoint:
-                NSMakePoint(NSMidX(selection_screen_rect), NSMidY(selection_screen_rect))] == 1);
+    const NSPoint selection_screen_point =
+        NSMakePoint(NSMidX(selection_screen_rect), NSMidY(selection_screen_rect));
+    const NSUInteger character_index = [input_view characterIndexForPoint:selection_screen_point];
+    if (character_index != 1) {
+        const NSPoint window_point =
+            [native_view.window convertPointFromScreen:selection_screen_point];
+        const NSPoint local_point = [native_view convertPoint:window_point fromView:nil];
+        const NSRange selected_range = [input_view selectedRange];
+        fprintf(stderr,
+                "text input hit index=%llu local=(%.6f, %.6f) screenRect=(%.6f, %.6f, "
+                "%.6f, %.6f) selected=(%llu, %llu)\n",
+                static_cast<unsigned long long>(character_index), local_point.x, local_point.y,
+                selection_screen_rect.origin.x, selection_screen_rect.origin.y,
+                selection_screen_rect.size.width, selection_screen_rect.size.height,
+                static_cast<unsigned long long>(selected_range.location),
+                static_cast<unsigned long long>(selected_range.length));
+    }
+    assert(character_index == 1);
     assert(nk_surface_set_text_input_active(window, 1) == NK_OK);
 
     [input_view setMarkedText:@"かな"
