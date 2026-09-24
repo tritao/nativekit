@@ -4509,7 +4509,7 @@ nk_result NK_CALL nk_surface_set_text_input_geometry(
         "unexpected error while setting macOS text input geometry", [&]() -> nk_result {
             if (const auto result = enter_ui(); result != NK_OK)
                 return result;
-            auto resource = get_window(handle);
+            auto resource = window(handle);
             if (!resource)
                 return NK_ERROR_INVALID_HANDLE;
             if (resource->text_input_state.struct_size < sizeof(nk_text_input_state))

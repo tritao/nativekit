@@ -1,3 +1,7 @@
+#if defined(_WIN32) && !defined(NOMINMAX)
+#define NOMINMAX
+#endif
+
 #include "nativekit_transport.h"
 
 #include "core/boundary.hpp"
@@ -37,9 +41,6 @@
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
-#define NOMINMAX
 #endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
