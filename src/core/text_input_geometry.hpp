@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <utility>
 #include <vector>
 
@@ -122,9 +123,9 @@ inline TextInputHitTest text_input_hit_test_range_rects(
     if (!rect)
         return {};
     const float midpoint = rect->x + std::max(1.0f, rect->width) * 0.5f;
-    const bool left_edge = x <= midpoint;
-    const bool start_edge = left_edge ? rect->visual_left_is_start != 0
-                                      : rect->visual_left_is_start == 0;
+    const bool left_edge = x <= std::nextafter(midpoint, std::numeric_limits<float>::infinity());
+    const bool start_edge =
+        left_edge ? rect->visual_left_is_start != 0 : rect->visual_left_is_start == 0;
     return TextInputHitTest{true, start_edge ? rect->range_start : rect->range_end};
 }
 
