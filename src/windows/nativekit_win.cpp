@@ -19,6 +19,8 @@
 #include "core/system_internal.hpp"
 #include "core/resource_events.hpp"
 #include "core/text_edit_transaction.hpp"
+#include "core/text_input_geometry.hpp"
+#include "core/text_offsets.hpp"
 #include "windows/joystick.hpp"
 
 #define UNICODE
@@ -278,6 +280,10 @@ struct WinWindowResource final : nk::core::Resource {
     bool pointer_tracking = false;
     std::string text_input_text;
     nk_text_input_state text_input_state{};
+    std::vector<nk_text_input_rect> text_input_selection_rects;
+    std::vector<nk_text_input_rect> text_input_composition_rects;
+    std::vector<nk_text_input_range_rect> text_input_selection_range_rects;
+    std::vector<nk_text_input_range_rect> text_input_composition_range_rects;
     bool text_input_active = false;
     bool text_composing = false;
     nk_text_position text_composition_start = NK_TEXT_POSITION_NONE;
@@ -718,6 +724,28 @@ nk_modifiers modifiers_after_key(nk_key key, nk_input_action action) {
 
 double dpi_scale(HWND window) {
     return std::max(1.0, static_cast<double>(query_window_dpi(window)) / 96.0);
+}
+
+void update_text_input_anchor(WinWindowResource &resource) {
+    if (!resource.window)
+        return;
+    const auto anchor = nk::core::text_input_anchor_rect(
+        resource.text_input_state, resource.text_input_selection_rects);
+    HIMC context = ImmGetContext(resource.window);
+    if (!context)
+        return;
+    const auto scale = dpi_scale(resource.window);
+    COMPOSITIONFORM composition{};
+    composition.dwStyle = CFS_POINT;
+    composition.ptCurrentPos.x = static_cast<LONG>(std::lround(anchor.x * scale));
+    composition.ptCurrentPos.y = static_cast<LONG>(std::lround(anchor.y * scale));
+    ImmSetCompositionWindow(context, &composition);
+    CANDIDATEFORM candidate{};
+    candidate.dwIndex = 0;
+    candidate.dwStyle = CFS_CANDIDATEPOS;
+    candidate.ptCurrentPos = composition.ptCurrentPos;
+    ImmSetCandidateWindow(context, &candidate);
+    ImmReleaseContext(resource.window, context);
 }
 
 nk_pointer_button pointer_button_from_windows(UINT message, WPARAM wparam) {
@@ -3640,26 +3668,48 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
             resource->text_input_text = text;
             resource->text_input_state = *state;
             resource->text_input_state.text = resource->text_input_text.c_str();
+            resource->text_input_selection_rects.clear();
+            resource->text_input_composition_rects.clear();
+            resource->text_input_selection_range_rects.clear();
+            resource->text_input_composition_range_rects.clear();
             resource->text_composition_start = state->composition_start;
             resource->text_composition_end = state->composition_end;
             resource->text_composing = state->composition_start != NK_TEXT_POSITION_NONE;
-            HIMC context = ImmGetContext(resource->window);
-            if (context) {
-                const auto scale = dpi_scale(resource->window);
-                COMPOSITIONFORM composition{};
-                composition.dwStyle = CFS_POINT;
-                composition.ptCurrentPos.x =
-                    static_cast<LONG>(std::lround(state->cursor_x * scale));
-                composition.ptCurrentPos.y =
-                    static_cast<LONG>(std::lround(state->cursor_y * scale));
-                ImmSetCompositionWindow(context, &composition);
-                CANDIDATEFORM candidate{};
-                candidate.dwIndex = 0;
-                candidate.dwStyle = CFS_CANDIDATEPOS;
-                candidate.ptCurrentPos = composition.ptCurrentPos;
-                ImmSetCandidateWindow(context, &candidate);
-                ImmReleaseContext(resource->window, context);
-            }
+            update_text_input_anchor(*resource);
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_surface_set_text_input_geometry(
+    nk_handle handle, nk_text_position selection_start, nk_text_position selection_end,
+    nk_text_position composition_start, nk_text_position composition_end,
+    const uint8_t *selection_rects, uint32_t selection_rect_bytes,
+    const uint8_t *composition_rects, uint32_t composition_rect_bytes) {
+    return nk::core::result_boundary(
+        "unexpected error while setting Windows text input geometry", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            auto resource = get_window(handle);
+            if (!resource)
+                return NK_ERROR_INVALID_HANDLE;
+            if (resource->text_input_state.struct_size < sizeof(nk_text_input_state))
+                return NK_ERROR_INVALID_ARGUMENT;
+            nk::core::TextInputGeometry geometry;
+            if (!nk::core::decode_text_input_geometry(
+                    selection_start, selection_end, composition_start, composition_end,
+                    selection_rects, selection_rect_bytes, composition_rects,
+                    composition_rect_bytes, &geometry) ||
+                !nk::core::text_input_geometry_matches_state(geometry,
+                                                               resource->text_input_state))
+                return fail(NK_ERROR_INVALID_ARGUMENT,
+                            "text input geometry ranges do not match the current state");
+            resource->text_input_selection_rects = std::move(geometry.selection_rects);
+            resource->text_input_composition_rects = std::move(geometry.composition_rects);
+            resource->text_input_selection_range_rects =
+                std::move(geometry.selection_range_rects);
+            resource->text_input_composition_range_rects =
+                std::move(geometry.composition_range_rects);
+            update_text_input_anchor(*resource);
             return NK_OK;
         });
 }

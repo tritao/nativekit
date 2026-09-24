@@ -32,6 +32,7 @@
 #include "core/system_internal.hpp"
 #include "core/resource_events.hpp"
 #include "core/text_edit_transaction.hpp"
+#include "core/text_input_geometry.hpp"
 #include "macos/joystick.hpp"
 
 #include <algorithm>
@@ -179,6 +180,10 @@ struct MacWindowResource final : nk::core::Resource {
     bool cursor_hidden = false;
     std::string text_input_text;
     nk_text_input_state text_input_state{};
+    std::vector<nk_text_input_rect> text_input_selection_rects;
+    std::vector<nk_text_input_rect> text_input_composition_rects;
+    std::vector<nk_text_input_range_rect> text_input_selection_range_rects;
+    std::vector<nk_text_input_range_rect> text_input_composition_range_rects;
     bool text_input_active = false;
     bool text_composing = false;
     nk_text_position text_composition_start = NK_TEXT_POSITION_NONE;
@@ -3100,6 +3105,19 @@ void emit_window_state(MacWindowResource &resource) noexcept {
         return NSNotFound;
     const NSPoint windowPoint = [self.window convertPointFromScreen:screenPoint];
     const NSPoint localPoint = [self convertPoint:windowPoint fromView:nil];
+    const auto hit = nk::core::text_input_hit_test_range(
+        resource->text_input_state, resource->text_input_selection_rects,
+        resource->text_input_composition_rects, localPoint.x, localPoint.y);
+    const auto range_hit = nk::core::text_input_hit_test_range_rects(
+        resource->text_input_selection_range_rects,
+        resource->text_input_composition_range_rects, localPoint.x, localPoint.y);
+    const auto resolved_hit = range_hit.matched ? range_hit : hit;
+    if (resolved_hit.matched) {
+        const NSRange range =
+            native_range_for_positions(*resource, resolved_hit.position, resolved_hit.position);
+        if (range.location != NSNotFound)
+            return range.location;
+    }
     const NSRect caret =
         NSMakeRect(resource->text_input_state.cursor_x, resource->text_input_state.cursor_y,
                    std::max(1.f, resource->text_input_state.cursor_width),
@@ -3114,10 +3132,36 @@ void emit_window_state(MacWindowResource &resource) noexcept {
         return NSZeroRect;
     if (actualRange)
         *actualRange = range;
-    NSRect rect =
-        NSMakeRect(resource->text_input_state.cursor_x, resource->text_input_state.cursor_y,
-                   std::max(1.f, resource->text_input_state.cursor_width),
-                   std::max(1.f, resource->text_input_state.cursor_height));
+    nk_text_position start = 0;
+    nk_text_position end = 0;
+    const std::vector<nk_text_input_rect> *rectangles = nullptr;
+    const nk_text_input_range_rect *range_rect = nullptr;
+    if (codepoint_range_for_native_range(*resource, range, start, end)) {
+        range_rect = nk::core::text_input_first_range_rect(
+            resource->text_input_composition_range_rects, start, end);
+        if (!range_rect)
+            range_rect = nk::core::text_input_first_range_rect(
+                resource->text_input_selection_range_rects, start, end);
+        if (start == resource->text_input_state.selection_start &&
+            end == resource->text_input_state.selection_end)
+            rectangles = &resource->text_input_selection_rects;
+        else if (start == resource->text_input_state.composition_start &&
+                 end == resource->text_input_state.composition_end)
+            rectangles = &resource->text_input_composition_rects;
+    }
+    NSRect rect;
+    if (range_rect) {
+        rect = NSMakeRect(range_rect->x, range_rect->y, std::max(1.f, range_rect->width),
+                          std::max(1.f, range_rect->height));
+    } else if (rectangles && !rectangles->empty()) {
+        const auto &value = rectangles->front();
+        rect = NSMakeRect(value.x, value.y, std::max(1.f, value.width),
+                          std::max(1.f, value.height));
+    } else {
+        rect = NSMakeRect(resource->text_input_state.cursor_x, resource->text_input_state.cursor_y,
+                          std::max(1.f, resource->text_input_state.cursor_width),
+                          std::max(1.f, resource->text_input_state.cursor_height));
+    }
     return [self.window convertRectToScreen:[self convertRect:rect toView:nil]];
 }
 - (void)doCommandBySelector:(SEL)selector {
@@ -4426,6 +4470,10 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
             resource->text_input_text = state->text;
             resource->text_input_state = *state;
             resource->text_input_state.text = resource->text_input_text.c_str();
+            resource->text_input_selection_rects.clear();
+            resource->text_input_composition_rects.clear();
+            resource->text_input_selection_range_rects.clear();
+            resource->text_input_composition_range_rects.clear();
             resource->text_composition_start = state->composition_start;
             resource->text_composition_end = state->composition_end;
             resource->text_composing = state->composition_start != NK_TEXT_POSITION_NONE;
@@ -4448,6 +4496,38 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
                 resource->marked_text.clear();
             }
             [[resource->content inputContext] invalidateCharacterCoordinates];
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_surface_set_text_input_geometry(
+    nk_handle handle, nk_text_position selection_start, nk_text_position selection_end,
+    nk_text_position composition_start, nk_text_position composition_end,
+    const uint8_t *selection_rects, uint32_t selection_rect_bytes,
+    const uint8_t *composition_rects, uint32_t composition_rect_bytes) {
+    return nk::core::result_boundary(
+        "unexpected error while setting macOS text input geometry", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            auto resource = get_window(handle);
+            if (!resource)
+                return NK_ERROR_INVALID_HANDLE;
+            if (resource->text_input_state.struct_size < sizeof(nk_text_input_state))
+                return NK_ERROR_INVALID_ARGUMENT;
+            nk::core::TextInputGeometry geometry;
+            if (!nk::core::decode_text_input_geometry(
+                    selection_start, selection_end, composition_start, composition_end,
+                    selection_rects, selection_rect_bytes, composition_rects,
+                    composition_rect_bytes, &geometry) ||
+                !nk::core::text_input_geometry_matches_state(geometry,
+                                                               resource->text_input_state))
+                return NK_ERROR_INVALID_ARGUMENT;
+            resource->text_input_selection_rects = std::move(geometry.selection_rects);
+            resource->text_input_composition_rects = std::move(geometry.composition_rects);
+            resource->text_input_selection_range_rects =
+                std::move(geometry.selection_range_rects);
+            resource->text_input_composition_range_rects =
+                std::move(geometry.composition_range_rects);
             return NK_OK;
         });
 }

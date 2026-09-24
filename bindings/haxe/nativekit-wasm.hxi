@@ -3670,6 +3670,20 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 */
 	extern fn nk_surface_set_text_input_active(target: nk_handle, active: nk_bool) -> nk_result;
 	/**
+	 * Publishes selection and composition geometry for the current text-input state.
+	 *
+	 * The rectangle buffers contain packed `nk_text_input_rect` records and may also
+	 * contain extended `nk_text_input_range_rect` records. The extended records use
+	 * the same first five fields and add an absolute code-point range; they let a
+	 * platform map point queries back to the exact visual text segment. Coordinates
+	 * are surface-local logical pixels and records follow their code-point ranges. The
+	 * ranges must match the selection and composition ranges most recently supplied
+	 * to nk_surface_set_text_input_state(). Pass both composition positions as
+	 * NK_TEXT_POSITION_NONE and an empty composition buffer when there is no active
+	 * composition.
+	 */
+	extern fn nk_surface_set_text_input_geometry(target: nk_handle, selection_start: nk_text_position, selection_end: nk_text_position, composition_start: nk_text_position, composition_end: nk_text_position, selection_rects: ptr<const<u8>> @in_array("selection_rect_bytes"), selection_rect_bytes: u32, composition_rects: ptr<const<u8>> @in_array("composition_rect_bytes"), composition_rect_bytes: u32) -> nk_result;
+	/**
 	 * Synchronizes a custom editor with the platform IME using absolute code-point positions.
 	 * Linux, Android, and Web use a graphics-surface handle. Windows and macOS accept a window
 	 * handle because those backends do not yet expose graphics surfaces. Desktop backends may
@@ -5887,6 +5901,44 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 * Reserved for future use; initialize to zero.
 		 */
 		reserved: u32 @offset(4);
+	}
+	/**
+	 * One text rectangle with the code-point range it represents.
+	 */
+	struct nk_text_input_range_rect @layout(32, 4) {
+		/**
+		 * Set to sizeof(nk_text_input_range_rect) in each packed record.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		x: f32 @offset(4);
+		y: f32 @offset(8);
+		width: f32 @offset(12);
+		height: f32 @offset(16);
+		/**
+		 * Start of the represented half-open code-point range.
+		 */
+		range_start: nk_text_position @offset(20);
+		/**
+		 * Exclusive end of the represented code-point range.
+		 */
+		range_end: nk_text_position @offset(24);
+		/**
+		 * 1 when the visual left edge is range_start; otherwise it is range_end.
+		 */
+		visual_left_is_start: u32 @offset(28);
+	}
+	/**
+	 * One surface-local logical rectangle reported to the platform IME.
+	 */
+	struct nk_text_input_rect @layout(20, 4) {
+		/**
+		 * Set to sizeof(nk_text_input_rect) in each packed record.
+		 */
+		struct_size: u32 @offset(0) @struct_size;
+		x: f32 @offset(4);
+		y: f32 @offset(8);
+		width: f32 @offset(12);
+		height: f32 @offset(16);
 	}
 	/**
 	 * State published by a custom editor to synchronize the platform IME.

@@ -35,6 +35,13 @@ _Static_assert(offsetof(nk_text_edit_event, selection_affinity) == 36,
                "text edit affinity ABI offset changed");
 _Static_assert(offsetof(nk_text_edit_event, history_kind) == 40,
                "text edit history ABI offset changed");
+_Static_assert(sizeof(nk_text_input_rect) == 20, "text input rectangle ABI size changed");
+_Static_assert(sizeof(nk_text_input_range_rect) == 32,
+               "range-aware text input rectangle ABI size changed");
+_Static_assert(offsetof(nk_text_input_range_rect, range_start) == 20 &&
+                   offsetof(nk_text_input_range_rect, range_end) == 24 &&
+                   offsetof(nk_text_input_range_rect, visual_left_is_start) == 28,
+               "range-aware text input rectangle ABI offsets changed");
 _Static_assert(sizeof(nk_surface_frame_target) == 80,
                "surface frame target keeps its versioned 40-byte prefix and token tail");
 _Static_assert(offsetof(nk_surface_frame_target, native_device) == 40,

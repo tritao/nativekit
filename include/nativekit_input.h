@@ -497,6 +497,32 @@ typedef struct nk_text_input_state {
     uint64_t reserved[2];
 } nk_text_input_state;
 
+/** One surface-local logical rectangle reported to the platform IME. */
+typedef struct nk_text_input_rect {
+    /** Set to sizeof(nk_text_input_rect) in each packed record. */
+    uint32_t struct_size NK_STRUCT_SIZE;
+    float x;
+    float y;
+    float width;
+    float height;
+} nk_text_input_rect;
+
+/** One text rectangle with the code-point range it represents. */
+typedef struct nk_text_input_range_rect {
+    /** Set to sizeof(nk_text_input_range_rect) in each packed record. */
+    uint32_t struct_size NK_STRUCT_SIZE;
+    float x;
+    float y;
+    float width;
+    float height;
+    /** Start of the represented half-open code-point range. */
+    nk_text_position range_start;
+    /** Exclusive end of the represented code-point range. */
+    nk_text_position range_end;
+    /** 1 when the visual left edge is range_start; otherwise it is range_end. */
+    uint32_t visual_left_is_start;
+} nk_text_input_range_rect;
+
 /* ------------------------------------------------------------------------- */
 /* Text input event helpers                                                  */
 /* ------------------------------------------------------------------------- */
@@ -674,6 +700,26 @@ NK_API nk_result NK_CALL nk_pointer_get_position(nk_window window, double *out_x
  */
 NK_API nk_result NK_CALL nk_surface_set_text_input_state(nk_handle target,
                                                          const nk_text_input_state *state);
+/**
+ * Publishes selection and composition geometry for the current text-input state.
+ *
+ * The rectangle buffers contain packed `nk_text_input_rect` records and may also
+ * contain extended `nk_text_input_range_rect` records. The extended records use
+ * the same first five fields and add an absolute code-point range; they let a
+ * platform map point queries back to the exact visual text segment. Coordinates
+ * are surface-local logical pixels and records follow their code-point ranges. The
+ * ranges must match the selection and composition ranges most recently supplied
+ * to nk_surface_set_text_input_state(). Pass both composition positions as
+ * NK_TEXT_POSITION_NONE and an empty composition buffer when there is no active
+ * composition.
+ */
+NK_API nk_result NK_CALL nk_surface_set_text_input_geometry(
+    nk_handle target, nk_text_position selection_start, nk_text_position selection_end,
+    nk_text_position composition_start, nk_text_position composition_end,
+    const uint8_t *selection_rects NK_IN_ARRAY(selection_rect_bytes),
+    uint32_t selection_rect_bytes,
+    const uint8_t *composition_rects NK_IN_ARRAY(composition_rect_bytes),
+    uint32_t composition_rect_bytes);
 /** Activates or deactivates custom text input for the target surface or desktop window. */
 NK_API nk_result NK_CALL nk_surface_set_text_input_active(nk_handle target, nk_bool active);
 

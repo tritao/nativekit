@@ -5,6 +5,7 @@
 #include "core/gamepad_mappings_generated.hpp"
 #include "core/graphics_frame_target.hpp"
 #include "core/handle_registry.hpp"
+#include "core/text_input_geometry.hpp"
 #include "core/vulkan_internal.hpp"
 #include "nativekit_accessibility.h"
 #include "nativekit_clipboard.h"
@@ -51,9 +52,68 @@ static_assert(offsetof(nk_accessibility_node, set_size) ==
               offsetof(nk_accessibility_node, selection_end) + sizeof(uint32_t));
 static_assert(offsetof(nk_accessibility_node, orientation) >
               offsetof(nk_accessibility_node, hierarchy_level));
+static_assert(sizeof(nk_text_input_rect) == 20);
+static_assert(sizeof(nk_text_input_range_rect) == 32);
+} // namespace
+
+namespace {
+void text_input_geometry_contract() {
+    const nk_text_input_range_rect selection_rect{sizeof(nk_text_input_range_rect), 0.f, 0.f,
+                                                  20.f, 10.f, 3, 5, 1};
+    const nk_text_input_range_rect composition_rect{sizeof(nk_text_input_range_rect), 20.f, 0.f,
+                                                    10.f, 10.f, 4, 5, 1};
+    nk::core::TextInputGeometry geometry;
+    NK_CHECK(nk::core::decode_text_input_geometry(
+        3, 5, 4, 5, reinterpret_cast<const uint8_t *>(&selection_rect), sizeof(selection_rect),
+        reinterpret_cast<const uint8_t *>(&composition_rect), sizeof(composition_rect), &geometry));
+    nk_text_input_state state{};
+    state.selection_start = 3;
+    state.selection_end = 5;
+    state.composition_start = 4;
+    state.composition_end = 5;
+    state.cursor_x = 31.f;
+    state.cursor_width = 2.f;
+    NK_CHECK(nk::core::text_input_geometry_matches_state(geometry, state));
+    NK_CHECK(geometry.selection_rects.size() == 1 &&
+             geometry.selection_range_rects.size() == 1 &&
+             geometry.composition_rects.size() == 1 &&
+             geometry.composition_range_rects.size() == 1);
+    const auto anchor = nk::core::text_input_anchor_rect(
+        state, geometry.selection_rects);
+    NK_CHECK(anchor.x == state.cursor_x && anchor.width == state.cursor_width);
+    const auto left_hit = nk::core::text_input_hit_test_range_rects(
+        geometry.selection_range_rects, geometry.composition_range_rects, 22.f, 5.f);
+    const auto right_hit = nk::core::text_input_hit_test_range_rects(
+        geometry.selection_range_rects, geometry.composition_range_rects, 28.f, 5.f);
+    NK_CHECK(left_hit.matched && left_hit.position == 4);
+    NK_CHECK(right_hit.matched && right_hit.position == 5);
+
+    const nk_text_input_range_rect rtl_rect{sizeof(nk_text_input_range_rect), 0.f, 0.f,
+                                            20.f, 10.f, 6, 8, 0};
+    const auto rtl_left_hit = nk::core::text_input_hit_test_range_rects(
+        {rtl_rect}, {}, 2.f, 5.f);
+    const auto rtl_right_hit = nk::core::text_input_hit_test_range_rects(
+        {rtl_rect}, {}, 18.f, 5.f);
+    NK_CHECK(rtl_left_hit.matched && rtl_left_hit.position == 8);
+    NK_CHECK(rtl_right_hit.matched && rtl_right_hit.position == 6);
+
+    const nk_text_input_range_rect outside_range{sizeof(nk_text_input_range_rect), 0.f, 0.f,
+                                                 20.f, 10.f, 2, 5, 1};
+    NK_CHECK(!nk::core::decode_text_input_geometry(
+        3, 5, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
+        reinterpret_cast<const uint8_t *>(&outside_range), sizeof(outside_range), nullptr, 0,
+        &geometry));
+    const nk_text_input_range_rect invalid_direction{sizeof(nk_text_input_range_rect), 0.f, 0.f,
+                                                     20.f, 10.f, 3, 5, 2};
+    NK_CHECK(!nk::core::decode_text_input_geometry(
+        3, 5, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
+        reinterpret_cast<const uint8_t *>(&invalid_direction), sizeof(invalid_direction), nullptr,
+        0, &geometry));
+}
 } // namespace
 
 int main() {
+    text_input_geometry_contract();
     nk_accessibility_node accessibility_node{};
     accessibility_node.struct_size = sizeof(accessibility_node);
     accessibility_node.role = NK_ACCESSIBILITY_COLLECTION_ITEM;

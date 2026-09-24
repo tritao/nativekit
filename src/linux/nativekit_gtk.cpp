@@ -22,6 +22,7 @@
 #include "core/runtime.hpp"
 #include "core/system_internal.hpp"
 #include "core/resource_events.hpp"
+#include "core/text_input_geometry.hpp"
 
 #include <gtk/gtk.h>
 #include <atk/atk.h>
@@ -125,6 +126,8 @@ struct GtkWindowResource final : nk::core::Resource {
     GtkIMContext *im_context = nullptr;
     std::string text_input_text;
     nk_text_input_state text_input_state{};
+    std::vector<nk_text_input_rect> text_input_selection_rects;
+    std::vector<nk_text_input_rect> text_input_composition_rects;
     bool text_input_active = false;
     nk_handle handle = NK_INVALID_HANDLE;
     nk_handle owner = NK_INVALID_HANDLE;
@@ -4217,12 +4220,53 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
             resource->text_input_text = text;
             resource->text_input_state = *state;
             resource->text_input_state.text = resource->text_input_text.c_str();
+            resource->text_input_selection_rects.clear();
+            resource->text_input_composition_rects.clear();
             if (resource->im_context) {
                 GdkRectangle cursor{
                     static_cast<gint>(std::lround(state->cursor_x)),
                     static_cast<gint>(std::lround(state->cursor_y)),
                     std::max(static_cast<gint>(std::lround(state->cursor_width)), 1),
                     std::max(static_cast<gint>(std::lround(state->cursor_height)), 1)};
+                gtk_im_context_set_cursor_location(resource->im_context, &cursor);
+            }
+            return NK_OK;
+        });
+}
+
+nk_result NK_CALL nk_surface_set_text_input_geometry(
+    nk_handle handle, nk_text_position selection_start, nk_text_position selection_end,
+    nk_text_position composition_start, nk_text_position composition_end,
+    const uint8_t *selection_rects, uint32_t selection_rect_bytes,
+    const uint8_t *composition_rects, uint32_t composition_rect_bytes) {
+    return nk::core::result_boundary(
+        "unexpected error while setting GTK text input geometry", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            auto resource = text_input_window(handle);
+            if (!resource)
+                return invalid_handle("text input target");
+            if (resource->text_input_state.struct_size < sizeof(nk_text_input_state))
+                return fail(NK_ERROR_INVALID_ARGUMENT, "text input state must be set first");
+            nk::core::TextInputGeometry geometry;
+            if (!nk::core::decode_text_input_geometry(
+                    selection_start, selection_end, composition_start, composition_end,
+                    selection_rects, selection_rect_bytes, composition_rects,
+                    composition_rect_bytes, &geometry) ||
+                !nk::core::text_input_geometry_matches_state(geometry,
+                                                               resource->text_input_state))
+                return fail(NK_ERROR_INVALID_ARGUMENT,
+                            "text input geometry ranges do not match the current state");
+            resource->text_input_selection_rects = std::move(geometry.selection_rects);
+            resource->text_input_composition_rects = std::move(geometry.composition_rects);
+            if (resource->im_context) {
+                const auto anchor = nk::core::text_input_anchor_rect(
+                    resource->text_input_state, resource->text_input_selection_rects);
+                GdkRectangle cursor{
+                    static_cast<gint>(std::lround(anchor.x)),
+                    static_cast<gint>(std::lround(anchor.y)),
+                    std::max(static_cast<gint>(std::lround(anchor.width)), 1),
+                    std::max(static_cast<gint>(std::lround(anchor.height)), 1)};
                 gtk_im_context_set_cursor_location(resource->im_context, &cursor);
             }
             return NK_OK;
