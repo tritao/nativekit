@@ -20,7 +20,6 @@
 #include "core/resource_events.hpp"
 #include "core/text_edit_transaction.hpp"
 #include "core/text_input_geometry.hpp"
-#include "core/text_offsets.hpp"
 #include "windows/joystick.hpp"
 
 #define UNICODE
