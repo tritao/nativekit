@@ -210,7 +210,8 @@ public final class MainActivity extends Activity {
         view.dispatchKeyEvent(keyDown);
         view.dispatchKeyEvent(keyUp);
 
-        nativePrepareTextInput(surfaceProbe);
+        if (nativePrepareTextInput(surfaceProbe) != 0)
+            throw new AssertionError("text input geometry was not accepted");
         EditorInfo editorInfo = new EditorInfo();
         InputConnection editor = view.onCreateInputConnection(editorInfo);
         if ((editorInfo.inputType & InputType.TYPE_MASK_VARIATION) !=

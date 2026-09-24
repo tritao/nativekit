@@ -374,7 +374,24 @@ Java_io_nativekit_consumer_MainActivity_nativePrepareTextInput(JNIEnv *, jclass,
     state.cursor_y = 18.f;
     state.cursor_width = 2.f;
     state.cursor_height = 20.f;
-    return nk_surface_set_text_input_state(static_cast<nk_handle>(surface_value), &state);
+    const auto surface = static_cast<nk_handle>(surface_value);
+    const auto state_result = nk_surface_set_text_input_state(surface, &state);
+    if (state_result != NK_OK)
+        return state_result;
+
+    nk_text_input_range_rect selection_rect{};
+    selection_rect.struct_size = sizeof(selection_rect);
+    selection_rect.x = state.cursor_x;
+    selection_rect.y = state.cursor_y;
+    selection_rect.width = state.cursor_width;
+    selection_rect.height = state.cursor_height;
+    selection_rect.range_start = state.selection_start;
+    selection_rect.range_end = state.selection_end;
+    selection_rect.visual_left_is_start = 1;
+    return nk_surface_set_text_input_geometry(
+        surface, state.selection_start, state.selection_end, state.composition_start,
+        state.composition_end, reinterpret_cast<const uint8_t *>(&selection_rect),
+        sizeof(selection_rect), nullptr, 0);
 }
 
 extern "C" JNIEXPORT jint JNICALL
