@@ -6,6 +6,7 @@
 #include "core/graphics_frame_target.hpp"
 #include "core/handle_registry.hpp"
 #include "core/text_input_geometry.hpp"
+#include "core/text_edit_transaction.hpp"
 #include "core/vulkan_internal.hpp"
 #include "nativekit_accessibility.h"
 #include "nativekit_clipboard.h"
@@ -110,10 +111,38 @@ void text_input_geometry_contract() {
         reinterpret_cast<const uint8_t *>(&invalid_direction), sizeof(invalid_direction), nullptr,
         0, &geometry));
 }
+
+void text_edit_history_contract() {
+    using nk::core::infer_text_edit_history_kind;
+
+    NK_CHECK(infer_text_edit_history_kind(NK_TEXT_EDIT_COMPOSE, 4, 4, 4, 4) ==
+             NK_TEXT_EDIT_HISTORY_COMPOSITION);
+    NK_CHECK(infer_text_edit_history_kind(NK_TEXT_EDIT_COMMIT, 4, 4, 4, 4) ==
+             NK_TEXT_EDIT_HISTORY_TYPING);
+    NK_CHECK(infer_text_edit_history_kind(NK_TEXT_EDIT_COMMIT, 4, 4, 4, 4, true) ==
+             NK_TEXT_EDIT_HISTORY_COMPOSITION);
+    NK_CHECK(infer_text_edit_history_kind(NK_TEXT_EDIT_COMMIT, 4, 6, 4, 6) ==
+             NK_TEXT_EDIT_HISTORY_GENERIC);
+    NK_CHECK(infer_text_edit_history_kind(NK_TEXT_EDIT_COMMIT, 4, 4, 3, 4) ==
+             NK_TEXT_EDIT_HISTORY_GENERIC);
+
+    NK_CHECK(infer_text_edit_history_kind(NK_TEXT_EDIT_DELETE, 5, 5, 4, 5) ==
+             NK_TEXT_EDIT_HISTORY_DELETE_BACKWARD);
+    NK_CHECK(infer_text_edit_history_kind(NK_TEXT_EDIT_DELETE, 5, 5, 5, 6) ==
+             NK_TEXT_EDIT_HISTORY_DELETE_FORWARD);
+    NK_CHECK(infer_text_edit_history_kind(NK_TEXT_EDIT_DELETE, 4, 6, 4, 6) ==
+             NK_TEXT_EDIT_HISTORY_GENERIC);
+    NK_CHECK(infer_text_edit_history_kind(NK_TEXT_EDIT_DELETE, 5, 5, 3, 4) ==
+             NK_TEXT_EDIT_HISTORY_GENERIC);
+    NK_CHECK(infer_text_edit_history_kind(NK_TEXT_EDIT_COMMIT, NK_TEXT_POSITION_NONE,
+                                          NK_TEXT_POSITION_NONE, 0, 0) ==
+             NK_TEXT_EDIT_HISTORY_GENERIC);
+}
 } // namespace
 
 int main() {
     text_input_geometry_contract();
+    text_edit_history_contract();
     nk_accessibility_node accessibility_node{};
     accessibility_node.struct_size = sizeof(accessibility_node);
     accessibility_node.role = NK_ACCESSIBILITY_COLLECTION_ITEM;
