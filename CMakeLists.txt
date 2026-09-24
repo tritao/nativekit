@@ -166,6 +166,8 @@ add_library(NativeKit::nativekit ALIAS nativekit)
 if(NOT EMSCRIPTEN)
     target_link_libraries(nativekit PRIVATE websockets)
     target_compile_definitions(nativekit PRIVATE NK_HAS_LIBWEBSOCKETS=1)
+else()
+    target_link_libraries(nativekit PRIVATE websocket)
 endif()
 
 if(NOT ANDROID AND NOT EMSCRIPTEN)
