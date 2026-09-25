@@ -4111,6 +4111,12 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 */
 	extern fn nk_window_set_fullscreen_monitor(window: nk_window, monitor: nk_monitor) -> nk_result;
 	/**
+	 * Sets a window's icon images. The backend chooses appropriate sizes for its
+	 * window chrome and taskbar; macOS applies them to the application icon too.
+	 * All image bytes are copied before return. UI thread only.
+	 */
+	extern fn nk_window_set_icons(window: nk_window, pixels: ptr<const<u8>> @in_array("byte_count"), byte_count: u32, images: ptr<const<nk_icon_image>> @in_array("image_count"), image_count: u32) -> nk_result;
+	/**
 	 * Enables or disables passing pointer input through the window.
 	 */
 	extern fn nk_window_set_mouse_passthrough(window: nk_window, enabled: nk_bool) -> nk_result;
@@ -4770,6 +4776,21 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		duration_ms: u32 @offset(8);
 		intensity: f32 @offset(12);
 		reserved: u32 @offset(16);
+	}
+	/**
+	 * One RGBA8 image within the byte buffer passed to nk_window_set_icons.
+	 */
+	struct nk_icon_image @layout(16, 4) {
+		/**
+		 * Byte offset of the first row.
+		 */
+		offset: u32 @offset(0);
+		width: i32 @offset(4);
+		height: i32 @offset(8);
+		/**
+		 * Bytes between rows, at least width * 4.
+		 */
+		stride: i32 @offset(12);
 	}
 	/**
 	 * Options used to start one NativeKit runtime generation.

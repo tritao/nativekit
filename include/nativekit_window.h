@@ -411,6 +411,26 @@ NK_API nk_result NK_CALL nk_window_show(nk_window window, nk_bool visible);
 /** Copies the nullable UTF-8 title before returning. UI thread only. */
 NK_API nk_result NK_CALL nk_window_set_title(nk_window window, const char *title NK_UTF8);
 
+/** One RGBA8 image within the byte buffer passed to nk_window_set_icons. */
+typedef struct nk_icon_image {
+    /** Byte offset of the first row. */
+    uint32_t offset;
+    int32_t width;
+    int32_t height;
+    /** Bytes between rows, at least width * 4. */
+    int32_t stride;
+} nk_icon_image;
+
+/** Sets a window's icon images. Each image must fit entirely within pixels,
+ * with stride >= width * 4. The backend chooses appropriate sizes for its
+ * window chrome and taskbar; macOS applies them to the application icon too.
+ * All image bytes are copied before return. UI thread only. */
+NK_API nk_result NK_CALL nk_window_set_icons(nk_window window,
+                                            const uint8_t *pixels NK_IN_ARRAY(byte_count),
+                                            uint32_t byte_count,
+                                            const nk_icon_image *images NK_IN_ARRAY(image_count),
+                                            uint32_t image_count);
+
 /** Moves and resizes a top-level window in logical pixels. UI thread only. */
 NK_API nk_result NK_CALL nk_window_set_bounds(nk_window window, int32_t x, int32_t y, int32_t width,
                                               int32_t height);

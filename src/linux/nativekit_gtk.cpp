@@ -19,6 +19,7 @@
 #include "core/frame_backend.hpp"
 #include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
+#include "core/icon_images.hpp"
 #include "core/runtime.hpp"
 #include "core/system_internal.hpp"
 #include "core/resource_events.hpp"
@@ -3765,6 +3766,41 @@ nk_result NK_CALL nk_window_set_title(nk_handle handle, const char *title) {
         return NK_OK;
     }
     gtk_window_set_title(GTK_WINDOW(resource->window), title ? title : "");
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_window_set_icons(nk_handle handle, const uint8_t *pixels,
+                                      uint32_t byte_count, const nk_icon_image *images,
+                                      uint32_t image_count) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = window(handle);
+    if (!resource)
+        return invalid_handle("window");
+    if (resource->wrapped)
+        return fail(NK_ERROR_UNSUPPORTED, "wrapped windows cannot set an icon");
+    if (!nk::core::valid_icon_images(pixels, byte_count, images, image_count))
+        return fail(NK_ERROR_INVALID_ARGUMENT, "invalid window icon images");
+    GList *icons = nullptr;
+    for (uint32_t index = 0; index < image_count; ++index) {
+        const auto &image = images[index];
+        GdkPixbuf *icon = gdk_pixbuf_new(GDK_COLORSPACE_RGB, TRUE, 8,
+                                        image.width, image.height);
+        if (!icon) {
+            g_list_free_full(icons, g_object_unref);
+            return fail(NK_ERROR_OUT_OF_MEMORY, "could not allocate window icon");
+        }
+        auto *destination = gdk_pixbuf_get_pixels(icon);
+        const int destination_stride = gdk_pixbuf_get_rowstride(icon);
+        for (int32_t y = 0; y < image.height; ++y) {
+            auto *row = destination + static_cast<size_t>(y) * destination_stride;
+            std::memcpy(row, pixels + image.offset + static_cast<size_t>(y) * image.stride,
+                        static_cast<size_t>(image.width) * 4);
+        }
+        icons = g_list_append(icons, icon);
+    }
+    gtk_window_set_icon_list(GTK_WINDOW(resource->window), icons);
+    g_list_free_full(icons, g_object_unref);
     return NK_OK;
 }
 

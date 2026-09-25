@@ -2879,6 +2879,11 @@ nk_result NK_CALL nk_window_set_title(nk_handle handle, const char *title) {
     return nk::web::set_title(window->title.c_str()) ? NK_OK : NK_ERROR_UNKNOWN;
 }
 
+nk_result NK_CALL nk_window_set_icons(nk_handle, const uint8_t *, uint32_t,
+                                      const nk_icon_image *, uint32_t) {
+    return NK_ERROR_UNSUPPORTED;
+}
+
 nk_result NK_CALL nk_window_set_bounds(nk_handle handle, int32_t x, int32_t y, int32_t width,
                                        int32_t height) {
     if (const auto result = nk::core::require_ui_thread(); result != NK_OK)

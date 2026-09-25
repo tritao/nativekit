@@ -15,6 +15,7 @@
 #include "core/frame_backend.hpp"
 #include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
+#include "core/icon_images.hpp"
 #include "core/runtime.hpp"
 #include "core/system_internal.hpp"
 #include "core/resource_events.hpp"
@@ -52,6 +53,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cstdlib>
 #include <cmath>
 #include <cwchar>
 #include <cstring>
@@ -253,6 +255,8 @@ std::unordered_map<nk_request_id, nk_handle> evaluations;
 
 struct WinWindowResource final : nk::core::Resource {
     HWND window = nullptr;
+    HICON icon_small = nullptr;
+    HICON icon_big = nullptr;
     nk_handle handle = NK_INVALID_HANDLE;
     nk_handle owner = NK_INVALID_HANDLE;
     bool modal = false;
@@ -299,6 +303,10 @@ struct WinWindowResource final : nk::core::Resource {
             ReleaseCapture();
         if (owns_window && window && IsWindow(window))
             DestroyWindow(window);
+        if (icon_small)
+            DestroyIcon(icon_small);
+        if (icon_big && icon_big != icon_small)
+            DestroyIcon(icon_big);
     }
 };
 
@@ -3224,6 +3232,105 @@ nk_result NK_CALL nk_window_set_title(nk_handle handle, const char *title) {
         return SetWindowTextW(resource->window, value.c_str())
                    ? NK_OK
                    : fail(NK_ERROR_UNKNOWN, "could not set window title");
+    });
+}
+
+nk_result NK_CALL nk_window_set_icons(nk_handle handle, const uint8_t *pixels,
+                                      uint32_t byte_count, const nk_icon_image *images,
+                                      uint32_t image_count) {
+    return nk::core::result_boundary("unexpected error while setting window icons", [&] {
+        if (const auto result = enter_ui(); result != NK_OK)
+            return result;
+        auto resource = get_window(handle);
+        if (!resource)
+            return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+        if (!resource->owns_window)
+            return fail(NK_ERROR_UNSUPPORTED, "wrapped windows cannot set an icon");
+        if (!nk::core::valid_icon_images(pixels, byte_count, images, image_count))
+            return fail(NK_ERROR_INVALID_ARGUMENT, "invalid window icon images");
+        std::vector<HICON> native_icons;
+        native_icons.reserve(image_count);
+        for (uint32_t index = 0; index < image_count; ++index) {
+            const auto &image = images[index];
+            BITMAPV5HEADER header{};
+            header.bV5Size = sizeof(header);
+            header.bV5Width = image.width;
+            header.bV5Height = -image.height;
+            header.bV5Planes = 1;
+            header.bV5BitCount = 32;
+            header.bV5Compression = BI_BITFIELDS;
+            header.bV5RedMask = 0x00ff0000;
+            header.bV5GreenMask = 0x0000ff00;
+            header.bV5BlueMask = 0x000000ff;
+            header.bV5AlphaMask = 0xff000000;
+            void *bits = nullptr;
+            HBITMAP color = CreateDIBSection(nullptr, reinterpret_cast<BITMAPINFO *>(&header),
+                                             DIB_RGB_COLORS, &bits, nullptr, 0);
+            if (!color)
+                break;
+            auto *destination = static_cast<uint32_t *>(bits);
+            for (int32_t y = 0; y < image.height; ++y) {
+                const auto *row = pixels + image.offset + static_cast<size_t>(y) * image.stride;
+                for (int32_t x = 0; x < image.width; ++x) {
+                    const auto *pixel = row + static_cast<size_t>(x) * 4;
+                    const uint32_t alpha = pixel[3];
+                    const uint32_t red = (pixel[0] * alpha + 127) / 255;
+                    const uint32_t green = (pixel[1] * alpha + 127) / 255;
+                    const uint32_t blue = (pixel[2] * alpha + 127) / 255;
+                    destination[static_cast<size_t>(y) * image.width + x] =
+                        (alpha << 24) | (red << 16) | (green << 8) | blue;
+                }
+            }
+            HBITMAP mask = CreateBitmap(image.width, image.height, 1, 1, nullptr);
+            ICONINFO info{};
+            info.fIcon = TRUE;
+            info.hbmColor = color;
+            info.hbmMask = mask;
+            HICON icon = mask ? CreateIconIndirect(&info) : nullptr;
+            if (mask)
+                DeleteObject(mask);
+            DeleteObject(color);
+            if (!icon)
+                break;
+            native_icons.push_back(icon);
+        }
+        if (native_icons.size() != image_count) {
+            for (HICON icon : native_icons)
+                DestroyIcon(icon);
+            return fail(NK_ERROR_OUT_OF_MEMORY, "could not create window icon images");
+        }
+        auto closest = [&](int target_width, int target_height) {
+            uint32_t selected = 0;
+            int64_t best = std::numeric_limits<int64_t>::max();
+            for (uint32_t index = 0; index < image_count; ++index) {
+                const int64_t distance =
+                    std::abs(static_cast<int64_t>(images[index].width) - target_width) +
+                    std::abs(static_cast<int64_t>(images[index].height) - target_height);
+                if (distance < best) {
+                    best = distance;
+                    selected = index;
+                }
+            }
+            return selected;
+        };
+        const auto small_index = closest(GetSystemMetrics(SM_CXSMICON),
+                                         GetSystemMetrics(SM_CYSMICON));
+        const auto big_index = closest(GetSystemMetrics(SM_CXICON),
+                                       GetSystemMetrics(SM_CYICON));
+        HICON small = native_icons[small_index];
+        HICON big = native_icons[big_index];
+        SendMessageW(resource->window, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(small));
+        SendMessageW(resource->window, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(big));
+        if (resource->icon_small)
+            DestroyIcon(resource->icon_small);
+        if (resource->icon_big && resource->icon_big != resource->icon_small)
+            DestroyIcon(resource->icon_big);
+        resource->icon_small = small;
+        resource->icon_big = big;
+        for (uint32_t index = 0; index < image_count; ++index)
+            if (index != small_index && index != big_index)
+                DestroyIcon(native_icons[index]);
+        return NK_OK;
     });
 }
 
