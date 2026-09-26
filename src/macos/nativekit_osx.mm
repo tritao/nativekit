@@ -4293,7 +4293,9 @@ nk_result NK_CALL nk_pointer_button_get_state(nk_handle handle, nk_pointer_butto
     auto resource = window(handle);
     if (!resource)
         return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
-    *out_action = resource->pointer_buttons[button];
+    *out_action = button < 5
+        ? (([NSEvent pressedMouseButtons] & (1u << button)) ? NK_INPUT_PRESS : NK_INPUT_RELEASE)
+        : resource->pointer_buttons[button];
     return NK_OK;
 }
 

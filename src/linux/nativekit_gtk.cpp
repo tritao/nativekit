@@ -1949,8 +1949,18 @@ gboolean on_pointer_scroll(GtkWidget *, GdkEventScroll *scroll, gpointer data) {
 gboolean on_pointer_crossing(GtkWidget *, GdkEventCrossing *crossing, gpointer data) {
     auto *resource = static_cast<GtkWindowResource *>(data);
     resource->hovered = crossing->type == GDK_ENTER_NOTIFY;
-    if (resource->hovered)
+    if (resource->hovered) {
+        // A button release outside an unsuccessful grab has no button event
+        // for this window. The crossing state reflects the actual buttons at
+        // re-entry, so state queries can cancel a stale UI drag.
+        constexpr GdkModifierType button_masks[] = {
+            GDK_BUTTON1_MASK, GDK_BUTTON3_MASK, GDK_BUTTON2_MASK,
+            GDK_BUTTON4_MASK, GDK_BUTTON5_MASK};
+        for (nk_pointer_button button = 0; button < 5; ++button)
+            resource->buttons[button] = (crossing->state & button_masks[button])
+                ? NK_INPUT_PRESS : NK_INPUT_RELEASE;
         apply_pointer_cursor(*resource);
+    }
     nk::core::QueuedEvent event;
     event.kind = NK_EVENT_POINTER_ENTER;
     event.source = resource->handle;
@@ -2787,7 +2797,7 @@ nk_result apply_cursor_mode(GtkWindowResource &resource, nk_cursor_mode mode) {
     resource.cursor_mode = mode;
     GdkCursor *native_cursor = effective_cursor(resource, display);
     if (mode == NK_CURSOR_MODE_CAPTURED) {
-        const auto status = gdk_seat_grab(seat, native, GDK_SEAT_CAPABILITY_POINTER, TRUE,
+        const auto status = gdk_seat_grab(seat, native, GDK_SEAT_CAPABILITY_POINTER, FALSE,
                                           native_cursor, nullptr, nullptr, nullptr);
         if (status != GDK_GRAB_SUCCESS) {
             resource.cursor_mode = previous;

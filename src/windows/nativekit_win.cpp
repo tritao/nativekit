@@ -3526,7 +3526,10 @@ nk_result NK_CALL nk_pointer_button_get_state(nk_handle handle, nk_pointer_butto
     auto resource = get_window(handle);
     if (!resource)
         return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
-    *out_action = resource->pointer_buttons[button];
+    const int virtual_keys[] = {VK_LBUTTON, VK_RBUTTON, VK_MBUTTON, VK_XBUTTON1, VK_XBUTTON2};
+    *out_action = button < 5
+        ? ((GetAsyncKeyState(virtual_keys[button]) & 0x8000) ? NK_INPUT_PRESS : NK_INPUT_RELEASE)
+        : resource->pointer_buttons[button];
     return NK_OK;
 }
 

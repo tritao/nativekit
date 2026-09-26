@@ -3314,7 +3314,7 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	/**
 	 * On NK_OK, returns the current action state of one pointer button.
 	 */
-	extern fn nk_pointer_button_get_state(window: nk_window, button: nk_pointer_button, out_action: ptr<nk_input_action>) -> nk_result;
+	extern fn nk_pointer_button_get_state(window: nk_window, button: nk_pointer_button, out_action: ptr<nk_input_action> @out) -> nk_result;
 	/**
 	 * On NK_OK, returns the current pointer position in surface-local logical pixels.
 	 */
@@ -4111,7 +4111,8 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 */
 	extern fn nk_window_set_fullscreen_monitor(window: nk_window, monitor: nk_monitor) -> nk_result;
 	/**
-	 * Sets a window's icon images. The backend chooses appropriate sizes for its
+	 * Sets a window's icon images. Each image must fit entirely within pixels,
+	 * with stride >= width * 4. The backend chooses appropriate sizes for its
 	 * window chrome and taskbar; macOS applies them to the application icon too.
 	 * All image bytes are copied before return. UI thread only.
 	 */

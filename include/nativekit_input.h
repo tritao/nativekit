@@ -687,7 +687,7 @@ NK_API nk_result NK_CALL nk_key_get_state(nk_window window, nk_key key,
 
 /** On NK_OK, returns the current action state of one pointer button. */
 NK_API nk_result NK_CALL nk_pointer_button_get_state(nk_window window, nk_pointer_button button,
-                                                     nk_input_action *out_action);
+                                                     nk_input_action *out_action NK_OUT);
 
 /** On NK_OK, returns the current pointer position in surface-local logical pixels. */
 NK_API nk_result NK_CALL nk_pointer_get_position(nk_window window, double *out_x, double *out_y);
