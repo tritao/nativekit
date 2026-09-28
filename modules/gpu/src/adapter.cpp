@@ -27,6 +27,12 @@
 #include <utility>
 #include <vector>
 
+/**
+ * GPU buffers the process may hold at once, across every renderer. NativeKit's
+ * handle table and Sokol's buffer pool share this capacity.
+ */
+constexpr size_t kBufferPoolSize = 4096;
+
 enum Kind : uint32_t {
     RendererKind = 1,
     BufferKind,
@@ -293,7 +299,7 @@ struct Batch {
 };
 
 static Pool<Renderer, RendererKind, 8> renderer_pool;
-static Pool<Buffer, BufferKind, 256> buffer_pool;
+static Pool<Buffer, BufferKind, kBufferPoolSize> buffer_pool;
 static Pool<Shader, ShaderKind, 256> shader_pool;
 static Pool<Pipeline, PipelineKind, 256> pipeline_pool;
 static Pool<BufferBuilder, BufferBuilderKind, 16> buffer_builder_pool;
@@ -1491,6 +1497,10 @@ static nkgpu_result create_renderer_from_target(nk_surface surface,
                                              : SG_PIXELFORMAT_DEPTH_STENCIL;
     desc.environment.defaults = {
         .color_format = color_format, .depth_format = depth_format, .sample_count = 1};
+    // Every mesh needs its own vertex, index, and edge buffers, so Sokol's
+    // default of 128 buffers for the whole process runs out after a few dozen
+    // objects and rendering fails with "buffer creation failed".
+    desc.buffer_pool_size = static_cast<int>(kBufferPoolSize);
     if (target.api == NK_GRAPHICS_D3D11) {
         desc.environment.d3d11.device =
             reinterpret_cast<const void *>(static_cast<uintptr_t>(target.native_device));

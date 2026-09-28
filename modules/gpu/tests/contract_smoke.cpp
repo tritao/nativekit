@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <vector>
 #include <thread>
 
 #define EXPECT_RESULT(expression, expected)                                                        \
@@ -225,6 +226,15 @@ int main() {
             result = __LINE__;
             goto cleanup;
         }
+    }
+
+    {
+        // A scene with a few hundred meshes needs a few hundred buffers at once.
+        std::vector<nkgpu_buffer> many(300);
+        for (auto &item : many)
+            EXPECT_RESULT(nkgpu_buffer_create(first, buffer_data, sizeof(buffer_data), &item), NKGPU_OK);
+        for (auto &item : many)
+            EXPECT_RESULT(nkgpu_buffer_destroy(first, item), NKGPU_OK);
     }
 
     {
