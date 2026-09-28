@@ -238,6 +238,74 @@ int main() {
     }
 
     {
+        // A scene of textured glTF characters needs one image, one sampler,
+        // and (per sampled image) one texture view per texture. Sokol's old
+        // defaults (128 images, 64 samplers, 256 views) ran out long before
+        // NativeKit's own 256-entry handle tables did, so exceed the old
+        // image/sampler limits here.
+        std::vector<nkgpu_image> many_images(200);
+        const uint8_t many_image_pixel[4] = {255, 255, 255, 255};
+        nkgpu_image_desc many_image_desc{};
+        many_image_desc.struct_size = sizeof(many_image_desc);
+        many_image_desc.width = 1;
+        many_image_desc.height = 1;
+        many_image_desc.format = NKGPU_IMAGEFORMAT_RGBA8;
+        many_image_desc.usage = NKGPU_IMAGE_SAMPLED;
+        many_image_desc.data = many_image_pixel;
+        many_image_desc.data_size = sizeof(many_image_pixel);
+        for (auto &item : many_images)
+            EXPECT_RESULT(nkgpu_image_create_desc(first, &many_image_desc, &item), NKGPU_OK);
+        std::vector<nkgpu_sampler> many_samplers(200);
+        for (auto &item : many_samplers)
+            EXPECT_RESULT(nkgpu_sampler_create(first, NKGPU_FILTER_LINEAR, NKGPU_FILTER_LINEAR,
+                                               NKGPU_WRAP_REPEAT, NKGPU_WRAP_REPEAT, &item),
+                          NKGPU_OK);
+        for (auto &item : many_samplers)
+            EXPECT_RESULT(nkgpu_sampler_destroy(first, item), NKGPU_OK);
+        for (auto &item : many_images)
+            EXPECT_RESULT(nkgpu_image_destroy(first, item), NKGPU_OK);
+    }
+
+    {
+        // A large material library compiles many shader variants, and
+        // pipelines multiply faster still -- one per unique state
+        // combination -- past Sokol's old defaults (32 shaders, 64
+        // pipelines).
+        const bool many_gles = nkgpu_query_graphics_api(first) == NK_GRAPHICS_OPENGL_ES;
+        const char *many_vertex_source =
+            many_gles ? "#version 300 es\nvoid main(){gl_Position=vec4(0.0);}\n"
+                     : "#version 330\nvoid main(){gl_Position=vec4(0.0);}\n";
+        const char *many_fragment_source =
+            many_gles
+                ? "#version 300 es\nprecision mediump float; out vec4 c; void main(){c=vec4(1.0);}\n"
+                : "#version 330\nout vec4 c; void main(){c=vec4(1.0);}\n";
+        std::vector<nkgpu_shader> many_shaders(60);
+        for (auto &item : many_shaders)
+            EXPECT_RESULT(nkgpu_shader_create(first, NKGPU_SHADERLANGUAGE_GLSL, many_vertex_source,
+                                              many_fragment_source, &item),
+                          NKGPU_OK);
+
+        std::vector<nkgpu_pipeline> many_pipelines(100);
+        for (auto &item : many_pipelines) {
+            nkgpu_pipeline_builder many_pipeline_builder{};
+            EXPECT_RESULT(nkgpu_pipeline_begin(first, many_shaders[0], 4, &many_pipeline_builder),
+                          NKGPU_OK);
+            EXPECT_RESULT(nkgpu_pipeline_attribute(many_pipeline_builder, 0, 0, 0,
+                                                   NKGPU_VERTEXFORMAT_FLOAT),
+                          NKGPU_OK);
+            EXPECT_RESULT(nkgpu_pipeline_color_target(many_pipeline_builder, 0,
+                                                      NKGPU_IMAGEFORMAT_RGBA8, NKGPU_COLORMASK_RGBA,
+                                                      nullptr),
+                          NKGPU_OK);
+            EXPECT_RESULT(nkgpu_pipeline_end(many_pipeline_builder, &item), NKGPU_OK);
+        }
+        for (auto &item : many_pipelines)
+            EXPECT_RESULT(nkgpu_pipeline_destroy(first, item), NKGPU_OK);
+        for (auto &item : many_shaders)
+            EXPECT_RESULT(nkgpu_shader_destroy(first, item), NKGPU_OK);
+    }
+
+    {
         nkgpu_features features{};
         nkgpu_limits limits{};
         features.struct_size = sizeof(features);
@@ -511,6 +579,20 @@ int main() {
             }
             EXPECT_RESULT(nkgpu_buffer_destroy(first, storage_probe), NKGPU_OK);
             storage_probe = {};
+
+            // Every storage buffer also allocates a Sokol view (see
+            // save_buffer() in adapter.cpp), so a scene using many of them
+            // exhausts the view pool without coming close to the (already
+            // large) buffer pool. Sokol's old view pool default was 256.
+            std::vector<nkgpu_buffer> many_storage_buffers(300);
+            nkgpu_buffer_desc many_storage_desc{};
+            many_storage_desc.struct_size = sizeof(many_storage_desc);
+            many_storage_desc.size = 16;
+            many_storage_desc.usage = NKGPU_BUFFER_STORAGE;
+            for (auto &item : many_storage_buffers)
+                EXPECT_RESULT(nkgpu_buffer_create_desc(first, &many_storage_desc, &item), NKGPU_OK);
+            for (auto &item : many_storage_buffers)
+                EXPECT_RESULT(nkgpu_buffer_destroy(first, item), NKGPU_OK);
         } else if (storage_buffer_result != NKGPU_ERROR_UNSUPPORTED) {
             std::fprintf(stderr, "unsupported storage buffers returned %d\n",
                          storage_buffer_result);

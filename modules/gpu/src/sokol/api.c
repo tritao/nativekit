@@ -21,6 +21,8 @@ const nk_sokol_api *nk_sokol_get_api(void) {
         api.external_image_create = nk_sokol_external_image_create;
         api.external_image_release = nk_sokol_external_image_release;
         api.external_image_resolve = nk_sokol_external_image_resolve;
+        api.last_log_message = nk_sokol_last_log_message;
+        api.clear_last_log_message = nk_sokol_clear_last_log_message;
     }
     return &api;
 }

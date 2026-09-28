@@ -33,6 +33,54 @@
  */
 constexpr size_t kBufferPoolSize = 4096;
 
+/**
+ * Sampled/render-target/storage images the process may hold at once. A scene
+ * of textured glTF characters needs several images per character (base
+ * color, normal, metallic-roughness, emissive, occlusion, ...), so this must
+ * comfortably clear Sokol's old default of 128. NativeKit's handle table and
+ * Sokol's image pool share this capacity.
+ */
+constexpr size_t kImagePoolSize = 4096;
+
+/**
+ * Samplers the process may hold at once. NativeKit does not deduplicate
+ * samplers, so a scene that gives every texture its own filter/wrap
+ * combination needs one sampler per image; size this pool the same as the
+ * image pool. NativeKit's handle table and Sokol's sampler pool share this
+ * capacity.
+ */
+constexpr size_t kSamplerPoolSize = kImagePoolSize;
+
+/**
+ * Sokol views the process may hold at once. Every sampled image needs one
+ * texture view (kImagePoolSize worth), a render-target or depth/stencil
+ * image needs one to three more (color, resolve, depth) view slots, a
+ * storage image needs one, and a storage buffer needs one. Most images in a
+ * realistic scene are plain sampled textures, with only a handful used as
+ * render targets or storage, so double the image capacity to leave headroom
+ * for attachment and storage-buffer views without tracking every combination
+ * exactly. NativeKit does not keep its own view handle table -- views are
+ * embedded fields on Image/Buffer -- so only Sokol's view pool needs sizing.
+ */
+constexpr size_t kViewPoolSize = kImagePoolSize * 2;
+
+/**
+ * Shaders the process may hold at once. A large material library compiles
+ * many shader variants (feature-flag combinations, skinned vs. static,
+ * etc.), well beyond Sokol's old default of 32. NativeKit's handle table and
+ * Sokol's shader pool share this capacity.
+ */
+constexpr size_t kShaderPoolSize = 512;
+
+/**
+ * Pipelines the process may hold at once. Pipelines multiply faster than
+ * shaders -- every unique combination of shader, vertex layout, blend, depth
+ * and cull state needs its own -- so this stays well above Sokol's old
+ * default of 64. NativeKit's handle table and Sokol's pipeline pool share
+ * this capacity.
+ */
+constexpr size_t kPipelinePoolSize = 2048;
+
 enum Kind : uint32_t {
     RendererKind = 1,
     BufferKind,
@@ -300,15 +348,15 @@ struct Batch {
 
 static Pool<Renderer, RendererKind, 8> renderer_pool;
 static Pool<Buffer, BufferKind, kBufferPoolSize> buffer_pool;
-static Pool<Shader, ShaderKind, 256> shader_pool;
-static Pool<Pipeline, PipelineKind, 256> pipeline_pool;
+static Pool<Shader, ShaderKind, kShaderPoolSize> shader_pool;
+static Pool<Pipeline, PipelineKind, kPipelinePoolSize> pipeline_pool;
 static Pool<BufferBuilder, BufferBuilderKind, 16> buffer_builder_pool;
 static Pool<PipelineBuilder, PipelineBuilderKind, 16> pipeline_builder_pool;
 static Pool<ShaderBuilder, ShaderBuilderKind, 16> shader_builder_pool;
 static Pool<UniformBuilder, UniformBuilderKind, 16, true> uniform_builder_pool;
-static Pool<Image, ImageKind, 256> image_pool;
+static Pool<Image, ImageKind, kImagePoolSize> image_pool;
 static Pool<ImageBuilder, ImageBuilderKind, 16> image_builder_pool;
-static Pool<Sampler, SamplerKind, 256> sampler_pool;
+static Pool<Sampler, SamplerKind, kSamplerPoolSize> sampler_pool;
 static Pool<Batch, BatchKind, 64> batch_pool;
 static Pool<Readback, ReadbackKind, 128> readback_pool;
 static Pool<Timestamp, TimestampKind, 128> timestamp_pool;
@@ -693,6 +741,22 @@ static nkgpu_result fail(nkgpu_result code, const char *format, ...) {
     vsnprintf(error_message, sizeof(error_message), format, args);
     va_end(args);
     return code;
+}
+
+/* Like fail(), for a Sokol resource that just failed to create (its
+ * sg_query_*_state() came back invalid). Sokol's own logger -- installed in
+ * nk_sokol_runtime_acquire() -- captures the pool-exhaustion (or other)
+ * diagnostic it logs synchronously from inside the failing sg_make_*() call,
+ * so callers get "buffer creation failed: buffer pool exhausted" instead of
+ * a bare "buffer creation failed" that does not say which pool ran out. */
+static nkgpu_result fail_creation(nkgpu_result code, const char *what) {
+    const char *detail =
+        selected_api && selected_api->last_log_message ? selected_api->last_log_message() : nullptr;
+    const nkgpu_result result =
+        detail && *detail ? fail(code, "%s: %s", what, detail) : fail(code, "%s", what);
+    if (selected_api && selected_api->clear_last_log_message)
+        selected_api->clear_last_log_message();
+    return result;
 }
 
 static nkgpu_shader_language shader_language_for(nk_graphics_api api) {
@@ -1499,8 +1563,18 @@ static nkgpu_result create_renderer_from_target(nk_surface surface,
         .color_format = color_format, .depth_format = depth_format, .sample_count = 1};
     // Every mesh needs its own vertex, index, and edge buffers, so Sokol's
     // default of 128 buffers for the whole process runs out after a few dozen
-    // objects and rendering fails with "buffer creation failed".
+    // objects and rendering fails with "buffer creation failed". The image,
+    // sampler, view, shader and pipeline pools have the same problem: their
+    // Sokol defaults (128/64/256/32/64) are smaller than the matching
+    // NativeKit handle tables, so Sokol's pool -- not NativeKit's -- was the
+    // real, lower, silent cap. Keep every pair in agreement at the sizes
+    // declared above.
     desc.buffer_pool_size = static_cast<int>(kBufferPoolSize);
+    desc.image_pool_size = static_cast<int>(kImagePoolSize);
+    desc.sampler_pool_size = static_cast<int>(kSamplerPoolSize);
+    desc.view_pool_size = static_cast<int>(kViewPoolSize);
+    desc.shader_pool_size = static_cast<int>(kShaderPoolSize);
+    desc.pipeline_pool_size = static_cast<int>(kPipelinePoolSize);
     if (target.api == NK_GRAPHICS_D3D11) {
         desc.environment.d3d11.device =
             reinterpret_cast<const void *>(static_cast<uintptr_t>(target.native_device));
@@ -1967,7 +2041,7 @@ static nkgpu_result save_buffer(Handle owner, sg_buffer object, uint32_t size,
                 sg_destroy_view(value.storage_view);
             sg_destroy_buffer(object);
             record_allocation_failure(owner);
-            return fail(NKGPU_ERROR_OUT_OF_MEMORY, "storage-buffer view creation failed");
+            return fail_creation(NKGPU_ERROR_OUT_OF_MEMORY, "storage-buffer view creation failed");
         }
     }
     Handle h = buffer_pool.add(std::move(value));
@@ -2010,7 +2084,7 @@ nkgpu_result nkgpu_buffer_create_stream(nkgpu_renderer r, uint32_t capacity,
     const sg_buffer object = sg_make_buffer(&desc);
     if (sg_query_buffer_state(object) != SG_RESOURCESTATE_VALID) {
         record_allocation_failure(r);
-        return fail(NKGPU_ERROR_OUT_OF_MEMORY, "stream buffer creation failed");
+        return fail_creation(NKGPU_ERROR_OUT_OF_MEMORY, "stream buffer creation failed");
     }
     return save_buffer(r, object, capacity, usage, true, true, nullptr, out);
 }
@@ -2095,7 +2169,7 @@ nkgpu_result nkgpu_buffer_create_desc(nkgpu_renderer r, const nkgpu_buffer_desc 
     const sg_buffer object = sg_make_buffer(&native_desc);
     if (sg_query_buffer_state(object) != SG_RESOURCESTATE_VALID) {
         record_allocation_failure(r);
-        return fail(NKGPU_ERROR_OUT_OF_MEMORY, "buffer creation failed");
+        return fail_creation(NKGPU_ERROR_OUT_OF_MEMORY, "buffer creation failed");
     }
     if (desc.data_size && (dynamic_update || native_desc.usage.write_transient)) {
         const sg_range initial_data{desc.data, desc.data_size};
@@ -2194,7 +2268,7 @@ nkgpu_result nkgpu_buffer_end(nkgpu_buffer_builder h, nkgpu_buffer *out) {
         result = save_buffer(owner, b, size, s->value.usage, false, false, s->value.data, out);
     else {
         record_allocation_failure(owner);
-        result = fail(NKGPU_ERROR_OUT_OF_MEMORY, "buffer creation failed");
+        result = fail_creation(NKGPU_ERROR_OUT_OF_MEMORY, "buffer creation failed");
     }
     free(s->value.data);
     buffer_builder_pool.remove(*s);
@@ -2267,7 +2341,7 @@ nkgpu_result nkgpu_buffer_update(nkgpu_renderer r, nkgpu_buffer h, uint32_t offs
                     sg_destroy_view(storage_view);
                 sg_destroy_buffer(object);
                 record_allocation_failure(r);
-                return fail(NKGPU_ERROR_OUT_OF_MEMORY, "updated storage-buffer view failed");
+                return fail_creation(NKGPU_ERROR_OUT_OF_MEMORY, "updated storage-buffer view failed");
             }
         }
         if (s->value.storage_view.id)
@@ -2319,7 +2393,7 @@ nkgpu_result nkgpu_shader_create(nkgpu_renderer r, nkgpu_shader_language languag
     sg_shader object = sg_make_shader(&desc);
     if (sg_query_shader_state(object) != SG_RESOURCESTATE_VALID) {
         record_allocation_failure(r);
-        return fail(NKGPU_ERROR_OUT_OF_MEMORY, "shader creation failed");
+        return fail_creation(NKGPU_ERROR_OUT_OF_MEMORY, "shader creation failed");
     }
     Handle h = shader_pool.add(Shader{r, object, language});
     if (!h) {
@@ -2615,7 +2689,7 @@ nkgpu_result nkgpu_shader_end(nkgpu_shader_builder h, nkgpu_shader *out) {
     shader_builder_pool.remove(*s);
     if (sg_query_shader_state(object) != SG_RESOURCESTATE_VALID) {
         record_allocation_failure(owner);
-        return fail(NKGPU_ERROR_OUT_OF_MEMORY, "shader creation failed");
+        return fail_creation(NKGPU_ERROR_OUT_OF_MEMORY, "shader creation failed");
     }
     Handle result = shader_pool.add(Shader{owner, object, language});
     if (!result) {
@@ -2949,7 +3023,7 @@ nkgpu_result nkgpu_pipeline_end(nkgpu_pipeline_builder h, nkgpu_pipeline *out) {
     pipeline_builder_pool.remove(*s);
     if (sg_query_pipeline_state(object) != SG_RESOURCESTATE_VALID) {
         record_allocation_failure(owner);
-        return fail(NKGPU_ERROR_OUT_OF_MEMORY, "pipeline creation failed");
+        return fail_creation(NKGPU_ERROR_OUT_OF_MEMORY, "pipeline creation failed");
     }
     Pipeline pipeline_value{};
     pipeline_value.owner = owner;
@@ -3551,7 +3625,7 @@ nkgpu_result nkgpu_image_create_desc(nkgpu_renderer r, const nkgpu_image_desc *i
     const sg_image object = sg_make_image(&native_desc);
     if (sg_query_image_state(object) != SG_RESOURCESTATE_VALID) {
         record_allocation_failure(r);
-        return fail(NKGPU_ERROR_OUT_OF_MEMORY, "image creation failed");
+        return fail_creation(NKGPU_ERROR_OUT_OF_MEMORY, "image creation failed");
     }
 
     Image image_value{};
@@ -3578,7 +3652,7 @@ nkgpu_result nkgpu_image_create_desc(nkgpu_renderer r, const nkgpu_image_desc *i
         if (!make_view(view_desc, image_value.view)) {
             sg_destroy_image(object);
             record_allocation_failure(r);
-            return fail(NKGPU_ERROR_OUT_OF_MEMORY, "texture view creation failed");
+            return fail_creation(NKGPU_ERROR_OUT_OF_MEMORY, "texture view creation failed");
         }
     }
     if (usage & NKGPU_IMAGE_RENDER_TARGET) {
@@ -3589,7 +3663,7 @@ nkgpu_result nkgpu_image_create_desc(nkgpu_renderer r, const nkgpu_image_desc *i
                 sg_destroy_view(image_value.view);
             sg_destroy_image(object);
             record_allocation_failure(r);
-            return fail(NKGPU_ERROR_OUT_OF_MEMORY, "color attachment view creation failed");
+            return fail_creation(NKGPU_ERROR_OUT_OF_MEMORY, "color attachment view creation failed");
         }
         if (sample_count == 1) {
             view_desc = {};
@@ -3601,7 +3675,7 @@ nkgpu_result nkgpu_image_create_desc(nkgpu_renderer r, const nkgpu_image_desc *i
                     sg_destroy_view(image_value.view);
                 sg_destroy_image(object);
                 record_allocation_failure(r);
-                return fail(NKGPU_ERROR_OUT_OF_MEMORY, "resolve attachment view creation failed");
+                return fail_creation(NKGPU_ERROR_OUT_OF_MEMORY, "resolve attachment view creation failed");
             }
         }
     }
@@ -3611,7 +3685,7 @@ nkgpu_result nkgpu_image_create_desc(nkgpu_renderer r, const nkgpu_image_desc *i
         if (!make_view(view_desc, image_value.storage_image)) {
             destroy_image_backend(image_value);
             record_allocation_failure(r);
-            return fail(NKGPU_ERROR_OUT_OF_MEMORY, "storage-image view creation failed");
+            return fail_creation(NKGPU_ERROR_OUT_OF_MEMORY, "storage-image view creation failed");
         }
     }
     if (usage & NKGPU_IMAGE_DEPTH_STENCIL) {
@@ -3626,7 +3700,7 @@ nkgpu_result nkgpu_image_create_desc(nkgpu_renderer r, const nkgpu_image_desc *i
                 sg_destroy_view(image_value.view);
             sg_destroy_image(object);
             record_allocation_failure(r);
-            return fail(NKGPU_ERROR_OUT_OF_MEMORY, "depth attachment view creation failed");
+            return fail_creation(NKGPU_ERROR_OUT_OF_MEMORY, "depth attachment view creation failed");
         }
     }
 
@@ -3676,7 +3750,7 @@ nkgpu_result nkgpu_image_end(nkgpu_image_builder h, nkgpu_image *out) {
     image_builder_pool.remove(*s);
     if (sg_query_image_state(image) != SG_RESOURCESTATE_VALID) {
         record_allocation_failure(owner);
-        return fail(NKGPU_ERROR_OUT_OF_MEMORY, "image creation failed");
+        return fail_creation(NKGPU_ERROR_OUT_OF_MEMORY, "image creation failed");
     }
     sg_view_desc view_desc{};
     view_desc.texture.image = image;
@@ -3684,7 +3758,7 @@ nkgpu_result nkgpu_image_end(nkgpu_image_builder h, nkgpu_image *out) {
     if (sg_query_view_state(view) != SG_RESOURCESTATE_VALID) {
         sg_destroy_image(image);
         record_allocation_failure(owner);
-        return fail(NKGPU_ERROR_OUT_OF_MEMORY, "texture view creation failed");
+        return fail_creation(NKGPU_ERROR_OUT_OF_MEMORY, "texture view creation failed");
     }
     image_value.view = view;
     Handle result = image_pool.add(image_value);
@@ -3761,7 +3835,7 @@ nkgpu_result nkgpu_image_update(nkgpu_renderer r, nkgpu_image h, uint32_t x, uin
     const sg_image object = sg_make_image(&desc);
     if (sg_query_image_state(object) != SG_RESOURCESTATE_VALID) {
         record_allocation_failure(r);
-        return fail(NKGPU_ERROR_OUT_OF_MEMORY, "updated image creation failed");
+        return fail_creation(NKGPU_ERROR_OUT_OF_MEMORY, "updated image creation failed");
     }
     sg_view_desc view_desc{};
     view_desc.texture.image = object;
@@ -3769,7 +3843,7 @@ nkgpu_result nkgpu_image_update(nkgpu_renderer r, nkgpu_image h, uint32_t x, uin
     if (sg_query_view_state(view) != SG_RESOURCESTATE_VALID) {
         sg_destroy_image(object);
         record_allocation_failure(r);
-        return fail(NKGPU_ERROR_OUT_OF_MEMORY, "updated image view creation failed");
+        return fail_creation(NKGPU_ERROR_OUT_OF_MEMORY, "updated image view creation failed");
     }
     sg_destroy_view(image->value.view);
     sg_destroy_image(image->value.object);
@@ -4376,7 +4450,7 @@ nkgpu_result nkgpu_sampler_create(nkgpu_renderer r, nkgpu_filter min_filter,
     const sg_sampler sampler = sg_make_sampler(&desc);
     if (sg_query_sampler_state(sampler) != SG_RESOURCESTATE_VALID) {
         record_allocation_failure(r);
-        return fail(NKGPU_ERROR_OUT_OF_MEMORY, "sampler creation failed");
+        return fail_creation(NKGPU_ERROR_OUT_OF_MEMORY, "sampler creation failed");
     }
     Handle result = sampler_pool.add(Sampler{r, sampler});
     if (!result) {

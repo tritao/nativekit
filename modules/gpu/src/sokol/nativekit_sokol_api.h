@@ -35,6 +35,8 @@ typedef struct nk_sokol_api {
     void (*external_image_release)(uint32_t image);
     int (*external_image_resolve)(uint32_t image, sg_view *out_view, int32_t *out_width,
                                   int32_t *out_height);
+    const char *(*last_log_message)(void);
+    void (*clear_last_log_message)(void);
 } nk_sokol_api;
 
 const nk_sokol_api *nk_sokol_get_api(void);

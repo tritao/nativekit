@@ -19,6 +19,9 @@
 #define nk_sokol_external_image_resolve                                                            \
     NK_SOKOL_RUNTIME_CAT(NK_SOKOL_RUNTIME_PREFIX, external_image_resolve)
 #define nk_sokol_transfer_get_api NK_SOKOL_RUNTIME_CAT(NK_SOKOL_RUNTIME_PREFIX, transfer_get_api)
+#define nk_sokol_last_log_message NK_SOKOL_RUNTIME_CAT(NK_SOKOL_RUNTIME_PREFIX, last_log_message)
+#define nk_sokol_clear_last_log_message                                                            \
+    NK_SOKOL_RUNTIME_CAT(NK_SOKOL_RUNTIME_PREFIX, clear_last_log_message)
 #endif
 
 #ifdef __cplusplus
@@ -39,6 +42,13 @@ int nk_sokol_runtime_is_compatible(const sg_desc *desc, nk_graphics_device devic
                                    uint64_t native_device);
 void nk_sokol_runtime_release(void);
 int nk_sokol_query_max_samples(void);
+
+/* The most recent panic/error message Sokol's installed logger captured
+ * (e.g. "buffer pool exhausted"), or NULL if none is pending. Valid only
+ * right after a failed sg_make_*()/sg_alloc_*() call; read and clear it in
+ * the same breath as reporting that failure. */
+const char *nk_sokol_last_log_message(void);
+void nk_sokol_clear_last_log_message(void);
 
 /* Shared, retained sampled images used to bridge Sokol producers to consumers. */
 uint32_t nk_sokol_external_image_create(sg_image image, sg_view view, int32_t width,
