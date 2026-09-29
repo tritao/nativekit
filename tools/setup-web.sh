@@ -5,4 +5,6 @@ repo_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 "$repo_dir/tools/setup-emscripten.sh"
 
 echo
-echo "Web toolchain is ready. Use ../uikit/tools/build-web.sh to build the UIKit browser examples."
+echo "Web toolchain is ready. Configure NativeKit with:"
+echo "  source \"$repo_dir/.tools/emsdk/emsdk_env.sh\""
+echo "  emcmake cmake -S \"$repo_dir\" -B \"$repo_dir/build-web\" -GNinja"
