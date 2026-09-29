@@ -1,3 +1,10 @@
+# Tests use assert for setup calls as well as checks; keep them active in Release.
+if(MSVC)
+    add_compile_options(/UNDEBUG)
+else()
+    add_compile_options(-UNDEBUG)
+endif()
+
 add_executable(nativekit_c_abi abi/c_api.c)
 target_compile_features(nativekit_c_abi PRIVATE c_std_11)
 target_link_libraries(nativekit_c_abi PRIVATE NativeKit::nativekit)
