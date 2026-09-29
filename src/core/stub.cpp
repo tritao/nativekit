@@ -46,6 +46,10 @@ nk_result NK_CALL nk_window_show(nk_handle, uint32_t) {
 nk_result NK_CALL nk_window_set_title(nk_handle, const char *) {
     return unsupported();
 }
+nk_result NK_CALL nk_window_set_icons(nk_handle, const uint8_t *, uint32_t,
+                                      const nk_icon_image *, uint32_t) {
+    return unsupported();
+}
 nk_result NK_CALL nk_window_set_bounds(nk_handle, int32_t, int32_t, int32_t, int32_t) {
     return unsupported();
 }

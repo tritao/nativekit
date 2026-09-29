@@ -27,6 +27,7 @@
 #include "core/frame_backend.hpp"
 #include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
+#include "core/icon_images.hpp"
 #include "core/menu_internal.hpp"
 #include "core/runtime.hpp"
 #include "core/system_internal.hpp"
@@ -4069,6 +4070,51 @@ nk_result NK_CALL nk_window_set_title(nk_handle handle, const char *title) {
     return NK_OK;
 }
 
+nk_result NK_CALL nk_window_set_icons(nk_handle handle, const uint8_t *pixels,
+                                      uint32_t byte_count, const nk_icon_image *images,
+                                      uint32_t image_count) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = window(handle);
+    if (!resource)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
+    if (!nk::core::valid_icon_images(pixels, byte_count, images, image_count))
+        return fail(NK_ERROR_INVALID_ARGUMENT, "invalid window icon images");
+    int32_t size = 0;
+    for (uint32_t index = 0; index < image_count; ++index)
+        size = std::max(size, std::max(images[index].width, images[index].height));
+    NSImage *icon = [[NSImage alloc] initWithSize:NSMakeSize(size, size)];
+    if (!icon)
+        return fail(NK_ERROR_OUT_OF_MEMORY, "could not allocate window icon");
+    for (uint32_t index = 0; index < image_count; ++index) {
+        const auto &image = images[index];
+        NSBitmapImageRep *bitmap = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:nil
+            pixelsWide:image.width pixelsHigh:image.height bitsPerSample:8 samplesPerPixel:4
+            hasAlpha:YES isPlanar:NO colorSpaceName:NSDeviceRGBColorSpace
+            bytesPerRow:0 bitsPerPixel:0];
+        if (!bitmap)
+            return fail(NK_ERROR_OUT_OF_MEMORY, "could not allocate window icon pixels");
+        auto *destination = bitmap.bitmapData;
+        const auto destination_stride = bitmap.bytesPerRow;
+        for (int32_t y = 0; y < image.height; ++y) {
+            auto *row = destination + static_cast<size_t>(y) * destination_stride;
+            const auto *source = pixels + image.offset + static_cast<size_t>(y) * image.stride;
+            for (int32_t x = 0; x < image.width; ++x) {
+                const auto *pixel = source + static_cast<size_t>(x) * 4;
+                const uint32_t alpha = pixel[3];
+                row[x * 4 + 0] = static_cast<uint8_t>((pixel[0] * alpha + 127) / 255);
+                row[x * 4 + 1] = static_cast<uint8_t>((pixel[1] * alpha + 127) / 255);
+                row[x * 4 + 2] = static_cast<uint8_t>((pixel[2] * alpha + 127) / 255);
+                row[x * 4 + 3] = static_cast<uint8_t>(alpha);
+            }
+        }
+        [icon addRepresentation:bitmap];
+    }
+    [NSApp setApplicationIconImage:icon];
+    resource->window.miniwindowImage = icon;
+    return NK_OK;
+}
+
 nk_result NK_CALL nk_window_set_bounds(nk_handle handle, int32_t x, int32_t y, int32_t width,
                                        int32_t height) {
     if (const auto result = enter_ui(); result != NK_OK)
@@ -4247,7 +4293,9 @@ nk_result NK_CALL nk_pointer_button_get_state(nk_handle handle, nk_pointer_butto
     auto resource = window(handle);
     if (!resource)
         return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
-    *out_action = resource->pointer_buttons[button];
+    *out_action = button < 5
+        ? (([NSEvent pressedMouseButtons] & (1u << button)) ? NK_INPUT_PRESS : NK_INPUT_RELEASE)
+        : resource->pointer_buttons[button];
     return NK_OK;
 }
 
@@ -4509,7 +4557,7 @@ nk_result NK_CALL nk_surface_set_text_input_geometry(
         "unexpected error while setting macOS text input geometry", [&]() -> nk_result {
             if (const auto result = enter_ui(); result != NK_OK)
                 return result;
-            auto resource = get_window(handle);
+            auto resource = window(handle);
             if (!resource)
                 return NK_ERROR_INVALID_HANDLE;
             if (resource->text_input_state.struct_size < sizeof(nk_text_input_state))

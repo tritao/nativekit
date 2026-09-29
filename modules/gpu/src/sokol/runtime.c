@@ -1326,6 +1326,43 @@ static void nk_sokol_test_log(const char *tag, uint32_t level, uint32_t item_id,
 }
 #endif
 
+/* The most recent panic/error message Sokol logged (e.g. "buffer pool
+ * exhausted"), so a failed nkgpu_*_create() can report which pool ran out
+ * instead of a bare "creation failed". Sokol logs synchronously from inside
+ * the failing sg_make_*()/sg_alloc_*() call, so the adapter reads this right
+ * after checking the returned handle's state and it is always the message
+ * from that call, never a stale one from an earlier, unrelated success. */
+static char runtime_log_message[256];
+
+static void nk_sokol_capture_log(const char *tag, uint32_t level, uint32_t item_id,
+                                 const char *message, uint32_t line, const char *filename,
+                                 void *user_data) {
+    if (level <= 1 && message) {
+        size_t n = strlen(message);
+        if (n >= sizeof(runtime_log_message))
+            n = sizeof(runtime_log_message) - 1;
+        memcpy(runtime_log_message, message, n);
+        runtime_log_message[n] = '\0';
+    }
+#if defined(NKGPU_TESTING)
+    nk_sokol_test_log(tag, level, item_id, message, line, filename, user_data);
+#else
+    (void)tag;
+    (void)item_id;
+    (void)line;
+    (void)filename;
+    (void)user_data;
+#endif
+}
+
+const char *nk_sokol_last_log_message(void) {
+    return runtime_log_message[0] ? runtime_log_message : 0;
+}
+
+void nk_sokol_clear_last_log_message(void) {
+    runtime_log_message[0] = '\0';
+}
+
 static uint32_t external_image_token(uint32_t index, uint16_t generation) {
     return ((uint32_t)generation << 16) | (index + 1u);
 }
@@ -1370,9 +1407,7 @@ int nk_sokol_runtime_acquire(const sg_desc *desc, nk_graphics_device device,
         runtime_sample_count = desc->environment.defaults.sample_count;
         runtime_device = device_key;
         sg_desc runtime_desc = *desc;
-#if defined(NKGPU_TESTING)
-        runtime_desc.logger.func = nk_sokol_test_log;
-#endif
+        runtime_desc.logger.func = nk_sokol_capture_log;
         sg_setup(&runtime_desc);
         if (!sg_isvalid()) {
             runtime_color_format = 0;

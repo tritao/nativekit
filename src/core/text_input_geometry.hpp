@@ -26,7 +26,7 @@ struct TextInputGeometry {
 
 struct TextInputHitTest {
     bool matched = false;
-    nk_text_position position = NK_TEXT_POSITION_NONE;
+    nk_text_position position = static_cast<nk_text_position>(NK_TEXT_POSITION_NONE);
 };
 
 /**
