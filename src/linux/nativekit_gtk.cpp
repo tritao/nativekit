@@ -25,6 +25,7 @@
 #include "core/resource_events.hpp"
 #include "core/text_input_geometry.hpp"
 
+#include <clocale>
 #include <gtk/gtk.h>
 #include <atk/atk.h>
 #include <gdk/gdkconfig.h>
@@ -1577,12 +1578,21 @@ nk_result enter_ui() {
     return nk::core::require_ui_thread();
 }
 
+// gtk_init_check installs the user's locale for every category. Numbers in this process (JSON, geometry
+// artifacts, saved documents) must keep parsing and printing with a period, or a decimal-comma locale such
+// as pt_PT turns 0.7071 into 0 and writes "0,5" into files. Restore the numeric category afterwards.
+bool init_gtk_keeping_numeric_locale() {
+    int argc = 0;
+    char **argv = nullptr;
+    const bool initialized = gtk_init_check(&argc, &argv) != FALSE;
+    std::setlocale(LC_NUMERIC, "C");
+    return initialized;
+}
+
 bool ensure_gtk() {
     if (gtk_initialized)
         return true;
-    int argc = 0;
-    char **argv = nullptr;
-    gtk_initialized = gtk_init_check(&argc, &argv) != FALSE;
+    gtk_initialized = init_gtk_keeping_numeric_locale();
     if (!gtk_initialized)
         nk::core::set_error("GTK could not connect to a display");
     if (gtk_initialized)
@@ -6281,9 +6291,7 @@ nk_result NK_CALL nk_system_get_appearance(nk_system_appearance *appearance) {
         return result;
     if (!appearance || appearance->struct_size < sizeof(*appearance))
         return fail(NK_ERROR_INVALID_ARGUMENT, "appearance output is missing or too small");
-    int argc = 0;
-    char **argv = nullptr;
-    if (!gtk_init_check(&argc, &argv))
+    if (!init_gtk_keeping_numeric_locale())
         return fail(NK_ERROR_UNSUPPORTED, "GTK could not connect to a display");
     GtkSettings *settings = gtk_settings_get_default();
     if (!settings)
