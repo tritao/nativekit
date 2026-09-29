@@ -3793,6 +3793,10 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 */
 	extern fn nk_transport_event_data(event: ptr<const<nk_event>>, out_data: ptr<nk_transport_data_event> @out) -> nk_result;
 	/**
+	 * Returns queued application send bytes and the configured send capacity. Thread-safe.
+	 */
+	extern fn nk_transport_get_send_queue(transport: nk_transport, out_queued_bytes: ptr<u64> @out, out_capacity: ptr<u64> @out) -> nk_result;
+	/**
 	 * Binds an endpoint and reports accepted transports through the event queue.
 	 */
 	extern fn nk_transport_listen(options: ptr<const<nk_transport_options>>, out_listener: ptr<nk_listener> @out @owned) -> nk_result;

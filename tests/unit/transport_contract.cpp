@@ -121,6 +121,13 @@ void roundtrip(nk_transport_kind kind, const char *path = nullptr,
         assert(nk_transport_send(client, request, sizeof(request) - 1) == NK_OK);
     assert(poll_transport_events(client, &server, &client_connected, &server_connected));
 
+    uint64_t queued = UINT64_MAX;
+    uint64_t capacity = 0;
+    assert(nk_transport_get_send_queue(server, &queued, &capacity) == NK_OK);
+    assert(capacity == 4u * 1024u * 1024u);
+    assert(queued <= capacity);
+    assert(nk_transport_get_send_queue(server, nullptr, &capacity) == NK_ERROR_INVALID_ARGUMENT);
+
     if (kind != NK_TRANSPORT_UDP)
         assert(nk_transport_send(client, request, sizeof(request) - 1) == NK_OK);
     assert(receive_message(server, request));
@@ -131,6 +138,7 @@ void roundtrip(nk_transport_kind kind, const char *path = nullptr,
 
     assert(nk_transport_close(client) == NK_OK);
     assert(nk_transport_close(server) == NK_OK);
+    assert(nk_transport_get_send_queue(server, &queued, &capacity) == NK_ERROR_INVALID_HANDLE);
     assert(nk_listener_close(listener) == NK_OK);
 }
 

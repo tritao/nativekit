@@ -163,6 +163,11 @@ NK_API nk_result NK_CALL nk_transport_send(nk_transport transport,
                                            const void *data NK_BORROWED_BUFFER(size),
                                            uint64_t size);
 
+/** Returns queued application send bytes and the configured send capacity. Thread-safe. */
+NK_API nk_result NK_CALL nk_transport_get_send_queue(nk_transport transport,
+                                                     uint64_t *out_queued_bytes NK_OUT,
+                                                     uint64_t *out_capacity NK_OUT);
+
 /**
  * Reads currently buffered application bytes without blocking. This call is thread-safe.
  * DATA reports a snapshot of available bytes and may be coalesced. Call receive until it

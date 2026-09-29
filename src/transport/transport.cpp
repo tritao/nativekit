@@ -1827,6 +1827,23 @@ nk_result NK_CALL nk_transport_send(nk_transport handle, const void *data, uint6
     });
 }
 
+nk_result NK_CALL nk_transport_get_send_queue(nk_transport handle, uint64_t *out_queued_bytes,
+                                               uint64_t *out_capacity) {
+    return nk::core::result_boundary("transport get send queue", [&]() -> nk_result {
+        if (!out_queued_bytes || !out_capacity)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "send queue output is null");
+        *out_queued_bytes = 0;
+        *out_capacity = 0;
+        auto transport = get_transport(handle);
+        if (!transport)
+            return fail(NK_ERROR_INVALID_HANDLE, "invalid transport handle");
+        std::lock_guard lock(transport->mutex);
+        *out_queued_bytes = transport->outgoing_bytes;
+        *out_capacity = transport->options.send_buffer_size;
+        return NK_OK;
+    });
+}
+
 nk_result NK_CALL nk_transport_receive(nk_transport handle, void *data, uint64_t size,
                                        uint64_t *out_received) {
     return nk::core::result_boundary("transport receive", [&]() -> nk_result {

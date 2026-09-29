@@ -309,6 +309,24 @@ nk_result NK_CALL nk_transport_send(nk_transport handle, const void *data, uint6
     return result > 0 ? NK_OK : result == 0 ? NK_ERROR_QUEUE_FULL : NK_ERROR_INVALID_REQUEST;
 }
 
+nk_result NK_CALL nk_transport_get_send_queue(nk_transport handle, uint64_t *out_queued_bytes,
+                                               uint64_t *out_capacity) {
+    if (!out_queued_bytes || !out_capacity)
+        return web_fail(NK_ERROR_INVALID_ARGUMENT, "send queue output is null");
+    *out_queued_bytes = 0;
+    *out_capacity = 0;
+    auto transport = web_get(handle);
+    if (!transport) return web_fail(NK_ERROR_INVALID_HANDLE, "invalid transport handle");
+    size_t buffered = 0;
+    if (transport->open && !transport->closed &&
+        emscripten_websocket_get_buffered_amount(transport->socket, &buffered) !=
+            EMSCRIPTEN_RESULT_SUCCESS)
+        return web_fail(NK_ERROR_INVALID_REQUEST, "send queue query failed");
+    *out_queued_bytes = buffered;
+    *out_capacity = transport->send_limit;
+    return NK_OK;
+}
+
 nk_result NK_CALL nk_transport_receive(nk_transport handle, void *data, uint64_t size,
                                        uint64_t *out_received) {
     if (!out_received || (size && !data))
