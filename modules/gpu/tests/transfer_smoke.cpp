@@ -483,6 +483,164 @@ bool msaa_resolve(nkgpu_renderer renderer, const nkgpu_features &features) {
 
 } // namespace
 
+/*
+ * Bindings persist across pipelines within a pass. A draw with an indexed pipeline followed by one
+ * with a pipeline that does not index must still happen: the stale index buffer must not be left
+ * bound for it. Each draw puts one red triangle in its own half of the image.
+ */
+bool indexed_then_plain_draws(nkgpu_renderer renderer) {
+    const nkgpu_backend backend = nkgpu_query_backend(renderer);
+    if (backend != NKGPU_BACKEND_GLCORE && backend != NKGPU_BACKEND_GLES3)
+        return true; // The shaders below are GLSL.
+    const bool gles = nkgpu_query_graphics_api(renderer) == NK_GRAPHICS_OPENGL_ES;
+    const char *vertex_source = gles ? "#version 300 es\nin vec2 position;\n"
+                                       "void main(){gl_Position=vec4(position,0.0,1.0);}\n"
+                                     : "#version 330\nin vec2 position;\n"
+                                       "void main(){gl_Position=vec4(position,0.0,1.0);}\n";
+    const char *fragment_source =
+        gles ? "#version 300 es\nprecision mediump float;\nout vec4 c;\n"
+               "void main(){c=vec4(1.0,0.0,0.0,1.0);}\n"
+             : "#version 330\nout vec4 c;\nvoid main(){c=vec4(1.0,0.0,0.0,1.0);}\n";
+
+    nkgpu_shader shader{};
+    nkgpu_shader_builder shader_builder{};
+    if (!expect_result(nkgpu_shader_begin(renderer, NKGPU_SHADERLANGUAGE_GLSL, vertex_source,
+                                          fragment_source, &shader_builder),
+                       NKGPU_OK, "nkgpu_shader_begin(indexed/plain)") ||
+        !expect_result(nkgpu_shader_attribute(shader_builder, 0, "position", "TEXCOORD", 0),
+                       NKGPU_OK, "nkgpu_shader_attribute(indexed/plain)") ||
+        !expect_result(nkgpu_shader_end(shader_builder, &shader), NKGPU_OK,
+                       "nkgpu_shader_end(indexed/plain)"))
+        return false;
+
+    const auto make_pipeline = [&](bool indexed, nkgpu_pipeline &pipeline) {
+        nkgpu_pipeline_builder builder{};
+        return expect_result(nkgpu_pipeline_begin(renderer, shader, sizeof(float) * 2, &builder),
+                             NKGPU_OK, "nkgpu_pipeline_begin(indexed/plain)") &&
+               expect_result(nkgpu_pipeline_attribute(builder, 0, 0, 0, NKGPU_VERTEXFORMAT_FLOAT2),
+                             NKGPU_OK, "nkgpu_pipeline_attribute(indexed/plain)") &&
+               expect_result(nkgpu_pipeline_vertex_buffer(builder, 0, sizeof(float) * 2,
+                                                          NKGPU_VERTEXSTEP_PER_VERTEX, 1),
+                             NKGPU_OK, "nkgpu_pipeline_vertex_buffer(indexed/plain)") &&
+               expect_result(nkgpu_pipeline_primitive_type(builder, NKGPU_PRIMITIVETYPE_TRIANGLES),
+                             NKGPU_OK, "nkgpu_pipeline_primitive_type(indexed/plain)") &&
+               (!indexed || expect_result(nkgpu_pipeline_index_type(builder, NKGPU_INDEXTYPE_UINT32),
+                                          NKGPU_OK, "nkgpu_pipeline_index_type(indexed/plain)")) &&
+               expect_result(nkgpu_pipeline_cull_mode(builder, NKGPU_CULLMODE_NONE,
+                                                      NKGPU_FACEWINDING_CCW),
+                             NKGPU_OK, "nkgpu_pipeline_cull_mode(indexed/plain)") &&
+               expect_result(nkgpu_pipeline_depth_stencil(builder, 1), NKGPU_OK,
+                             "nkgpu_pipeline_depth_stencil(indexed/plain)") &&
+               expect_result(nkgpu_pipeline_end(builder, &pipeline), NKGPU_OK,
+                             "nkgpu_pipeline_end(indexed/plain)");
+    };
+    nkgpu_pipeline indexed_pipeline{}, plain_pipeline{};
+    if (!make_pipeline(true, indexed_pipeline) || !make_pipeline(false, plain_pipeline))
+        return false;
+
+    // The left triangle is drawn from an index buffer, the right one is not.
+    const float left_vertices[] = {-1.0f, -1.0f, 0.0f, -1.0f, -1.0f, 1.0f};
+    const float right_vertices[] = {0.2f, -0.8f, 0.9f, -0.8f, 0.55f, 0.8f};
+    const uint32_t left_indices[] = {0, 1, 2};
+    nkgpu_buffer left_buffer{}, right_buffer{}, index_buffer{};
+    nkgpu_buffer_desc index_desc{};
+    index_desc.struct_size = sizeof(index_desc);
+    index_desc.size = sizeof(left_indices);
+    index_desc.usage = NKGPU_BUFFER_INDEX;
+    index_desc.data = reinterpret_cast<const uint8_t *>(left_indices);
+    index_desc.data_size = sizeof(left_indices);
+    if (!expect_result(nkgpu_buffer_create(renderer, reinterpret_cast<const uint8_t *>(left_vertices),
+                                           sizeof(left_vertices), &left_buffer),
+                       NKGPU_OK, "nkgpu_buffer_create(left)") ||
+        !expect_result(nkgpu_buffer_create(renderer, reinterpret_cast<const uint8_t *>(right_vertices),
+                                           sizeof(right_vertices), &right_buffer),
+                       NKGPU_OK, "nkgpu_buffer_create(right)") ||
+        !expect_result(nkgpu_buffer_create_desc(renderer, &index_desc, &index_buffer), NKGPU_OK,
+                       "nkgpu_buffer_create_desc(index)"))
+        return false;
+
+    constexpr uint32_t size = 64;
+    nkgpu_image_desc color_desc{};
+    color_desc.struct_size = sizeof(color_desc);
+    color_desc.width = size;
+    color_desc.height = size;
+    color_desc.format = NKGPU_IMAGEFORMAT_RGBA8;
+    color_desc.usage = NKGPU_IMAGE_RENDER_TARGET | NKGPU_IMAGE_SAMPLED;
+    color_desc.mip_count = 1;
+    color_desc.sample_count = 1;
+    color_desc.layer_count = 1;
+    nkgpu_image_desc depth_desc = color_desc;
+    depth_desc.format = NKGPU_IMAGEFORMAT_DEPTH24_STENCIL8;
+    depth_desc.usage = NKGPU_IMAGE_DEPTH_STENCIL;
+    nkgpu_image color{}, depth{};
+    if (!expect_result(nkgpu_image_create_desc(renderer, &color_desc, &color), NKGPU_OK,
+                       "nkgpu_image_create_desc(indexed/plain color)") ||
+        !expect_result(nkgpu_image_create_desc(renderer, &depth_desc, &depth), NKGPU_OK,
+                       "nkgpu_image_create_desc(indexed/plain depth)"))
+        return false;
+
+    nkgpu_render_pass_desc pass{};
+    pass.struct_size = sizeof(pass);
+    pass.color_count = 1;
+    pass.colors[0].image = color;
+    pass.colors[0].action.load_action = NKGPU_LOADACTION_CLEAR;
+    pass.colors[0].action.store_action = NKGPU_STOREACTION_STORE;
+    pass.colors[0].action.clear_color = {0.0f, 0.0f, 0.0f, 0.0f};
+    pass.depth_stencil = depth;
+    pass.depth_stencil_action.load_action = NKGPU_LOADACTION_CLEAR;
+    pass.depth_stencil_action.store_action = NKGPU_STOREACTION_STORE;
+    pass.depth_stencil_action.clear_depth = 1.0f;
+    bool ok =
+        expect_result(nkgpu_frame_begin(renderer), NKGPU_OK, "nkgpu_frame_begin(indexed/plain)") &&
+        expect_result(nkgpu_begin_render_pass(renderer, &pass), NKGPU_OK,
+                      "nkgpu_begin_render_pass(indexed/plain)") &&
+        expect_result(nkgpu_apply_viewport(renderer, 0, 0, size, size), NKGPU_OK,
+                      "nkgpu_apply_viewport(indexed/plain)") &&
+        // Indexed draw.
+        expect_result(nkgpu_apply_pipeline(renderer, indexed_pipeline), NKGPU_OK,
+                      "nkgpu_apply_pipeline(indexed)") &&
+        expect_result(nkgpu_apply_vertex_buffer(renderer, 0, left_buffer, 0), NKGPU_OK,
+                      "nkgpu_apply_vertex_buffer(indexed)") &&
+        expect_result(nkgpu_apply_index_buffer(renderer, index_buffer, 0), NKGPU_OK,
+                      "nkgpu_apply_index_buffer") &&
+        expect_result(nkgpu_draw(renderer, 0, 3, 1), NKGPU_OK, "nkgpu_draw(indexed)") &&
+        // Plain draw: no index buffer is applied for it, and the earlier one must not linger.
+        expect_result(nkgpu_apply_pipeline(renderer, plain_pipeline), NKGPU_OK,
+                      "nkgpu_apply_pipeline(plain)") &&
+        expect_result(nkgpu_apply_vertex_buffer(renderer, 0, right_buffer, 0), NKGPU_OK,
+                      "nkgpu_apply_vertex_buffer(plain)") &&
+        expect_result(nkgpu_draw(renderer, 0, 3, 1), NKGPU_OK, "nkgpu_draw(plain)") &&
+        expect_result(nkgpu_end_pass(renderer), NKGPU_OK, "nkgpu_end_pass(indexed/plain)") &&
+        expect_result(nkgpu_end_frame(renderer), NKGPU_OK, "nkgpu_end_frame(indexed/plain)");
+
+    uint8_t left[4]{}, right[4]{};
+    // Clip space y of zero is the middle row whichever way the image is stored.
+    ok = ok && readback(renderer, color, 8, size / 2, 1, 1, left, sizeof(left)) &&
+         readback(renderer, color, 49, size / 2, 1, 1, right, sizeof(right));
+    if (ok && (left[0] != 255 || left[3] != 255)) {
+        std::fprintf(stderr, "the indexed draw left %u,%u,%u,%u, expected red\n", left[0], left[1],
+                     left[2], left[3]);
+        ok = false;
+    }
+    if (ok && (right[0] != 255 || right[3] != 255)) {
+        std::fprintf(stderr,
+                     "the plain draw after an indexed one left %u,%u,%u,%u, expected red: a stale "
+                     "index buffer made the GPU layer reject it\n",
+                     right[0], right[1], right[2], right[3]);
+        ok = false;
+    }
+
+    nkgpu_image_destroy(renderer, depth);
+    nkgpu_image_destroy(renderer, color);
+    nkgpu_buffer_destroy(renderer, index_buffer);
+    nkgpu_buffer_destroy(renderer, right_buffer);
+    nkgpu_buffer_destroy(renderer, left_buffer);
+    nkgpu_pipeline_destroy(renderer, plain_pipeline);
+    nkgpu_pipeline_destroy(renderer, indexed_pipeline);
+    nkgpu_shader_destroy(renderer, shader);
+    return ok;
+}
+
 int main() {
     TestResources resources;
 
@@ -524,6 +682,8 @@ int main() {
 
     const nkgpu_backend backend = nkgpu_query_backend(resources.renderer);
     if (!msaa_resolve(resources.renderer, features))
+        return 1;
+    if (!indexed_then_plain_draws(resources.renderer))
         return 1;
     if (features.timestamps) {
         nkgpu_timestamp scene_timestamp{};

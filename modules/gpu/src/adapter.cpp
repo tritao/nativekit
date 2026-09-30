@@ -3317,6 +3317,14 @@ nkgpu_result nkgpu_apply_pipeline(nkgpu_renderer r, nkgpu_pipeline h) {
                             "pipeline color target does not match the active pass");
         }
     }
+    // Bindings persist across pipelines within a pass. A pipeline that does not index draws
+    // without an index buffer, and sokol rejects the draw when one bound for an earlier indexed
+    // draw is still there, so drop it.
+    if (p->value.desc.index_type == _SG_INDEXTYPE_DEFAULT ||
+        p->value.desc.index_type == SG_INDEXTYPE_NONE) {
+        rs->value.bindings.index_buffer = {};
+        rs->value.bindings.index_buffer_offset = 0;
+    }
     sg_apply_pipeline(p->value.object);
     return NKGPU_OK;
 }
