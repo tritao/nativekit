@@ -273,6 +273,11 @@ EM_BOOL frame_callback_adapter(double time, void *) {
 
 } // namespace
 
+// The JavaScript below calls back into the EMSCRIPTEN_KEEPALIVE functions at the end of this
+// file through ccall. Declaring it as a dependency links it into every host without asking
+// applications to export it, which would override the runtime methods they export themselves.
+EM_JS_DEPS(nativekit_web_host, "$ccall");
+
 // Preserve JavaScript operators in the embedded EM_JS bodies.
 // clang-format off
 EM_JS(void, nk_web_set_canvas_css_size, (const char *selector, int width, int height), {
@@ -343,8 +348,7 @@ EM_JS(void, nk_web_set_canvas_resizable, (const char *selector, int enabled, int
             canvas._nkResizeObserver.disconnect();
         if (enabled) {
             const notify = () => {
-                if (Module.ccall)
-                    Module.ccall("nk_web_host_canvas_resize", null, ["number"], [route]);
+                ccall("nk_web_host_canvas_resize", null, ["number"], [route]);
             };
             canvas._nkResizeObserver = new ResizeObserver(notify);
             canvas._nkResizeObserver.observe(canvas);
@@ -406,7 +410,7 @@ EM_JS(void, nk_web_install_drop_handlers, (const char *selector, int route), {
     const drop = event => {
         event.preventDefault();
         const transfer = event.dataTransfer;
-        if (!transfer || !Module.ccall)
+        if (!transfer)
             return;
         const uris = [];
         if (transfer.files && transfer.files.length) {
@@ -424,10 +428,10 @@ EM_JS(void, nk_web_install_drop_handlers, (const char *selector, int route), {
                         uris.push(uri);
         }
         const text = transfer.getData("text/plain") || "";
-        Module.ccall("nk_web_host_resource_drop", null,
-                     ["number", "number", "number", "string", "string"],
-                     [route, event.offsetX || 0, event.offsetY || 0,
-                      uris.join(String.fromCharCode(13, 10)), text]);
+        ccall("nk_web_host_resource_drop", null,
+              ["number", "number", "number", "string", "string"],
+              [route, event.offsetX || 0, event.offsetY || 0,
+               uris.join(String.fromCharCode(13, 10)), text]);
     };
     canvas.addEventListener("dragover", dragover);
     canvas.addEventListener("drop", drop);
@@ -492,11 +496,11 @@ EM_JS(void, nk_web_configure_text_input,
               input._nkComposing = false;
               input._nkIgnoreInput = false;
               const emit = (type, value, start, end) => {
-                  if (!input._nkActive || !Module.ccall)
+                  if (!input._nkActive)
                       return;
-                  Module.ccall("nk_web_host_text_input_event", null,
-                               ["number", "number", "string", "number", "number"],
-                               [input._nkRoute || 0, type, value || "", start || 0, end || 0]);
+                  ccall("nk_web_host_text_input_event", null,
+                        ["number", "number", "string", "number", "number"],
+                        [input._nkRoute || 0, type, value || "", start || 0, end || 0]);
               };
               input.addEventListener("compositionstart", () => {
                   input._nkComposing = true;
@@ -688,12 +692,12 @@ EM_JS(void, nk_web_set_accessibility_tree,
           };
           const emit = (node, name, value, start, end, granularity) => {
               const action = actionIds[name];
-              if (action === undefined || !Module.ccall ||
+              if (action === undefined ||
                   (node.disabled && name !== "focus" && name !== "clear_focus"))
                   return;
-              Module.ccall("nk_web_host_accessibility_action", null,
-                           ["number", "number", "number", "number", "string", "number", "number", "number"],
-                           [route, surface, node.id, action, value || "", start, end, granularity || 0]);
+              ccall("nk_web_host_accessibility_action", null,
+                    ["number", "number", "number", "number", "string", "number", "number", "number"],
+                    [route, surface, node.id, action, value || "", start, end, granularity || 0]);
           };
           const codePointOffset = (value, utf16Offset) =>
               Array.from(value.slice(0, utf16Offset)).length;
@@ -1064,9 +1068,8 @@ EM_JS(int, nk_web_set_clipboard_resources, (const char *uris), {
 
 EM_JS(void, nk_web_read_clipboard_text, (double request), {
     const complete = (result, value) => {
-        if (Module.ccall)
-            Module.ccall("nk_web_host_clipboard_text_complete", null,
-                         ["number", "number", "string"], [request, result, value || ""]);
+        ccall("nk_web_host_clipboard_text_complete", null,
+              ["number", "number", "string"], [request, result, value || ""]);
     };
     if (!navigator.clipboard || !navigator.clipboard.readText) {
         complete(-4, "");
@@ -1077,9 +1080,8 @@ EM_JS(void, nk_web_read_clipboard_text, (double request), {
 
 EM_JS(void, nk_web_read_clipboard_resources, (double request), {
     const complete = (result, value) => {
-        if (Module.ccall)
-            Module.ccall("nk_web_host_clipboard_resources_complete", null,
-                         ["number", "number", "string"], [request, result, value || ""]);
+        ccall("nk_web_host_clipboard_resources_complete", null,
+              ["number", "number", "string"], [request, result, value || ""]);
     };
     if (!navigator.clipboard || !navigator.clipboard.readText) {
         complete(-4, "");
@@ -1114,10 +1116,9 @@ EM_JS(void, nk_web_pick_resources,
        const char *accept, const char *suggested_name, int result_ok, int result_unsupported,
        int result_unknown, int open_resource, int save_resource, int select_resource_directory), {
           const complete = (result, accepted, uris) => {
-              if (Module.ccall)
-                  Module.ccall("nk_web_host_resource_dialog_complete", null,
-                               ["number", "number", "number", "number", "number", "string"],
-                               [route, request, kind, result, accepted ? 1 : 0, uris || ""]);
+              ccall("nk_web_host_resource_dialog_complete", null,
+                    ["number", "number", "number", "number", "number", "string"],
+                    [route, request, kind, result, accepted ? 1 : 0, uris || ""]);
           };
           const titleValue = title ? UTF8ToString(title) : "";
           const acceptValue = accept ? UTF8ToString(accept) : "";
@@ -1255,9 +1256,8 @@ EM_JS(int, nk_web_show_notification,
           if (iconValue)
               options.icon = iconValue;
           const complete = (kind, result) => {
-              if (Module.ccall)
-                  Module.ccall("nk_web_host_notification_event", null,
-                               ["number", "number", "number"], [request, kind, result]);
+              ccall("nk_web_host_notification_event", null,
+                    ["number", "number", "number"], [request, kind, result]);
           };
           const show = () => {
               try {
@@ -1311,7 +1311,7 @@ EM_JS(int, nk_web_close_notification, (double request), {
 });
 
 EM_JS(int, nk_web_poll_gamepads, (), {
-    if (!navigator.getGamepads || !Module.ccall)
+    if (!navigator.getGamepads)
         return 0;
     const gamepads = navigator.getGamepads() || [];
     const standardAxisCount = 4;
@@ -1336,17 +1336,17 @@ EM_JS(int, nk_web_poll_gamepads, (), {
             const value = gamepad.buttons[button];
             buttons.push(value && value.pressed ? 1 : 0);
         }
-        Module.ccall("nk_web_host_gamepad_state", null,
-                     ["number", "number", "string", "number", "number", "number",
-                      "number", "number", "number", "number", "number", "number",
-                      "number", "number", "number", "number", "number", "number",
-                      "number", "number", "number", "number", "number", "number",
-                      "number", "number", "number"],
-                     [index, 1, gamepad.id || "Web Gamepad",
-                      gamepad.mapping === "standard" ? 1 : 0, axes[0], axes[1], axes[2], axes[3],
-                      axes[4], axes[5], buttons[0], buttons[1], buttons[2], buttons[3], buttons[4],
-                      buttons[5], buttons[6], buttons[7], buttons[8], buttons[9], buttons[10],
-                      buttons[11], buttons[12], buttons[13], buttons[14], buttons[15], buttons[16]]);
+        ccall("nk_web_host_gamepad_state", null,
+              ["number", "number", "string", "number", "number", "number",
+               "number", "number", "number", "number", "number", "number",
+               "number", "number", "number", "number", "number", "number",
+               "number", "number", "number", "number", "number", "number",
+               "number", "number", "number"],
+              [index, 1, gamepad.id || "Web Gamepad",
+               gamepad.mapping === "standard" ? 1 : 0, axes[0], axes[1], axes[2], axes[3],
+               axes[4], axes[5], buttons[0], buttons[1], buttons[2], buttons[3], buttons[4],
+               buttons[5], buttons[6], buttons[7], buttons[8], buttons[9], buttons[10],
+               buttons[11], buttons[12], buttons[13], buttons[14], buttons[15], buttons[16]]);
     }
     return 1;
 });
@@ -1365,7 +1365,7 @@ EM_JS(int, nk_web_sensor_supported, (), {
 EM_JS(int, nk_web_start_sensor,
       (double handle, int type, double interval_ns, double latency_ns), {
           if (typeof window === "undefined" || typeof window.addEventListener !== "function" ||
-              typeof DeviceMotionEvent === "undefined" || !Module.ccall)
+              typeof DeviceMotionEvent === "undefined")
               return 0;
           const state = globalThis.__nativekitMotion ||
                         (globalThis.__nativekitMotion = {
@@ -1380,11 +1380,11 @@ EM_JS(int, nk_web_start_sensor,
                   const sensor = state.handles[sensorType];
                   if (sensor === undefined || !values || !values.every(Number.isFinite))
                       return;
-                  Module.ccall("nk_web_host_sensor_update", null,
-                               ["number", "number", "number", "number", "number", "number",
-                                "number"],
-                               [sensor, sensorType, finite(values[0]), finite(values[1]),
-                                finite(values[2]), finite(values[3]), accuracy]);
+                  ccall("nk_web_host_sensor_update", null,
+                        ["number", "number", "number", "number", "number", "number",
+                         "number"],
+                        [sensor, sensorType, finite(values[0]), finite(values[1]),
+                         finite(values[2]), finite(values[3]), accuracy]);
               };
               state.listener = event => {
                   if (!event)
@@ -1435,7 +1435,7 @@ EM_JS(void, nk_web_stop_all_sensors, (), {
 
 EM_JS(int, nk_web_request_sensor_permission, (double request, int ok, int denied, int unknown), {
     if (typeof window === "undefined" || typeof window.addEventListener !== "function" ||
-        typeof DeviceMotionEvent === "undefined" || !Module.ccall)
+        typeof DeviceMotionEvent === "undefined")
         return 0;
     const state = globalThis.__nativekitMotion ||
                   (globalThis.__nativekitMotion = {
@@ -1443,8 +1443,8 @@ EM_JS(int, nk_web_request_sensor_permission, (double request, int ok, int denied
                   });
     state.pending = state.pending || [];
     const complete = (requestId, result) => {
-        Module.ccall("nk_web_host_sensor_permission", null, ["number", "number"],
-                     [requestId, result]);
+        ccall("nk_web_host_sensor_permission", null, ["number", "number"],
+              [requestId, result]);
     };
     const finish = result => {
         state.permission = result === ok ? "granted" : "denied";
@@ -1556,10 +1556,9 @@ EM_JS(int, nk_web_stop_gamepad_rumble, (int index), {
 
 EM_JS(void, nk_web_fetch_resource, (const char *uri, double request), {
     const complete = (result, pointer, size) => {
-        if (Module.ccall)
-            Module.ccall("nk_web_host_resource_complete", null,
-                         ["number", "number", "number", "number"],
-                         [request, result, pointer || 0, size || 0]);
+        ccall("nk_web_host_resource_complete", null,
+              ["number", "number", "number", "number"],
+              [request, result, pointer || 0, size || 0]);
     };
     try {
         fetch(UTF8ToString(uri), {credentials: "same-origin"}).then(response => {
@@ -1617,7 +1616,7 @@ EM_JS(int, nk_web_request_device_orientation,
        int portrait_upside_down, int landscape_left, int landscape_right, int face_up,
        int face_down), {
           if (typeof window === "undefined" || typeof window.addEventListener !== "function" ||
-              typeof DeviceOrientationEvent === "undefined" || !Module.ccall)
+              typeof DeviceOrientationEvent === "undefined")
               return 0;
 
           const state = globalThis.__nativekitDeviceOrientation ||
@@ -1628,9 +1627,8 @@ EM_JS(int, nk_web_request_device_orientation,
                             pending: null
                         });
           const complete = (requestId, result) => {
-              if (Module.ccall)
-                  Module.ccall("nk_web_host_device_orientation_permission", null,
-                               ["number", "number"], [requestId, result]);
+              ccall("nk_web_host_device_orientation_permission", null,
+                    ["number", "number"], [requestId, result]);
           };
           const install = () => {
               if (state.listener)
@@ -1649,9 +1647,8 @@ EM_JS(int, nk_web_request_device_orientation,
                       result = gamma >= 0 ? landscape_right : landscape_left;
                   if (state.orientation !== result) {
                       state.orientation = result;
-                      if (Module.ccall)
-                          Module.ccall("nk_web_host_device_orientation_changed", null,
-                                       ["number"], [result]);
+                      ccall("nk_web_host_device_orientation_changed", null,
+                            ["number"], [result]);
                   }
                   return result;
               };
@@ -1751,7 +1748,7 @@ EM_JS(int, nk_web_install_display_orientation_callback,
       (int unknown, int portrait, int portrait_upside_down, int landscape_left,
        int landscape_right), {
           if (typeof screen === "undefined" || !screen.orientation ||
-              typeof screen.orientation.addEventListener !== "function" || !Module.ccall)
+              typeof screen.orientation.addEventListener !== "function")
               return 0;
           const old = globalThis.__nativekitOrientation;
           if (old && old.target && old.listener)
@@ -1783,9 +1780,8 @@ EM_JS(int, nk_web_install_display_orientation_callback,
               return unknown;
           };
           const listener = () => {
-              if (Module.ccall)
-                  Module.ccall("nk_web_host_display_orientation_changed", null, ["number"],
-                               [orientationCode()]);
+              ccall("nk_web_host_display_orientation_changed", null, ["number"],
+                    [orientationCode()]);
           };
           target.addEventListener("change", listener);
           globalThis.__nativekitOrientation = {target, listener};

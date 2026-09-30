@@ -110,6 +110,9 @@ bool progress_due(nk::net::RequestContext &request) {
     return true;
 }
 
+// Completions call back into C through ccall; see nativekit_web_host in web/host.cpp.
+EM_JS_DEPS(nativekit_net_fetch, "$ccall");
+
 // clang-format off
 EM_JS(void, start_fetch,
       (double id, const char *url, const char *method, const char *headers, uintptr_t body,
@@ -124,7 +127,7 @@ EM_JS(void, start_fetch,
                   return;
               clearTimeout(state.timer);
               states.delete(id);
-              Module.ccall('nk_net_fetch_complete', null, [ 'number', 'number' ], [ id, result ]);
+              ccall('nk_net_fetch_complete', null, [ 'number', 'number' ], [ id, result ]);
           };
           try {
               state.controller = new AbortController();
@@ -162,9 +165,9 @@ EM_JS(void, start_fetch,
                        const length = lengthBytesUTF8(text) + 1;
                        const pointer = _malloc(length);
                        stringToUTF8(text, pointer, length);
-                       const result = Module.ccall('nk_net_fetch_headers', 'number',
-                                                   [ 'number', 'number', 'number', 'number' ],
-                                                   [ id, status, pointer, redirected ? 1 : 0 ]);
+                       const result = ccall('nk_net_fetch_headers', 'number',
+                                            [ 'number', 'number', 'number', 'number' ],
+                                            [ id, status, pointer, redirected ? 1 : 0 ]);
                        _free(pointer);
                        return result;
                    };
@@ -173,9 +176,9 @@ EM_JS(void, start_fetch,
                            return -106;
                        const pointer = _malloc(bytes.length);
                        HEAPU8.set(bytes, pointer);
-                       const result = Module.ccall('nk_net_fetch_data', 'number',
-                                                   [ 'number', 'number', 'number', 'number' ],
-                                                   [ id, pointer, bytes.length, total ]);
+                       const result = ccall('nk_net_fetch_data', 'number',
+                                            [ 'number', 'number', 'number', 'number' ],
+                                            [ id, pointer, bytes.length, total ]);
                        _free(pointer);
                        return result;
                    };

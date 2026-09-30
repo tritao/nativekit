@@ -202,10 +202,10 @@ if(EMSCRIPTEN)
     target_compile_definitions(nativekit PRIVATE NK_BACKEND_WEB=1)
     # WebGL2 is part of the first browser backend.  Keep this linker detail on
     # the NativeKit target so consumers inherit it without seeing Emscripten
-    # types or headers in the public API.
-    target_link_options(nativekit INTERFACE
-        "-sUSE_WEBGL2=1"
-        "-sEXPORTED_RUNTIME_METHODS=ccall")
+    # types or headers in the public API.  NativeKit's own JavaScript declares
+    # the runtime functions it uses with EM_JS_DEPS; EXPORTED_RUNTIME_METHODS
+    # is left to the application, since Emscripten keeps only its last value.
+    target_link_options(nativekit INTERFACE "-sUSE_WEBGL2=1")
 
     set(NK_WASM_HOST_HEAP_LIMIT "134217728" CACHE STRING
         "Exclusive byte limit of NativeKit's bounded WebAssembly host heap")
