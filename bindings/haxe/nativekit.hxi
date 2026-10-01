@@ -1097,6 +1097,14 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 		 */
 		NK_EVENT_TRANSPORT_FAILED = 955;
 		/**
+		 * PTY master has readable bytes; call nk_pty_read into a caller buffer.
+		 */
+		NK_EVENT_PTY_READABLE = 960;
+		/**
+		 * PTY child exited; call nk_pty_exit_status for its status.
+		 */
+		NK_EVENT_PTY_EXITED = 961;
+		/**
 		 * A native task reported copied progress data.
 		 */
 		NK_EVENT_TASK_PROGRESS = 1100;
@@ -3331,6 +3339,30 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * or the call is made from the wrong lifecycle/thread state.
 	 */
 	extern fn nk_poll_event(event: ptr<nk_event> @inout) -> nk_result;
+	/**
+	 * Terminates a live child, reaps it, and releases the handle.
+	 */
+	extern fn nk_pty_close(pty: nk_pty) -> nk_result;
+	/**
+	 * Returns NK_PENDING until the child exits; then fills exit code and signal.
+	 */
+	extern fn nk_pty_exit_status(pty: nk_pty, out_code: ptr<i32> @out, out_signal: ptr<i32> @out) -> nk_result;
+	extern fn nk_pty_kill(pty: nk_pty) -> nk_result;
+	/**
+	 * Read at most 64 KiB directly into caller memory. NK_PENDING means no bytes.
+	 */
+	extern fn nk_pty_read(pty: nk_pty, buffer: ptr<void>, capacity: u64, out_read: ptr<u64> @out) -> nk_result;
+	extern fn nk_pty_resize(pty: nk_pty, columns: u16, rows: u16) -> nk_result;
+	/**
+	 * Spawn an executable by absolute path. argv excludes argv[0]; a null env
+	 * array inherits the parent environment, while an empty array clears it.
+	 * cwd may be null. Dimensions are character cells and must be nonzero.
+	 */
+	extern fn nk_pty_spawn(program: utf8, argv: ptr<utf8> @in_array("argc"), argc: u32, cwd: nullable<utf8>, env: ptr<utf8> @in_array("envc"), envc: u32, columns: u16, rows: u16, out_pty: ptr<nk_pty> @out @owned) -> nk_result;
+	/**
+	 * Write at most 64 KiB from caller memory. NK_PENDING means the PTY is full.
+	 */
+	extern fn nk_pty_write(pty: nk_pty, buffer: ptr<const<void>>, size: u64, out_written: ptr<u64> @out) -> nk_result;
 	/**
 	 * Returns non-zero when the active backend provides raw relative pointer motion.
 	 */
@@ -6580,6 +6612,10 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	handle nk_mobile_host : u32 @destroy("nk_mobile_host_destroy");
 	handle nk_monitor : u32;
 	type nk_nullable_surface_frame_callback = nullable<nk_surface_frame_callback>;
+	/**
+	 * A child process attached to a pseudo-terminal.
+	 */
+	handle nk_pty : u32 @destroy("nk_pty_close");
 	/**
 	 * Identifier for one asynchronous operation; it is not a resource handle.
 	 */

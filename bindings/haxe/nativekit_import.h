@@ -23,5 +23,6 @@
 #include "nativekit_notification.h"
 #include "nativekit_time.h"
 #include "nativekit_transport.h"
+#include "nativekit_pty.h"
 
 #endif

@@ -160,8 +160,16 @@ add_library(nativekit ${NK_LIBRARY_TYPE}
     src/core/window_extensions.cpp
     src/net/net.cpp
     src/transport/transport.cpp
+    src/core/pty.cpp
 )
 add_library(NativeKit::nativekit ALIAS nativekit)
+
+if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+    find_library(NK_UTIL_LIBRARY util)
+    if(NK_UTIL_LIBRARY)
+        target_link_libraries(nativekit PRIVATE ${NK_UTIL_LIBRARY})
+    endif()
+endif()
 
 if(NOT EMSCRIPTEN)
     target_link_libraries(nativekit PRIVATE websockets)

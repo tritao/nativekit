@@ -354,6 +354,10 @@ enum NK_ENUM(nk_event_kind) {
     NK_EVENT_TRANSPORT_CLOSED = 954,
     /** A transport failed; inspect event.result for the transport error. */
     NK_EVENT_TRANSPORT_FAILED = 955,
+    /** PTY master has readable bytes; call nk_pty_read into a caller buffer. */
+    NK_EVENT_PTY_READABLE = 960,
+    /** PTY child exited; call nk_pty_exit_status for its status. */
+    NK_EVENT_PTY_EXITED = 961,
     /** A native task reported copied progress data. */
     NK_EVENT_TASK_PROGRESS = 1100,
     /** A native task completed successfully with copied result data. */
