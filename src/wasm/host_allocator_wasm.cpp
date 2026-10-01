@@ -93,6 +93,23 @@ extern "C" void emscripten_builtin_free(void *pointer) {
     free(pointer);
 }
 
+// musl's own allocations (locales, for MuJoCo's XML parser) go through its __libc_* entry points.
+extern "C" void *__libc_malloc(std::size_t size) {
+    return malloc(size);
+}
+
+extern "C" void *__libc_calloc(std::size_t count, std::size_t size) {
+    return calloc(count, size);
+}
+
+extern "C" void *__libc_realloc(void *pointer, std::size_t size) {
+    return realloc(pointer, size);
+}
+
+extern "C" void __libc_free(void *pointer) {
+    free(pointer);
+}
+
 extern "C" uint32_t nk_wasm_host_allocator_status() {
     return ensure_allocator() ? 0u : 1u;
 }
