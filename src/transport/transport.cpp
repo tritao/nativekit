@@ -51,6 +51,7 @@
 #include <netdb.h>
 #include <poll.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/un.h>
 #include <netinet/tcp.h>
@@ -537,6 +538,24 @@ struct SocketAddress {
     socket_length_type size = 0;
 };
 
+#if !defined(_WIN32)
+bool local_peer_is_current_user(socket_type socket) noexcept {
+#if defined(__linux__)
+    struct ucred credentials{};
+    socklen_t length = sizeof(credentials);
+    return ::getsockopt(socket, SOL_SOCKET, SO_PEERCRED, &credentials, &length) == 0 &&
+           length == sizeof(credentials) && credentials.uid == ::geteuid();
+#elif defined(__APPLE__) || defined(__FreeBSD__)
+    uid_t uid = static_cast<uid_t>(-1);
+    gid_t gid = static_cast<gid_t>(-1);
+    return ::getpeereid(socket, &uid, &gid) == 0 && uid == ::geteuid();
+#else
+    (void)socket;
+    return false;
+#endif
+}
+#endif
+
 nk_result connect_socket(const TransportOptions &options, socket_type &out_socket) {
     initialize_sockets();
 #if defined(_WIN32)
@@ -557,6 +576,10 @@ nk_result connect_socket(const TransportOptions &options, socket_type &out_socke
             const auto error = socket_error();
             close_socket(socket);
             return map_connect_error(error);
+        }
+        if (!local_peer_is_current_user(socket)) {
+            close_socket(socket);
+            return NK_ERROR_PERMISSION_DENIED;
         }
         if (!set_nonblocking(socket)) {
             close_socket(socket);
@@ -634,14 +657,50 @@ nk_result create_listener_socket(const TransportOptions &options, socket_type &o
 #if defined(_WIN32)
         return NK_ERROR_UNSUPPORTED;
 #else
-        socket_type socket = ::socket(AF_UNIX, SOCK_STREAM, 0);
-        if (socket == invalid_socket)
-            return NK_TRANSPORT_ERROR_CONNECTION;
+        const auto slash = options.path.find_last_of('/');
+        if (slash == std::string::npos || slash + 1 == options.path.size())
+            return fail(NK_ERROR_INVALID_ARGUMENT, "local socket needs a parent directory and name");
+        const std::string parent = slash == 0 ? "/" : options.path.substr(0, slash);
+        struct stat parent_info{};
+        if (::lstat(parent.c_str(), &parent_info) != 0 || !S_ISDIR(parent_info.st_mode) ||
+            parent_info.st_uid != ::geteuid() || (parent_info.st_mode & 077) != 0)
+            return fail(NK_ERROR_PERMISSION_DENIED,
+                        "local socket parent must be a user-owned private directory");
         sockaddr_un address{};
         address.sun_family = AF_UNIX;
         std::memcpy(address.sun_path, options.path.data(), options.path.size());
-        ::unlink(options.path.c_str());
-        if (::bind(socket, reinterpret_cast<const sockaddr *>(&address), sizeof(address)) != 0 ||
+        struct stat existing{};
+        if (::lstat(options.path.c_str(), &existing) == 0) {
+            if (!S_ISSOCK(existing.st_mode) || existing.st_uid != ::geteuid())
+                return fail(NK_ERROR_PERMISSION_DENIED,
+                            "local socket path is not a user-owned socket");
+            const socket_type probe = ::socket(AF_UNIX, SOCK_STREAM, 0);
+            if (probe == invalid_socket)
+                return NK_TRANSPORT_ERROR_CONNECTION;
+            if (!set_nonblocking(probe)) {
+                close_socket(probe);
+                return NK_TRANSPORT_ERROR_CONNECTION;
+            }
+            const int connected = ::connect(probe, reinterpret_cast<const sockaddr *>(&address),
+                                            sizeof(address));
+            const int probe_error = connected == 0 ? 0 : socket_error();
+            close_socket(probe);
+            if (connected == 0 || probe_error != ECONNREFUSED)
+                return NK_TRANSPORT_ERROR_ADDRESS_IN_USE;
+            if (::unlink(options.path.c_str()) != 0)
+                return fail(NK_ERROR_PERMISSION_DENIED, "could not remove stale local socket");
+        } else if (errno != ENOENT) {
+            return fail(NK_ERROR_PERMISSION_DENIED, "could not inspect local socket path");
+        }
+        socket_type socket = ::socket(AF_UNIX, SOCK_STREAM, 0);
+        if (socket == invalid_socket)
+            return NK_TRANSPORT_ERROR_CONNECTION;
+        if (::bind(socket, reinterpret_cast<const sockaddr *>(&address), sizeof(address)) != 0) {
+            const auto error = socket_error();
+            close_socket(socket);
+            return map_bind_error(error);
+        }
+        if (::chmod(options.path.c_str(), 0600) != 0 ||
             ::listen(socket, static_cast<int>(options.backlog)) != 0 || !set_nonblocking(socket)) {
             const auto error = socket_error();
             close_socket(socket);
@@ -1651,6 +1710,12 @@ void ListenerResource::run() noexcept {
             emit_failure(NK_TRANSPORT_ERROR_CONNECTION);
             return;
         }
+#if !defined(_WIN32)
+        if (options.kind == NK_TRANSPORT_LOCAL && !local_peer_is_current_user(accepted_socket)) {
+            close_socket(accepted_socket);
+            continue;
+        }
+#endif
         if (!set_nonblocking(accepted_socket)) {
             close_socket(accepted_socket);
             continue;
@@ -1710,6 +1775,10 @@ nk_result NK_CALL nk_transport_query_capabilities(
     *out_capabilities = 0;
     if (!valid_kind(kind))
         return fail(NK_ERROR_INVALID_ARGUMENT, "transport kind is invalid");
+#if defined(_WIN32)
+    if (kind == NK_TRANSPORT_LOCAL)
+        return NK_OK;
+#endif
     *out_capabilities = NK_TRANSPORT_CAP_CLIENT | NK_TRANSPORT_CAP_LISTENER;
     if (kind == NK_TRANSPORT_WEBSOCKET) {
         *out_capabilities |= NK_TRANSPORT_CAP_SUBPROTOCOL;

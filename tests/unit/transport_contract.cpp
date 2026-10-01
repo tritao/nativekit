@@ -6,7 +6,17 @@
 #include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <string>
 #include <thread>
+
+#if !defined(_WIN32)
+#include <cstdlib>
+#include <fcntl.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/un.h>
+#include <unistd.h>
+#endif
 
 namespace {
 
@@ -101,6 +111,14 @@ void roundtrip(nk_transport_kind kind, const char *path = nullptr,
     nk_listener listener = NK_INVALID_HANDLE;
     const auto port = listen_port(&listener, kind, path, subprotocols);
     assert(port != 0);
+#if !defined(_WIN32)
+    if (kind == NK_TRANSPORT_LOCAL) {
+        struct stat socket_info{};
+        assert(::lstat(path, &socket_info) == 0);
+        assert(S_ISSOCK(socket_info.st_mode));
+        assert((socket_info.st_mode & 0777) == 0600);
+    }
+#endif
 
     nk_transport_options connect_options{};
     connect_options.struct_size = sizeof(connect_options);
@@ -151,6 +169,13 @@ void contract_extensions() {
     assert((capabilities & NK_TRANSPORT_CAP_SECURE_CLIENT) != 0);
     assert(nk_transport_query_capabilities(0, &capabilities) == NK_ERROR_INVALID_ARGUMENT);
     assert(capabilities == 0);
+    assert(nk_transport_query_capabilities(NK_TRANSPORT_LOCAL, &capabilities) == NK_OK);
+#if defined(_WIN32)
+    assert(capabilities == 0);
+#else
+    assert((capabilities & (NK_TRANSPORT_CAP_CLIENT | NK_TRANSPORT_CAP_LISTENER)) ==
+           (NK_TRANSPORT_CAP_CLIENT | NK_TRANSPORT_CAP_LISTENER));
+#endif
 
     nk_transport_options options{};
     options.struct_size = sizeof(options);
@@ -182,6 +207,60 @@ void contract_extensions() {
     assert(nk_transport_close(transport) == NK_OK);
 }
 
+#if !defined(_WIN32)
+void local_security() {
+    char directory_template[] = "/tmp/nativekit-transport-XXXXXX";
+    const char *created = ::mkdtemp(directory_template);
+    assert(created != nullptr);
+    const std::string directory(created);
+    const std::string socket_path = directory + "/endpoint.sock";
+    nk_transport_options options{};
+    options.struct_size = sizeof(options);
+    options.kind = NK_TRANSPORT_LOCAL;
+    options.path = socket_path.c_str();
+    nk_listener listener = NK_INVALID_HANDLE;
+
+    assert(::chmod(directory.c_str(), 0755) == 0);
+    assert(nk_transport_listen(&options, &listener) == NK_ERROR_PERMISSION_DENIED);
+    assert(listener == NK_INVALID_HANDLE);
+    assert(::chmod(directory.c_str(), 0700) == 0);
+
+    const std::string linked_directory = directory + "-link";
+    assert(::symlink(directory.c_str(), linked_directory.c_str()) == 0);
+    const std::string linked_path = linked_directory + "/endpoint.sock";
+    options.path = linked_path.c_str();
+    assert(nk_transport_listen(&options, &listener) == NK_ERROR_PERMISSION_DENIED);
+    assert(::unlink(linked_directory.c_str()) == 0);
+    options.path = socket_path.c_str();
+
+    const int ordinary_file = ::open(socket_path.c_str(), O_CREAT | O_EXCL | O_WRONLY, 0600);
+    assert(ordinary_file >= 0);
+    assert(::close(ordinary_file) == 0);
+    assert(nk_transport_listen(&options, &listener) == NK_ERROR_PERMISSION_DENIED);
+    struct stat existing{};
+    assert(::lstat(socket_path.c_str(), &existing) == 0 && S_ISREG(existing.st_mode));
+    assert(::unlink(socket_path.c_str()) == 0);
+
+    const int stale = ::socket(AF_UNIX, SOCK_STREAM, 0);
+    assert(stale >= 0);
+    sockaddr_un address{};
+    address.sun_family = AF_UNIX;
+    std::memcpy(address.sun_path, socket_path.c_str(), socket_path.size() + 1);
+    assert(::bind(stale, reinterpret_cast<const sockaddr *>(&address), sizeof(address)) == 0);
+    assert(::close(stale) == 0);
+    roundtrip(NK_TRANSPORT_LOCAL, socket_path.c_str());
+    assert(::lstat(socket_path.c_str(), &existing) != 0);
+
+    assert(nk_transport_listen(&options, &listener) == NK_OK);
+    nk_listener duplicate = NK_INVALID_HANDLE;
+    assert(nk_transport_listen(&options, &duplicate) == NK_TRANSPORT_ERROR_ADDRESS_IN_USE);
+    assert(duplicate == NK_INVALID_HANDLE);
+    assert(::lstat(socket_path.c_str(), &existing) == 0 && S_ISSOCK(existing.st_mode));
+    assert(nk_listener_close(listener) == NK_OK);
+    assert(::rmdir(directory.c_str()) == 0);
+}
+#endif
+
 } // namespace
 
 int main() {
@@ -198,7 +277,7 @@ int main() {
     roundtrip(NK_TRANSPORT_UDP);
     roundtrip(NK_TRANSPORT_WEBSOCKET, "/nativekit", "nativekit.v2,nativekit.v1");
 #if !defined(_WIN32)
-    roundtrip(NK_TRANSPORT_LOCAL, "/tmp/nativekit-transport-contract.sock");
+    local_security();
 #endif
     nk_shutdown();
     return 0;
