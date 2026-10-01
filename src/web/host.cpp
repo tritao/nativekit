@@ -358,6 +358,32 @@ EM_JS(void, nk_web_set_canvas_resizable, (const char *selector, int enabled, int
     }
 });
 
+// Pointer capture needs the id of the pointer that is down, which mouse events do not carry; the canvas remembers it
+// from its pointer events. Capturing also routes the compatibility mouse events the host listens to.
+EM_JS(void, nk_web_track_pointer, (const char *selector), {
+    const element = document.querySelector(UTF8ToString(selector));
+    if (!element || element._nkTracksPointer)
+        return;
+    element._nkTracksPointer = true;
+    element.addEventListener("pointerdown", event => { element._nkPointerId = event.pointerId; }, true);
+});
+
+EM_JS(int, nk_web_set_pointer_capture, (const char *selector, int captured), {
+    const element = document.querySelector(UTF8ToString(selector));
+    const pointer = element ? element._nkPointerId : undefined;
+    if (pointer === undefined)
+        return 0;
+    try {
+        if (captured)
+            element.setPointerCapture(pointer);
+        else if (element.hasPointerCapture(pointer))
+            element.releasePointerCapture(pointer);
+        return 1;
+    } catch (error) {
+        return 0;
+    }
+});
+
 EM_JS(void, nk_web_set_canvas_opacity, (const char *selector, float opacity), {
     const canvas = document.querySelector(UTF8ToString(selector));
     if (canvas)
@@ -533,6 +559,25 @@ EM_JS(void, nk_web_configure_text_input,
                   else if (event.data !== null)
                       emit(1, event.data, 0, 0);
               });
+              // While the input has focus its key events never reach the canvas's key callbacks. Keys with no
+              // editing meaning here are forwarded: Enter submits (a textarea inserts a line break instead), Escape
+              // cancels, Tab moves focus, function keys run commands.
+              const forwardKey = (event, type) => {
+                  if (!input._nkActive || input._nkComposing)
+                      return;
+                  const key = event.key;
+                  if (!((key === "Enter" && input.tagName !== "TEXTAREA") || key === "Escape" || key === "Tab"
+                        || /^F[0-9]{1,2}$/.test(key)))
+                      return;
+                  event.preventDefault();
+                  const modifiers = (event.shiftKey ? 1 : 0) | (event.ctrlKey ? 2 : 0) | (event.altKey ? 4 : 0)
+                                  | (event.metaKey ? 8 : 0);
+                  ccall("nk_web_host_key_event", null,
+                        ["number", "number", "number", "number", "number", "number"],
+                        [input._nkRoute || 0, type, event.keyCode, event.location, modifiers, event.repeat ? 1 : 0]);
+              };
+              input.addEventListener("keydown", event => forwardKey(event, 0));
+              input.addEventListener("keyup", event => forwardKey(event, 1));
               const codePointToUtf16 = (value, position) => {
                   let index = 0;
                   let count = 0;
@@ -2004,6 +2049,23 @@ extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_text_input_event(uint32_t route
     state->callbacks.text_input(event, state->user_data);
 }
 
+// Keys the focused text input forwards (see forwardKey above): 0 is a press, 1 a release.
+extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_key_event(uint32_t route, int type, int key_code,
+                                                           int location, uint32_t key_modifiers,
+                                                           int repeat) {
+    auto *state = state_for_route(route);
+    if (!state || !state->callbacks.key)
+        return;
+    nk::web::KeyEvent key{};
+    key.type = type == 1 ? nk::web::KeyEventType::up : nk::web::KeyEventType::down;
+    key.key_code = static_cast<decltype(key.key_code)>(key_code);
+    key.location = static_cast<decltype(key.location)>(location);
+    key.char_code = 0;
+    key.modifiers = key_modifiers;
+    key.repeat = repeat != 0;
+    state->callbacks.key(key, state->user_data);
+}
+
 extern "C" EMSCRIPTEN_KEEPALIVE void
 nk_web_host_accessibility_action(uint32_t route, uint32_t surface, uint32_t node, uint32_t action,
                                  const char *value, int selection_start, int selection_end,
@@ -2428,6 +2490,10 @@ bool exit_pointer_lock() noexcept {
     return emscripten_exit_pointerlock() == EMSCRIPTEN_RESULT_SUCCESS;
 }
 
+bool set_pointer_capture(const char *selector, bool captured) noexcept {
+    return nk_web_set_pointer_capture(selector, captured ? 1 : 0) != 0;
+}
+
 bool device_orientation_supported() noexcept {
     return nk_web_device_orientation_supported() != 0;
 }
@@ -2584,6 +2650,7 @@ bool install_callbacks(const char *selector, uint32_t route, const HostCallbacks
                                        resize_callback);
         resize_callback_installed = true;
     }
+    nk_web_track_pointer(selector);
     emscripten_set_mousedown_callback(selector, state_ptr, EM_TRUE, mouse_callback);
     emscripten_set_mouseup_callback(selector, state_ptr, EM_TRUE, mouse_callback);
     emscripten_set_mousemove_callback(selector, state_ptr, EM_TRUE, mouse_callback);

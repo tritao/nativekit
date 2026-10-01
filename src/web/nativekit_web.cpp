@@ -3659,10 +3659,16 @@ nk_result NK_CALL nk_window_set_cursor_mode(nk_handle handle, nk_cursor_mode mod
     auto window = get_window(handle);
     if (!window)
         return invalid_handle("invalid web window handle");
-    if (mode == NK_CURSOR_MODE_NORMAL || mode == NK_CURSOR_MODE_HIDDEN) {
-        if (window->cursor_mode == NK_CURSOR_MODE_CAPTURED ||
-            window->cursor_mode == NK_CURSOR_MODE_DISABLED)
-            nk::web::exit_pointer_lock();
+    // Captured keeps a press's pointer events on the canvas, which pointer capture does; only disabled (relative)
+    // mode locks the pointer.
+    if (window->cursor_mode == NK_CURSOR_MODE_CAPTURED && mode != NK_CURSOR_MODE_CAPTURED)
+        nk::web::set_pointer_capture(window->selector.c_str(), false);
+    if (window->cursor_mode == NK_CURSOR_MODE_DISABLED && mode != NK_CURSOR_MODE_DISABLED)
+        nk::web::exit_pointer_lock();
+    if (mode != NK_CURSOR_MODE_DISABLED) {
+        // Capture is best effort: without a pressed pointer, events still reach the canvas while over it.
+        if (mode == NK_CURSOR_MODE_CAPTURED)
+            nk::web::set_pointer_capture(window->selector.c_str(), true);
         window->cursor_mode = mode;
         apply_cursor(*window);
         return NK_OK;

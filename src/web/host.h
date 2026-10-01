@@ -208,6 +208,8 @@ bool request_fullscreen(const char *selector) noexcept;
 bool exit_fullscreen() noexcept;
 bool request_pointer_lock(const char *selector) noexcept;
 bool exit_pointer_lock() noexcept;
+// Keeps pointer events on the element while a press drags outside it (NK_CURSOR_MODE_CAPTURED).
+bool set_pointer_capture(const char *selector, bool captured) noexcept;
 
 bool device_orientation_supported() noexcept;
 nk_orientation device_orientation() noexcept;
