@@ -44,6 +44,15 @@ nk_result fail(nk_result code, const char *message) noexcept {
 #if NK_POSIX_PTY
 constexpr std::size_t io_limit = 64u * 1024u;
 
+int kill_pty_group(pid_t pid) noexcept {
+    if (::kill(-pid, SIGKILL) == 0)
+        return 0;
+    // forkpty returns before the child necessarily enters its new session.
+    if (errno == ESRCH)
+        return ::kill(pid, SIGKILL);
+    return -1;
+}
+
 struct Pty final : nk::core::Resource {
     int fd = -1;
     pid_t pid = -1;
@@ -60,8 +69,8 @@ struct Pty final : nk::core::Resource {
 
     void close() noexcept {
         stop.store(true);
-        if (pid > 0 && !exited.load())
-            (void)::kill(pid, SIGKILL);
+        if (pid > 0)
+            (void)kill_pty_group(pid);
         if (monitor.joinable())
             monitor.join();
         if (pid > 0 && !exited.load()) {
@@ -104,6 +113,8 @@ struct Pty final : nk::core::Resource {
                 }
             }
             if (exited.load() && ready > 0 && (item.revents & POLLNVAL))
+                break;
+            if (exited.load() && eof.load())
                 break;
             if (ready > 0 && (item.revents & (POLLHUP | POLLERR)) && !(item.revents & POLLIN))
                 std::this_thread::sleep_for(std::chrono::milliseconds(20));
@@ -328,7 +339,7 @@ nk_result NK_CALL nk_pty_kill(nk_pty handle) {
     auto pty = lookup(handle);
     if (!pty)
         return fail(NK_ERROR_INVALID_HANDLE, "invalid PTY handle");
-    if (!pty->exited.load() && ::kill(pty->pid, SIGKILL) != 0 && errno != ESRCH)
+    if (kill_pty_group(pty->pid) != 0 && errno != ESRCH)
         return fail(NK_ERROR_UNKNOWN, "PTY kill failed");
     return NK_OK;
 #endif

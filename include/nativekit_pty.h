@@ -32,7 +32,7 @@ NK_API nk_result NK_CALL nk_pty_resize(nk_pty pty, uint16_t columns, uint16_t ro
 NK_API nk_result NK_CALL nk_pty_exit_status(nk_pty pty, int32_t *out_code NK_OUT,
     int32_t *out_signal NK_OUT);
 NK_API nk_result NK_CALL nk_pty_kill(nk_pty pty);
-/** Terminates a live child, reaps it, and releases the handle. */
+/** Terminates the PTY process group, reaps the direct child, and releases the handle. */
 NK_API nk_result NK_CALL nk_pty_close(nk_pty pty);
 
 #ifdef __cplusplus

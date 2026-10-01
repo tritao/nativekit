@@ -3340,7 +3340,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 */
 	extern fn nk_poll_event(event: ptr<nk_event> @inout) -> nk_result;
 	/**
-	 * Terminates a live child, reaps it, and releases the handle.
+	 * Terminates the PTY process group, reaps the direct child, and releases the handle.
 	 */
 	extern fn nk_pty_close(pty: nk_pty) -> nk_result;
 	/**

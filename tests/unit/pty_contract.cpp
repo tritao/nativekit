@@ -100,5 +100,11 @@ int main() {
     // Closing a live child reaps it.
     assert(nk_pty_spawn("/bin/sh", args, 1, nullptr, nullptr, 0, 80, 24, &pty) == NK_OK);
     assert(nk_pty_close(pty) == NK_OK);
+    const char *long_command[] = {"-c", "sleep 100 & wait"};
+    assert(nk_pty_spawn("/bin/sh", long_command, 2, nullptr, nullptr, 0,
+                        80, 24, &pty) == NK_OK);
+    const auto close_start = std::chrono::steady_clock::now();
+    assert(nk_pty_close(pty) == NK_OK);
+    assert(std::chrono::steady_clock::now() - close_start < std::chrono::seconds(2));
     nk_shutdown();
 }
