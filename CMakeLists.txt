@@ -203,9 +203,11 @@ if(EMSCRIPTEN)
     # WebGL2 is part of the first browser backend.  Keep this linker detail on
     # the NativeKit target so consumers inherit it without seeing Emscripten
     # types or headers in the public API.
+    set(NK_WEB_EXPORTED_RUNTIME_METHODS "ccall" CACHE STRING
+        "Comma-separated Emscripten runtime methods required by the consuming host")
     target_link_options(nativekit INTERFACE
         "-sUSE_WEBGL2=1"
-        "-sEXPORTED_RUNTIME_METHODS=ccall")
+        "-sEXPORTED_RUNTIME_METHODS=${NK_WEB_EXPORTED_RUNTIME_METHODS}")
 
     set(NK_WASM_HOST_HEAP_LIMIT "134217728" CACHE STRING
         "Exclusive byte limit of NativeKit's bounded WebAssembly host heap")

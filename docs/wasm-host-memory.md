@@ -24,3 +24,9 @@ example, the Haxeon Showcase places its managed guest heap at the host limit and
 uses a separate Haxeon allocator there. Host and guest objects must be released
 by the allocator that created them; the shared `WebAssembly.Memory` does not
 make their allocation domains interchangeable.
+
+Browser hosts that register guest callbacks must configure
+`NK_WEB_EXPORTED_RUNTIME_METHODS=ccall,addFunction,removeFunction` before adding
+NativeKit. The default is `ccall`. NativeKit's transitive Emscripten runtime
+export option must include the consumer's methods because a later option replaces
+an earlier export list rather than merging it.
