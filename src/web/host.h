@@ -206,6 +206,7 @@ bool make_context_current(EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context) noexcept;
 
 bool request_fullscreen(const char *selector) noexcept;
 bool exit_fullscreen() noexcept;
+bool set_pointer_capture(const char *selector, bool active) noexcept;
 bool request_pointer_lock(const char *selector) noexcept;
 bool exit_pointer_lock() noexcept;
 

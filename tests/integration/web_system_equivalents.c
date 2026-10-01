@@ -135,6 +135,14 @@ static void test_window_styling(void) {
     nk_window window = NK_INVALID_HANDLE;
     NK_TEST_ASSERT(nk_window_create(&options, &window) == NK_OK);
 
+    // Ordinary capture needs a live pointer, and must not queue relative pointer lock.
+    nk_cursor_mode mode = NK_CURSOR_MODE_DISABLED;
+    NK_TEST_ASSERT(nk_window_set_cursor_mode(window, NK_CURSOR_MODE_CAPTURED) == NK_ERROR_UNSUPPORTED);
+    NK_TEST_ASSERT(nk_window_get_cursor_mode(window, &mode) == NK_OK);
+    NK_TEST_ASSERT(mode == NK_CURSOR_MODE_NORMAL);
+    NK_TEST_ASSERT(nk_window_set_cursor_mode(window, NK_CURSOR_MODE_NORMAL) == NK_OK);
+
+
     nk_window_size_limits limits = {0};
     limits.struct_size = sizeof(limits);
     limits.min_width = 320;

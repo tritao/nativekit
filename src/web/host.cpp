@@ -298,9 +298,31 @@ EM_JS(int, nk_web_create_canvas, (const char *selector, int width, int height, i
         canvas.style.width = width + "px";
     if (height > 0)
         canvas.style.height = height + "px";
+    if (!canvas._nkTracksPointer) {
+        canvas._nkTracksPointer = true;
+        canvas.addEventListener("pointerdown", event => { canvas._nkPointerId = event.pointerId; });
+        const clear = () => { delete canvas._nkPointerId; };
+        canvas.addEventListener("pointerup", clear);
+        canvas.addEventListener("pointercancel", clear);
+    }
     canvas.tabIndex = 0;
     canvas.setAttribute("aria-label", canvas.getAttribute("aria-label") || "NativeKit canvas");
     return 1;
+});
+
+EM_JS(int, nk_web_pointer_capture, (const char *selector, int active), {
+    const canvas = document.querySelector(UTF8ToString(selector));
+    if (!canvas || !canvas.isConnected || canvas._nkPointerId === undefined)
+        return active ? 0 : 1;
+    try {
+        if (active)
+            canvas.setPointerCapture(canvas._nkPointerId);
+        else if (canvas.hasPointerCapture(canvas._nkPointerId))
+            canvas.releasePointerCapture(canvas._nkPointerId);
+        return 1;
+    } catch (_) {
+        return 0;
+    }
 });
 
 EM_JS(void, nk_web_destroy_canvas, (const char *selector, int owned), {
@@ -2470,6 +2492,10 @@ bool request_fullscreen(const char *selector) noexcept {
 
 bool exit_fullscreen() noexcept {
     return emscripten_exit_fullscreen() == EMSCRIPTEN_RESULT_SUCCESS;
+}
+
+bool set_pointer_capture(const char *selector, bool active) noexcept {
+    return nk_web_pointer_capture(selector, active ? 1 : 0) != 0;
 }
 
 bool request_pointer_lock(const char *selector) noexcept {

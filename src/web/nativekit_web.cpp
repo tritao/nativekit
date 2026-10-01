@@ -3660,9 +3660,17 @@ nk_result NK_CALL nk_window_set_cursor_mode(nk_handle handle, nk_cursor_mode mod
     if (!window)
         return invalid_handle("invalid web window handle");
     if (mode == NK_CURSOR_MODE_NORMAL || mode == NK_CURSOR_MODE_HIDDEN) {
-        if (window->cursor_mode == NK_CURSOR_MODE_CAPTURED ||
-            window->cursor_mode == NK_CURSOR_MODE_DISABLED)
+        if (window->cursor_mode == NK_CURSOR_MODE_CAPTURED)
+            nk::web::set_pointer_capture(window->selector.c_str(), false);
+        if (window->cursor_mode == NK_CURSOR_MODE_DISABLED)
             nk::web::exit_pointer_lock();
+        window->cursor_mode = mode;
+        apply_cursor(*window);
+        return NK_OK;
+    }
+    if (mode == NK_CURSOR_MODE_CAPTURED) {
+        if (!nk::web::set_pointer_capture(window->selector.c_str(), true))
+            return unsupported("browser pointer capture requires an active pointer interaction");
         window->cursor_mode = mode;
         apply_cursor(*window);
         return NK_OK;
