@@ -68,24 +68,51 @@ bool aligned_allocations() {
 }
 
 bool exhaustion_is_bounded() {
-    alignas(64) std::array<std::byte, 4096> storage{};
+    // The heap's own state (about half a kilobyte) lives in the arena too.
+    alignas(64) std::array<std::byte, 8192> storage{};
     nk::wasm::WasmHostAllocator allocator;
     if (!allocator.initialize(storage.data(), storage.size()))
         return false;
-    auto *large = allocator.allocate(3900);
+    auto *large = allocator.allocate(7000);
     if (!check(large != nullptr, "bounded arena could not use available space"))
         return false;
-    if (!check(allocator.allocate(200) == nullptr, "allocator crossed the arena limit"))
+    if (!check(allocator.allocate(2000) == nullptr, "allocator crossed the arena limit"))
         return false;
     allocator.release(large);
-    return check(allocator.allocate(3900) != nullptr, "freed bounded space was not reusable");
+    return check(allocator.allocate(7000) != nullptr, "freed bounded space was not reusable");
+}
+
+bool churn_keeps_large_blocks() {
+    // Small and large blocks allocated and freed in turns, as a renderer does each frame: the free
+    // space must not splinter, so the large block keeps fitting and everything coalesces at the
+    // end.
+    alignas(64) std::array<std::byte, 256 * 1024> storage{};
+    nk::wasm::WasmHostAllocator allocator;
+    if (!allocator.initialize(storage.data(), storage.size()))
+        return false;
+    for (int round = 0; round < 200; ++round) {
+        void *small[16];
+        for (auto &pointer : small)
+            pointer = allocator.allocate(48 + round % 7 * 16);
+        auto *large = allocator.allocate(96 * 1024);
+        if (!check(large != nullptr, "a large block failed after churn"))
+            return false;
+        for (int index = 0; index < 16; index += 2)
+            allocator.release(small[index]);
+        allocator.release(large);
+        for (int index = 1; index < 16; index += 2)
+            allocator.release(small[index]);
+    }
+    const auto stats = allocator.statistics();
+    return check(stats.in_use == 0, "statistics did not return to zero") &&
+           check(stats.largest_free > 200 * 1024, "free space stayed fragmented");
 }
 
 } // namespace
 
 int main() {
     return basic_allocations() && realloc_preserves_data() && aligned_allocations() &&
-                   exhaustion_is_bounded()
+                   exhaustion_is_bounded() && churn_keeps_large_blocks()
                ? 0
                : 1;
 }

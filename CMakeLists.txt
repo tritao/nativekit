@@ -218,7 +218,8 @@ if(EMSCRIPTEN)
     # when the application partitions linear memory between host and guest.
     add_library(nativekit_wasm_host_allocator STATIC
         src/wasm/host_allocator.cpp
-        src/wasm/host_allocator_wasm.cpp)
+        src/wasm/host_allocator_wasm.cpp
+        src/wasm/host_mspace.c)
     add_library(NativeKit::wasm_host_allocator ALIAS nativekit_wasm_host_allocator)
     target_compile_features(nativekit_wasm_host_allocator PRIVATE cxx_std_17)
     target_include_directories(nativekit_wasm_host_allocator PRIVATE src)

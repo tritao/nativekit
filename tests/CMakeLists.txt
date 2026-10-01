@@ -131,7 +131,8 @@ endif()
 
 add_executable(nativekit_wasm_host_allocator_test
     unit/wasm_host_allocator.cpp
-    ${PROJECT_SOURCE_DIR}/src/wasm/host_allocator.cpp)
+    ${PROJECT_SOURCE_DIR}/src/wasm/host_allocator.cpp
+    ${PROJECT_SOURCE_DIR}/src/wasm/host_mspace.c)
 target_compile_features(nativekit_wasm_host_allocator_test PRIVATE cxx_std_17)
 target_include_directories(nativekit_wasm_host_allocator_test PRIVATE ${PROJECT_SOURCE_DIR}/src)
 add_test(NAME wasm_host_allocator COMMAND nativekit_wasm_host_allocator_test)

@@ -1,6 +1,7 @@
 #include "wasm/host_allocator.h"
 
 #include <emscripten/heap.h>
+#include <malloc.h>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -108,6 +109,41 @@ extern "C" void *__libc_realloc(void *pointer, std::size_t size) {
 
 extern "C" void __libc_free(void *pointer) {
     free(pointer);
+}
+
+// OCCT's OSD_MemInfo reports heap use through this.
+extern "C" struct mallinfo mallinfo() {
+    struct mallinfo result{};
+    if (!ensure_allocator())
+        return result;
+    const auto stats = allocator.statistics();
+    result.arena = static_cast<int>(stats.arena);
+    result.uordblks = static_cast<int>(stats.in_use);
+    result.fordblks = static_cast<int>(stats.arena - stats.in_use);
+    result.ordblks = static_cast<int>(stats.free_blocks);
+    return result;
+}
+
+// Host heap figures for diagnostics, in bytes: 0 arena, 1 in use, 2 peak in use, 3 largest free
+// block, 4 free blocks (a count). Returns 0 for an unknown index.
+extern "C" uint32_t nk_wasm_host_allocator_statistic(uint32_t index) {
+    if (!ensure_allocator())
+        return 0;
+    const auto stats = allocator.statistics();
+    switch (index) {
+    case 0:
+        return static_cast<uint32_t>(stats.arena);
+    case 1:
+        return static_cast<uint32_t>(stats.in_use);
+    case 2:
+        return static_cast<uint32_t>(stats.peak);
+    case 3:
+        return static_cast<uint32_t>(stats.largest_free);
+    case 4:
+        return static_cast<uint32_t>(stats.free_blocks);
+    default:
+        return 0;
+    }
 }
 
 extern "C" uint32_t nk_wasm_host_allocator_status() {
