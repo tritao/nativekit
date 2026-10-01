@@ -8,6 +8,7 @@
 #include <cstring>
 #include <string>
 #include <thread>
+#include <vector>
 
 #if !defined(_WIN32)
 #include <cstdlib>
@@ -55,12 +56,15 @@ bool poll_transport_events(nk_transport client, nk_transport *accepted, bool *cl
 bool receive_message(nk_transport transport, const char *expected) {
     const auto expected_size = std::strlen(expected);
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    std::string collected;
     auto try_receive = [&] {
         char buffer[64] = {};
         std::uint64_t received = 0;
         const auto result = nk_transport_receive(transport, buffer, sizeof(buffer), &received);
-        return result == NK_OK && received == expected_size &&
-               std::memcmp(buffer, expected, expected_size) == 0;
+        if (result == NK_OK && received > 0)
+            collected.append(buffer, static_cast<std::size_t>(received));
+        return collected.size() == expected_size &&
+               std::memcmp(collected.data(), expected, expected_size) == 0;
     };
     while (std::chrono::steady_clock::now() < deadline) {
         if (try_receive())
@@ -78,7 +82,7 @@ bool receive_message(nk_transport transport, const char *expected) {
                 nk_transport_data_event data_event{};
                 data_event.struct_size = sizeof(data_event);
                 assert(nk_transport_event_data(&event, &data_event) == NK_OK);
-                assert(data_event.available >= expected_size);
+                assert(data_event.available > 0);
                 if (try_receive()) {
                     nk_event_release(&event);
                     return true;
@@ -140,6 +144,12 @@ void roundtrip(nk_transport_kind kind, const char *path = nullptr,
         assert(nk_transport_send(client, request, sizeof(request) - 1) == NK_OK);
     assert(poll_transport_events(client, &server, &client_connected, &server_connected));
 
+    if (kind == NK_TRANSPORT_LOCAL) {
+        const std::vector<std::uint8_t> oversized(16u * 1024u * 1024u + 1u);
+        assert(nk_transport_send(client, oversized.data(), oversized.size()) ==
+               NK_ERROR_PAYLOAD_TOO_LARGE);
+    }
+
     uint64_t queued = UINT64_MAX;
     uint64_t capacity = 0;
     assert(nk_transport_get_send_queue(server, &queued, &capacity) == NK_OK);
@@ -147,8 +157,12 @@ void roundtrip(nk_transport_kind kind, const char *path = nullptr,
     assert(queued <= capacity);
     assert(nk_transport_get_send_queue(server, nullptr, &capacity) == NK_ERROR_INVALID_ARGUMENT);
 
-    if (kind != NK_TRANSPORT_UDP)
+    if (kind == NK_TRANSPORT_LOCAL) {
+        for (const char *byte = request; *byte; ++byte)
+            assert(nk_transport_send(client, byte, 1) == NK_OK);
+    } else if (kind != NK_TRANSPORT_UDP) {
         assert(nk_transport_send(client, request, sizeof(request) - 1) == NK_OK);
+    }
     assert(receive_message(server, request));
 
     const char response[] = "transport-nativekit";
