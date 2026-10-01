@@ -3394,7 +3394,7 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	/**
 	 * Writes up to `size` bytes; a successful write may transfer fewer bytes.
 	 */
-	extern fn nk_resource_write(stream: nk_resource_stream, buffer: ptr<const<void>>, size: u64, out_written: ptr<u64>) -> nk_result;
+	extern fn nk_resource_write(stream: nk_resource_stream, buffer: ptr<const<void>> @in_array("size"), size: u64, out_written: ptr<u64> @out) -> nk_result;
 	/**
 	 * Returns the generation identifier of the active runtime, or zero when no
 	 * runtime is active. Every succeeded nk_init() produces a new, non-zero

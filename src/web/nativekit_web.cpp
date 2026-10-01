@@ -2742,12 +2742,13 @@ nk_result NK_CALL nk_resource_commit(nk_handle handle, nk_request_id *out_reques
         return resource_error(NK_ERROR_PAYLOAD_TOO_LARGE, "web resource commit is too large");
     const auto request = nk::core::next_request_id();
     if (!nk::web::commit_resource(uri.c_str(), data.data(), static_cast<uint32_t>(data.size()),
-                                  request))
+                                  request)) {
         {
             std::lock_guard lock(resource->mutex);
             resource->commit_started = false;
         }
         return resource_error(NK_ERROR_UNSUPPORTED, "browser file commit is unavailable");
+    }
     *out_request = request;
     return NK_OK;
 }

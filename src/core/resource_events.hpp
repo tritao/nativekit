@@ -176,6 +176,11 @@ inline ResourceValue resource_from_file_path(std::string path, nk_resource_flags
     return resource_from_uri(file_uri_from_path(path), flags, {}, uri_display_name(path));
 }
 
+/**
+ * Resources from a text/uri-list. A line may end in a tab and a display name, which a browser
+ * picker adds because its blob: and handle URIs do not carry the file's name; a URI never contains
+ * a tab.
+ */
 inline std::vector<ResourceValue> resources_from_uri_list(std::string_view value,
                                                           nk_resource_flags flags) {
     std::vector<ResourceValue> resources;
@@ -186,9 +191,15 @@ inline std::vector<ResourceValue> resources_from_uri_list(std::string_view value
         std::string uri(value.substr(start, line_end - start));
         if (!uri.empty() && uri.back() == '\r')
             uri.pop_back();
-        if (!uri.empty() && uri.front() != '#' && valid_utf8(uri) &&
+        std::string display_name;
+        if (const auto tab = uri.find('\t'); tab != std::string::npos) {
+            display_name = uri.substr(tab + 1);
+            uri.resize(tab);
+        }
+        if (!uri.empty() && uri.front() != '#' && valid_utf8(uri) && valid_utf8(display_name) &&
             uri.find(':') != std::string::npos)
-            resources.push_back(resource_from_uri(std::move(uri), flags));
+            resources.push_back(
+                resource_from_uri(std::move(uri), flags, {}, std::move(display_name)));
         start = end == std::string_view::npos ? value.size() : end + 1;
     }
     return resources;

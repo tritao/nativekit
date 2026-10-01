@@ -1204,8 +1204,11 @@ EM_JS(void, nk_web_pick_resources,
               }
               return uri;
           };
+          // Each URI is followed by a tab and the file's name, which blob: and handle URIs do not carry.
+          const named = (uri, name) => !name ? uri :
+              uri + "\t" + String(name).split("\t").join(" ").split("\r").join(" ").split("\n").join(" ");
           const completeFiles = files => {
-              const uris = Array.from(files || []).map(release);
+              const uris = Array.from(files || []).map(file => named(release(file), file.name));
               complete(result_ok, uris.length > 0, uris.join("\r\n"));
           };
           const openWithInput = (directory) => {
@@ -1244,7 +1247,7 @@ EM_JS(void, nk_web_pick_resources,
                   if (kind === select_resource_directory && window.showDirectoryPicker) {
                       const handle = await window.showDirectoryPicker({mode: "readwrite"});
                       const uri = retainHandle(handle, "nativekit-directory-handle://" + request);
-                      complete(result_ok, true, uri);
+                      complete(result_ok, true, named(uri, handle.name));
                       return;
                   }
                   if (kind === save_resource && window.showSaveFilePicker) {
@@ -1253,7 +1256,7 @@ EM_JS(void, nk_web_pick_resources,
                           types: pickerTypes() || []
                       });
                       const uri = retainHandle(handle, "nativekit-file-handle://" + request);
-                      complete(result_ok, true, uri);
+                      complete(result_ok, true, named(uri, handle.name));
                       return;
                   }
                   if (kind === open_resource && window.showOpenFilePicker) {
@@ -1273,7 +1276,8 @@ EM_JS(void, nk_web_pick_resources,
                   }
                   if (kind === save_resource) {
                       const name = encodeURIComponent(suggestedValue || "untitled");
-                      complete(result_ok, true, "nativekit-download://" + request + "/" + name);
+                      complete(result_ok, true,
+                               named("nativekit-download://" + request + "/" + name, suggestedValue || "untitled"));
                       return;
                   }
                   complete(result_unsupported, false, "");
