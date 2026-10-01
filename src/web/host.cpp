@@ -549,7 +549,41 @@ EM_JS(void, nk_web_configure_text_input,
                   emit(5, "", start, end);
               };
               input.addEventListener("select", emitSelection);
-              input.addEventListener("keyup", emitSelection);
+              // The input is a sibling of the canvas, so canvas keyboard
+              // callbacks cannot see its shortcuts. Text still goes through
+              // input/composition events; forwarding keypress would insert it twice.
+              const handledKeys = new Set();
+              const emitKey = (event, down) => {
+                  if (!Module.ccall)
+                      return;
+                  const modifiers = (event.shiftKey ? 1 : 0) | (event.ctrlKey ? 2 : 0) |
+                                    (event.altKey ? 4 : 0) | (event.metaKey ? 8 : 0);
+                  Module.ccall("nk_web_host_text_input_key", null,
+                               ["number", "number", "number", "number", "number", "number"],
+                               [input._nkRoute || 0, event.keyCode, event.location, modifiers,
+                                event.repeat ? 1 : 0, down ? 1 : 0]);
+              };
+              input.addEventListener("keydown", event => {
+                  if (!input._nkActive || event.isComposing || event.keyCode === 229)
+                      return;
+                  emitKey(event, true);
+                  const shortcut = event.ctrlKey || event.metaKey;
+                  const clipboard = ["c", "x", "v"].includes(event.key.toLowerCase());
+                  const editing = ["Backspace", "Delete", "Enter", "Tab", "ArrowLeft",
+                                   "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End",
+                                   "PageUp", "PageDown"].includes(event.key);
+                  if ((shortcut && !clipboard) || editing) {
+                      handledKeys.add(event.keyCode);
+                      event.preventDefault();
+                  }
+              });
+              input.addEventListener("keyup", event => {
+                  if (event.isComposing || event.keyCode === 229)
+                      return;
+                  emitKey(event, false);
+                  if (!handledKeys.delete(event.keyCode))
+                      emitSelection();
+              });
               input._nkCodePointToUtf16 = codePointToUtf16;
               canvas.parentElement.appendChild(input);
           }
@@ -2006,6 +2040,20 @@ extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_text_input_event(uint32_t route
     event.selection_start = selection_start < 0 ? 0u : static_cast<uint32_t>(selection_start);
     event.selection_end = selection_end < 0 ? 0u : static_cast<uint32_t>(selection_end);
     state->callbacks.text_input(event, state->user_data);
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_text_input_key(
+    uint32_t route, int key_code, int location, int key_modifiers, int repeat, int down) {
+    auto *state = state_for_route(route);
+    if (!state || !state->callbacks.key)
+        return;
+    nk::web::KeyEvent event{};
+    event.type = down ? nk::web::KeyEventType::down : nk::web::KeyEventType::up;
+    event.key_code = key_code;
+    event.location = location;
+    event.modifiers = key_modifiers;
+    event.repeat = repeat != 0;
+    state->callbacks.key(event, state->user_data);
 }
 
 extern "C" EMSCRIPTEN_KEEPALIVE void
