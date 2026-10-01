@@ -15,6 +15,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #endif
 
@@ -252,6 +253,44 @@ void local_security() {
     assert(::lstat(socket_path.c_str(), &existing) != 0);
 
     assert(nk_transport_listen(&options, &listener) == NK_OK);
+#if defined(__linux__)
+    if (::geteuid() == 0) {
+        assert(::chmod(directory.c_str(), 0711) == 0);
+        assert(::chmod(socket_path.c_str(), 0666) == 0);
+        const pid_t child = ::fork();
+        assert(child >= 0);
+        if (child == 0) {
+            if (::setgid(65534) != 0 || ::setuid(65534) != 0)
+                ::_exit(2);
+            const int peer = ::socket(AF_UNIX, SOCK_STREAM, 0);
+            if (peer < 0)
+                ::_exit(3);
+            const int connected = ::connect(peer, reinterpret_cast<const sockaddr *>(&address),
+                                            sizeof(address));
+            ::close(peer);
+            ::_exit(connected == 0 ? 0 : 4);
+        }
+        int child_status = 0;
+        assert(::waitpid(child, &child_status, 0) == child);
+        assert(WIFEXITED(child_status) && WEXITSTATUS(child_status) == 0);
+        for (int attempt = 0; attempt < 5; ++attempt) {
+            assert(nk_wait_events_timeout(0.05) == NK_OK);
+            for (;;) {
+                nk_event event{};
+                event.struct_size = sizeof(event);
+                assert(nk_poll_event(&event) == NK_OK);
+                if (event.kind == NK_EVENT_NONE) {
+                    nk_event_release(&event);
+                    break;
+                }
+                assert(event.kind != NK_EVENT_TRANSPORT_ACCEPTED || event.source != listener);
+                nk_event_release(&event);
+            }
+        }
+        assert(::chmod(socket_path.c_str(), 0600) == 0);
+        assert(::chmod(directory.c_str(), 0700) == 0);
+    }
+#endif
     nk_listener duplicate = NK_INVALID_HANDLE;
     assert(nk_transport_listen(&options, &duplicate) == NK_TRANSPORT_ERROR_ADDRESS_IN_USE);
     assert(duplicate == NK_INVALID_HANDLE);
