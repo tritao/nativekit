@@ -3527,7 +3527,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * ordered, non-overlapping, non-empty, and use document code-point offsets.
 	 * Pass a zero count to clear the node's current range geometry.
 	 */
-	extern fn nk_surface_accessibility_set_text_ranges(surface: nk_surface, node: nk_accessibility_node_id, ranges: ptr<const<nk_accessibility_text_range>>, range_count: u32) -> nk_result;
+	extern fn nk_surface_accessibility_set_text_ranges(surface: nk_surface, node: nk_accessibility_node_id, ranges: ptr<const<nk_accessibility_text_range>> @in_array("range_count"), range_count: u32) -> nk_result;
 	/**
 	 * Applies node replacements, recursive removals, and optional focus atomically.
 	 *
@@ -3546,7 +3546,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * The update's `removed_nodes` and `removed_node_count` fields are replaced by
 	 * the supplied array; all other fields are applied unchanged.
 	 */
-	extern fn nk_surface_accessibility_update_with_removed_ids(surface: nk_surface, update: ptr<const<nk_accessibility_update>>, removed_node_ids: ptr<const<u8>>, removed_node_id_byte_count: u32) -> nk_result;
+	extern fn nk_surface_accessibility_update_with_removed_ids(surface: nk_surface, update: ptr<const<nk_accessibility_update>>, removed_node_ids: ptr<const<u8>> @in_array("removed_node_id_byte_count"), removed_node_id_byte_count: u32) -> nk_result;
 	/**
 	 * Opens one frame and returns its immutable render target.
 	 *
@@ -3853,7 +3853,7 @@ interface NativeKit @target("portable-abi64") @library("nativekit") {
 	 * includes bytes reported by WebSocket.bufferedAmount, but cannot bound buffering held
 	 * internally by the user agent.
 	 */
-	extern fn nk_transport_send(transport: nk_transport, data: ptr<const<void>>, size: u64) -> nk_result;
+	extern fn nk_transport_send(transport: nk_transport, data: ptr<const<void>> @in_array("size"), size: u64) -> nk_result;
 	/**
 	 * Publishes every pending change for this view's parent and makes the whole
 	 * sibling set the committed state. This preserves the legacy per-view entry

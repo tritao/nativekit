@@ -160,7 +160,7 @@ NK_API nk_result NK_CALL nk_transport_listen(const nk_transport_options *options
  * internally by the user agent.
  */
 NK_API nk_result NK_CALL nk_transport_send(nk_transport transport,
-                                           const void *data NK_BORROWED_BUFFER(size),
+                                           const void *data NK_IN_ARRAY(size),
                                            uint64_t size);
 
 /** Returns queued application send bytes and the configured send capacity. Thread-safe. */

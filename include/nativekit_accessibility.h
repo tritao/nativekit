@@ -479,7 +479,7 @@ NK_API nk_result NK_CALL nk_surface_accessibility_update(nk_surface surface,
  */
 NK_API nk_result NK_CALL nk_surface_accessibility_update_with_removed_ids(
     nk_surface surface, const nk_accessibility_update *update,
-    const uint8_t *removed_node_ids NK_BORROWED_ARRAY(removed_node_id_byte_count),
+    const uint8_t *removed_node_ids NK_IN_ARRAY(removed_node_id_byte_count),
     uint32_t removed_node_id_byte_count);
 
 /**
@@ -491,7 +491,7 @@ NK_API nk_result NK_CALL nk_surface_accessibility_update_with_removed_ids(
  */
 NK_API nk_result NK_CALL nk_surface_accessibility_set_text_ranges(
     nk_surface surface, nk_accessibility_node_id node,
-    const nk_accessibility_text_range *ranges NK_BORROWED_ARRAY(range_count), uint32_t range_count);
+    const nk_accessibility_text_range *ranges NK_IN_ARRAY(range_count), uint32_t range_count);
 
 /* ------------------------------------------------------------------------- */
 /* Accessibility event helpers                                               */
