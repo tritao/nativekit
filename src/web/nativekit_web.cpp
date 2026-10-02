@@ -1279,9 +1279,11 @@ nk_key key_from_dom(uint32_t key_code, uint32_t location) {
     case 46:
         return location == 3 ? NK_KEY_KP_DECIMAL : NK_KEY_DELETE;
     case 91:
-        return NK_KEY_LEFT_SUPER;
-    case 93:
+        return location == 2 ? NK_KEY_RIGHT_SUPER : NK_KEY_LEFT_SUPER;
+    case 92:
         return NK_KEY_RIGHT_SUPER;
+    case 93:
+        return NK_KEY_MENU;
     case 106:
         return NK_KEY_KP_MULTIPLY;
     case 107:

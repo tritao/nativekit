@@ -47,6 +47,7 @@ bool frame_loop_active = false;
 bool device_orientation_callback_installed = false;
 bool orientation_callback_installed = false;
 bool resize_callback_installed = false;
+bool focus_callback_installed = false;
 
 constexpr int k_appearance_supported = 1;
 constexpr int k_appearance_dark = 1 << 1;
@@ -220,10 +221,12 @@ EM_BOOL touch_callback(int event_type, const EmscriptenTouchEvent *event, void *
     return EM_TRUE;
 }
 
-EM_BOOL focus_callback(int event_type, const EmscriptenFocusEvent *, void *user_data) {
-    auto *state = state_from_user_data(user_data);
-    if (state && state->callbacks.focus)
-        state->callbacks.focus(event_type == EMSCRIPTEN_EVENT_FOCUS, state->user_data);
+EM_BOOL focus_callback(int event_type, const EmscriptenFocusEvent *, void *) {
+    for (const auto &[route, state] : host_states) {
+        (void)route;
+        if (state->callbacks.focus)
+            state->callbacks.focus(event_type == EMSCRIPTEN_EVENT_FOCUS, state->user_data);
+    }
     return EM_TRUE;
 }
 
@@ -590,11 +593,13 @@ EM_JS(void, nk_web_configure_text_input,
                       return;
                   emitKey(event, true);
                   const shortcut = event.ctrlKey || event.metaKey;
+                  const contextMenu = event.key === "ContextMenu" ||
+                                      (event.key === "F10" && event.shiftKey);
                   const clipboard = ["c", "x", "v"].includes(event.key.toLowerCase());
                   const editing = ["Backspace", "Delete", "Enter", "Tab", "ArrowLeft",
                                    "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End",
                                    "PageUp", "PageDown"].includes(event.key);
-                  if ((shortcut && !clipboard) || editing) {
+                  if ((shortcut && !clipboard) || editing || contextMenu) {
                       handledKeys.add(event.keyCode);
                       event.preventDefault();
                   }
@@ -644,6 +649,7 @@ EM_JS(void, nk_web_configure_text_input,
                   input.focus({preventScroll: true});
           } else if (document.activeElement === input) {
               input.blur();
+              canvas.focus({preventScroll: true});
           }
       });
 
@@ -2675,8 +2681,15 @@ bool install_callbacks(const char *selector, uint32_t route, const HostCallbacks
     emscripten_set_keydown_callback(selector, state_ptr, EM_TRUE, key_callback);
     emscripten_set_keyup_callback(selector, state_ptr, EM_TRUE, key_callback);
     emscripten_set_keypress_callback(selector, state_ptr, EM_TRUE, key_callback);
-    emscripten_set_focus_callback(selector, state_ptr, EM_TRUE, focus_callback);
-    emscripten_set_blur_callback(selector, state_ptr, EM_TRUE, focus_callback);
+    // Surface/IME DOM handoffs remain inside the same native window. One
+    // non-capturing listener reports actual window focus to every live surface.
+    if (!focus_callback_installed) {
+        emscripten_set_focus_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_FALSE,
+                                      focus_callback);
+        emscripten_set_blur_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_FALSE,
+                                     focus_callback);
+        focus_callback_installed = true;
+    }
     emscripten_set_webglcontextlost_callback(selector, state_ptr, EM_TRUE, context_callback);
     emscripten_set_webglcontextrestored_callback(selector, state_ptr, EM_TRUE, context_callback);
     emscripten_set_pointerlockchange_callback(selector, state_ptr, EM_TRUE, pointer_lock_callback);
@@ -2711,8 +2724,6 @@ void remove_callbacks(const char *selector, uint32_t route) noexcept {
     emscripten_set_keydown_callback(target, state, EM_TRUE, nullptr);
     emscripten_set_keyup_callback(target, state, EM_TRUE, nullptr);
     emscripten_set_keypress_callback(target, state, EM_TRUE, nullptr);
-    emscripten_set_focus_callback(target, state, EM_TRUE, nullptr);
-    emscripten_set_blur_callback(target, state, EM_TRUE, nullptr);
     emscripten_set_webglcontextlost_callback(target, state, EM_TRUE, nullptr);
     emscripten_set_webglcontextrestored_callback(target, state, EM_TRUE, nullptr);
     emscripten_set_pointerlockchange_callback(target, state, EM_TRUE, nullptr);
@@ -2720,6 +2731,13 @@ void remove_callbacks(const char *selector, uint32_t route) noexcept {
     host_states_by_selector.erase(state->selector);
     host_states.erase(found);
     if (host_states.empty()) {
+        if (focus_callback_installed) {
+            emscripten_set_focus_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_FALSE,
+                                          nullptr);
+            emscripten_set_blur_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_FALSE,
+                                         nullptr);
+            focus_callback_installed = false;
+        }
         if (resize_callback_installed) {
             emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE,
                                            nullptr);
