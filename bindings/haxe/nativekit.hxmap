@@ -22,6 +22,7 @@
 		"nk_resource_stream": "ResourceStreamHandle",
 		"nk_task": "TaskHandle",
 		"nk_transport": "TransportHandle",
+		"nk_pty": "PtyHandle",
 		"nk_listener": "ListenerHandle"
 	},
 	"resultPolicies": {

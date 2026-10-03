@@ -73,6 +73,14 @@ target_link_libraries(nativekit_transport_contract_test PRIVATE NativeKit::nativ
 add_test(NAME transport_contract COMMAND nativekit_transport_contract_test)
 set_tests_properties(transport_contract PROPERTIES LABELS "network" TIMEOUT 30)
 
+if(UNIX AND NOT ANDROID AND NOT EMSCRIPTEN)
+    add_executable(nativekit_pty_contract_test unit/pty_contract.cpp)
+    target_compile_features(nativekit_pty_contract_test PRIVATE cxx_std_17)
+    target_link_libraries(nativekit_pty_contract_test PRIVATE NativeKit::nativekit)
+    add_test(NAME pty_contract COMMAND nativekit_pty_contract_test)
+    set_tests_properties(pty_contract PROPERTIES LABELS "core" TIMEOUT 30)
+endif()
+
 if(NK_NET_BACKEND_CURL)
     add_executable(nativekit_net_contract_test unit/net_contract.cpp)
     target_compile_features(nativekit_net_contract_test PRIVATE cxx_std_17)

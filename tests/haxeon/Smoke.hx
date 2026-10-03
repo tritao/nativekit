@@ -33,6 +33,15 @@ class Smoke {
 		var runtime = NativeKitRuntime.start(initOptions);
 		if (runtime.isDisposed())
 			return 2;
+		// Counted inputs project their count from the managed array or buffer.
+		// Exercise both structure arrays and byte buffers through the real ABI.
+		var textRanges = [new AccessibilityTextRange(), new AccessibilityTextRange()];
+		if (NativeKit.nk_surface_accessibility_set_text_ranges(SurfaceHandle.invalid(),
+			NativeKitConstants.NK_ACCESSIBILITY_ROOT, textRanges) != Result.ErrorInvalidHandle)
+			return 23;
+		if (NativeKit.nk_transport_send(TransportHandle.invalid(),
+			haxe.io.Bytes.ofString("counted input")) != Result.ErrorInvalidHandle)
+			return 24;
 		var resultErrorOk = false;
 		try
 			NativeKit.nk_window_show_checked(WindowHandle.invalid(), true)

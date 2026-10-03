@@ -47,6 +47,7 @@ bool frame_loop_active = false;
 bool device_orientation_callback_installed = false;
 bool orientation_callback_installed = false;
 bool resize_callback_installed = false;
+bool focus_callback_installed = false;
 
 constexpr int k_appearance_supported = 1;
 constexpr int k_appearance_dark = 1 << 1;
@@ -220,10 +221,12 @@ EM_BOOL touch_callback(int event_type, const EmscriptenTouchEvent *event, void *
     return EM_TRUE;
 }
 
-EM_BOOL focus_callback(int event_type, const EmscriptenFocusEvent *, void *user_data) {
-    auto *state = state_from_user_data(user_data);
-    if (state && state->callbacks.focus)
-        state->callbacks.focus(event_type == EMSCRIPTEN_EVENT_FOCUS, state->user_data);
+EM_BOOL focus_callback(int event_type, const EmscriptenFocusEvent *, void *) {
+    for (const auto &[route, state] : host_states) {
+        (void)route;
+        if (state->callbacks.focus)
+            state->callbacks.focus(event_type == EMSCRIPTEN_EVENT_FOCUS, state->user_data);
+    }
     return EM_TRUE;
 }
 
@@ -559,25 +562,6 @@ EM_JS(void, nk_web_configure_text_input,
                   else if (event.data !== null)
                       emit(1, event.data, 0, 0);
               });
-              // While the input has focus its key events never reach the canvas's key callbacks. Keys with no
-              // editing meaning here are forwarded: Enter submits (a textarea inserts a line break instead), Escape
-              // cancels, Tab moves focus, function keys run commands.
-              const forwardKey = (event, type) => {
-                  if (!input._nkActive || input._nkComposing)
-                      return;
-                  const key = event.key;
-                  if (!((key === "Enter" && input.tagName !== "TEXTAREA") || key === "Escape" || key === "Tab"
-                        || /^F[0-9]{1,2}$/.test(key)))
-                      return;
-                  event.preventDefault();
-                  const modifiers = (event.shiftKey ? 1 : 0) | (event.ctrlKey ? 2 : 0) | (event.altKey ? 4 : 0)
-                                  | (event.metaKey ? 8 : 0);
-                  ccall("nk_web_host_key_event", null,
-                        ["number", "number", "number", "number", "number", "number"],
-                        [input._nkRoute || 0, type, event.keyCode, event.location, modifiers, event.repeat ? 1 : 0]);
-              };
-              input.addEventListener("keydown", event => forwardKey(event, 0));
-              input.addEventListener("keyup", event => forwardKey(event, 1));
               const codePointToUtf16 = (value, position) => {
                   let index = 0;
                   let count = 0;
@@ -598,7 +582,43 @@ EM_JS(void, nk_web_configure_text_input,
                   emit(5, "", start, end);
               };
               input.addEventListener("select", emitSelection);
-              input.addEventListener("keyup", emitSelection);
+              // The input is a sibling of the canvas, so canvas keyboard
+              // callbacks cannot see its shortcuts. Text still goes through
+              // input/composition events; forwarding keypress would insert it twice.
+              const handledKeys = new Set();
+              const emitKey = (event, down) => {
+                  const modifiers = (event.shiftKey ? 1 : 0) | (event.ctrlKey ? 2 : 0) |
+                                    (event.altKey ? 4 : 0) | (event.metaKey ? 8 : 0);
+                  ccall("nk_web_host_text_input_key", null,
+                        ["number", "number", "number", "number", "number", "number"],
+                        [input._nkRoute || 0, event.keyCode, event.location, modifiers,
+                         event.repeat ? 1 : 0, down ? 1 : 0]);
+              };
+              input.addEventListener("keydown", event => {
+                  if (!input._nkActive || event.isComposing || event.keyCode === 229)
+                      return;
+                  emitKey(event, true);
+                  const shortcut = event.ctrlKey || event.metaKey;
+                  const contextMenu = event.key === "ContextMenu" ||
+                                      (event.key === "F10" && event.shiftKey);
+                  const clipboard = ["c", "x", "v"].includes(event.key.toLowerCase());
+                  const editing = ["Backspace", "Delete", "Enter", "Tab", "Escape", "ArrowLeft",
+                                   "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End",
+                                   "PageUp", "PageDown"].includes(event.key);
+                  // Function keys run application commands, not the browser's (F5 would reload the page).
+                  const functionKey = /^F[0-9]{1,2}$/.test(event.key);
+                  if ((shortcut && !clipboard) || editing || contextMenu || functionKey) {
+                      handledKeys.add(event.keyCode);
+                      event.preventDefault();
+                  }
+              });
+              input.addEventListener("keyup", event => {
+                  if (event.isComposing || event.keyCode === 229)
+                      return;
+                  emitKey(event, false);
+                  if (!handledKeys.delete(event.keyCode))
+                      emitSelection();
+              });
               input._nkCodePointToUtf16 = codePointToUtf16;
               canvas.parentElement.appendChild(input);
           }
@@ -637,6 +657,7 @@ EM_JS(void, nk_web_configure_text_input,
                   input.focus({preventScroll: true});
           } else if (document.activeElement === input) {
               input.blur();
+              canvas.focus({preventScroll: true});
           }
       });
 
@@ -2053,15 +2074,14 @@ extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_text_input_event(uint32_t route
     state->callbacks.text_input(event, state->user_data);
 }
 
-// Keys the focused text input forwards (see forwardKey above): 0 is a press, 1 a release.
-extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_key_event(uint32_t route, int type, int key_code,
-                                                           int location, uint32_t key_modifiers,
-                                                           int repeat) {
+// Keys pressed while the focused text input has them (see emitKey above); text itself arrives as input events.
+extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_text_input_key(uint32_t route, int key_code, int location,
+                                                               uint32_t key_modifiers, int repeat, int down) {
     auto *state = state_for_route(route);
     if (!state || !state->callbacks.key)
         return;
     nk::web::KeyEvent key{};
-    key.type = type == 1 ? nk::web::KeyEventType::up : nk::web::KeyEventType::down;
+    key.type = down ? nk::web::KeyEventType::down : nk::web::KeyEventType::up;
     key.key_code = static_cast<decltype(key.key_code)>(key_code);
     key.location = static_cast<decltype(key.location)>(location);
     key.char_code = 0;
@@ -2668,8 +2688,15 @@ bool install_callbacks(const char *selector, uint32_t route, const HostCallbacks
     emscripten_set_keydown_callback(selector, state_ptr, EM_TRUE, key_callback);
     emscripten_set_keyup_callback(selector, state_ptr, EM_TRUE, key_callback);
     emscripten_set_keypress_callback(selector, state_ptr, EM_TRUE, key_callback);
-    emscripten_set_focus_callback(selector, state_ptr, EM_TRUE, focus_callback);
-    emscripten_set_blur_callback(selector, state_ptr, EM_TRUE, focus_callback);
+    // Surface/IME DOM handoffs remain inside the same native window. One
+    // non-capturing listener reports actual window focus to every live surface.
+    if (!focus_callback_installed) {
+        emscripten_set_focus_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_FALSE,
+                                      focus_callback);
+        emscripten_set_blur_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_FALSE,
+                                     focus_callback);
+        focus_callback_installed = true;
+    }
     emscripten_set_webglcontextlost_callback(selector, state_ptr, EM_TRUE, context_callback);
     emscripten_set_webglcontextrestored_callback(selector, state_ptr, EM_TRUE, context_callback);
     emscripten_set_pointerlockchange_callback(selector, state_ptr, EM_TRUE, pointer_lock_callback);
@@ -2704,8 +2731,6 @@ void remove_callbacks(const char *selector, uint32_t route) noexcept {
     emscripten_set_keydown_callback(target, state, EM_TRUE, nullptr);
     emscripten_set_keyup_callback(target, state, EM_TRUE, nullptr);
     emscripten_set_keypress_callback(target, state, EM_TRUE, nullptr);
-    emscripten_set_focus_callback(target, state, EM_TRUE, nullptr);
-    emscripten_set_blur_callback(target, state, EM_TRUE, nullptr);
     emscripten_set_webglcontextlost_callback(target, state, EM_TRUE, nullptr);
     emscripten_set_webglcontextrestored_callback(target, state, EM_TRUE, nullptr);
     emscripten_set_pointerlockchange_callback(target, state, EM_TRUE, nullptr);
@@ -2713,6 +2738,13 @@ void remove_callbacks(const char *selector, uint32_t route) noexcept {
     host_states_by_selector.erase(state->selector);
     host_states.erase(found);
     if (host_states.empty()) {
+        if (focus_callback_installed) {
+            emscripten_set_focus_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_FALSE,
+                                          nullptr);
+            emscripten_set_blur_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_FALSE,
+                                         nullptr);
+            focus_callback_installed = false;
+        }
         if (resize_callback_installed) {
             emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE,
                                            nullptr);

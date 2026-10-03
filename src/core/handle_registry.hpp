@@ -28,6 +28,7 @@ enum class ResourceType : std::uint8_t {
     http_stream,
     transport,
     listener,
+    pty,
     plugin,
     library,
     menu,

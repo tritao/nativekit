@@ -2,6 +2,7 @@
 #include "nativekit_clipboard.h"
 #include "nativekit_file_watch.h"
 #include "nativekit_input.h"
+#include "nativekit_graphics.h"
 #include "nativekit_joystick.h"
 #include "nativekit_resource.h"
 #include "nativekit_system.h"
@@ -126,6 +127,112 @@ static void test_device_orientation(void) {
     NK_TEST_ASSERT(nk_window_destroy(window) == NK_OK);
 }
 
+static void test_text_input_focus_handoff(void) {
+    nk_window_options options = {0};
+    options.struct_size = sizeof(options);
+    options.width = 320;
+    options.height = 240;
+    nk_window window = NK_INVALID_HANDLE;
+    NK_TEST_ASSERT(nk_window_create(&options, &window) == NK_OK);
+    nk_surface_options surface_options = {0};
+    surface_options.struct_size = sizeof(surface_options);
+    surface_options.api = NK_GRAPHICS_OPENGL_ES;
+    surface_options.major_version = 3;
+    surface_options.width = 320;
+    surface_options.height = 240;
+    nk_surface surface = NK_INVALID_HANDLE;
+    NK_TEST_ASSERT(nk_surface_create(window, &surface_options, &surface) == NK_OK);
+    nk_text_input_state state = {0};
+    state.struct_size = sizeof(state);
+    state.flags = NK_TEXT_INPUT_MULTILINE;
+    state.text = "hello";
+    state.document_length = 5;
+    state.composition_start = NK_TEXT_POSITION_NONE;
+    state.composition_end = NK_TEXT_POSITION_NONE;
+    state.cursor_width = 1;
+    state.cursor_height = 18;
+    NK_TEST_ASSERT(nk_surface_set_text_input_state(surface, &state) == NK_OK);
+    NK_TEST_ASSERT(nk_surface_set_text_input_active(surface, 1) == NK_OK);
+    NK_TEST_ASSERT(EM_ASM_INT({ return document.activeElement.id === "__nativekit_text_input"; }));
+    NK_TEST_ASSERT(EM_ASM_INT({
+        const input = document.activeElement;
+        const shifted = new KeyboardEvent("keydown", {key: "F10", keyCode: 121,
+            shiftKey: true, bubbles: true, cancelable: true});
+        input.dispatchEvent(shifted);
+        const menu = new KeyboardEvent("keydown", {key: "ContextMenu", keyCode: 93,
+            bubbles: true, cancelable: true});
+        input.dispatchEvent(menu);
+        input.dispatchEvent(new KeyboardEvent("keydown", {key: "Meta", keyCode: 92,
+            location: 2, bubbles: true, cancelable: true}));
+        return shifted.defaultPrevented && menu.defaultPrevented;
+    }));
+    int menu_seen = 0, right_super_seen = 0;
+    for (int index = 0; index < 32; ++index) {
+        nk_event event = {0};
+        event.struct_size = sizeof(event);
+        NK_TEST_ASSERT(nk_poll_event(&event) == NK_OK);
+        if (event.kind == NK_EVENT_WINDOW_STATE_CHANGED && event.source == window) {
+            const nk_window_state *state = (const nk_window_state *)event.data;
+            NK_TEST_ASSERT(event.data_size >= sizeof(nk_window_state));
+            NK_TEST_ASSERT((state->flags & NK_WINDOW_STATE_ACTIVE) != 0);
+        }
+        if (event.kind == NK_EVENT_KEY && event.data_size >= sizeof(nk_key_event)) {
+            const nk_key_event *key = (const nk_key_event *)event.data;
+            if (key->key == NK_KEY_MENU) menu_seen = 1;
+            if (key->key == NK_KEY_RIGHT_SUPER) right_super_seen = 1;
+        }
+        const int empty = event.kind == NK_EVENT_NONE;
+        nk_event_release(&event);
+        if (empty) break;
+    }
+    NK_TEST_ASSERT(menu_seen && right_super_seen);
+    NK_TEST_ASSERT(nk_surface_set_text_input_active(surface, 0) == NK_OK);
+    NK_TEST_ASSERT(EM_ASM_INT({ return document.activeElement.id === "canvas"; }));
+    EM_ASM({
+        const external = document.createElement("button");
+        external.id = "nativekit-external-focus";
+        document.body.appendChild(external);
+        external.focus();
+    });
+    NK_TEST_ASSERT(nk_surface_set_text_input_active(surface, 0) == NK_OK);
+    NK_TEST_ASSERT(EM_ASM_INT({ return document.activeElement.id === "nativekit-external-focus"; }));
+    EM_ASM({ document.getElementById("nativekit-external-focus").remove(); });
+    NK_TEST_ASSERT(nk_surface_set_text_input_active(surface, 1) == NK_OK);
+    NK_TEST_ASSERT(EM_ASM_INT({ return document.activeElement.id === "__nativekit_text_input"; }));
+    for (int index = 0; index < 32; ++index) {
+        nk_event event = {0};
+        event.struct_size = sizeof(event);
+        NK_TEST_ASSERT(nk_poll_event(&event) == NK_OK);
+        if (event.kind == NK_EVENT_WINDOW_STATE_CHANGED && event.source == window) {
+            NK_TEST_ASSERT(event.data_size >= sizeof(nk_window_state));
+            const nk_window_state *state = (const nk_window_state *)event.data;
+            NK_TEST_ASSERT((state->flags & NK_WINDOW_STATE_ACTIVE) != 0);
+        }
+        const int empty = event.kind == NK_EVENT_NONE;
+        nk_event_release(&event);
+        if (empty) break;
+    }
+    EM_ASM({ window.dispatchEvent(new FocusEvent("blur")); });
+    nk_window_state window_state = {0};
+    window_state.struct_size = sizeof(window_state);
+    NK_TEST_ASSERT(nk_window_get_state(window, &window_state) == NK_OK);
+    NK_TEST_ASSERT((window_state.flags & NK_WINDOW_STATE_ACTIVE) == 0);
+    EM_ASM({ window.dispatchEvent(new FocusEvent("focus")); });
+    NK_TEST_ASSERT(nk_window_get_state(window, &window_state) == NK_OK);
+    NK_TEST_ASSERT((window_state.flags & NK_WINDOW_STATE_ACTIVE) != 0);
+    // Consume the synthetic window transitions before later request tests.
+    for (int index = 0; index < 32; ++index) {
+        nk_event event = {0};
+        event.struct_size = sizeof(event);
+        NK_TEST_ASSERT(nk_poll_event(&event) == NK_OK);
+        const int empty = event.kind == NK_EVENT_NONE;
+        nk_event_release(&event);
+        if (empty) break;
+    }
+    NK_TEST_ASSERT(nk_surface_destroy(surface) == NK_OK);
+    NK_TEST_ASSERT(nk_window_destroy(window) == NK_OK);
+}
+
 static void test_window_styling(void) {
     nk_window_options options = {0};
     options.struct_size = sizeof(options);
@@ -134,6 +241,14 @@ static void test_window_styling(void) {
     options.height = 240;
     nk_window window = NK_INVALID_HANDLE;
     NK_TEST_ASSERT(nk_window_create(&options, &window) == NK_OK);
+
+    // Ordinary capture needs a live pointer, and must not queue relative pointer lock.
+    nk_cursor_mode mode = NK_CURSOR_MODE_DISABLED;
+    NK_TEST_ASSERT(nk_window_set_cursor_mode(window, NK_CURSOR_MODE_CAPTURED) == NK_ERROR_UNSUPPORTED);
+    NK_TEST_ASSERT(nk_window_get_cursor_mode(window, &mode) == NK_OK);
+    NK_TEST_ASSERT(mode == NK_CURSOR_MODE_NORMAL);
+    NK_TEST_ASSERT(nk_window_set_cursor_mode(window, NK_CURSOR_MODE_NORMAL) == NK_OK);
+
 
     nk_window_size_limits limits = {0};
     limits.struct_size = sizeof(limits);
@@ -356,6 +471,7 @@ int main(void) {
 
     NK_TEST_ASSERT(nk_shell_open_url("not a URI") == NK_ERROR_INVALID_ARGUMENT);
 #ifdef __EMSCRIPTEN__
+    test_text_input_focus_handoff();
     test_window_styling();
     test_writable_resource_stream();
     if (orientation_smoke) {
