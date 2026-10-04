@@ -1,4 +1,9 @@
 package nativekit.gpu;
+
+import nativekit.gpu.Batch;
+import nativekit.gpu.Surface;
+
+import nativekit.gpu.Renderer;
 import nativekit.ffi.NativeKit;
 import nativekit.ffi.NativeKitTypes;
 

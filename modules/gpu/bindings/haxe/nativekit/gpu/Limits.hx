@@ -1,5 +1,7 @@
 package nativekit.gpu;
 
+import nativekit.gpu.Renderer;
+
 import nativekit.ffi.NativeKitGpu;
 
 /** Portable resource and binding limits exposed by one renderer. */

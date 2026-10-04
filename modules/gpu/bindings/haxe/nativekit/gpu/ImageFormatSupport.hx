@@ -1,5 +1,7 @@
 package nativekit.gpu;
 
+import nativekit.gpu.Renderer;
+
 import nativekit.ffi.NativeKitGpu;
 
 /** Portable operations supported by one image format on a renderer. */

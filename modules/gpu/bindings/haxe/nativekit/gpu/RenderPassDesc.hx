@@ -1,5 +1,10 @@
 package nativekit.gpu;
 
+import nativekit.gpu.AttachmentAction;
+import nativekit.gpu.Image;
+
+import nativekit.gpu.Renderer;
+
 import nativekit.ffi.NativeKitGpu;
 
 /** One color attachment and its optional MSAA resolve image. */

@@ -1,5 +1,11 @@
 package nativekit.gpu;
 
+import nativekit.gpu.CommandBuffer;
+import nativekit.gpu.ImageDesc;
+import nativekit.gpu.Readback;
+
+import nativekit.gpu.Renderer;
+
 import nativekit.gpu.GpuResult;
 import nativekit.ffi.NativeKitGpu;
 import nativekit.ffi.NativeKitTypes;

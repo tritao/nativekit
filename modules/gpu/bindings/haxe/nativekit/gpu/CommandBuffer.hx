@@ -1,5 +1,12 @@
 package nativekit.gpu;
 
+import nativekit.gpu.Buffer;
+import nativekit.gpu.Image;
+import nativekit.gpu.Pipeline;
+import nativekit.gpu.Sampler;
+
+import nativekit.gpu.Renderer;
+
 import haxe.io.Bytes;
 
 class CommandBuffer {

@@ -1,5 +1,7 @@
 package nativekit.gpu;
 
+import nativekit.gpu.Renderer;
+
 import nativekit.ffi.NativeKitGpu;
 
 /** Optional GPU capabilities exposed by one renderer. */

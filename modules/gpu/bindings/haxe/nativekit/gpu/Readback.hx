@@ -1,5 +1,11 @@
 package nativekit.gpu;
 
+import nativekit.gpu.Buffer;
+import nativekit.gpu.Enums;
+import nativekit.gpu.Image;
+
+import nativekit.gpu.Renderer;
+
 import nativekit.gpu.GpuResult;
 
 import nativekit.ffi.NativeKitGpu;
