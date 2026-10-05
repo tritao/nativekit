@@ -93,7 +93,7 @@ typedef struct nk_task_step_output {
 /**
  * One bounded native step. The callback must be a native function and must
  * not call UI-only APIs. It may retain no pointer to the context or output
- * structures after returning. Managed Haxe callbacks are not safe here.
+ * structures after returning. Managed runtime callbacks are not safe here.
  */
 typedef nk_task_step_result(NK_CALL *nk_task_step_fn)(const nk_task_step_context *context,
                                                       nk_task_step_output *output NK_INOUT);

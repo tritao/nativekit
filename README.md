@@ -207,7 +207,9 @@ backend. Platform CI additionally covers:
 - Android unit and instrumentation tests.
 - Shared desktop capability conformance, Web browser-equivalent integration,
   and iOS simulator runtime tests.
-- Generated Haxeon binding drift and runtime smoke tests.
+
+Haxeon maintains generated-binding drift and runtime smoke tests in its
+`packages/platform` and `packages/gpu` packages.
 
 See [the testing guide](docs/testing.md) for prerequisites, exact coverage, and
 the distinction between compatibility-layer and authoritative native tests.

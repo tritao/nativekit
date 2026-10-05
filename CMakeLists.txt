@@ -413,7 +413,7 @@ else()
         target_compile_options(nativekit PRIVATE -fno-exceptions)
     endif()
     if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-        # _Nullable is retained in public headers for Haxeon's Clang importer;
+        # _Nullable records public API nullability for binding generators;
         # Clang diagnoses that intentional extension under -Wpedantic.
         add_compile_options(-Wno-nullability-extension -Wno-nullability-completeness)
         target_compile_options(nativekit PRIVATE

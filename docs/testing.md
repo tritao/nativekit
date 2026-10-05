@@ -17,7 +17,8 @@ update the snapshot, the normative
 
 The parity suite covers the core platform ABI and the optional networking
 capability bits when that module is enabled. Optional GPU behavior is validated
-by its module-specific native and Haxeon tests. UIKit maintains its native,
+by its module-specific native tests. Haxeon maintains binding coverage in its
+platform and GPU packages. UIKit maintains its native,
 Haxeon, showcase, and visual tests in the sibling `uikit` project.
 
 Desktop backends also run `capability_conformance`, a shared operation-level
@@ -47,8 +48,8 @@ focused on generated-binding drift, configure/build/test failures, and validatin
 the existing renderer contract in
 [ADR 0010](decisions/0010-explicit-rendering-backends.md). The gate covers
 Windows D3D11 (x64, Win32, and ARM64), macOS Metal (Intel and Apple Silicon),
-Android API 23 and 36, NativeKit's Web browser integration checks, and the
-Haxe binding audit with native smoke tests. UIKit showcase, visual, benchmark,
+Android API 23 and 36, and NativeKit's Web browser integration checks.
+The Haxeon package CI owns binding audits and managed runtime smoke tests. UIKit showcase, visual, benchmark,
 and profiling tests run in the sibling `uikit` project.
 
 `NK_ENABLE_SANITIZERS=ON` enables AddressSanitizer and UndefinedBehaviorSanitizer.

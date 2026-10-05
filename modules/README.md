@@ -5,7 +5,7 @@ dependencies and independently consumable CMake targets.
 
 | Module | CMake option | Target | Purpose |
 |---|---|---|---|
-| [`gpu`](gpu/) | `NK_BUILD_GPU` | `NativeKit::gpu` | Low-level GPU API backed by Sokol for Haxeon and C callers |
+| [`gpu`](gpu/) | `NK_BUILD_GPU` | `NativeKit::gpu` | Low-level GPU C API backed by Sokol |
 The GPU module is disabled by default. UIKit and SceneKit now live as sibling
 projects in the Materia repository and consume NativeKit through its public
 core and GPU targets.
