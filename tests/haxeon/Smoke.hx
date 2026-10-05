@@ -42,6 +42,10 @@ class Smoke {
 		if (NativeKit.nk_transport_send(TransportHandle.invalid(),
 			haxe.io.Bytes.ofString("counted input")) != Result.ErrorInvalidHandle)
 			return 24;
+		// Mutable counted buffers derive capacity and copy native writes back on GC Wasm.
+		var receive = NativeKit.nk_transport_receive(TransportHandle.invalid(), haxe.io.Bytes.alloc(16));
+		if (receive.status != Result.ErrorInvalidHandle || haxe.Int64.toInt(receive.out_received) != 0)
+			return 25;
 		var resultErrorOk = false;
 		try
 			NativeKit.nk_window_show_checked(WindowHandle.invalid(), true)

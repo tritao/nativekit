@@ -173,8 +173,10 @@ NK_API nk_result NK_CALL nk_transport_get_send_queue(nk_transport transport,
  * DATA reports a snapshot of available bytes and may be coalesced. Call receive until it
  * returns NK_TRANSPORT_ERROR_WOULD_BLOCK. Receive overflow closes the connection with a
  * failure; application bytes are never silently discarded.
+ * The mutable counted buffer annotation borrows its capacity for the call and
+ * copies received bytes back when managed and native memory differ (GC Wasm).
  */
-NK_API nk_result NK_CALL nk_transport_receive(nk_transport transport, void *data, uint64_t size,
+NK_API nk_result NK_CALL nk_transport_receive(nk_transport transport, void *data NK_IN_ARRAY(size), uint64_t size,
                                               uint64_t *out_received NK_OUT);
 
 /**

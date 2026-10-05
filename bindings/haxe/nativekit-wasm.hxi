@@ -3842,8 +3842,10 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 	 * DATA reports a snapshot of available bytes and may be coalesced. Call receive until it
 	 * returns NK_TRANSPORT_ERROR_WOULD_BLOCK. Receive overflow closes the connection with a
 	 * failure; application bytes are never silently discarded.
+	 * The mutable counted buffer annotation borrows its capacity for the call and
+	 * copies received bytes back when managed and native memory differ (GC Wasm).
 	 */
-	extern fn nk_transport_receive(transport: nk_transport, data: ptr<void>, size: u64, out_received: ptr<u64> @out) -> nk_result;
+	extern fn nk_transport_receive(transport: nk_transport, data: ptr<void> @in_array("size"), size: u64, out_received: ptr<u64> @out) -> nk_result;
 	/**
 	 * Copies bytes into the bounded asynchronous send queue. This call is thread-safe.
 	 * TCP, local, and WebSocket transports expose one reliable ordered byte stream; a send
