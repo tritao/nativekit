@@ -5966,12 +5966,18 @@ nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
                 options->buttons ? options->buttons : static_cast<uint32_t>(NK_MESSAGE_BUTTON_OK);
             if (buttons & NK_MESSAGE_BUTTON_OK)
                 gtk_dialog_add_button(GTK_DIALOG(dialog), "_OK", GTK_RESPONSE_OK);
+            if (buttons & NK_MESSAGE_BUTTON_DONT_SAVE)
+                gtk_dialog_add_button(GTK_DIALOG(dialog), "_Don’t Save", GTK_RESPONSE_NO);
             if (buttons & NK_MESSAGE_BUTTON_CANCEL)
                 gtk_dialog_add_button(GTK_DIALOG(dialog), "_Cancel", GTK_RESPONSE_CANCEL);
             if (buttons & NK_MESSAGE_BUTTON_YES)
                 gtk_dialog_add_button(GTK_DIALOG(dialog), "_Yes", GTK_RESPONSE_YES);
             if (buttons & NK_MESSAGE_BUTTON_NO)
                 gtk_dialog_add_button(GTK_DIALOG(dialog), "_No", GTK_RESPONSE_NO);
+            if (buttons & NK_MESSAGE_BUTTON_SAVE)
+                gtk_dialog_add_button(GTK_DIALOG(dialog), "_Save", GTK_RESPONSE_YES);
+            if (buttons & NK_MESSAGE_BUTTON_CANCEL)
+                gtk_dialog_set_default_response(GTK_DIALOG(dialog), GTK_RESPONSE_CANCEL);
             std::unique_ptr<GObject, decltype(&g_object_unref)> dialog_owner(G_OBJECT(dialog),
                                                                              &g_object_unref);
             auto context = std::make_unique<DialogContext>();

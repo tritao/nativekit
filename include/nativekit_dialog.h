@@ -66,7 +66,11 @@ enum NK_FLAGS(nk_message_buttons) {
     /** Show a Yes button. */
     NK_MESSAGE_BUTTON_YES = 1u << 2,
     /** Show a No button. */
-    NK_MESSAGE_BUTTON_NO = 1u << 3
+    NK_MESSAGE_BUTTON_NO = 1u << 3,
+    /** Save changes; returns NK_MESSAGE_RESULT_YES. */
+    NK_MESSAGE_BUTTON_SAVE = 1u << 4,
+    /** Discard changes; returns NK_MESSAGE_RESULT_NO. */
+    NK_MESSAGE_BUTTON_DONT_SAVE = 1u << 5
 };
 
 /** Button value returned in a message-dialog completion payload. */

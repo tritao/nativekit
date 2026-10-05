@@ -33,6 +33,7 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <commctrl.h>
 #include <imm.h>
 #include <windowsx.h>
 #include <shobjidl.h>
@@ -2584,7 +2585,31 @@ UINT message_box_type(const WinDialogContext &context) {
 void run_message_dialog(const std::shared_ptr<WinDialogContext> &context) noexcept {
     context->thread_id = GetCurrentThreadId();
     int response = IDCANCEL;
-    if (!context->canceled)
+    if (!context->canceled && (context->buttons & (NK_MESSAGE_BUTTON_SAVE | NK_MESSAGE_BUTTON_DONT_SAVE))) {
+        HMODULE controls = LoadLibraryW(L"comctl32.dll");
+        using ShowTaskDialog = HRESULT (WINAPI *)(const TASKDIALOGCONFIG *, int *, int *, BOOL *);
+        auto show = controls ? reinterpret_cast<ShowTaskDialog>(GetProcAddress(controls, "TaskDialogIndirect")) : nullptr;
+        TASKDIALOG_BUTTON buttons[3]{};
+        UINT button_count = 0;
+        if (context->buttons & NK_MESSAGE_BUTTON_DONT_SAVE) buttons[button_count++] = {IDNO, L"Don't Save"};
+        if (context->buttons & NK_MESSAGE_BUTTON_CANCEL) buttons[button_count++] = {IDCANCEL, L"Cancel"};
+        if (context->buttons & NK_MESSAGE_BUTTON_SAVE) buttons[button_count++] = {IDYES, L"Save"};
+        TASKDIALOGCONFIG config{};
+        config.cbSize = sizeof(config);
+        config.hwndParent = context->parent;
+        config.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION;
+        config.dwCommonButtons = 0;
+        config.pszWindowTitle = context->title.c_str();
+        config.pszContent = context->message.c_str();
+        config.pszMainIcon = TD_WARNING_ICON;
+        config.cButtons = button_count;
+        config.pButtons = buttons;
+        config.nDefaultButton = IDCANCEL;
+        if (!show || FAILED(show(&config, &response, nullptr, nullptr)))
+            response = MessageBoxW(context->parent, context->message.c_str(), context->title.c_str(),
+                                   MB_ICONWARNING | MB_YESNOCANCEL | MB_DEFBUTTON3);
+        if (controls) FreeLibrary(controls);
+    } else if (!context->canceled)
         response = MessageBoxW(context->parent, context->message.c_str(), context->title.c_str(),
                                message_box_type(*context));
     uint32_t button = NK_MESSAGE_RESULT_NONE;

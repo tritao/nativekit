@@ -1952,6 +1952,14 @@ interface NativeKit @target("portable-abi32") @library("nativekit") {
 		 * Show a No button.
 		 */
 		NK_MESSAGE_BUTTON_NO = 8;
+		/**
+		 * Save changes; returns NK_MESSAGE_RESULT_YES.
+		 */
+		NK_MESSAGE_BUTTON_SAVE = 16;
+		/**
+		 * Discard changes; returns NK_MESSAGE_RESULT_NO.
+		 */
+		NK_MESSAGE_BUTTON_DONT_SAVE = 32;
 	}
 	/**
 	 * Visual and semantic kind of a message dialog.

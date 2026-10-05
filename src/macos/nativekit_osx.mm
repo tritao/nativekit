@@ -5891,6 +5891,8 @@ nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
                     context->message_results.push_back(result);
                 }
             };
+            add_button(NK_MESSAGE_BUTTON_SAVE, @"Save", NK_MESSAGE_RESULT_YES);
+            add_button(NK_MESSAGE_BUTTON_DONT_SAVE, @"Don’t Save", NK_MESSAGE_RESULT_NO);
             add_button(NK_MESSAGE_BUTTON_OK, @"OK", NK_MESSAGE_RESULT_OK);
             add_button(NK_MESSAGE_BUTTON_YES, @"Yes", NK_MESSAGE_RESULT_YES);
             add_button(NK_MESSAGE_BUTTON_NO, @"No", NK_MESSAGE_RESULT_NO);
