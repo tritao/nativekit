@@ -5,43 +5,6 @@ on:
   pull_request:
 
 jobs:
-  bindings:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      HAXEON_DIR: ${{ github.workspace }}/haxeon
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          submodules: recursive
-
-      - name: Check out the pinned Haxeon toolchain
-        uses: actions/checkout@v7
-        with:
-          repository: tritao/haxeon
-          ref: d51ec9c7ce2180c205d60d993a9185ee13a58d27
-          path: haxeon
-          submodules: recursive
-
-      - name: Install NativeKit and Haxeon build dependencies
-        run: >-
-          sudo apt-get update && sudo apt-get install -y
-          libffi-dev libfontconfig1-dev libgl1-mesa-dev libgles2-mesa-dev
-          libgtk-3-dev libwebkit2gtk-4.1-dev ninja-build python3-fonttools xvfb
-
-      - name: Cache Haxeon tools
-        uses: actions/cache@v6
-        with:
-          path: haxeon/.tools
-          key: haxeon-tools-${{ runner.os }}-${{ runner.arch }}-d51ec9c7-${{ hashFiles('haxeon/scripts/bootstrap-tools.sh', 'haxeon/cmake/Bootstrap.cmake') }}
-
-      - name: Install Haxeon toolchain
-        working-directory: haxeon
-        run: ./scripts/bootstrap-tools.sh
-
-      - name: Audit Haxe bindings and run native smoke tests
-        run: ./tools/test-haxe-bindings.sh
-
   browser:
     runs-on: ubuntu-latest
     timeout-minutes: 30

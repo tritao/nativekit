@@ -90,9 +90,9 @@ batch ownership. `nativekit_ui_stress` runs a seeded 120-frame UI
 render sequence with changing DPR, surface bounds, and short-lived offscreen
 images; its live-resource limits catch unbounded growth. The public UI renderer
 smoke also checks fractional/integer scale atlas behavior and text bounds.
-`modules/gpu/tools/test-haxeon.sh` compiles and runs the Haxe wrappers, including
+`../haxeon/packages/gpu/tools/test-haxeon.sh` compiles and runs the Haxe wrappers, including
 wrong-renderer checks, resource disposal, generic render/copy passes, and the
-retained `GraphicsImage` lifetime. `modules/gpu/tools/check-hxi.sh` checks
+retained `GraphicsImage` lifetime. `../haxeon/packages/gpu/tools/check-hxi.sh` checks
 the generated binding contract. The UI C API Showcase smoke test remains the
 end-to-end UI rendering check.
 
@@ -106,13 +106,13 @@ ctest --test-dir build-gpu --output-on-failure
 Generate the curated HXI binding for the adapter:
 
 ```sh
-modules/gpu/tools/check-hxi.sh
+../haxeon/packages/gpu/tools/check-hxi.sh
 ```
 
 Run the end-to-end Haxeon triangle test with:
 
 ```sh
-modules/gpu/tools/test-haxeon.sh
+../haxeon/packages/gpu/tools/test-haxeon.sh
 ```
 
 The scene is assembled in Haxe from generic buffers, shaders, pipeline
@@ -143,7 +143,7 @@ distinct nominal Haxe abstract, preventing cross-type calls before runtime.
 Measure the HXI call boundary independently of graphics work with:
 
 ```sh
-modules/gpu/tools/benchmark.sh
+../haxeon/packages/gpu/tools/benchmark.sh
 ```
 
 On the initial x86-64 Linux test machine, one million scalar HXI calls took

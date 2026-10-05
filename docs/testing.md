@@ -112,18 +112,18 @@ cd android
 
 ## Haxeon binding smoke test
 
-`tools/test-haxeon.sh` builds a temporary shared NativeKit library, projects the
+`../haxeon/packages/platform/tools/test-haxeon.sh` builds a temporary shared NativeKit library, projects the
 reviewed Linux HXI declarations into Haxe, and runs the result through HashLink.
 It covers initialization, typed event polling, UTF-8 diagnostics, window and
 monitor handles, and the two-call monitor-name output buffer. The sibling
-`../haxeon` checkout is used by default. Set `HAXEON_DIR` to select another
+`../haxeon` checkout is used by default. Set `NATIVEKIT_DIR` to select the native implementation in another
 checkout:
 
 ```sh
-HAXEON_DIR=/path/to/haxeon tools/test-haxeon.sh
+NATIVEKIT_DIR=/path/to/nativekit ../haxeon/packages/platform/tools/test-haxeon.sh
 ```
 
-The smoke test first runs `tools/update-haxeon-hxi.sh --check`, so header and
+The smoke test first runs `../haxeon/packages/platform/tools/update-haxeon-hxi.sh --check`, so header and
 checked-in binding drift fails before compilation.
 
 ## Windows compatibility smoke tests

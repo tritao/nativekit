@@ -232,3 +232,7 @@ backend tests are welcome.
 
 NativeKit is available under the [Apache License 2.0](LICENSE). Third-party
 components retain their respective licenses.
+
+## Haxeon integration
+
+Haxeon bindings, managed wrappers, generation tools, and binding CI now live in the Haxeon repository under `packages/platform` and `packages/gpu`. NativeKit builds independently of Haxeon.
