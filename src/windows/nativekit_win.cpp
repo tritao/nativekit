@@ -284,6 +284,7 @@ struct WinWindowResource final : nk::core::Resource {
     bool pointer_tracking = false;
     std::string text_input_text;
     nk_text_input_state text_input_state{};
+    nk_handle text_input_target = NK_INVALID_HANDLE;
     std::vector<nk_text_input_rect> text_input_selection_rects;
     std::vector<nk_text_input_rect> text_input_composition_rects;
     std::vector<nk_text_input_range_rect> text_input_selection_range_rects;
@@ -739,14 +740,17 @@ void update_text_input_anchor(WinWindowResource &resource) {
         return;
     const auto anchor = nk::core::text_input_anchor_rect(
         resource.text_input_state, resource.text_input_selection_rects);
+    const auto target_surface = get_surface(resource.text_input_target);
+    const double offset_x = target_surface ? target_surface->x : 0.0;
+    const double offset_y = target_surface ? target_surface->y : 0.0;
     HIMC context = ImmGetContext(resource.window);
     if (!context)
         return;
     const auto scale = dpi_scale(resource.window);
     COMPOSITIONFORM composition{};
     composition.dwStyle = CFS_POINT;
-    composition.ptCurrentPos.x = static_cast<LONG>(std::lround(anchor.x * scale));
-    composition.ptCurrentPos.y = static_cast<LONG>(std::lround(anchor.y * scale));
+    composition.ptCurrentPos.x = static_cast<LONG>(std::lround((anchor.x + offset_x) * scale));
+    composition.ptCurrentPos.y = static_cast<LONG>(std::lround((anchor.y + offset_y) * scale));
     ImmSetCompositionWindow(context, &composition);
     CANDIDATEFORM candidate{};
     candidate.dwIndex = 0;
@@ -1698,6 +1702,13 @@ std::shared_ptr<WinSurfaceResource> get_surface(nk_handle handle) {
         nk::core::handles().get(handle, nk::core::ResourceType::surface));
 }
 
+std::shared_ptr<WinWindowResource> get_text_input_window(nk_handle handle) {
+    if (auto window = get_window(handle))
+        return window;
+    auto surface = get_surface(handle);
+    return surface ? get_window(surface->parent) : nullptr;
+}
+
 void emit_surface_lost(WinSurfaceResource &surface) {
     if (surface.lost_reported || surface.destroying)
         return;
@@ -1891,6 +1902,10 @@ LRESULT CALLBACK surface_window_proc(HWND window, UINT message, WPARAM wparam, L
         auto active = get_surface(surface->handle);
         if (!active)
             return 0;
+        // Preserve pending requests while RENDER owns the previous frame.
+        // Its PLATFORM completion releases the ticket before the next callback.
+        if (nk::core::surface_has_open_frame(active->handle))
+            return 0;
         active->frame_requests.begin_frame();
         nk::core::callback_boundary([&] {
             if (nk_surface_make_current(active->handle) != NK_OK)
@@ -1899,7 +1914,9 @@ LRESULT CALLBACK surface_window_proc(HWND window, UINT message, WPARAM wparam, L
             void *user_data = active->frame_user_data;
             callback(active->handle, active->framebuffer_width, active->framebuffer_height,
                      user_data);
-            if (active->frame_prepared)
+            // A ticket hands presentation to the asynchronous renderer. Only
+            // callbacks using the synchronous surface API present here.
+            if (active->frame_prepared && !nk::core::surface_has_open_frame(active->handle))
                 nk_surface_present(active->handle);
         });
         return 0;
@@ -3795,10 +3812,10 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
                 state->action > NK_TEXT_INPUT_ACTION_NONE || !valid_cursor)
                 return fail(NK_ERROR_INVALID_ARGUMENT,
                             "text input state ranges or hints are invalid");
-            auto resource = get_window(handle);
+            auto resource = get_text_input_window(handle);
             if (!resource)
-                return fail(NK_ERROR_INVALID_HANDLE,
-                            "text input state requires a desktop window on this backend");
+                return fail(NK_ERROR_INVALID_HANDLE, "text input requires a live surface or window");
+            resource->text_input_target = handle;
             resource->text_input_text = text;
             resource->text_input_state = *state;
             resource->text_input_state.text = resource->text_input_text.c_str();
@@ -3823,7 +3840,7 @@ nk_result NK_CALL nk_surface_set_text_input_geometry(
         "unexpected error while setting Windows text input geometry", [&]() -> nk_result {
             if (const auto result = enter_ui(); result != NK_OK)
                 return result;
-            auto resource = get_window(handle);
+            auto resource = get_text_input_window(handle);
             if (!resource)
                 return NK_ERROR_INVALID_HANDLE;
             if (resource->text_input_state.struct_size < sizeof(nk_text_input_state))
@@ -3856,10 +3873,10 @@ nk_result NK_CALL nk_surface_set_text_input_active(nk_handle handle, uint32_t ac
             if (active > 1)
                 return fail(NK_ERROR_INVALID_ARGUMENT,
                             "text input active state must be zero or one");
-            auto resource = get_window(handle);
+            auto resource = get_text_input_window(handle);
             if (!resource)
-                return fail(NK_ERROR_INVALID_HANDLE,
-                            "text input activation requires a desktop window on this backend");
+                return fail(NK_ERROR_INVALID_HANDLE, "text input requires a live surface or window");
+            resource->text_input_target = handle;
             resource->text_input_active = active != 0;
             if (!resource->text_input_active) {
                 HIMC context = ImmGetContext(resource->window);

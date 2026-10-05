@@ -136,6 +136,13 @@ elseif(NK_BACKEND_GTK_AVAILABLE)
 endif()
 add_test(NAME platform_parity COMMAND nativekit_platform_parity)
 
+if(WIN32)
+    add_executable(nativekit_windows_frame_lifecycle integration/windows_frame_lifecycle.cpp)
+    target_compile_features(nativekit_windows_frame_lifecycle PRIVATE cxx_std_17)
+    target_link_libraries(nativekit_windows_frame_lifecycle PRIVATE NativeKit::nativekit)
+    add_test(NAME windows_frame_lifecycle COMMAND nativekit_windows_frame_lifecycle)
+endif()
+
 if(WIN32 OR (APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS") OR NK_BACKEND_GTK_AVAILABLE)
     add_executable(nativekit_capability_conformance integration/capability_conformance.c)
     target_compile_features(nativekit_capability_conformance PRIVATE c_std_11)
