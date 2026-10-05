@@ -8,6 +8,7 @@ import NativeKitWindow;
 /** Maps asynchronous NativeKit request IDs to one-shot typed completions. */
 class NativeKitRequests {
 	final handlers:Map<String, NativeKitEventValue->Void> = [];
+	final dialogCancellationRequested:Map<String, Bool> = [];
 	final taskHandlers:Map<String, NativeKitEventValue->Void> = [];
 
 	public function new() {}
@@ -76,9 +77,9 @@ class NativeKitRequests {
 	public function messageDialog(parent:NativeKitWindow, options:MessageDialogOptions,
 		handler:NativeKitRequestOutcome<MessageResult>->Void):haxe.Int64 {
 		var request = NativeKit.nk_dialog_message_checked(new Handle(parent.nativeHandle().rawValue()), options);
-		track(request, function(value) switch value {
+		trackDialogRequest(request, function(value, cancellationRequested) switch value {
 			case DialogMessage(_, result, button):
-				handler(acceptedOutcome(result, button != MessageResult.None, button));
+				handler(messageOutcome(result, button, cancellationRequested));
 			case _: wrongEvent("message dialog");
 		});
 		return request;
@@ -101,8 +102,27 @@ class NativeKitRequests {
 		handlers.set(key, handler);
 	}
 
+	/** Cancels a tracked native dialog while retaining its terminal completion. */
+	public function cancelDialog(request:haxe.Int64):Bool {
+		var key = Std.string(request);
+		if (!handlers.exists(key) || !dialogCancellationRequested.exists(key)
+			|| dialogCancellationRequested.get(key))
+			return false;
+		NativeKit.nk_dialog_cancel_checked(request);
+		dialogCancellationRequested.set(key, true);
+		return true;
+	}
+
+	/** Stops dispatching a completion without cancelling native work. */
+	public function forget(request:haxe.Int64):Bool {
+		var key = Std.string(request);
+		dialogCancellationRequested.remove(key);
+		return handlers.remove(key);
+	}
+
+	/** Compatibility alias for forgetting a completion; does not cancel native work. */
 	public function cancel(request:haxe.Int64):Bool
-		return handlers.remove(Std.string(request));
+		return forget(request);
 
 	/** Tracks a native task without installing a managed worker callback. */
 	public function trackTask<T>(task:NativeTask, decode:haxe.io.Bytes->T):NativeFuture<T> {
@@ -166,13 +186,24 @@ class NativeKitRequests {
 
 	function trackResourceDialog(name:String, request:haxe.Int64,
 		handler:NativeKitRequestOutcome<Array<NativeKitResource>>->Void):haxe.Int64 {
-		track(request, function(value) switch value {
+		trackDialogRequest(request, function(value, _cancellationRequested) switch value {
 			case Resources(kind, _, result, accepted, items):
 				if (kind != EventKind.DialogResourcesComplete) wrongEvent(name);
 				handler(acceptedOutcome(result, accepted, items));
 			case _: wrongEvent(name);
 		});
 		return request;
+	}
+
+	function trackDialogRequest(request:haxe.Int64,
+		handler:NativeKitEventValue->Bool->Void):Void {
+		var key = Std.string(request);
+		track(request, function(value) {
+			var cancellationRequested = dialogCancellationRequested.get(key) == true;
+			dialogCancellationRequested.remove(key);
+			handler(value, cancellationRequested);
+		});
+		dialogCancellationRequested.set(key, false);
 	}
 
 	static function requestKey(value:NativeKitEventValue):Null<String> {
@@ -203,6 +234,13 @@ class NativeKitRequests {
 		if (result != Result.Ok)
 			return Failure(result, null);
 		return accepted ? Success(value) : Cancelled;
+	}
+
+	static function messageOutcome(result:Result, button:MessageResult,
+		cancellationRequested:Bool):NativeKitRequestOutcome<MessageResult> {
+		if (result != Result.Ok)
+			return Failure(result, null);
+		return cancellationRequested || button == MessageResult.None ? Cancelled : Success(button);
 	}
 
 	static function wrongEvent(name:String):Void

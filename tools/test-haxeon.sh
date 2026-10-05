@@ -92,4 +92,4 @@ if [[ $status -ne 42 ]]; then
     exit 1
 fi
 
-echo "PASS: generated Haxeon bindings exercised NativeKit lifecycle, copied event payloads, UTF-8, handles, and output buffers"
+echo "PASS: generated Haxeon bindings exercised NativeKit lifecycle, request outcomes/cancellation, copied event payloads, UTF-8, handles, and output buffers"

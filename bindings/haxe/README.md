@@ -95,3 +95,7 @@ It expects the Haxeon checkout at `../haxeon` by default. Override that
 with `HAXEON_DIR=/path/to/haxeon`. The canonical file is written only
 after Linux, Windows, and both macOS 64-bit models compare successfully. Wine
 continues to validate the same C ABI independently through `tools/test-wine.sh`.
+
+### Cancelling managed dialogs
+
+`runtime.events.requests.cancelDialog(request)` cancels a native dialog and keeps its completion tracked until the terminal event arrives. Repeated cancellation returns `false`. `forget(request)` removes only the completion handler; it does not stop native work. The legacy `cancel(request)` remains an alias for `forget(request)`. Cancelled message dialogs resolve to `Cancelled` even when their button set has no Cancel button.

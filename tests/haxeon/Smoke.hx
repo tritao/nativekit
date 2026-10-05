@@ -95,10 +95,26 @@ class Smoke {
 					break;
 			}
 			payloadOk = payloadOk && completed && requestSeenByListener && requests.pending() == 0
-				&& !requests.cancel(request);
+				&& !requests.cancelDialog(request) && !requests.forget(request);
 			payloadOk = payloadOk && requests.pending() == 0;
 			if (requestSubscription != null)
 				requestSubscription.dispose();
+			var forgottenCallbackCalled = false;
+			var forgottenEventSeen = false;
+			var forgottenRequest = requests.readClipboardText(function(_) forgottenCallbackCalled = true);
+			var forgottenSubscription = events.listen(function(value) switch value {
+				case ClipboardText(id, _, _) if (Std.string(id) == Std.string(forgottenRequest)):
+					forgottenEventSeen = true;
+				case _:
+			});
+			payloadOk = payloadOk && !requests.cancelDialog(forgottenRequest)
+				&& requests.forget(forgottenRequest);
+			for (_ in 0...1000) {
+				events.poll();
+				if (forgottenEventSeen) break;
+			}
+			forgottenSubscription.dispose();
+			payloadOk = payloadOk && forgottenEventSeen && !forgottenCallbackCalled && requests.pending() == 0;
 		}
 		var fileArrayResult = NativeKit.nk_clipboard_set_files(["/tmp/nativekit-a", "/tmp/nativekit-b"]);
 		if (fileArrayResult != 0 && fileArrayResult != Result.ErrorUnsupported)
@@ -151,14 +167,47 @@ class Smoke {
 		if (textState.get_text() != "olá 👋" || textState.get_struct_size() != TextInputState.size())
 			return 11;
 		var windowOk = false;
+		var windowCreated = false;
+		var dialogCancellationOk = true;
 		try {
 			var window = runtime.createWindow(windowOptions);
+			windowCreated = true;
 			windowOk = window.nativeHandle().isValid();
+			var requests = events.requests;
+			{
+				var options = new FileDialogOptions();
+				options.set_title("Cancellation smoke");
+				var completed = false, cancelled = false;
+				var id = requests.openResource(window, options, function(outcome) {
+					cancelled = switch outcome { case Cancelled: true; case _: false; };
+					completed = true;
+				});
+				dialogCancellationOk = requests.cancelDialog(id) && !requests.cancelDialog(id);
+				for (_ in 0...1000) { events.poll(); if (completed) break; }
+				dialogCancellationOk = dialogCancellationOk && completed && cancelled
+					&& requests.pending() == 0 && !requests.cancelDialog(id) && !requests.forget(id);
+			}
+			{
+				var options = new MessageDialogOptions();
+				options.set_title("Cancellation smoke");
+				options.set_message("Cancel this dialog through NativeKitRequests");
+				options.set_buttons(MessageButtons.Yes | MessageButtons.No);
+				var completed = false, cancelled = false;
+				var id = requests.messageDialog(window, options, function(outcome) {
+					cancelled = switch outcome { case Cancelled: true; case _: false; };
+					completed = true;
+				});
+				dialogCancellationOk = requests.cancelDialog(id) && !requests.cancelDialog(id) && dialogCancellationOk;
+				for (_ in 0...1000) { events.poll(); if (completed) break; }
+				dialogCancellationOk = dialogCancellationOk && completed && cancelled && requests.pending() == 0;
+			}
 			window.setDecorationRegions([]);
 			window.dispose();
 			windowOk = windowOk && window.isDisposed();
 		} catch (error:Dynamic) {
-			windowOk = Std.string(error).indexOf("(-4)") >= 0;
+			trace("NativeKit window/dialog smoke failed: " + Std.string(error));
+			windowOk = !windowCreated && Std.string(error).indexOf("(-4)") >= 0;
+			if (windowCreated) dialogCancellationOk = false;
 		}
 		var primary = NativeKit.nk_monitor_get_primary();
 		var monitorOk = primary.status == -4;
@@ -175,6 +224,8 @@ class Smoke {
 			return 3;
 		if (!windowOk)
 			return 4;
+		if (!dialogCancellationOk)
+			return 23;
 		if (!diagnosticOk)
 			return 5;
 		if (!resultErrorOk)
