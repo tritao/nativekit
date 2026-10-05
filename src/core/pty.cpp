@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <climits>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -22,6 +23,10 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <sys/ioctl.h>
+#include <sys/resource.h>
+#if defined(__linux__)
+#include <sys/syscall.h>
+#endif
 #include <sys/wait.h>
 #include <unistd.h>
 #if defined(__APPLE__)
@@ -190,16 +195,33 @@ nk_result NK_CALL nk_pty_spawn(const char *program, const char *const *argv, uin
         size.ws_col = columns;
         size.ws_row = rows;
         int master = -1;
+        // Resolve the fallback descriptor limit before fork: the child may only
+        // use async-signal-safe operations until exec in this threaded runtime.
+        rlimit descriptor_limit{};
+        if (::getrlimit(RLIMIT_NOFILE, &descriptor_limit) != 0)
+            return fail(NK_ERROR_UNKNOWN, "could not read descriptor limit");
         const pid_t child = ::forkpty(&master, nullptr, nullptr, &size);
         if (child < 0)
             return fail(NK_ERROR_UNKNOWN, "forkpty failed");
         if (child == 0) {
+            // PTY programs inherit only stdin/stdout/stderr, never host locks,
+            // listener sockets or another terminal's master descriptor.
+#if defined(__APPLE__)
+            ::closefrom(3);
+#else
+#if defined(SYS_close_range)
+            if (::syscall(SYS_close_range, 3u, ~0u, 0u) != 0)
+#endif
+                for (rlim_t fd = 3; fd < descriptor_limit.rlim_max && fd < static_cast<rlim_t>(INT_MAX); ++fd)
+                    ::close(static_cast<int>(fd));
+#endif
             if (cwd && ::chdir(cwd) != 0)
                 _exit(127);
             ::execve(program, args.data(), env ? environment.data() : environ);
             _exit(127);
         }
-        if (::fcntl(master, F_SETFL, ::fcntl(master, F_GETFL) | O_NONBLOCK) < 0) {
+        if (::fcntl(master, F_SETFD, FD_CLOEXEC) < 0 ||
+            ::fcntl(master, F_SETFL, ::fcntl(master, F_GETFL) | O_NONBLOCK) < 0) {
             ::kill(child, SIGKILL);
             int code = 0;
             (void)::waitpid(child, &code, 0);

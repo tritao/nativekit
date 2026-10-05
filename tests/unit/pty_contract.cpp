@@ -5,6 +5,7 @@
 #include <chrono>
 #include <csignal>
 #include <cstring>
+#include <fcntl.h>
 #include <string>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -96,6 +97,18 @@ int main() {
         assert(nk_wait_events_timeout(0.05) == NK_OK);
     assert(code == 0 && signal == 0);
     assert(nk_pty_close(pty) == NK_OK);
+
+    // Deliberately inheritable host descriptors must not reach the PTY child.
+    const int sentinel = ::open("/dev/null", O_RDONLY);
+    assert(sentinel >= 3);
+    assert(::fcntl(sentinel, F_SETFD, 0) == 0);
+    const auto probe = "if (: <&" + std::to_string(sentinel) + ") 2>/dev/null; then printf leaked; else printf isolated; fi";
+    const char *isolation[] = {"-c", probe.c_str()};
+    assert(nk_pty_spawn("/bin/sh", isolation, 2, nullptr, nullptr, 0, 80, 24, &pty) == NK_OK);
+    collect(pty, "isolated");
+    assert(::fcntl(sentinel, F_GETFD) >= 0); // Parent ownership is unchanged.
+    assert(nk_pty_close(pty) == NK_OK);
+    ::close(sentinel);
 
     // Closing a live child reaps it.
     assert(nk_pty_spawn("/bin/sh", args, 1, nullptr, nullptr, 0, 80, 24, &pty) == NK_OK);
