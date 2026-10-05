@@ -7,6 +7,7 @@
 #include "core/plugin.hpp"
 #include "core/request.hpp"
 #include "core/runtime.hpp"
+#include "core/worker_pool.hpp"
 #include "core/system_internal.hpp"
 #include "core/task.hpp"
 #include "net/net_backend.hpp"
@@ -198,6 +199,9 @@ void NK_CALL nk_shutdown(void) {
      * callbacks. The task runtime joins native workers and drops queued
      * cooperative work for this generation. */
     nk::core::task_runtime_shutdown();
+    /* Audio streaming jobs use the reusable signal pool and must be joined
+     * before backend resources and their owning handles are released. */
+    nk::core::shutdown_worker_pool();
     nk::core::stop_render_executor();
     nk::core::run_runtime_shutdown_hooks();
     /* Close any acquired physical frame before a backend destroys its
@@ -217,6 +221,7 @@ void NK_CALL nk_shutdown(void) {
     /* Backend resources are still valid while system leases are released. */
     nk::core::system_shutdown();
     nk::backend::shutdown();
+    nk::core::clear_resource_loads();
     nk::core::requests().clear();
     std::lock_guard lock(state_mutex);
     handle_registry.clear();
@@ -247,8 +252,14 @@ nk_result NK_CALL nk_poll_event(nk_event *event) {
     nk::core::drain_app_tasks();
     nk::backend::pump_events();
     nk::core::run_cooperative_tasks();
-    std::lock_guard lock(state_mutex);
-    return event_queue->poll(*event);
+    nk_result result = NK_OK;
+    {
+        std::lock_guard lock(state_mutex);
+        result = event_queue->poll(*event);
+    }
+    if (result == NK_OK && nk::core::dispatch_resource_data_event(*event))
+        nk_event_release(event);
+    return result;
 }
 
 void NK_CALL nk_event_release(nk_event *event) {

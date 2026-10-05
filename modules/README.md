@@ -10,6 +10,8 @@ The GPU module is disabled by default. UIKit and SceneKit now live as sibling
 projects in the Materia repository and consume NativeKit through its public
 core and GPU targets.
 
+| [`audio`](audio/) | `NK_BUILD_AUDIO` | `NativeKit::audio` | miniaudio playback, mixer graph, and DSP |
+
 ## Module rule
 
 `modules/` contains independently consumable libraries layered on top of

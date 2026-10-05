@@ -34,6 +34,7 @@ set(NK_NET_BACKEND_CURL OFF)
 # C++ failures to NativeKit results.
 option(NK_ENABLE_NO_EXCEPTIONS
     "Compile NativeKit production targets without C++ exception support" ON)
+option(NK_BUILD_AUDIO "Build the experimental miniaudio playback module" OFF)
 option(NK_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 option(NK_ENABLE_WEBVIEW2 "Enable the Windows WebView2 backend" ON)
 
@@ -123,6 +124,7 @@ set(NK_LIBRARY_TYPE STATIC)
 if(NK_BUILD_SHARED AND NOT EMSCRIPTEN)
     set(NK_LIBRARY_TYPE SHARED)
 endif()
+
 add_library(nativekit ${NK_LIBRARY_TYPE}
     src/core/accessibility.cpp
     src/core/api.cpp
@@ -148,6 +150,7 @@ add_library(nativekit ${NK_LIBRARY_TYPE}
     src/core/plugin.cpp
     src/core/request.cpp
     src/core/resource.cpp
+    src/core/resource_cache.cpp
     src/core/sensor.cpp
     src/core/surface_frame.cpp
     src/core/task.cpp
@@ -157,6 +160,7 @@ add_library(nativekit ${NK_LIBRARY_TYPE}
     src/core/text_input.cpp
     src/core/time.cpp
     src/core/vulkan.cpp
+    src/core/worker_pool.cpp
     src/core/window_extensions.cpp
     src/net/net.cpp
     src/transport/transport.cpp
@@ -490,6 +494,25 @@ if(NK_BUILD_GPU)
 endif()
 if(NK_BUILD_GPU)
     add_subdirectory(modules/gpu)
+endif()
+if(NK_BUILD_AUDIO)
+    if(NOT EXISTS "${NK_VENDOR_DIR}/miniaudio/miniaudio.h" OR
+       NOT EXISTS "${NK_VENDOR_DIR}/miniaudio/miniaudio.c")
+        message(FATAL_ERROR "miniaudio submodule is missing; run git submodule update --init")
+    endif()
+    add_library(nativekit_miniaudio OBJECT "${NK_VENDOR_DIR}/miniaudio/miniaudio.c")
+    target_include_directories(nativekit_miniaudio PRIVATE "${NK_VENDOR_DIR}/miniaudio")
+    target_compile_definitions(nativekit_miniaudio PRIVATE MA_NO_ENCODING)
+    set_target_properties(nativekit_miniaudio PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    if(EMSCRIPTEN)
+        target_compile_definitions(nativekit_miniaudio PRIVATE
+            MA_NO_RUNTIME_LINKING MA_ENABLE_ONLY_SPECIFIC_BACKENDS MA_ENABLE_WEBAUDIO)
+    endif()
+    target_sources(nativekit PRIVATE $<TARGET_OBJECTS:nativekit_miniaudio>)
+    if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
+        target_link_libraries(nativekit PRIVATE ${CMAKE_DL_LIBS} pthread m)
+    endif()
+    add_subdirectory(modules/audio)
 endif()
 install(TARGETS nativekit EXPORT NativeKitTargets
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}

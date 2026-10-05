@@ -5,6 +5,8 @@
 #include <condition_variable>
 #include <cstddef>
 #include <deque>
+#include <atomic>
+#include <cstdint>
 #include <functional>
 #include <mutex>
 #include <thread>
@@ -38,5 +40,37 @@ class WorkerPool final {
     bool accepting_ = false;
     bool stopping_ = false;
 };
+
+using WorkerTask = std::function<void()>;
+
+/**
+ * Reusable work item for signal-heavy producers. Scheduling an already queued
+ * or running item is coalesced without allocation; once the pool is started,
+ * signaling does not take the pool mutex.
+ */
+struct WorkerTaskState final {
+    WorkerTask run;
+    WorkerTask cleanup;
+    std::atomic<WorkerTaskState *> next{nullptr};
+    std::atomic<std::uint8_t> state{0};
+    std::atomic<bool> reschedule{false};
+
+    WorkerTaskState() = default;
+    WorkerTaskState(const WorkerTaskState &) = delete;
+    WorkerTaskState &operator=(const WorkerTaskState &) = delete;
+};
+
+/** Queues a short background task. The task must not call UI-only NativeKit APIs. */
+nk_result submit_worker_task(WorkerTask task, WorkerTask cleanup = {}) noexcept;
+
+/** Initializes a reusable work item. The item must remain alive until cleanup runs. */
+nk_result initialize_worker_task(WorkerTaskState &task, WorkerTask run,
+                                 WorkerTask cleanup = {}) noexcept;
+
+/** Signals a reusable work item without allocating when it is already active. */
+nk_result schedule_worker_task(WorkerTaskState &task) noexcept;
+
+/** Stops accepting work, drops queued tasks, and joins all worker threads. */
+void shutdown_worker_pool() noexcept;
 
 } // namespace nk::core

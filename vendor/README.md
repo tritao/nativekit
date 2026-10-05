@@ -17,6 +17,8 @@ Materia projects rather than NativeKit vendor dependencies.
 | `libwebsockets` | Native WebSocket client/server and platform-default TLS integration |
 | `sokol` | Shared graphics implementation source |
 | `SDL_GameControllerDB` | Generated controller mapping database source |
+| `miniaudio` | Audio playback backend |
+| `daisysp` | DSP oscillators, envelopes, and filters |
 
 Each submodule retains its upstream license. Build glue in the parent project
 must keep third-party targets private and must not expose their types through a

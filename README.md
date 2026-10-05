@@ -109,8 +109,8 @@ git clone https://github.com/tritao/nativekit.git
 cd nativekit
 ```
 
-The optional GPU and UI modules use pinned Git submodules. Initialize them
-only when building those modules:
+The optional GPU, UI, and audio modules use pinned Git submodules. Initialize
+them only when building those modules:
 
 ```sh
 git submodule update --init
@@ -238,3 +238,7 @@ components retain their respective licenses.
 ## Haxeon integration
 
 Haxeon bindings, managed wrappers, generation tools, and binding CI now live in the Haxeon repository under `packages/platform` and `packages/gpu`. NativeKit builds independently of Haxeon.
+
+Optional audio playback, mixing, streaming, and DSP are enabled with
+`-DNK_BUILD_AUDIO=ON`; see [the audio module](modules/audio/README.md).
+Managed bindings live in Haxeon’s `packages/audio`.

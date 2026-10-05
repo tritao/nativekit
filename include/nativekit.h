@@ -127,6 +127,8 @@ typedef uint32_t nk_resource_stream NK_HANDLE NK_HANDLE_DESTROY(nk_resource_clos
 typedef uint32_t nk_file_watch NK_HANDLE NK_HANDLE_DESTROY(nk_file_watch_destroy);
 /** Generation-checked handle for clipboard change observation. */
 typedef uint32_t nk_clipboard_watch NK_HANDLE NK_HANDLE_DESTROY(nk_clipboard_watch_stop);
+typedef uint32_t nk_resource_cache NK_HANDLE NK_HANDLE_DESTROY(nk_resource_cache_destroy);
+typedef uint32_t nk_resource_asset NK_HANDLE NK_HANDLE_DESTROY(nk_resource_asset_destroy);
 
 /** Opaque generation-checked identifier for a live NativeKit resource. */
 typedef uint32_t nk_handle NK_HANDLE;
@@ -330,6 +332,10 @@ enum NK_ENUM(nk_event_kind) {
     NK_EVENT_RESOURCE_DATA_COMPLETE = 803,
     /** A resource stream commit completed; request_id identifies the commit. */
     NK_EVENT_RESOURCE_COMMIT_COMPLETE = 804,
+    /** A cached URI resource became ready; source is its asset handle. */
+    NK_EVENT_RESOURCE_CACHE_READY = 805,
+    /** A cached URI resource failed to load; source is its asset handle. */
+    NK_EVENT_RESOURCE_CACHE_LOAD_FAILED = 806,
     /** HTTP response headers became available. */
     NK_EVENT_HTTP_HEADERS = 900,
     /** A streaming HTTP response has data available to read. */
@@ -338,6 +344,35 @@ enum NK_ENUM(nk_event_kind) {
     NK_EVENT_HTTP_PROGRESS = 902,
     /** An HTTP request reached its terminal state. */
     NK_EVENT_HTTP_COMPLETE = 903,
+    /** A non-looping audio voice reached its natural end; source is its voice handle. */
+    NK_EVENT_AUDIO_VOICE_COMPLETE = 904,
+    /** An asynchronous audio voice became ready; source is its voice handle. */
+    NK_EVENT_AUDIO_VOICE_READY = 905,
+    /** An asynchronous audio voice failed to load; source is its voice handle. */
+    NK_EVENT_AUDIO_VOICE_LOAD_FAILED = 906,
+    /** An asynchronous audio clip became ready; source is its clip handle. */
+    NK_EVENT_AUDIO_CLIP_READY = 907,
+    /** An asynchronous audio clip failed to load; source is its clip handle. */
+    NK_EVENT_AUDIO_CLIP_LOAD_FAILED = 908,
+    /** The process-wide audio playback device started; source is invalid. */
+    NK_EVENT_AUDIO_DEVICE_STARTED = 909,
+    /** The process-wide audio playback device stopped; source is invalid. */
+    NK_EVENT_AUDIO_DEVICE_STOPPED = 910,
+    /** The process-wide audio playback device was rerouted; source is invalid. */
+    NK_EVENT_AUDIO_DEVICE_REROUTED = 911,
+    /** The audio backend reported that playback was interrupted; source is invalid. */
+    NK_EVENT_AUDIO_DEVICE_INTERRUPTION_BEGAN = 912,
+    /** The audio backend reported that playback interruption ended; source is invalid. */
+    NK_EVENT_AUDIO_DEVICE_INTERRUPTION_ENDED = 913,
+    /** A playing voice was stopped to admit a higher-priority voice; source is the victim voice. */
+    NK_EVENT_AUDIO_VOICE_STOLEN = 914,
+    /** A playing voice was admitted logically but not rendered because its bus was full; source is
+       its voice handle. */
+    NK_EVENT_AUDIO_VOICE_VIRTUALIZED = 915,
+    /** A virtualized voice was promoted back to the audio backend; source is its voice handle. */
+    NK_EVENT_AUDIO_VOICE_RESUMED = 916,
+    /** A streaming voice's provider read or seek failed; source is its voice handle. */
+    NK_EVENT_AUDIO_VOICE_STREAM_FAILED = 917,
     /** A plugin service call reached its terminal state. */
     NK_EVENT_PLUGIN_COMPLETE = 1000,
     /** A plugin emitted an unsolicited notification. */

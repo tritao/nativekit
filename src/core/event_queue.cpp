@@ -16,8 +16,19 @@ bool is_terminal_request_event(const QueuedEvent &event) {
     if (event.kind == NK_EVENT_TRANSPORT_CONNECTED || event.kind == NK_EVENT_TRANSPORT_ACCEPTED ||
         event.kind == NK_EVENT_TRANSPORT_CLOSED || event.kind == NK_EVENT_TRANSPORT_FAILED)
         return true;
-    if (event.kind == NK_EVENT_TASK_COMPLETE || event.kind == NK_EVENT_TASK_FAILED ||
-        event.kind == NK_EVENT_TASK_CANCELLED)
+    if (event.kind == NK_EVENT_AUDIO_VOICE_COMPLETE || event.kind == NK_EVENT_AUDIO_VOICE_READY ||
+        event.kind == NK_EVENT_AUDIO_VOICE_LOAD_FAILED || event.kind == NK_EVENT_AUDIO_CLIP_READY ||
+        event.kind == NK_EVENT_AUDIO_CLIP_LOAD_FAILED ||
+        event.kind == NK_EVENT_AUDIO_DEVICE_STARTED ||
+        event.kind == NK_EVENT_AUDIO_DEVICE_STOPPED ||
+        event.kind == NK_EVENT_AUDIO_DEVICE_REROUTED ||
+        event.kind == NK_EVENT_AUDIO_DEVICE_INTERRUPTION_BEGAN ||
+        event.kind == NK_EVENT_AUDIO_DEVICE_INTERRUPTION_ENDED ||
+        event.kind == NK_EVENT_AUDIO_VOICE_STOLEN ||
+        event.kind == NK_EVENT_AUDIO_VOICE_VIRTUALIZED ||
+        event.kind == NK_EVENT_AUDIO_VOICE_RESUMED ||
+        event.kind == NK_EVENT_AUDIO_VOICE_STREAM_FAILED || event.kind == NK_EVENT_TASK_COMPLETE ||
+        event.kind == NK_EVENT_TASK_FAILED || event.kind == NK_EVENT_TASK_CANCELLED)
         return true;
     if (event.request_id == NK_INVALID_REQUEST_ID)
         return false;
@@ -29,6 +40,8 @@ bool is_terminal_request_event(const QueuedEvent &event) {
            event.kind == NK_EVENT_CLIPBOARD_RESOURCES_COMPLETE ||
            event.kind == NK_EVENT_RESOURCE_DATA_COMPLETE ||
            event.kind == NK_EVENT_RESOURCE_COMMIT_COMPLETE ||
+           event.kind == NK_EVENT_RESOURCE_CACHE_READY ||
+           event.kind == NK_EVENT_RESOURCE_CACHE_LOAD_FAILED ||
            event.kind == NK_EVENT_SENSOR_PERMISSION_COMPLETE ||
            event.kind == NK_EVENT_HTTP_COMPLETE || event.kind == NK_EVENT_PLUGIN_COMPLETE ||
            event.kind == NK_EVENT_NOTIFICATION_DELIVERED ||

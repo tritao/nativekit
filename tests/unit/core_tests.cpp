@@ -8,6 +8,7 @@
 #include "core/text_input_geometry.hpp"
 #include "core/text_edit_transaction.hpp"
 #include "core/vulkan_internal.hpp"
+#include "core/worker_pool.hpp"
 #include "nativekit_accessibility.h"
 #include "nativekit_clipboard.h"
 #include "nativekit_file_watch.h"
@@ -17,13 +18,17 @@
 #include "nativekit_task.h"
 #include "nativekit_window.h"
 
-#include <cstddef>
+#include <atomic>
 #include <cassert>
+#include <chrono>
+#include <condition_variable>
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <new>
+#include <mutex>
 #include <stdexcept>
 
 #define NK_CHECK(expression)                                                                       \
@@ -317,12 +322,52 @@ int main() {
     notification_terminal.request_id = 43;
     NK_CHECK(queue.push(std::move(notification_terminal)) == NK_OK);
 
+    nk::core::EventQueue completion_queue(1);
+    nk::core::QueuedEvent occupied;
+    occupied.kind = NK_EVENT_WEBVIEW_MESSAGE;
+    assert(completion_queue.push(std::move(occupied)) == NK_OK);
+    nk::core::QueuedEvent audio_completion;
+    audio_completion.kind = NK_EVENT_AUDIO_VOICE_COMPLETE;
+    audio_completion.source = first;
+    assert(completion_queue.push(std::move(audio_completion)) == NK_OK);
+    nk_event completion_event{};
+    completion_event.struct_size = sizeof(completion_event);
+    assert(completion_queue.poll(completion_event) == NK_OK);
+    nk_event_release(&completion_event);
+    completion_event.struct_size = sizeof(completion_event);
+    assert(completion_queue.poll(completion_event) == NK_OK);
+    assert(completion_event.kind == NK_EVENT_AUDIO_VOICE_COMPLETE);
+    assert(completion_event.source == first);
+    nk_event_release(&completion_event);
+
+    for (const auto kind : {NK_EVENT_AUDIO_VOICE_READY, NK_EVENT_AUDIO_VOICE_LOAD_FAILED,
+                            NK_EVENT_AUDIO_VOICE_STREAM_FAILED}) {
+        nk::core::EventQueue audio_lifecycle_queue(1);
+        nk::core::QueuedEvent lifecycle_occupied;
+        lifecycle_occupied.kind = NK_EVENT_WEBVIEW_MESSAGE;
+        assert(audio_lifecycle_queue.push(std::move(lifecycle_occupied)) == NK_OK);
+        nk::core::QueuedEvent lifecycle_event;
+        lifecycle_event.kind = kind;
+        assert(audio_lifecycle_queue.push(std::move(lifecycle_event)) == NK_OK);
+    }
+
+    for (const auto kind : {NK_EVENT_RESOURCE_CACHE_READY, NK_EVENT_RESOURCE_CACHE_LOAD_FAILED}) {
+        nk::core::EventQueue resource_cache_queue(1);
+        nk::core::QueuedEvent resource_cache_occupied;
+        resource_cache_occupied.kind = NK_EVENT_WEBVIEW_MESSAGE;
+        assert(resource_cache_queue.push(std::move(resource_cache_occupied)) == NK_OK);
+        nk::core::QueuedEvent resource_cache_event;
+        resource_cache_event.kind = kind;
+        resource_cache_event.request_id = 44;
+        assert(resource_cache_queue.push(std::move(resource_cache_event)) == NK_OK);
+    }
+
     nk_event event{};
 
     nk::core::EventQueue readiness_queue(1);
-    nk::core::QueuedEvent occupied;
-    occupied.kind = NK_EVENT_WEBVIEW_MESSAGE;
-    NK_CHECK(readiness_queue.push(std::move(occupied)) == NK_OK);
+    nk::core::QueuedEvent readiness_occupied;
+    readiness_occupied.kind = NK_EVENT_WEBVIEW_MESSAGE;
+    NK_CHECK(readiness_queue.push(std::move(readiness_occupied)) == NK_OK);
     nk::core::QueuedEvent readiness;
     readiness.kind = NK_EVENT_HTTP_DATA_AVAILABLE;
     readiness.source = first;
@@ -659,9 +704,9 @@ int main() {
     nk_event_release(&event);
 
     nk::core::EventQueue readiness_limit_queue(1);
-    nk::core::QueuedEvent readiness_occupied;
-    readiness_occupied.kind = NK_EVENT_WEBVIEW_MESSAGE;
-    NK_CHECK(readiness_limit_queue.push(std::move(readiness_occupied)) == NK_OK);
+    nk::core::QueuedEvent deferred_occupied;
+    deferred_occupied.kind = NK_EVENT_WEBVIEW_MESSAGE;
+    NK_CHECK(readiness_limit_queue.push(std::move(deferred_occupied)) == NK_OK);
     constexpr nk_handle deferred_readiness_count = 1100;
     for (nk_handle source = 1; source <= deferred_readiness_count; ++source) {
         nk::core::QueuedEvent readiness;
@@ -680,5 +725,47 @@ int main() {
         NK_CHECK(event.kind == NK_EVENT_HTTP_DATA_AVAILABLE && event.source == source);
         nk_event_release(&event);
     }
+    std::atomic<int> worker_runs{0};
+    std::atomic<int> worker_cleanups{0};
+    std::mutex worker_mutex;
+    std::condition_variable worker_condition;
+    assert(
+        nk::core::submit_worker_task([&] { worker_runs.fetch_add(1, std::memory_order_relaxed); },
+                                     [&] {
+                                         std::lock_guard lock(worker_mutex);
+                                         worker_cleanups.fetch_add(1, std::memory_order_release);
+                                         worker_condition.notify_one();
+                                     }) == NK_OK);
+    std::unique_lock worker_lock(worker_mutex);
+    assert(worker_condition.wait_for(worker_lock, std::chrono::seconds(2), [&] {
+        return worker_cleanups.load(std::memory_order_acquire) == 1;
+    }));
+    assert(worker_runs.load(std::memory_order_acquire) == 1);
+    worker_lock.unlock();
+
+    nk::core::WorkerTaskState reusable_worker;
+    std::atomic<int> reusable_runs{0};
+    std::atomic<int> reusable_cleanups{0};
+    std::mutex reusable_mutex;
+    std::condition_variable reusable_condition;
+    assert(nk::core::initialize_worker_task(
+               reusable_worker,
+               [&] {
+                   if (reusable_runs.fetch_add(1, std::memory_order_acq_rel) == 0)
+                       assert(nk::core::schedule_worker_task(reusable_worker) == NK_OK);
+               },
+               [&] {
+                   std::lock_guard lock(reusable_mutex);
+                   reusable_cleanups.fetch_add(1, std::memory_order_release);
+                   reusable_condition.notify_one();
+               }) == NK_OK);
+    assert(nk::core::schedule_worker_task(reusable_worker) == NK_OK);
+    std::unique_lock reusable_lock(reusable_mutex);
+    assert(reusable_condition.wait_for(reusable_lock, std::chrono::seconds(2), [&] {
+        return reusable_cleanups.load(std::memory_order_acquire) == 2;
+    }));
+    assert(reusable_runs.load(std::memory_order_acquire) == 2);
+    reusable_lock.unlock();
+    nk::core::shutdown_worker_pool();
     return 0;
 }

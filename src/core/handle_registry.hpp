@@ -18,6 +18,8 @@ enum class ResourceType : std::uint8_t {
     surface,
     cursor,
     monitor,
+    resource_cache,
+    resource_asset,
     joystick,
     sensor,
     file_watch,
@@ -32,7 +34,17 @@ enum class ResourceType : std::uint8_t {
     plugin,
     library,
     menu,
-    menu_item
+    menu_item,
+    audio_engine,
+    audio_bus,
+    audio_bus_effect,
+    audio_mix_snapshot,
+    audio_clip,
+    audio_voice,
+    audio_dsp_engine,
+    audio_dsp_patch,
+    audio_dsp_instrument,
+    audio_dsp_wavetable
 };
 
 struct Resource {
