@@ -3342,20 +3342,20 @@ nk_result NK_CALL nk_window_set_icons(nk_handle handle, const uint8_t *pixels,
                                          GetSystemMetrics(SM_CYSMICON));
         const auto big_index = closest(GetSystemMetrics(SM_CXICON),
                                        GetSystemMetrics(SM_CYICON));
-        HICON small = native_icons[small_index];
-        HICON big = native_icons[big_index];
-        SendMessageW(resource->window, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(small));
-        SendMessageW(resource->window, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(big));
+        HICON small_icon = native_icons[small_index];
+        HICON big_icon = native_icons[big_index];
+        SendMessageW(resource->window, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(small_icon));
+        SendMessageW(resource->window, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(big_icon));
         if (resource->icon_small)
             DestroyIcon(resource->icon_small);
         if (resource->icon_big && resource->icon_big != resource->icon_small)
             DestroyIcon(resource->icon_big);
-        resource->icon_small = small;
-        resource->icon_big = big;
+        resource->icon_small = small_icon;
+        resource->icon_big = big_icon;
         for (uint32_t index = 0; index < image_count; ++index)
             if (index != small_index && index != big_index)
                 DestroyIcon(native_icons[index]);
-        return NK_OK;
+        return static_cast<nk_result>(NK_OK);
     });
 }
 
