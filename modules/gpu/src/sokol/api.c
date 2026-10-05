@@ -23,6 +23,8 @@ const nk_sokol_api *nk_sokol_get_api(void) {
         api.external_image_resolve = nk_sokol_external_image_resolve;
         api.last_log_message = nk_sokol_last_log_message;
         api.clear_last_log_message = nk_sokol_clear_last_log_message;
+        api.query_buffer_info = sg_query_buffer_info;
+        api.query_buffer_will_overflow = sg_query_buffer_will_overflow;
     }
     return &api;
 }

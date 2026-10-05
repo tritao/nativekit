@@ -2064,7 +2064,7 @@ nkgpu_result nkgpu_buffer_create_stream(nkgpu_renderer r, uint32_t capacity,
         (usage & ~known_usage) || !(usage & (NKGPU_BUFFER_VERTEX | NKGPU_BUFFER_INDEX)) ||
         (usage & NKGPU_BUFFER_VERTEX) && (usage & NKGPU_BUFFER_INDEX))
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid stream buffer arguments");
-    const nkgpu_result idle = require_idle_renderer(r);
+    const nkgpu_result idle = require_streaming_resource_access(r);
     if (idle != NKGPU_OK)
         return idle;
     const nkgpu_result activated = activate_renderer(r);
@@ -2088,6 +2088,30 @@ nkgpu_result nkgpu_buffer_create_stream(nkgpu_renderer r, uint32_t capacity,
     }
     return save_buffer(r, object, capacity, usage, true, true, nullptr, out);
 }
+nkgpu_result nkgpu_buffer_get_stream_info(nkgpu_renderer r, nkgpu_buffer h,
+                                           nkgpu_stream_buffer_info *out) {
+    auto *renderer = renderer_pool.get(r);
+    auto *buffer = buffer_pool.get(h);
+    if (!renderer || !buffer || buffer->value.owner != r)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign stream buffer");
+    if (!out || !buffer->value.stream)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid stream query arguments");
+    const nkgpu_result access = require_streaming_resource_access(r);
+    if (access != NKGPU_OK)
+        return access;
+    const nkgpu_result activated = activate_renderer(r);
+    if (activated != NKGPU_OK)
+        return activated;
+    // Testing a full aligned capacity also detects Sokol's lazy frame rewind.
+    const uint32_t aligned_capacity = buffer->value.size & ~uint32_t{3};
+    const bool has_appends = aligned_capacity && selected_api->query_buffer_will_overflow(
+        buffer->value.object, aligned_capacity);
+    const auto info = selected_api->query_buffer_info(buffer->value.object);
+    const uint32_t used = has_appends ? static_cast<uint32_t>(info.append_pos) : 0;
+    *out = {sizeof(*out), buffer->value.size, used,
+            buffer->value.size - std::min(used, buffer->value.size)};
+    return NKGPU_OK;
+}
 nkgpu_result nkgpu_buffer_append(nkgpu_renderer r, nkgpu_buffer h, const uint8_t *data,
                                  uint32_t size, uint32_t *out_offset) {
     auto *renderer = renderer_pool.get(r);
@@ -2105,6 +2129,13 @@ nkgpu_result nkgpu_buffer_append(nkgpu_renderer r, nkgpu_buffer h, const uint8_t
         return access;
     if (!buffer->value.stream || !data || !size || !out_offset)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid stream append arguments");
+    nkgpu_stream_buffer_info info{};
+    const nkgpu_result queried = nkgpu_buffer_get_stream_info(r, h, &info);
+    if (queried != NKGPU_OK)
+        return queried;
+    const uint64_t aligned_size = (uint64_t{size} + 3) & ~uint64_t{3};
+    if (aligned_size > info.remaining)
+        return fail(NKGPU_ERROR_BUFFER_OVERFLOW, "stream buffer capacity exceeded");
     const sg_range range{data, size};
     const int offset = sg_append_buffer(buffer->value.object, &range);
     if (offset < 0 || runtime_gfx()->query_buffer_overflow(buffer->value.object))
@@ -5421,6 +5452,35 @@ nkgpu_result nkgpu_batch_destroy(nkgpu_batch batch) {
     release_batch_retention(slot->value, 0);
     release_batch_images(slot->value, 0);
     batch_pool.remove(*slot);
+    return NKGPU_OK;
+}
+
+nkgpu_result nkgpu_frame_abort(nkgpu_renderer r) {
+    auto *rs = renderer_pool.get(r);
+    if (!rs)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    const nkgpu_result access = require_streaming_resource_access(r);
+    if (access != NKGPU_OK)
+        return access;
+    const nkgpu_result activated = activate_renderer(r);
+    if (activated != NKGPU_OK)
+        return activated;
+    if (rs->value.in_pass && rs->value.copy_pass && rs->value.api->transfer &&
+        rs->value.api->transfer->end_pass && !rs->value.api->transfer->end_pass())
+        return fail(NKGPU_ERROR_UNKNOWN, "transfer pass could not be discarded");
+    if (rs->value.in_pass && !rs->value.copy_pass)
+        sg_end_pass();
+    sg_commit();
+    rs->value.state = RendererState::Ready;
+    rs->value.in_pass = false;
+    rs->value.compute_pass = false;
+    rs->value.copy_pass = false;
+    rs->value.pass_width = 0;
+    rs->value.pass_height = 0;
+    rs->value.has_frame_target = false;
+    rs->value.frame_target = {};
+    rs->value.bindings = {};
+    active_renderer = 0;
     return NKGPU_OK;
 }
 

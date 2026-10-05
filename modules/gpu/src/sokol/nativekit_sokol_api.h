@@ -37,6 +37,8 @@ typedef struct nk_sokol_api {
                                   int32_t *out_height);
     const char *(*last_log_message)(void);
     void (*clear_last_log_message)(void);
+    sg_buffer_info (*query_buffer_info)(sg_buffer buffer);
+    bool (*query_buffer_will_overflow)(sg_buffer buffer, size_t size);
 } nk_sokol_api;
 
 const nk_sokol_api *nk_sokol_get_api(void);

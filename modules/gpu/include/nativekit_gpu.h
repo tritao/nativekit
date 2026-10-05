@@ -190,6 +190,8 @@ enum NK_ENUM(nkgpu_result) {
     NKGPU_ERROR_WRONG_THREAD = -7,
     /** The selected backend does not expose the requested optional operation. */
     NKGPU_ERROR_UNSUPPORTED = -8,
+    /** A stream append would exceed its capacity; existing data remains valid. */
+    NKGPU_ERROR_BUFFER_OVERFLOW = -9,
 };
 
 /** State of an asynchronous GPU readback. */
@@ -1317,12 +1319,27 @@ NKGPU_API nkgpu_result nkgpu_pipeline_end(nkgpu_pipeline_builder builder,
 /** Destroys a pipeline owned by `renderer`; the handle becomes invalid. */
 NKGPU_API nkgpu_result nkgpu_pipeline_destroy(nkgpu_renderer renderer, nkgpu_pipeline pipeline);
 
-/** Creates an uninitialized stream buffer for appends during an active pass. */
+/** Creates a stream buffer between frames or in a pass owned by this renderer. */
 NKGPU_API nkgpu_result nkgpu_buffer_create_stream(nkgpu_renderer renderer, uint32_t capacity,
                                                   nkgpu_buffer_usage usage,
                                                   nkgpu_buffer *out_buffer NKGPU_OUT);
 
-/** Appends bytes to a stream buffer and returns their byte offset. */
+/** Current-frame capacity, including the backend's four-byte append alignment. */
+typedef struct nkgpu_stream_buffer_info {
+    uint32_t struct_size NK_STRUCT_SIZE;
+    uint32_t capacity;
+    uint32_t used;
+    uint32_t remaining;
+} nkgpu_stream_buffer_info;
+
+/** Queries a stream without advancing its cursor or changing its overflow state. */
+NKGPU_API nkgpu_result nkgpu_buffer_get_stream_info(nkgpu_renderer renderer, nkgpu_buffer buffer,
+    nkgpu_stream_buffer_info *out_info NKGPU_OUT);
+
+/**
+ * Appends bytes and returns their byte offset. A capacity failure returns
+ * NKGPU_ERROR_BUFFER_OVERFLOW before touching the backend or out_offset.
+ */
 NKGPU_API nkgpu_result nkgpu_buffer_append(nkgpu_renderer renderer, nkgpu_buffer buffer,
                                            const uint8_t *data, uint32_t size,
                                            uint32_t *out_offset NKGPU_OUT);
@@ -1343,6 +1360,13 @@ NKGPU_API nkgpu_result nkgpu_begin_frame(nkgpu_renderer renderer);
 
 /** Begins a frame without opening a pass, for plans that contain several passes. */
 NKGPU_API nkgpu_result nkgpu_frame_begin(nkgpu_renderer renderer);
+
+/**
+ * Discards an active frame or unsubmitted stream uploads without presenting.
+ * Advances the backend frame so stream pages can be reused safely. An acquired
+ * NativeKit surface frame still belongs to the caller and must be cancelled.
+ */
+NKGPU_API nkgpu_result nkgpu_frame_abort(nkgpu_renderer renderer);
 
 /** Begins a compute pass inside an active frame. */
 NKGPU_API nkgpu_result nkgpu_begin_compute_pass(nkgpu_renderer renderer);

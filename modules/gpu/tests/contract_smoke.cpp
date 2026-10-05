@@ -143,6 +143,44 @@ int main() {
     EXPECT_RESULT(nkgpu_renderer_create(surface, &first), NKGPU_OK);
     EXPECT_RESULT(nkgpu_renderer_create(surface, &second), NKGPU_OK);
 
+    // Overflow must not poison earlier uploads or prevent a smaller append.
+    {
+        nkgpu_buffer stream{}, in_pass_stream{};
+        nkgpu_stream_buffer_info info{};
+        uint8_t bytes[20]{};
+        uint32_t offset = 99;
+        EXPECT_RESULT(nkgpu_buffer_create_stream(first, 16, NKGPU_BUFFER_VERTEX, &stream), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_buffer_get_stream_info(first, stream, &info), NKGPU_OK);
+        if (info.capacity != 16 || info.used || info.remaining != 16) {
+            result = __LINE__; goto cleanup;
+        }
+        EXPECT_RESULT(nkgpu_begin_frame(first), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_buffer_create_stream(first, 16, NKGPU_BUFFER_INDEX, &in_pass_stream), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_buffer_get_stream_info(second, stream, &info), NKGPU_ERROR_INVALID_HANDLE);
+        EXPECT_RESULT(nkgpu_buffer_append(first, stream, bytes, 3, &offset), NKGPU_OK);
+        if (offset != 0) { result = __LINE__; goto cleanup; }
+        EXPECT_RESULT(nkgpu_buffer_get_stream_info(first, stream, &info), NKGPU_OK);
+        if (info.used != 4 || info.remaining != 12) { result = __LINE__; goto cleanup; }
+        offset = 99;
+        EXPECT_RESULT(nkgpu_buffer_append(first, stream, bytes, 13, &offset), NKGPU_ERROR_BUFFER_OVERFLOW);
+        if (offset != 99) { result = __LINE__; goto cleanup; }
+        EXPECT_RESULT(nkgpu_buffer_append(first, stream, bytes, 12, &offset), NKGPU_OK);
+        if (offset != 4) { result = __LINE__; goto cleanup; }
+        EXPECT_RESULT(nkgpu_buffer_append(first, stream, bytes, UINT32_MAX, &offset), NKGPU_ERROR_BUFFER_OVERFLOW);
+        EXPECT_RESULT(nkgpu_frame_abort(first), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_buffer_get_stream_info(first, stream, &info), NKGPU_OK);
+        if (info.used || info.remaining != 16) { result = __LINE__; goto cleanup; }
+        // Recorded uploads occur while the renderer is idle, before a pass opens.
+        EXPECT_RESULT(nkgpu_buffer_append(first, stream, bytes, 16, &offset), NKGPU_OK);
+        if (offset != 0) { result = __LINE__; goto cleanup; }
+        EXPECT_RESULT(nkgpu_frame_abort(first), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_buffer_get_stream_info(first, stream, &info), NKGPU_OK);
+        if (info.used || info.remaining != 16) { result = __LINE__; goto cleanup; }
+        EXPECT_RESULT(nkgpu_buffer_destroy(first, stream), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_buffer_destroy(first, in_pass_stream), NKGPU_OK);
+    }
+
+
 #if defined(NK_GPU_TEST_BACKEND_MATRIX)
     {
         nk_window_options other_options = window_options;

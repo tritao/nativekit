@@ -236,3 +236,16 @@ backend. D3D11 depth image copies remain whole-subresource operations because
 that backend does not permit depth-stencil source rectangles; D3D11 depth
 subregion image copies report `NKGPU_ERROR_UNSUPPORTED`, while full-subresource
 copies remain available.
+
+### Stream buffer capacity
+
+`nkgpu_buffer_get_stream_info` reports capacity, used bytes, and remaining bytes
+for the current backend frame, including four-byte append alignment.
+`nkgpu_buffer_append` rejects an oversized append with
+`NKGPU_ERROR_BUFFER_OVERFLOW` before changing the buffer or output offset;
+earlier uploads remain valid and a smaller append can still succeed.
+Stream buffers can be created during a pass owned by the same renderer.
+
+`nkgpu_frame_abort` closes any active pass and advances the backend frame without
+presenting. It also discards uploads made while recording an unsubmitted batch.
+The caller must release the batch and cancel any acquired surface frame.

@@ -364,6 +364,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		 * The selected backend does not expose the requested optional operation.
 		 */
 		NKGPU_ERROR_UNSUPPORTED = -8;
+		/**
+		 * A stream append would exceed its capacity; existing data remains valid.
+		 */
+		NKGPU_ERROR_BUFFER_OVERFLOW = -9;
 	}
 	/**
 	 * Kind of resource described by nkgpu_shader_binding().
@@ -783,7 +787,8 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_bind_frame_target(frame_target: ptr<const<nk_surface_frame_target>>) -> nkgpu_result;
 	/**
-	 * Appends bytes to a stream buffer and returns their byte offset.
+	 * Appends bytes and returns their byte offset. A capacity failure returns
+	 * NKGPU_ERROR_BUFFER_OVERFLOW before touching the backend or out_offset.
 	 */
 	extern fn nkgpu_buffer_append(renderer: nkgpu_renderer, buffer: nkgpu_buffer, data: ptr<const<u8>>, size: u32, out_offset: ptr<u32> @out) -> nkgpu_result;
 	/**
@@ -820,7 +825,7 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 */
 	extern fn nkgpu_buffer_create_desc(renderer: nkgpu_renderer, desc: ptr<const<nkgpu_buffer_desc>>, out_buffer: ptr<nkgpu_buffer> @out) -> nkgpu_result;
 	/**
-	 * Creates an uninitialized stream buffer for appends during an active pass.
+	 * Creates a stream buffer between frames or in a pass owned by this renderer.
 	 */
 	extern fn nkgpu_buffer_create_stream(renderer: nkgpu_renderer, capacity: u32, usage: nkgpu_buffer_usage, out_buffer: ptr<nkgpu_buffer> @out) -> nkgpu_result;
 	/**
@@ -834,6 +839,10 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * longer valid after this call, including when GPU creation reports an error.
 	 */
 	extern fn nkgpu_buffer_end(builder: nkgpu_buffer_builder, out_buffer: ptr<nkgpu_buffer> @out) -> nkgpu_result;
+	/**
+	 * Queries a stream without advancing its cursor or changing its overflow state.
+	 */
+	extern fn nkgpu_buffer_get_stream_info(renderer: nkgpu_renderer, buffer: nkgpu_buffer, out_info: ptr<nkgpu_stream_buffer_info> @out) -> nkgpu_result;
 	/**
 	 * Uploads a buffer region into a 2D or array image. Cube images return UNSUPPORTED.
 	 */
@@ -885,6 +894,12 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 	 * Ends the active pass while keeping the frame open.
 	 */
 	extern fn nkgpu_end_pass(renderer: nkgpu_renderer) -> nkgpu_result;
+	/**
+	 * Discards an active frame or unsubmitted stream uploads without presenting.
+	 * Advances the backend frame so stream pages can be reused safely. An acquired
+	 * NativeKit surface frame still belongs to the caller and must be cancelled.
+	 */
+	extern fn nkgpu_frame_abort(renderer: nkgpu_renderer) -> nkgpu_result;
 	/**
 	 * Begins a frame without opening a pass, for plans that contain several passes.
 	 */
@@ -1647,6 +1662,15 @@ interface NativeKitGpu @target("portable-abi64") @library("nativekit_gpu") @depe
 		reserved: u8 @offset(7);
 		front: nkgpu_stencil_face_state @offset(8);
 		back: nkgpu_stencil_face_state @offset(24);
+	}
+	/**
+	 * Current-frame capacity, including the backend's four-byte append alignment.
+	 */
+	struct nkgpu_stream_buffer_info @layout(16, 4) {
+		struct_size: u32 @offset(0) @struct_size;
+		capacity: u32 @offset(4);
+		used: u32 @offset(8);
+		remaining: u32 @offset(12);
 	}
 	/**
 	 * Names a GPU timestamp interval. The label is copied when the interval begins.
