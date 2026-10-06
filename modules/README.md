@@ -6,9 +6,10 @@ dependencies and independently consumable CMake targets.
 | Module | CMake option | Target | Purpose |
 |---|---|---|---|
 | [`gpu`](gpu/) | `NK_BUILD_GPU` | `NativeKit::gpu` | Low-level GPU C API backed by Sokol |
-The GPU module is disabled by default. UIKit and SceneKit now live as sibling
-projects in the Materia repository and consume NativeKit through its public
-core and GPU targets.
+| [`credentials`](credentials/) | `NK_BUILD_CREDENTIALS` | `NativeKit::credentials` | OS-protected storage for small binary credentials |
+The GPU and credentials modules are disabled by default. UIKit and SceneKit
+now live as sibling projects in the Materia repository and consume NativeKit
+through its public core and GPU targets.
 
 | [`audio`](audio/) | `NK_BUILD_AUDIO` | `NativeKit::audio` | miniaudio playback, mixer graph, and DSP |
 

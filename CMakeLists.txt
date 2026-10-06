@@ -23,6 +23,7 @@ option(NK_BUILD_SHARED "Build NativeKit as a shared library" ON)
 option(NK_BUILD_TESTS "Build NativeKit tests" ${BUILD_TESTING})
 option(NK_BUILD_EXAMPLES "Build NativeKit examples" ON)
 option(NK_BUILD_GPU "Build the experimental GPU graphics module" OFF)
+option(NK_BUILD_CREDENTIALS "Build the optional OS credential-store module" OFF)
 option(NK_BUILD_GPU_BACKEND_MATRIX
     "Enable runtime GLCore/GLES3 Sokol dispatch (desktop Linux only)" OFF)
 option(NK_USE_SYSTEM_CURL "Use the system libcurl for the Linux networking backend" OFF)
@@ -513,6 +514,9 @@ if(NK_BUILD_AUDIO)
         target_link_libraries(nativekit PRIVATE ${CMAKE_DL_LIBS} pthread m)
     endif()
     add_subdirectory(modules/audio)
+endif()
+if(NK_BUILD_CREDENTIALS)
+    add_subdirectory(modules/credentials)
 endif()
 install(TARGETS nativekit EXPORT NativeKitTargets
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
