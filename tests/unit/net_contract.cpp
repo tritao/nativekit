@@ -160,8 +160,20 @@ bool poll_until(nk_request_id request, nk_http_stream stream, std::string *compl
                     complete_body->clear();
                 if (response.header_count != 0) {
                     nk_http_header header{};
-                    NK_CHECK(nk_http_response_header(&response, 0, &header) == NK_OK);
-                    NK_CHECK(header.name_size != 0);
+                    bool saw_mode_header = false;
+                    for (uint32_t index = 0; index < response.header_count; ++index) {
+                        NK_CHECK(nk_http_response_header(&response, index, &header) == NK_OK);
+                        NK_CHECK(header.name_size != 0);
+                        const std::string name(header.name, header.name_size);
+                        if (name == "X-Mode") {
+                            const std::string value(header.value, header.value_size);
+                            NK_CHECK(value == "buffered" || value == "stream" ||
+                                     value == "limit" || value == "cancel");
+                            saw_mode_header = true;
+                        }
+                    }
+                    if (complete_status && *complete_status == 404)
+                        NK_CHECK(saw_mode_header);
                 }
                 if (complete_status)
                     *complete_status = response.status_code;

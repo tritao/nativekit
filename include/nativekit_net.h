@@ -109,11 +109,11 @@ enum {
 /* Request and response structures                                           */
 /* ------------------------------------------------------------------------- */
 
-/** UTF-8 header view. Sizes exclude a trailing NUL and are authoritative. */
+/** UTF-8 header byte views; pointers are not NUL-terminated and sizes are authoritative. */
 typedef struct nk_http_header {
-    const char *name NK_UTF8;
+    const char *name NK_BORROWED_BUFFER(name_size);
     uint32_t name_size;
-    const char *value NK_UTF8;
+    const char *value NK_BORROWED_BUFFER(value_size);
     uint32_t value_size;
 } nk_http_header;
 
@@ -161,7 +161,7 @@ typedef struct nk_http_request_options {
     uint32_t struct_size NK_STRUCT_SIZE;
     nk_http_method method;
     const char *url NK_UTF8;
-    const nk_http_header *headers NK_IN_ARRAY(header_count);
+    const nk_http_header *headers NK_BORROWED_ARRAY(header_count);
     uint32_t header_count;
     const void *body NK_BORROWED_BUFFER(body_size);
     uint64_t body_size;
