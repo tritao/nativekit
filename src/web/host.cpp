@@ -285,7 +285,7 @@ EM_JS_DEPS(nativekit_web_host, "$ccall");
 // clang-format off
 EM_JS(void, nk_web_set_canvas_css_size, (const char *selector, int width, int height), {
     const canvas = document.querySelector(UTF8ToString(selector));
-    if (canvas) {
+    if (canvas && canvas.dataset.nativekitSizing === "native") {
         canvas.style.width = width + "px";
         canvas.style.height = height + "px";
     }
@@ -294,18 +294,26 @@ EM_JS(void, nk_web_set_canvas_css_size, (const char *selector, int width, int he
 EM_JS(int, nk_web_create_canvas, (const char *selector, int width, int height, int owned), {
     const value = UTF8ToString(selector);
     let canvas = document.querySelector(value);
+    let created = false;
     if (!canvas && value.startsWith("#")) {
         canvas = document.createElement("canvas");
+        created = true;
         canvas.id = value.slice(1);
         canvas.dataset.nativekitOwned = owned ? "1" : "0";
         (document.body || document.documentElement).appendChild(canvas);
     }
     if (!canvas || canvas.tagName !== "CANVAS")
         return 0;
-    if (width > 0)
-        canvas.style.width = width + "px";
-    if (height > 0)
-        canvas.style.height = height + "px";
+    // Existing canvases belong to the embedding page's CSS layout. Hosts can
+    // explicitly opt into NativeKit sizing with data-nativekit-sizing="native".
+    if (!canvas.dataset.nativekitSizing)
+        canvas.dataset.nativekitSizing = created ? "native" : "css";
+    if (canvas.dataset.nativekitSizing === "native") {
+        if (width > 0)
+            canvas.style.width = width + "px";
+        if (height > 0)
+            canvas.style.height = height + "px";
+    }
     canvas.tabIndex = 0;
     canvas.setAttribute("aria-label", canvas.getAttribute("aria-label") || "NativeKit canvas");
     return 1;
@@ -340,25 +348,46 @@ EM_JS(void, nk_web_set_canvas_aspect_ratio,
                                          : "";
       });
 
-EM_JS(void, nk_web_set_canvas_resizable, (const char *selector, int enabled, int route), {
+// Observe layout independently of the user-resizable flag: a non-resizable
+// embedded canvas can still change size through its container or stylesheet.
+EM_JS(void, nk_web_observe_canvas_size, (const char *selector, int route), {
+    const canvas = document.querySelector(UTF8ToString(selector));
+    if (!canvas)
+        return;
+    if (canvas._nkStopSizeObserver)
+        canvas._nkStopSizeObserver();
+    if (!route)
+        return;
+    const notify = () => ccall("nk_web_host_canvas_resize", null, ["number"], [route]);
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(notify) : null;
+    if (observer)
+        observer.observe(canvas);
+    let scaleQuery;
+    const watchScale = () => {
+        if (scaleQuery)
+            scaleQuery.removeEventListener("change", onScale);
+        scaleQuery = window.matchMedia("(resolution: " + window.devicePixelRatio + "dppx)");
+        scaleQuery.addEventListener("change", onScale);
+    };
+    const onScale = () => {
+        watchScale();
+        notify();
+    };
+    watchScale();
+    canvas._nkStopSizeObserver = () => {
+        if (observer)
+            observer.disconnect();
+        scaleQuery.removeEventListener("change", onScale);
+        delete canvas._nkStopSizeObserver;
+    };
+});
+
+EM_JS(void, nk_web_set_canvas_resizable, (const char *selector, int enabled), {
     const canvas = document.querySelector(UTF8ToString(selector));
     if (!canvas)
         return;
     canvas.style.resize = enabled ? "both" : "none";
     canvas.style.overflow = enabled ? "auto" : "hidden";
-    if (typeof ResizeObserver !== "undefined") {
-        if (canvas._nkResizeObserver)
-            canvas._nkResizeObserver.disconnect();
-        if (enabled) {
-            const notify = () => {
-                ccall("nk_web_host_canvas_resize", null, ["number"], [route]);
-            };
-            canvas._nkResizeObserver = new ResizeObserver(notify);
-            canvas._nkResizeObserver.observe(canvas);
-        } else {
-            delete canvas._nkResizeObserver;
-        }
-    }
 });
 
 // Pointer capture needs the id of the pointer that is down, which mouse events do not carry; the canvas remembers it
@@ -2347,8 +2376,7 @@ void set_canvas_aspect_ratio(const char *selector, int32_t numerator,
 }
 
 void set_canvas_resizable(const char *selector, bool enabled) noexcept {
-    const auto *state = state_for_selector(selector);
-    nk_web_set_canvas_resizable(selector, enabled ? 1 : 0, state ? state->route : 0);
+    nk_web_set_canvas_resizable(selector, enabled ? 1 : 0);
 }
 
 void set_canvas_opacity(const char *selector, float opacity) noexcept {
@@ -2710,6 +2738,7 @@ bool install_callbacks(const char *selector, uint32_t route, const HostCallbacks
                                        resize_callback);
         resize_callback_installed = true;
     }
+    nk_web_observe_canvas_size(selector, route);
     nk_web_track_pointer(selector);
     emscripten_set_mousedown_callback(selector, state_ptr, EM_TRUE, mouse_callback);
     emscripten_set_mouseup_callback(selector, state_ptr, EM_TRUE, mouse_callback);
@@ -2770,6 +2799,7 @@ void remove_callbacks(const char *selector, uint32_t route) noexcept {
     emscripten_set_webglcontextlost_callback(target, state, EM_TRUE, nullptr);
     emscripten_set_webglcontextrestored_callback(target, state, EM_TRUE, nullptr);
     emscripten_set_pointerlockchange_callback(target, state, EM_TRUE, nullptr);
+    nk_web_observe_canvas_size(target, 0);
     nk_web_remove_drop_handlers(target);
     host_states_by_selector.erase(state->selector);
     host_states.erase(found);
