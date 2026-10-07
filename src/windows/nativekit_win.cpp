@@ -1537,14 +1537,16 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             });
             return 0;
         }
-        if (message == WM_SETCURSOR && !resource->decorated) {
-            if (auto cursor = decoration_cursor_for_hit_test(*resource, lparam)) {
-                if (resource->cursor_mode == NK_CURSOR_MODE_HIDDEN ||
-                    resource->cursor_mode == NK_CURSOR_MODE_DISABLED)
-                    SetCursor(nullptr);
-                else
-                    SetCursor(cursor);
-                return TRUE;
+        if (message == WM_SETCURSOR) {
+            if (!resource->decorated) {
+                if (auto cursor = decoration_cursor_for_hit_test(*resource, lparam)) {
+                    if (resource->cursor_mode == NK_CURSOR_MODE_HIDDEN ||
+                        resource->cursor_mode == NK_CURSOR_MODE_DISABLED)
+                        SetCursor(nullptr);
+                    else
+                        SetCursor(cursor);
+                    return TRUE;
+                }
             }
             if (LOWORD(lparam) == HTCLIENT) {
                 apply_cursor(*resource);
