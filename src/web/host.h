@@ -163,6 +163,8 @@ bool create_canvas(const char *selector, bool owned, int32_t width, int32_t heig
 void destroy_canvas(const char *selector, bool owned) noexcept;
 bool canvas_size(const char *selector, CanvasSize *out_size) noexcept;
 bool set_canvas_framebuffer_size(const char *selector, const CanvasSize &size) noexcept;
+// CSS-owned canvases retain page layout; native-owned canvases take the requested
+// CSS size. Both synchronize the framebuffer to the measured canvas bounds.
 bool set_canvas_size(const char *selector, int32_t width, int32_t height) noexcept;
 void set_canvas_size_limits(const char *selector, int32_t min_width, int32_t min_height,
                             int32_t max_width, int32_t max_height) noexcept;

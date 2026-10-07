@@ -86,6 +86,14 @@ maintained in the [platform parity contract](docs/platform-parity.md).
   browser permissions and user-activation rules. Window styling uses the
   browser canvas CSS model; page-owned decorations and activation are outside
   the contract.
+- Web canvases supplied by the embedding page follow CSS layout: window and
+  surface dimensions do not overwrite their CSS width or height. Give these
+  canvases an explicit CSS size (for example `width: 100vw; height: 100vh`).
+  NativeKit measures their logical bounds and maintains a device-scale-aware
+  framebuffer, observing container layout and display-scale changes independently
+  of the window's resizable flag. Set `data-nativekit-sizing="native"` on an
+  existing canvas to opt into pixel dimensions controlled by NativeKit's window
+  and surface APIs. Canvases created by NativeKit default to this native policy.
 - Linux desktop support requires GTK 3 and WebKitGTK 4.1. Without them, the
   library builds with a stub backend and reports the services as unsupported.
 - Windows WebViews require the Microsoft Edge WebView2 Evergreen Runtime.

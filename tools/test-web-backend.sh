@@ -2,6 +2,7 @@
 set -euo pipefail
 
 repo_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+node "$repo_dir/tools/test-canvas-sizing.cjs"
 build_dir=${1:-"$repo_dir/build-web"}
 if [[ "$build_dir" != /* ]]; then
     build_dir="$PWD/$build_dir"
