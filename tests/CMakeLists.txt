@@ -252,6 +252,13 @@ if(NK_BACKEND_GTK_AVAILABLE)
         set_target_properties(nativekit_gtk_resource_workflow PROPERTIES LINKER_LANGUAGE CXX)
         add_test(NAME gtk_resource_workflow
             COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_resource_workflow>)
+        add_executable(nativekit_gtk_event_wait integration/gtk_event_wait.cpp)
+        target_compile_features(nativekit_gtk_event_wait PRIVATE cxx_std_17)
+        target_link_libraries(nativekit_gtk_event_wait PRIVATE NativeKit::nativekit PkgConfig::GTK3)
+        add_test(NAME gtk_event_wait
+            COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_event_wait>)
+        set_tests_properties(gtk_event_wait PROPERTIES LABELS "linux;events" TIMEOUT 15
+            ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
         add_test(NAME capability_conformance
             COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_capability_conformance>)
         set_tests_properties(capability_conformance PROPERTIES
@@ -438,6 +445,11 @@ if(NK_ENABLE_SANITIZERS AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     endif()
     if(TARGET nativekit_gtk_resource_workflow)
         list(APPEND sanitized_test_targets nativekit_gtk_resource_workflow)
+    endif()
+    if(TARGET nativekit_gtk_event_wait)
+        list(APPEND sanitized_test_targets nativekit_gtk_event_wait)
+        set_tests_properties(gtk_event_wait PROPERTIES
+            ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1;ASAN_OPTIONS=detect_leaks=0")
     endif()
     if(TARGET nativekit_linux_notification_failure)
         list(APPEND sanitized_test_targets nativekit_linux_notification_failure)

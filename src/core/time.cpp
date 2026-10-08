@@ -30,7 +30,11 @@ nk_result wait_until(const Clock::time_point *deadline) {
             if (duration.count() == 0)
                 duration = std::chrono::milliseconds(1);
         }
+#if defined(NK_BACKEND_GTK)
+        if (nk::backend::wait_events(sequence, duration))
+#else
         if (nk::core::wait_for_wake(sequence, duration))
+#endif
             return NK_OK;
     }
 }

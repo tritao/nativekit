@@ -2028,6 +2028,9 @@ gboolean on_surface_render(GtkGLArea *area, GdkGLContext *, gpointer data) {
             return;
         callback(resource->handle, gtk_widget_get_allocated_width(GTK_WIDGET(area)) * scale,
                  gtk_widget_get_allocated_height(GTK_WIDGET(area)) * scale, user_data);
+        // Return to the host after rendering so animation requests and managed
+        // input can be processed before waiting for another frame-clock tick.
+        nk::core::wake_events();
     });
     return TRUE;
 }
@@ -3536,6 +3539,45 @@ nk_result clipboard_watch_stop(nk_clipboard_watch watch) noexcept {
     if (!nk::core::handles().erase(watch, nk::core::ResourceType::clipboard_watch))
         return NK_ERROR_INVALID_HANDLE;
     return NK_OK;
+}
+
+// A wake source checks the sequence both before and after polling. A wake
+// arriving just before the main context blocks must not be lost.
+struct EventWaitSource {
+    GSource source;
+    std::uint64_t sequence;
+};
+
+bool wait_events(std::uint64_t sequence, std::chrono::milliseconds timeout) noexcept {
+    const auto ready = [](GSource *source) -> gboolean {
+        const auto *wait = reinterpret_cast<EventWaitSource *>(source);
+        return nk::core::wake_sequence() != wait->sequence || nk::core::events_pending();
+    };
+    static GSourceFuncs functions{
+        [](GSource *source, gint *timeout_ms) -> gboolean {
+            *timeout_ms = -1;
+            const auto *wait = reinterpret_cast<EventWaitSource *>(source);
+            return nk::core::wake_sequence() != wait->sequence || nk::core::events_pending();
+        },
+        ready,
+        [](GSource *, GSourceFunc, gpointer) -> gboolean { return G_SOURCE_CONTINUE; },
+        nullptr, nullptr, nullptr};
+    auto *wake = g_source_new(&functions, sizeof(EventWaitSource));
+    reinterpret_cast<EventWaitSource *>(wake)->sequence = sequence;
+    g_source_attach(wake, nullptr);
+    auto *timer = g_timeout_source_new(static_cast<guint>(timeout.count()));
+    g_source_set_callback(timer, [](gpointer) -> gboolean { return G_SOURCE_REMOVE; }, nullptr, nullptr);
+    g_source_attach(timer, nullptr);
+    g_main_context_iteration(nullptr, TRUE);
+    g_source_destroy(timer);
+    g_source_unref(timer);
+    g_source_destroy(wake);
+    g_source_unref(wake);
+    return nk::core::wake_sequence() != sequence || nk::core::events_pending();
+}
+
+void wake_event_wait() noexcept {
+    g_main_context_wakeup(g_main_context_default());
 }
 
 void pump_events() noexcept {

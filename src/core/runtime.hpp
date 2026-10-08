@@ -50,6 +50,10 @@ void run_runtime_shutdown_hooks() noexcept;
 
 namespace nk::backend {
 void pump_events() noexcept;
+#if defined(NK_BACKEND_GTK)
+bool wait_events(std::uint64_t sequence, std::chrono::milliseconds timeout) noexcept;
+void wake_event_wait() noexcept;
+#endif
 void shutdown() noexcept;
 void schedule_cooperative_tasks() noexcept;
 void stop_cooperative_tasks() noexcept;
