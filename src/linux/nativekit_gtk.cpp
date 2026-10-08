@@ -187,6 +187,7 @@ struct GtkWindowResource final : nk::core::Resource {
     }
 };
 
+nk_window_decoration_region_kind decoration_region_at(const std::vector<nk_window_decoration_region> &regions, float x, float y);
 bool begin_decoration_drag(GtkWindowResource &resource, GdkEventButton &event);
 nk_result apply_pointer_cursor(GtkWindowResource &resource);
 
@@ -1901,8 +1902,21 @@ gboolean on_pointer_button(GtkWidget *, GdkEventButton *button_event, gpointer d
     // GTK emits GDK_2BUTTON_PRESS/GDK_3BUTTON_PRESS in addition to the ordinary
     // GDK_BUTTON_PRESS for that physical click. Forwarding both makes a double-click
     // look like a triple-click to consumers that count press/release transitions.
-    if (button_event->type == GDK_2BUTTON_PRESS || button_event->type == GDK_3BUTTON_PRESS)
+    if (button_event->type == GDK_2BUTTON_PRESS || button_event->type == GDK_3BUTTON_PRESS) {
+        if (button_event->type == GDK_2BUTTON_PRESS && button_event->button == 1) {
+            nk::core::callback_boundary([&] {
+                auto *resource = static_cast<GtkWindowResource *>(data);
+                if (!resource->decorated && !resource->wrapped && resource->resizable &&
+                    decoration_region_at(resource->decoration_regions, button_event->x, button_event->y) == NK_WINDOW_DECORATION_DRAG) {
+                    if (gtk_window_is_maximized(GTK_WINDOW(resource->window)))
+                        gtk_window_unmaximize(GTK_WINDOW(resource->window));
+                    else
+                        gtk_window_maximize(GTK_WINDOW(resource->window));
+                }
+            });
+        }
         return TRUE;
+    }
 
     nk::core::callback_boundary([&] {
         auto *resource = static_cast<GtkWindowResource *>(data);

@@ -2804,7 +2804,10 @@ void emit_window_state(MacWindowResource &resource) noexcept {
         if (!(resource->window.styleMask & NSWindowStyleMaskTitled)) {
             const auto kind = decoration_region_at(resource->decoration_regions, point.x, point.y);
             if (kind == NK_WINDOW_DECORATION_DRAG) {
-                [resource->window performWindowDragWithEvent:event];
+                if (event.clickCount == 2 && (resource->window.styleMask & NSWindowStyleMaskResizable))
+                    [resource->window zoom:nil];
+                else
+                    [resource->window performWindowDragWithEvent:event];
                 return;
             }
             if (is_decoration_resize_kind(kind) &&
