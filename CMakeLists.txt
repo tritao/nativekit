@@ -191,6 +191,9 @@ endif()
 if(CMAKE_DL_LIBS)
     target_link_libraries(nativekit PRIVATE ${CMAKE_DL_LIBS})
 endif()
+if(WIN32)
+    target_link_libraries(nativekit PRIVATE advapi32)
+endif()
 
 target_compile_features(nativekit PRIVATE cxx_std_17)
 target_include_directories(nativekit

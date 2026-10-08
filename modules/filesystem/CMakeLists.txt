@@ -16,7 +16,9 @@ target_include_directories(nativekit_filesystem
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+if(WIN32)
+    target_sources(nativekit_filesystem PRIVATE src/windows.cpp)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_sources(nativekit_filesystem PRIVATE src/linux.cpp)
 else()
     target_sources(nativekit_filesystem PRIVATE src/unsupported.cpp)

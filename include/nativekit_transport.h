@@ -27,7 +27,7 @@ enum NK_ENUM(nk_transport_kind) {
     NK_TRANSPORT_UDP = 2,
     /** RFC 6455 WebSocket frames over a plain TCP connection. */
     NK_TRANSPORT_WEBSOCKET = 3,
-    /** Reliable byte stream over a local operating-system socket. */
+    /** Reliable byte stream over a local operating-system endpoint (Unix socket or Windows named pipe). */
     NK_TRANSPORT_LOCAL = 4
 };
 
@@ -67,7 +67,7 @@ typedef struct nk_transport_options {
     uint16_t port;
     /** Reserved; initialize to zero. */
     uint16_t reserved0;
-    /** Unix socket path for NK_TRANSPORT_LOCAL, or WebSocket resource path. */
+    /** Unix socket path or Windows named pipe name for LOCAL, or WebSocket resource path. */
     const char *path NK_NULLABLE_UTF8;
     /** Connection and handshake timeout; zero selects five seconds. */
     uint32_t timeout_ms;

@@ -8,9 +8,12 @@ The Linux backend pins an opened directory descriptor and resolves each
 root-relative path with `openat2(RESOLVE_BENEATH | RESOLVE_NO_MAGICLINKS)`. It
 therefore follows relative symlinks only when the kernel proves the result stays
 beneath that root. Absolute symlink targets are conservatively rejected. The
-module returns `NK_ERROR_UNSUPPORTED` when the kernel lacks secure `openat2`
-resolution; it does not fall back to a string-prefix check or a weaker walk.
-Other platforms currently compile a backend that reports `NK_ERROR_UNSUPPORTED`.
+Windows backend pins directory and file handles, follows reparse points only
+when the resolved handle path remains under the granted root, and rejects
+Windows alternate data stream paths. The module returns `NK_ERROR_UNSUPPORTED`
+when the Linux kernel lacks secure `openat2` resolution; it does not fall back
+to a weaker path walk. Other platforms currently compile a backend that
+reports `NK_ERROR_UNSUPPORTED`.
 
 Paths are canonical UTF-8, slash-separated and relative to the root. Empty path
 addresses the root. Directory cursors retain a pending entry if the caller's
