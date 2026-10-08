@@ -86,6 +86,45 @@ HWND notification_window = nullptr;
 
 UINT query_window_dpi(HWND window);
 
+void enable_process_dpi_awareness() {
+    using SetProcessDpiAwarenessContextFn = BOOL(WINAPI *)(HANDLE);
+    const FARPROC set_context_address =
+        GetProcAddress(GetModuleHandleW(L"user32.dll"), "SetProcessDpiAwarenessContext");
+    SetProcessDpiAwarenessContextFn set_context = nullptr;
+    static_assert(sizeof(set_context) == sizeof(set_context_address));
+    std::memcpy(&set_context, &set_context_address, sizeof(set_context));
+    // DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 is the pseudo handle -4.
+    if (set_context && set_context(reinterpret_cast<HANDLE>(static_cast<INT_PTR>(-4))))
+        return;
+
+    // Keep the backend usable on Windows versions that predate per-monitor v2.
+    if (HMODULE shcore = LoadLibraryW(L"Shcore.dll")) {
+        using SetProcessDpiAwarenessFn = HRESULT(WINAPI *)(int);
+        const FARPROC set_awareness_address =
+            GetProcAddress(shcore, "SetProcessDpiAwareness");
+        SetProcessDpiAwarenessFn set_awareness = nullptr;
+        static_assert(sizeof(set_awareness) == sizeof(set_awareness_address));
+        std::memcpy(&set_awareness, &set_awareness_address, sizeof(set_awareness));
+        if (set_awareness && SUCCEEDED(set_awareness(2))) {
+            FreeLibrary(shcore);
+            return;
+        }
+        FreeLibrary(shcore);
+    }
+    SetProcessDPIAware();
+}
+
+BOOL adjust_window_rect_for_dpi(LPRECT bounds, DWORD style, DWORD extended_style, UINT dpi) {
+    using AdjustWindowRectExForDpiFn = BOOL(WINAPI *)(LPRECT, DWORD, BOOL, DWORD, UINT);
+    const FARPROC address =
+        GetProcAddress(GetModuleHandleW(L"user32.dll"), "AdjustWindowRectExForDpi");
+    AdjustWindowRectExForDpiFn adjust = nullptr;
+    static_assert(sizeof(adjust) == sizeof(address));
+    std::memcpy(&adjust, &address, sizeof(adjust));
+    return adjust ? adjust(bounds, style, FALSE, extended_style, dpi)
+                  : AdjustWindowRectEx(bounds, style, FALSE, extended_style);
+}
+
 nk_window_decoration_region_kind
 decoration_region_at(const std::vector<nk_window_decoration_region> &regions, float x, float y) {
     for (auto iter = regions.rbegin(); iter != regions.rend(); ++iter) {
@@ -1569,14 +1608,15 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             return HTTRANSPARENT;
         if (message == WM_GETMINMAXINFO) {
             auto *info = reinterpret_cast<MINMAXINFO *>(lparam);
+            const int dpi = static_cast<int>(query_window_dpi(window));
             if (resource->min_width)
-                info->ptMinTrackSize.x = resource->min_width;
+                info->ptMinTrackSize.x = MulDiv(resource->min_width, dpi, 96);
             if (resource->min_height)
-                info->ptMinTrackSize.y = resource->min_height;
+                info->ptMinTrackSize.y = MulDiv(resource->min_height, dpi, 96);
             if (resource->max_width)
-                info->ptMaxTrackSize.x = resource->max_width;
+                info->ptMaxTrackSize.x = MulDiv(resource->max_width, dpi, 96);
             if (resource->max_height)
-                info->ptMaxTrackSize.y = resource->max_height;
+                info->ptMaxTrackSize.y = MulDiv(resource->max_height, dpi, 96);
             return 0;
         }
         if (message == WM_SIZING && resource->aspect_numerator && resource->aspect_denominator) {
@@ -1622,13 +1662,24 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
         }
         if (message == WM_SIZE) {
             nk::core::callback_boundary([&] {
-                const nk_window_resize_event size{static_cast<int32_t>(LOWORD(lparam)),
-                                                  static_cast<int32_t>(HIWORD(lparam))};
+                const int32_t framebuffer_width = static_cast<int32_t>(LOWORD(lparam));
+                const int32_t framebuffer_height = static_cast<int32_t>(HIWORD(lparam));
+                const int dpi = static_cast<int>(query_window_dpi(window));
+                const nk_window_resize_event size{MulDiv(framebuffer_width, 96, dpi),
+                                                  MulDiv(framebuffer_height, 96, dpi)};
                 nk::core::QueuedEvent event;
                 event.kind = NK_EVENT_WINDOW_RESIZE;
                 event.source = resource->handle;
                 event.data = bytes_of(size);
                 nk::core::push_event(std::move(event));
+
+                const nk_window_framebuffer_resize_event framebuffer{framebuffer_width,
+                                                                     framebuffer_height};
+                nk::core::QueuedEvent framebuffer_event;
+                framebuffer_event.kind = NK_EVENT_WINDOW_FRAMEBUFFER_RESIZE;
+                framebuffer_event.source = resource->handle;
+                framebuffer_event.data = bytes_of(framebuffer);
+                nk::core::push_event(std::move(framebuffer_event));
             });
             nk::core::callback_boundary([&] {
                 nk_window_state state{sizeof(state), 0, {0, 0}};
@@ -3177,6 +3228,7 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
             ((options->flags & NK_WINDOW_MODAL) && !options->owner))
             return fail(NK_ERROR_INVALID_ARGUMENT, "invalid window options");
         *out_window = NK_INVALID_HANDLE;
+        enable_process_dpi_awareness();
         if (!ensure_window_class())
             return fail(NK_ERROR_UNKNOWN, "could not register Win32 window class");
         auto owner = options->owner ? get_window(options->owner) : nullptr;
@@ -3196,9 +3248,11 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
             style |= WS_THICKFRAME | WS_MAXIMIZEBOX;
         if (!(options->flags & NK_WINDOW_RESIZABLE))
             style &= ~(WS_THICKFRAME | WS_MAXIMIZEBOX);
-        RECT bounds{0, 0, options->width, options->height};
+        const UINT initial_dpi = owner ? query_window_dpi(owner->window) : monitor_dpi();
+        RECT bounds{0, 0, MulDiv(options->width, static_cast<int>(initial_dpi), 96),
+                    MulDiv(options->height, static_cast<int>(initial_dpi), 96)};
         if (!(options->flags & NK_WINDOW_BORDERLESS))
-            AdjustWindowRectEx(&bounds, style, FALSE, extended_style);
+            adjust_window_rect_for_dpi(&bounds, style, extended_style, initial_dpi);
         resource->window = CreateWindowExW(
             extended_style, window_class_name, title.c_str(), style, CW_USEDEFAULT, CW_USEDEFAULT,
             bounds.right - bounds.left, bounds.bottom - bounds.top, owner ? owner->window : nullptr,
@@ -3415,7 +3469,9 @@ nk_result NK_CALL nk_window_set_bounds(nk_handle handle, int32_t x, int32_t y, i
     auto resource = get_window(handle);
     if (!resource)
         return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
-    return SetWindowPos(resource->window, nullptr, x, y, width, height,
+    const int dpi = static_cast<int>(query_window_dpi(resource->window));
+    return SetWindowPos(resource->window, nullptr, MulDiv(x, dpi, 96), MulDiv(y, dpi, 96),
+                        MulDiv(width, dpi, 96), MulDiv(height, dpi, 96),
                         SWP_NOACTIVATE | SWP_NOZORDER)
                ? NK_OK
                : fail(NK_ERROR_UNKNOWN, "could not set window bounds");
