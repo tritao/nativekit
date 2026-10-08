@@ -985,6 +985,7 @@ class TransportResource final : public nk::core::Resource,
     std::vector<uint8_t> ws_fragment;
     uint8_t ws_fragment_opcode = 0;
 #if defined(NK_HAS_LIBWEBSOCKETS)
+    std::mutex lws_context_mutex;
     lws_context *lws_context_handle = nullptr;
     lws *lws_handle = nullptr;
 #endif
@@ -1014,8 +1015,16 @@ class TransportResource final : public nk::core::Resource,
 #endif
     }
 
+    void wake_service() noexcept {
+#if defined(NK_HAS_LIBWEBSOCKETS)
+        std::lock_guard lock(lws_context_mutex);
+        if (lws_context_handle) lws_cancel_service(lws_context_handle);
+#endif
+    }
+
     void stop_and_join() noexcept {
         stopping.store(true, std::memory_order_release);
+        wake_service();
         condition.notify_all();
         {
             std::lock_guard lock(socket_mutex);
@@ -1750,7 +1759,10 @@ void TransportResource::run_secure_websocket() noexcept {
     context_info.port = CONTEXT_PORT_NO_LISTEN;
     context_info.protocols = protocols;
     context_info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
-    lws_context_handle = lws_create_context(&context_info);
+    {
+        std::lock_guard lock(lws_context_mutex);
+        lws_context_handle = lws_create_context(&context_info);
+    }
     if (!lws_context_handle) {
         finish(NK_TRANSPORT_ERROR_CONNECTION);
         return;
@@ -1761,15 +1773,21 @@ void TransportResource::run_secure_websocket() noexcept {
     connect.port = options.port ? options.port : 443;
     connect.path = options.path.c_str();
     connect.host = options.host.c_str();
-    connect.origin = options.host.c_str();
+    // Native clients have no browser origin.
+    connect.origin = nullptr;
     connect.protocol = options.subprotocols.empty() ? nullptr : options.subprotocols.c_str();
     connect.local_protocol_name = "nativekit";
     connect.ssl_connection = LCCSCF_USE_SSL;
     connect.opaque_user_data = this;
     lws_handle = lws_client_connect_via_info(&connect);
     if (!lws_handle) {
-        lws_context_destroy(lws_context_handle);
-        lws_context_handle = nullptr;
+        lws_context *closing;
+        {
+            std::lock_guard lock(lws_context_mutex);
+            closing = lws_context_handle;
+            lws_context_handle = nullptr;
+        }
+        lws_context_destroy(closing);
         finish(NK_TRANSPORT_ERROR_CONNECTION);
         return;
     }
@@ -1789,8 +1807,13 @@ void TransportResource::run_secure_websocket() noexcept {
         if (terminal_result != NK_OK)
             break;
     }
-    lws_context_destroy(lws_context_handle);
-    lws_context_handle = nullptr;
+    lws_context *closing;
+    {
+        std::lock_guard lock(lws_context_mutex);
+        closing = lws_context_handle;
+        lws_context_handle = nullptr;
+    }
+    lws_context_destroy(closing);
     lws_handle = nullptr;
     const auto result = stopping.load(std::memory_order_acquire)
                             ? NK_TRANSPORT_ERROR_CANCELED
@@ -2187,15 +2210,18 @@ nk_result NK_CALL nk_transport_send(nk_transport handle, const void *data, uint6
             (transport->options.flags & NK_TRANSPORT_SECURE) == 0)
             payload = websocket_frame(payload.data(), payload.size(), !transport->server_side, 2);
 
-        std::lock_guard lock(transport->mutex);
-        if (transport->state == TransportResource::State::closed)
-            return fail(NK_ERROR_INVALID_REQUEST, "transport is closed");
-        if (payload.size() > transport->options.send_buffer_size ||
-            transport->outgoing_bytes > transport->options.send_buffer_size - payload.size())
-            return fail(NK_ERROR_QUEUE_FULL, "transport send queue is full");
-        transport->outgoing_bytes += payload.size();
-        transport->outgoing.push_back(std::move(payload));
+        {
+            std::lock_guard lock(transport->mutex);
+            if (transport->state == TransportResource::State::closed)
+                return fail(NK_ERROR_INVALID_REQUEST, "transport is closed");
+            if (payload.size() > transport->options.send_buffer_size ||
+                transport->outgoing_bytes > transport->options.send_buffer_size - payload.size())
+                return fail(NK_ERROR_QUEUE_FULL, "transport send queue is full");
+            transport->outgoing_bytes += payload.size();
+            transport->outgoing.push_back(std::move(payload));
+        }
         transport->condition.notify_all();
+        transport->wake_service();
         return NK_OK;
     });
 }
