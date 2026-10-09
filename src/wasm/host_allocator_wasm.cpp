@@ -50,6 +50,11 @@ extern "C" void *malloc(std::size_t size) {
     return ensure_allocator() ? allocator.allocate(size) : nullptr;
 }
 
+// Native solvers use the writable capacity to reuse their allocation buffers.
+extern "C" std::size_t malloc_usable_size(void *pointer) {
+    return ensure_allocator() ? allocator.usable_size(pointer) : 0;
+}
+
 extern "C" void free(void *pointer) {
     if (ensure_allocator())
         allocator.release(pointer);

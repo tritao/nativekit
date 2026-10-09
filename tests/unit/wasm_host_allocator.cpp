@@ -35,6 +35,26 @@ bool basic_allocations() {
     return check(allocator.allocate(512) != nullptr, "coalescing did not recover freed blocks");
 }
 
+bool usable_allocation_capacity() {
+    alignas(64) std::array<std::byte, 16 * 1024> storage{};
+    nk::wasm::WasmHostAllocator allocator;
+    if (!check(allocator.usable_size(nullptr) == 0, "uninitialized capacity")) return false;
+    if (!allocator.initialize(storage.data(), storage.size())) return false;
+    if (!check(allocator.usable_size(nullptr) == 0, "null capacity")) return false;
+    auto *pointer = allocator.allocate(31);
+    if (!check(pointer && allocator.usable_size(pointer) >= 31, "allocation capacity")) return false;
+    std::memset(pointer, 0xa5, allocator.usable_size(pointer));
+    pointer = allocator.reallocate(pointer, 257);
+    if (!check(pointer && allocator.usable_size(pointer) >= 257, "reallocation capacity")) return false;
+    std::memset(pointer, 0x5a, allocator.usable_size(pointer));
+    auto *other = allocator.allocate_aligned(256, 300);
+    if (!check(other && allocator.usable_size(other) >= 300, "aligned allocation capacity")) return false;
+    std::memset(other, 0x33, allocator.usable_size(other));
+    allocator.release(other);
+    allocator.release(pointer);
+    return check(allocator.statistics().in_use == 0, "capacity query changed accounting");
+}
+
 bool realloc_preserves_data() {
     alignas(64) std::array<std::byte, 16 * 1024> storage{};
     nk::wasm::WasmHostAllocator allocator;
@@ -111,7 +131,7 @@ bool churn_keeps_large_blocks() {
 } // namespace
 
 int main() {
-    return basic_allocations() && realloc_preserves_data() && aligned_allocations() &&
+    return basic_allocations() && usable_allocation_capacity() && realloc_preserves_data() && aligned_allocations() &&
                    exhaustion_is_bounded() && churn_keeps_large_blocks()
                ? 0
                : 1;

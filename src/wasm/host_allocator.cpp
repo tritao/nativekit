@@ -19,6 +19,10 @@ bool WasmHostAllocator::valid() const {
     return space_ != nullptr;
 }
 
+std::size_t WasmHostAllocator::usable_size(const void *pointer) const {
+    return valid() && pointer ? nk_host_mspace_usable_size(pointer) : 0;
+}
+
 void WasmHostAllocator::track_allocation(void *pointer) {
     if (!pointer)
         return;

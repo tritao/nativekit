@@ -22,6 +22,8 @@ class WasmHostAllocator {
     bool initialize(void *base, std::size_t size);
     bool valid() const;
 
+    /** Writable allocation capacity; zero for null or an uninitialized allocator. */
+    std::size_t usable_size(const void *pointer) const;
     void *allocate(std::size_t size);
     void release(void *pointer);
     void *reallocate(void *pointer, std::size_t size);
