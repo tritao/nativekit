@@ -1,6 +1,7 @@
 #include "nativekit.h"
 #include "nativekit_graphics.h"
 #include "nativekit_window.h"
+#include "nativekit_time.h"
 
 #include <assert.h>
 #include <unistd.h>
@@ -8,6 +9,7 @@
 typedef struct frame_state {
     int count;
     int request_next;
+    unsigned int work_us;
     nk_surface surface;
 } frame_state;
 
@@ -15,6 +17,8 @@ static void NK_CALL on_frame(nk_surface surface, int32_t width, int32_t height, 
     frame_state *state = user_data;
     assert(surface != NK_INVALID_HANDLE && width > 0 && height > 0);
     ++state->count;
+    if (state->work_us)
+        usleep(state->work_us);
     if (state->request_next)
         assert(nk_surface_request_frame(surface) == NK_OK);
 }
@@ -103,9 +107,51 @@ int main(void) {
     pump_frames(&state, 80);
     assert(state.count == settled_count);
 
+    /* A direct frame callback is work too: waiting must return to the owner so
+       simulation/background work runs before requesting the next frame. */
+    const int before_wait = state.count;
+    const double wait_started = nk_time_seconds();
+    assert(nk_surface_request_frame(surface) == NK_OK);
+    while (state.count == before_wait && nk_time_seconds() - wait_started < 0.5) {
+        assert(nk_wait_events_timeout(1.0) == NK_OK);
+        nk_event event = {0};
+        event.struct_size = sizeof(event);
+        assert(nk_poll_event(&event) == NK_OK);
+        nk_event_release(&event);
+    }
+    assert(state.count == before_wait + 1);
+    assert(nk_time_seconds() - wait_started < 0.5);
+    pump_frames(&state, 80);
+    assert(state.count == before_wait + 1);
+
+    /* A slow self-requesting frame must yield to the owner between frames.
+       Otherwise draining GTK can starve simulation/background work forever. */
+    const int before_slow = state.count;
+    state.work_us = 40000;
+    state.request_next = 1;
+    assert(nk_surface_request_frame(surface) == NK_OK);
+    const double slow_started = nk_time_seconds();
+    while (state.count < before_slow + 3 && nk_time_seconds() - slow_started < 1.0) {
+        const int before_poll = state.count;
+        nk_event event = {0};
+        event.struct_size = sizeof(event);
+        assert(nk_poll_event(&event) == NK_OK);
+        nk_event_release(&event);
+        assert(state.count <= before_poll + 1);
+        usleep(1000);
+    }
+    assert(state.count == before_slow + 3);
+    assert(nk_time_seconds() - slow_started < 1.0);
+    state.request_next = 0;
+    state.work_us = 0;
+    pump_frames(&state, 80);
+    const int after_slow = state.count;
+    pump_frames(&state, 80);
+    assert(state.count == after_slow);
+
     /* Continuous scheduling resumes when the application asks for it. */
     assert(nk_surface_set_frame_mode(surface, NK_SURFACE_FRAME_CONTINUOUS) == NK_OK);
-    pump_until_frames(&state, settled_count + 2);
+    pump_until_frames(&state, after_slow + 2);
 
     assert(nk_surface_request_frame(surface) == NK_OK);
     assert(nk_surface_set_frame_mode(surface, (nk_surface_frame_mode)7) ==

@@ -301,6 +301,9 @@ if(NK_BUILD_EXAMPLES)
     add_executable(nativekit_gpu_triangle examples/triangle.c)
     target_link_libraries(nativekit_gpu_triangle PRIVATE NativeKit::gpu)
     set_target_properties(nativekit_gpu_triangle PROPERTIES LINKER_LANGUAGE CXX)
+    add_executable(nativekit_gpu_frame_pacing examples/frame_pacing.cpp)
+    target_compile_features(nativekit_gpu_frame_pacing PRIVATE cxx_std_17)
+    target_link_libraries(nativekit_gpu_frame_pacing PRIVATE NativeKit::gpu)
 endif()
 
 install(TARGETS nativekit_gpu EXPORT NativeKitTargets
