@@ -106,15 +106,25 @@ std::uint64_t wake_sequence() noexcept {
 }
 
 bool wait_for_wake(std::uint64_t sequence, std::chrono::milliseconds timeout) noexcept {
+#if defined(NK_BACKEND_GTK)
+    if (wake_sequence() != sequence || events_pending())
+        return true;
+    nk::backend::wait_events(timeout);
+    return wake_sequence() != sequence || events_pending();
+#else
     std::unique_lock lock(event_wake_mutex);
     return event_wake_condition.wait_for(lock, timeout, [sequence] {
         return event_wake_sequence.load(std::memory_order_acquire) != sequence || events_pending();
     });
+#endif
 }
 
 void wake_events() noexcept {
     event_wake_sequence.fetch_add(1, std::memory_order_release);
     event_wake_condition.notify_all();
+#if defined(NK_BACKEND_GTK)
+    nk::backend::wake_event_wait();
+#endif
 }
 
 void register_runtime_shutdown_hook(RuntimeShutdownHook hook) noexcept {

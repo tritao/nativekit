@@ -216,6 +216,11 @@ if(NK_BACKEND_GTK_AVAILABLE)
         set_target_properties(nativekit_gtk_surface_make_current PROPERTIES LINKER_LANGUAGE CXX)
         add_test(NAME gtk_surface_make_current
             COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_surface_make_current>)
+        add_executable(nativekit_gtk_event_wait integration/gtk_event_wait.c)
+        target_link_libraries(nativekit_gtk_event_wait PRIVATE NativeKit::nativekit PkgConfig::GTK3)
+        set_target_properties(nativekit_gtk_event_wait PROPERTIES LINKER_LANGUAGE CXX)
+        add_test(NAME gtk_event_wait
+            COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_event_wait>)
         add_executable(nativekit_gtk_surface_request_frame
             integration/gtk_surface_request_frame.c)
         target_link_libraries(nativekit_gtk_surface_request_frame PRIVATE NativeKit::nativekit)

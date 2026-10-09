@@ -247,6 +247,7 @@ struct GtkSurfaceResource final : nk::core::Resource {
     nk_surface_frame_callback frame_callback = nullptr;
     void *frame_user_data = nullptr;
     guint frame_tick = 0;
+    GtkWidget *frame_tick_widget = nullptr;
     nk::core::FrameRequestState frame_requests;
     bool frame_render_scheduled = false;
     std::shared_ptr<GtkSurfaceResource> shared_surface;
@@ -254,8 +255,10 @@ struct GtkSurfaceResource final : nk::core::Resource {
     nk_accessibility_node_id accessibility_focus = NK_ACCESSIBILITY_ROOT;
 
     ~GtkSurfaceResource() override {
-        if (widget && frame_tick)
-            gtk_widget_remove_tick_callback(widget, frame_tick);
+        if (frame_tick_widget && frame_tick)
+            gtk_widget_remove_tick_callback(frame_tick_widget, frame_tick);
+        frame_tick = 0;
+        frame_tick_widget = nullptr;
         if (widget) {
             g_object_set_data(G_OBJECT(widget), k_accessibility_resource_data, nullptr);
             gtk_widget_destroy(widget);
@@ -1979,22 +1982,42 @@ gboolean on_pointer_crossing(GtkWidget *, GdkEventCrossing *crossing, gpointer d
     return FALSE;
 }
 
+void on_surface_tick_removed(gpointer data) {
+    auto *resource = static_cast<GtkSurfaceResource *>(data);
+    if (!resource)
+        return;
+    resource->frame_tick = 0;
+    resource->frame_tick_widget = nullptr;
+}
+
 gboolean on_surface_tick(GtkWidget *widget, GdkFrameClock *, gpointer data) {
+    (void)widget;
     auto *resource = static_cast<GtkSurfaceResource *>(data);
     if (!resource || !nk::core::is_runtime_generation(resource->generation) ||
         !resource->frame_callback) {
-        if (resource)
+        if (resource) {
             resource->frame_tick = 0;
+            resource->frame_tick_widget = nullptr;
+        }
         return G_SOURCE_REMOVE;
     }
     if (!resource->frame_requests.should_draw()) {
         /* An idle on-demand surface stops ticking until the next request. */
         resource->frame_tick = 0;
+        resource->frame_tick_widget = nullptr;
+        return G_SOURCE_REMOVE;
+    }
+    if (!gtk_widget_get_mapped(resource->widget)) {
+        if (resource->frame_render_scheduled)
+            resource->frame_requests.request();
+        resource->frame_render_scheduled = false;
+        resource->frame_tick = 0;
+        resource->frame_tick_widget = nullptr;
         return G_SOURCE_REMOVE;
     }
     resource->frame_requests.begin_frame();
     resource->frame_render_scheduled = true;
-    gtk_gl_area_queue_render(GTK_GL_AREA(widget));
+    gtk_gl_area_queue_render(GTK_GL_AREA(resource->widget));
     return G_SOURCE_CONTINUE;
 }
 
@@ -2014,6 +2037,10 @@ gboolean on_surface_render(GtkGLArea *area, GdkGLContext *, gpointer data) {
             return;
         callback(resource->handle, gtk_widget_get_allocated_width(GTK_WIDGET(area)) * scale,
                  gtk_widget_get_allocated_height(GTK_WIDGET(area)) * scale, user_data);
+        // A frame is delivered directly, not through the event queue. End an
+        // enclosing event wait so the owner can advance animation/simulation
+        // and request the next frame instead of sleeping to the old deadline.
+        nk::core::wake_events();
     });
     return TRUE;
 }
@@ -2022,15 +2049,26 @@ void arm_surface_frames(const std::shared_ptr<GtkSurfaceResource> &resource) {
     if (!resource || resource->frame_tick || !resource->frame_callback || !resource->widget ||
         !nk::core::is_runtime_generation(resource->generation))
         return;
-    resource->frame_tick =
-        gtk_widget_add_tick_callback(resource->widget, on_surface_tick, resource.get(), nullptr);
+    auto *frame_clock_widget = gtk_widget_get_toplevel(resource->widget);
+    if (!GTK_IS_WINDOW(frame_clock_widget))
+        return;
+    /* A GtkGLArea's tick callback stalls after queuing its own GL render on GTK 3. */
+    resource->frame_tick_widget = frame_clock_widget;
+    resource->frame_tick = gtk_widget_add_tick_callback(
+        frame_clock_widget, on_surface_tick, resource.get(), on_surface_tick_removed);
+    if (!resource->frame_tick)
+        resource->frame_tick_widget = nullptr;
 }
 
 void disarm_surface_frames(const std::shared_ptr<GtkSurfaceResource> &resource) {
-    if (!resource || !resource->frame_tick || !resource->widget)
+    if (!resource || !resource->frame_tick)
         return;
-    gtk_widget_remove_tick_callback(resource->widget, resource->frame_tick);
+    auto *frame_tick_widget = resource->frame_tick_widget;
+    const auto frame_tick = resource->frame_tick;
     resource->frame_tick = 0;
+    resource->frame_tick_widget = nullptr;
+    if (frame_tick_widget)
+        gtk_widget_remove_tick_callback(frame_tick_widget, frame_tick);
 }
 
 GdkGLContext *on_surface_create_context(GtkGLArea *area, gpointer data) {
@@ -3524,9 +3562,33 @@ nk_result clipboard_watch_stop(nk_clipboard_watch watch) noexcept {
     return NK_OK;
 }
 
+void wait_events(std::chrono::milliseconds timeout) noexcept {
+    // GLib chooses the earlier of this bound and its own source deadlines. A
+    // condition-variable sleep cannot see Gtk frame clocks or native events.
+    GSource *limit = g_timeout_source_new(static_cast<guint>(timeout.count()));
+    g_source_set_callback(limit, [](gpointer) -> gboolean { return G_SOURCE_REMOVE; },
+                          nullptr, nullptr);
+    g_source_attach(limit, nullptr);
+    g_main_context_iteration(nullptr, TRUE);
+    g_source_destroy(limit);
+    g_source_unref(limit);
+}
+
+void wake_event_wait() noexcept {
+    // GLib also remembers this wake if iteration has not started blocking yet,
+    // closing the race with the core wake-sequence check on the UI thread.
+    g_main_context_wakeup(nullptr);
+}
+
 void pump_events() noexcept {
     nk::linux_joystick::pump();
+    const auto wake = nk::core::wake_sequence();
     while (g_main_context_iteration(nullptr, FALSE)) {
+        // Return delivered work to the owner, even when an expensive frame
+        // has already made its successor ready. Animation must not starve
+        // the simulation/background tick that runs between event pumps.
+        if (nk::core::wake_sequence() != wake)
+            break;
     }
     nk::core::callback_boundary([] { poll_monitor_orientations(); });
 }
@@ -5033,7 +5095,21 @@ nk_result NK_CALL nk_surface_show(nk_handle handle, uint32_t visible) {
     auto resource = surface(handle);
     if (!resource)
         return invalid_handle("graphics surface");
-    visible ? gtk_widget_show(resource->widget) : gtk_widget_hide(resource->widget);
+    if (!visible) {
+        if (resource->frame_render_scheduled)
+            resource->frame_requests.request();
+        resource->frame_render_scheduled = false;
+        disarm_surface_frames(resource);
+        gtk_widget_hide(resource->widget);
+        return NK_OK;
+    }
+    gtk_widget_show(resource->widget);
+    if (resource->frame_callback &&
+        (resource->frame_requests.continuous() || resource->frame_requests.pending())) {
+        arm_surface_frames(resource);
+        if (resource->frame_requests.continuous())
+            gtk_gl_area_queue_render(GTK_GL_AREA(resource->widget));
+    }
     return NK_OK;
 }
 
@@ -5279,8 +5355,9 @@ nk_result NK_CALL nk_frame_backend_submit(const nk_surface_frame_target *) {
     return NK_OK;
 }
 
-nk_result NK_CALL nk_frame_backend_finish(nk_handle handle, const nk_surface_frame_target *) {
-    return nk_surface_present(handle);
+nk_result NK_CALL nk_frame_backend_finish(nk_handle, const nk_surface_frame_target *) {
+    /* GtkGLArea presents its current framebuffer when the render callback returns. */
+    return NK_OK;
 }
 
 nk_result NK_CALL nk_surface_set_frame_callback(nk_handle handle,

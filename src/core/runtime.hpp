@@ -49,6 +49,12 @@ void run_runtime_shutdown_hooks() noexcept;
 } // namespace nk::core
 
 namespace nk::backend {
+#if defined(NK_BACKEND_GTK)
+/** Waits on GLib sources, including frame-clock deadlines, instead of polling them. */
+void wait_events(std::chrono::milliseconds timeout) noexcept;
+/** May be called from any thread, including before runtime initialization. */
+void wake_event_wait() noexcept;
+#endif
 void pump_events() noexcept;
 void shutdown() noexcept;
 void schedule_cooperative_tasks() noexcept;
