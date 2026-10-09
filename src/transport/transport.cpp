@@ -44,6 +44,7 @@
 #endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <windows.h>
 #else
 #include <arpa/inet.h>
 #include <errno.h>
@@ -65,7 +66,9 @@ using clock_type = std::chrono::steady_clock;
 #if defined(_WIN32)
 using socket_type = SOCKET;
 using socket_length_type = int;
+using pipe_type = HANDLE;
 constexpr socket_type invalid_socket = INVALID_SOCKET;
+const pipe_type invalid_pipe = INVALID_HANDLE_VALUE;
 constexpr int send_flags = 0;
 #else
 using socket_type = int;
@@ -171,7 +174,18 @@ bool copy_options(const nk_transport_options *input, TransportOptions &output, b
         return false;
     if (input->kind == NK_TRANSPORT_LOCAL) {
 #if defined(_WIN32)
-        return false;
+        constexpr std::string_view prefix = R"(\\.\pipe\)";
+        if (output.path.size() <= prefix.size() || output.path.size() > 240 ||
+            output.path.compare(0, prefix.size(), prefix) != 0)
+            return false;
+        for (std::size_t index = prefix.size(); index < output.path.size(); ++index) {
+            const unsigned char character = static_cast<unsigned char>(output.path[index]);
+            if (!((character >= 'a' && character <= 'z') ||
+                  (character >= 'A' && character <= 'Z') ||
+                  (character >= '0' && character <= '9') || character == '-' ||
+                  character == '_' || character == '.'))
+                return false;
+        }
 #else
         if (output.path.empty() || output.path.size() >= sizeof(sockaddr_un::sun_path))
             return false;
@@ -250,6 +264,150 @@ void close_socket(socket_type socket) noexcept {
     close(socket);
 #endif
 }
+
+#if defined(_WIN32)
+void close_pipe(pipe_type pipe) noexcept {
+    if (pipe != invalid_pipe)
+        CloseHandle(pipe);
+}
+
+bool utf8_to_wide(std::string_view value, std::wstring &out) {
+    if (value.empty()) {
+        out.clear();
+        return true;
+    }
+    const int count = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(),
+                                           static_cast<int>(value.size()), nullptr, 0);
+    if (count <= 0)
+        return false;
+    out.resize(static_cast<std::size_t>(count));
+    return MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(),
+                               static_cast<int>(value.size()), out.data(), count) == count;
+}
+
+struct CurrentUserPipeSecurity {
+    std::vector<uint8_t> token_user;
+    std::vector<uint8_t> acl_storage;
+    SECURITY_DESCRIPTOR descriptor{};
+    SECURITY_ATTRIBUTES attributes{};
+
+    bool initialize() {
+        HANDLE token = nullptr;
+        if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token))
+            return false;
+        DWORD needed = 0;
+        GetTokenInformation(token, TokenUser, nullptr, 0, &needed);
+        if (needed == 0) {
+            CloseHandle(token);
+            return false;
+        }
+        token_user.resize(needed);
+        const bool read_user = GetTokenInformation(token, TokenUser, token_user.data(), needed,
+                                                    &needed) != 0;
+        CloseHandle(token);
+        if (!read_user)
+            return false;
+        const auto *user = reinterpret_cast<const TOKEN_USER *>(token_user.data());
+        const DWORD acl_size = sizeof(ACL) + GetLengthSid(user->User.Sid) + sizeof(ACCESS_ALLOWED_ACE);
+        acl_storage.resize(acl_size);
+        auto *acl = reinterpret_cast<ACL *>(acl_storage.data());
+        if (!InitializeAcl(acl, acl_size, ACL_REVISION) ||
+            !AddAccessAllowedAce(acl, ACL_REVISION, GENERIC_ALL, user->User.Sid) ||
+            !InitializeSecurityDescriptor(&descriptor, SECURITY_DESCRIPTOR_REVISION) ||
+            !SetSecurityDescriptorDacl(&descriptor, TRUE, acl, FALSE))
+            return false;
+        attributes.nLength = sizeof(attributes);
+        attributes.lpSecurityDescriptor = &descriptor;
+        attributes.bInheritHandle = FALSE;
+        return true;
+    }
+};
+
+pipe_type create_local_pipe(const std::string &path) {
+    std::wstring wide_path;
+    if (!utf8_to_wide(path, wide_path))
+        return invalid_pipe;
+    CurrentUserPipeSecurity security;
+    if (!security.initialize())
+        return invalid_pipe;
+    return CreateNamedPipeW(wide_path.c_str(), PIPE_ACCESS_DUPLEX,
+                            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_NOWAIT |
+                                PIPE_REJECT_REMOTE_CLIENTS,
+                            PIPE_UNLIMITED_INSTANCES, 65536, 65536, 0,
+                            &security.attributes);
+}
+
+nk_result connect_local_pipe(const TransportOptions &options, pipe_type &out_pipe,
+                             const std::atomic<bool> &stopping) {
+    std::wstring path;
+    if (!utf8_to_wide(options.path, path))
+        return NK_ERROR_INVALID_ARGUMENT;
+    const auto deadline = clock_type::now() + std::chrono::milliseconds(options.timeout_ms);
+    for (;;) {
+        if (stopping.load(std::memory_order_acquire))
+            return NK_TRANSPORT_ERROR_CANCELED;
+        const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - clock_type::now()).count();
+        if (remaining < 0)
+            return NK_TRANSPORT_ERROR_TIMEOUT;
+        const DWORD wait_ms = static_cast<DWORD>(std::min<int64_t>(remaining, 100));
+        if (!WaitNamedPipeW(path.c_str(), wait_ms)) {
+            const DWORD error = GetLastError();
+            if (error == ERROR_FILE_NOT_FOUND || error == ERROR_PIPE_BUSY ||
+                error == ERROR_SEM_TIMEOUT) {
+                if (clock_type::now() >= deadline)
+                    return NK_TRANSPORT_ERROR_TIMEOUT;
+                continue;
+            }
+            return NK_TRANSPORT_ERROR_CONNECTION;
+        }
+        HANDLE pipe = CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
+                                  OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (pipe == INVALID_HANDLE_VALUE) {
+            const DWORD error = GetLastError();
+            if (error == ERROR_PIPE_BUSY || error == ERROR_FILE_NOT_FOUND)
+                continue;
+            return error == ERROR_ACCESS_DENIED ? NK_ERROR_PERMISSION_DENIED
+                                                : NK_TRANSPORT_ERROR_CONNECTION;
+        }
+        DWORD mode = PIPE_READMODE_BYTE | PIPE_NOWAIT;
+        if (!SetNamedPipeHandleState(pipe, &mode, nullptr, nullptr)) {
+            CloseHandle(pipe);
+            return NK_TRANSPORT_ERROR_CONNECTION;
+        }
+        SetHandleInformation(pipe, HANDLE_FLAG_INHERIT, 0);
+        out_pipe = pipe;
+        return NK_OK;
+    }
+}
+
+int wait_pipe(pipe_type pipe, bool readable, bool writable, uint32_t timeout_ms) noexcept {
+    if (pipe == invalid_pipe)
+        return -1;
+    const auto deadline = clock_type::now() + std::chrono::milliseconds(timeout_ms);
+    do {
+        DWORD available = 0;
+        if (readable && !PeekNamedPipe(pipe, nullptr, 0, nullptr, &available, nullptr)) {
+            const DWORD error = GetLastError();
+            if (error == ERROR_NO_DATA)
+                available = 0;
+            else if (error == ERROR_BROKEN_PIPE || error == ERROR_PIPE_NOT_CONNECTED)
+                return 1;
+            else
+                return -1;
+        }
+        int ready = readable && available != 0 ? 1 : 0;
+        if (writable)
+            ready |= 2;
+        if (ready != 0)
+            return ready;
+        if (timeout_ms == 0 || clock_type::now() >= deadline)
+            return 0;
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    } while (clock_type::now() < deadline);
+    return 0;
+}
+#endif
 
 void shutdown_socket(socket_type socket) noexcept {
     if (socket == invalid_socket)
@@ -800,6 +958,9 @@ class TransportResource final : public nk::core::Resource,
     std::weak_ptr<ListenerResource> listener;
     nk_listener listener_handle = NK_INVALID_HANDLE;
     socket_type socket = invalid_socket;
+#if defined(_WIN32)
+    pipe_type pipe = invalid_pipe;
+#endif
     SocketAddress udp_peer{};
     bool udp_peer_valid = false;
 
@@ -824,6 +985,7 @@ class TransportResource final : public nk::core::Resource,
     std::vector<uint8_t> ws_fragment;
     uint8_t ws_fragment_opcode = 0;
 #if defined(NK_HAS_LIBWEBSOCKETS)
+    std::mutex lws_context_mutex;
     lws_context *lws_context_handle = nullptr;
     lws *lws_handle = nullptr;
 #endif
@@ -833,6 +995,10 @@ class TransportResource final : public nk::core::Resource,
         std::lock_guard lock(socket_mutex);
         close_socket(socket);
         socket = invalid_socket;
+#if defined(_WIN32)
+        close_pipe(pipe);
+        pipe = invalid_pipe;
+#endif
     }
 
     bool start() noexcept {
@@ -849,8 +1015,16 @@ class TransportResource final : public nk::core::Resource,
 #endif
     }
 
+    void wake_service() noexcept {
+#if defined(NK_HAS_LIBWEBSOCKETS)
+        std::lock_guard lock(lws_context_mutex);
+        if (lws_context_handle) lws_cancel_service(lws_context_handle);
+#endif
+    }
+
     void stop_and_join() noexcept {
         stopping.store(true, std::memory_order_release);
+        wake_service();
         condition.notify_all();
         {
             std::lock_guard lock(socket_mutex);
@@ -858,6 +1032,11 @@ class TransportResource final : public nk::core::Resource,
         }
         if (worker.joinable() && worker.get_id() != std::this_thread::get_id())
             worker.join();
+#if defined(_WIN32)
+        std::lock_guard lock(socket_mutex);
+        close_pipe(pipe);
+        pipe = invalid_pipe;
+#endif
     }
 
     void run_safely() noexcept {
@@ -927,6 +1106,9 @@ class ListenerResource final : public nk::core::Resource,
     uint64_t generation = 0;
     nk_listener handle = NK_INVALID_HANDLE;
     socket_type socket = invalid_socket;
+#if defined(_WIN32)
+    pipe_type pipe = invalid_pipe;
+#endif
     std::string local_path;
     std::atomic<bool> stopping{false};
     std::mutex socket_mutex;
@@ -937,6 +1119,10 @@ class ListenerResource final : public nk::core::Resource,
         std::lock_guard lock(socket_mutex);
         close_socket(socket);
         socket = invalid_socket;
+#if defined(_WIN32)
+        close_pipe(pipe);
+        pipe = invalid_pipe;
+#endif
         if (!local_path.empty()) {
 #if !defined(_WIN32)
             ::unlink(local_path.c_str());
@@ -966,6 +1152,11 @@ class ListenerResource final : public nk::core::Resource,
         }
         if (worker.joinable() && worker.get_id() != std::this_thread::get_id())
             worker.join();
+#if defined(_WIN32)
+        std::lock_guard lock(socket_mutex);
+        close_pipe(pipe);
+        pipe = invalid_pipe;
+#endif
     }
 
     void run_safely() noexcept {
@@ -1260,6 +1451,19 @@ bool TransportResource::parse_websocket_frames() noexcept {
 }
 
 bool TransportResource::read_socket() noexcept {
+#if defined(_WIN32)
+    if (options.kind == NK_TRANSPORT_LOCAL) {
+        std::array<uint8_t, read_chunk> bytes{};
+        DWORD count = 0;
+        if (!ReadFile(pipe, bytes.data(), static_cast<DWORD>(bytes.size()), &count, nullptr)) {
+            const DWORD error = GetLastError();
+            return error == ERROR_NO_DATA;
+        }
+        if (count == 0)
+            return false;
+        return receive_application(bytes.data(), static_cast<std::size_t>(count));
+    }
+#endif
     if (options.kind == NK_TRANSPORT_UDP && udp_server) {
         std::array<uint8_t, read_chunk> bytes{};
         sockaddr_storage peer{};
@@ -1312,6 +1516,32 @@ bool TransportResource::write_socket() noexcept {
     while (!outgoing.empty()) {
         auto &chunk = outgoing.front();
         const auto remaining = chunk.size() - outgoing_offset;
+#if defined(_WIN32)
+        if (options.kind == NK_TRANSPORT_LOCAL) {
+            lock.unlock();
+            DWORD sent = 0;
+            const DWORD amount = static_cast<DWORD>(std::min<std::size_t>(remaining, 0x7fffffffu));
+            const BOOL succeeded = WriteFile(pipe, chunk.data() + outgoing_offset, amount,
+                                             &sent, nullptr);
+            const DWORD error = succeeded ? ERROR_SUCCESS : GetLastError();
+            lock.lock();
+            if (succeeded && sent > 0) {
+                outgoing_offset += sent;
+                if (outgoing_offset == chunk.size()) {
+                    outgoing_bytes -= chunk.size();
+                    outgoing.pop_front();
+                    outgoing_offset = 0;
+                }
+                continue;
+            }
+            if (!succeeded && error == ERROR_NO_DATA)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                return true;
+            }
+            return succeeded;
+        }
+#endif
         lock.unlock();
 #if defined(_WIN32)
         int sent = 0;
@@ -1453,6 +1683,10 @@ void TransportResource::finish(nk_result result) noexcept {
         shutdown_socket(socket);
         close_socket(socket);
         socket = invalid_socket;
+#if defined(_WIN32)
+        close_pipe(pipe);
+        pipe = invalid_pipe;
+#endif
     }
     if (result != NK_OK && result != NK_TRANSPORT_ERROR_CANCELED)
         (void)emit_simple(NK_EVENT_TRANSPORT_FAILED, handle, result);
@@ -1525,7 +1759,10 @@ void TransportResource::run_secure_websocket() noexcept {
     context_info.port = CONTEXT_PORT_NO_LISTEN;
     context_info.protocols = protocols;
     context_info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
-    lws_context_handle = lws_create_context(&context_info);
+    {
+        std::lock_guard lock(lws_context_mutex);
+        lws_context_handle = lws_create_context(&context_info);
+    }
     if (!lws_context_handle) {
         finish(NK_TRANSPORT_ERROR_CONNECTION);
         return;
@@ -1536,15 +1773,21 @@ void TransportResource::run_secure_websocket() noexcept {
     connect.port = options.port ? options.port : 443;
     connect.path = options.path.c_str();
     connect.host = options.host.c_str();
-    connect.origin = options.host.c_str();
+    // Native clients have no browser origin.
+    connect.origin = nullptr;
     connect.protocol = options.subprotocols.empty() ? nullptr : options.subprotocols.c_str();
     connect.local_protocol_name = "nativekit";
     connect.ssl_connection = LCCSCF_USE_SSL;
     connect.opaque_user_data = this;
     lws_handle = lws_client_connect_via_info(&connect);
     if (!lws_handle) {
-        lws_context_destroy(lws_context_handle);
-        lws_context_handle = nullptr;
+        lws_context *closing;
+        {
+            std::lock_guard lock(lws_context_mutex);
+            closing = lws_context_handle;
+            lws_context_handle = nullptr;
+        }
+        lws_context_destroy(closing);
         finish(NK_TRANSPORT_ERROR_CONNECTION);
         return;
     }
@@ -1564,8 +1807,13 @@ void TransportResource::run_secure_websocket() noexcept {
         if (terminal_result != NK_OK)
             break;
     }
-    lws_context_destroy(lws_context_handle);
-    lws_context_handle = nullptr;
+    lws_context *closing;
+    {
+        std::lock_guard lock(lws_context_mutex);
+        closing = lws_context_handle;
+        lws_context_handle = nullptr;
+    }
+    lws_context_destroy(closing);
     lws_handle = nullptr;
     const auto result = stopping.load(std::memory_order_acquire)
                             ? NK_TRANSPORT_ERROR_CANCELED
@@ -1584,6 +1832,11 @@ void TransportResource::run() noexcept {
 #endif
     nk_result result = NK_OK;
     if (!server_side && !udp_server) {
+#if defined(_WIN32)
+        if (options.kind == NK_TRANSPORT_LOCAL)
+            result = connect_local_pipe(options, pipe, stopping);
+        else
+#endif
         result = open_client_socket();
         if (result == NK_OK && options.kind == NK_TRANSPORT_WEBSOCKET)
             result = websocket_handshake();
@@ -1607,7 +1860,13 @@ void TransportResource::run() noexcept {
             std::lock_guard lock(mutex);
             has_output = !outgoing.empty();
         }
+#if defined(_WIN32)
+        const auto ready = options.kind == NK_TRANSPORT_LOCAL
+                               ? wait_pipe(pipe, true, has_output, 100)
+                               : wait_socket(socket, true, has_output, 100);
+#else
         const auto ready = wait_socket(socket, true, has_output, 100);
+#endif
         if (stopping.load(std::memory_order_acquire))
             break;
         if (ready < 0) {
@@ -1635,6 +1894,57 @@ void ListenerResource::emit_failure(nk_result result) noexcept {
 }
 
 void ListenerResource::run() noexcept {
+#if defined(_WIN32)
+    if (options.kind == NK_TRANSPORT_LOCAL) {
+        while (!stopping.load(std::memory_order_acquire)) {
+            const auto current = pipe;
+            if (current == invalid_pipe) {
+                emit_failure(NK_TRANSPORT_ERROR_CONNECTION);
+                return;
+            }
+            const BOOL connected = ConnectNamedPipe(current, nullptr);
+            const DWORD error = connected ? ERROR_SUCCESS : GetLastError();
+            if (!connected && error != ERROR_PIPE_CONNECTED && error != ERROR_PIPE_LISTENING) {
+                if (stopping.load(std::memory_order_acquire))
+                    return;
+                emit_failure(NK_TRANSPORT_ERROR_CONNECTION);
+                return;
+            }
+            if (!connected && error == ERROR_PIPE_LISTENING) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                continue;
+            }
+            if (stopping.load(std::memory_order_acquire))
+                return;
+            auto transport = std::make_shared<TransportResource>();
+            transport->options = options;
+            transport->generation = generation;
+            transport->server_side = true;
+            transport->listener = shared_from_this();
+            transport->listener_handle = handle;
+            transport->pipe = current;
+            pipe = create_local_pipe(options.path);
+            if (pipe == invalid_pipe) {
+                transport->pipe = invalid_pipe;
+                close_pipe(current);
+                emit_failure(NK_TRANSPORT_ERROR_CONNECTION);
+                return;
+            }
+            const auto transport_handle =
+                nk::core::handles().insert(nk::core::ResourceType::transport, transport);
+            transport->handle = static_cast<nk_transport>(transport_handle);
+            if (transport_handle == NK_INVALID_HANDLE || !transport->start()) {
+                if (transport_handle != NK_INVALID_HANDLE)
+                    nk::core::handles().erase(transport_handle,
+                                              nk::core::ResourceType::transport);
+                close_pipe(transport->pipe);
+                transport->pipe = invalid_pipe;
+                continue;
+            }
+        }
+        return;
+    }
+#endif
     if (options.kind == NK_TRANSPORT_UDP) {
         for (;;) {
             if (stopping.load(std::memory_order_acquire))
@@ -1776,7 +2086,8 @@ nk_result NK_CALL nk_transport_query_capabilities(
     if (!valid_kind(kind))
         return fail(NK_ERROR_INVALID_ARGUMENT, "transport kind is invalid");
 #if defined(_WIN32)
-    if (kind == NK_TRANSPORT_LOCAL)
+    initialize_sockets();
+    if (socket_start_result != 0 && kind != NK_TRANSPORT_LOCAL)
         return NK_OK;
 #endif
     *out_capabilities = NK_TRANSPORT_CAP_CLIENT | NK_TRANSPORT_CAP_LISTENER;
@@ -1835,14 +2146,26 @@ nk_result NK_CALL nk_transport_listen(const nk_transport_options *options,
         auto listener = std::make_shared<ListenerResource>();
         listener->options = std::move(copied);
         listener->generation = nk::core::runtime_generation();
-        nk_result result =
-            create_listener_socket(listener->options, listener->socket, listener->local_path);
+        nk_result result = NK_OK;
+#if defined(_WIN32)
+        if (listener->options.kind == NK_TRANSPORT_LOCAL) {
+            listener->pipe = create_local_pipe(listener->options.path);
+            if (listener->pipe == invalid_pipe)
+                result = NK_ERROR_PERMISSION_DENIED;
+        } else
+#endif
+            result = create_listener_socket(listener->options, listener->socket,
+                                             listener->local_path);
         if (result != NK_OK)
             return fail(result, "listener socket creation failed");
         const auto handle = nk::core::handles().insert(nk::core::ResourceType::listener, listener);
         if (handle == NK_INVALID_HANDLE) {
             close_socket(listener->socket);
             listener->socket = invalid_socket;
+#if defined(_WIN32)
+            close_pipe(listener->pipe);
+            listener->pipe = invalid_pipe;
+#endif
             return fail(NK_ERROR_OUT_OF_MEMORY, "listener handle allocation failed");
         }
         listener->handle = static_cast<nk_listener>(handle);
@@ -1850,6 +2173,10 @@ nk_result NK_CALL nk_transport_listen(const nk_transport_options *options,
             nk::core::handles().erase(handle, nk::core::ResourceType::listener);
             close_socket(listener->socket);
             listener->socket = invalid_socket;
+#if defined(_WIN32)
+            close_pipe(listener->pipe);
+            listener->pipe = invalid_pipe;
+#endif
             return fail(NK_ERROR_OUT_OF_MEMORY, "listener worker creation failed");
         }
         *out_listener = listener->handle;
@@ -1883,15 +2210,18 @@ nk_result NK_CALL nk_transport_send(nk_transport handle, const void *data, uint6
             (transport->options.flags & NK_TRANSPORT_SECURE) == 0)
             payload = websocket_frame(payload.data(), payload.size(), !transport->server_side, 2);
 
-        std::lock_guard lock(transport->mutex);
-        if (transport->state == TransportResource::State::closed)
-            return fail(NK_ERROR_INVALID_REQUEST, "transport is closed");
-        if (payload.size() > transport->options.send_buffer_size ||
-            transport->outgoing_bytes > transport->options.send_buffer_size - payload.size())
-            return fail(NK_ERROR_QUEUE_FULL, "transport send queue is full");
-        transport->outgoing_bytes += payload.size();
-        transport->outgoing.push_back(std::move(payload));
+        {
+            std::lock_guard lock(transport->mutex);
+            if (transport->state == TransportResource::State::closed)
+                return fail(NK_ERROR_INVALID_REQUEST, "transport is closed");
+            if (payload.size() > transport->options.send_buffer_size ||
+                transport->outgoing_bytes > transport->options.send_buffer_size - payload.size())
+                return fail(NK_ERROR_QUEUE_FULL, "transport send queue is full");
+            transport->outgoing_bytes += payload.size();
+            transport->outgoing.push_back(std::move(payload));
+        }
         transport->condition.notify_all();
+        transport->wake_service();
         return NK_OK;
     });
 }

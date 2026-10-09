@@ -73,6 +73,12 @@ int main() {
     assert(nk_surface_set_frame_mode(surface, NK_SURFACE_FRAME_ON_DEMAND) == NK_OK);
     assert(nk_surface_set_frame_callback(surface, on_frame, &state) == NK_OK);
     assert(nk_surface_request_frame(surface) == NK_OK);
+    nk_event first_event{};
+    first_event.struct_size = sizeof(first_event);
+    assert(nk_poll_event(&first_event) == NK_OK);
+    nk_event_release(&first_event);
+    // An on-demand request must dispatch without waiting for the 16 ms timer.
+    assert(state.callbacks == 1);
     pump_for(150);
     // A pending successor must not reenter the callback or present the held frame.
     assert(state.callbacks == 1 && state.held != NK_INVALID_HANDLE);

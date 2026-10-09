@@ -124,7 +124,9 @@ int web_socket_create(uint32_t handle, const char *url, const char *protocols, u
         return 0;
     EmscriptenWebSocketCreateAttributes attributes{};
     attributes.url = url;
-    attributes.protocols = protocols;
+    // Emscripten treats a non-null empty protocol as an invalid subprotocol token.
+    // NativeKit callers may legitimately request a WebSocket without negotiation.
+    attributes.protocols = protocols && *protocols ? protocols : nullptr;
     attributes.createOnMainThread = true;
     const auto socket = emscripten_websocket_new(&attributes);
     auto transport = web_get(handle);

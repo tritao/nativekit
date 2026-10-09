@@ -78,6 +78,7 @@ using Microsoft::WRL::ComPtr;
 constexpr wchar_t window_class_name[] = L"NativeKitWindow";
 constexpr wchar_t surface_class_name[] = L"NativeKitD3D11Surface";
 constexpr UINT notification_message = WM_APP + 42;
+constexpr UINT surface_frame_message = WM_APP + 43;
 constexpr UINT_PTR surface_frame_timer = 1;
 ATOM window_class = 0;
 ATOM surface_window_class = 0;
@@ -348,6 +349,7 @@ struct WinSurfaceResource final : nk::core::Resource {
     void *frame_user_data = nullptr;
     nk::core::FrameRequestState frame_requests;
     bool frame_timer_armed = false;
+    bool frame_message_pending = false;
     bool frame_prepared = false;
     bool resize_pending = false;
     int32_t pending_width = 0;
@@ -363,7 +365,23 @@ struct WinSurfaceResource final : nk::core::Resource {
 };
 
 void arm_surface_frames(WinSurfaceResource &resource) {
-    if (!resource.window || resource.frame_timer_armed || !resource.frame_callback)
+    if (!resource.window || !resource.frame_callback)
+        return;
+    if (!resource.frame_requests.continuous()) {
+        if (resource.frame_timer_armed) {
+            KillTimer(resource.window, surface_frame_timer);
+            resource.frame_timer_armed = false;
+        }
+        if (resource.frame_requests.pending() && !resource.frame_message_pending &&
+            !nk::core::surface_has_open_frame(resource.handle)) {
+            resource.frame_message_pending =
+                PostMessageW(resource.window, surface_frame_message, 0, 0) != FALSE;
+            if (resource.frame_message_pending)
+                nk::core::wake_events();
+        }
+        return;
+    }
+    if (resource.frame_timer_armed)
         return;
     if (SetTimer(resource.window, surface_frame_timer, 16, nullptr))
         resource.frame_timer_armed = true;
@@ -1519,14 +1537,16 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             });
             return 0;
         }
-        if (message == WM_SETCURSOR && !resource->decorated) {
-            if (auto cursor = decoration_cursor_for_hit_test(*resource, lparam)) {
-                if (resource->cursor_mode == NK_CURSOR_MODE_HIDDEN ||
-                    resource->cursor_mode == NK_CURSOR_MODE_DISABLED)
-                    SetCursor(nullptr);
-                else
-                    SetCursor(cursor);
-                return TRUE;
+        if (message == WM_SETCURSOR) {
+            if (!resource->decorated) {
+                if (auto cursor = decoration_cursor_for_hit_test(*resource, lparam)) {
+                    if (resource->cursor_mode == NK_CURSOR_MODE_HIDDEN ||
+                        resource->cursor_mode == NK_CURSOR_MODE_DISABLED)
+                        SetCursor(nullptr);
+                    else
+                        SetCursor(cursor);
+                    return TRUE;
+                }
             }
             if (LOWORD(lparam) == HTCLIENT) {
                 apply_cursor(*resource);
@@ -1892,7 +1912,10 @@ LRESULT CALLBACK surface_window_proc(HWND window, UINT message, WPARAM wparam, L
         return MA_NOACTIVATE;
     if (surface && message == WM_NCHITTEST)
         return HTTRANSPARENT;
-    if (surface && message == WM_TIMER && wparam == surface_frame_timer &&
+    if (surface && message == surface_frame_message)
+        surface->frame_message_pending = false;
+    if (surface && (message == surface_frame_message ||
+                    (message == WM_TIMER && wparam == surface_frame_timer)) &&
         surface->frame_callback && !surface->destroying) {
         if (!surface->frame_requests.should_draw()) {
             /* An idle on-demand surface stops its timer until the next request. */
@@ -1919,6 +1942,9 @@ LRESULT CALLBACK surface_window_proc(HWND window, UINT message, WPARAM wparam, L
             if (active->frame_prepared && !nk::core::surface_has_open_frame(active->handle))
                 nk_surface_present(active->handle);
         });
+        arm_surface_frames(*active);
+        // A completed callback is work even when it produces no input event.
+        nk::core::wake_events();
         return 0;
     }
     if (surface && message == WM_SIZE && surface->handle != NK_INVALID_HANDLE &&
@@ -3057,6 +3083,10 @@ void pump_events() noexcept {
             continue;
         TranslateMessage(&message);
         DispatchMessageW(&message);
+        // Yield to the application after one on-demand frame. A callback may
+        // request its successor; draining those messages forever starves input.
+        if (message.message == surface_frame_message)
+            break;
     }
     reap_dialogs();
     poll_monitor_orientations();
@@ -4563,6 +4593,7 @@ nk_result NK_CALL nk_surface_present(nk_handle handle) {
     }
     if (!apply_pending_resize(*resource))
         return NK_ERROR_UNKNOWN;
+    arm_surface_frames(*resource);
     return NK_OK;
 }
 
@@ -4598,6 +4629,7 @@ nk_result NK_CALL nk_frame_backend_finish(nk_handle handle, const nk_surface_fra
     resource->frame_prepared = false;
     if (!apply_pending_resize(*resource))
         return NK_ERROR_UNKNOWN;
+    arm_surface_frames(*resource);
     return NK_OK;
 }
 

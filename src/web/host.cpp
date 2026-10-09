@@ -630,13 +630,12 @@ EM_JS(void, nk_web_configure_text_input,
                   const shortcut = event.ctrlKey || event.metaKey;
                   const contextMenu = event.key === "ContextMenu" ||
                                       (event.key === "F10" && event.shiftKey);
-                  const clipboard = ["c", "x", "v"].includes(event.key.toLowerCase());
                   const editing = ["Backspace", "Delete", "Enter", "Tab", "Escape", "ArrowLeft",
                                    "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End",
                                    "PageUp", "PageDown"].includes(event.key);
                   // Function keys run application commands, not the browser's (F5 would reload the page).
                   const functionKey = /^F[0-9]{1,2}$/.test(event.key);
-                  if ((shortcut && !clipboard) || editing || contextMenu || functionKey) {
+                  if (shortcut || editing || contextMenu || functionKey) {
                       handledKeys.add(event.keyCode);
                       event.preventDefault();
                   }
