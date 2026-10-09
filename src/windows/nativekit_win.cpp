@@ -354,6 +354,8 @@ struct WinWindowResource final : nk::core::Resource {
                 const PROPVARIANT empty{};
                 properties->SetValue(PKEY_AppUserModel_ID, empty);
                 properties->SetValue(PKEY_AppUserModel_RelaunchIconResource, empty);
+                properties->SetValue(PKEY_AppUserModel_RelaunchCommand, empty);
+                properties->SetValue(PKEY_AppUserModel_RelaunchDisplayNameResource, empty);
             }
 #endif
             DestroyWindow(window);
@@ -3298,7 +3300,30 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
                 return fail(NK_ERROR_UNKNOWN, "could not access Windows taskbar properties");
             PROPVARIANT value{};
             value.vt = VT_LPWSTR;
-            value.pwszVal = const_cast<wchar_t *>(icon_resource.c_str());
+            const auto environment_value = [](const wchar_t *name) {
+                const DWORD size = GetEnvironmentVariableW(name, nullptr, 0);
+                if (!size) return std::wstring{};
+                std::wstring text(size, L'\0');
+                const DWORD length = GetEnvironmentVariableW(name, text.data(), size);
+                if (!length || length >= size) return std::wstring{};
+                text.resize(length);
+                return text;
+            };
+            const auto relaunch_command = environment_value(L"NK_APPLICATION_RELAUNCH_COMMAND");
+            const auto relaunch_name = environment_value(L"NK_APPLICATION_RELAUNCH_DISPLAY_NAME");
+            const auto relaunch_icon = environment_value(L"NK_APPLICATION_RELAUNCH_ICON");
+            // Hosted applications can provide a launcher that restores their
+            // arguments and environment. Windows requires command and name together.
+            if (!relaunch_command.empty() && !relaunch_name.empty()) {
+                value.pwszVal = const_cast<wchar_t *>(relaunch_command.c_str());
+                if (FAILED(properties->SetValue(PKEY_AppUserModel_RelaunchCommand, value)))
+                    return fail(NK_ERROR_UNKNOWN, "could not set Windows taskbar relaunch command");
+                value.pwszVal = const_cast<wchar_t *>(relaunch_name.c_str());
+                if (FAILED(properties->SetValue(PKEY_AppUserModel_RelaunchDisplayNameResource, value)))
+                    return fail(NK_ERROR_UNKNOWN, "could not set Windows taskbar relaunch name");
+            }
+            value.pwszVal = const_cast<wchar_t *>(relaunch_icon.empty()
+                ? icon_resource.c_str() : relaunch_icon.c_str());
             if (FAILED(properties->SetValue(PKEY_AppUserModel_RelaunchIconResource, value)))
                 return fail(NK_ERROR_UNKNOWN, "could not set Windows taskbar icon resource");
             const auto id = wide(application_id.c_str());
