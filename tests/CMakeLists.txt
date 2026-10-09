@@ -205,6 +205,11 @@ if(NK_BACKEND_GTK_AVAILABLE)
             COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_pointer_capture>)
         set_tests_properties(gtk_pointer_capture PROPERTIES
             LABELS "linux;input" TIMEOUT 30 SKIP_RETURN_CODE 77)
+        add_executable(nativekit_gtk_pointer_crossing integration/gtk_pointer_crossing.cpp)
+        target_link_libraries(nativekit_gtk_pointer_crossing PRIVATE NativeKit::nativekit PkgConfig::GTK3)
+        add_test(NAME gtk_pointer_crossing
+            COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_pointer_crossing>)
+        set_tests_properties(gtk_pointer_crossing PROPERTIES LABELS "linux;input" TIMEOUT 15)
         add_executable(nativekit_gtk_surface_frame integration/gtk_surface_frame.c)
         target_link_libraries(nativekit_gtk_surface_frame PRIVATE NativeKit::nativekit)
         set_target_properties(nativekit_gtk_surface_frame PROPERTIES LINKER_LANGUAGE CXX)
