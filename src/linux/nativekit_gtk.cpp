@@ -1974,6 +1974,11 @@ gboolean on_pointer_scroll(GtkWidget *, GdkEventScroll *scroll, gpointer data) {
 }
 
 gboolean on_pointer_crossing(GtkWidget *, GdkEventCrossing *crossing, gpointer data) {
+    // Grabs, widget state changes and touch handoffs synthesize crossings
+    // without moving the pointer. Entering a child also leaves its ancestor
+    // GdkWindow, but does not leave the NativeKit window. Neither changes hover.
+    if (crossing->mode != GDK_CROSSING_NORMAL || crossing->detail == GDK_NOTIFY_INFERIOR)
+        return FALSE;
     auto *resource = static_cast<GtkWindowResource *>(data);
     resource->hovered = crossing->type == GDK_ENTER_NOTIFY;
     if (resource->hovered) {
