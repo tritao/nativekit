@@ -39,6 +39,9 @@
 #include <shobjidl.h>
 #include <shlobj.h>
 #include <shellapi.h>
+#if defined(NK_APPLICATION_ICON_RESOURCE_ID)
+#include <propkey.h>
+#endif
 #include <d3d11.h>
 #include <dxgi1_2.h>
 #include <wrl/client.h>
@@ -343,8 +346,18 @@ struct WinWindowResource final : nk::core::Resource {
     ~WinWindowResource() override {
         if (pointer_captured && GetCapture() == window)
             ReleaseCapture();
-        if (owns_window && window && IsWindow(window))
+        if (owns_window && window && IsWindow(window)) {
+#if defined(NK_APPLICATION_ICON_RESOURCE_ID)
+            Microsoft::WRL::ComPtr<IPropertyStore> properties;
+            if (SUCCEEDED(SHGetPropertyStoreForWindow(window, IID_PPV_ARGS(&properties)))) {
+                // Window property-store values must be released before destruction.
+                const PROPVARIANT empty{};
+                properties->SetValue(PKEY_AppUserModel_ID, empty);
+                properties->SetValue(PKEY_AppUserModel_RelaunchIconResource, empty);
+            }
+#endif
             DestroyWindow(window);
+        }
         if (icon_small)
             DestroyIcon(icon_small);
         if (icon_big && icon_big != icon_small)
@@ -3228,6 +3241,12 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
             ((options->flags & NK_WINDOW_MODAL) && !options->owner))
             return fail(NK_ERROR_INVALID_ARGUMENT, "invalid window options");
         *out_window = NK_INVALID_HANDLE;
+        // Interpreter-hosted applications need their own identity so Explorer
+        // does not group their taskbar buttons under the runtime executable.
+        const auto application_id = nk::core::system_application_id();
+        if (!application_id.empty() &&
+            FAILED(SetCurrentProcessExplicitAppUserModelID(wide(application_id.c_str()).c_str())))
+            return fail(NK_ERROR_UNKNOWN, "could not set Windows application identity");
         enable_process_dpi_awareness();
         if (!ensure_window_class())
             return fail(NK_ERROR_UNKNOWN, "could not register Win32 window class");
@@ -3259,6 +3278,35 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
             nullptr, GetModuleHandleW(nullptr), resource.get());
         if (!resource->window)
             return fail(NK_ERROR_UNKNOWN, "could not create Win32 window");
+#if defined(NK_APPLICATION_ICON_RESOURCE_ID)
+        if (!application_id.empty() && options->kind == NK_WINDOW_NORMAL) {
+            // An explicit window ID and resource icon prevent Explorer from using
+            // the interpreter executable's generic icon for the taskbar group.
+            HMODULE module = nullptr;
+            if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                       GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                   reinterpret_cast<LPCWSTR>(&nk_window_create), &module))
+                return fail(NK_ERROR_UNKNOWN, "could not locate application icon module");
+            std::wstring path(32768, L'\0');
+            const DWORD length = GetModuleFileNameW(module, path.data(), static_cast<DWORD>(path.size()));
+            if (!length || length >= path.size())
+                return fail(NK_ERROR_UNKNOWN, "could not read application icon module path");
+            path.resize(length);
+            const auto icon_resource = path + L",-" + std::to_wstring(NK_APPLICATION_ICON_RESOURCE_ID);
+            Microsoft::WRL::ComPtr<IPropertyStore> properties;
+            if (FAILED(SHGetPropertyStoreForWindow(resource->window, IID_PPV_ARGS(&properties))))
+                return fail(NK_ERROR_UNKNOWN, "could not access Windows taskbar properties");
+            PROPVARIANT value{};
+            value.vt = VT_LPWSTR;
+            value.pwszVal = const_cast<wchar_t *>(icon_resource.c_str());
+            if (FAILED(properties->SetValue(PKEY_AppUserModel_RelaunchIconResource, value)))
+                return fail(NK_ERROR_UNKNOWN, "could not set Windows taskbar icon resource");
+            const auto id = wide(application_id.c_str());
+            value.pwszVal = const_cast<wchar_t *>(id.c_str());
+            if (FAILED(properties->SetValue(PKEY_AppUserModel_ID, value)))
+                return fail(NK_ERROR_UNKNOWN, "could not set Windows taskbar window identity");
+        }
+#endif
         resource->handle = nk::core::handles().insert(nk::core::ResourceType::window, resource);
         if (resource->handle == NK_INVALID_HANDLE)
             return fail(NK_ERROR_OUT_OF_MEMORY, "window handle registry is full");
