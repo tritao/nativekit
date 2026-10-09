@@ -74,6 +74,41 @@ The shader source becomes the only declaration of its interface. A shader
 change that the C or Haxeon side doesn't match fails at generation or
 compile time, not at run time.
 
+### `sokol-shdc` stays unforked; its YAML is internal to the tool
+
+`sokol-shdc` is a pinned compiler, not a component we modify. Only NativeKit's
+tool reads its `bare_yaml` reflection. The tool normalizes it into a
+NativeKit-owned, versioned JSON format (`nkgpu-shader-reflection/1`) per
+program: variants, attributes with formats and HLSL semantic names, uniform
+blocks with std140 offsets, images with sample types, samplers, storage
+buffers and include dependencies. Consumers depend on that JSON and on the C
+tables, never on `sokol-shdc`'s YAML, so a `sokol-shdc` upgrade touches one
+parser.
+
+Language bindings generate their own code from the JSON. Haxeon's generator
+lives in Haxeon's packages and emits checked-in `.hx` modules, the way its HXI
+bindings are generated and checked; NativeKit ships no Haxeon tooling.
+
+Output formats for NativeKit or Haxeon are not added inside `sokol-shdc`:
+upstream would not take them, and a fork would carry glslang, SPIRV-Tools,
+SPIRV-Cross and Tint. A gap in the YAML reflection is fixed by a small,
+generic patch offered upstream.
+
+The tool's first step settles four things:
+
+1. That the YAML carries every field the C tables and the JSON need,
+   including HLSL semantic names, member offsets and sample types.
+2. The pinned `sokol-tools-bin` commit, and byte-identical output on Linux,
+   macOS and Windows hosts, so `--check` passes on any CI host.
+3. Dependency files from the tool's own walk of the `@include` graph, so a
+   build regenerates when an included snippet changes.
+4. Uniform-block type limits enforced with clear messages, matching what
+   `sokol-shdc` accepts.
+
+Precompiled bytecode (DXBC with `fxc`, Metal libraries with Xcode's tools) and
+HLSL and Metal validation wait until Windows and macOS CI hosts are available;
+shipped builds use source until startup cost is measured.
+
 ### Optional development reload
 
 A development-only path may re-run the tool and recreate a shader through the
@@ -98,6 +133,14 @@ same table, for live editing. Shipped builds use only the checked-in output.
   reflection makes drift impossible.
 - **Runtime shader compilation.** It needs a compiler on every platform and
   breaks the rule that shipped builds contain only checked shader output.
+
+## Deferred: the shader language
+
+GLSL with `sokol-shdc` is the authoring language for now. Writing engine
+shaders in a GPU subset of Haxeon, with Slang as the fallback, is a deferred
+plan in Haxeon's `docs/SHADERS.md`. Either way this toolchain stays the back
+end: a Haxeon front end would emit GLSL into it. Creators author materials on
+fixed shaders, not shader code.
 
 ## Consequences
 
