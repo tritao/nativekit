@@ -51,6 +51,47 @@ cmake --build build-gpu
 ./build-gpu/modules/gpu/nativekit_gpu_triangle
 ```
 
+## Minimal frame-pacing sample
+
+`nativekit_gpu_frame_pacing` uses C++ and the public NativeKit window, surface,
+event-loop, and GPU APIs. Rendering runs inside continuous surface frame
+callbacks, without Haxe, UI layout, simulation, a producer timer, or readback.
+The three modes isolate increasing amounts of GPU submission:
+
+- `clear`: begin and end a window frame.
+- `triangle`: draw one static triangle to the window.
+- `composite`: draw the triangle into a retained RGBA8 texture, then sample it
+  with a fullscreen quad in the window pass. This is a minimal two-pass texture
+  handoff, not the complete SceneKit/UI pipeline. It uses one sample per pixel.
+
+Build and run from the NativeKit repository root:
+
+```sh
+cmake -S . -B /tmp/nativekit-pacing -GNinja \
+  -DCMAKE_BUILD_TYPE=Release -DNK_BUILD_GPU=ON -DNK_BUILD_EXAMPLES=ON \
+  -DNK_BUILD_TESTS=OFF -DBUILD_TESTING=OFF
+cmake --build /tmp/nativekit-pacing --target nativekit_gpu_frame_pacing
+/tmp/nativekit-pacing/modules/gpu/nativekit_gpu_frame_pacing \
+  --mode composite --width 1600 --height 1000 --warmup 1 --seconds 6 \
+  --csv /tmp/nativekit-composite.csv
+```
+
+Repeat with `--mode clear` and `--mode triangle`. Triangle and composite shaders
+support GLCore and GLES3 builds. Clear mode needs no shader. Close the window to
+stop early; otherwise the sample exits automatically. Resource initialization
+precedes the warmup, and resizing recreates only the offscreen texture when
+necessary. CSV output is written after rendering stops.
+
+The JSON summary reports framebuffer dimensions, callback FPS, and median/p95
+callback intervals and CPU render-call duration. CSV rows contain each measured
+callback's steady-clock timestamp and render duration in milliseconds. The CPU
+duration excludes GTK composition and compositor acknowledgement after the
+callback returns. Callback FPS is **not** physical presentation FPS. Measuring
+compositor feedback requires a separate platform trace; the sample does not
+disable synchronization or change desktop settings. Run on the real desktop
+for presentation investigations, keep the window visible, and compare repeated
+runs under similar load. Xvfb is useful for rendering checks, not display pacing.
+
 For an explicit GLES3 build on Linux:
 
 ```sh

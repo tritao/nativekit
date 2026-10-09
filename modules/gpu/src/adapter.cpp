@@ -2336,8 +2336,15 @@ nkgpu_result nkgpu_buffer_update(nkgpu_renderer r, nkgpu_buffer h, uint32_t offs
     const nkgpu_result activated = activate_renderer(r);
     if (activated != NKGPU_OK)
         return activated;
-    std::vector<uint8_t> next_pixels = s->value.pixels;
-    memcpy(next_pixels.data() + offset, data, size);
+    const bool replaces_all = offset == 0 && size == s->value.size;
+    std::vector<uint8_t> next_pixels;
+    const uint8_t *upload_pixels = data;
+    if (!replaces_all) {
+        // Partial updates need a complete image for Sokol's dynamic-buffer API.
+        next_pixels = s->value.pixels;
+        memcpy(next_pixels.data() + offset, data, size);
+        upload_pixels = next_pixels.data();
+    }
     auto *owner = renderer_pool.get(r);
     const bool same_frame =
         s->value.has_update_frame && s->value.last_update_frame == owner->value.frames;
@@ -2355,7 +2362,7 @@ nkgpu_result nkgpu_buffer_update(nkgpu_renderer r, nkgpu_buffer h, uint32_t offs
             record_allocation_failure(r);
             return fail(NKGPU_ERROR_OUT_OF_MEMORY, "buffer update allocation failed");
         }
-        const sg_range updated_data{next_pixels.data(), next_pixels.size()};
+        const sg_range updated_data{upload_pixels, s->value.size};
         sg_update_buffer(object, &updated_data);
         if (sg_query_buffer_state(object) != SG_RESOURCESTATE_VALID) {
             sg_destroy_buffer(object);
@@ -2382,14 +2389,19 @@ nkgpu_result nkgpu_buffer_update(nkgpu_renderer r, nkgpu_buffer h, uint32_t offs
         s->value.storage_view = storage_view;
     } else {
         /* Sokol rotates dynamic-update backing slots between committed frames. */
-        const sg_range updated_data{next_pixels.data(), next_pixels.size()};
+        const sg_range updated_data{upload_pixels, s->value.size};
         sg_update_buffer(s->value.object, &updated_data);
         if (sg_query_buffer_state(s->value.object) != SG_RESOURCESTATE_VALID) {
             record_allocation_failure(r);
             return fail(NKGPU_ERROR_OUT_OF_MEMORY, "buffer update upload failed");
         }
     }
-    s->value.pixels = std::move(next_pixels);
+    if (replaces_all) {
+        if (data != s->value.pixels.data())
+            memcpy(s->value.pixels.data(), data, size);
+    } else {
+        s->value.pixels = std::move(next_pixels);
+    }
     s->value.has_update_frame = true;
     s->value.last_update_frame = owner->value.frames;
     owner->value.upload_bytes += size;
