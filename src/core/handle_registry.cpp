@@ -64,36 +64,47 @@ std::vector<nk_handle> HandleRegistry::handles_of_type(ResourceType type) const 
 bool HandleRegistry::erase(nk_handle handle, ResourceType type) {
     if (handle == NK_INVALID_HANDLE || (handle & index_mask) == 0)
         return false;
-    std::lock_guard lock(mutex_);
-    const auto index = decode_index(handle);
-    if (index >= slots_.size())
-        return false;
-    auto &slot = slots_[index];
-    if (!slot.resource || slot.generation != decode_generation(handle) || slot.type != type)
-        return false;
-    slot.resource.reset();
-    slot.type = ResourceType::none;
-    if (slot.generation == max_generation) {
-        slot.retired = true;
-    } else {
-        ++slot.generation;
-    }
-    return true;
-}
-
-void HandleRegistry::clear() {
-    std::lock_guard lock(mutex_);
-    for (auto &slot : slots_) {
-        slot.resource.reset();
+    std::shared_ptr<Resource> released;
+    {
+        std::lock_guard lock(mutex_);
+        const auto index = decode_index(handle);
+        if (index >= slots_.size())
+            return false;
+        auto &slot = slots_[index];
+        if (!slot.resource || slot.generation != decode_generation(handle) || slot.type != type)
+            return false;
+        released = std::move(slot.resource);
         slot.type = ResourceType::none;
-        if (slot.retired)
-            continue;
         if (slot.generation == max_generation) {
             slot.retired = true;
         } else {
             ++slot.generation;
         }
     }
+    // Resource teardown may take subsystem locks or re-enter this registry.
+    // Invalidate the handle under the lock, then release ownership outside it.
+    return true;
+}
+
+void HandleRegistry::clear() {
+    std::vector<std::shared_ptr<Resource>> released;
+    {
+        std::lock_guard lock(mutex_);
+        released.reserve(slots_.size());
+        for (auto &slot : slots_) {
+            if (slot.resource) released.push_back(std::move(slot.resource));
+            slot.type = ResourceType::none;
+            if (slot.retired)
+                continue;
+            if (slot.generation == max_generation) {
+                slot.retired = true;
+            } else {
+                ++slot.generation;
+            }
+        }
+    }
+    // All old handles are invalid before any destructor runs. Retain slot
+    // generations so stale handles remain invalid after a runtime restart.
 }
 
 } // namespace nk::core

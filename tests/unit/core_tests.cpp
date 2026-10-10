@@ -41,6 +41,22 @@
 
 namespace {
 struct Dummy final : nk::core::Resource {};
+struct ReentrantResource final : nk::core::Resource {
+    nk::core::HandleRegistry &registry;
+    bool &destroyed;
+    nk_handle own = NK_INVALID_HANDLE;
+    nk_handle peer = NK_INVALID_HANDLE;
+    ReentrantResource(nk::core::HandleRegistry &registry, bool &destroyed)
+        : registry(registry), destroyed(destroyed) {}
+    ~ReentrantResource() override {
+        NK_CHECK(!registry.get(own, nk::core::ResourceType::window));
+        NK_CHECK(!registry.erase(own, nk::core::ResourceType::window));
+        (void)registry.handles_of_type(nk::core::ResourceType::window);
+        if (peer != NK_INVALID_HANDLE)
+            NK_CHECK(!registry.get(peer, nk::core::ResourceType::window));
+        destroyed = true;
+    }
+};
 
 static_assert(NK_ACCESSIBILITY_SCROLL_AREA == 12);
 static_assert(NK_ACCESSIBILITY_DIALOG == 13);
@@ -285,6 +301,25 @@ int main() {
     NK_CHECK(!handles.get(first, nk::core::ResourceType::window));
     const auto second = handles.insert(nk::core::ResourceType::window, std::make_shared<Dummy>());
     NK_CHECK(second != first);
+
+    // Resource destructors may re-enter the registry after their handles are invalidated.
+    bool erased = false, cleared_one = false, cleared_two = false;
+    nk::core::HandleRegistry reentrant;
+    auto resource = std::make_shared<ReentrantResource>(reentrant, erased);
+    resource->own = reentrant.insert(nk::core::ResourceType::window, resource);
+    const auto removed = resource->own;
+    resource.reset();
+    NK_CHECK(reentrant.erase(removed, nk::core::ResourceType::window));
+    NK_CHECK(erased);
+    auto left = std::make_shared<ReentrantResource>(reentrant, cleared_one);
+    auto right = std::make_shared<ReentrantResource>(reentrant, cleared_two);
+    left->own = reentrant.insert(nk::core::ResourceType::window, left);
+    right->own = reentrant.insert(nk::core::ResourceType::window, right);
+    left->peer = right->own;
+    right->peer = left->own;
+    left.reset(); right.reset();
+    reentrant.clear();
+    NK_CHECK(cleared_one && cleared_two);
 
     nk::core::HandleRegistry generation_handles;
     const auto stale =

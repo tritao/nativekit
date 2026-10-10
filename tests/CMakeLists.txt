@@ -26,6 +26,7 @@ if(MSVC)
     target_compile_options(nativekit_core_tests PRIVATE /EHsc)
 endif()
 add_test(NAME core COMMAND nativekit_core_tests)
+set_tests_properties(core PROPERTIES TIMEOUT 30)
 
 if(WIN32 OR (APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS") OR
    (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
