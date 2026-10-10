@@ -1,4 +1,5 @@
 #include "audio_dsp_backend.hpp"
+#include "audio_daisy_source.hpp"
 
 #include "Control/adsr.h"
 #include "Filters/svf.h"
@@ -113,11 +114,15 @@ struct Voice::Impl {
         daisysp::Oscillator oscillator;
         daisysp::WavetableOscillator wavetable_oscillator;
         std::shared_ptr<const Wavetable> wavetable;
+        float level = 1.0f;
         float detune_cents = 0.0f;
         float phase = 0.0f;
     };
 
     std::array<OscillatorVoice, NK_AUDIO_DSP_MAX_OSCILLATORS> oscillators;
+    DaisySource source;
+    bool specialized_source = false;
+    bool source_replaces_oscillators = false;
     daisysp::Oscillator lfo;
     daisysp::Adsr envelope;
     WrappingWhiteNoise noise;
@@ -181,6 +186,12 @@ void Voice::init(uint32_t sample_rate) noexcept {
 
 void Voice::set_parameters(const PatchParameters &parameters) noexcept {
     const auto was_active = impl_->active;
+    impl_->source.configure(parameters.source, impl_->sample_rate);
+    impl_->specialized_source = parameters.source.options.kind != 0;
+    impl_->source_replaces_oscillators =
+        impl_->specialized_source &&
+        parameters.source.options.kind != NK_AUDIO_DSP_SOURCE_KARPLUS_STRING &&
+        parameters.source.options.kind != NK_AUDIO_DSP_SOURCE_RESONATOR;
     impl_->gain = parameters.gain;
     impl_->oscillator_count = parameters.oscillator_count;
     for (uint32_t index = 0; index < impl_->oscillators.size(); ++index) {
@@ -193,6 +204,7 @@ void Voice::set_parameters(const PatchParameters &parameters) noexcept {
         }
         const auto &parameters_oscillator = parameters.oscillators[index];
         voice_oscillator.wavetable = parameters_oscillator.wavetable;
+        voice_oscillator.level = parameters_oscillator.level;
         voice_oscillator.detune_cents = parameters_oscillator.detune_cents;
         voice_oscillator.phase = parameters_oscillator.phase;
         voice_oscillator.wavetable_oscillator.SetTables(
@@ -250,6 +262,7 @@ void Voice::note_on(uint32_t note, float velocity) noexcept {
     const auto semitones = static_cast<float>(note) - 69.0f;
     const auto frequency = 440.0f * std::pow(2.0f, semitones / 12.0f);
     impl_->base_frequency = frequency;
+    impl_->source.trigger(clamp_frequency(frequency, impl_->sample_rate), note);
     for (uint32_t index = 0; index < impl_->oscillator_count; ++index) {
         auto &oscillator = impl_->oscillators[index];
         const auto detuned_frequency =
@@ -354,7 +367,8 @@ float Voice::process() noexcept {
     auto frequency = impl_->base_frequency;
     float sample = 0.0f;
     std::array<float, NK_AUDIO_DSP_MAX_OSCILLATORS> oscillator_outputs{};
-    for (uint32_t position = 0; position < impl_->oscillator_count; ++position) {
+    for (uint32_t position = 0;
+         position < impl_->oscillator_count && !impl_->source_replaces_oscillators; ++position) {
         const auto index = impl_->oscillator_order[position];
         auto &oscillator = impl_->oscillators[index];
         for (uint32_t route_index = 0; route_index < impl_->route_count; ++route_index) {
@@ -390,7 +404,22 @@ float Voice::process() noexcept {
         oscillator_outputs[index] = oscillator_output;
         sample += oscillator_output;
     }
-    sample += impl_->noise.Process() * impl_->noise_level;
+    const float noise_sample = impl_->noise.Process() * impl_->noise_level;
+    if (!impl_->source_replaces_oscillators)
+        sample += noise_sample;
+    if (impl_->specialized_source) {
+        const float detune =
+            impl_->source_replaces_oscillators ? impl_->oscillators[0].detune_cents : 0.0f;
+        const float source_frequency = clamp_frequency(
+            frequency * std::pow(2.0f, (pitch_offsets[0] * 100 + detune) / 1200.0f) +
+                frequency_offsets[0],
+            impl_->sample_rate);
+        sample = impl_->source.process(source_frequency, sample);
+        if (impl_->source_replaces_oscillators)
+            sample =
+                sample * impl_->oscillators[0].level * std::max(0.0f, 1.0f + level_offsets[0]) +
+                noise_sample;
+    }
     if (impl_->filter_type == NK_AUDIO_DSP_FILTER_SVF_LOW_PASS && impl_->filter_cutoff_hz > 0.0f) {
         const auto cutoff = std::clamp(impl_->filter_cutoff_hz + filter_offset, 1.0f,
                                        static_cast<float>(impl_->sample_rate) / 3.0f);

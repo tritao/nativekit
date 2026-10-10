@@ -363,3 +363,52 @@ Bus gain and fades share one absolute fader. Fade targets are not multiplied
 by a previous volume setting. Muting, setting volume, applying mix snapshots,
 and clearing scheduled transitions use that same gain path. A fade updates
 the bus's configured target gain; an immediate volume change cancels it.
+
+## Specialized source patches
+
+`nk_audio_dsp_patch_create_source()` adds 24 DaisySP source models without
+changing the original patch struct or `nk_audio_dsp_patch_create()` behavior.
+Start with `nk_audio_dsp_source_defaults()` and use
+`nk_audio_dsp_source_parameter_info()` to query supported controls and domains.
+Configuration is copied into an immutable patch. The source shares the normal
+ADSR, velocity, filter, routing, scheduled events and voice-limit behavior.
+
+| Family | Sources |
+| --- | --- |
+| FM | FM2, with DaisySP's accumulating phase modulation |
+| Physical | StringVoice, KarplusString, ModalVoice, Resonator, Drip |
+| Drums | Analog/Synthetic BassDrum, Analog/Synthetic SnareDrum, HiHat |
+| Spectral oscillators | Formant, Vosim, Zosc, VariableSaw, VariableShape, OscillatorBank, Harmonic |
+| Texture | Grainlet, Particle, Dust, ClockedNoise, four-octave FractalNoise |
+| Sampling | GranularPlayer, copied mono PCM, reverse/frozen/time-stretched playback |
+
+Replacement sources use one neutral oscillator slot for level and detune,
+including pitch/frequency/level modulation routes. Oscillator waveform/phase
+controls and operator routes are unsupported. Noise stays additive.
+KarplusString/Resonator receive the existing oscillator/noise mix as excitation,
+with an impulse on note-on. Drip has a fixed internal tuning. Source-specific
+controls and spectral weights are patch settings, not automation destinations;
+ordinary envelope/gain/filter/level/detune automation is unchanged.
+
+Granular PCM must be finite in [-1,1], 2–1048576 mono frames at the engine sample
+rate. A patch retains a shared immutable copy; voices allocate no sample memory.
+`RootNote` gives the original MIDI pitch, `Speed` sets playback speed, and
+`GrainMs` sets grain duration. FM/formant/sync ratios and control domains are
+validated; continuous frequency modulation is clamped to the engine's range.
+All source state has bounded preallocated storage. Initialization/reset occurs
+on note-on and can be more expensive for physical models than basic oscillators.
+
+The private implementation adapts the pinned MIT sources where required:
+callback-local random state replaces libc's shared RNG; granular indexing wraps
+arbitrary offsets; phasor wrapping handles the endpoint and multiple cycles;
+FM2 initializes its cached default carrier/modulator tuning;
+Drip uses initialized filter values and portable random scaling; analog snare
+resonators run linearly to avoid nonlinear SVF divergence on trigger pulses.
+These changes are documented in `patches/daisysp/README.md`; no LGPL modules or
+SF2 decoder are introduced.
+
+`audio_daisy_sources` checks all sources for audible finite output, releases,
+invalid configuration and retained PCM lifetime. `audio_daisy_boundaries` checks
+supported control limits at MIDI 0/60/69/127 and can run with AddressSanitizer and
+UndefinedBehaviorSanitizer. Live device coverage additionally auditions every
+source in Beartooth's private null-sink integration check.

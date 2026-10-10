@@ -33,7 +33,8 @@ constexpr nk_audio_dsp_capabilities builtin_capabilities =
     NK_AUDIO_DSP_CAPABILITY_OSCILLATOR | NK_AUDIO_DSP_CAPABILITY_NOISE |
     NK_AUDIO_DSP_CAPABILITY_WAVETABLE | NK_AUDIO_DSP_CAPABILITY_ENVELOPE |
     NK_AUDIO_DSP_CAPABILITY_LFO | NK_AUDIO_DSP_CAPABILITY_FILTER | NK_AUDIO_DSP_CAPABILITY_FM |
-    NK_AUDIO_DSP_CAPABILITY_PHASE_MODULATION | NK_AUDIO_DSP_CAPABILITY_MODULATION;
+    NK_AUDIO_DSP_CAPABILITY_PHASE_MODULATION | NK_AUDIO_DSP_CAPABILITY_MODULATION |
+    NK_AUDIO_DSP_CAPABILITY_SPECIALIZED_SOURCE;
 
 using DspParameters = nk::audio_dsp::PatchParameters;
 
@@ -459,11 +460,21 @@ bool valid_oscillator_parameter(nk_audio_dsp_parameter parameter) {
            parameter == NK_AUDIO_DSP_PARAMETER_OSCILLATOR_PHASE;
 }
 
+bool replacement_source(const DspParameters &parameters) {
+    const auto kind = parameters.source.options.kind;
+    return kind != 0 && kind != NK_AUDIO_DSP_SOURCE_KARPLUS_STRING &&
+           kind != NK_AUDIO_DSP_SOURCE_RESONATOR;
+}
+
 nk_result set_oscillator_parameter(DspParameters &parameters, uint32_t oscillator_index,
                                    nk_audio_dsp_parameter parameter, float value) {
     if (!valid_oscillator_parameter(parameter) || oscillator_index >= parameters.oscillator_count ||
         !std::isfinite(value))
         return invalid_argument("audio DSP oscillator parameter target is invalid");
+    if (replacement_source(parameters) &&
+        (parameter == NK_AUDIO_DSP_PARAMETER_OSCILLATOR_WAVEFORM ||
+         parameter == NK_AUDIO_DSP_PARAMETER_OSCILLATOR_PHASE))
+        return invalid_argument("specialized source has no waveform or phase control");
     auto &oscillator = parameters.oscillators[oscillator_index];
     switch (parameter) {
     case NK_AUDIO_DSP_PARAMETER_OSCILLATOR_WAVEFORM:
@@ -498,6 +509,8 @@ nk_result set_parameter(DspParameters &parameters, nk_audio_dsp_parameter parame
         return invalid_argument("audio DSP parameter is invalid");
     switch (parameter) {
     case NK_AUDIO_DSP_PARAMETER_WAVEFORM:
+        if (replacement_source(parameters))
+            return invalid_argument("specialized source has no waveform control");
         if (value < 0.0f || value > static_cast<float>(NK_AUDIO_DSP_WAVEFORM_SQUARE) ||
             std::floor(value) != value)
             return invalid_argument("audio DSP waveform parameter is invalid");
@@ -1255,6 +1268,77 @@ nk_result NK_CALL nk_audio_dsp_patch_create(const nk_audio_dsp_patch_options *op
             *out_patch = handle;
             return NK_OK;
         });
+}
+
+nk_result NK_CALL nk_audio_dsp_source_parameter_info(uint32_t kind, uint32_t parameter,
+                                                     float *out_minimum, float *out_maximum,
+                                                     float *out_default) {
+    return nk::core::result_boundary("audio DSP source parameter info", [&]() -> nk_result {
+        if (!out_minimum || !out_maximum || !out_default)
+            return invalid_argument("missing source parameter output");
+        if (!nk::audio_dsp::source_parameter_info(kind, parameter, *out_minimum, *out_maximum,
+                                                  *out_default))
+            return invalid_argument("unsupported source parameter");
+        return NK_OK;
+    });
+}
+nk_result NK_CALL nk_audio_dsp_source_defaults(uint32_t kind,
+                                               nk_audio_dsp_source_options *out_options) {
+    return nk::core::result_boundary("audio DSP source defaults", [&]() -> nk_result {
+        if (!out_options || kind < 1 || kind > NK_AUDIO_DSP_SOURCE_KIND_COUNT)
+            return invalid_argument("invalid source kind or output");
+        *out_options = {};
+        out_options->struct_size = sizeof(*out_options);
+        out_options->kind = kind;
+        for (uint32_t p = 0; p < NK_AUDIO_DSP_SOURCE_PARAMETER_COUNT; ++p) {
+            float lo = 0, hi = 0, value = 0;
+            if (nk::audio_dsp::source_parameter_info(kind, p, lo, hi, value))
+                out_options->values[p] = value;
+        }
+        if (kind == NK_AUDIO_DSP_SOURCE_OSCILLATOR_BANK || kind == NK_AUDIO_DSP_SOURCE_HARMONIC)
+            out_options->amplitudes[0] = 1;
+        return NK_OK;
+    });
+}
+nk_result NK_CALL nk_audio_dsp_patch_create_source(const nk_audio_dsp_patch_options *options,
+                                                   const nk_audio_dsp_source_options *source,
+                                                   const float *samples, uint32_t sample_count,
+                                                   nk_audio_dsp_patch *out_patch) {
+    return nk::core::result_boundary("creating audio DSP source patch", [&]() -> nk_result {
+        if (const auto result = enter_dsp(); result != NK_OK)
+            return result;
+        if (!out_patch)
+            return invalid_argument("missing source patch output");
+        *out_patch = NK_INVALID_HANDLE;
+        DspParameters parameters;
+        if (const auto result = normalize_patch_options(options, parameters); result != NK_OK)
+            return result;
+        if (!source ||
+            !nk::audio_dsp::normalize_source(*source, samples, sample_count, parameters.source))
+            return invalid_argument("invalid DSP source configuration or samples");
+        if (replacement_source(parameters)) {
+            if (parameters.oscillator_count != 1 ||
+                parameters.oscillators[0].waveform != NK_AUDIO_DSP_WAVEFORM_SINE ||
+                parameters.oscillators[0].wavetable || parameters.oscillators[0].phase != 0)
+                return invalid_argument(
+                    "specialized source uses one neutral oscillator slot for level and detune");
+            for (uint32_t i = 0; i < parameters.route_count; ++i) {
+                const auto &route = parameters.routes[i];
+                if (route.source == NK_AUDIO_DSP_MODULATION_SOURCE_OSCILLATOR ||
+                    route.destination == NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_PHASE ||
+                    route.oscillator_index > 1)
+                    return invalid_argument("source does not support oscillator operator routes");
+            }
+        }
+        auto patch = std::make_shared<DspPatchResource>();
+        patch->parameters = std::move(parameters);
+        const auto handle =
+            nk::core::handles().insert(nk::core::ResourceType::audio_dsp_patch, patch);
+        if (handle == NK_INVALID_HANDLE)
+            return NK_ERROR_OUT_OF_MEMORY;
+        *out_patch = handle;
+        return NK_OK;
+    });
 }
 
 nk_result NK_CALL nk_audio_dsp_patch_destroy(nk_audio_dsp_patch patch_handle) {
