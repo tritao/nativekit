@@ -70,6 +70,23 @@ typedef struct nk_audio_bus_concurrency_options {
 /** Opaque handle for one effect inserted into an audio mixer bus. */
 typedef uint32_t nk_audio_bus_effect NK_HANDLE NK_HANDLE_DESTROY(nk_audio_bus_effect_destroy);
 
+/** An independently controlled post-fader route to another bus. */
+typedef uint32_t nk_audio_bus_send NK_HANDLE NK_HANDLE_DESTROY(nk_audio_bus_send_destroy);
+/** Maximum parallel sends per source bus; the primary parent route is separate. */
+#define NK_AUDIO_MAX_BUS_SENDS 8
+
+/** Creates a post-fader send with gain in [0, 1]. Parent/send routing cycles are rejected. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_send_create(nk_audio_bus source, nk_audio_bus destination,
+    float volume, nk_audio_bus_send *out_send NK_OUT NK_OWNED);
+/** Disconnects the send without resetting the destination's effect tails. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_send_destroy(nk_audio_bus_send send);
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_send_set_volume(nk_audio_bus_send send, float volume);
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_send_get_volume(nk_audio_bus_send send,
+    float *out_volume NK_OUT);
+/** Sends are invalidated when either endpoint's bus handle is destroyed. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_send_get_destination(nk_audio_bus_send send,
+    nk_audio_bus *out_destination NK_OUT);
+
 /** Built-in processing effect types available on mixer buses. */
 typedef uint32_t nk_audio_effect_type;
 enum NK_ENUM(nk_audio_effect_type) {
@@ -82,10 +99,12 @@ enum NK_ENUM(nk_audio_effect_type) {
     /** A stereo algorithmic reverb. */
     NK_AUDIO_EFFECT_REVERB = 3,
     /** A compressor, expander, and noise gate. */
-    NK_AUDIO_EFFECT_DYNAMICS = 4
+    NK_AUDIO_EFFECT_DYNAMICS = 4,
+    /** A tempo-aware interpolated stereo/ping-pong delay. */
+    NK_AUDIO_EFFECT_STEREO_DELAY = 5
 };
 
-/** Parameters for reverb and dynamics processors; unsupported combinations are rejected. */
+/** Parameters for reverb, dynamics, and stereo delay processors; unsupported combinations are rejected. */
 typedef uint32_t nk_audio_effect_parameter;
 enum NK_ENUM(nk_audio_effect_parameter) {
     NK_AUDIO_EFFECT_PARAMETER_WET = 0,
@@ -112,7 +131,17 @@ enum NK_ENUM(nk_audio_effect_parameter) {
     NK_AUDIO_EFFECT_PARAMETER_EXPANDER_THRESHOLD_DB = 15,
     NK_AUDIO_EFFECT_PARAMETER_EXPANDER_RATIO = 16,
     /** Dynamics wet/dry mix, [0, 1]. */
-    NK_AUDIO_EFFECT_PARAMETER_MIX = 17
+    NK_AUDIO_EFFECT_PARAMETER_MIX = 17,
+    /** Manual delay time in seconds, [one PCM frame, 4]; disables tempo sync. */
+    NK_AUDIO_EFFECT_PARAMETER_DELAY_SECONDS = 18,
+    /** Delay feedback gain, [0, 0.95]. */
+    NK_AUDIO_EFFECT_PARAMETER_FEEDBACK = 19,
+    /** Stereo feedback crossfeed, [0, 1]; 1 is ping-pong. */
+    NK_AUDIO_EFFECT_PARAMETER_PING_PONG = 20,
+    /** Delay tempo, [20, 300] beats per minute. */
+    NK_AUDIO_EFFECT_PARAMETER_BPM = 21,
+    /** Delay length in quarter-note beats, [0, 8]; 0 selects manual time. */
+    NK_AUDIO_EFFECT_PARAMETER_DELAY_BEATS = 22
 };
 
 /**
@@ -129,6 +158,12 @@ NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_create_reverb(
 /** Creates dynamics with compression/expansion disabled and gate at -80 dB. */
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_create_dynamics(
     nk_audio_bus bus, nk_audio_bus_effect *out_effect NK_OUT NK_OWNED);
+/** Creates a stereo delay: 250 ms, feedback 0.35, wet 0.3, dry 1; max delay 4 s. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_create_stereo_delay(
+    nk_audio_bus bus, nk_audio_bus_effect *out_effect NK_OUT NK_OWNED);
+/** Sets tempo and beat length together. Effective time must not exceed 4 seconds. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_set_delay_tempo(
+    nk_audio_bus_effect effect, float bpm, float beats);
 /** Sets a finite, range-checked parameter; changes are smoothed by the processor. */
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_set_parameter(
     nk_audio_bus_effect effect, nk_audio_effect_parameter parameter, float value);

@@ -220,9 +220,35 @@ parameter/effect combinations and non-finite values are rejected.
 `BusEffect.parameter()` reads the target value; `reset()` clears processor
 state at the next block while preserving those targets. `latencyFrames()` and
 `tailFrames()` report processor latency and an estimated -60 dB tail. Both
-new processors have zero algorithmic latency; reverb continues receiving silence
-through the graph after its source ends. Effects are currently inserts; shared
-sends, external sidechains, and scheduled effect automation are future additions.
+Signalsmith processors have zero algorithmic latency; reverb continues receiving
+silence through the graph after its source ends. External sidechains and
+sample-scheduled effect automation remain future additions.
+
+`Bus.addSend(destination, volume)` creates an independent post-fader route to a
+shared return bus. Each source supports eight sends in addition to its parent
+route; gains are [0, 1], and cycles across parent and send routes are rejected.
+Put a wet-only processor on the return (`Dry = 0`, `Wet = 1`) and control the
+contribution with `BusSend.setVolume()`. Removing a send preserves return tails.
+Destroying either endpoint invalidates the native send; its Haxe wrapper can
+still be disposed safely. Sends are owned by their source's `Bus` wrapper.
+
+`Bus.addStereoDelay()` adds NativeKit's stereo interpolated feedback delay.
+`setDelayTempo(bpm, beats)` sets quarter-note beat length and tempo together;
+the effective delay must fit its four-second buffer. `DelaySeconds` selects
+manual timing. `Feedback` is [0, 0.95], and `PingPong` is [0, 1] stereo
+cross-feedback. Delay time changes crossfade taps over 20 ms; wet/dry, feedback,
+and cross-feedback changes are smoothed. The buffer is prepared before playback;
+processing allocates no memory. Defaults: 250 ms, feedback 0.35, wet 0.3, dry 1.
+The existing fixed-frame `addDelay()` remains available.
+
+Miniaudio is pinned to `tritao/miniaudio`'s `nativekit` branch, based on upstream
+`dev`. The fork caches splitter samples by graph interval so live attachments,
+paused returns, and differently sized reads remain aligned. A zero graph
+processing-size request selects the default 480-frame quantum (10 ms at 48 kHz);
+explicit frame periods select their own quantum, up to 65535 frames. Partial
+hardware reads can leave a buffered suffix, so NativeKit preserves the graph's
+render clock independently of the public hardware PCM clock. The fork's
+standalone splitter regression is included in the audio CTest suite.
 
 Spatialized voices use a right-handed OpenGL-style coordinate system: +X is
 right, +Y is up, and -Z is forward. `Mixer` exposes the single process-wide
