@@ -89,6 +89,48 @@ void test_dynamics() {
     assert(create_effect_processor(NK_AUDIO_EFFECT_DYNAMICS, rate, 1));
 }
 
+void test_stereo_delay() {
+    auto effect = create_effect_processor(NK_AUDIO_EFFECT_STEREO_DELAY, rate, 2);
+    assert(effect && !create_effect_processor(NK_AUDIO_EFFECT_STEREO_DELAY, rate, 1));
+    assert(effect->set_parameter(NK_AUDIO_EFFECT_PARAMETER_DRY, 0));
+    assert(effect->set_parameter(NK_AUDIO_EFFECT_PARAMETER_WET, 1));
+    assert(effect->set_parameter(NK_AUDIO_EFFECT_PARAMETER_FEEDBACK, 0.5f));
+    assert(effect->set_parameter(NK_AUDIO_EFFECT_PARAMETER_PING_PONG, 1));
+    assert(effect->set_tempo(120, 0.01f)); // 240 frames; intentionally short for impulse testing
+    float seconds = 0;
+    assert(effect->get_parameter(NK_AUDIO_EFFECT_PARAMETER_DELAY_SECONDS, seconds));
+    assert(std::abs(seconds - 0.005f) < 0.00001f);
+    assert(!effect->set_tempo(20, 8)); // buffer bounds are validated before changing targets
+    assert(!effect->set_parameter(NK_AUDIO_EFFECT_PARAMETER_FEEDBACK, 1));
+    assert(!effect->set_parameter(NK_AUDIO_EFFECT_PARAMETER_DELAY_SECONDS, 0));
+    assert(!effect->set_parameter(NK_AUDIO_EFFECT_PARAMETER_DELAY_SECONDS, 4.1f));
+    effect->request_reset();
+    std::vector<float> input(1024 * 2), output(input.size());
+    input[0] = 1; // left-only pulse
+    effect->process(input.data(), output.data(), 1024);
+    for (int i = 0; i < 239; ++i) assert(output[i*2] == 0 && output[i*2+1] == 0);
+    assert(std::abs(output[240*2] - 1) < 0.001f);
+    assert(std::abs(output[480*2+1] - 0.5f) < 0.001f);
+    assert(std::abs(output[720*2] - 0.25f) < 0.001f);
+    effect->request_reset();
+    effect->process(nullptr, output.data(), 1024);
+    assert(energy(output.data(), output.size()) == 0);
+    // Delay changes crossfade taps rather than abruptly moving the read head.
+    assert(effect->set_parameter(NK_AUDIO_EFFECT_PARAMETER_FEEDBACK, 0));
+    assert(effect->set_parameter(NK_AUDIO_EFFECT_PARAMETER_PING_PONG, 0));
+    assert(effect->set_parameter(NK_AUDIO_EFFECT_PARAMETER_DELAY_SECONDS, 0.002f));
+    effect->request_reset();
+    std::vector<float> tone(4800*2), before(tone.size()), after(tone.size());
+    for (int f = 0; f < 4800; ++f) tone[f*2] = tone[f*2+1] = std::sin(f*0.025f)*0.3f;
+    effect->process(tone.data(), before.data(), 4800);
+    assert(effect->set_parameter(NK_AUDIO_EFFECT_PARAMETER_DELAY_SECONDS, 0.01f));
+    for (int f = 0; f < 4800; ++f) tone[f*2] = tone[f*2+1] = std::sin((f+4800)*0.025f)*0.3f;
+    effect->process(tone.data(), after.data(), 4800);
+    assert(energy(after.data(), after.size()) > 0);
+    for (int f = 1; f < 900; ++f) assert(std::abs(after[f*2] - after[(f-1)*2]) < 0.02f);
+    assert(effect->latency_frames() == 0 && effect->tail_frames() > 0);
+}
+
 void test_graph_tail() {
     ma_node_graph graph{};
     auto graph_config = ma_node_graph_config_init(channels);
@@ -126,6 +168,7 @@ void test_graph_tail() {
 int main() {
     test_reverb();
     test_dynamics();
+    test_stereo_delay();
     test_graph_tail();
     std::puts("PASS: offline reverb decay/reset, dynamics gain, and graph tails");
 }

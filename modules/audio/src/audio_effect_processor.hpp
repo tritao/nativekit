@@ -13,10 +13,12 @@ class EffectProcessor {
     virtual void process(const float *input, float *output, uint32_t frames) noexcept = 0;
     virtual bool set_parameter(nk_audio_effect_parameter parameter, float value) noexcept = 0;
     virtual bool get_parameter(nk_audio_effect_parameter parameter, float &value) const noexcept = 0;
+    virtual bool set_tempo(float, float) noexcept { return false; }
     virtual void request_reset() noexcept = 0;
     virtual uint32_t latency_frames() const noexcept = 0;
     virtual uint32_t tail_frames() const noexcept = 0;
 };
+std::unique_ptr<EffectProcessor> create_stereo_delay_processor(uint32_t sample_rate, uint32_t channels);
 std::unique_ptr<EffectProcessor> create_effect_processor(nk_audio_effect_type type,
                                                        uint32_t sample_rate, uint32_t channels);
 } // namespace nk::audio

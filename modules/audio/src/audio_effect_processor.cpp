@@ -159,6 +159,8 @@ class Dynamics final : public Processor<signalsmith::basics::DynamicsFloat> {
 std::unique_ptr<EffectProcessor> create_effect_processor(nk_audio_effect_type type,
                                                        uint32_t rate, uint32_t channels) {
     if (rate < 8000 || rate > 384000 || channels == 0 || channels > 32) return {};
+    if (type == NK_AUDIO_EFFECT_STEREO_DELAY)
+        return create_stereo_delay_processor(rate, channels);
     if (type == NK_AUDIO_EFFECT_REVERB && channels == 2) {
         auto result = std::make_unique<Reverb>(rate, channels);
         if (result->prepare()) return result;

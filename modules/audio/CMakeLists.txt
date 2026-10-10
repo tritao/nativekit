@@ -27,6 +27,7 @@ endif()
 target_sources(nativekit PRIVATE
     src/audio.cpp
     src/audio_effect_processor.cpp
+    src/audio_delay_processor.cpp
     src/audio_dsp.cpp
     src/audio_dsp_backend.cpp
     $<TARGET_OBJECTS:nativekit_daisysp>)
@@ -65,7 +66,20 @@ target_link_libraries(nativekit_audio_dsp INTERFACE NativeKit::audio)
 set_target_properties(nativekit_audio_dsp PROPERTIES EXPORT_NAME audio_dsp)
 
 if(NK_BUILD_TESTS)
+    add_executable(nativekit_miniaudio_splitter_tests
+        "${NK_VENDOR_DIR}/miniaudio/tests/node_graph/splitter_clock.c")
+    if(UNIX)
+        target_link_libraries(nativekit_miniaudio_splitter_tests PRIVATE m)
+    endif()
+    add_test(NAME miniaudio_splitter COMMAND nativekit_miniaudio_splitter_tests)
+    set_tests_properties(miniaudio_splitter PROPERTIES LABELS "audio")
+
     target_compile_definitions(nativekit PRIVATE NK_AUDIO_TESTING)
+    add_executable(nativekit_audio_sends_tests tests/audio_sends.cpp)
+    target_compile_features(nativekit_audio_sends_tests PRIVATE cxx_std_17)
+    target_link_libraries(nativekit_audio_sends_tests PRIVATE NativeKit::audio_graph)
+    add_test(NAME audio_sends COMMAND nativekit_audio_sends_tests)
+    set_tests_properties(audio_sends PROPERTIES LABELS "audio")
     add_executable(nativekit_audio_routing_tests tests/audio_routing.cpp)
     target_compile_features(nativekit_audio_routing_tests PRIVATE cxx_std_17)
     target_link_libraries(nativekit_audio_routing_tests PRIVATE NativeKit::audio_graph)
@@ -77,7 +91,7 @@ if(NK_BUILD_TESTS)
     add_test(NAME audio COMMAND nativekit_audio_tests)
     set_tests_properties(audio PROPERTIES LABELS "audio" SKIP_RETURN_CODE 77)
 
-    add_executable(nativekit_audio_effects_tests tests/audio_effects.cpp src/audio_effect_processor.cpp)
+    add_executable(nativekit_audio_effects_tests tests/audio_effects.cpp src/audio_effect_processor.cpp src/audio_delay_processor.cpp)
     target_compile_features(nativekit_audio_effects_tests PRIVATE cxx_std_17)
     target_include_directories(nativekit_audio_effects_tests PRIVATE src "${NK_VENDOR_DIR}/miniaudio")
     target_include_directories(nativekit_audio_effects_tests SYSTEM PRIVATE

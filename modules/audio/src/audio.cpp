@@ -37,6 +37,7 @@ constexpr uint32_t supported_voice_flags =
 
 struct AudioEngineResource;
 struct AudioBusResource;
+struct AudioSendResource;
 struct DspSourceNode {
     ma_node_base base{};
     uint32_t sample_rate = 0;
@@ -46,8 +47,13 @@ void dsp_source_process(ma_node *node, const float **, ma_uint32 *,
                         float **output, ma_uint32 *count) noexcept {
     auto &source = *reinterpret_cast<DspSourceNode *>(node);
     ma_silence_pcm_frames(output[0], *count, ma_format_f32, source.channels);
+    // The graph can pre-render a partial device callback and retain its suffix.
+    // Preserve that source clock; catch up to graph time only after a stopped bus.
+    const auto start = std::max(ma_node_get_time(node),
+                               ma_node_graph_get_time(ma_node_get_node_graph(node)));
+    ma_node_set_time(node, start);
     nk::audio_dsp::process_device_output(output[0], *count, source.sample_rate,
-                                         source.channels, ma_node_get_time(node));
+                                         source.channels, start);
 }
 const ma_node_vtable dsp_source_vtable{dsp_source_process, nullptr, 0, 1, 0};
 void bus_input_process(ma_node *, const float **, ma_uint32 *, float **, ma_uint32 *) noexcept {
@@ -87,6 +93,7 @@ struct AudioEngineResource final : nk::core::Resource {
     std::atomic<bool> interrupted{false};
     std::atomic<uint64_t> device_time_frames{0};
     std::vector<std::weak_ptr<nk::core::Resource>> voices;
+    std::vector<std::weak_ptr<AudioBusResource>> buses; // UI-thread routing/lifecycle bookkeeping.
 
     ~AudioEngineResource() override {
         nk::audio_dsp::detach_device();
@@ -108,14 +115,10 @@ void audio_engine_data_callback(ma_device *, void *frames_out, const void *frame
 
     (void)frames_in;
     const auto channels = ma_engine_get_channels(&engine->engine);
-    const auto device_frame =
-        engine->device_time_frames.fetch_add(frame_count, std::memory_order_acq_rel);
+    engine->device_time_frames.fetch_add(frame_count, std::memory_order_acq_rel);
 
-    // Keep miniaudio's graph clock aligned with the hardware timeline even
-    // when the graph has no native voices to pull frames from.
-    ma_engine_set_time_in_pcm_frames(&engine->engine, device_frame);
-    if (engine->dsp_source_initialized)
-        ma_node_set_time(&engine->dsp_source.base, device_frame);
+    // The graph owns its render clock, which may be ahead of the hardware clock
+    // while it retains a partial processing block. Never rewind it per callback.
     ma_uint64 frames_read = 0;
     const auto result =
         ma_engine_read_pcm_frames(&engine->engine, frames_out, frame_count, &frames_read);
@@ -148,6 +151,9 @@ struct AudioBusResource final : nk::core::Resource {
     std::shared_ptr<AudioBusResource> parent;
     ma_sound_group group{}; // Post-effect volume, mute, fades, and transport.
     ma_node_base input{};
+    ma_splitter_node output{}; // primary route plus bounded post-fader sends
+    bool output_initialized = false;
+    std::vector<std::shared_ptr<AudioSendResource>> sends;
     bool input_initialized = false;
     bool initialized = false;
     float volume = 1.0f;
@@ -159,6 +165,14 @@ struct AudioBusResource final : nk::core::Resource {
     std::atomic<nk_audio_bus> handle{NK_INVALID_HANDLE};
 
     ~AudioBusResource() override;
+};
+
+struct AudioSendResource final : nk::core::Resource {
+    std::weak_ptr<AudioBusResource> source;
+    std::shared_ptr<AudioBusResource> destination;
+    nk_audio_bus_send handle = NK_INVALID_HANDLE;
+    uint32_t output_index = 0;
+    float volume = 1;
 };
 
 struct AudioMixSnapshotTarget {
@@ -825,6 +839,9 @@ AudioBusResource::~AudioBusResource() {
         audio_effect_uninitialize(*effect);
     }
     effects.clear();
+    if (output_initialized)
+        ma_splitter_node_uninit(&output, &engine->engine.allocationCallbacks);
+    sends.clear();
     if (input_initialized)
         ma_node_uninit(&input, &engine->engine.allocationCallbacks);
     if (initialized)
@@ -841,6 +858,7 @@ ma_node *audio_effect_node(AudioEffectResource &effect) {
         return effect.delay.get();
     case NK_AUDIO_EFFECT_REVERB:
     case NK_AUDIO_EFFECT_DYNAMICS:
+    case NK_AUDIO_EFFECT_STEREO_DELAY:
         return &effect.processor->base;
     default:
         return nullptr;
@@ -873,9 +891,12 @@ nk_result rebuild_audio_bus_effect_chain(AudioBusResource &bus, const char *mess
     result = ma_node_attach_output_bus(source, 0, &bus.group, 0);
     if (result != MA_SUCCESS)
         return map_miniaudio_result(result, message);
+    result = ma_node_attach_output_bus(&bus.group, 0, &bus.output, 0);
+    if (result != MA_SUCCESS)
+        return map_miniaudio_result(result, message);
     auto *destination = bus.parent ? static_cast<ma_node *>(&bus.parent->input)
                                    : ma_engine_get_endpoint(&bus.engine->engine);
-    result = ma_node_attach_output_bus(&bus.group, 0, destination, 0);
+    result = ma_node_attach_output_bus(&bus.output, 0, destination, 0);
     return result == MA_SUCCESS ? NK_OK : map_miniaudio_result(result, message);
 }
 
@@ -1404,6 +1425,7 @@ nk_result insert_bus(std::shared_ptr<AudioBusResource> bus, nk_audio_bus *out_bu
         return NK_ERROR_OUT_OF_MEMORY;
     }
     bus->handle.store(handle, std::memory_order_release);
+    bus->engine->buses.emplace_back(bus);
     *out_bus = handle;
     return NK_OK;
 }
@@ -1653,6 +1675,37 @@ nk_result with_voice(nk_audio_voice handle, const char *message, Function &&func
     if (!voice)
         return NK_ERROR_INVALID_HANDLE;
     return function(*voice, message);
+}
+
+// Follow every routing edge, including retained parents whose public handle
+// has been destroyed. This protects both the graph and shared ownership from cycles.
+bool bus_reaches(const std::shared_ptr<AudioBusResource> &start, const AudioBusResource *target) {
+    std::vector<std::shared_ptr<AudioBusResource>> pending{start};
+    std::vector<const AudioBusResource *> visited;
+    while (!pending.empty()) {
+        auto bus = std::move(pending.back()); pending.pop_back();
+        if (!bus) continue;
+        if (bus.get() == target) return true;
+        if (std::find(visited.begin(), visited.end(), bus.get()) != visited.end()) continue;
+        visited.push_back(bus.get());
+        if (bus->parent) pending.push_back(bus->parent);
+        for (const auto &send : bus->sends) pending.push_back(send->destination);
+    }
+    return false;
+}
+std::shared_ptr<AudioSendResource> get_send(nk_audio_bus_send handle) {
+    return std::static_pointer_cast<AudioSendResource>(
+        nk::core::handles().get(handle, nk::core::ResourceType::audio_bus_send));
+}
+void disconnect_send(std::shared_ptr<AudioSendResource> send) {
+    if (auto source = send->source.lock()) {
+        ma_node_detach_output_bus(&source->output, send->output_index);
+        auto &sends = source->sends;
+        sends.erase(std::remove(sends.begin(), sends.end(), send), sends.end());
+    }
+    nk::core::handles().erase(send->handle, nk::core::ResourceType::audio_bus_send);
+    send->source.reset();
+    send->destination.reset();
 }
 
 template <typename Function>
@@ -2410,7 +2463,7 @@ nk_result NK_CALL nk_audio_bus_create(const nk_audio_bus_options *options, nk_au
             bus->engine = std::move(engine);
             bus->parent = std::move(parent);
             const auto result = ma_sound_group_init(
-                &bus->engine->engine, 0, nullptr, &bus->group);
+                &bus->engine->engine, MA_SOUND_FLAG_NO_PITCH, nullptr, &bus->group);
             if (result != MA_SUCCESS)
                 return map_miniaudio_result(result, "could not create audio mixer bus");
             bus->initialized = true;
@@ -2424,12 +2477,97 @@ nk_result NK_CALL nk_audio_bus_create(const nk_audio_bus_options *options, nk_au
             if (input_result != MA_SUCCESS)
                 return map_miniaudio_result(input_result, "could not create mixer bus input");
             bus->input_initialized = true;
+            auto output_config = ma_splitter_node_config_init(channels);
+            output_config.outputBusCount = NK_AUDIO_MAX_BUS_SENDS + 1;
+            const auto output_result = ma_splitter_node_init(ma_engine_get_node_graph(&bus->engine->engine),
+                &output_config, &bus->engine->engine.allocationCallbacks, &bus->output);
+            if (output_result != MA_SUCCESS)
+                return map_miniaudio_result(output_result, "could not create mixer bus output");
+            bus->output_initialized = true;
             if (const auto chain_result =
                     rebuild_audio_bus_effect_chain(*bus, "could not route audio mixer bus");
                 chain_result != NK_OK)
                 return chain_result;
             return insert_bus(std::move(bus), out_bus);
         });
+}
+
+nk_result NK_CALL nk_audio_bus_send_create(nk_audio_bus source_handle,
+    nk_audio_bus destination_handle, float volume, nk_audio_bus_send *out_send) {
+    return nk::core::result_boundary("unexpected error while creating audio send", [&]() -> nk_result {
+        if (const auto result = enter_audio_ui(); result != NK_OK) return result;
+        if (!out_send) return invalid_argument("audio send output is missing");
+        *out_send = NK_INVALID_HANDLE;
+        if (!std::isfinite(volume) || volume < 0 || volume > 1)
+            return invalid_argument("audio send volume must be in [0, 1]");
+        auto source = get_bus(source_handle), destination = get_bus(destination_handle);
+        if (!source || !destination) return NK_ERROR_INVALID_HANDLE;
+        if (source->engine != destination->engine)
+            return invalid_request("send endpoints belong to different audio engines");
+        if (bus_reaches(destination, source.get()))
+            return invalid_request("audio send would create a parent/send routing cycle");
+        uint32_t index = 1;
+        for (; index <= NK_AUDIO_MAX_BUS_SENDS; ++index) {
+            const auto used = std::any_of(source->sends.begin(), source->sends.end(),
+                [&](const auto &send) { return send->output_index == index; });
+            if (!used) break;
+        }
+        if (index > NK_AUDIO_MAX_BUS_SENDS) return invalid_request("audio bus send limit reached");
+        auto send = std::make_shared<AudioSendResource>();
+        send->source = source; send->destination = destination;
+        send->output_index = index; send->volume = volume;
+        source->sends.push_back(send);
+        send->handle = nk::core::handles().insert(nk::core::ResourceType::audio_bus_send, send);
+        if (send->handle == NK_INVALID_HANDLE) {
+            source->sends.pop_back(); return NK_ERROR_OUT_OF_MEMORY;
+        }
+        ma_node_set_output_bus_volume(&source->output, index, volume);
+        const auto result = ma_node_attach_output_bus(&source->output, index, &destination->input, 0);
+        if (result != MA_SUCCESS) {
+            disconnect_send(send);
+            return map_miniaudio_result(result, "could not attach audio send");
+        }
+        *out_send = send->handle; return NK_OK;
+    });
+}
+nk_result NK_CALL nk_audio_bus_send_destroy(nk_audio_bus_send handle) {
+    return nk::core::result_boundary("unexpected error while removing audio send", [&]() -> nk_result {
+        if (const auto result = enter_audio_ui(); result != NK_OK) return result;
+        auto send = get_send(handle);
+        if (!send) return NK_ERROR_INVALID_HANDLE;
+        disconnect_send(send); return NK_OK;
+    });
+}
+nk_result NK_CALL nk_audio_bus_send_set_volume(nk_audio_bus_send handle, float volume) {
+    return nk::core::result_boundary("unexpected error while setting audio send volume", [&]() -> nk_result {
+        if (const auto result = enter_audio_ui(); result != NK_OK) return result;
+        if (!std::isfinite(volume) || volume < 0 || volume > 1)
+            return invalid_argument("audio send volume must be in [0, 1]");
+        auto send = get_send(handle);
+        if (!send) return NK_ERROR_INVALID_HANDLE;
+        auto source = send->source.lock();
+        if (!source) return NK_ERROR_INVALID_HANDLE;
+        ma_node_set_output_bus_volume(&source->output, send->output_index, volume);
+        send->volume = volume; return NK_OK;
+    });
+}
+nk_result NK_CALL nk_audio_bus_send_get_volume(nk_audio_bus_send handle, float *out_volume) {
+    return nk::core::result_boundary("unexpected error while reading audio send volume", [&]() -> nk_result {
+        if (const auto result = enter_audio_ui(); result != NK_OK) return result;
+        if (!out_volume) return invalid_argument("audio send volume output is missing");
+        auto send = get_send(handle);
+        if (!send) return NK_ERROR_INVALID_HANDLE;
+        *out_volume = send->volume; return NK_OK;
+    });
+}
+nk_result NK_CALL nk_audio_bus_send_get_destination(nk_audio_bus_send handle, nk_audio_bus *out_destination) {
+    return nk::core::result_boundary("unexpected error while reading audio send destination", [&]() -> nk_result {
+        if (const auto result = enter_audio_ui(); result != NK_OK) return result;
+        if (!out_destination) return invalid_argument("audio send destination output is missing");
+        auto send = get_send(handle);
+        if (!send || !send->destination) return NK_ERROR_INVALID_HANDLE;
+        *out_destination = send->destination->handle.load(std::memory_order_acquire); return NK_OK;
+    });
 }
 
 nk_result NK_CALL nk_audio_bus_set_parent(nk_audio_bus bus_handle, nk_audio_bus parent_handle) {
@@ -2450,10 +2588,8 @@ nk_result NK_CALL nk_audio_bus_set_parent(nk_audio_bus bus_handle, nk_audio_bus 
                     return NK_ERROR_INVALID_HANDLE;
                 if (parent->engine.get() != bus->engine.get())
                     return invalid_request("audio bus parent belongs to another audio engine");
-                for (auto ancestor = parent; ancestor; ancestor = ancestor->parent) {
-                    if (ancestor.get() == bus.get())
-                        return invalid_request("audio bus parent would create a routing cycle");
-                }
+                if (bus_reaches(parent, bus.get()))
+                    return invalid_request("audio bus parent would create a parent/send routing cycle");
             }
             if (bus->parent.get() == parent.get())
                 return NK_OK;
@@ -2499,6 +2635,19 @@ nk_result NK_CALL nk_audio_bus_destroy(nk_audio_bus bus) {
                     ma_engine_get_endpoint(&value->engine->engine), 0);
                 if (result != MA_SUCCESS) return map_miniaudio_result(result, "could not restore DSP routing");
                 value->engine->dsp_bus = nullptr;
+            }
+            // Remove both incoming and outgoing routes while graph nodes still exist.
+            while (!value->sends.empty()) disconnect_send(value->sends.back());
+            auto &buses = value->engine->buses;
+            for (auto it = buses.begin(); it != buses.end();) {
+                auto source = it->lock();
+                if (!source) { it = buses.erase(it); continue; }
+                for (size_t index = 0; index < source->sends.size();) {
+                    auto send = source->sends[index];
+                    if (send->destination.get() == value.get()) disconnect_send(send);
+                    else ++index;
+                }
+                ++it;
             }
             for (const auto &effect : value->effects) {
                 effect->bus.reset();
@@ -2994,6 +3143,27 @@ nk_result NK_CALL nk_audio_bus_effect_create_dynamics(nk_audio_bus bus, nk_audio
         auto value = get_bus(bus);
         if (!value) return NK_ERROR_INVALID_HANDLE;
         return create_audio_processor_effect(std::move(value), NK_AUDIO_EFFECT_DYNAMICS, out_effect);
+    });
+}
+nk_result NK_CALL nk_audio_bus_effect_create_stereo_delay(nk_audio_bus bus, nk_audio_bus_effect *out_effect) {
+    return nk::core::result_boundary("unexpected error while creating stereo delay", [&]() -> nk_result {
+        if (const auto result = enter_audio_ui(); result != NK_OK) return result;
+        if (!out_effect) return invalid_argument("audio effect output is missing");
+        *out_effect = NK_INVALID_HANDLE;
+        auto value = get_bus(bus);
+        if (!value) return NK_ERROR_INVALID_HANDLE;
+        return create_audio_processor_effect(std::move(value), NK_AUDIO_EFFECT_STEREO_DELAY, out_effect);
+    });
+}
+nk_result NK_CALL nk_audio_bus_effect_set_delay_tempo(nk_audio_bus_effect handle, float bpm, float beats) {
+    return nk::core::result_boundary("unexpected error while setting delay tempo", [&]() -> nk_result {
+        if (const auto result = enter_audio_ui(); result != NK_OK) return result;
+        return with_effect(handle, "could not set delay tempo",
+            [&](AudioEffectResource &effect, AudioBusResource &, const char *) -> nk_result {
+                if (!effect.processor || !effect.processor->processor->set_tempo(bpm, beats))
+                    return invalid_argument("unsupported delay tempo or effective delay exceeds 4 seconds");
+                return NK_OK;
+            });
     });
 }
 nk_result NK_CALL nk_audio_bus_effect_set_parameter(nk_audio_bus_effect handle,
