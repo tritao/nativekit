@@ -98,7 +98,7 @@ struct ActiveParameterRamp {
     uint64_t end_frame;
 };
 
-struct DspEngineResource final : nk::core::Resource {
+struct DspEngineResource final : nk::core::Resource, nk::audio_dsp::DeviceOutput {
     nk_audio_dsp_engine_options options{};
     std::mutex mutex;
     std::vector<DspVoice> voices;
@@ -107,19 +107,20 @@ struct DspEngineResource final : nk::core::Resource {
     std::atomic<uint32_t> scheduled_write{0};
     std::atomic<uint32_t> scheduled_read{0};
     std::atomic<uint64_t> scheduled_generation{1};
-    std::atomic<bool> reset_requested{false};
     std::atomic<bool> attached{false};
+    std::atomic<uint32_t> output_readers{0};
     uint64_t output_frame = 0;
     uint32_t output_sample_rate = 0;
     uint32_t output_channels = 0;
     std::vector<float> output_scratch;
     std::array<ActiveParameterRamp, max_attached_parameter_ramps> output_ramps{};
     uint32_t output_ramp_count = 0;
+    uint64_t output_generation = 0;
+    void process(float *, uint64_t, uint32_t, uint32_t, uint64_t) noexcept override;
+    void detach() noexcept override;
     bool alive = true;
 };
 
-std::atomic<DspEngineResource *> active_output{nullptr};
-std::atomic<uint32_t> active_output_readers{0};
 
 nk_result invalid_argument(const char *message) {
     nk::core::set_error(message);
@@ -894,10 +895,15 @@ void consume_attached_events(DspEngineResource &engine, uint64_t frame) noexcept
     auto read = engine.scheduled_read.load(std::memory_order_relaxed);
     for (;;) {
         const auto write = engine.scheduled_write.load(std::memory_order_acquire);
+        const auto generation = engine.scheduled_generation.load(std::memory_order_acquire);
+        if (engine.output_generation != generation) {
+            reset_voices(engine);
+            engine.output_ramp_count = 0;
+            engine.output_generation = generation;
+        }
         if (read == write)
             break;
         auto &scheduled = engine.scheduled_events[read & scheduled_event_mask];
-        const auto generation = engine.scheduled_generation.load(std::memory_order_acquire);
         if (scheduled.generation != generation) {
             ++read;
             continue;
@@ -919,6 +925,7 @@ void render_attached_block(DspEngineResource &engine, uint64_t start_frame,
     std::fill(engine.output_scratch.begin(), engine.output_scratch.begin() + sample_count, 0.0f);
     for (uint32_t frame = 0; frame < frame_count; ++frame) {
         const auto absolute_frame = start_frame + frame;
+        consume_attached_events(engine, absolute_frame);
         for (uint32_t index = 0; index < engine.output_ramp_count;) {
             auto &ramp = engine.output_ramps[index];
             if (absolute_frame >= ramp.end_frame) {
@@ -934,7 +941,6 @@ void render_attached_block(DspEngineResource &engine, uint64_t start_frame,
                 ramp.start_value + (ramp.end_value - ramp.start_value) * progress);
             ++index;
         }
-        consume_attached_events(engine, absolute_frame);
         float mixed = 0.0f;
         for (auto &voice : engine.voices)
             mixed += voice_sample(voice);
@@ -943,6 +949,45 @@ void render_attached_block(DspEngineResource &engine, uint64_t start_frame,
                                   channel] = mixed;
     }
     consume_attached_events(engine, start_frame + frame_count);
+}
+
+void DspEngineResource::detach() noexcept {
+    auto *engine = this;
+    std::lock_guard lock(engine->mutex);
+    // Total ordering across the gate and reader count prevents a new reader
+    // from observing the old gate after detach has observed an empty count.
+    engine->attached.store(false, std::memory_order_seq_cst);
+    while (engine->output_readers.load(std::memory_order_seq_cst) != 0)
+        std::this_thread::yield();
+    engine->output_ramp_count = 0;
+    engine->scheduled_read.store(engine->scheduled_write.load(std::memory_order_acquire),
+                                 std::memory_order_release);
+}
+
+void DspEngineResource::process(float *frames_out, uint64_t frame_count, uint32_t sample_rate,
+                                uint32_t channels, uint64_t start_frame) noexcept {
+    auto *engine = this;
+    engine->output_readers.fetch_add(1, std::memory_order_seq_cst);
+    if (!engine->attached.load(std::memory_order_seq_cst) ||
+        engine->output_sample_rate != sample_rate || engine->output_channels != channels) {
+        engine->output_readers.fetch_sub(1, std::memory_order_seq_cst);
+        return;
+    }
+    engine->output_frame = start_frame;
+    uint64_t output_offset = 0;
+    while (output_offset < frame_count) {
+        const auto remaining = frame_count - output_offset;
+        const auto block = static_cast<uint32_t>(std::min<uint64_t>(
+            remaining, static_cast<uint64_t>(engine->options.block_size)));
+        render_attached_block(*engine, engine->output_frame, block);
+        const auto sample_count = static_cast<uint64_t>(block) * channels;
+        auto *destination = frames_out + output_offset * channels;
+        for (uint64_t sample = 0; sample < sample_count; ++sample)
+            destination[sample] += engine->output_scratch[sample];
+        engine->output_frame += block;
+        output_offset += block;
+    }
+    engine->output_readers.fetch_sub(1, std::memory_order_seq_cst);
 }
 
 } // namespace
@@ -959,82 +1004,28 @@ nk_result attach_device(nk_audio_dsp_engine engine_handle, uint64_t device_frame
         return invalid_request("audio DSP engine is no longer alive");
     if (engine->options.sample_rate != sample_rate || engine->options.channels != channels)
         return invalid_request("audio DSP engine format does not match the playback device");
-    auto *active = active_output.load(std::memory_order_acquire);
-    if (active && active != engine.get())
-        return invalid_request("another audio DSP engine is already attached to the playback device");
+    if (engine->attached.load(std::memory_order_acquire)) return NK_OK;
     const auto write = engine->scheduled_write.load(std::memory_order_acquire);
     engine->scheduled_read.store(write, std::memory_order_release);
     engine->scheduled_generation.fetch_add(1, std::memory_order_acq_rel);
-    engine->reset_requested.store(true, std::memory_order_release);
     engine->output_frame = device_frame;
     engine->output_sample_rate = sample_rate;
     engine->output_channels = channels;
     engine->output_ramp_count = 0;
     engine->attached.store(true, std::memory_order_release);
-    active_output.store(engine.get(), std::memory_order_release);
     return NK_OK;
 }
 
 nk_result require_attached(nk_audio_dsp_engine engine_handle) {
     auto engine = get_engine(engine_handle);
     if (!engine) return NK_ERROR_INVALID_HANDLE;
-    if (active_output.load(std::memory_order_acquire) != engine.get())
+    if (!engine->attached.load(std::memory_order_acquire))
         return invalid_request("audio DSP engine is not attached to the playback device");
     return NK_OK;
 }
 
-nk_result detach_device(nk_audio_dsp_engine engine_handle) {
-    auto engine = get_engine(engine_handle);
-    if (!engine)
-        return NK_ERROR_INVALID_HANDLE;
-    auto *expected = engine.get();
-    if (!active_output.compare_exchange_strong(expected, nullptr, std::memory_order_acq_rel))
-        return invalid_request("audio DSP engine is not attached to the playback device");
-    engine->attached.store(false, std::memory_order_release);
-    while (active_output_readers.load(std::memory_order_acquire) != 0)
-        std::this_thread::yield();
-    engine->output_ramp_count = 0;
-    engine->scheduled_read.store(engine->scheduled_write.load(std::memory_order_acquire),
-                                 std::memory_order_release);
-    return NK_OK;
-}
-
-void detach_device() noexcept {
-    auto *engine = active_output.exchange(nullptr, std::memory_order_acq_rel);
-    if (!engine)
-        return;
-    engine->attached.store(false, std::memory_order_release);
-    while (active_output_readers.load(std::memory_order_acquire) != 0)
-        std::this_thread::yield();
-    engine->output_ramp_count = 0;
-}
-
-void process_device_output(float *frames_out, uint64_t frame_count, uint32_t sample_rate,
-                           uint32_t channels, uint64_t start_frame) noexcept {
-    active_output_readers.fetch_add(1, std::memory_order_acq_rel);
-    auto *engine = active_output.load(std::memory_order_acquire);
-    if (!engine || !engine->attached.load(std::memory_order_acquire) ||
-        engine->output_sample_rate != sample_rate || engine->output_channels != channels) {
-        active_output_readers.fetch_sub(1, std::memory_order_acq_rel);
-        return;
-    }
-    if (engine->reset_requested.exchange(false, std::memory_order_acq_rel))
-        reset_voices(*engine);
-    engine->output_frame = start_frame;
-    uint64_t output_offset = 0;
-    while (output_offset < frame_count) {
-        const auto remaining = frame_count - output_offset;
-        const auto block = static_cast<uint32_t>(std::min<uint64_t>(
-            remaining, static_cast<uint64_t>(engine->options.block_size)));
-        render_attached_block(*engine, engine->output_frame, block);
-        const auto sample_count = static_cast<uint64_t>(block) * channels;
-        auto *destination = frames_out + output_offset * channels;
-        for (uint64_t sample = 0; sample < sample_count; ++sample)
-            destination[sample] += engine->output_scratch[sample];
-        engine->output_frame += block;
-        output_offset += block;
-    }
-    active_output_readers.fetch_sub(1, std::memory_order_acq_rel);
+std::shared_ptr<DeviceOutput> device_output(nk_audio_dsp_engine engine_handle) {
+    return get_engine(engine_handle);
 }
 
 } // namespace nk::audio_dsp
@@ -1079,8 +1070,10 @@ nk_result NK_CALL nk_audio_dsp_engine_destroy(nk_audio_dsp_engine engine_handle)
             auto engine = get_engine(engine_handle);
             if (!engine)
                 return NK_ERROR_INVALID_HANDLE;
-            if (engine->attached.load(std::memory_order_acquire))
-                (void)nk::audio_dsp::detach_device(engine_handle);
+            if (engine->attached.load(std::memory_order_acquire)) {
+                if (const auto result = nk_audio_dsp_engine_detach_device(engine_handle); result != NK_OK)
+                    return result;
+            }
             {
                 std::lock_guard lock(engine->mutex);
                 engine->alive = false;
@@ -1143,6 +1136,8 @@ nk_result NK_CALL nk_audio_dsp_engine_reset(nk_audio_dsp_engine engine_handle) {
             std::lock_guard lock(engine->mutex);
             if (!engine->alive)
                 return invalid_request("audio DSP engine is no longer alive");
+            if (engine->attached.load(std::memory_order_acquire))
+                return invalid_request("detach the audio DSP engine before offline rendering or resetting");
             reset_voices(*engine);
             for (auto iterator = engine->instruments.begin();
                  iterator != engine->instruments.end();) {
@@ -1171,6 +1166,8 @@ nk_result NK_CALL nk_audio_dsp_engine_schedule(nk_audio_dsp_engine engine_handle
             auto engine = get_engine(engine_handle);
             if (!engine)
                 return NK_ERROR_INVALID_HANDLE;
+            std::lock_guard lock(engine->mutex);
+            if (!engine->alive) return invalid_request("audio DSP engine is no longer alive");
             std::vector<std::shared_ptr<DspInstrumentResource>> instruments;
             instruments.reserve(event_count);
             uint32_t previous_frame = 0;
@@ -1223,10 +1220,14 @@ nk_result NK_CALL nk_audio_dsp_engine_clear_schedule(nk_audio_dsp_engine engine_
             auto engine = get_engine(engine_handle);
             if (!engine)
                 return NK_ERROR_INVALID_HANDLE;
+            std::lock_guard lock(engine->mutex);
+            if (!engine->alive) return invalid_request("audio DSP engine is no longer alive");
             engine->scheduled_generation.fetch_add(1, std::memory_order_acq_rel);
-            engine->scheduled_read.store(engine->scheduled_write.load(std::memory_order_acquire),
-                                         std::memory_order_release);
-            engine->reset_requested.store(true, std::memory_order_release);
+            // Attached queue slots are retired only by the consumer. Rewinding its
+            // cursor here would let the producer overwrite a slot still being read.
+            if (!engine->attached.load(std::memory_order_acquire))
+                engine->scheduled_read.store(engine->scheduled_write.load(std::memory_order_acquire),
+                                             std::memory_order_release);
             return NK_OK;
         });
 }
@@ -1518,6 +1519,8 @@ nk_result NK_CALL nk_audio_dsp_engine_render(nk_audio_dsp_engine engine_handle,
             std::lock_guard lock(engine->mutex);
             if (!engine->alive)
                 return invalid_request("audio DSP engine is no longer alive");
+            if (engine->attached.load(std::memory_order_acquire))
+                return invalid_request("detach the audio DSP engine before offline rendering or resetting");
             if (target->frame_count > engine->options.block_size ||
                 target->channels != engine->options.channels)
                 return invalid_argument("audio DSP render target does not match the engine");
@@ -1594,3 +1597,15 @@ extern "C" nk_result NK_CALL nk_audio_dsp_engine_render_buffer(
     target.channels = channels;
     return nk_audio_dsp_engine_render(engine, &target, events, event_count);
 }
+
+#ifdef NK_AUDIO_TESTING
+// Drive a retained DSP source without hardware or graph/UI-thread entry points.
+// Tests use this to exercise the callback consumer concurrently with scheduling.
+extern "C" NKAUDIO_API nk_result NK_CALL nk_audio_test_dsp_process(
+    nk_audio_dsp_engine handle, float *samples, uint32_t frames, uint64_t start) {
+    auto engine = get_engine(handle);
+    if (!engine) return NK_ERROR_INVALID_HANDLE;
+    engine->process(samples, frames, engine->options.sample_rate, engine->options.channels, start);
+    return NK_OK;
+}
+#endif

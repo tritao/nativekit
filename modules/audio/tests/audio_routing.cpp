@@ -59,6 +59,30 @@ int main() {
     read_energy(4); // allow graph cache/fader smoothing to settle
     const auto half = read_energy(8);
     assert(half > dry * 0.20f && half < dry * 0.30f);
+    // Fade targets are absolute gains, including when configured volume is not 1.
+    assert(nk_audio_bus_fade(bus, NK_AUDIO_VOLUME_CURRENT, 0.25f, frames * 2) == NK_OK);
+    read_energy(4);
+    const auto quarter = read_energy(8);
+    assert(quarter > dry * 0.05f && quarter < dry * 0.075f);
+    float configured = 0;
+    assert(nk_audio_bus_get_volume(bus, &configured) == NK_OK && configured == 0.25f);
+    assert(nk_audio_bus_fade(bus, NK_AUDIO_VOLUME_CURRENT, 0, frames * 2) == NK_OK);
+    read_energy(4);
+    assert(read_energy(4) < 1e-8f);
+    assert(nk_audio_bus_set_volume(bus, 0.5f) == NK_OK); // Cancels the zero fade.
+    read_energy(4);
+    assert(read_energy(8) > dry * 0.2f);
+    assert(nk_audio_bus_clear_schedule(bus) == NK_OK); // Must retain configured gain.
+    read_energy(4);
+    assert(read_energy(8) > dry * 0.2f && read_energy(8) < dry * 0.3f);
+    nk_audio_mix_snapshot snapshot = NK_INVALID_HANDLE;
+    assert(nk_audio_mix_snapshot_create(&snapshot) == NK_OK);
+    assert(nk_audio_mix_snapshot_set_bus(snapshot, bus, 0.25f, 0) == NK_OK);
+    assert(nk_audio_mix_snapshot_apply(snapshot, frames * 2) == NK_OK);
+    read_energy(4);
+    const auto snapshot_quarter = read_energy(8);
+    assert(snapshot_quarter > dry * 0.05f && snapshot_quarter < dry * 0.075f);
+    assert(nk_audio_mix_snapshot_destroy(snapshot) == NK_OK);
     assert(nk_audio_bus_set_muted(bus, 1) == NK_OK);
     read_energy(4);
     assert(read_energy(4) < 0.000001f);
