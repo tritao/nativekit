@@ -18,7 +18,10 @@ includes the upstream copyright and license; DaisySP-LICENSE is installed.
 - `analogsnaredrum.cpp`: disables the Daisy SVF's nonlinear drive in the physical
   resonators and noise filter. Its original trigger excitation can make that
   nonlinear recurrence diverge at high pitches. Shell output still uses the
-  model's soft clipping.
+  model's soft clipping. Converts physical Q to the SVF's normalized resonance
+  instead of saturating its control, and applies the trigger's one-pole filter
+  instead of clamping it. The noise cutoff clamp is retained. A held-gate
+  regression checks that the shell decays without an outer note release.
 
 `audio_daisy_random.hpp` redirects vendor RNG calls into a scoped per-voice
 xorshift state. It avoids global libc RNG locking and isolates simultaneous

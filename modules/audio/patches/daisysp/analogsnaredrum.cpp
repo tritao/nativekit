@@ -188,8 +188,12 @@ float AnalogSnareDrum::Process(bool trigger)
     {
         f[i] = fmin(f0_ * kModeFrequencies[i], 0.499f);
         resonator_[i].SetFreq(f[i] * sample_rate_);
-        //        resonator_[i].SetRes(1.0f + f[i] * (i == 0 ? q : q * 0.25f));
-        resonator_[i].SetRes((f[i] * (i == 0 ? q : q * 0.25f)) * .2);
+        // The physical model specifies Q, while Daisy SVF expects normalized
+        // resonance with damping = 2 * (1 - resonance^(1/4)). Match damping=1/Q.
+        const float mode_q = 1.0f + f[i] * (i == 0 ? q : q * 0.25f);
+        const float root_resonance = 1.0f - 0.5f / mode_q;
+        const float squared_resonance = root_resonance * root_resonance;
+        resonator_[i].SetRes(squared_resonance * squared_resonance);
     }
 
     if(tone < 0.666667f)
@@ -217,10 +221,12 @@ float AnalogSnareDrum::Process(bool trigger)
     }
 
     float f_noise = f0_ * 16.0f;
-    fclamp(f_noise, 0.0f, 0.499f);
+    f_noise = fclamp(f_noise, 0.0f, 0.499f);
     noise_filter_.SetFreq(f_noise * sample_rate_);
-    //noise_filter_.SetRes(1.0f + f_noise * 1.5f);
-    noise_filter_.SetRes(f_noise * 1.5f);
+    const float noise_q = 1.0f + f_noise * 1.5f;
+    const float noise_root_resonance = 1.0f - 0.5f / noise_q;
+    const float noise_squared_resonance = noise_root_resonance * noise_root_resonance;
+    noise_filter_.SetRes(noise_squared_resonance * noise_squared_resonance);
 
     // Q45 / Q46
     float pulse = 0.0f;
@@ -239,7 +245,7 @@ float AnalogSnareDrum::Process(bool trigger)
     float sustain_gain_value = sustain_gain_ = accent_ * decay_;
 
     // R189 / C57 / R190 + C58 / C59 / R197 / R196 / IC14
-    pulse_lp_ = fclamp(pulse_lp_, pulse, 0.75f);
+    fonepole(pulse_lp_, pulse, 0.75f);
 
     float shell = 0.0f;
     for(int i = 0; i < kNumModes; ++i)

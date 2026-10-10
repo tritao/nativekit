@@ -404,6 +404,8 @@ arbitrary offsets; phasor wrapping handles the endpoint and multiple cycles;
 FM2 initializes its cached default carrier/modulator tuning;
 Drip uses initialized filter values and portable random scaling; analog snare
 resonators run linearly to avoid nonlinear SVF divergence on trigger pulses.
+Its Q conversion and trigger one-pole filter preserve the natural shell decay,
+covered independently of the outer note release.
 These changes are documented in `patches/daisysp/README.md`; no LGPL modules or
 SF2 decoder are introduced.
 

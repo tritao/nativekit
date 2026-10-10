@@ -23,7 +23,37 @@ static void fm2_zero_index_tracks_carrier_pitch() {
     for (int i = 0; i < 2048; ++i)
         assert(std::abs(left.process() - right.process()) < 0.00001f);
 }
+static void analog_snare_shell_decays_without_note_off() {
+    nk_audio_dsp_source_options config{};
+    config.struct_size = sizeof(config);
+    config.kind = NK_AUDIO_DSP_SOURCE_ANALOG_SNARE_DRUM;
+    for (uint32_t p = 0; p < NK_AUDIO_DSP_SOURCE_PARAMETER_COUNT; ++p) {
+        float lo = 0, hi = 0, value = 0;
+        if (source_parameter_info(config.kind, p, lo, hi, value)) config.values[p] = value;
+    }
+    config.values[NK_AUDIO_DSP_SOURCE_PARAMETER_SNAPPY] = 0;
+    config.values[NK_AUDIO_DSP_SOURCE_PARAMETER_DECAY] = 0;
+    config.values[NK_AUDIO_DSP_SOURCE_PARAMETER_TONE] = .25f;
+    PatchParameters patch;
+    patch.envelope.sustain_level = 1;
+    assert(normalize_source(config, nullptr, 0, patch.source));
+    Voice voice;
+    voice.init(48000); voice.set_parameters(patch); voice.note_on(55, 1);
+    double early_energy = 0, late_energy = 0;
+    for (int i = 0; i < 52800; ++i) {
+        const float sample = voice.process();
+        assert(std::isfinite(sample));
+        if (i < 4800) early_energy += sample * sample;
+        if (i >= 48000) late_energy += sample * sample;
+    }
+    // Keep ADSR gated: the physical shell must decay by itself, rather than ring
+    // indefinitely until the outer note release masks a saturated Q conversion.
+    assert(voice.active());
+    assert(early_energy > .0001);
+    assert(late_energy < early_energy * .0001);
+}
 int main() {
+    analog_snare_shell_decays_without_note_off();
     fm2_zero_index_tracks_carrier_pitch();
     for (uint32_t kind = 1; kind <= NK_AUDIO_DSP_SOURCE_KIND_COUNT; ++kind) {
         nk_audio_dsp_source_options options{};
