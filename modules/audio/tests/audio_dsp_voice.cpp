@@ -1,0 +1,198 @@
+#include "nativekit_audio_dsp.h"
+#include "nativekit_audio.h"
+#include <algorithm>
+#include <cassert>
+#include <cmath>
+#include <cstdio>
+#include <limits>
+#include <vector>
+
+extern "C" NKAUDIO_API nk_result NK_CALL nk_audio_test_use_offline_device();
+extern "C" NKAUDIO_API nk_result NK_CALL nk_audio_test_render(float *, uint32_t);
+namespace {
+nk_audio_dsp_patch_options options() {
+    nk_audio_dsp_patch_options p{};
+    p.struct_size = sizeof(p);
+    p.oscillator_count = 1;
+    p.oscillators[0].struct_size = sizeof(p.oscillators[0]);
+    p.oscillators[0].waveform = NK_AUDIO_DSP_WAVEFORM_SAW;
+    p.oscillators[0].level = 1;
+    p.noise.struct_size = sizeof(p.noise);
+    p.envelope.struct_size = sizeof(p.envelope);
+    p.envelope.attack_seconds = 0.005f;
+    p.envelope.sustain_level = 1;
+    p.envelope.release_seconds = 0.05f;
+    p.filter.struct_size = sizeof(p.filter);
+    p.filter.type = NK_AUDIO_DSP_FILTER_SVF_LOW_PASS;
+    p.filter.cutoff_hz = 500;
+    p.filter.resonance = 0.1f;
+    p.lfo.struct_size = sizeof(p.lfo);
+    p.gain = 0.25f;
+    return p;
+}
+nk_audio_dsp_voice_options advanced() {
+    nk_audio_dsp_voice_options v{};
+    v.struct_size = sizeof(v);
+    v.unison_count = 5;
+    v.unison_detune_cents = 12;
+    v.unison_stereo_spread = 0.9f;
+    v.filter_envelope.struct_size = sizeof(v.filter_envelope);
+    v.filter_envelope.attack_seconds = 0.1f;
+    v.filter_envelope.decay_seconds = 0.1f;
+    v.filter_envelope.sustain_level = 0.2f;
+    v.filter_envelope.release_seconds = 0.05f;
+    return v;
+}
+std::vector<float> render(nk_audio_dsp_patch patch, uint32_t channels = 2, uint32_t block = 256,
+                          bool attached = false) {
+    nk_audio_dsp_engine_options e{};
+    e.struct_size = sizeof(e); e.sample_rate = 48000; e.channels = channels;
+    e.block_size = 256; e.max_voices = 4;
+    nk_audio_dsp_engine engine = 0;
+    assert(nk_audio_dsp_engine_create(&e, &engine) == NK_OK);
+    nk_audio_dsp_instrument instrument = 0;
+    assert(nk_audio_dsp_instrument_create_from_patch(engine, patch, &instrument) == NK_OK);
+    nk_audio_dsp_event note{};
+    note.struct_size = sizeof(note); note.kind = NK_AUDIO_DSP_EVENT_NOTE_ON;
+    note.instrument = instrument; note.voice_id = 1; note.note = 57; note.velocity = 1;
+    nk_audio_dsp_event off = note; off.kind = NK_AUDIO_DSP_EVENT_NOTE_OFF;
+    constexpr uint32_t frames = 40000, release = 16384;
+    if (attached) {
+        assert(channels == 2);
+        uint64_t now = 0;
+        assert(nk_audio_get_time_pcm_frames(&now) == NK_OK);
+        assert(nk_audio_dsp_engine_attach_device(engine) == NK_OK);
+        off.frame_offset = release;
+        const nk_audio_dsp_event events[] = {note, off};
+        assert(nk_audio_dsp_engine_schedule(engine, now, events, 2) == NK_OK);
+    }
+    std::vector<float> output(frames * channels);
+    for (uint32_t start = 0; start < frames;) {
+        // Stop a block at release to vary partitioning without changing event time.
+        auto count = std::min(block, frames - start);
+        if (start < release) count = std::min(count, release - start);
+        if (attached) {
+            assert(nk_audio_test_render(output.data() + start * channels, count) == NK_OK);
+        } else {
+            nk_audio_dsp_render_target t{};
+            t.struct_size = sizeof(t); t.samples = output.data() + start * channels;
+            t.sample_count = count * channels; t.frame_count = count; t.channels = channels;
+            auto *event = start == 0 ? &note : start == release ? &off : nullptr;
+            assert(nk_audio_dsp_engine_render(engine, &t, event, event ? 1 : 0) == NK_OK);
+        }
+        start += count;
+    }
+    if (attached) assert(nk_audio_dsp_engine_detach_device(engine) == NK_OK);
+    assert(nk_audio_dsp_instrument_destroy(instrument) == NK_OK);
+    assert(nk_audio_dsp_engine_destroy(engine) == NK_OK);
+    return output;
+}
+nk_audio_dsp_patch create(const nk_audio_dsp_patch_options &p, const nk_audio_dsp_voice_options *v) {
+    nk_audio_dsp_patch patch = 0;
+    assert(nk_audio_dsp_patch_create_extended(&p, v, &patch) == NK_OK);
+    return patch;
+}
+double energy(const std::vector<float> &samples, size_t begin, size_t end) {
+    double sum = 0;
+    for (size_t i = begin; i < end; ++i) sum += samples[i] * samples[i];
+    return sum;
+}
+}
+int main() {
+    nk_init_options init{}; init.struct_size = sizeof(init); init.api_version = NK_API_VERSION;
+    assert(nk_init(&init) == NK_OK);
+    assert(nk_audio_test_use_offline_device() == NK_OK);
+    auto p = options(); auto v = advanced();
+    nk_audio_dsp_patch legacy = 0;
+    assert(nk_audio_dsp_patch_create(&p, &legacy) == NK_OK);
+    auto defaults = v; defaults.unison_count = 1;
+    auto single = create(p, &defaults);
+    const auto old_signal = render(legacy);
+    assert(old_signal == render(single)); // Advanced defaults retain the old sound exactly.
+    defaults.unison_count = 0;
+    auto zero = create(p, &defaults);
+    assert(old_signal == render(zero));
+    auto stereo_patch = create(p, &v);
+    auto stereo = render(stereo_patch);
+    assert(stereo == render(stereo_patch, 2, 73)); // Sample-exact across block boundaries.
+    auto mono = render(stereo_patch, 1);
+    auto surround = render(stereo_patch, 4);
+    double width = 0;
+    for (size_t i = 0; i < mono.size(); ++i) {
+        assert(std::abs(mono[i] - (stereo[i*2] + stereo[i*2+1])*0.5f) < 1e-7f);
+        assert(surround[i*4] == stereo[i*2] && surround[i*4+1] == stereo[i*2+1]);
+        assert(surround[i*4+2] == mono[i] && surround[i*4+3] == mono[i]);
+        width += std::abs(stereo[i*2] - stereo[i*2+1]);
+    }
+    assert(width > 1);
+    assert(energy(stereo, stereo.size()-2000, stereo.size()) == 0); // Release ends the voice.
+    // The device callback must preserve stereo, just like offline rendering.
+    const auto live = render(stereo_patch, 2, 256, true);
+    assert(live == stereo);
+    for (uint32_t count = 1; count <= 8; ++count) {
+        auto u = v; u.unison_count = count; u.unison_stereo_spread = 0;
+        auto patch = create(p, &u); const auto signal = render(patch);
+        for (size_t i = 0; i < signal.size(); i += 2) {
+            assert(signal[i] == signal[i+1]);
+            assert(std::isfinite(signal[i]) && std::abs(signal[i]) < 0.5f);
+        }
+        nk_audio_dsp_patch_destroy(patch);
+    }
+    // A slow brightness rise occurs while amplitude is already at full sustain.
+    defaults.unison_count = 1; defaults.filter_envelope_amount_semitones = 36;
+    auto sweep = create(p, &defaults); const auto swept = render(sweep);
+    assert(energy(swept, 8000, 12000) > energy(old_signal, 8000, 12000)*1.1);
+    assert(swept != old_signal);
+    // Zero sweep bypasses its ADSR regardless of its timing.
+    defaults.filter_envelope_amount_semitones = 0;
+    defaults.filter_envelope.attack_seconds = 10;
+    auto disabled = create(p, &defaults); assert(render(disabled) == old_signal);
+    nk_audio_dsp_source_options source{};
+    assert(nk_audio_dsp_source_defaults(NK_AUDIO_DSP_SOURCE_HARMONIC, &source) == NK_OK);
+    auto source_options = p; source_options.oscillators[0].waveform = NK_AUDIO_DSP_WAVEFORM_SINE;
+    nk_audio_dsp_patch invalid = 123;
+    assert(nk_audio_dsp_patch_create_source_extended(&source_options, &v, &source, nullptr, 0, &invalid)
+           == NK_ERROR_INVALID_ARGUMENT && invalid == NK_INVALID_HANDLE);
+    defaults.filter_envelope_amount_semitones = 12;
+    assert(nk_audio_dsp_patch_create_source_extended(&source_options, &defaults, &source, nullptr, 0,
+                                                     &invalid) == NK_OK);
+    assert(energy(render(invalid), 0, 12000) > 0);
+    nk_audio_dsp_patch_destroy(invalid);
+    auto reject = [&](const nk_audio_dsp_voice_options &value) {
+        invalid = 123;
+        assert(nk_audio_dsp_patch_create_extended(&p, &value, &invalid) == NK_ERROR_INVALID_ARGUMENT);
+        assert(invalid == NK_INVALID_HANDLE);
+    };
+    auto bad = v; bad.unison_count = 9; reject(bad);
+    bad = v; bad.unison_detune_cents = -1; reject(bad);
+    bad = v; bad.unison_detune_cents = 101; reject(bad);
+    bad = v; bad.unison_stereo_spread = 1.1f; reject(bad);
+    bad = v; bad.filter_envelope_amount_semitones = 97; reject(bad);
+    bad = v; bad.filter_envelope.sustain_level = 2; reject(bad);
+    bad = v; bad.filter_envelope.struct_size = 0; reject(bad);
+    bad = v; bad.struct_size = 0; reject(bad);
+    bad = v; bad.unison_detune_cents = std::numeric_limits<float>::quiet_NaN(); reject(bad);
+    bad = v; bad.filter_envelope.attack_seconds = std::numeric_limits<float>::infinity(); reject(bad);
+    // Wavetables and operator modulation also run independently in each copy.
+    std::vector<float> cycle(128);
+    for (size_t i = 0; i < cycle.size(); ++i) cycle[i] = std::sin(6.283185307*i/cycle.size());
+    nk_audio_dsp_wavetable table = 0;
+    assert(nk_audio_dsp_wavetable_create(cycle.data(), cycle.size(), &table) == NK_OK);
+    p.oscillators[0].wavetable = table;
+    p.oscillator_count = 2; p.oscillators[1] = p.oscillators[0];
+    p.oscillators[1].wavetable = 0; p.oscillators[1].level = 0.25f;
+    p.oscillators[1].detune_cents = 1200;
+    p.route_count = 1; auto &route = p.routes[0]; route.struct_size = sizeof(route);
+    route.source = NK_AUDIO_DSP_MODULATION_SOURCE_OSCILLATOR;
+    route.source_oscillator_index = 2; route.oscillator_index = 1;
+    route.destination = NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_PHASE;
+    route.amount = 0.1f;
+    auto operators = create(p, &v);
+    assert(render(operators) == render(operators, 2, 37));
+    assert(energy(render(operators), 0, 16000) > 0);
+    nk_audio_dsp_wavetable_destroy(table);
+    for (auto patch : {legacy, single, zero, stereo_patch, sweep, disabled, operators})
+        assert(nk_audio_dsp_patch_destroy(patch) == NK_OK);
+    nk_shutdown();
+    std::puts("PASS: stereo unison, mono fold, filter ADSR, callback parity, ABI defaults and validation");
+}

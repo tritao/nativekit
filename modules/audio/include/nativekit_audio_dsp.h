@@ -54,7 +54,9 @@ enum NK_FLAGS(nk_audio_dsp_capabilities) {
     /** Generic patch modulation sources and destinations. */
     NK_AUDIO_DSP_CAPABILITY_MODULATION = 1u << 8,
     /** Specialized physical, percussion, spectral, noise and granular generators. */
-    NK_AUDIO_DSP_CAPABILITY_SPECIALIZED_SOURCE = 1u << 9
+    NK_AUDIO_DSP_CAPABILITY_SPECIALIZED_SOURCE = 1u << 9,
+    NK_AUDIO_DSP_CAPABILITY_STEREO_UNISON = 1u << 10,
+    NK_AUDIO_DSP_CAPABILITY_FILTER_ENVELOPE = 1u << 11
 };
 
 /** Built-in pitched oscillator shapes. */
@@ -200,6 +202,27 @@ typedef struct nk_audio_dsp_envelope_options {
     /** Reserved for compatible extensions; set all elements to zero. */
     uint64_t reserved2[2];
 } nk_audio_dsp_envelope_options;
+
+/** Advanced voice controls, supplied separately to preserve the original patch ABI.
+ * Zero unison_count selects one copy. Copies are normalized by count, symmetrically
+ * detuned and panned with constant-sum gains. Stereo renders use L/R; mono renders
+ * average them, and channels beyond L/R receive that average. Specialized Daisy
+ * sources support the filter envelope but require one unison copy.
+ * Both envelopes share the note gate; amplitude release determines voice lifetime.
+ */
+typedef struct nk_audio_dsp_voice_options {
+    uint32_t struct_size NK_STRUCT_SIZE;
+    /** Number of oscillator/wavetable copies, 0 (default one) or [1, 8]. */
+    uint32_t unison_count;
+    /** Maximum detuning on either side of the base pitch, [0, 100] cents. */
+    float unison_detune_cents;
+    /** Stereo spread, [0, 1]. One copy always remains centered. */
+    float unison_stereo_spread;
+    nk_audio_dsp_envelope_options filter_envelope;
+    /** Cutoff sweep in semitones, [-96, 96]; zero disables the envelope. */
+    float filter_envelope_amount_semitones;
+    uint64_t reserved2[2];
+} nk_audio_dsp_voice_options;
 
 /** Filter component in a reusable patch. */
 typedef struct nk_audio_dsp_filter_options {
@@ -524,6 +547,16 @@ NKAUDIO_API nk_result NK_CALL nk_audio_dsp_patch_create_source(
 /** Creates an immutable, renderer-independent patch definition. */
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_patch_create(
     const nk_audio_dsp_patch_options *options, nk_audio_dsp_patch *out_patch NK_OUT NK_OWNED);
+/** Extended factory; null voice_options preserves the legacy sound. */
+NKAUDIO_API nk_result NK_CALL nk_audio_dsp_patch_create_extended(
+    const nk_audio_dsp_patch_options *options, const nk_audio_dsp_voice_options *voice_options,
+    nk_audio_dsp_patch *out_patch NK_OUT NK_OWNED);
+/** Extended specialized-source factory; unison_count must be zero or one. */
+NKAUDIO_API nk_result NK_CALL nk_audio_dsp_patch_create_source_extended(
+    const nk_audio_dsp_patch_options *options, const nk_audio_dsp_voice_options *voice_options,
+    const nk_audio_dsp_source_options *source,
+    const float *samples NK_IN_ARRAY(sample_count), uint32_t sample_count,
+    nk_audio_dsp_patch *out_patch NK_OUT NK_OWNED);
 /** Destroys a patch definition; instruments created from it retain their copy. */
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_patch_destroy(nk_audio_dsp_patch patch);
 /** Destroys a wavetable handle; patches retain tables they reference. */

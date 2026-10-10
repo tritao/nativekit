@@ -155,6 +155,12 @@ if(NK_BUILD_TESTS)
     add_test(NAME audio_daisy_sources COMMAND nativekit_audio_daisy_sources_tests)
     set_tests_properties(audio_daisy_sources PROPERTIES LABELS "audio")
 
+    add_executable(nativekit_audio_dsp_voice_tests tests/audio_dsp_voice.cpp)
+    target_compile_features(nativekit_audio_dsp_voice_tests PRIVATE cxx_std_17)
+    target_link_libraries(nativekit_audio_dsp_voice_tests PRIVATE NativeKit::audio_dsp)
+    add_test(NAME audio_dsp_voice COMMAND nativekit_audio_dsp_voice_tests)
+    set_tests_properties(audio_dsp_voice PROPERTIES LABELS "audio")
+
     add_executable(nativekit_audio_dsp_tests tests/audio_dsp.cpp)
     target_compile_features(nativekit_audio_dsp_tests PRIVATE cxx_std_17)
     target_link_libraries(nativekit_audio_dsp_tests PRIVATE NativeKit::audio_dsp)

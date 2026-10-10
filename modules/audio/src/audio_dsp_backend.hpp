@@ -72,12 +72,26 @@ bool source_parameter_info(uint32_t kind, uint32_t parameter, float &minimum, fl
 bool normalize_source(const nk_audio_dsp_source_options &options, const float *samples,
                       uint32_t count, SourceParameters &output);
 
+inline constexpr uint32_t max_unison_copies = 8;
+struct UnisonParameters {
+    uint32_t count = 1;
+    float detune_cents = 0.0f;
+    float stereo_spread = 0.0f;
+};
+struct StereoSample {
+    float left = 0.0f;
+    float right = 0.0f;
+};
+
 struct PatchParameters {
     SourceParameters source;
     std::array<OscillatorParameters, NK_AUDIO_DSP_MAX_OSCILLATORS> oscillators{};
     uint32_t oscillator_count = 1;
     NoiseParameters noise;
     EnvelopeParameters envelope;
+    EnvelopeParameters filter_envelope;
+    float filter_envelope_amount_semitones = 0.0f;
+    UnisonParameters unison;
     FilterParameters filter;
     float gain = 1.0f;
     LfoParameters lfo;
@@ -101,6 +115,7 @@ class Voice final {
     void note_off() noexcept;
     void reset() noexcept;
     float process() noexcept;
+    StereoSample process_stereo() noexcept;
     bool active() const noexcept;
 
   private:

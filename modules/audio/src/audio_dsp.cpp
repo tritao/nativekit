@@ -34,7 +34,8 @@ constexpr nk_audio_dsp_capabilities builtin_capabilities =
     NK_AUDIO_DSP_CAPABILITY_WAVETABLE | NK_AUDIO_DSP_CAPABILITY_ENVELOPE |
     NK_AUDIO_DSP_CAPABILITY_LFO | NK_AUDIO_DSP_CAPABILITY_FILTER | NK_AUDIO_DSP_CAPABILITY_FM |
     NK_AUDIO_DSP_CAPABILITY_PHASE_MODULATION | NK_AUDIO_DSP_CAPABILITY_MODULATION |
-    NK_AUDIO_DSP_CAPABILITY_SPECIALIZED_SOURCE;
+    NK_AUDIO_DSP_CAPABILITY_SPECIALIZED_SOURCE | NK_AUDIO_DSP_CAPABILITY_STEREO_UNISON |
+    NK_AUDIO_DSP_CAPABILITY_FILTER_ENVELOPE;
 
 using DspParameters = nk::audio_dsp::PatchParameters;
 
@@ -366,6 +367,29 @@ nk_result normalize_engine_options(const nk_audio_dsp_engine_options *input,
     return NK_OK;
 }
 
+nk_result normalize_voice_options(const nk_audio_dsp_voice_options *input, DspParameters &output) {
+    if (!input)
+        return NK_OK;
+    const auto &env = input->filter_envelope;
+    if (input->struct_size < sizeof(*input) || env.struct_size < sizeof(env) ||
+        input->unison_count > nk::audio_dsp::max_unison_copies ||
+        !valid_nonnegative_finite(input->unison_detune_cents) || input->unison_detune_cents > 100 ||
+        !valid_nonnegative_finite(input->unison_stereo_spread) || input->unison_stereo_spread > 1 ||
+        !std::isfinite(input->filter_envelope_amount_semitones) ||
+        std::abs(input->filter_envelope_amount_semitones) > 96 ||
+        !valid_nonnegative_finite(env.attack_seconds) ||
+        !valid_nonnegative_finite(env.decay_seconds) ||
+        !valid_nonnegative_finite(env.sustain_level) || env.sustain_level > 1 ||
+        !valid_nonnegative_finite(env.release_seconds))
+        return invalid_argument("invalid DSP unison or filter envelope configuration");
+    output.unison = {input->unison_count == 0 ? 1 : input->unison_count,
+                      input->unison_detune_cents, input->unison_stereo_spread};
+    output.filter_envelope = {env.attack_seconds, env.decay_seconds, env.sustain_level,
+                              env.release_seconds};
+    output.filter_envelope_amount_semitones = input->filter_envelope_amount_semitones;
+    return NK_OK;
+}
+
 nk_result normalize_patch_options(const nk_audio_dsp_patch_options *input, DspParameters &output) {
     output = {};
     if (!input)
@@ -647,11 +671,11 @@ void sync_voice_parameters(DspVoice &voice) noexcept {
     voice.parameters_version = voice.instrument->parameters_version;
 }
 
-float voice_sample(DspVoice &voice) noexcept {
+nk::audio_dsp::StereoSample voice_sample(DspVoice &voice) noexcept {
     if (!voice.active || !voice.instrument)
-        return 0.0f;
+        return {};
     sync_voice_parameters(voice);
-    const auto result = voice.backend.process();
+    const auto result = voice.backend.process_stereo();
     voice.active = voice.backend.active();
     return result;
 }
@@ -954,12 +978,16 @@ void render_attached_block(DspEngineResource &engine, uint64_t start_frame,
                 ramp.start_value + (ramp.end_value - ramp.start_value) * progress);
             ++index;
         }
-        float mixed = 0.0f;
-        for (auto &voice : engine.voices)
-            mixed += voice_sample(voice);
+        nk::audio_dsp::StereoSample mixed;
+        for (auto &voice : engine.voices) {
+            const auto sample = voice_sample(voice);
+            mixed.left += sample.left;
+            mixed.right += sample.right;
+        }
         for (uint32_t channel = 0; channel < engine.options.channels; ++channel)
             engine.output_scratch[static_cast<uint64_t>(frame) * engine.options.channels +
-                                  channel] = mixed;
+                                  channel] = engine.options.channels == 1 || channel > 1
+                    ? (mixed.left + mixed.right) * 0.5f : (channel == 0 ? mixed.left : mixed.right);
     }
     consume_attached_events(engine, start_frame + frame_count);
 }
@@ -1247,6 +1275,12 @@ nk_result NK_CALL nk_audio_dsp_engine_clear_schedule(nk_audio_dsp_engine engine_
 
 nk_result NK_CALL nk_audio_dsp_patch_create(const nk_audio_dsp_patch_options *options,
                                             nk_audio_dsp_patch *out_patch) {
+    return nk_audio_dsp_patch_create_extended(options, nullptr, out_patch);
+}
+
+nk_result NK_CALL nk_audio_dsp_patch_create_extended(
+    const nk_audio_dsp_patch_options *options, const nk_audio_dsp_voice_options *voice_options,
+    nk_audio_dsp_patch *out_patch) {
     return nk::core::result_boundary(
         "unexpected error while creating an audio DSP patch", [&]() -> nk_result {
             if (const auto result = enter_dsp(); result != NK_OK)
@@ -1256,6 +1290,8 @@ nk_result NK_CALL nk_audio_dsp_patch_create(const nk_audio_dsp_patch_options *op
             *out_patch = NK_INVALID_HANDLE;
             DspParameters parameters;
             if (const auto result = normalize_patch_options(options, parameters); result != NK_OK)
+                return result;
+            if (const auto result = normalize_voice_options(voice_options, parameters); result != NK_OK)
                 return result;
             auto patch = std::make_shared<DspPatchResource>();
             patch->parameters = parameters;
@@ -1304,6 +1340,14 @@ nk_result NK_CALL nk_audio_dsp_patch_create_source(const nk_audio_dsp_patch_opti
                                                    const nk_audio_dsp_source_options *source,
                                                    const float *samples, uint32_t sample_count,
                                                    nk_audio_dsp_patch *out_patch) {
+    return nk_audio_dsp_patch_create_source_extended(options, nullptr, source, samples,
+                                                      sample_count, out_patch);
+}
+
+nk_result NK_CALL nk_audio_dsp_patch_create_source_extended(
+    const nk_audio_dsp_patch_options *options, const nk_audio_dsp_voice_options *voice_options,
+    const nk_audio_dsp_source_options *source, const float *samples, uint32_t sample_count,
+    nk_audio_dsp_patch *out_patch) {
     return nk::core::result_boundary("creating audio DSP source patch", [&]() -> nk_result {
         if (const auto result = enter_dsp(); result != NK_OK)
             return result;
@@ -1316,6 +1360,10 @@ nk_result NK_CALL nk_audio_dsp_patch_create_source(const nk_audio_dsp_patch_opti
         if (!source ||
             !nk::audio_dsp::normalize_source(*source, samples, sample_count, parameters.source))
             return invalid_argument("invalid DSP source configuration or samples");
+        if (const auto result = normalize_voice_options(voice_options, parameters); result != NK_OK)
+            return result;
+        if (parameters.unison.count != 1)
+            return invalid_argument("specialized DSP sources require one unison copy");
         if (replacement_source(parameters)) {
             if (parameters.oscillator_count != 1 ||
                 parameters.oscillators[0].waveform != NK_AUDIO_DSP_WAVEFORM_SINE ||
@@ -1642,12 +1690,16 @@ nk_result NK_CALL nk_audio_dsp_engine_render(nk_audio_dsp_engine engine_handle,
                         return result;
                     ++event_index;
                 }
-                float mixed = 0.0f;
-                for (auto &voice : engine->voices)
-                    mixed += voice_sample(voice);
+                nk::audio_dsp::StereoSample mixed;
+                for (auto &voice : engine->voices) {
+                    const auto sample = voice_sample(voice);
+                    mixed.left += sample.left;
+                    mixed.right += sample.right;
+                }
                 for (uint32_t channel = 0; channel < target->channels; ++channel)
                     target->samples[static_cast<uint64_t>(frame) * target->channels + channel] =
-                        mixed;
+                        target->channels == 1 || channel > 1 ? (mixed.left + mixed.right) * 0.5f
+                            : (channel == 0 ? mixed.left : mixed.right);
             }
             for (auto ramp = ramps.begin(); ramp != ramps.end();) {
                 if (const auto result = apply_parameter_ramp(*engine, *ramp, target->frame_count);

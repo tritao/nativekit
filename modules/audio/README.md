@@ -416,3 +416,29 @@ invalid configuration and retained PCM lifetime. `audio_daisy_boundaries` checks
 supported control limits at MIDI 0/60/69/127 and can run with AddressSanitizer and
 UndefinedBehaviorSanitizer. Live device coverage additionally auditions every
 source in Beartooth's private null-sink integration check.
+
+## Extended synth voice options
+
+`nk_audio_dsp_patch_create_extended()` and
+`nk_audio_dsp_patch_create_source_extended()` take an additional
+`nk_audio_dsp_voice_options`. The legacy factories and patch struct layout remain
+unchanged; null voice options select legacy defaults. Set both voice and embedded
+filter-envelope `struct_size` fields before use.
+
+`unison_count` accepts 0 (default one) or 1–8. Built-in oscillator and wavetable
+voices preallocate eight copies, each retaining its own operator modulation graph.
+Detune spans ±`unison_detune_cents` (0–100 cents), with copy gains normalized by
+count and constant-sum stereo panning controlled by `unison_stereo_spread` (0–1).
+Mono output averages L/R; channels beyond L/R receive that average. Specialized
+sources require one copy, but support the independent filter ADSR.
+
+`filter_envelope_amount_semitones` (−96 to +96) multiplies base cutoff by
+`2^(filter_envelope_level * amount / 12)` before adding cutoff-Hz modulation and
+clamping to [1, sample_rate/3]. Zero bypasses the additional envelope processing.
+Amplitude and filter envelopes share note gates; amplitude release determines
+voice lifetime. These immutable patch controls are not instrument automation
+parameters. The engine advertises `STEREO_UNISON` and `FILTER_ENVELOPE` capabilities.
+
+`audio_dsp_voice` tests default compatibility, copy normalization, stereo/mono
+mapping, block partitioning, callback/offline parity, filter-envelope independence,
+wavetable/operator unison, releases, validation and specialized-source rejection.
