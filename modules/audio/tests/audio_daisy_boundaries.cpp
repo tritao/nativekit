@@ -1,4 +1,6 @@
 #include "audio_dsp_backend.hpp"
+#include "audio_daisy_source.hpp"
+#include "Synthesis/oscillator.h"
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -22,6 +24,44 @@ static void fm2_zero_index_tracks_carrier_pitch() {
     // Zero modulation is exactly the sine carrier, including the cached 440Hz/ratio-2 default.
     for (int i = 0; i < 2048; ++i)
         assert(std::abs(left.process() - right.process()) < 0.00001f);
+}
+static void fm2_matches_two_operator_reference() {
+    // Build the reference from two independent oscillators, without Fm2. Daisy's
+    // index scales phase additions by 0.2 and accumulates them into the carrier.
+    for (const uint32_t rate : {44100u, 48000u, 96000u}) {
+        for (const float frequency : {110.0f, 261.625565f, 440.0f}) {
+            for (const float ratio : {1.0f, 2.0f, 3.5f, 7.1f}) {
+                for (const float index : {0.0f, 1.2f, 5.0f, 9.0f}) {
+                    nk_audio_dsp_source_options config{};
+                    config.struct_size = sizeof(config);
+                    config.kind = NK_AUDIO_DSP_SOURCE_FM2;
+                    config.values[NK_AUDIO_DSP_SOURCE_PARAMETER_RATIO] = ratio;
+                    config.values[NK_AUDIO_DSP_SOURCE_PARAMETER_INDEX] = index;
+                    SourceParameters parameters;
+                    assert(normalize_source(config, nullptr, 0, parameters));
+                    DaisySource source;
+                    source.configure(parameters, rate);
+                    daisysp::Oscillator carrier, modulator;
+                    carrier.Init(rate); modulator.Init(rate);
+                    carrier.SetAmp(1); modulator.SetAmp(1);
+                    for (int retrigger = 0; retrigger < 2; ++retrigger) {
+                        source.trigger(frequency, 69);
+                        carrier.Reset(); modulator.Reset();
+                        for (int i = 0; i < 4096; ++i) {
+                            const float pitch = i < 2048 ? frequency : frequency * 1.5f;
+                            carrier.SetFreq(pitch); modulator.SetFreq(pitch * ratio);
+                            const float depth = index * 0.2f;
+                            carrier.PhaseAdd(modulator.Process() * depth);
+                            const float expected = carrier.Process();
+                            const float actual = source.process(pitch, 0);
+                            assert(std::isfinite(actual));
+                            assert(std::abs(actual - expected) < 0.00001f);
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 static void analog_snare_shell_decays_without_note_off() {
     nk_audio_dsp_source_options config{};
@@ -53,6 +93,7 @@ static void analog_snare_shell_decays_without_note_off() {
     assert(late_energy < early_energy * .0001);
 }
 int main() {
+    fm2_matches_two_operator_reference();
     analog_snare_shell_decays_without_note_off();
     fm2_zero_index_tracks_carrier_pitch();
     for (uint32_t kind = 1; kind <= NK_AUDIO_DSP_SOURCE_KIND_COUNT; ++kind) {

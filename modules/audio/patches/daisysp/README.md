@@ -8,6 +8,9 @@ includes the upstream copyright and license; DaisySP-LICENSE is installed.
 - `fm2.cpp`: initializes the carrier/modulator frequencies alongside their
   cache, so a 440 Hz note with ratio 2 does not retain the oscillators’ 100 Hz
   initialization default. Zero-index carrier tuning has a waveform regression.
+  A separate two-oscillator reference checks 144 combinations of sample rate,
+  carrier frequency, ratio, and index, each with pitch changes and retriggering.
+  The upstream accumulating phase additions and index scaling are preserved.
 - `granularplayer.cpp`: modulo sample wrapping handles exact-endpoint and
   multiple-wrap indices. Zero playback speed keeps phase instead of reversing it.
 - `phasor.cpp`: wraps both the exact endpoint and increments spanning multiple
