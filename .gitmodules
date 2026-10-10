@@ -10,3 +10,9 @@
 [submodule "vendor/daisysp"]
 	path = vendor/daisysp
 	url = https://github.com/electro-smith/DaisySP.git
+[submodule "vendor/signalsmith-basics"]
+	path = vendor/signalsmith-basics
+	url = https://github.com/tritao/signalsmith-basics.git
+[submodule "vendor/signalsmith-dsp"]
+	path = vendor/signalsmith-dsp
+	url = https://github.com/Signalsmith-Audio/dsp.git
