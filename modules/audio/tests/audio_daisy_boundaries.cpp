@@ -1,5 +1,7 @@
 #include "audio_dsp_backend.hpp"
 #include "audio_daisy_source.hpp"
+#include "audio_daisy_random.hpp"
+#include "PhysicalModeling/KarplusString.h"
 #include "Synthesis/oscillator.h"
 #include <cassert>
 #include <cmath>
@@ -63,6 +65,127 @@ static void fm2_matches_two_operator_reference() {
         }
     }
 }
+static SourceParameters karplus_parameters(float nonlinearity, float brightness, float damping) {
+    nk_audio_dsp_source_options config{};
+    config.struct_size = sizeof(config);
+    config.kind = NK_AUDIO_DSP_SOURCE_KARPLUS_STRING;
+    config.values[NK_AUDIO_DSP_SOURCE_PARAMETER_NONLINEARITY] = nonlinearity;
+    config.values[NK_AUDIO_DSP_SOURCE_PARAMETER_BRIGHTNESS] = brightness;
+    config.values[NK_AUDIO_DSP_SOURCE_PARAMETER_DAMPING] = damping;
+    SourceParameters parameters;
+    assert(normalize_source(config, nullptr, 0, parameters));
+    return parameters;
+}
+static void karplus_bridge_mode_is_not_clamped_to_linear() {
+    DaisySource bridge, linear;
+    bridge.configure(karplus_parameters(-0.8f, 0.8f, 0.6f), 48000);
+    linear.configure(karplus_parameters(0, 0.8f, 0.6f), 48000);
+    bridge.trigger(261.625565f, 60); linear.trigger(261.625565f, 60);
+    std::vector<float> pluck;
+    double difference = 0;
+    for (int i = 0; i < 8192; ++i) {
+        const float sample = bridge.process(261.625565f, 0);
+        const float delta = sample - linear.process(261.625565f, 0);
+        assert(std::isfinite(sample));
+        difference += delta * delta;
+        pluck.push_back(sample);
+    }
+    assert(difference > 0.00001);
+    bridge.trigger(261.625565f, 60);
+    for (const float expected : pluck)
+        assert(std::abs(bridge.process(261.625565f, 0) - expected) < 0.00001f);
+}
+static void karplus_matches_direct_string_model() {
+    for (const uint32_t rate : {44100u, 48000u, 96000u}) {
+        for (const float frequency : {110.0f, 440.0f}) {
+            for (const float brightness : {0.2f, 0.5f, 0.85f}) {
+                for (const float damping : {0.2f, 0.5f, 0.8f}) {
+                    for (const float nonlinearity : {-0.8f, 0.0f, 0.1f, 0.7f, 0.95f}) {
+                        DaisySource source;
+                        source.configure(karplus_parameters(nonlinearity, brightness, damping), rate);
+                        source.trigger(frequency, 60);
+                        daisysp::String reference;
+                        reference.Init(rate); reference.SetFreq(frequency);
+                        reference.SetNonLinearity(nonlinearity);
+                        reference.SetBrightness(brightness); reference.SetDamping(damping);
+                        uint32_t random_state = 0x9e3779b9u ^ 61u;
+                        for (int i = 0; i < 4096; ++i) {
+                            const float excitation = std::sin(i * 0.03f);
+                            float expected;
+                            {
+                                DaisyRandomScope scope(random_state);
+                                expected = reference.Process(i == 0 ? 1.0f : excitation * 0.02f);
+                            }
+                            const float actual = source.process(frequency, excitation);
+                            assert(std::isfinite(actual));
+                            assert(std::abs(actual - expected) < 0.00001f);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+static void karplus_linear_string_tracks_pitch() {
+    constexpr double pi = 3.14159265358979323846;
+    for (const uint32_t rate : {44100u, 48000u, 96000u}) {
+        for (const float frequency : {55.0f, 110.0f, 220.0f, 440.0f, 880.0f}) {
+            DaisySource source;
+            source.configure(karplus_parameters(0, 0.5f, 0.5f), rate);
+            source.trigger(frequency, 60);
+            std::vector<double> window;
+            double energy = 0;
+            const int first = rate / 10;
+            const int count = rate / 2;
+            for (int i = 0; i < first + count; ++i) {
+                const float sample = source.process(frequency, 0);
+                assert(std::isfinite(sample));
+                energy += sample * sample;
+                if (i >= first) {
+                    const double hann = 0.5 - 0.5 * std::cos(2 * pi * (i - first) / (count - 1));
+                    window.push_back(sample * hann);
+                }
+            }
+            // A low-pitch note must not lose its initial impulse to resampling.
+            assert(energy > 0.0001);
+            double best_power = -1;
+            int best_step = 0;
+            for (int step = -80; step <= 80; ++step) {
+                const double candidate = frequency * (1 + step * 0.0005);
+                const double coefficient = 2 * std::cos(2 * pi * candidate / rate);
+                double previous = 0, before_previous = 0;
+                for (const double sample : window) {
+                    const double next = coefficient * previous - before_previous + sample;
+                    before_previous = previous; previous = next;
+                }
+                const double power = previous * previous + before_previous * before_previous
+                                     - coefficient * previous * before_previous;
+                if (power > best_power) { best_power = power; best_step = step; }
+            }
+            // 0.2% is about 3.5 cents; allow the finite analysis window's resolution.
+            assert(std::abs(best_step) <= 4);
+        }
+    }
+}
+static void karplus_damping_controls_natural_decay() {
+    double retention[2]{};
+    int mode = 0;
+    for (const float damping : {0.2f, 0.8f}) {
+        DaisySource source;
+        source.configure(karplus_parameters(0, 0.5f, damping), 48000);
+        source.trigger(220, 57);
+        double early = 0, late = 0;
+        for (int i = 0; i < 57600; ++i) {
+            const float sample = source.process(220, 0);
+            if (i >= 4800 && i < 14400) early += sample * sample;
+            if (i >= 48000) late += sample * sample;
+        }
+        assert(early > 0.0001 && late < early);
+        retention[mode++] = late / early;
+    }
+    // Daisy calls this damping, but higher values retain more string energy.
+    assert(retention[1] > retention[0] * 10);
+}
 static void analog_snare_shell_decays_without_note_off() {
     nk_audio_dsp_source_options config{};
     config.struct_size = sizeof(config);
@@ -93,6 +216,10 @@ static void analog_snare_shell_decays_without_note_off() {
     assert(late_energy < early_energy * .0001);
 }
 int main() {
+    karplus_linear_string_tracks_pitch();
+    karplus_damping_controls_natural_decay();
+    karplus_bridge_mode_is_not_clamped_to_linear();
+    karplus_matches_direct_string_model();
     fm2_matches_two_operator_reference();
     analog_snare_shell_decays_without_note_off();
     fm2_zero_index_tracks_carrier_pitch();
