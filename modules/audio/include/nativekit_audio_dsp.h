@@ -52,7 +52,9 @@ enum NK_FLAGS(nk_audio_dsp_capabilities) {
     /** Phase modulation. */
     NK_AUDIO_DSP_CAPABILITY_PHASE_MODULATION = 1u << 7,
     /** Generic patch modulation sources and destinations. */
-    NK_AUDIO_DSP_CAPABILITY_MODULATION = 1u << 8
+    NK_AUDIO_DSP_CAPABILITY_MODULATION = 1u << 8,
+    /** Specialized physical, percussion, spectral, noise and granular generators. */
+    NK_AUDIO_DSP_CAPABILITY_SPECIALIZED_SOURCE = 1u << 9
 };
 
 /** Built-in pitched oscillator shapes. */
@@ -416,6 +418,108 @@ NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_schedule(
 /** Invalidates queued events and requests a voice reset on the audio consumer.
  * Attached queue slots become reusable when the consumer next drains them. */
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_clear_schedule(nk_audio_dsp_engine engine);
+
+/** Specialized DaisySP generator. Existing patches keep the oscillator graph. */
+typedef uint32_t nk_audio_dsp_source_kind;
+enum NK_ENUM(nk_audio_dsp_source_kind) {
+    NK_AUDIO_DSP_SOURCE_FM2 = 1,
+    NK_AUDIO_DSP_SOURCE_STRING_VOICE = 2,
+    NK_AUDIO_DSP_SOURCE_KARPLUS_STRING = 3,
+    NK_AUDIO_DSP_SOURCE_MODAL_VOICE = 4,
+    NK_AUDIO_DSP_SOURCE_RESONATOR = 5,
+    NK_AUDIO_DSP_SOURCE_DRIP = 6,
+    NK_AUDIO_DSP_SOURCE_ANALOG_BASS_DRUM = 7,
+    NK_AUDIO_DSP_SOURCE_SYNTHETIC_BASS_DRUM = 8,
+    NK_AUDIO_DSP_SOURCE_ANALOG_SNARE_DRUM = 9,
+    NK_AUDIO_DSP_SOURCE_SYNTHETIC_SNARE_DRUM = 10,
+    NK_AUDIO_DSP_SOURCE_HI_HAT = 11,
+    NK_AUDIO_DSP_SOURCE_FORMANT = 12,
+    NK_AUDIO_DSP_SOURCE_VOSIM = 13,
+    NK_AUDIO_DSP_SOURCE_ZOSC = 14,
+    NK_AUDIO_DSP_SOURCE_VARIABLE_SAW = 15,
+    NK_AUDIO_DSP_SOURCE_VARIABLE_SHAPE = 16,
+    NK_AUDIO_DSP_SOURCE_OSCILLATOR_BANK = 17,
+    NK_AUDIO_DSP_SOURCE_HARMONIC = 18,
+    NK_AUDIO_DSP_SOURCE_GRAINLET = 19,
+    NK_AUDIO_DSP_SOURCE_PARTICLE = 20,
+    NK_AUDIO_DSP_SOURCE_DUST = 21,
+    NK_AUDIO_DSP_SOURCE_CLOCKED_NOISE = 22,
+    NK_AUDIO_DSP_SOURCE_FRACTAL_NOISE = 23,
+    NK_AUDIO_DSP_SOURCE_GRANULAR = 24
+};
+#define NK_AUDIO_DSP_SOURCE_KIND_COUNT 24
+typedef uint32_t nk_audio_dsp_source_parameter;
+enum NK_ENUM(nk_audio_dsp_source_parameter) {
+    NK_AUDIO_DSP_SOURCE_PARAMETER_RATIO = 0,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_INDEX = 1,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_ACCENT = 2,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_STRUCTURE = 3,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_BRIGHTNESS = 4,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_DAMPING = 5,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_NONLINEARITY = 6,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_POSITION = 7,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_RESOLUTION = 8,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_DETTACK = 9,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_TONE = 10,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_DECAY = 11,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_ATTACK_FM = 12,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_SELF_FM = 13,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_DIRTINESS = 14,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_FM_AMOUNT = 15,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_FM_DECAY = 16,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_SNAPPY = 17,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_NOISINESS = 18,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_FORMANT_RATIO = 19,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_PHASE_SHIFT = 20,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_SECOND_FORMANT_RATIO = 21,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_SHAPE = 22,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_MODE = 23,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_PULSE_WIDTH = 24,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_SYNC_RATIO = 25,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_FIRST_HARMONIC = 26,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_BLEED = 27,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_RESONANCE = 28,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_RANDOM_RATE = 29,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_DENSITY = 30,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_SPREAD = 31,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_COLOR = 32,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_SPEED = 33,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_ROOT_NOTE = 34,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_GRAIN_MS = 35,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_SUSTAIN = 36,
+    NK_AUDIO_DSP_SOURCE_PARAMETER_SYNC_ENABLED = 37
+};
+#define NK_AUDIO_DSP_SOURCE_PARAMETER_COUNT 38
+#define NK_AUDIO_DSP_SOURCE_AMPLITUDE_COUNT 16
+/** Values use source-specific domains; obtain defaults before editing.
+ * Spectral amplitudes are nonnegative and must sum to one (7 for bank, 16 for harmonic).
+ * Other sources require zero amplitudes. Source configuration is immutable.
+ */
+typedef struct nk_audio_dsp_source_options {
+    uint32_t struct_size;
+    nk_audio_dsp_source_kind kind;
+    float values[NK_AUDIO_DSP_SOURCE_PARAMETER_COUNT];
+    float amplitudes[NK_AUDIO_DSP_SOURCE_AMPLITUDE_COUNT];
+} nk_audio_dsp_source_options;
+/** Returns domains for supported controls; unsupported controls return INVALID_ARGUMENT. */
+NKAUDIO_API nk_result NK_CALL nk_audio_dsp_source_parameter_info(
+    nk_audio_dsp_source_kind kind, nk_audio_dsp_source_parameter parameter,
+    float *out_minimum NK_OUT, float *out_maximum NK_OUT, float *out_default NK_OUT);
+/** Initializes all fields, including struct_size. */
+NKAUDIO_API nk_result NK_CALL nk_audio_dsp_source_defaults(
+    nk_audio_dsp_source_kind kind, nk_audio_dsp_source_options *out_options NK_OUT);
+/** Copies mono PCM at the engine sample rate for Granular; all other sources require zero samples.
+ * Samples are finite in [-1,1], between 2 and 1048576 frames. Note pitch is relative to RootNote.
+ * Specialized sources replace oscillator output except KarplusString/Resonator, which process it.
+ * Replacement sources require one neutral oscillator slot (SINE, no wavetable or phase).
+ * Its level and detune control the generator. Pitch/level routes target oscillator 1;
+ * oscillator operator and phase routes are rejected. Noise remains additive.
+ * Resonator resolution is a multiple of four; harmonic index and root note are integers.
+ */
+NKAUDIO_API nk_result NK_CALL nk_audio_dsp_patch_create_source(
+    const nk_audio_dsp_patch_options *options, const nk_audio_dsp_source_options *source,
+    const float *samples NK_IN_ARRAY(sample_count), uint32_t sample_count,
+    nk_audio_dsp_patch *out_patch NK_OUT NK_OWNED);
 
 /** Creates an immutable, renderer-independent patch definition. */
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_patch_create(

@@ -63,7 +63,17 @@ struct ModulationRoute {
     uint32_t source_oscillator_index = 0;
 };
 
+struct SourceParameters {
+    nk_audio_dsp_source_options options{};
+    std::shared_ptr<const std::vector<float>> samples;
+};
+bool source_parameter_info(uint32_t kind, uint32_t parameter, float &minimum, float &maximum,
+                           float &default_value) noexcept;
+bool normalize_source(const nk_audio_dsp_source_options &options, const float *samples,
+                      uint32_t count, SourceParameters &output);
+
 struct PatchParameters {
+    SourceParameters source;
     std::array<OscillatorParameters, NK_AUDIO_DSP_MAX_OSCILLATORS> oscillators{};
     uint32_t oscillator_count = 1;
     NoiseParameters noise;

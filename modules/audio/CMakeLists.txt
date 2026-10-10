@@ -11,6 +11,31 @@ foreach(NK_SIGNALSMITH_FILE
 endforeach()
 
 add_library(nativekit_daisysp OBJECT
+    "${NK_VENDOR_DIR}/daisysp/Source/Dynamics/crossfade.cpp"
+    "${NK_VENDOR_DIR}/daisysp/Source/Utility/dcblock.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/fm2.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/stringvoice.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/KarplusString.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/modalvoice.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/resonator.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/drip.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/analogbassdrum.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/synthbassdrum.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/analogsnaredrum.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/synthsnaredrum.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/hihat.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/formantosc.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/vosim.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/zoscillator.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/variablesawosc.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/variableshapeosc.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/oscillatorbank.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/grainlet.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/particle.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/clockednoise.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/granularplayer.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/phasor.cpp"
+
     "${NK_VENDOR_DIR}/daisysp/Source/Control/adsr.cpp"
     "${NK_VENDOR_DIR}/daisysp/Source/Filters/svf.cpp"
     "${NK_VENDOR_DIR}/daisysp/Source/Synthesis/oscillator.cpp"
@@ -19,7 +44,9 @@ target_compile_features(nativekit_daisysp PRIVATE cxx_std_17)
 set_target_properties(nativekit_daisysp PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(nativekit_daisysp SYSTEM PRIVATE
     "${NK_VENDOR_DIR}/daisysp/Source"
-    "${NK_VENDOR_DIR}/daisysp/Source/Utility")
+    "${NK_VENDOR_DIR}/daisysp/Source/Utility"
+    "${NK_VENDOR_DIR}/daisysp/Source/Sampling"
+    "${NK_VENDOR_DIR}/daisysp/Source/PhysicalModeling")
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
     target_compile_options(nativekit_daisysp PRIVATE -Wno-enum-compare-conditional)
 endif()
@@ -30,6 +57,7 @@ target_sources(nativekit PRIVATE
     src/audio_delay_processor.cpp
     src/audio_dsp.cpp
     src/audio_dsp_backend.cpp
+    src/audio_daisy_source.cpp
     $<TARGET_OBJECTS:nativekit_daisysp>)
 
 target_compile_definitions(nativekit PRIVATE NKAUDIO_BUILDING_LIBRARY)
@@ -111,6 +139,21 @@ if(NK_BUILD_TESTS)
     endif()
     add_test(NAME audio_effects COMMAND nativekit_audio_effects_tests)
     set_tests_properties(audio_effects PROPERTIES LABELS "audio")
+
+    add_executable(nativekit_audio_daisy_boundaries_tests
+        tests/audio_daisy_boundaries.cpp src/audio_dsp_backend.cpp src/audio_daisy_source.cpp
+        $<TARGET_OBJECTS:nativekit_daisysp>)
+    target_compile_features(nativekit_audio_daisy_boundaries_tests PRIVATE cxx_std_17)
+    target_include_directories(nativekit_audio_daisy_boundaries_tests PRIVATE src include "${PROJECT_SOURCE_DIR}/include")
+    target_include_directories(nativekit_audio_daisy_boundaries_tests SYSTEM PRIVATE
+        "${NK_VENDOR_DIR}/daisysp/Source" "${NK_VENDOR_DIR}/daisysp/Source/Utility")
+    add_test(NAME audio_daisy_boundaries COMMAND nativekit_audio_daisy_boundaries_tests)
+    set_tests_properties(audio_daisy_boundaries PROPERTIES LABELS "audio")
+
+    add_executable(nativekit_audio_daisy_sources_tests tests/audio_daisy_sources.cpp)
+    target_link_libraries(nativekit_audio_daisy_sources_tests PRIVATE NativeKit::audio_dsp)
+    add_test(NAME audio_daisy_sources COMMAND nativekit_audio_daisy_sources_tests)
+    set_tests_properties(audio_daisy_sources PROPERTIES LABELS "audio")
 
     add_executable(nativekit_audio_dsp_tests tests/audio_dsp.cpp)
     target_compile_features(nativekit_audio_dsp_tests PRIVATE cxx_std_17)
