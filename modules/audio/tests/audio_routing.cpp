@@ -30,6 +30,28 @@ int main() {
     assert(nk_audio_test_use_offline_device() == NK_OK);
     nk_audio_bus bus = NK_INVALID_HANDLE;
     assert(nk_audio_bus_create(nullptr, &bus) == NK_OK);
+    assert(nk_audio_get_diagnostics(nullptr) == NK_ERROR_INVALID_ARGUMENT);
+    nk_audio_diagnostics telemetry{};
+    assert(nk_audio_get_diagnostics(&telemetry) == NK_ERROR_INVALID_ARGUMENT);
+    telemetry.struct_size = sizeof(telemetry);
+    assert(nk_audio_get_diagnostics(&telemetry) == NK_OK);
+    assert(!telemetry.enabled && telemetry.callback_count == 0);
+    assert(nk_audio_set_diagnostics_enabled(1) == NK_OK);
+    assert(nk_audio_test_render(output.data(), frames) == NK_OK);
+    assert(nk_audio_get_diagnostics(&telemetry) == NK_OK);
+    assert(telemetry.enabled && telemetry.callback_count == 1);
+    assert(telemetry.rendered_frames == frames && telemetry.short_reads == 0 && telemetry.read_errors == 0);
+    assert(std::isfinite(telemetry.max_callback_ms) && telemetry.max_callback_ms >= 0);
+    assert(std::abs(telemetry.last_budget_ms - double(frames)*1000/48000) < 0.001);
+    assert(telemetry.late_callback_gaps == 0); // First callback has no predecessor.
+    assert(nk_audio_set_diagnostics_enabled(0) == NK_OK);
+    assert(nk_audio_test_render(output.data(), frames) == NK_OK);
+    assert(nk_audio_get_diagnostics(&telemetry) == NK_OK);
+    assert(!telemetry.enabled && telemetry.callback_count == 1 && telemetry.rendered_frames == frames);
+    assert(nk_audio_set_diagnostics_enabled(1) == NK_OK);
+    assert(nk_audio_test_render(output.data(), frames) == NK_OK);
+    assert(nk_audio_get_diagnostics(&telemetry) == NK_OK);
+    assert(telemetry.callback_count == 2 && telemetry.late_callback_gaps == 0);
     nk_audio_dsp_engine_options options{};
     options.struct_size = sizeof(options);
     options.sample_rate = 48000;

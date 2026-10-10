@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -29,6 +30,9 @@
 #include <vector>
 
 namespace {
+
+static_assert(std::atomic<uint64_t>::is_always_lock_free,
+              "Audio callback telemetry requires lock-free 64-bit atomics");
 
 using nk::audio::ProcessorNode;
 using nk::audio::processor_vtable;
@@ -99,6 +103,11 @@ struct AudioEngineResource final : nk::core::Resource {
     bool initialized = false;
     std::atomic<bool> interrupted{false};
     std::atomic<uint64_t> device_time_frames{0};
+    std::atomic<bool> diagnostics_enabled{false};
+    std::atomic<uint64_t> callback_count{0}, rendered_frames{0}, budget_overruns{0};
+    std::atomic<uint64_t> late_callback_gaps{0}, short_reads{0}, read_errors{0};
+    std::atomic<uint64_t> max_callback_ns{0}, max_gap_ns{0}, last_budget_ns{0};
+    std::atomic<uint64_t> previous_callback_ns{0}, previous_budget_ns{0};
     std::vector<std::weak_ptr<nk::core::Resource>> voices;
     std::vector<std::weak_ptr<AudioBusResource>> buses; // UI-thread routing/lifecycle bookkeeping.
 
@@ -119,6 +128,27 @@ void audio_engine_data_callback(ma_device *, void *frames_out, const void *frame
         return;
 
     (void)frames_in;
+    const bool measure = engine->diagnostics_enabled.load(std::memory_order_relaxed);
+    const auto stamp = []() noexcept -> uint64_t {
+        return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count());
+    };
+    const uint64_t start_ns = measure ? stamp() : 0;
+    const uint64_t budget_ns = measure ? uint64_t(frame_count) * 1000000000ull /
+        ma_engine_get_sample_rate(&engine->engine) : 0;
+    if (measure) {
+        const auto previous = engine->previous_callback_ns.exchange(start_ns, std::memory_order_relaxed);
+        const auto previous_budget = engine->previous_budget_ns.exchange(budget_ns, std::memory_order_relaxed);
+        // A single device callback writer owns these maxima. Lifecycle/API calls only read them.
+        if (previous && start_ns >= previous) {
+            const auto gap = start_ns - previous;
+            if (gap > engine->max_gap_ns.load(std::memory_order_relaxed))
+                engine->max_gap_ns.store(gap, std::memory_order_relaxed);
+            if (previous_budget && gap > previous_budget * 2)
+                engine->late_callback_gaps.fetch_add(1, std::memory_order_relaxed);
+        }
+        engine->last_budget_ns.store(budget_ns, std::memory_order_relaxed);
+    }
     const auto channels = ma_engine_get_channels(&engine->engine);
     engine->device_time_frames.fetch_add(frame_count, std::memory_order_acq_rel);
 
@@ -131,6 +161,16 @@ void audio_engine_data_callback(ma_device *, void *frames_out, const void *frame
         auto *float_output = static_cast<float *>(frames_out);
         ma_silence_pcm_frames(float_output + frames_read * channels, frame_count - frames_read,
                               ma_format_f32, channels);
+    }
+    if (measure) {
+        const auto elapsed = stamp() - start_ns;
+        if (elapsed > engine->max_callback_ns.load(std::memory_order_relaxed))
+            engine->max_callback_ns.store(elapsed, std::memory_order_relaxed);
+        if (elapsed > budget_ns) engine->budget_overruns.fetch_add(1, std::memory_order_relaxed);
+        if (frames_read < frame_count) engine->short_reads.fetch_add(1, std::memory_order_relaxed);
+        if (result != MA_SUCCESS) engine->read_errors.fetch_add(1, std::memory_order_relaxed);
+        engine->rendered_frames.fetch_add(frames_read, std::memory_order_relaxed);
+        engine->callback_count.fetch_add(1, std::memory_order_relaxed);
     }
 }
 
@@ -783,6 +823,7 @@ void audio_device_notification_callback(const ma_device_notification *notificati
     nk_event_kind event_kind = NK_EVENT_NONE;
     switch (notification->type) {
     case ma_device_notification_type_started:
+        resource->previous_callback_ns.store(0, std::memory_order_relaxed);
         resource->interrupted.store(false, std::memory_order_release);
         event_kind = NK_EVENT_AUDIO_DEVICE_STARTED;
         break;
@@ -797,6 +838,7 @@ void audio_device_notification_callback(const ma_device_notification *notificati
         event_kind = NK_EVENT_AUDIO_DEVICE_INTERRUPTION_BEGAN;
         break;
     case ma_device_notification_type_interruption_ended:
+        resource->previous_callback_ns.store(0, std::memory_order_relaxed);
         resource->interrupted.store(false, std::memory_order_release);
         event_kind = NK_EVENT_AUDIO_DEVICE_INTERRUPTION_ENDED;
         break;
@@ -4722,6 +4764,40 @@ nk_result NK_CALL nk_audio_voice_get_directional_attenuation_factor(nk_audio_voi
                                   return NK_OK;
                               });
         });
+}
+
+nk_result NK_CALL nk_audio_set_diagnostics_enabled(nk_bool enabled) {
+    return nk::core::result_boundary("unexpected error while configuring audio diagnostics", [&]() -> nk_result {
+        if (const auto result = enter_audio_ui(); result != NK_OK) return result;
+        nk_result result = NK_OK;
+        auto engine = ensure_engine(result);
+        if (!engine) return result;
+        engine->diagnostics_enabled.store(enabled != 0, std::memory_order_relaxed);
+        engine->previous_callback_ns.store(0, std::memory_order_relaxed);
+        return NK_OK;
+    });
+}
+
+nk_result NK_CALL nk_audio_get_diagnostics(nk_audio_diagnostics *out) {
+    return nk::core::result_boundary("unexpected error while reading audio diagnostics", [&]() -> nk_result {
+        if (const auto result = enter_audio_ui(); result != NK_OK) return result;
+        if (!out || out->struct_size < sizeof(nk_audio_diagnostics))
+            return invalid_argument("audio diagnostics output is missing or too small");
+        nk_result result = NK_OK;
+        auto engine = ensure_engine(result);
+        if (!engine) return result;
+        out->enabled = engine->diagnostics_enabled.load(std::memory_order_relaxed) ? 1u : 0u;
+        out->callback_count = engine->callback_count.load(std::memory_order_relaxed);
+        out->rendered_frames = engine->rendered_frames.load(std::memory_order_relaxed);
+        out->budget_overruns = engine->budget_overruns.load(std::memory_order_relaxed);
+        out->late_callback_gaps = engine->late_callback_gaps.load(std::memory_order_relaxed);
+        out->short_reads = engine->short_reads.load(std::memory_order_relaxed);
+        out->read_errors = engine->read_errors.load(std::memory_order_relaxed);
+        out->max_callback_ms = engine->max_callback_ns.load(std::memory_order_relaxed) / 1000000.0;
+        out->max_gap_ms = engine->max_gap_ns.load(std::memory_order_relaxed) / 1000000.0;
+        out->last_budget_ms = engine->last_budget_ns.load(std::memory_order_relaxed) / 1000000.0;
+        return NK_OK;
+    });
 }
 
 nk_result NK_CALL nk_audio_get_time_pcm_frames(uint64_t *out_time_pcm_frames) {

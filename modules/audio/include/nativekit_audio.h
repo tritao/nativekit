@@ -36,6 +36,28 @@ extern "C" {
 /* Audio types and voice options                                             */
 /* ------------------------------------------------------------------------- */
 
+/** Opt-in callback telemetry, cumulative for the engine lifetime. Fields are independent
+ * atomic samples, not a transaction. Late gaps are timing observations, not backend XRUNs.
+ */
+typedef struct nk_audio_diagnostics {
+    uint32_t struct_size;
+    nk_bool enabled;
+    uint64_t callback_count;
+    uint64_t rendered_frames;
+    uint64_t budget_overruns;
+    uint64_t late_callback_gaps;
+    uint64_t short_reads;
+    uint64_t read_errors;
+    double max_callback_ms;
+    double max_gap_ms;
+    double last_budget_ms;
+} nk_audio_diagnostics;
+
+/** Enables timing collection. Disabled by default; counters persist when disabled. */
+NKAUDIO_API nk_result NK_CALL nk_audio_set_diagnostics_enabled(nk_bool enabled);
+/** Reads telemetry without resetting it. Initialize struct_size before calling. */
+NKAUDIO_API nk_result NK_CALL nk_audio_get_diagnostics(nk_audio_diagnostics *out_diagnostics NK_INOUT);
+
 /** Opaque handle for one reusable audio clip source. */
 typedef uint32_t nk_audio_clip NK_HANDLE NK_HANDLE_DESTROY(nk_audio_clip_destroy);
 
