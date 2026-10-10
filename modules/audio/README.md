@@ -402,6 +402,8 @@ The private implementation adapts the pinned MIT sources where required:
 callback-local random state replaces libc's shared RNG; granular indexing wraps
 arbitrary offsets; phasor wrapping handles the endpoint and multiple cycles;
 FM2 initializes its cached default carrier/modulator tuning;
+KarplusString preserves its curved-bridge mode, compensates actual filter phase
+for tuning, and consumes the initial pluck when low-pitch resampling is active;
 Drip uses initialized filter values and portable random scaling; analog snare
 resonators run linearly to avoid nonlinear SVF divergence on trigger pulses.
 Its Q conversion and trigger one-pole filter preserve the natural shell decay,

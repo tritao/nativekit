@@ -18,6 +18,12 @@ includes the upstream copyright and license; DaisySP-LICENSE is installed.
 - `drip.cpp`: feeds each resonator's computed local input into its state;
   upstream read uninitialized members. Normalizes random samples using RAND_MAX
   for portability. Rounds the attack countdown and expires it at/below zero.
+- `KarplusString.cpp`: preserves negative nonlinearity values for the documented
+  curved-bridge mode. Corrects delay compensation for the actual one-pole filter
+  and DC blocker, including the internal rate used for low-pitch resampling. Reset
+  consumes the initial excitation on the first call even below the delay-line
+  range. Linear-mode pitch, natural decay, bridge selection, retriggers, and
+  direct-model wrapper equivalence have regressions.
 - `analogsnaredrum.cpp`: disables the Daisy SVF's nonlinear drive in the physical
   resonators and noise filter. Its original trigger excitation can make that
   nonlinear recurrence diverge at high pitches. Shell output still uses the
