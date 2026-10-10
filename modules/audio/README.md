@@ -442,3 +442,24 @@ parameters. The engine advertises `STEREO_UNISON` and `FILTER_ENVELOPE` capabili
 `audio_dsp_voice` tests default compatibility, copy normalization, stereo/mono
 mapping, block partitioning, callback/offline parity, filter-envelope independence,
 wavetable/operator unison, releases, validation and specialized-source rejection.
+
+## Multiple LFOs and filter-envelope routes
+
+Extended voice options append two optional `additional_lfos` and their count.
+The complete original voice-options prefix remains accepted by `struct_size`;
+partial extensions are rejected and absent fields are never read. The primary
+LFO remains in the original patch layout. Modulation sources `LFO2` and `LFO3`
+require the corresponding additional source to be configured. `FILTER_ENVELOPE`
+exposes the independent ADSR regardless of the direct sweep amount.
+
+Each used LFO advances once per frame; independent waveforms, phases, rates and
+retrigger/free-running modes are retained per voice. Unused sources are not
+processed. `FILTER_CUTOFF_SEMITONES` adds to the direct filter-envelope sweep,
+clamping the combined logarithmic offset to ±96 semitones before converting
+and adding the cutoff-Hz offset. `PAN` clamps its summed offset to [−1, 1] and
+attenuates the far output channel after filtering; it never boosts either
+channel. Existing patches with no new routes keep their prior sound.
+
+`audio_dsp_voice` also checks independent LFO contributions, shared-source tick
+counts, phase modes, zero-sweep filter-envelope routing, stereo balance clamping,
+missing-source validation, the v1 voice-options prefix and callback/offline parity.

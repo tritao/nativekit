@@ -95,6 +95,8 @@ struct PatchParameters {
     FilterParameters filter;
     float gain = 1.0f;
     LfoParameters lfo;
+    std::array<LfoParameters, NK_AUDIO_DSP_MAX_LFOS - 1> additional_lfos{};
+    uint32_t additional_lfo_count = 0;
     std::array<ModulationRoute, NK_AUDIO_DSP_MAX_MODULATION_ROUTES> routes{};
     uint32_t route_count = 0;
 };

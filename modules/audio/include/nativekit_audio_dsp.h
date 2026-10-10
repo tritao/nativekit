@@ -56,7 +56,9 @@ enum NK_FLAGS(nk_audio_dsp_capabilities) {
     /** Specialized physical, percussion, spectral, noise and granular generators. */
     NK_AUDIO_DSP_CAPABILITY_SPECIALIZED_SOURCE = 1u << 9,
     NK_AUDIO_DSP_CAPABILITY_STEREO_UNISON = 1u << 10,
-    NK_AUDIO_DSP_CAPABILITY_FILTER_ENVELOPE = 1u << 11
+    NK_AUDIO_DSP_CAPABILITY_FILTER_ENVELOPE = 1u << 11,
+    NK_AUDIO_DSP_CAPABILITY_MULTI_LFO = 1u << 12,
+    NK_AUDIO_DSP_CAPABILITY_PAN_MODULATION = 1u << 13
 };
 
 /** Built-in pitched oscillator shapes. */
@@ -90,7 +92,11 @@ enum NK_ENUM(nk_audio_dsp_modulation_source) {
     NK_AUDIO_DSP_MODULATION_SOURCE_LFO = 0,
     NK_AUDIO_DSP_MODULATION_SOURCE_ENVELOPE = 1,
     /** Audio-rate output from one oscillator source. */
-    NK_AUDIO_DSP_MODULATION_SOURCE_OSCILLATOR = 2
+    NK_AUDIO_DSP_MODULATION_SOURCE_OSCILLATOR = 2,
+    /** Independent filter ADSR, sharing the note gate with the amplitude ADSR. */
+    NK_AUDIO_DSP_MODULATION_SOURCE_FILTER_ENVELOPE = 3,
+    NK_AUDIO_DSP_MODULATION_SOURCE_LFO2 = 4,
+    NK_AUDIO_DSP_MODULATION_SOURCE_LFO3 = 5
 };
 
 /** Destinations that can receive a patch modulation route. */
@@ -107,7 +113,11 @@ enum NK_ENUM(nk_audio_dsp_modulation_destination) {
     /** Non-accumulating normalized phase offset for the targeted oscillator sources. */
     NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_PHASE = 4,
     /** Audio-rate frequency offset in Hz for the targeted oscillator source. */
-    NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_FREQUENCY_HZ = 5
+    NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_FREQUENCY_HZ = 5,
+    /** Stereo balance offset, clamped to [-1, 1]; attenuates the far channel. */
+    NK_AUDIO_DSP_MODULATION_DESTINATION_PAN = 6,
+    /** Logarithmic cutoff offset in semitones, combined with the filter ADSR sweep. */
+    NK_AUDIO_DSP_MODULATION_DESTINATION_FILTER_CUTOFF_SEMITONES = 7
 };
 
 /** Normalization applied to a modulation source before amount scaling. */
@@ -127,6 +137,8 @@ enum { NK_AUDIO_DSP_MAX_MODULATION_ROUTES = 8 };
 
 /** Maximum number of independently tuned pitched sources in one patch. */
 enum { NK_AUDIO_DSP_MAX_OSCILLATORS = 4 };
+/** Primary patch LFO plus two additional LFOs in extended voice options. */
+enum { NK_AUDIO_DSP_MAX_LFOS = 3 };
 
 /** Instrument parameter identifiers; oscillator-specific values require a source index. */
 typedef uint32_t nk_audio_dsp_parameter;
@@ -203,27 +215,6 @@ typedef struct nk_audio_dsp_envelope_options {
     uint64_t reserved2[2];
 } nk_audio_dsp_envelope_options;
 
-/** Advanced voice controls, supplied separately to preserve the original patch ABI.
- * Zero unison_count selects one copy. Copies are normalized by count, symmetrically
- * detuned and panned with constant-sum gains. Stereo renders use L/R; mono renders
- * average them, and channels beyond L/R receive that average. Specialized Daisy
- * sources support the filter envelope but require one unison copy.
- * Both envelopes share the note gate; amplitude release determines voice lifetime.
- */
-typedef struct nk_audio_dsp_voice_options {
-    uint32_t struct_size NK_STRUCT_SIZE;
-    /** Number of oscillator/wavetable copies, 0 (default one) or [1, 8]. */
-    uint32_t unison_count;
-    /** Maximum detuning on either side of the base pitch, [0, 100] cents. */
-    float unison_detune_cents;
-    /** Stereo spread, [0, 1]. One copy always remains centered. */
-    float unison_stereo_spread;
-    nk_audio_dsp_envelope_options filter_envelope;
-    /** Cutoff sweep in semitones, [-96, 96]; zero disables the envelope. */
-    float filter_envelope_amount_semitones;
-    uint64_t reserved2[2];
-} nk_audio_dsp_voice_options;
-
 /** Filter component in a reusable patch. */
 typedef struct nk_audio_dsp_filter_options {
     /** Set to sizeof(nk_audio_dsp_filter_options) before use. */
@@ -253,6 +244,32 @@ typedef struct nk_audio_dsp_lfo_options {
     /** Reserved for compatible extensions; set all elements to zero. */
     uint64_t reserved2[1];
 } nk_audio_dsp_lfo_options;
+
+/** Advanced voice controls, supplied separately to preserve the original patch ABI.
+ * Zero unison_count selects one copy. Copies are normalized by count, symmetrically
+ * detuned and panned with constant-sum gains. Stereo renders use L/R; mono renders
+ * average them, and channels beyond L/R receive that average. Specialized Daisy
+ * sources support the filter envelope but require one unison copy.
+ * Both envelopes share the note gate; amplitude release determines voice lifetime.
+ */
+typedef struct nk_audio_dsp_voice_options {
+    uint32_t struct_size NK_STRUCT_SIZE;
+    /** Number of oscillator/wavetable copies, 0 (default one) or [1, 8]. */
+    uint32_t unison_count;
+    /** Maximum detuning on either side of the base pitch, [0, 100] cents. */
+    float unison_detune_cents;
+    /** Stereo spread, [0, 1]. One copy always remains centered. */
+    float unison_stereo_spread;
+    nk_audio_dsp_envelope_options filter_envelope;
+    /** Cutoff sweep in semitones, [-96, 96]; zero disables the envelope. */
+    float filter_envelope_amount_semitones;
+    uint64_t reserved2[2];
+    /** Optional appended extension. Old callers ending before this array remain valid. */
+    nk_audio_dsp_lfo_options additional_lfos[NK_AUDIO_DSP_MAX_LFOS - 1];
+    /** Number of additional LFOs, [0, 2]; routes must reference configured LFOs. */
+    uint32_t additional_lfo_count;
+    uint32_t reserved3;
+} nk_audio_dsp_voice_options;
 
 /** One generic source-to-destination modulation route. */
 typedef struct nk_audio_dsp_modulation_route_options {

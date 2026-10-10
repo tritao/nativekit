@@ -131,7 +131,10 @@ struct Voice::Impl {
     DaisySource source;
     bool specialized_source = false;
     bool source_replaces_oscillators = false;
-    daisysp::Oscillator lfo;
+    std::array<daisysp::Oscillator, NK_AUDIO_DSP_MAX_LFOS> lfos;
+    std::array<LfoParameters, NK_AUDIO_DSP_MAX_LFOS> lfo_parameters;
+    std::array<bool, NK_AUDIO_DSP_MAX_LFOS> lfo_used{};
+    bool filter_envelope_used = false;
     daisysp::Adsr envelope;
     WrappingWhiteNoise noise;
     daisysp::Svf filter;
@@ -141,7 +144,6 @@ struct Voice::Impl {
     nk_audio_dsp_filter_type filter_type = NK_AUDIO_DSP_FILTER_NONE;
     float filter_cutoff_hz = 0.0f;
     float filter_resonance = 0.0f;
-    LfoParameters lfo_parameters;
     std::array<ModulationRoute, NK_AUDIO_DSP_MAX_MODULATION_ROUTES> routes{};
     std::array<uint32_t, NK_AUDIO_DSP_MAX_OSCILLATORS> oscillator_order{};
     uint32_t route_count = 0;
@@ -176,8 +178,14 @@ void Voice::init(uint32_t sample_rate) noexcept {
     impl_->right_weights = {};
     impl_->left_weights[0] = impl_->right_weights[0] = 1.0f;
     impl_->filter_envelope_amount = 0.0f;
-    impl_->lfo.Init(static_cast<float>(sample_rate));
-    impl_->lfo.SetAmp(1.0f);
+    for (auto &lfo : impl_->lfos) {
+        lfo.Init(static_cast<float>(sample_rate));
+        lfo.SetAmp(1.0f);
+        lfo.SetFreq(0.0f);
+        lfo.Reset(0.0f);
+    }
+    impl_->lfo_used = {};
+    impl_->filter_envelope_used = false;
     impl_->envelope.Init(static_cast<float>(sample_rate));
     impl_->filter_envelope.Init(static_cast<float>(sample_rate));
     impl_->right_filter.Init(static_cast<float>(sample_rate));
@@ -189,8 +197,6 @@ void Voice::init(uint32_t sample_rate) noexcept {
     impl_->filter_cutoff_hz = 0.0f;
     impl_->filter_resonance = 0.0f;
     impl_->lfo_parameters = {};
-    impl_->lfo.SetFreq(0.0f);
-    impl_->lfo.Reset(0.0f);
     impl_->routes = {};
     impl_->oscillator_order = {};
     impl_->route_count = 0;
@@ -245,9 +251,23 @@ void Voice::set_parameters(const PatchParameters &parameters) noexcept {
     impl_->filter_type = parameters.filter.type;
     impl_->filter_cutoff_hz = parameters.filter.cutoff_hz;
     impl_->filter_resonance = parameters.filter.resonance;
-    impl_->lfo_parameters = parameters.lfo;
+    impl_->lfo_parameters[0] = parameters.lfo;
+    for (uint32_t i = 1; i < NK_AUDIO_DSP_MAX_LFOS; ++i)
+        impl_->lfo_parameters[i] = parameters.additional_lfos[i - 1];
+    impl_->lfo_used = {};
+    impl_->filter_envelope_used = parameters.filter_envelope_amount_semitones != 0;
     impl_->routes = parameters.routes;
     impl_->route_count = parameters.route_count;
+    for (uint32_t i = 0; i < impl_->route_count; ++i) {
+        switch (impl_->routes[i].source) {
+        case NK_AUDIO_DSP_MODULATION_SOURCE_LFO: impl_->lfo_used[0] = true; break;
+        case NK_AUDIO_DSP_MODULATION_SOURCE_LFO2: impl_->lfo_used[1] = true; break;
+        case NK_AUDIO_DSP_MODULATION_SOURCE_LFO3: impl_->lfo_used[2] = true; break;
+        case NK_AUDIO_DSP_MODULATION_SOURCE_FILTER_ENVELOPE:
+            impl_->filter_envelope_used = true; break;
+        default: break;
+        }
+    }
     std::array<bool, NK_AUDIO_DSP_MAX_OSCILLATORS> emitted{};
     for (uint32_t position = 0; position < impl_->oscillator_count; ++position) {
         for (uint32_t candidate = 0; candidate < impl_->oscillator_count; ++candidate) {
@@ -270,11 +290,14 @@ void Voice::set_parameters(const PatchParameters &parameters) noexcept {
             }
         }
     }
-    set_waveform(impl_->lfo, parameters.lfo.waveform);
-    impl_->lfo.SetAmp(1.0f);
-    impl_->lfo.SetFreq(parameters.lfo.rate_hz);
-    if (!was_active)
-        impl_->lfo.Reset(parameters.lfo.phase);
+    for (uint32_t i = 0; i < NK_AUDIO_DSP_MAX_LFOS; ++i) {
+        const auto &options = impl_->lfo_parameters[i];
+        auto &lfo = impl_->lfos[i];
+        set_waveform(lfo, options.waveform);
+        lfo.SetAmp(1.0f);
+        lfo.SetFreq(options.rate_hz);
+        if (!was_active) lfo.Reset(options.phase);
+    }
     impl_->envelope.SetAttackTime(parameters.envelope.attack_seconds);
     impl_->envelope.SetDecayTime(parameters.envelope.decay_seconds);
     impl_->envelope.SetSustainLevel(parameters.envelope.sustain_level);
@@ -307,8 +330,9 @@ void Voice::note_on(uint32_t note, float velocity) noexcept {
                 clamp_frequency(detuned_frequency, impl_->sample_rate));
         }
     }
-    if (impl_->lfo_parameters.mode == NK_AUDIO_DSP_LFO_RETRIGGER)
-        impl_->lfo.Reset(impl_->lfo_parameters.phase);
+    for (uint32_t i = 0; i < NK_AUDIO_DSP_MAX_LFOS; ++i)
+        if (impl_->lfo_parameters[i].mode == NK_AUDIO_DSP_LFO_RETRIGGER)
+            impl_->lfos[i].Reset(impl_->lfo_parameters[i].phase);
     impl_->filter.Init(static_cast<float>(impl_->sample_rate));
     impl_->right_filter.Init(static_cast<float>(impl_->sample_rate));
     impl_->right_filter.SetRes(impl_->filter_resonance);
@@ -331,7 +355,7 @@ void Voice::reset() noexcept {
     impl_->velocity = 0.0f;
     impl_->gate = false;
     impl_->active = false;
-    impl_->lfo.Reset(0.0f);
+    for (auto &lfo : impl_->lfos) lfo.Reset(0.0f);
 }
 
 float Voice::process() noexcept {
@@ -347,21 +371,19 @@ StereoSample Voice::process_stereo() noexcept {
         impl_->active = false;
         return {};
     }
-    const auto filter_envelope = impl_->filter_envelope_amount == 0.0f ? 0.0f :
-        impl_->filter_envelope.Process(impl_->gate);
-    auto lfo_value = 0.0f;
-    for (uint32_t index = 0; index < impl_->route_count; ++index) {
-        if (impl_->routes[index].source == NK_AUDIO_DSP_MODULATION_SOURCE_LFO) {
-            lfo_value = impl_->lfo.Process();
-            break;
-        }
-    }
+    const auto filter_envelope = impl_->filter_envelope_used
+                                     ? impl_->filter_envelope.Process(impl_->gate) : 0.0f;
+    std::array<float, NK_AUDIO_DSP_MAX_LFOS> lfo_values{};
+    for (uint32_t i = 0; i < NK_AUDIO_DSP_MAX_LFOS; ++i)
+        if (impl_->lfo_used[i]) lfo_values[i] = impl_->lfos[i].Process();
 
     std::array<float, NK_AUDIO_DSP_MAX_OSCILLATORS> pitch_offsets{};
     std::array<float, NK_AUDIO_DSP_MAX_OSCILLATORS> level_offsets{};
     std::array<float, NK_AUDIO_DSP_MAX_OSCILLATORS> phase_offsets{};
     std::array<float, NK_AUDIO_DSP_MAX_OSCILLATORS> frequency_offsets{};
     auto filter_offset = 0.0f;
+    auto filter_semitones = filter_envelope * impl_->filter_envelope_amount;
+    auto pan_offset = 0.0f;
     auto amplitude_offset = 0.0f;
     const auto add_oscillator_route = [&](std::array<float, NK_AUDIO_DSP_MAX_OSCILLATORS> &values,
                                           const ModulationRoute &route, float value) {
@@ -376,13 +398,19 @@ StereoSample Voice::process_stereo() noexcept {
         const auto &route = impl_->routes[index];
         if (route.source == NK_AUDIO_DSP_MODULATION_SOURCE_OSCILLATOR)
             continue;
-        auto source_value =
-            route.source == NK_AUDIO_DSP_MODULATION_SOURCE_LFO ? lfo_value : envelope;
-        if (route.polarity == NK_AUDIO_DSP_MODULATION_UNIPOLAR &&
-            route.source == NK_AUDIO_DSP_MODULATION_SOURCE_LFO)
+        auto source_value = 0.0f;
+        const auto is_envelope = route.source == NK_AUDIO_DSP_MODULATION_SOURCE_ENVELOPE ||
+                                route.source == NK_AUDIO_DSP_MODULATION_SOURCE_FILTER_ENVELOPE;
+        switch (route.source) {
+        case NK_AUDIO_DSP_MODULATION_SOURCE_LFO: source_value = lfo_values[0]; break;
+        case NK_AUDIO_DSP_MODULATION_SOURCE_LFO2: source_value = lfo_values[1]; break;
+        case NK_AUDIO_DSP_MODULATION_SOURCE_LFO3: source_value = lfo_values[2]; break;
+        case NK_AUDIO_DSP_MODULATION_SOURCE_FILTER_ENVELOPE: source_value = filter_envelope; break;
+        default: source_value = envelope; break;
+        }
+        if (route.polarity == NK_AUDIO_DSP_MODULATION_UNIPOLAR && !is_envelope)
             source_value = 0.5f * (source_value + 1.0f);
-        else if (route.polarity == NK_AUDIO_DSP_MODULATION_BIPOLAR &&
-                 route.source == NK_AUDIO_DSP_MODULATION_SOURCE_ENVELOPE)
+        else if (route.polarity == NK_AUDIO_DSP_MODULATION_BIPOLAR && is_envelope)
             source_value = 2.0f * source_value - 1.0f;
         switch (route.destination) {
         case NK_AUDIO_DSP_MODULATION_DESTINATION_PITCH_SEMITONES:
@@ -390,6 +418,12 @@ StereoSample Voice::process_stereo() noexcept {
             break;
         case NK_AUDIO_DSP_MODULATION_DESTINATION_FILTER_CUTOFF_HZ:
             filter_offset += route.amount * source_value;
+            break;
+        case NK_AUDIO_DSP_MODULATION_DESTINATION_FILTER_CUTOFF_SEMITONES:
+            filter_semitones += route.amount * source_value;
+            break;
+        case NK_AUDIO_DSP_MODULATION_DESTINATION_PAN:
+            pan_offset += route.amount * source_value;
             break;
         case NK_AUDIO_DSP_MODULATION_DESTINATION_AMPLITUDE:
             amplitude_offset += route.amount * source_value;
@@ -408,7 +442,15 @@ StereoSample Voice::process_stereo() noexcept {
         }
     }
 
-    auto frequency = impl_->base_frequency;
+    const auto frequency = impl_->base_frequency;
+    // Pitch modulation is shared by the copies; evaluate its exponential once
+    // per oscillator each frame rather than once for every detuned copy.
+    std::array<float, NK_AUDIO_DSP_MAX_OSCILLATORS> pitched_frequencies{};
+    for (uint32_t i = 0; i < impl_->oscillator_count && !impl_->source_replaces_oscillators; ++i) {
+        pitched_frequencies[i] = frequency;
+        if (pitch_offsets[i] != 0.0f)
+            pitched_frequencies[i] *= std::pow(2.0f, pitch_offsets[i] / 12.0f);
+    }
     StereoSample stereo;
     for (uint32_t copy = 0; copy < impl_->unison.count; ++copy) {
         float sample = 0.0f;
@@ -433,10 +475,7 @@ StereoSample Voice::process_stereo() noexcept {
                          NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_FREQUENCY_HZ)
                     copy_frequency_offsets[index] += route.amount * source_value;
             }
-            auto oscillator_frequency = frequency;
-            if (pitch_offsets[index] != 0.0f)
-                oscillator_frequency *= std::pow(2.0f, pitch_offsets[index] / 12.0f);
-            oscillator_frequency *= oscillator.tuning;
+            const auto oscillator_frequency = pitched_frequencies[index] * oscillator.tuning;
             const auto detuned_frequency = clamp_frequency(
                 oscillator_frequency + copy_frequency_offsets[index], impl_->sample_rate);
             oscillator.wavetable_oscillator.SetFreq(detuned_frequency);
@@ -477,8 +516,8 @@ StereoSample Voice::process_stereo() noexcept {
         stereo.right = sample;
     const auto is_stereo = impl_->unison.count > 1 && impl_->unison.stereo_spread > 0.0f;
     if (impl_->filter_type == NK_AUDIO_DSP_FILTER_SVF_LOW_PASS && impl_->filter_cutoff_hz > 0.0f) {
-        const auto envelope_ratio = impl_->filter_envelope_amount == 0.0f ? 1.0f :
-            std::pow(2.0f, filter_envelope * impl_->filter_envelope_amount / 12.0f);
+        const auto envelope_ratio = filter_semitones == 0.0f ? 1.0f :
+            std::pow(2.0f, std::clamp(filter_semitones, -96.0f, 96.0f) / 12.0f);
         const auto cutoff = std::clamp(impl_->filter_cutoff_hz * envelope_ratio + filter_offset,
                                       1.0f, static_cast<float>(impl_->sample_rate) / 3.0f);
         impl_->filter.SetFreq(cutoff);
@@ -491,8 +530,10 @@ StereoSample Voice::process_stereo() noexcept {
         }
     }
     const auto amplitude = impl_->gain * std::max(0.0f, 1.0f + amplitude_offset);
-    return {sample * amplitude * impl_->velocity * envelope,
-            (is_stereo ? stereo.right : sample) * amplitude * impl_->velocity * envelope};
+    const auto pan = std::clamp(pan_offset, -1.0f, 1.0f);
+    return {sample * amplitude * impl_->velocity * envelope * (1.0f - std::max(0.0f, pan)),
+            (is_stereo ? stereo.right : sample) * amplitude * impl_->velocity * envelope *
+                (1.0f + std::min(0.0f, pan))};
 }
 
 bool Voice::active() const noexcept {

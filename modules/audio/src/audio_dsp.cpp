@@ -10,6 +10,7 @@
 #include <array>
 #include <atomic>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -35,7 +36,8 @@ constexpr nk_audio_dsp_capabilities builtin_capabilities =
     NK_AUDIO_DSP_CAPABILITY_LFO | NK_AUDIO_DSP_CAPABILITY_FILTER | NK_AUDIO_DSP_CAPABILITY_FM |
     NK_AUDIO_DSP_CAPABILITY_PHASE_MODULATION | NK_AUDIO_DSP_CAPABILITY_MODULATION |
     NK_AUDIO_DSP_CAPABILITY_SPECIALIZED_SOURCE | NK_AUDIO_DSP_CAPABILITY_STEREO_UNISON |
-    NK_AUDIO_DSP_CAPABILITY_FILTER_ENVELOPE;
+    NK_AUDIO_DSP_CAPABILITY_FILTER_ENVELOPE | NK_AUDIO_DSP_CAPABILITY_MULTI_LFO |
+    NK_AUDIO_DSP_CAPABILITY_PAN_MODULATION;
 
 using DspParameters = nk::audio_dsp::PatchParameters;
 
@@ -194,7 +196,10 @@ bool valid_lfo_mode(nk_audio_dsp_lfo_mode mode) {
 bool valid_modulation_source(nk_audio_dsp_modulation_source source) {
     return source == NK_AUDIO_DSP_MODULATION_SOURCE_LFO ||
            source == NK_AUDIO_DSP_MODULATION_SOURCE_ENVELOPE ||
-           source == NK_AUDIO_DSP_MODULATION_SOURCE_OSCILLATOR;
+           source == NK_AUDIO_DSP_MODULATION_SOURCE_OSCILLATOR ||
+           source == NK_AUDIO_DSP_MODULATION_SOURCE_FILTER_ENVELOPE ||
+           source == NK_AUDIO_DSP_MODULATION_SOURCE_LFO2 ||
+           source == NK_AUDIO_DSP_MODULATION_SOURCE_LFO3;
 }
 
 bool valid_modulation_destination(nk_audio_dsp_modulation_destination destination) {
@@ -203,7 +208,9 @@ bool valid_modulation_destination(nk_audio_dsp_modulation_destination destinatio
            destination == NK_AUDIO_DSP_MODULATION_DESTINATION_AMPLITUDE ||
            destination == NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_LEVEL ||
            destination == NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_PHASE ||
-           destination == NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_FREQUENCY_HZ;
+           destination == NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_FREQUENCY_HZ ||
+           destination == NK_AUDIO_DSP_MODULATION_DESTINATION_PAN ||
+           destination == NK_AUDIO_DSP_MODULATION_DESTINATION_FILTER_CUTOFF_SEMITONES;
 }
 
 bool valid_modulation_polarity(nk_audio_dsp_modulation_polarity polarity) {
@@ -368,25 +375,48 @@ nk_result normalize_engine_options(const nk_audio_dsp_engine_options *input,
 }
 
 nk_result normalize_voice_options(const nk_audio_dsp_voice_options *input, DspParameters &output) {
-    if (!input)
-        return NK_OK;
-    const auto &env = input->filter_envelope;
-    if (input->struct_size < sizeof(*input) || env.struct_size < sizeof(env) ||
-        input->unison_count > nk::audio_dsp::max_unison_copies ||
-        !valid_nonnegative_finite(input->unison_detune_cents) || input->unison_detune_cents > 100 ||
-        !valid_nonnegative_finite(input->unison_stereo_spread) || input->unison_stereo_spread > 1 ||
-        !std::isfinite(input->filter_envelope_amount_semitones) ||
-        std::abs(input->filter_envelope_amount_semitones) > 96 ||
-        !valid_nonnegative_finite(env.attack_seconds) ||
-        !valid_nonnegative_finite(env.decay_seconds) ||
-        !valid_nonnegative_finite(env.sustain_level) || env.sustain_level > 1 ||
-        !valid_nonnegative_finite(env.release_seconds))
-        return invalid_argument("invalid DSP unison or filter envelope configuration");
-    output.unison = {input->unison_count == 0 ? 1 : input->unison_count,
-                      input->unison_detune_cents, input->unison_stereo_spread};
-    output.filter_envelope = {env.attack_seconds, env.decay_seconds, env.sustain_level,
-                              env.release_seconds};
-    output.filter_envelope_amount_semitones = input->filter_envelope_amount_semitones;
+    if (input) {
+        // The prefix is the complete v1 struct, including its tail padding.
+        constexpr auto v1_size = offsetof(nk_audio_dsp_voice_options, additional_lfos);
+        if (input->struct_size != v1_size && input->struct_size < sizeof(*input))
+            return invalid_argument("audio DSP voice options are missing or truncated");
+        const auto &env = input->filter_envelope;
+        if (env.struct_size < sizeof(env) ||
+            input->unison_count > nk::audio_dsp::max_unison_copies ||
+            !valid_nonnegative_finite(input->unison_detune_cents) || input->unison_detune_cents > 100 ||
+            !valid_nonnegative_finite(input->unison_stereo_spread) || input->unison_stereo_spread > 1 ||
+            !std::isfinite(input->filter_envelope_amount_semitones) ||
+            std::abs(input->filter_envelope_amount_semitones) > 96 ||
+            !valid_nonnegative_finite(env.attack_seconds) ||
+            !valid_nonnegative_finite(env.decay_seconds) ||
+            !valid_nonnegative_finite(env.sustain_level) || env.sustain_level > 1 ||
+            !valid_nonnegative_finite(env.release_seconds))
+            return invalid_argument("invalid DSP unison or filter envelope configuration");
+        output.unison = {input->unison_count == 0 ? 1 : input->unison_count,
+                          input->unison_detune_cents, input->unison_stereo_spread};
+        output.filter_envelope = {env.attack_seconds, env.decay_seconds, env.sustain_level,
+                                  env.release_seconds};
+        output.filter_envelope_amount_semitones = input->filter_envelope_amount_semitones;
+        if (input->struct_size >= sizeof(*input)) {
+            if (input->additional_lfo_count >= NK_AUDIO_DSP_MAX_LFOS)
+                return invalid_argument("too many additional DSP LFOs");
+            output.additional_lfo_count = input->additional_lfo_count;
+            for (uint32_t i = 0; i < output.additional_lfo_count; ++i) {
+                const auto &lfo = input->additional_lfos[i];
+                if (lfo.struct_size < sizeof(lfo) || !valid_waveform(lfo.waveform) ||
+                    !valid_lfo_mode(lfo.mode) || !valid_nonnegative_finite(lfo.rate_hz) ||
+                    !std::isfinite(lfo.phase) || lfo.phase < 0 || lfo.phase > 1)
+                    return invalid_argument("invalid additional DSP LFO");
+                output.additional_lfos[i] = {lfo.waveform, lfo.mode, lfo.rate_hz, lfo.phase};
+            }
+        }
+    }
+    for (uint32_t i = 0; i < output.route_count; ++i) {
+        const auto source = output.routes[i].source;
+        if ((source == NK_AUDIO_DSP_MODULATION_SOURCE_LFO2 && output.additional_lfo_count < 1) ||
+            (source == NK_AUDIO_DSP_MODULATION_SOURCE_LFO3 && output.additional_lfo_count < 2))
+            return invalid_argument("DSP modulation route references an unconfigured LFO");
+    }
     return NK_OK;
 }
 

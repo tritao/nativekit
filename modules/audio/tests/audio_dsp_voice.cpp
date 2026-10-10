@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
 #include <limits>
 #include <vector>
@@ -44,7 +45,7 @@ nk_audio_dsp_voice_options advanced() {
     return v;
 }
 std::vector<float> render(nk_audio_dsp_patch patch, uint32_t channels = 2, uint32_t block = 256,
-                          bool attached = false) {
+                          bool attached = false, bool retrigger = false) {
     nk_audio_dsp_engine_options e{};
     e.struct_size = sizeof(e); e.sample_rate = 48000; e.channels = channels;
     e.block_size = 256; e.max_voices = 4;
@@ -55,7 +56,7 @@ std::vector<float> render(nk_audio_dsp_patch patch, uint32_t channels = 2, uint3
     nk_audio_dsp_event note{};
     note.struct_size = sizeof(note); note.kind = NK_AUDIO_DSP_EVENT_NOTE_ON;
     note.instrument = instrument; note.voice_id = 1; note.note = 57; note.velocity = 1;
-    nk_audio_dsp_event off = note; off.kind = NK_AUDIO_DSP_EVENT_NOTE_OFF;
+    nk_audio_dsp_event off = note; off.kind = retrigger ? NK_AUDIO_DSP_EVENT_NOTE_ON : NK_AUDIO_DSP_EVENT_NOTE_OFF;
     constexpr uint32_t frames = 40000, release = 16384;
     if (attached) {
         assert(channels == 2);
@@ -64,7 +65,11 @@ std::vector<float> render(nk_audio_dsp_patch patch, uint32_t channels = 2, uint3
         assert(nk_audio_dsp_engine_attach_device(engine) == NK_OK);
         off.frame_offset = release;
         const nk_audio_dsp_event events[] = {note, off};
-        assert(nk_audio_dsp_engine_schedule(engine, now, events, 2) == NK_OK);
+        // Schedule ahead of any suffix already cached by the mixer graph. This also
+        // checks a newly attached source after another source has been detached.
+        assert(nk_audio_dsp_engine_schedule(engine, now + 1024, events, 2) == NK_OK);
+        std::vector<float> warmup(1024 * channels);
+        assert(nk_audio_test_render(warmup.data(), 1024) == NK_OK);
     }
     std::vector<float> output(frames * channels);
     for (uint32_t start = 0; start < frames;) {
@@ -173,6 +178,90 @@ int main() {
     bad = v; bad.struct_size = 0; reject(bad);
     bad = v; bad.unison_detune_cents = std::numeric_limits<float>::quiet_NaN(); reject(bad);
     bad = v; bad.filter_envelope.attack_seconds = std::numeric_limits<float>::infinity(); reject(bad);
+    // The committed v1 prefix remains accepted and ignores appended fields entirely.
+    auto v1 = advanced(); v1.unison_count = 1;
+    v1.struct_size = offsetof(nk_audio_dsp_voice_options, additional_lfos);
+    v1.additional_lfo_count = 99; // Must not be inspected with the old size.
+    auto old_voice = create(p, &v1); assert(render(old_voice) == old_signal);
+    nk_audio_dsp_patch_destroy(old_voice);
+    auto truncated = v1; truncated.struct_size++; reject(truncated);
+
+    auto moving = advanced(); moving.unison_count = 1;
+    moving.additional_lfo_count = 2;
+    for (uint32_t i = 0; i < 2; ++i) {
+        auto &lfo = moving.additional_lfos[i]; lfo.struct_size = sizeof(lfo);
+        lfo.rate_hz = i == 0 ? 7 : 11; lfo.phase = 0.2f;
+    }
+    auto motion = p; motion.lfo.rate_hz = 5; motion.lfo.phase = 0.1f;
+    motion.route_count = 3;
+    for (uint32_t i = 0; i < 3; ++i) {
+        auto &r = motion.routes[i]; r.struct_size = sizeof(r);
+        r.source = i == 0 ? NK_AUDIO_DSP_MODULATION_SOURCE_LFO :
+                   i == 1 ? NK_AUDIO_DSP_MODULATION_SOURCE_LFO2 : NK_AUDIO_DSP_MODULATION_SOURCE_LFO3;
+        r.destination = i == 0 ? NK_AUDIO_DSP_MODULATION_DESTINATION_PITCH_SEMITONES :
+                        i == 1 ? NK_AUDIO_DSP_MODULATION_DESTINATION_FILTER_CUTOFF_SEMITONES :
+                                 NK_AUDIO_DSP_MODULATION_DESTINATION_PAN;
+        r.amount = i == 0 ? 0.3f : i == 1 ? 12.0f : 0.7f;
+    }
+    auto motion_patch = create(motion, &moving); const auto moving_signal = render(motion_patch);
+    assert(moving_signal == render(motion_patch, 2, 71));
+    assert(moving_signal == render(motion_patch, 2, 256, true));
+    for (uint32_t i = 0; i < 3; ++i) {
+        auto isolated = motion; isolated.routes[i].amount = 0;
+        auto patch = create(isolated, &moving);
+        assert(render(patch) != moving_signal); nk_audio_dsp_patch_destroy(patch);
+    }
+    auto restarted = render(motion_patch, 2, 256, false, true);
+    assert(std::equal(restarted.begin(), restarted.begin()+4096, restarted.begin()+16384*2));
+    auto running = moving; running.additional_lfos[0].mode = NK_AUDIO_DSP_LFO_FREE_RUNNING;
+    auto running_patch = create(motion, &running);
+    auto continuous = render(running_patch, 2, 256, false, true);
+    assert(!std::equal(continuous.begin(), continuous.begin()+4096, continuous.begin()+16384*2));
+    // Multiple routes sharing a source advance that LFO only once per frame.
+    auto shared = motion; shared.route_count = 1;
+    shared.routes[0].source = NK_AUDIO_DSP_MODULATION_SOURCE_LFO2;
+    shared.routes[0].destination = NK_AUDIO_DSP_MODULATION_DESTINATION_FILTER_CUTOFF_SEMITONES;
+    shared.routes[0].amount = 12;
+    auto one_route = create(shared, &moving);
+    shared.route_count = 2; shared.routes[1] = shared.routes[0];
+    shared.routes[0].amount = shared.routes[1].amount = 6;
+    auto two_routes = create(shared, &moving); assert(render(one_route) == render(two_routes));
+    // FilterEnvelope works with zero direct sweep, and matches the explicit sweep path.
+    auto direct_options = moving; direct_options.filter_envelope_amount_semitones = 24;
+    auto direct = create(p, &direct_options);
+    auto routed_options = p; routed_options.route_count = 1;
+    auto &r = routed_options.routes[0]; r.struct_size = sizeof(r);
+    r.source = NK_AUDIO_DSP_MODULATION_SOURCE_FILTER_ENVELOPE;
+    r.destination = NK_AUDIO_DSP_MODULATION_DESTINATION_FILTER_CUTOFF_SEMITONES;
+    r.polarity = NK_AUDIO_DSP_MODULATION_UNIPOLAR; r.amount = 24;
+    auto routed = create(routed_options, &moving); assert(render(direct) == render(routed));
+    r.destination = NK_AUDIO_DSP_MODULATION_DESTINATION_OSCILLATOR_LEVEL;
+    r.oscillator_index = 1; r.amount = -0.75f;
+    auto filter_level = create(routed_options, &moving);
+    r.source = NK_AUDIO_DSP_MODULATION_SOURCE_ENVELOPE;
+    auto amp_level = create(routed_options, &moving);
+    assert(energy(render(filter_level), 1000, 3000) > energy(render(amp_level), 1000, 3000)*1.5);
+    // Stereo balance clamps at its endpoints and never boosts either channel.
+    auto pan_options = p; pan_options.route_count = 1;
+    pan_options.routes[0] = motion.routes[2]; pan_options.routes[0].amount = 2;
+    auto stationary = moving; stationary.additional_lfos[1].waveform = NK_AUDIO_DSP_WAVEFORM_SQUARE;
+    stationary.additional_lfos[1].rate_hz = 0; stationary.additional_lfos[1].phase = 0;
+    auto panned = create(pan_options, &stationary); const auto right_only = render(panned);
+    for (size_t i = 0; i < right_only.size(); i += 2) {
+        assert(right_only[i] == 0); assert(right_only[i+1] == old_signal[i+1]);
+    }
+    auto missing = moving; missing.additional_lfo_count = 1;
+    invalid = 123;
+    assert(nk_audio_dsp_patch_create_extended(&motion, &missing, &invalid) == NK_ERROR_INVALID_ARGUMENT);
+    assert(invalid == NK_INVALID_HANDLE);
+    assert(nk_audio_dsp_patch_create(&motion, &invalid) == NK_ERROR_INVALID_ARGUMENT);
+    missing = moving; missing.additional_lfo_count = 3; reject(missing);
+    missing = moving; missing.additional_lfos[0].struct_size = 0; reject(missing);
+    missing = moving; missing.additional_lfos[0].rate_hz = -1; reject(missing);
+    missing = moving; missing.additional_lfos[0].phase = std::numeric_limits<float>::quiet_NaN(); reject(missing);
+    for (auto patch : {motion_patch, running_patch, one_route, two_routes, direct, routed,
+                       filter_level, amp_level, panned}) assert(nk_audio_dsp_patch_destroy(patch) == NK_OK);
+
     // Wavetables and operator modulation also run independently in each copy.
     std::vector<float> cycle(128);
     for (size_t i = 0; i < cycle.size(); ++i) cycle[i] = std::sin(6.283185307*i/cycle.size());
@@ -194,5 +283,5 @@ int main() {
     for (auto patch : {legacy, single, zero, stereo_patch, sweep, disabled, operators})
         assert(nk_audio_dsp_patch_destroy(patch) == NK_OK);
     nk_shutdown();
-    std::puts("PASS: stereo unison, mono fold, filter ADSR, callback parity, ABI defaults and validation");
+    std::puts("PASS: stereo unison, filter ADSR routing, three LFOs, stereo balance, callback parity and ABI compatibility");
 }
