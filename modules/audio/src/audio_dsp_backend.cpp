@@ -2,7 +2,6 @@
 
 #include "Control/adsr.h"
 #include "Filters/svf.h"
-#include "Noise/whitenoise.h"
 #include "Synthesis/oscillator.h"
 
 #include <algorithm>
@@ -15,6 +14,23 @@
 namespace nk::audio_dsp {
 
 namespace {
+
+// Adapted from DaisySP WhiteNoise (MIT, Copyright 2020 Electrosmith, Corp).
+// Preserve its two's-complement sequence without signed multiplication overflow
+// or implementation-defined unsigned-to-signed conversion.
+class WrappingWhiteNoise {
+  public:
+    void Init() noexcept { state_ = 1; }
+    float Process() noexcept {
+        state_ *= uint32_t{16807};
+        const int64_t signed_value = state_ < uint32_t{0x80000000}
+            ? static_cast<int64_t>(state_)
+            : static_cast<int64_t>(state_) - int64_t{0x100000000};
+        return static_cast<float>(signed_value) * 4.6566129e-010f;
+    }
+  private:
+    uint32_t state_ = 1;
+};
 
 constexpr double pi = 3.14159265358979323846264338327950288;
 
@@ -104,7 +120,7 @@ struct Voice::Impl {
     std::array<OscillatorVoice, NK_AUDIO_DSP_MAX_OSCILLATORS> oscillators;
     daisysp::Oscillator lfo;
     daisysp::Adsr envelope;
-    daisysp::WhiteNoise noise;
+    WrappingWhiteNoise noise;
     daisysp::Svf filter;
     uint32_t sample_rate = 0;
     float gain = 1.0f;

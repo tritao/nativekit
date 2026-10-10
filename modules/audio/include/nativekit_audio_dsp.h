@@ -397,9 +397,11 @@ NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_get_options(
 /** Returns the capabilities of the renderer's private backend. */
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_get_capabilities(
     nk_audio_dsp_engine engine, nk_audio_dsp_capabilities *out_capabilities NK_OUT);
-/** Restores instruments and voices to their creation state. */
+/** Restores instruments and voices to their creation state. Detach before calling;
+ * use clear_schedule to reset voices during live playback. */
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_reset(nk_audio_dsp_engine engine);
-/** Routes one DSP renderer into the process-wide playback device output. */
+/** Routes a DSP renderer into the process-wide playback device output.
+ * Multiple renderers may attach independently; repeated attachment is idempotent. */
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_attach_device(nk_audio_dsp_engine engine);
 /** Stops routing a DSP renderer into the process-wide playback device output. */
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_detach_device(nk_audio_dsp_engine engine);
@@ -411,7 +413,8 @@ NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_detach_device(nk_audio_dsp_eng
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_schedule(
     nk_audio_dsp_engine engine, uint64_t start_frame,
     const nk_audio_dsp_event *events NK_IN_ARRAY(event_count), uint32_t event_count);
-/** Discards queued events and requests a voice reset at the next audio block. */
+/** Invalidates queued events and requests a voice reset on the audio consumer.
+ * Attached queue slots become reusable when the consumer next drains them. */
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_clear_schedule(nk_audio_dsp_engine engine);
 
 /** Creates an immutable, renderer-independent patch definition. */

@@ -75,6 +75,12 @@ if(NK_BUILD_TESTS)
     set_tests_properties(miniaudio_splitter PROPERTIES LABELS "audio")
 
     target_compile_definitions(nativekit PRIVATE NK_AUDIO_TESTING)
+    add_executable(nativekit_audio_multi_dsp_tests tests/audio_multi_dsp.cpp)
+    target_compile_features(nativekit_audio_multi_dsp_tests PRIVATE cxx_std_17)
+    target_link_libraries(nativekit_audio_multi_dsp_tests PRIVATE NativeKit::audio_graph)
+    add_test(NAME audio_multi_dsp COMMAND nativekit_audio_multi_dsp_tests)
+    set_tests_properties(audio_multi_dsp PROPERTIES LABELS "audio")
+
     add_executable(nativekit_audio_sends_tests tests/audio_sends.cpp)
     target_compile_features(nativekit_audio_sends_tests PRIVATE cxx_std_17)
     target_link_libraries(nativekit_audio_sends_tests PRIVATE NativeKit::audio_graph)

@@ -223,8 +223,9 @@ NKAUDIO_API nk_result NK_CALL nk_audio_bus_set_volume(nk_audio_bus bus, float vo
 /** Returns the bus's configured linear gain. */
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_get_volume(nk_audio_bus bus, float *out_volume NK_OUT);
 /**
- * Fades the bus between linear gains over a duration in PCM frames. The
- * starting volume may be NK_AUDIO_VOLUME_CURRENT.
+ * Fades the bus between absolute linear gains over a duration in PCM frames. The
+ * starting volume may be NK_AUDIO_VOLUME_CURRENT. The configured gain becomes
+ * the target gain; set_volume cancels any active fade.
  */
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_fade(nk_audio_bus bus, float volume_begin,
                                                 float volume_end, uint64_t duration_pcm_frames);

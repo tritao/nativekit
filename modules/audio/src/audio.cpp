@@ -25,6 +25,7 @@
 #include <mutex>
 #include <new>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace {
@@ -42,6 +43,14 @@ struct DspSourceNode {
     ma_node_base base{};
     uint32_t sample_rate = 0;
     uint32_t channels = 0;
+    std::shared_ptr<nk::audio_dsp::DeviceOutput> output;
+    AudioBusResource *bus = nullptr; // UI-thread-only routing bookkeeping.
+    const ma_allocation_callbacks *allocation = nullptr;
+    bool initialized = false;
+    ~DspSourceNode() {
+        if (output) output->detach();
+        if (initialized) ma_node_uninit(&base, allocation);
+    }
 };
 void dsp_source_process(ma_node *node, const float **, ma_uint32 *,
                         float **output, ma_uint32 *count) noexcept {
@@ -52,7 +61,7 @@ void dsp_source_process(ma_node *node, const float **, ma_uint32 *,
     const auto start = std::max(ma_node_get_time(node),
                                ma_node_graph_get_time(ma_node_get_node_graph(node)));
     ma_node_set_time(node, start);
-    nk::audio_dsp::process_device_output(output[0], *count, source.sample_rate,
+    source.output->process(output[0], *count, source.sample_rate,
                                          source.channels, start);
 }
 const ma_node_vtable dsp_source_vtable{dsp_source_process, nullptr, 0, 1, 0};
@@ -86,9 +95,7 @@ void audio_engine_data_callback(ma_device *device, void *frames_out, const void 
 
 struct AudioEngineResource final : nk::core::Resource {
     ma_engine engine{};
-    DspSourceNode dsp_source;
-    bool dsp_source_initialized = false;
-    AudioBusResource *dsp_bus = nullptr; // UI-thread-only; buses reroute before destruction.
+    std::unordered_map<nk_audio_dsp_engine, std::unique_ptr<DspSourceNode>> dsp_sources;
     bool initialized = false;
     std::atomic<bool> interrupted{false};
     std::atomic<uint64_t> device_time_frames{0};
@@ -96,12 +103,10 @@ struct AudioEngineResource final : nk::core::Resource {
     std::vector<std::weak_ptr<AudioBusResource>> buses; // UI-thread routing/lifecycle bookkeeping.
 
     ~AudioEngineResource() override {
-        nk::audio_dsp::detach_device();
+        dsp_sources.clear();
         auto *expected = this;
         active_engine_resource.compare_exchange_strong(expected, nullptr,
                                                        std::memory_order_acq_rel);
-        if (dsp_source_initialized)
-            ma_node_uninit(&dsp_source.base, &engine.allocationCallbacks);
         if (initialized)
             ma_engine_uninit(&engine);
     }
@@ -149,7 +154,7 @@ struct AudioClipResource final : nk::core::Resource {
 struct AudioBusResource final : nk::core::Resource {
     std::shared_ptr<AudioEngineResource> engine;
     std::shared_ptr<AudioBusResource> parent;
-    ma_sound_group group{}; // Post-effect volume, mute, fades, and transport.
+    ma_sound_group group{}; // Post-effect absolute gain uses its fader; base volume stays 1.
     ma_node_base input{};
     ma_splitter_node output{}; // primary route plus bounded post-fader sends
     bool output_initialized = false;
@@ -829,10 +834,10 @@ void audio_effect_uninitialize(AudioEffectResource &effect) noexcept {
 }
 
 AudioBusResource::~AudioBusResource() {
-    if (engine->dsp_bus == this) {
-        ma_node_attach_output_bus(&engine->dsp_source.base, 0,
-                                  ma_engine_get_endpoint(&engine->engine), 0);
-        engine->dsp_bus = nullptr;
+    for (auto &[handle, source] : engine->dsp_sources) {
+        if (source->bus != this) continue;
+        ma_node_attach_output_bus(&source->base, 0, ma_engine_get_endpoint(&engine->engine), 0);
+        source->bus = nullptr;
     }
     for (auto &effect : effects) {
         effect->bus.reset();
@@ -1158,7 +1163,7 @@ std::shared_ptr<AudioEngineResource> ensure_engine(nk_result &out_result) {
     config.channels = device_config.channels;
     config.periodSizeInFrames = device_config.period_size_in_frames;
     config.periodSizeInMilliseconds = device_config.period_size_in_milliseconds;
-    config.noAutoStart = MA_TRUE; // Prepare the source node before starting the callback.
+    config.noAutoStart = MA_TRUE; // Finish preparing the graph before starting the callback.
     config.notificationCallback = audio_device_notification_callback;
     config.dataCallback = audio_engine_data_callback;
 
@@ -1173,25 +1178,12 @@ std::shared_ptr<AudioEngineResource> ensure_engine(nk_result &out_result) {
         return {};
     }
     next->initialized = true;
-    next->dsp_source.sample_rate = ma_engine_get_sample_rate(&next->engine);
-    next->dsp_source.channels = ma_engine_get_channels(&next->engine);
-    auto source_config = ma_node_config_init();
-    source_config.vtable = &dsp_source_vtable;
-    source_config.pOutputChannels = &next->dsp_source.channels;
-    auto source_result = ma_node_init(ma_engine_get_node_graph(&next->engine), &source_config,
-                                     &next->engine.allocationCallbacks, &next->dsp_source.base);
-    if (source_result != MA_SUCCESS) {
-        out_result = map_miniaudio_result(source_result, "could not create DSP source node");
-        return {};
-    }
-    next->dsp_source_initialized = true;
-    source_result = ma_node_attach_output_bus(&next->dsp_source.base, 0,
-                                              ma_engine_get_endpoint(&next->engine), 0);
-    if (source_result == MA_SUCCESS && !device_config.no_auto_start)
-        source_result = ma_engine_start(&next->engine);
-    if (source_result != MA_SUCCESS) {
-        out_result = map_miniaudio_result(source_result, "could not start DSP source graph");
-        return {};
+    if (!device_config.no_auto_start) {
+        const auto started = ma_engine_start(&next->engine);
+        if (started != MA_SUCCESS) {
+            out_result = map_miniaudio_result(started, "could not start audio graph");
+            return {};
+        }
     }
     const auto handle = nk::core::handles().insert(nk::core::ResourceType::audio_engine, next);
     if (handle == NK_INVALID_HANDLE) {
@@ -1498,7 +1490,7 @@ nk_result apply_mix_snapshot_targets(const AudioMixSnapshotResource &snapshot,
                                                   target_volume, duration_pcm_frames,
                                                   absolute_start_time_pcm_frames);
         } else if (duration_pcm_frames == 0) {
-            ma_sound_group_set_volume(&target.bus->group, target_volume);
+            ma_sound_group_set_fade_in_pcm_frames(&target.bus->group, target_volume, target_volume, 0);
         } else {
             ma_sound_group_set_fade_in_pcm_frames(&target.bus->group, NK_AUDIO_VOLUME_CURRENT,
                                                   target_volume, duration_pcm_frames);
@@ -2391,17 +2383,30 @@ nk_result NK_CALL nk_audio_dsp_engine_attach_device(nk_audio_dsp_engine engine_h
             auto engine = current_engine();
             if (!engine)
                 return invalid_request("the audio device has not been initialized");
-            const auto result = nk::audio_dsp::attach_device(
-                engine_handle, engine->device_time_frames.load(std::memory_order_acquire),
-                ma_engine_get_sample_rate(&engine->engine), ma_engine_get_channels(&engine->engine));
+            if (engine->dsp_sources.count(engine_handle)) return NK_OK;
+            auto source = std::make_unique<DspSourceNode>();
+            source->output = nk::audio_dsp::device_output(engine_handle);
+            if (!source->output) return NK_ERROR_INVALID_HANDLE;
+            source->sample_rate = ma_engine_get_sample_rate(&engine->engine);
+            source->channels = ma_engine_get_channels(&engine->engine);
+            source->allocation = &engine->engine.allocationCallbacks;
+            const auto result = nk::audio_dsp::attach_device(engine_handle,
+                engine->device_time_frames.load(std::memory_order_acquire),
+                source->sample_rate, source->channels);
             if (result != NK_OK) return result;
-            const auto routed = ma_node_attach_output_bus(&engine->dsp_source.base, 0,
-                                                          ma_engine_get_endpoint(&engine->engine), 0);
-            if (routed != MA_SUCCESS) {
-                nk::audio_dsp::detach_device(engine_handle);
+            auto config = ma_node_config_init();
+            config.vtable = &dsp_source_vtable;
+            config.pOutputChannels = &source->channels;
+            auto routed = ma_node_init(ma_engine_get_node_graph(&engine->engine), &config,
+                                       source->allocation, &source->base);
+            if (routed != MA_SUCCESS)
+                return map_miniaudio_result(routed, "could not initialize DSP source node");
+            source->initialized = true;
+            ma_node_set_time(&source->base, engine->device_time_frames.load(std::memory_order_acquire));
+            routed = ma_node_attach_output_bus(&source->base, 0, ma_engine_get_endpoint(&engine->engine), 0);
+            if (routed != MA_SUCCESS)
                 return map_miniaudio_result(routed, "could not route DSP source to master");
-            }
-            engine->dsp_bus = nullptr;
+            engine->dsp_sources.emplace(engine_handle, std::move(source));
             return NK_OK;
         });
 }
@@ -2412,7 +2417,12 @@ nk_result NK_CALL nk_audio_dsp_engine_detach_device(nk_audio_dsp_engine engine_h
         [&]() -> nk_result {
             if (const auto result = enter_audio_ui(); result != NK_OK)
                 return result;
-            return nk::audio_dsp::detach_device(engine_handle);
+            if (const auto result = nk::audio_dsp::require_attached(engine_handle); result != NK_OK)
+                return result;
+            auto engine = current_engine();
+            if (!engine || !engine->dsp_sources.erase(engine_handle))
+                return invalid_request("audio DSP source is not attached to this device");
+            return NK_OK;
         });
 }
 
@@ -2429,9 +2439,11 @@ nk_result NK_CALL nk_audio_dsp_engine_set_bus(nk_audio_dsp_engine engine_handle,
         if (bus && bus->engine != engine) return invalid_argument("DSP bus belongs to another engine");
         auto *destination = bus ? static_cast<ma_node *>(&bus->input)
                                 : ma_engine_get_endpoint(&engine->engine);
-        const auto result = ma_node_attach_output_bus(&engine->dsp_source.base, 0, destination, 0);
+        auto source = engine->dsp_sources.find(engine_handle);
+        if (source == engine->dsp_sources.end()) return invalid_request("audio DSP source is missing");
+        const auto result = ma_node_attach_output_bus(&source->second->base, 0, destination, 0);
         if (result != MA_SUCCESS) return map_miniaudio_result(result, "could not route DSP output");
-        engine->dsp_bus = bus.get();
+        source->second->bus = bus.get();
         return NK_OK;
     });
 }
@@ -2630,11 +2642,12 @@ nk_result NK_CALL nk_audio_bus_destroy(nk_audio_bus bus) {
             auto value = get_bus(bus);
             if (!value)
                 return NK_ERROR_INVALID_HANDLE;
-            if (value->engine->dsp_bus == value.get()) {
-                const auto result = ma_node_attach_output_bus(&value->engine->dsp_source.base, 0,
+            for (auto &[handle, source] : value->engine->dsp_sources) {
+                if (source->bus != value.get()) continue;
+                const auto result = ma_node_attach_output_bus(&source->base, 0,
                     ma_engine_get_endpoint(&value->engine->engine), 0);
                 if (result != MA_SUCCESS) return map_miniaudio_result(result, "could not restore DSP routing");
-                value->engine->dsp_bus = nullptr;
+                source->bus = nullptr;
             }
             // Remove both incoming and outgoing routes while graph nodes still exist.
             while (!value->sends.empty()) disconnect_send(value->sends.back());
@@ -2721,6 +2734,8 @@ nk_result NK_CALL nk_audio_bus_clear_schedule(nk_audio_bus bus) {
                             [&](AudioBusResource &value, const char *) {
                                 ma_sound_reset_start_time(&value.group);
                                 ma_sound_reset_stop_time_and_fade(&value.group);
+                                const auto gain = value.muted ? 0.0f : value.volume;
+                                ma_sound_group_set_fade_in_pcm_frames(&value.group, gain, gain, 0);
                                 return NK_OK;
                             });
         });
@@ -2759,7 +2774,7 @@ nk_result NK_CALL nk_audio_bus_set_volume(nk_audio_bus bus, float volume) {
                         [&](AudioBusResource &value, const char *) {
                             value.volume = volume;
                             if (!value.muted)
-                                ma_sound_group_set_volume(&value.group, volume);
+                                ma_sound_group_set_fade_in_pcm_frames(&value.group, volume, volume, 0);
                             return NK_OK;
                         });
     });
@@ -2790,8 +2805,10 @@ nk_result NK_CALL nk_audio_bus_fade(nk_audio_bus bus, float volume_begin, float 
                 "NK_AUDIO_VOLUME_CURRENT");
         return with_bus(bus, "could not fade audio bus",
                         [&](AudioBusResource &value, const char *) {
-                            ma_sound_group_set_fade_in_pcm_frames(&value.group, volume_begin,
-                                                                  volume_end, duration_pcm_frames);
+                            value.volume = volume_end;
+                            ma_sound_group_set_fade_in_pcm_frames(&value.group,
+                                value.muted ? 0.0f : volume_begin, value.muted ? 0.0f : volume_end,
+                                duration_pcm_frames);
                             return NK_OK;
                         });
     });
@@ -2809,9 +2826,10 @@ nk_result NK_CALL nk_audio_bus_fade_at(nk_audio_bus bus, float volume_begin, flo
                 "NK_AUDIO_VOLUME_CURRENT");
         return with_bus(bus, "could not schedule audio bus fade",
                         [&](AudioBusResource &value, const char *) {
-                            ma_sound_set_fade_start_in_pcm_frames(&value.group, volume_begin,
-                                                                  volume_end, duration_pcm_frames,
-                                                                  absolute_start_time_pcm_frames);
+                            value.volume = volume_end;
+                            ma_sound_set_fade_start_in_pcm_frames(&value.group,
+                                value.muted ? 0.0f : volume_begin, value.muted ? 0.0f : volume_end,
+                                duration_pcm_frames, absolute_start_time_pcm_frames);
                             return NK_OK;
                         });
     });
@@ -2826,7 +2844,8 @@ nk_result NK_CALL nk_audio_bus_set_muted(nk_audio_bus bus, nk_bool muted) {
         return with_bus(
             bus, "could not set audio bus mute", [&](AudioBusResource &value, const char *) {
                 value.muted = muted != 0;
-                ma_sound_group_set_volume(&value.group, value.muted ? 0.0f : value.volume);
+                const auto gain = value.muted ? 0.0f : value.volume;
+                ma_sound_group_set_fade_in_pcm_frames(&value.group, gain, gain, 0);
                 return NK_OK;
             });
     });

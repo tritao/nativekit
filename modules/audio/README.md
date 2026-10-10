@@ -336,3 +336,30 @@ Managed bindings, projections, and smoke fixtures live in Haxeon’s
 ```sh
 ./packages/audio/tools/test-haxeon.sh
 ```
+
+### Multiple live DSP renderers
+
+Each attached DSP engine owns an independent miniaudio source node and can
+route through its own bus. Attaching a second engine preserves the first
+engine's routing and schedule. Repeated attachment is idempotent. Detaching
+or destroying an engine removes only its source node; destroying a bus restores
+all renderers routed through it to master. Sources retain a typed strong
+renderer reference through a private interface while attached, and callbacks use it without handle lookup
+or allocation. Teardown waits for that renderer's active callback reads before
+releasing its source and voice state. All engines use the same device clock.
+
+NativeKit's private white-noise adapter preserves DaisySP's sequence using
+unsigned 32-bit multiplication and a defined signed-range conversion. This
+avoids the signed-overflow undefined behavior in the vendored WhiteNoise
+implementation, including when a voice's noise level is zero.
+
+Schedule producers are serialized independently of the callback. Clearing an
+attached queue publishes a new generation; only the audio consumer advances
+its read cursor and retires slots. Generation changes reset voices and active
+ramps before applying replacement events, so immediate rescheduling cannot
+lose new notes to a later reset or overwrite a slot still being read.
+
+Bus gain and fades share one absolute fader. Fade targets are not multiplied
+by a previous volume setting. Muting, setting volume, applying mix snapshots,
+and clearing scheduled transitions use that same gain path. A fade updates
+the bus's configured target gain; an immediate volume change cancels it.
