@@ -11,9 +11,10 @@ namespace nk::audio_dsp {
 nk_result attach_device(nk_audio_dsp_engine engine, uint64_t device_frame,
                         uint32_t sample_rate, uint32_t channels);
 nk_result detach_device(nk_audio_dsp_engine engine);
+nk_result require_attached(nk_audio_dsp_engine engine);
 void detach_device() noexcept;
 void process_device_output(float *frames_out, uint64_t frame_count, uint32_t sample_rate,
-                           uint32_t channels) noexcept;
+                           uint32_t channels, uint64_t start_frame) noexcept;
 
 } // namespace nk::audio_dsp
 

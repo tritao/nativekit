@@ -975,6 +975,14 @@ nk_result attach_device(nk_audio_dsp_engine engine_handle, uint64_t device_frame
     return NK_OK;
 }
 
+nk_result require_attached(nk_audio_dsp_engine engine_handle) {
+    auto engine = get_engine(engine_handle);
+    if (!engine) return NK_ERROR_INVALID_HANDLE;
+    if (active_output.load(std::memory_order_acquire) != engine.get())
+        return invalid_request("audio DSP engine is not attached to the playback device");
+    return NK_OK;
+}
+
 nk_result detach_device(nk_audio_dsp_engine engine_handle) {
     auto engine = get_engine(engine_handle);
     if (!engine)
@@ -1002,7 +1010,7 @@ void detach_device() noexcept {
 }
 
 void process_device_output(float *frames_out, uint64_t frame_count, uint32_t sample_rate,
-                           uint32_t channels) noexcept {
+                           uint32_t channels, uint64_t start_frame) noexcept {
     active_output_readers.fetch_add(1, std::memory_order_acq_rel);
     auto *engine = active_output.load(std::memory_order_acquire);
     if (!engine || !engine->attached.load(std::memory_order_acquire) ||
@@ -1012,6 +1020,7 @@ void process_device_output(float *frames_out, uint64_t frame_count, uint32_t sam
     }
     if (engine->reset_requested.exchange(false, std::memory_order_acq_rel))
         reset_voices(*engine);
+    engine->output_frame = start_frame;
     uint64_t output_offset = 0;
     while (output_offset < frame_count) {
         const auto remaining = frame_count - output_offset;

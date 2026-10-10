@@ -1,6 +1,7 @@
 #include "nativekit_audio_graph.h"
 
 #include "audio_dsp_internal.hpp"
+#include "audio_effect_node.hpp"
 
 #include "core/boundary.hpp"
 #include "core/error.hpp"
@@ -28,10 +29,32 @@
 
 namespace {
 
+using nk::audio::ProcessorNode;
+using nk::audio::processor_vtable;
+
 constexpr uint32_t supported_voice_flags =
     NK_AUDIO_VOICE_LOOPING | NK_AUDIO_VOICE_STREAM | NK_AUDIO_VOICE_ASYNC;
 
 struct AudioEngineResource;
+struct AudioBusResource;
+struct DspSourceNode {
+    ma_node_base base{};
+    uint32_t sample_rate = 0;
+    uint32_t channels = 0;
+};
+void dsp_source_process(ma_node *node, const float **, ma_uint32 *,
+                        float **output, ma_uint32 *count) noexcept {
+    auto &source = *reinterpret_cast<DspSourceNode *>(node);
+    ma_silence_pcm_frames(output[0], *count, ma_format_f32, source.channels);
+    nk::audio_dsp::process_device_output(output[0], *count, source.sample_rate,
+                                         source.channels, ma_node_get_time(node));
+}
+const ma_node_vtable dsp_source_vtable{dsp_source_process, nullptr, 0, 1, 0};
+void bus_input_process(ma_node *, const float **, ma_uint32 *, float **, ma_uint32 *) noexcept {
+    // Miniaudio mixes passthrough inputs directly into the output buffer.
+}
+const ma_node_vtable bus_input_vtable{bus_input_process, nullptr, 1, 1, MA_NODE_FLAG_PASSTHROUGH};
+
 std::atomic<AudioEngineResource *> active_engine_resource{nullptr};
 std::mutex engine_mutex;
 
@@ -43,6 +66,9 @@ struct PendingAudioDeviceConfig {
     uint32_t period_size_in_milliseconds = 0;
     bool no_auto_start = false;
     bool has_playback_device_id = false;
+#ifdef NK_AUDIO_TESTING
+    bool offline = false;
+#endif
     ma_device_id playback_device_id{};
 };
 
@@ -54,6 +80,9 @@ void audio_engine_data_callback(ma_device *device, void *frames_out, const void 
 
 struct AudioEngineResource final : nk::core::Resource {
     ma_engine engine{};
+    DspSourceNode dsp_source;
+    bool dsp_source_initialized = false;
+    AudioBusResource *dsp_bus = nullptr; // UI-thread-only; buses reroute before destruction.
     bool initialized = false;
     std::atomic<bool> interrupted{false};
     std::atomic<uint64_t> device_time_frames{0};
@@ -64,6 +93,8 @@ struct AudioEngineResource final : nk::core::Resource {
         auto *expected = this;
         active_engine_resource.compare_exchange_strong(expected, nullptr,
                                                        std::memory_order_acq_rel);
+        if (dsp_source_initialized)
+            ma_node_uninit(&dsp_source.base, &engine.allocationCallbacks);
         if (initialized)
             ma_engine_uninit(&engine);
     }
@@ -76,7 +107,6 @@ void audio_engine_data_callback(ma_device *, void *frames_out, const void *frame
         return;
 
     (void)frames_in;
-    const auto sample_rate = ma_engine_get_sample_rate(&engine->engine);
     const auto channels = ma_engine_get_channels(&engine->engine);
     const auto device_frame =
         engine->device_time_frames.fetch_add(frame_count, std::memory_order_acq_rel);
@@ -84,6 +114,8 @@ void audio_engine_data_callback(ma_device *, void *frames_out, const void *frame
     // Keep miniaudio's graph clock aligned with the hardware timeline even
     // when the graph has no native voices to pull frames from.
     ma_engine_set_time_in_pcm_frames(&engine->engine, device_frame);
+    if (engine->dsp_source_initialized)
+        ma_node_set_time(&engine->dsp_source.base, device_frame);
     ma_uint64 frames_read = 0;
     const auto result =
         ma_engine_read_pcm_frames(&engine->engine, frames_out, frame_count, &frames_read);
@@ -92,9 +124,6 @@ void audio_engine_data_callback(ma_device *, void *frames_out, const void *frame
         ma_silence_pcm_frames(float_output + frames_read * channels, frame_count - frames_read,
                               ma_format_f32, channels);
     }
-
-    nk::audio_dsp::process_device_output(static_cast<float *>(frames_out), frame_count,
-                                         sample_rate, channels);
 }
 
 struct AudioBusResource;
@@ -117,7 +146,9 @@ struct AudioClipResource final : nk::core::Resource {
 struct AudioBusResource final : nk::core::Resource {
     std::shared_ptr<AudioEngineResource> engine;
     std::shared_ptr<AudioBusResource> parent;
-    ma_sound_group group{};
+    ma_sound_group group{}; // Post-effect volume, mute, fades, and transport.
+    ma_node_base input{};
+    bool input_initialized = false;
     bool initialized = false;
     float volume = 1.0f;
     bool muted = false;
@@ -152,6 +183,7 @@ struct AudioEffectResource final : nk::core::Resource {
     std::unique_ptr<ma_lpf_node> low_pass;
     std::unique_ptr<ma_hpf_node> high_pass;
     std::unique_ptr<ma_delay_node> delay;
+    std::unique_ptr<ProcessorNode> processor;
     float cutoff_frequency_hz = 0.0f;
     uint32_t order = 0;
     uint32_t delay_pcm_frames = 0;
@@ -773,6 +805,9 @@ void audio_effect_uninitialize(AudioEffectResource &effect) noexcept {
         ma_hpf_node_uninit(effect.high_pass.get(), &effect.engine->engine.allocationCallbacks);
     if (effect.delay)
         ma_delay_node_uninit(effect.delay.get(), &effect.engine->engine.allocationCallbacks);
+    if (effect.processor)
+        ma_node_uninit(&effect.processor->base, &effect.engine->engine.allocationCallbacks);
+    effect.processor.reset();
     effect.low_pass.reset();
     effect.high_pass.reset();
     effect.delay.reset();
@@ -780,11 +815,18 @@ void audio_effect_uninitialize(AudioEffectResource &effect) noexcept {
 }
 
 AudioBusResource::~AudioBusResource() {
+    if (engine->dsp_bus == this) {
+        ma_node_attach_output_bus(&engine->dsp_source.base, 0,
+                                  ma_engine_get_endpoint(&engine->engine), 0);
+        engine->dsp_bus = nullptr;
+    }
     for (auto &effect : effects) {
         effect->bus.reset();
         audio_effect_uninitialize(*effect);
     }
     effects.clear();
+    if (input_initialized)
+        ma_node_uninit(&input, &engine->engine.allocationCallbacks);
     if (initialized)
         ma_sound_group_uninit(&group);
 }
@@ -797,6 +839,9 @@ ma_node *audio_effect_node(AudioEffectResource &effect) {
         return effect.high_pass.get();
     case NK_AUDIO_EFFECT_DELAY:
         return effect.delay.get();
+    case NK_AUDIO_EFFECT_REVERB:
+    case NK_AUDIO_EFFECT_DYNAMICS:
+        return &effect.processor->base;
     default:
         return nullptr;
     }
@@ -806,13 +851,16 @@ nk_result rebuild_audio_bus_effect_chain(AudioBusResource &bus, const char *mess
     auto result = ma_node_detach_all_output_buses(&bus.group);
     if (result != MA_SUCCESS)
         return map_miniaudio_result(result, message);
+    result = ma_node_detach_all_output_buses(&bus.input);
+    if (result != MA_SUCCESS)
+        return map_miniaudio_result(result, message);
     for (const auto &effect : bus.effects) {
         result = ma_node_detach_all_output_buses(audio_effect_node(*effect));
         if (result != MA_SUCCESS)
             return map_miniaudio_result(result, message);
     }
 
-    ma_node *source = &bus.group;
+    ma_node *source = &bus.input;
     for (const auto &effect : bus.effects) {
         if (!effect->enabled)
             continue;
@@ -822,9 +870,12 @@ nk_result rebuild_audio_bus_effect_chain(AudioBusResource &bus, const char *mess
             return map_miniaudio_result(result, message);
         source = node;
     }
-    auto *destination = bus.parent ? static_cast<ma_node *>(&bus.parent->group)
+    result = ma_node_attach_output_bus(source, 0, &bus.group, 0);
+    if (result != MA_SUCCESS)
+        return map_miniaudio_result(result, message);
+    auto *destination = bus.parent ? static_cast<ma_node *>(&bus.parent->input)
                                    : ma_engine_get_endpoint(&bus.engine->engine);
-    result = ma_node_attach_output_bus(source, 0, destination, 0);
+    result = ma_node_attach_output_bus(&bus.group, 0, destination, 0);
     return result == MA_SUCCESS ? NK_OK : map_miniaudio_result(result, message);
 }
 
@@ -1079,11 +1130,14 @@ std::shared_ptr<AudioEngineResource> ensure_engine(nk_result &out_result) {
     auto config = ma_engine_config_init();
     config.pPlaybackDeviceID =
         device_config.has_playback_device_id ? &device_config.playback_device_id : nullptr;
+#ifdef NK_AUDIO_TESTING
+    config.noDevice = device_config.offline ? MA_TRUE : MA_FALSE;
+#endif
     config.sampleRate = device_config.sample_rate;
     config.channels = device_config.channels;
     config.periodSizeInFrames = device_config.period_size_in_frames;
     config.periodSizeInMilliseconds = device_config.period_size_in_milliseconds;
-    config.noAutoStart = device_config.no_auto_start ? MA_TRUE : MA_FALSE;
+    config.noAutoStart = MA_TRUE; // Prepare the source node before starting the callback.
     config.notificationCallback = audio_device_notification_callback;
     config.dataCallback = audio_engine_data_callback;
 
@@ -1098,6 +1152,26 @@ std::shared_ptr<AudioEngineResource> ensure_engine(nk_result &out_result) {
         return {};
     }
     next->initialized = true;
+    next->dsp_source.sample_rate = ma_engine_get_sample_rate(&next->engine);
+    next->dsp_source.channels = ma_engine_get_channels(&next->engine);
+    auto source_config = ma_node_config_init();
+    source_config.vtable = &dsp_source_vtable;
+    source_config.pOutputChannels = &next->dsp_source.channels;
+    auto source_result = ma_node_init(ma_engine_get_node_graph(&next->engine), &source_config,
+                                     &next->engine.allocationCallbacks, &next->dsp_source.base);
+    if (source_result != MA_SUCCESS) {
+        out_result = map_miniaudio_result(source_result, "could not create DSP source node");
+        return {};
+    }
+    next->dsp_source_initialized = true;
+    source_result = ma_node_attach_output_bus(&next->dsp_source.base, 0,
+                                              ma_engine_get_endpoint(&next->engine), 0);
+    if (source_result == MA_SUCCESS && !device_config.no_auto_start)
+        source_result = ma_engine_start(&next->engine);
+    if (source_result != MA_SUCCESS) {
+        out_result = map_miniaudio_result(source_result, "could not start DSP source graph");
+        return {};
+    }
     const auto handle = nk::core::handles().insert(nk::core::ResourceType::audio_engine, next);
     if (handle == NK_INVALID_HANDLE) {
         nk::core::set_error("could not allocate the miniaudio engine handle");
@@ -1986,6 +2060,32 @@ nk_result insert_audio_effect(std::shared_ptr<AudioBusResource> bus,
     return NK_OK;
 }
 
+nk_result create_audio_processor_effect(std::shared_ptr<AudioBusResource> bus,
+                                         nk_audio_effect_type type,
+                                         nk_audio_bus_effect *out_effect) {
+    auto effect = std::make_shared<AudioEffectResource>();
+    effect->engine = bus->engine;
+    effect->bus = bus;
+    effect->type = type;
+    effect->processor = std::make_unique<ProcessorNode>();
+    const auto channels = ma_engine_get_channels(&bus->engine->engine);
+    effect->processor->processor = nk::audio::create_effect_processor(
+        type, ma_engine_get_sample_rate(&bus->engine->engine), channels);
+    if (!effect->processor->processor)
+        return invalid_argument("unsupported effect format (reverb requires stereo)");
+    auto config = ma_node_config_init();
+    config.vtable = &processor_vtable;
+    config.pInputChannels = &channels;
+    config.pOutputChannels = &channels;
+    const auto result = ma_node_init(ma_engine_get_node_graph(&bus->engine->engine), &config,
+                                    &bus->engine->engine.allocationCallbacks,
+                                    &effect->processor->base);
+    if (result != MA_SUCCESS)
+        return map_miniaudio_result(result, "could not create audio effect processor node");
+    effect->initialized = true;
+    return insert_audio_effect(std::move(bus), std::move(effect), out_effect);
+}
+
 nk_result create_audio_filter_effect(std::shared_ptr<AudioBusResource> bus,
                                      nk_audio_effect_type type, float cutoff_frequency_hz,
                                      uint32_t order, nk_audio_bus_effect *out_effect) {
@@ -2055,6 +2155,27 @@ nk_result create_audio_delay_effect(std::shared_ptr<AudioBusResource> bus,
 } // namespace
 
 extern "C" {
+#ifdef NK_AUDIO_TESTING
+// Private test hooks: absent from production builds and the public ABI headers.
+NKAUDIO_API nk_result NK_CALL nk_audio_test_use_offline_device() {
+    if (const auto result = enter_audio_ui(); result != NK_OK) return result;
+    if (current_engine()) return invalid_request("audio engine already initialized");
+    pending_device_config.offline = true;
+    pending_device_config.no_auto_start = true;
+    pending_device_config.sample_rate = 48000;
+    pending_device_config.channels = 2;
+    return NK_OK;
+}
+NKAUDIO_API nk_result NK_CALL nk_audio_test_render(float *output, uint32_t frames) {
+    if (const auto result = enter_audio_ui(); result != NK_OK) return result;
+    auto engine = current_engine();
+    if (!engine || !pending_device_config.offline || !output)
+        return invalid_request("offline test device is unavailable");
+    audio_engine_data_callback(nullptr, output, nullptr, frames);
+    return NK_OK;
+}
+#endif
+
 
 nk_result NK_CALL nk_audio_device_configure(const nk_audio_device_options *options) {
     return nk::core::result_boundary(
@@ -2217,9 +2338,18 @@ nk_result NK_CALL nk_audio_dsp_engine_attach_device(nk_audio_dsp_engine engine_h
             auto engine = current_engine();
             if (!engine)
                 return invalid_request("the audio device has not been initialized");
-            return nk::audio_dsp::attach_device(
+            const auto result = nk::audio_dsp::attach_device(
                 engine_handle, engine->device_time_frames.load(std::memory_order_acquire),
                 ma_engine_get_sample_rate(&engine->engine), ma_engine_get_channels(&engine->engine));
+            if (result != NK_OK) return result;
+            const auto routed = ma_node_attach_output_bus(&engine->dsp_source.base, 0,
+                                                          ma_engine_get_endpoint(&engine->engine), 0);
+            if (routed != MA_SUCCESS) {
+                nk::audio_dsp::detach_device(engine_handle);
+                return map_miniaudio_result(routed, "could not route DSP source to master");
+            }
+            engine->dsp_bus = nullptr;
+            return NK_OK;
         });
 }
 
@@ -2231,6 +2361,26 @@ nk_result NK_CALL nk_audio_dsp_engine_detach_device(nk_audio_dsp_engine engine_h
                 return result;
             return nk::audio_dsp::detach_device(engine_handle);
         });
+}
+
+nk_result NK_CALL nk_audio_dsp_engine_set_bus(nk_audio_dsp_engine engine_handle,
+                                               nk_audio_bus bus_handle) {
+    return nk::core::result_boundary("unexpected error while routing DSP output", [&]() -> nk_result {
+        if (const auto result = enter_audio_ui(); result != NK_OK) return result;
+        if (const auto result = nk::audio_dsp::require_attached(engine_handle); result != NK_OK)
+            return result;
+        auto engine = current_engine();
+        if (!engine) return invalid_request("the audio device has not been initialized");
+        auto bus = bus_handle == NK_INVALID_HANDLE ? nullptr : get_bus(bus_handle);
+        if (bus_handle != NK_INVALID_HANDLE && !bus) return NK_ERROR_INVALID_HANDLE;
+        if (bus && bus->engine != engine) return invalid_argument("DSP bus belongs to another engine");
+        auto *destination = bus ? static_cast<ma_node *>(&bus->input)
+                                : ma_engine_get_endpoint(&engine->engine);
+        const auto result = ma_node_attach_output_bus(&engine->dsp_source.base, 0, destination, 0);
+        if (result != MA_SUCCESS) return map_miniaudio_result(result, "could not route DSP output");
+        engine->dsp_bus = bus.get();
+        return NK_OK;
+    });
 }
 
 nk_result NK_CALL nk_audio_bus_create(const nk_audio_bus_options *options, nk_audio_bus *out_bus) {
@@ -2260,10 +2410,20 @@ nk_result NK_CALL nk_audio_bus_create(const nk_audio_bus_options *options, nk_au
             bus->engine = std::move(engine);
             bus->parent = std::move(parent);
             const auto result = ma_sound_group_init(
-                &bus->engine->engine, 0, bus->parent ? &bus->parent->group : nullptr, &bus->group);
+                &bus->engine->engine, 0, nullptr, &bus->group);
             if (result != MA_SUCCESS)
                 return map_miniaudio_result(result, "could not create audio mixer bus");
             bus->initialized = true;
+            auto input_config = ma_node_config_init();
+            input_config.vtable = &bus_input_vtable;
+            const auto channels = ma_engine_get_channels(&bus->engine->engine);
+            input_config.pInputChannels = &channels;
+            input_config.pOutputChannels = &channels;
+            const auto input_result = ma_node_init(ma_engine_get_node_graph(&bus->engine->engine),
+                &input_config, &bus->engine->engine.allocationCallbacks, &bus->input);
+            if (input_result != MA_SUCCESS)
+                return map_miniaudio_result(input_result, "could not create mixer bus input");
+            bus->input_initialized = true;
             if (const auto chain_result =
                     rebuild_audio_bus_effect_chain(*bus, "could not route audio mixer bus");
                 chain_result != NK_OK)
@@ -2334,6 +2494,12 @@ nk_result NK_CALL nk_audio_bus_destroy(nk_audio_bus bus) {
             auto value = get_bus(bus);
             if (!value)
                 return NK_ERROR_INVALID_HANDLE;
+            if (value->engine->dsp_bus == value.get()) {
+                const auto result = ma_node_attach_output_bus(&value->engine->dsp_source.base, 0,
+                    ma_engine_get_endpoint(&value->engine->engine), 0);
+                if (result != MA_SUCCESS) return map_miniaudio_result(result, "could not restore DSP routing");
+                value->engine->dsp_bus = nullptr;
+            }
             for (const auto &effect : value->effects) {
                 effect->bus.reset();
                 audio_effect_uninitialize(*effect);
@@ -2808,6 +2974,85 @@ nk_result NK_CALL nk_audio_bus_effect_create_delay(nk_audio_bus bus, uint32_t de
                 return NK_ERROR_INVALID_HANDLE;
             return create_audio_delay_effect(std::move(value), delay_pcm_frames, decay, out_effect);
         });
+}
+
+nk_result NK_CALL nk_audio_bus_effect_create_reverb(nk_audio_bus bus, nk_audio_bus_effect *out_effect) {
+    return nk::core::result_boundary("unexpected error while creating reverb", [&]() -> nk_result {
+        if (const auto result = enter_audio_ui(); result != NK_OK) return result;
+        if (!out_effect) return invalid_argument("audio effect output is missing");
+        *out_effect = NK_INVALID_HANDLE;
+        auto value = get_bus(bus);
+        if (!value) return NK_ERROR_INVALID_HANDLE;
+        return create_audio_processor_effect(std::move(value), NK_AUDIO_EFFECT_REVERB, out_effect);
+    });
+}
+nk_result NK_CALL nk_audio_bus_effect_create_dynamics(nk_audio_bus bus, nk_audio_bus_effect *out_effect) {
+    return nk::core::result_boundary("unexpected error while creating dynamics", [&]() -> nk_result {
+        if (const auto result = enter_audio_ui(); result != NK_OK) return result;
+        if (!out_effect) return invalid_argument("audio effect output is missing");
+        *out_effect = NK_INVALID_HANDLE;
+        auto value = get_bus(bus);
+        if (!value) return NK_ERROR_INVALID_HANDLE;
+        return create_audio_processor_effect(std::move(value), NK_AUDIO_EFFECT_DYNAMICS, out_effect);
+    });
+}
+nk_result NK_CALL nk_audio_bus_effect_set_parameter(nk_audio_bus_effect handle,
+    nk_audio_effect_parameter parameter, float value) {
+    return nk::core::result_boundary("unexpected error while setting effect parameter", [&]() -> nk_result {
+        if (const auto result = enter_audio_ui(); result != NK_OK) return result;
+        return with_effect(handle, "could not set effect parameter",
+            [&](AudioEffectResource &effect, AudioBusResource &, const char *) -> nk_result {
+                if (!effect.processor || !effect.processor->processor->set_parameter(parameter, value))
+                    return invalid_argument("unsupported effect parameter or value outside its range");
+                return NK_OK;
+            });
+    });
+}
+nk_result NK_CALL nk_audio_bus_effect_get_parameter(nk_audio_bus_effect handle,
+    nk_audio_effect_parameter parameter, float *out_value) {
+    return nk::core::result_boundary("unexpected error while reading effect parameter", [&]() -> nk_result {
+        if (const auto result = enter_audio_ui(); result != NK_OK) return result;
+        if (!out_value) return invalid_argument("effect parameter output is missing");
+        return with_effect(handle, "could not read effect parameter",
+            [&](AudioEffectResource &effect, AudioBusResource &, const char *) -> nk_result {
+                if (!effect.processor || !effect.processor->processor->get_parameter(parameter, *out_value))
+                    return invalid_argument("unsupported effect parameter");
+                return NK_OK;
+            });
+    });
+}
+nk_result NK_CALL nk_audio_bus_effect_reset(nk_audio_bus_effect handle) {
+    return nk::core::result_boundary("unexpected error while resetting effect", [&]() -> nk_result {
+        if (const auto result = enter_audio_ui(); result != NK_OK) return result;
+        return with_effect(handle, "could not reset effect",
+            [&](AudioEffectResource &effect, AudioBusResource &, const char *) -> nk_result {
+                if (!effect.processor) return invalid_argument("effect does not support processor reset");
+                effect.processor->processor->request_reset();
+                return NK_OK;
+            });
+    });
+}
+nk_result NK_CALL nk_audio_bus_effect_get_latency(nk_audio_bus_effect handle, uint32_t *out_frames) {
+    return nk::core::result_boundary("unexpected error while reading effect latency", [&]() -> nk_result {
+        if (const auto result = enter_audio_ui(); result != NK_OK) return result;
+        if (!out_frames) return invalid_argument("effect latency output is missing");
+        return with_effect(handle, "could not read effect latency",
+            [&](AudioEffectResource &effect, AudioBusResource &, const char *) -> nk_result {
+                if (!effect.processor) return invalid_argument("effect does not report processor latency");
+                *out_frames = effect.processor->processor->latency_frames(); return NK_OK;
+            });
+    });
+}
+nk_result NK_CALL nk_audio_bus_effect_get_tail(nk_audio_bus_effect handle, uint32_t *out_frames) {
+    return nk::core::result_boundary("unexpected error while reading effect tail", [&]() -> nk_result {
+        if (const auto result = enter_audio_ui(); result != NK_OK) return result;
+        if (!out_frames) return invalid_argument("effect tail output is missing");
+        return with_effect(handle, "could not read effect tail",
+            [&](AudioEffectResource &effect, AudioBusResource &, const char *) -> nk_result {
+                if (!effect.processor) return invalid_argument("effect does not report processor tail");
+                *out_frames = effect.processor->processor->tail_frames(); return NK_OK;
+            });
+    });
 }
 
 nk_result NK_CALL nk_audio_bus_effect_destroy(nk_audio_bus_effect effect_handle) {
@@ -3469,7 +3714,7 @@ nk_result NK_CALL nk_audio_voice_set_bus(nk_audio_voice sound, nk_audio_bus bus)
                     }
 
                     auto *destination_node = destination
-                                                 ? static_cast<ma_node *>(&destination->group)
+                                                 ? static_cast<ma_node *>(&destination->input)
                                                  : ma_engine_get_endpoint(&value.engine->engine);
                     const auto result = ma_node_attach_output_bus(
                         reinterpret_cast<ma_node *>(&value.sound), 0, destination_node, 0);

@@ -170,11 +170,59 @@ mixes, and cutscene transitions reversible without manually restoring each bus.
 Snapshots reference buses weakly; destroying a bus removes its target when the
 snapshot is queried or applied.
 
-Buses can also own ordered effect chains. `Bus.addLowPass()`,
+Live DSP now enters the miniaudio graph as a source node rather than being
+added after the master output. After `DspEngine.attachToDevice()`, call
+`setBus(musicBus)` to route it through a bus and its effects; `setBus(null)`
+restores direct master routing. Routing changes preserve notes and scheduled
+events. Destroying the routed bus restores master routing, and each new device
+attachment starts at master. A stopped bus suspends pulls from the synth;
+muting or reducing its gain keeps the source timeline running.
+
+Buses apply their volume, mute, and fades after their ordered effect chains,
+so these controls also affect effect tails. `Bus.addLowPass()`,
 `Bus.addHighPass()`, and `Bus.addDelay()` append effects that can be bypassed,
 reordered, and reconfigured through `BusEffect`. Filter cutoffs must be below
 Nyquist with orders from 1 through 8; delay frames must be positive, and delay
 wet, dry, and decay gains are in the [0, 1] range.
+
+`Bus.addReverb()` adds a stereo algorithmic reverb, and `Bus.addDynamics()`
+adds a compressor/expander/gate. They share a private block-processor boundary
+with preallocated interleaved/planar buffers, audio-thread state/reset handling,
+and smoothed atomic parameter targets. The backend uses Signalsmith Basics
+from `tritao/signalsmith-basics`, pinned to the reverb reset/initialization fixes,
+and Signalsmith DSP v1.7.1. DaisySP remains the synthesis backend. The embedded
+STFX adapter's Boost license is installed alongside the MIT dependency notices.
+
+```haxe
+import haxeon.audio.EffectParameter;
+
+var music = Bus.create();
+var reverb = music.addReverb();
+reverb.setParameter(EffectParameter.Wet, 0.2);
+reverb.setParameter(EffectParameter.DecaySeconds, 2.4);
+var dynamics = music.addDynamics();
+dynamics.setParameter(EffectParameter.ThresholdDb, -20);
+dynamics.setParameter(EffectParameter.Ratio, 4);
+synth.attachToDevice();
+synth.setBus(music);
+```
+
+Reverb requires two output channels. Its defaults are room 80 ms, -60 dB decay
+3 seconds, wet 0.5 and dry 1. Supported ranges: wet/dry [0, 1], room [10, 200]
+ms, decay [0.03, 90] seconds, cutoffs [10, Nyquist) Hz, damping multipliers
+[1, 10], and early reflections [0, 2.5]. Dynamics defaults to neutral
+compression/expansion, a -80 dB gate, no automatic makeup gain, and no lookahead.
+Its ranges are compressor/expander thresholds [-60, 0] dB, compression ratio
+[1, 100], attack [1, 50] ms, release [20, 250] ms, makeup [0, 20] dB, gate
+threshold [-80, 0] dB, expansion ratio [1, 10], and mix [0, 1]. Unsupported
+parameter/effect combinations and non-finite values are rejected.
+
+`BusEffect.parameter()` reads the target value; `reset()` clears processor
+state at the next block while preserving those targets. `latencyFrames()` and
+`tailFrames()` report processor latency and an estimated -60 dB tail. Both
+new processors have zero algorithmic latency; reverb continues receiving silence
+through the graph after its source ends. Effects are currently inserts; shared
+sends, external sidechains, and scheduled effect automation are future additions.
 
 Spatialized voices use a right-handed OpenGL-style coordinate system: +X is
 right, +Y is up, and -Z is forward. `Mixer` exposes the single process-wide

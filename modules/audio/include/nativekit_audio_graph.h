@@ -6,6 +6,7 @@
 /* ------------------------------------------------------------------------- */
 
 #include "nativekit_audio.h"
+#include "nativekit_audio_dsp.h"
 
 /* ------------------------------------------------------------------------- */
 /* C linkage                                                                 */
@@ -77,8 +78,71 @@ enum NK_ENUM(nk_audio_effect_type) {
     /** A Butterworth high-pass filter. */
     NK_AUDIO_EFFECT_HIGH_PASS = 1,
     /** A feedback delay with configurable wet/dry mix. */
-    NK_AUDIO_EFFECT_DELAY = 2
+    NK_AUDIO_EFFECT_DELAY = 2,
+    /** A stereo algorithmic reverb. */
+    NK_AUDIO_EFFECT_REVERB = 3,
+    /** A compressor, expander, and noise gate. */
+    NK_AUDIO_EFFECT_DYNAMICS = 4
 };
+
+/** Parameters for reverb and dynamics processors; unsupported combinations are rejected. */
+typedef uint32_t nk_audio_effect_parameter;
+enum NK_ENUM(nk_audio_effect_parameter) {
+    NK_AUDIO_EFFECT_PARAMETER_WET = 0,
+    NK_AUDIO_EFFECT_PARAMETER_DRY = 1,
+    /** Reverb room size in milliseconds, [10, 200]. */
+    NK_AUDIO_EFFECT_PARAMETER_ROOM_MS = 2,
+    /** Reverb decay to -60 dB in seconds, [0.03, 90]. */
+    NK_AUDIO_EFFECT_PARAMETER_DECAY_SECONDS = 3,
+    NK_AUDIO_EFFECT_PARAMETER_LOW_CUT_HZ = 4,
+    NK_AUDIO_EFFECT_PARAMETER_HIGH_CUT_HZ = 5,
+    /** Reverb damping multipliers, [1, 10]. */
+    NK_AUDIO_EFFECT_PARAMETER_LOW_DAMPING = 6,
+    NK_AUDIO_EFFECT_PARAMETER_HIGH_DAMPING = 7,
+    /** Reverb early-reflection gain, [0, 2.5]. */
+    NK_AUDIO_EFFECT_PARAMETER_EARLY_REFLECTIONS = 8,
+    /** Compressor threshold in dB, [-60, 0]. */
+    NK_AUDIO_EFFECT_PARAMETER_THRESHOLD_DB = 9,
+    /** Compressor ratio, [1, 100]. */
+    NK_AUDIO_EFFECT_PARAMETER_RATIO = 10,
+    NK_AUDIO_EFFECT_PARAMETER_ATTACK_MS = 11,
+    NK_AUDIO_EFFECT_PARAMETER_RELEASE_MS = 12,
+    NK_AUDIO_EFFECT_PARAMETER_MAKEUP_DB = 13,
+    NK_AUDIO_EFFECT_PARAMETER_GATE_THRESHOLD_DB = 14,
+    NK_AUDIO_EFFECT_PARAMETER_EXPANDER_THRESHOLD_DB = 15,
+    NK_AUDIO_EFFECT_PARAMETER_EXPANDER_RATIO = 16,
+    /** Dynamics wet/dry mix, [0, 1]. */
+    NK_AUDIO_EFFECT_PARAMETER_MIX = 17
+};
+
+/**
+ * Routes the attached DSP renderer through a bus, or the master endpoint when
+ * bus is NK_INVALID_HANDLE. Does not reset voices or queued events. The device
+ * must be initialized. Destroying the routed bus restores master routing.
+ */
+NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_set_bus(nk_audio_dsp_engine engine,
+                                                        nk_audio_bus bus);
+
+/** Creates a stereo reverb (room 80 ms, decay 3 s, wet 0.5, dry 1). */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_create_reverb(
+    nk_audio_bus bus, nk_audio_bus_effect *out_effect NK_OUT NK_OWNED);
+/** Creates dynamics with compression/expansion disabled and gate at -80 dB. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_create_dynamics(
+    nk_audio_bus bus, nk_audio_bus_effect *out_effect NK_OUT NK_OWNED);
+/** Sets a finite, range-checked parameter; changes are smoothed by the processor. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_set_parameter(
+    nk_audio_bus_effect effect, nk_audio_effect_parameter parameter, float value);
+/** Returns the target parameter value, rather than its intermediate smoothed value. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_get_parameter(
+    nk_audio_bus_effect effect, nk_audio_effect_parameter parameter, float *out_value NK_OUT);
+/** Requests state/tail reset at the next processing block, preserving target parameters. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_reset(nk_audio_bus_effect effect);
+/** Returns algorithmic latency in PCM frames for reverb/dynamics processors. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_get_latency(
+    nk_audio_bus_effect effect, uint32_t *out_frames NK_OUT);
+/** Returns an estimated -60 dB tail in PCM frames for reverb/dynamics processors. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_get_tail(
+    nk_audio_bus_effect effect, uint32_t *out_frames NK_OUT);
 
 /* ------------------------------------------------------------------------- */
 /* Mixer buses                                                               */
