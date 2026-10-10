@@ -7,7 +7,7 @@
 [submodule "vendor/miniaudio"]
 	path = vendor/miniaudio
 	url = https://github.com/tritao/miniaudio.git
-	branch = nativekit
+	branch = main
 [submodule "vendor/daisysp"]
 	path = vendor/daisysp
 	url = https://github.com/electro-smith/DaisySP.git

@@ -241,7 +241,7 @@ and cross-feedback changes are smoothed. The buffer is prepared before playback;
 processing allocates no memory. Defaults: 250 ms, feedback 0.35, wet 0.3, dry 1.
 The existing fixed-frame `addDelay()` remains available.
 
-Miniaudio is pinned to `tritao/miniaudio`'s `nativekit` branch, based on upstream
+Miniaudio is pinned to `tritao/miniaudio`'s `main` branch, based on upstream
 `dev`. The fork caches splitter samples by graph interval so live attachments,
 paused returns, and differently sized reads remain aligned. A zero graph
 processing-size request selects the default 480-frame quantum (10 ms at 48 kHz);
