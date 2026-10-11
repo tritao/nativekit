@@ -130,6 +130,36 @@ int main() {
         invalid[p+10]=255; invalid[p+11]=255; break;
     }
     nk_audio_soundfont bad=0; assert(nk_audio_soundfont_load_memory(invalid.data(),invalid.size(),&bad)!=NK_OK);
+    // One-shot sample generators can leave unused loop addresses reversed.
+    // Those addresses must remain invalid when looping is enabled.
+    invalid=bytes;
+    uint32_t mode=0;
+    for (uint32_t p=0;p+28<invalid.size();++p) if (!std::memcmp(invalid.data()+p,"igen",4)) {
+        invalid[p+8]=2; invalid[p+9]=0; // startloopAddrsOffset
+        invalid[p+10]=144; invalid[p+11]=1; // +400, past inclusive loop end 399
+        mode=p+18; invalid[mode]=0; invalid[mode+1]=0;
+        break;
+    }
+    assert(mode);
+    auto one_shot=load(invalid);
+    nk_audio_dsp_engine_options one_shot_options{sizeof(one_shot_options),48000,2,256,2};
+    nk_audio_dsp_engine one_shot_engine=0;
+    assert(nk_audio_dsp_engine_create(&one_shot_options,&one_shot_engine)==NK_OK);
+    nk_audio_dsp_instrument one_shot_instrument=0;
+    assert(nk_audio_dsp_instrument_create_from_soundfont(one_shot_engine,one_shot,0,1,&one_shot_instrument)==NK_OK);
+    nk_audio_dsp_note_options one_shot_note{};
+    one_shot_note.struct_size=sizeof(one_shot_note); one_shot_note.note=57; one_shot_note.velocity=1;
+    uint64_t one_shot_token=0;
+    assert(nk_audio_dsp_engine_note_on(one_shot_engine,one_shot_instrument,&one_shot_note,&one_shot_token)==NK_OK);
+    std::vector<float> one_shot_output(512);
+    nk_audio_dsp_render_target one_shot_target{sizeof(one_shot_target),one_shot_output.data(),256,2,512};
+    assert(nk_audio_dsp_engine_render(one_shot_engine,&one_shot_target,nullptr,0)==NK_OK);
+    assert(std::all_of(one_shot_output.begin(),one_shot_output.end(),[](float x){return std::isfinite(x);}));
+    assert(*std::max_element(one_shot_output.begin(),one_shot_output.end())>0.1f);
+    assert(nk_audio_dsp_engine_destroy(one_shot_engine)==NK_OK);
+    assert(nk_audio_soundfont_destroy(one_shot)==NK_OK);
+    invalid[mode]=1;
+    assert(nk_audio_soundfont_load_memory(invalid.data(),invalid.size(),&bad)!=NK_OK);
     // Extreme key-scaled hold time would overflow the upstream signed counter.
     invalid=bytes;
     for (uint32_t p=0;p+12<invalid.size();++p) if (!std::memcmp(invalid.data()+p,"igen",4)) {

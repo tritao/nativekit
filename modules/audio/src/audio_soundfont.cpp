@@ -171,10 +171,13 @@ std::shared_ptr<SoundFontBank> SoundFontBank::load(const void *bytes, uint32_t s
         for (int j=0;j<preset.regionNum;++j) {
             const auto &r=preset.regions[j];
             if (r.offset>=r.end || uint64_t(r.end)+1>=samples ||
-                r.loop_start>r.loop_end || r.loop_end>=r.end || r.sample_rate<1000 ||
+                r.sample_rate<1000 ||
                 r.sample_rate>384000 || r.lokey>r.hikey || r.hikey>127 ||
                 r.lovel>r.hivel || r.hivel>127 ||
-                (r.loop_mode && r.loop_start<r.offset) ||
+                // One-shot regions never use loop addresses. Generator offsets
+                // may leave them reversed or outside the playable sample range.
+                (r.loop_mode && (r.loop_start<r.offset ||
+                    r.loop_start>r.loop_end || r.loop_end>=r.end)) ||
                 !valid_envelope(r.ampenv,r.lokey,r.hikey) ||
                 !valid_envelope(r.modenv,r.lokey,r.hikey) ||
                 !std::isfinite(r.delayModLFO) || r.delayModLFO<0 || r.delayModLFO*384000.0>=1073741824.0 ||
