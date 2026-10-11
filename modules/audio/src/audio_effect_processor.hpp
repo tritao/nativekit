@@ -12,6 +12,8 @@ class EffectProcessor {
   public:
     virtual ~EffectProcessor() = default;
     virtual void process(const float *input, float *output, uint32_t frames) noexcept = 0;
+    virtual void process_sidechain(const float *input, const float *, float *output, uint32_t frames) noexcept { process(input,output,frames); }
+    virtual float duck_gain() const noexcept { return 1; }
     virtual bool set_parameter(nk_audio_effect_parameter parameter, float value) noexcept = 0;
     virtual bool get_parameter(nk_audio_effect_parameter parameter, float &value) const noexcept = 0;
     virtual bool set_tempo(float, float) noexcept { return false; }

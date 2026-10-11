@@ -199,6 +199,7 @@ struct AudioBusResource final : nk::core::Resource {
     ma_splitter_node output{}; // primary route plus bounded post-fader sends
     bool output_initialized = false;
     std::vector<std::shared_ptr<AudioSendResource>> sends;
+    std::vector<std::weak_ptr<AudioEffectResource>> sidechains;
     bool input_initialized = false;
     bool initialized = false;
     float volume = 1.0f;
@@ -243,6 +244,8 @@ struct AudioEffectResource final : nk::core::Resource {
     std::unique_ptr<ma_hpf_node> high_pass;
     std::unique_ptr<ma_delay_node> delay;
     std::unique_ptr<ProcessorNode> processor;
+    std::weak_ptr<AudioBusResource> key_bus;
+    uint32_t key_output_index = 0;
     float cutoff_frequency_hz = 0.0f;
     uint32_t order = 0;
     uint32_t delay_pcm_frames = 0;
@@ -857,7 +860,18 @@ void audio_device_notification_callback(const ma_device_notification *notificati
 bool valid_audio_filter(float cutoff_frequency_hz, uint32_t order,
                         const AudioEngineResource &engine);
 
+void disconnect_sidechain(AudioEffectResource &effect) noexcept {
+    auto source = effect.key_bus.lock();
+    effect.key_bus.reset();
+    if (!source) return;
+    ma_node_detach_output_bus(&source->output, effect.key_output_index);
+    source->sidechains.erase(std::remove_if(source->sidechains.begin(),source->sidechains.end(),
+        [&](const auto &weak) { auto entry=weak.lock(); return !entry || entry.get()==&effect; }),
+        source->sidechains.end());
+    effect.key_output_index=0;
+}
 void audio_effect_uninitialize(AudioEffectResource &effect) noexcept {
+    disconnect_sidechain(effect);
     if (!effect.initialized)
         return;
     if (effect.low_pass)
@@ -886,6 +900,10 @@ AudioBusResource::~AudioBusResource() {
         audio_effect_uninitialize(*effect);
     }
     effects.clear();
+    for (auto &weak : sidechains) if (auto effect=weak.lock()) {
+        effect->key_bus.reset(); effect->key_output_index=0;
+    }
+    sidechains.clear();
     if (output_initialized)
         ma_splitter_node_uninit(&output, &engine->engine.allocationCallbacks);
     sends.clear();
@@ -906,6 +924,7 @@ ma_node *audio_effect_node(AudioEffectResource &effect) {
     case NK_AUDIO_EFFECT_REVERB:
     case NK_AUDIO_EFFECT_DYNAMICS:
     case NK_AUDIO_EFFECT_STEREO_DELAY:
+    case NK_AUDIO_EFFECT_DUCKING:
         return &effect.processor->base;
     default:
         return nullptr;
@@ -1724,8 +1743,20 @@ bool bus_reaches(const std::shared_ptr<AudioBusResource> &start, const AudioBusR
         visited.push_back(bus.get());
         if (bus->parent) pending.push_back(bus->parent);
         for (const auto &send : bus->sends) pending.push_back(send->destination);
+        for (const auto &weak : bus->sidechains) if (auto effect=weak.lock())
+            if (auto destination=effect->bus.lock()) pending.push_back(destination);
     }
     return false;
+}
+uint32_t free_bus_output(const AudioBusResource &source) {
+    for (uint32_t index=1;index<=NK_AUDIO_MAX_BUS_SENDS;++index) {
+        bool used=std::any_of(source.sends.begin(),source.sends.end(),
+            [&](const auto &send) { return send->output_index==index; });
+        for (const auto &weak : source.sidechains) if (auto effect=weak.lock())
+            used=used || effect->key_output_index==index;
+        if (!used) return index;
+    }
+    return 0;
 }
 std::shared_ptr<AudioSendResource> get_send(nk_audio_bus_send handle) {
     return std::static_pointer_cast<AudioSendResource>(
@@ -2563,13 +2594,8 @@ nk_result NK_CALL nk_audio_bus_send_create(nk_audio_bus source_handle,
             return invalid_request("send endpoints belong to different audio engines");
         if (bus_reaches(destination, source.get()))
             return invalid_request("audio send would create a parent/send routing cycle");
-        uint32_t index = 1;
-        for (; index <= NK_AUDIO_MAX_BUS_SENDS; ++index) {
-            const auto used = std::any_of(source->sends.begin(), source->sends.end(),
-                [&](const auto &send) { return send->output_index == index; });
-            if (!used) break;
-        }
-        if (index > NK_AUDIO_MAX_BUS_SENDS) return invalid_request("audio bus send limit reached");
+        const uint32_t index = free_bus_output(*source);
+        if (!index) return invalid_request("audio bus send limit reached");
         auto send = std::make_shared<AudioSendResource>();
         send->source = source; send->destination = destination;
         send->output_index = index; send->volume = volume;
@@ -2696,6 +2722,10 @@ nk_result NK_CALL nk_audio_bus_destroy(nk_audio_bus bus) {
             }
             // Remove both incoming and outgoing routes while graph nodes still exist.
             while (!value->sends.empty()) disconnect_send(value->sends.back());
+            while (!value->sidechains.empty()) {
+                auto effect=value->sidechains.back().lock();
+                if (effect) disconnect_sidechain(*effect); else value->sidechains.pop_back();
+            }
             auto &buses = value->engine->buses;
             for (auto it = buses.begin(); it != buses.end();) {
                 auto source = it->lock();
@@ -3243,6 +3273,52 @@ nk_result NK_CALL nk_audio_bus_effect_set_delay_tempo(nk_audio_bus_effect handle
                     return invalid_argument("unsupported delay tempo or effective delay exceeds 4 seconds");
                 return NK_OK;
             });
+    });
+}
+nk_result NK_CALL nk_audio_bus_effect_create_ducking(nk_audio_bus handle,
+    nk_audio_bus key_handle, nk_audio_bus_effect *out_effect) {
+    return nk::core::result_boundary("unexpected error creating ducking", [&]() -> nk_result {
+        if (const auto r=enter_audio_ui();r!=NK_OK) return r;
+        if (!out_effect) return invalid_argument("ducking output is missing");
+        *out_effect=NK_INVALID_HANDLE;
+        auto bus=get_bus(handle), key=get_bus(key_handle);
+        if (!bus || !key) return NK_ERROR_INVALID_HANDLE;
+        if (bus->engine!=key->engine || bus_reaches(bus,key.get()))
+            return invalid_request("sidechain would create a routing cycle or crosses engines");
+        const uint32_t index=free_bus_output(*key);
+        if (!index) return invalid_request("sidechain source has no free send slots");
+        auto effect=std::make_shared<AudioEffectResource>();
+        effect->engine=bus->engine; effect->bus=bus; effect->type=NK_AUDIO_EFFECT_DUCKING;
+        effect->processor=std::make_unique<ProcessorNode>();
+        const auto channels=ma_engine_get_channels(&bus->engine->engine);
+        effect->processor->processor=nk::audio::create_effect_processor(effect->type,
+            ma_engine_get_sample_rate(&bus->engine->engine),channels);
+        auto config=ma_node_config_init(); config.vtable=&nk::audio::duck_vtable;
+        const ma_uint32 inputs[]={channels,channels};
+        config.pInputChannels=inputs; config.pOutputChannels=&channels;
+        auto result=ma_node_init(ma_engine_get_node_graph(&bus->engine->engine),&config,
+            &bus->engine->engine.allocationCallbacks,&effect->processor->base);
+        if (result!=MA_SUCCESS) return map_miniaudio_result(result,"could not create ducking node");
+        effect->initialized=true;
+        effect->key_bus=key; effect->key_output_index=index;
+        key->sidechains.push_back(effect);
+        ma_node_set_output_bus_volume(&key->output,index,1);
+        result=ma_node_attach_output_bus(&key->output,index,&effect->processor->base,1);
+        if (result!=MA_SUCCESS) { audio_effect_uninitialize(*effect); return map_miniaudio_result(result,"could not connect sidechain"); }
+        auto status=insert_audio_effect(bus,effect,out_effect);
+        if (status!=NK_OK) audio_effect_uninitialize(*effect);
+        return status;
+    });
+}
+nk_result NK_CALL nk_audio_bus_effect_get_duck_gain(nk_audio_bus_effect handle,float *out_gain) {
+    return nk::core::result_boundary("unexpected error reading duck gain", [&]() -> nk_result {
+        if (const auto r=enter_audio_ui();r!=NK_OK) return r;
+        if (!out_gain) return invalid_argument("duck gain output is missing");
+        return with_effect(handle,"could not read duck gain",[&](AudioEffectResource &effect,AudioBusResource &,const char *) -> nk_result {
+            if (effect.type!=NK_AUDIO_EFFECT_DUCKING) return invalid_argument("effect is not ducking");
+            *out_gain=effect.enabled ? effect.processor->processor->duck_gain() : 1.f;
+            return NK_OK;
+        });
     });
 }
 nk_result NK_CALL nk_audio_bus_effect_set_parameter(nk_audio_bus_effect handle,

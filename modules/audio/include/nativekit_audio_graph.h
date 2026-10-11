@@ -101,7 +101,9 @@ enum NK_ENUM(nk_audio_effect_type) {
     /** A compressor, expander, and noise gate. */
     NK_AUDIO_EFFECT_DYNAMICS = 4,
     /** A tempo-aware interpolated stereo/ping-pong delay. */
-    NK_AUDIO_EFFECT_STEREO_DELAY = 5
+    NK_AUDIO_EFFECT_STEREO_DELAY = 5,
+    /** Attenuation controlled by another bus, without mixing its audio. */
+    NK_AUDIO_EFFECT_DUCKING = 6
 };
 
 /** Parameters for reverb, dynamics, and stereo delay processors; unsupported combinations are rejected. */
@@ -141,7 +143,11 @@ enum NK_ENUM(nk_audio_effect_parameter) {
     /** Delay tempo, [20, 300] beats per minute. */
     NK_AUDIO_EFFECT_PARAMETER_BPM = 21,
     /** Delay length in quarter-note beats, [0, 8]; 0 selects manual time. */
-    NK_AUDIO_EFFECT_PARAMETER_DELAY_BEATS = 22
+    NK_AUDIO_EFFECT_PARAMETER_DELAY_BEATS = 22,
+    /** Maximum sidechain attenuation in dB, [0, 24]. */
+    NK_AUDIO_EFFECT_PARAMETER_DUCK_DEPTH_DB = 23,
+    /** Detector peak hold in ms, [0, 2000]. */
+    NK_AUDIO_EFFECT_PARAMETER_DUCK_HOLD_MS = 24
 };
 
 /**
@@ -161,6 +167,17 @@ NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_create_dynamics(
 /** Creates a stereo delay: 250 ms, feedback 0.35, wet 0.3, dry 1; max delay 4 s. */
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_create_stereo_delay(
     nk_audio_bus bus, nk_audio_bus_effect *out_effect NK_OUT NK_OWNED);
+/** Creates a two-input sidechain ducker. Key is post-fader, inaudible here, and
+ * borrowed; destroying it disconnects detection. Routing cycles and exhausted send slots
+ * are rejected. Defaults: threshold -30 dB, depth 9 dB, attack 12 ms, hold 120 ms,
+ * release 350 ms, mix 1. Use MIX=0 for a smooth bypass (set_enabled bypasses the
+ * graph immediately). Destroying the key bus disconnects detection; gain recovers.
+ */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_create_ducking(
+    nk_audio_bus bus, nk_audio_bus key_bus, nk_audio_bus_effect *out_effect NK_OUT NK_OWNED);
+/** Latest applied linear gain, [0,1], read atomically without callback work. */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_get_duck_gain(
+    nk_audio_bus_effect effect, float *out_gain NK_OUT);
 /** Sets tempo and beat length together. Effective time must not exceed 4 seconds. */
 /** Follow the engine's native tempo at effect processing boundaries, with
  * smoothed delay-time changes. Binding retains the clock after engine disposal.

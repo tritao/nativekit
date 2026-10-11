@@ -182,7 +182,57 @@ static void test_native_tempo_binding() {
     delay->process(silence.data(),output.data(),256);
     assert(delay->get_parameter(NK_AUDIO_EFFECT_PARAMETER_BPM,value) && value==100);
 }
+void test_ducking() {
+    auto make=[] { return create_effect_processor(NK_AUDIO_EFFECT_DUCKING,rate,channels); };
+    auto effect=make(); assert(effect && effect->latency_frames()==0);
+    assert(!effect->set_parameter(NK_AUDIO_EFFECT_PARAMETER_DUCK_DEPTH_DB,25));
+    assert(!effect->set_parameter(NK_AUDIO_EFFECT_PARAMETER_ATTACK_MS,0));
+    assert(!effect->set_parameter(NK_AUDIO_EFFECT_PARAMETER_RELEASE_MS,std::numeric_limits<float>::quiet_NaN()));
+    std::vector<float> main(48000*2,0.2f),key(main.size(),0),a(main.size()),b(main.size());
+    effect->process_sidechain(main.data(),nullptr,a.data(),48000);
+    assert(a==main && effect->duck_gain()==1);
+    for(uint32_t f=0;f<12000;++f) key[f*2+1]=0.25f; // Stereo-linked right-only detector.
+    effect=make(); auto partitioned=make();
+    effect->process_sidechain(main.data(),key.data(),a.data(),48000);
+    for(uint32_t f=0;f<48000;) {
+        auto count=std::min(73u,48000-f);
+        partitioned->process_sidechain(main.data()+f*2,key.data()+f*2,b.data()+f*2,count); f+=count;
+    }
+    assert(a==b); // Hold, attack and release obey the sample clock, not block boundaries.
+    const float floor=std::pow(10.f,-9.f/20.f);
+    assert(std::abs(a[10000*2]/0.2f-floor)<0.001f);
+    assert(a[13000*2]<0.08f); // Hold keeps attenuation after the signal ends.
+    assert(a.back()>0.17f && a.back()<0.2f); // Release recovers gradually.
+    for(size_t i=2;i<a.size();i+=2) assert(std::abs(a[i]-a[i-2])<0.001f);
+    // Key is never audible, including during a reset or a null main input.
+    effect->process_sidechain(nullptr,key.data(),b.data(),12000);
+    assert(energy(b.data(),24000)==0);
+    const float previous=effect->duck_gain();
+    effect->request_reset(); effect->process_sidechain(main.data(),nullptr,b.data(),1);
+    assert(std::abs(b[0]/0.2f-previous)<0.001f);
+    assert(effect->set_parameter(NK_AUDIO_EFFECT_PARAMETER_MIX,0));
+    effect->process_sidechain(main.data(),key.data(),b.data(),48000);
+    assert(effect->duck_gain()>0.95f);
+    // Check that the actual two-input node handles absent main input without leaking key audio.
+    ma_node_graph graph{}; auto gc=ma_node_graph_config_init(channels);
+    assert(ma_node_graph_init(&gc,nullptr,&graph)==MA_SUCCESS);
+    ProcessorNode duck; duck.processor=make();
+    ma_uint32 inputs[]={channels,channels}; auto dc=ma_node_config_init();
+    dc.vtable=&duck_vtable; dc.pInputChannels=inputs; dc.pOutputChannels=&channels;
+    assert(ma_node_init(&graph,&dc,nullptr,&duck.base)==MA_SUCCESS);
+    // Use graph reads with silence main to prove nonzero key cannot leak from the second input.
+    ImpulseSource source; auto sc=ma_node_config_init(); sc.vtable=&impulse_vtable; sc.pOutputChannels=&channels;
+    assert(ma_node_init(&graph,&sc,nullptr,&source.base)==MA_SUCCESS);
+    assert(ma_node_attach_output_bus(&source.base,0,&duck.base,1)==MA_SUCCESS);
+    assert(ma_node_attach_output_bus(&duck.base,0,ma_node_graph_get_endpoint(&graph),0)==MA_SUCCESS);
+    std::array<float,257*2> graph_output{};
+    assert(ma_node_graph_read_pcm_frames(&graph,graph_output.data(),257,nullptr)==MA_SUCCESS);
+    assert(energy(graph_output.data(),graph_output.size())==0);
+    assert(duck.processor->duck_gain()<1);
+    ma_node_uninit(&source.base,nullptr); ma_node_uninit(&duck.base,nullptr); ma_node_graph_uninit(&graph,nullptr);
+}
 int main() {
+    test_ducking();
     test_reverb();
     test_dynamics();
     test_stereo_delay();
