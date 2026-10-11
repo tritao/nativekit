@@ -348,10 +348,8 @@ renderer reference through a private interface while attached, and callbacks use
 or allocation. Teardown waits for that renderer's active callback reads before
 releasing its source and voice state. All engines use the same device clock.
 
-NativeKit's private white-noise adapter preserves DaisySP's sequence using
-unsigned 32-bit multiplication and a defined signed-range conversion. This
-avoids the signed-overflow undefined behavior in the vendored WhiteNoise
-implementation, including when a voice's noise level is zero.
+The DaisySP fork implements white noise with defined unsigned wrapping, preserving
+its sequence without signed-overflow undefined behavior.
 
 Schedule producers are serialized independently of the callback. Clearing an
 attached queue publishes a new generation; only the audio consumer advances
@@ -398,20 +396,14 @@ validated; continuous frequency modulation is clamped to the engine's range.
 All source state has bounded preallocated storage. Initialization/reset occurs
 on note-on and can be more expensive for physical models than basic oscillators.
 
-The private implementation adapts the pinned MIT sources where required:
-callback-local random state replaces libc's shared RNG; granular indexing wraps
-arbitrary offsets; phasor wrapping handles the endpoint and multiple cycles;
-FM2 initializes its cached default carrier/modulator tuning;
-KarplusString preserves its curved-bridge mode, compensates actual filter phase
-for tuning, and consumes the initial pluck when low-pitch resampling is active;
-Drip uses initialized filter values and portable random scaling; analog snare
-resonators run linearly to avoid nonlinear SVF divergence on trigger pulses.
-Its Q conversion and trigger one-pole filter preserve the natural shell decay,
-covered independently of the outer note release.
-Initialization adaptations reset transient/filter and trigger state, order
-setter dependencies, and give each synthetic snare its own envelope clock.
-These changes are documented in `patches/daisysp/README.md`; no LGPL modules or
-SF2 decoder are introduced.
+The pinned `tritao/DaisySP` fork owns DSP initialization, snare stability,
+Karplus tuning, granular/phasor wrapping and white-noise arithmetic fixes.
+NativeKit compiles vendor sources directly, with no copied implementations or
+`rand` macros. Its small random callback supplies deterministic per-voice
+xorshift state through DaisySP's optional `ScopedRandomSource` API. See the
+fork's README for provenance and standalone regression tests. NativeKit retains
+patch validation, voice lifecycle and retrigger continuity. No LGPL modules are
+introduced.
 
 `audio_daisy_sources` checks all sources for audible finite output, releases,
 invalid configuration and retained PCM lifetime. `audio_daisy_boundaries` checks

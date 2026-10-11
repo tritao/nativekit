@@ -6,7 +6,6 @@
 #include <variant>
 #include <utility>
 #include "audio_daisy_random.hpp"
-#define rand nk_daisy_rand
 #include "Synthesis/fm2.h"
 #include "PhysicalModeling/stringvoice.h"
 #include "PhysicalModeling/KarplusString.h"
@@ -16,7 +15,7 @@
 #include "Drums/analogbassdrum.h"
 #include "Drums/synthbassdrum.h"
 #include "Drums/analogsnaredrum.h"
-#include "../patches/daisysp/synthsnaredrum.h"
+#include "Drums/synthsnaredrum.h"
 #include "Drums/hihat.h"
 #include "Synthesis/formantosc.h"
 #include "Synthesis/vosim.h"
@@ -24,14 +23,13 @@
 #include "Synthesis/variablesawosc.h"
 #include "Synthesis/variableshapeosc.h"
 #include "Synthesis/oscillatorbank.h"
-#include "../patches/daisysp/harmonic_osc.h"
+#include "Synthesis/harmonic_osc.h"
 #include "Noise/grainlet.h"
 #include "Noise/particle.h"
 #include "Noise/dust.h"
 #include "Noise/clockednoise.h"
 #include "Noise/fractal_noise.h"
 #include "Sampling/granularplayer.h"
-#undef rand
 namespace nk::audio_dsp {
 bool source_parameter_info(uint32_t kind, uint32_t parameter, float &minimum, float &maximum,
                            float &default_value) noexcept {

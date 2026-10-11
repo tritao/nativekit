@@ -10,7 +10,8 @@
 	branch = main
 [submodule "vendor/daisysp"]
 	path = vendor/daisysp
-	url = https://github.com/electro-smith/DaisySP.git
+	url = https://github.com/tritao/DaisySP.git
+	branch = nativekit
 [submodule "vendor/signalsmith-basics"]
 	path = vendor/signalsmith-basics
 	url = https://github.com/tritao/signalsmith-basics.git

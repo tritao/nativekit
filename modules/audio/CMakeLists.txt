@@ -17,34 +17,37 @@ endforeach()
 add_library(nativekit_daisysp OBJECT
     "${NK_VENDOR_DIR}/daisysp/Source/Dynamics/crossfade.cpp"
     "${NK_VENDOR_DIR}/daisysp/Source/Utility/dcblock.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/fm2.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/stringvoice.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/KarplusString.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/modalvoice.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/resonator.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/drip.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/analogbassdrum.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/synthbassdrum.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/analogsnaredrum.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/synthsnaredrum.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/hihat.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/formantosc.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/vosim.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/zoscillator.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/variablesawosc.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/variableshapeosc.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/oscillatorbank.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/grainlet.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/particle.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/clockednoise.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/granularplayer.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/daisysp/phasor.cpp"
+    "${NK_VENDOR_DIR}/daisysp/Source/Synthesis/fm2.cpp"
+    "${NK_VENDOR_DIR}/daisysp/Source/PhysicalModeling/stringvoice.cpp"
+    "${NK_VENDOR_DIR}/daisysp/Source/PhysicalModeling/KarplusString.cpp"
+    "${NK_VENDOR_DIR}/daisysp/Source/PhysicalModeling/modalvoice.cpp"
+    "${NK_VENDOR_DIR}/daisysp/Source/PhysicalModeling/resonator.cpp"
+    "${NK_VENDOR_DIR}/daisysp/Source/PhysicalModeling/drip.cpp"
+    "${NK_VENDOR_DIR}/daisysp/Source/Drums/analogbassdrum.cpp"
+    "${NK_VENDOR_DIR}/daisysp/Source/Drums/synthbassdrum.cpp"
+    "${NK_VENDOR_DIR}/daisysp/Source/Drums/analogsnaredrum.cpp"
+    "${NK_VENDOR_DIR}/daisysp/Source/Drums/synthsnaredrum.cpp"
+    "${NK_VENDOR_DIR}/daisysp/Source/Drums/hihat.cpp"
+    "${NK_VENDOR_DIR}/daisysp/Source/Synthesis/formantosc.cpp"
+    "${NK_VENDOR_DIR}/daisysp/Source/Synthesis/vosim.cpp"
+    "${NK_VENDOR_DIR}/daisysp/Source/Synthesis/zoscillator.cpp"
+    "${NK_VENDOR_DIR}/daisysp/Source/Synthesis/variablesawosc.cpp"
+    "${NK_VENDOR_DIR}/daisysp/Source/Synthesis/variableshapeosc.cpp"
+    "${NK_VENDOR_DIR}/daisysp/Source/Synthesis/oscillatorbank.cpp"
+    "${NK_VENDOR_DIR}/daisysp/Source/Noise/grainlet.cpp"
+    "${NK_VENDOR_DIR}/daisysp/Source/Noise/particle.cpp"
+    "${NK_VENDOR_DIR}/daisysp/Source/Noise/clockednoise.cpp"
+    "${NK_VENDOR_DIR}/daisysp/Source/Sampling/granularplayer.cpp"
+    "${NK_VENDOR_DIR}/daisysp/Source/Control/phasor.cpp"
 
     "${NK_VENDOR_DIR}/daisysp/Source/Control/adsr.cpp"
     "${NK_VENDOR_DIR}/daisysp/Source/Filters/svf.cpp"
     "${NK_VENDOR_DIR}/daisysp/Source/Synthesis/oscillator.cpp"
     "${NK_VENDOR_DIR}/daisysp/Source/Synthesis/wavetable_oscillator.cpp")
 target_compile_features(nativekit_daisysp PRIVATE cxx_std_17)
+# All Daisy headers and compiled sources must share the host random binding.
+target_compile_definitions(nativekit_daisysp PRIVATE DAISYSP_SCOPED_RANDOM)
+target_compile_definitions(nativekit PRIVATE DAISYSP_SCOPED_RANDOM)
 set_target_properties(nativekit_daisysp PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(nativekit_daisysp SYSTEM PRIVATE
     "${NK_VENDOR_DIR}/daisysp/Source"
@@ -150,6 +153,7 @@ if(NK_BUILD_TESTS)
     add_executable(nativekit_audio_daisy_boundaries_tests
         tests/audio_daisy_boundaries.cpp src/audio_dsp_backend.cpp src/audio_daisy_source.cpp
         $<TARGET_OBJECTS:nativekit_daisysp>)
+    target_compile_definitions(nativekit_audio_daisy_boundaries_tests PRIVATE DAISYSP_SCOPED_RANDOM)
     target_compile_features(nativekit_audio_daisy_boundaries_tests PRIVATE cxx_std_17)
     target_include_directories(nativekit_audio_daisy_boundaries_tests PRIVATE src include "${PROJECT_SOURCE_DIR}/include")
     target_include_directories(nativekit_audio_daisy_boundaries_tests SYSTEM PRIVATE
@@ -158,7 +162,8 @@ if(NK_BUILD_TESTS)
     set_tests_properties(audio_daisy_boundaries PROPERTIES LABELS "audio")
 
     add_executable(nativekit_audio_daisy_initialization_tests
-        tests/audio_daisy_initialization.cpp $<TARGET_OBJECTS:nativekit_daisysp>)
+        "${NK_VENDOR_DIR}/daisysp/tests/initialization.cpp" $<TARGET_OBJECTS:nativekit_daisysp>)
+    target_compile_definitions(nativekit_audio_daisy_initialization_tests PRIVATE DAISYSP_SCOPED_RANDOM)
     target_compile_features(nativekit_audio_daisy_initialization_tests PRIVATE cxx_std_17)
     target_include_directories(nativekit_audio_daisy_initialization_tests PRIVATE src)
     target_include_directories(nativekit_audio_daisy_initialization_tests SYSTEM PRIVATE
