@@ -315,6 +315,10 @@ typedef struct nk_audio_dsp_voice_options {
     /** Number of additional LFOs, [0, 2]; routes must reference configured LFOs. */
     uint32_t additional_lfo_count;
     uint32_t reserved3;
+    /** Optional appended filter drive, [0, 1]. Zero is linear; 0.5 matches
+     * Daisy's legacy saturation. Older callers retain legacy drive. */
+    float filter_drive;
+    uint32_t reserved4;
 } nk_audio_dsp_voice_options;
 
 /** One generic source-to-destination modulation route. */

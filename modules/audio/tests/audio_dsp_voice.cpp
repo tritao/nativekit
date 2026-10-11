@@ -34,6 +34,7 @@ nk_audio_dsp_patch_options options() {
 nk_audio_dsp_voice_options advanced() {
     nk_audio_dsp_voice_options v{};
     v.struct_size = sizeof(v);
+    v.filter_drive = 0.5f;
     v.unison_count = 5;
     v.unison_detune_cents = 12;
     v.unison_stereo_spread = 0.9f;
@@ -151,6 +152,12 @@ int main() {
     }
     assert(width > 1);
     assert(energy(stereo, stereo.size()-2000, stereo.size()) == 0); // Release ends the voice.
+    auto clean_options = defaults; clean_options.unison_count = 1; clean_options.filter_drive = 0;
+    auto clean_patch = create(p, &clean_options);
+    auto clean_signal = render(clean_patch);
+    assert(clean_signal != old_signal); // Drive reaches the filter after note-on resets.
+    assert(clean_signal == render(clean_patch, 2, 73)); // Retriggers retain the configured drive.
+    nk_audio_dsp_patch_destroy(clean_patch);
     // The device callback must preserve stereo, just like offline rendering.
     const auto live = render(stereo_patch, 2, 256, true);
     assert(live == stereo);
@@ -198,6 +205,16 @@ int main() {
     bad = v; bad.struct_size = 0; reject(bad);
     bad = v; bad.unison_detune_cents = std::numeric_limits<float>::quiet_NaN(); reject(bad);
     bad = v; bad.filter_envelope.attack_seconds = std::numeric_limits<float>::infinity(); reject(bad);
+    bad = v; bad.filter_drive = -1; reject(bad);
+    bad = v; bad.filter_drive = 1.1f; reject(bad);
+    bad = v; bad.filter_drive = std::numeric_limits<float>::quiet_NaN(); reject(bad);
+    // The v2 prefix must ignore the newer drive field, including invalid contents.
+    auto v2 = advanced(); v2.unison_count = 1;
+    v2.struct_size = offsetof(nk_audio_dsp_voice_options, filter_drive);
+    v2.filter_drive = std::numeric_limits<float>::quiet_NaN();
+    auto v2_voice = create(p, &v2); assert(render(v2_voice) == old_signal);
+    nk_audio_dsp_patch_destroy(v2_voice);
+    auto partial_v3 = v2; partial_v3.struct_size++; reject(partial_v3);
     // The committed v1 prefix remains accepted and ignores appended fields entirely.
     auto v1 = advanced(); v1.unison_count = 1;
     v1.struct_size = offsetof(nk_audio_dsp_voice_options, additional_lfos);

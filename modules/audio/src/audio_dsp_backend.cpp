@@ -128,6 +128,7 @@ struct Voice::Impl {
     nk_audio_dsp_filter_type filter_type = NK_AUDIO_DSP_FILTER_NONE;
     float filter_cutoff_hz = 0.0f;
     float filter_resonance = 0.0f;
+    float filter_drive = 0.5f;
     std::array<ModulationRoute, NK_AUDIO_DSP_MAX_MODULATION_ROUTES> routes{};
     std::array<uint32_t, NK_AUDIO_DSP_MAX_OSCILLATORS> oscillator_order{};
     std::array<std::array<uint32_t, NK_AUDIO_DSP_MAX_MODULATION_ROUTES>,
@@ -207,6 +208,7 @@ void Voice::init(uint32_t sample_rate) noexcept {
     impl_->filter_type = NK_AUDIO_DSP_FILTER_NONE;
     impl_->filter_cutoff_hz = 0.0f;
     impl_->filter_resonance = 0.0f;
+    impl_->filter_drive = 0.5f;
     impl_->lfo_parameters = {};
     impl_->routes = {};
     impl_->oscillator_order = {};
@@ -262,6 +264,7 @@ void Voice::set_parameters(const PatchParameters &parameters) noexcept {
     impl_->filter_type = parameters.filter.type;
     impl_->filter_cutoff_hz = parameters.filter.cutoff_hz;
     impl_->filter_resonance = parameters.filter.resonance;
+    impl_->filter_drive = parameters.filter_drive;
     impl_->lfo_parameters[0] = parameters.lfo;
     for (uint32_t i = 1; i < NK_AUDIO_DSP_MAX_LFOS; ++i)
         impl_->lfo_parameters[i] = parameters.additional_lfos[i - 1];
@@ -326,6 +329,8 @@ void Voice::set_parameters(const PatchParameters &parameters) noexcept {
     impl_->filter_envelope.SetSustainLevel(parameters.filter_envelope.sustain_level);
     impl_->filter_envelope.SetReleaseTime(parameters.filter_envelope.release_seconds);
     impl_->filter_envelope_amount = parameters.filter_envelope_amount_semitones;
+    impl_->filter.SetDrive(impl_->filter_drive * 10.0f);
+    impl_->right_filter.SetDrive(impl_->filter_drive * 10.0f);
     impl_->right_filter.SetRes(impl_->filter_resonance);
     impl_->filter.SetRes(impl_->filter_resonance);
     if (parameters.filter.type == NK_AUDIO_DSP_FILTER_SVF_LOW_PASS &&
@@ -360,6 +365,8 @@ void Voice::note_on(uint32_t note, float velocity) noexcept {
             impl_->lfos[i].Reset(impl_->lfo_parameters[i].phase);
     impl_->filter.Init(static_cast<float>(impl_->sample_rate));
     impl_->right_filter.Init(static_cast<float>(impl_->sample_rate));
+    impl_->filter.SetDrive(impl_->filter_drive * 10.0f);
+    impl_->right_filter.SetDrive(impl_->filter_drive * 10.0f);
     impl_->right_filter.SetRes(impl_->filter_resonance);
     impl_->filter.SetRes(impl_->filter_resonance);
     if (impl_->filter_type == NK_AUDIO_DSP_FILTER_SVF_LOW_PASS && impl_->filter_cutoff_hz > 0.0f)

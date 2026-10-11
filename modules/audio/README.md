@@ -444,6 +444,13 @@ Amplitude and filter envelopes share note gates; amplitude release determines
 voice lifetime. These immutable patch controls are not instrument automation
 parameters. The engine advertises `STEREO_UNISON` and `FILTER_ENVELOPE` capabilities.
 
+`filter_drive` (0–1) controls SVF saturation independently of resonance. Zero
+selects a linear filter; 0.5 reproduces Daisy's legacy saturation. High drive
+suppresses the resonance peak, so use zero for predictable Q controls. Voice
+options ending at either older complete prefix retain legacy drive; partial
+extensions are rejected. The setting survives note-on filter resets. Haxeon's
+`DspFilterOptions.drive` defaults to 0.5 to preserve existing patches.
+
 `audio_dsp_voice` tests default compatibility, copy normalization, stereo/mono
 mapping, block partitioning, callback/offline parity, filter-envelope independence,
 wavetable/operator unison, releases, validation and specialized-source rejection.

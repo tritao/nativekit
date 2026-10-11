@@ -91,6 +91,7 @@ struct PatchParameters {
     EnvelopeParameters envelope;
     EnvelopeParameters filter_envelope;
     float filter_envelope_amount_semitones = 0.0f;
+    float filter_drive = 0.5f;
     UnisonParameters unison;
     FilterParameters filter;
     float gain = 1.0f;

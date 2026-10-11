@@ -487,7 +487,9 @@ nk_result normalize_voice_options(const nk_audio_dsp_voice_options *input, DspPa
     if (input) {
         // The prefix is the complete v1 struct, including its tail padding.
         constexpr auto v1_size = offsetof(nk_audio_dsp_voice_options, additional_lfos);
-        if (input->struct_size != v1_size && input->struct_size < sizeof(*input))
+        constexpr auto v2_size = offsetof(nk_audio_dsp_voice_options, filter_drive);
+        if (input->struct_size != v1_size && input->struct_size != v2_size &&
+            input->struct_size < sizeof(*input))
             return invalid_argument("audio DSP voice options are missing or truncated");
         const auto &env = input->filter_envelope;
         if (env.struct_size < sizeof(env) ||
@@ -507,6 +509,11 @@ nk_result normalize_voice_options(const nk_audio_dsp_voice_options *input, DspPa
                                   env.release_seconds};
         output.filter_envelope_amount_semitones = input->filter_envelope_amount_semitones;
         if (input->struct_size >= sizeof(*input)) {
+            if (!valid_nonnegative_finite(input->filter_drive) || input->filter_drive > 1)
+                return invalid_argument("invalid DSP filter drive");
+            output.filter_drive = input->filter_drive;
+        }
+        if (input->struct_size >= v2_size) {
             if (input->additional_lfo_count >= NK_AUDIO_DSP_MAX_LFOS)
                 return invalid_argument("too many additional DSP LFOs");
             output.additional_lfo_count = input->additional_lfo_count;
