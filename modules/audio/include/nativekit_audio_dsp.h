@@ -319,6 +319,20 @@ typedef struct nk_audio_dsp_voice_options {
      * Daisy's legacy saturation. Older callers retain legacy drive. */
     float filter_drive;
     uint32_t reserved4;
+    /** Optional articulation extension. Ordinary oscillator/wavetable patches only.
+     * One sounding voice per instrument; bounded last-note priority (16 held notes).
+     * Releasing the current note returns to the most recently held remaining note. */
+    uint32_t monophonic;
+    /** Preserve oscillator/filter/envelope state across strictly overlapping notes. */
+    uint32_t legato;
+    /** Overlapping-note pitch glide, [0, 2] seconds, linear in semitones. */
+    float glide_seconds;
+    /** Extra relative gain on accented notes, [0, 1]; reserve output headroom. */
+    float accent_gain;
+    /** Extra cutoff opening on accented notes, [0, 36] semitones. */
+    float accent_filter_semitones;
+    /** Velocity above this threshold drives accent continuously to 1 at velocity 1; [0, 1). */
+    float accent_velocity_threshold;
 } nk_audio_dsp_voice_options;
 
 /** One generic source-to-destination modulation route. */

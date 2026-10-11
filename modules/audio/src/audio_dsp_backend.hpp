@@ -92,6 +92,10 @@ struct PatchParameters {
     EnvelopeParameters filter_envelope;
     float filter_envelope_amount_semitones = 0.0f;
     float filter_drive = 0.5f;
+    bool monophonic = false, legato = false;
+    float glide_seconds = 0.0f;
+    float accent_gain = 0.0f, accent_filter_semitones = 0.0f;
+    float accent_velocity_threshold = 0.8f;
     UnisonParameters unison;
     FilterParameters filter;
     float gain = 1.0f;
@@ -114,7 +118,7 @@ class Voice final {
 
     void init(uint32_t sample_rate) noexcept;
     void set_parameters(const PatchParameters &parameters) noexcept;
-    void note_on(uint32_t note, float velocity) noexcept;
+    void note_on(uint32_t note, float velocity, bool connected = false) noexcept;
     void note_off() noexcept;
     void reset() noexcept;
     // Drop borrowed resources while the engine still pins the owning instrument.

@@ -88,6 +88,14 @@ struct DspInstrumentResource final : nk::core::Resource {
     bool retired = false;
 };
 
+struct MonoNote {
+    uint32_t voice_id = 0, note = 0, score_note = 0;
+    uint64_t token = 0, release_frame = 0, score_cycle = 0;
+    float velocity = 0;
+    int32_t priority = 0;
+};
+inline constexpr uint32_t max_mono_notes = 16;
+
 struct DspVoice {
     nk::audio_dsp::Voice backend;
     std::shared_ptr<nk::audio_dsp::InstrumentSource> provider;
@@ -108,6 +116,8 @@ struct DspVoice {
     int32_t priority = 0;
     uint32_t fade_remaining = 0, fade_in_remaining = 0;
     float energy = 0;
+    std::array<MonoNote, max_mono_notes> held{};
+    uint32_t held_count = 0;
 
     void clear() noexcept {
         if (provider) provider->release(provider_slot);
@@ -125,6 +135,7 @@ struct DspVoice {
         score_note = fade_remaining = fade_in_remaining = 0;
         priority = 0;
         energy = 0;
+        held_count = 0;
     }
 };
 
@@ -488,7 +499,8 @@ nk_result normalize_voice_options(const nk_audio_dsp_voice_options *input, DspPa
         // The prefix is the complete v1 struct, including its tail padding.
         constexpr auto v1_size = offsetof(nk_audio_dsp_voice_options, additional_lfos);
         constexpr auto v2_size = offsetof(nk_audio_dsp_voice_options, filter_drive);
-        if (input->struct_size != v1_size && input->struct_size != v2_size &&
+        constexpr auto v3_size = offsetof(nk_audio_dsp_voice_options, monophonic);
+        if (input->struct_size != v1_size && input->struct_size != v2_size && input->struct_size != v3_size &&
             input->struct_size < sizeof(*input))
             return invalid_argument("audio DSP voice options are missing or truncated");
         const auto &env = input->filter_envelope;
@@ -508,10 +520,26 @@ nk_result normalize_voice_options(const nk_audio_dsp_voice_options *input, DspPa
         output.filter_envelope = {env.attack_seconds, env.decay_seconds, env.sustain_level,
                                   env.release_seconds};
         output.filter_envelope_amount_semitones = input->filter_envelope_amount_semitones;
-        if (input->struct_size >= sizeof(*input)) {
+        if (input->struct_size >= v3_size) {
             if (!valid_nonnegative_finite(input->filter_drive) || input->filter_drive > 1)
                 return invalid_argument("invalid DSP filter drive");
             output.filter_drive = input->filter_drive;
+        }
+        if (input->struct_size >= sizeof(*input)) {
+            if (input->monophonic > 1 || input->legato > 1 ||
+                !valid_nonnegative_finite(input->glide_seconds) || input->glide_seconds > 2 ||
+                !valid_nonnegative_finite(input->accent_gain) || input->accent_gain > 1 ||
+                !valid_nonnegative_finite(input->accent_filter_semitones) || input->accent_filter_semitones > 36 ||
+                !valid_nonnegative_finite(input->accent_velocity_threshold) || input->accent_velocity_threshold >= 1 ||
+                (!input->monophonic && (input->legato || input->glide_seconds > 0)) ||
+                (input->monophonic && output.source.options.kind != 0))
+                return invalid_argument("invalid DSP articulation configuration");
+            output.monophonic = input->monophonic != 0;
+            output.legato = input->legato != 0;
+            output.glide_seconds = input->glide_seconds;
+            output.accent_gain = input->accent_gain;
+            output.accent_filter_semitones = input->accent_filter_semitones;
+            output.accent_velocity_threshold = input->accent_velocity_threshold;
         }
         if (input->struct_size >= v2_size) {
             if (input->additional_lfo_count >= NK_AUDIO_DSP_MAX_LFOS)
@@ -857,8 +885,10 @@ nk::audio_dsp::StereoSample voice_sample(DspVoice &voice) noexcept {
 
 DspVoice *find_voice(DspEngineResource &engine, uint32_t voice_id) {
     for (auto &voice : engine.voices) {
-        if (voice.active && voice.note_token == 0 && voice.voice_id == voice_id)
-            return &voice;
+        if (!voice.active) continue;
+        if (voice.note_token == 0 && voice.voice_id == voice_id) return &voice;
+        for (uint32_t i = 0; i < voice.held_count; ++i)
+            if (voice.held[i].token == 0 && voice.held[i].voice_id == voice_id) return &voice;
     }
     return nullptr;
 }
@@ -872,8 +902,12 @@ DspVoice *find_free_voice(DspEngineResource &engine) {
 }
 
 DspVoice *find_token(DspEngineResource &engine, uint64_t token) {
-    for (auto &voice : engine.voices)
-        if (voice.active && voice.note_token == token) return &voice;
+    for (auto &voice : engine.voices) {
+        if (!voice.active) continue;
+        if (voice.note_token == token) return &voice;
+        for (uint32_t i = 0; i < voice.held_count; ++i)
+            if (voice.held[i].token == token) return &voice;
+    }
     return nullptr;
 }
 
@@ -914,12 +948,33 @@ nk_result start_voice(DspEngineResource &engine,
                       int32_t priority = 0, uint64_t release_frame = 0,
                       uint64_t score_cycle = 0, uint32_t score_note = 0) {
     auto *voice = token == 0 ? find_voice(engine, event.voice_id) : find_token(engine, token);
+    if (!voice && instrument->current.monophonic)
+        for (auto &candidate : engine.voices)
+            if (candidate.active && candidate.instrument == instrument) { voice = &candidate; break; }
     if (!voice) voice = allocate_voice(engine, priority);
     if (!voice) {
         engine.dropped_notes.fetch_add(1, std::memory_order_relaxed);
         return NK_ERROR_QUEUE_FULL;
     }
     const bool instrument_changed = voice->instrument.get() != instrument.get();
+    const bool connected = instrument->current.monophonic && !instrument_changed && voice->active && !voice->released;
+    if (instrument_changed || !connected) voice->held_count = 0;
+    if (instrument->current.monophonic) {
+        // Repeated identities replace their previous entry instead of consuming capacity.
+        for (uint32_t i = 0; i < voice->held_count; ++i) {
+            const auto &held = voice->held[i];
+            if (token ? held.token == token : held.token == 0 && held.voice_id == event.voice_id) {
+                for (uint32_t j = i + 1; j < voice->held_count; ++j) voice->held[j - 1] = voice->held[j];
+                --voice->held_count; break;
+            }
+        }
+        if (voice->held_count == max_mono_notes) {
+            engine.dropped_notes.fetch_add(1, std::memory_order_relaxed);
+            return NK_ERROR_QUEUE_FULL;
+        }
+        voice->held[voice->held_count++] = MonoNote{event.voice_id, event.note, score_note,
+            token, release_frame, score_cycle, event.velocity, priority};
+    }
     // Keep the previous owner pinned until its backend references are replaced.
     const auto previous_instrument = voice->instrument;
     voice->instrument = instrument;
@@ -949,7 +1004,7 @@ nk_result start_voice(DspEngineResource &engine,
             engine.dropped_notes.fetch_add(1, std::memory_order_relaxed);
             return NK_ERROR_QUEUE_FULL;
         }
-    } else voice->backend.note_on(event.note, event.velocity);
+    } else voice->backend.note_on(event.note, event.velocity, connected);
     voice->choke_group = instrument->choke_group.load(std::memory_order_relaxed);
     if (voice->choke_group) for (auto &other : engine.voices)
         if (&other != voice && other.active && !other.released && other.choke_group == voice->choke_group)
@@ -963,6 +1018,41 @@ void release_voice(DspVoice *voice) {
     else voice->backend.note_off();
     voice->released = true;
     voice->release_frame = 0;
+    voice->held_count = 0;
+}
+
+void remove_mono_note(DspVoice &voice, uint32_t index) {
+    const bool current = index + 1 == voice.held_count;
+    for (uint32_t i = index + 1; i < voice.held_count; ++i) voice.held[i - 1] = voice.held[i];
+    if (--voice.held_count == 0) { release_voice(&voice); return; }
+    if (!current) return;
+    const auto &note = voice.held[voice.held_count - 1];
+    voice.voice_id = note.voice_id; voice.note_token = note.token;
+    voice.score_cycle = note.score_cycle; voice.score_note = note.score_note;
+    voice.note = note.note; voice.velocity = note.velocity; voice.priority = note.priority;
+    voice.release_frame = note.release_frame;
+    sync_voice_parameters(voice);
+    voice.backend.note_on(note.note, note.velocity, true);
+}
+
+void release_note(DspVoice *voice, uint64_t token = 0, uint32_t id = 0,
+                  uint64_t cycle = 0, uint32_t score_note = 0) {
+    if (!voice) return;
+    if (!voice->held_count) { release_voice(voice); return; }
+    for (uint32_t i = 0; i < voice->held_count; ++i) {
+        const auto &note = voice->held[i];
+        const bool match = cycle ? note.score_cycle == cycle && note.score_note == score_note :
+                           token ? note.token == token : note.token == 0 && note.voice_id == id;
+        if (match) { remove_mono_note(*voice, i); return; }
+    }
+}
+
+void expire_mono_notes(DspEngineResource &engine, uint64_t frame) {
+    for (auto &voice : engine.voices)
+        // Remove expired lower notes first, so return priority never retriggers a stale note.
+        for (uint32_t i = 0; i < voice.held_count;)
+            if (voice.held[i].release_frame && frame >= voice.held[i].release_frame) remove_mono_note(voice, i);
+            else ++i;
 }
 
 nk::audio_dsp::StereoSample mix_voices(DspEngineResource &engine, uint64_t frame) {
@@ -1029,7 +1119,7 @@ nk_result apply_event(DspEngineResource &engine, const nk_audio_dsp_event &event
         auto *voice = find_voice(engine, event.voice_id);
         if (!voice)
             return NK_OK;
-        release_voice(voice);
+        release_note(voice, 0, event.voice_id);
         return NK_OK;
     }
     case NK_AUDIO_DSP_EVENT_PARAMETER: {
@@ -1166,7 +1256,7 @@ nk_result apply_scheduled_event(DspEngineResource &engine,
     case NK_AUDIO_DSP_EVENT_NOTE_OFF: {
         auto *voice = scheduled.note_token ? find_token(engine, scheduled.note_token) :
                                               find_voice(engine, event.voice_id);
-        release_voice(voice);
+        release_note(voice, scheduled.note_token, event.voice_id);
         return NK_OK;
     }
     case NK_AUDIO_DSP_EVENT_PARAMETER:
@@ -1204,8 +1294,13 @@ uint64_t next_note_token(DspEngineResource &engine) {
 }
 
 void release_transport_voices(DspEngineResource &engine) {
-    for (auto &voice : engine.voices)
-        if (voice.active && voice.score_cycle) release_voice(&voice);
+    for (auto &voice : engine.voices) {
+        if (!voice.active) continue;
+        if (!voice.held_count) { if (voice.score_cycle) release_voice(&voice); continue; }
+        // Manual held notes can coexist with a score; cancel every old score identity.
+        for (uint32_t i = 0; i < voice.held_count;)
+            if (voice.held[i].score_cycle) remove_mono_note(voice, i); else ++i;
+    }
 }
 
 bool enqueue_command(DspEngineResource &engine, TransportCommand command) {
@@ -1379,7 +1474,7 @@ void consume_runtime_commands(DspEngineResource &engine, uint64_t frame) {
                 // Never strand a held note when timed-command capacity is exhausted.
                 if (command.note.event.kind == NK_AUDIO_DSP_EVENT_NOTE_OFF) {
                     cancel_pending_note(engine, command.note.note_token);
-                    release_voice(find_token(engine, command.note.note_token));
+                    release_note(find_token(engine, command.note.note_token), command.note.note_token);
                 }
                 engine.dropped_notes.fetch_add(1, std::memory_order_relaxed);
             }
@@ -1566,9 +1661,12 @@ void advance_transport(DspEngineResource &engine, uint64_t frame) {
                                                      transport.cycle, event.note_id);
                     }
                 } else {
-                    for (auto &voice : engine.voices)
-                        if (voice.active && voice.score_cycle == transport.cycle &&
-                            voice.score_note == event.note_id) release_voice(&voice);
+                    for (auto &voice : engine.voices) {
+                        if (!voice.active) continue;
+                        if (voice.held_count) release_note(&voice, 0, 0, transport.cycle, event.note_id);
+                        else if (voice.score_cycle == transport.cycle && voice.score_note == event.note_id)
+                            release_voice(&voice);
+                    }
                 }
             }
         }
@@ -1628,6 +1726,7 @@ void render_attached_block(DspEngineResource &engine, uint64_t start_frame,
     std::fill(engine.output_scratch.begin(), engine.output_scratch.begin() + sample_count, 0.0f);
     for (uint32_t frame = 0; frame < frame_count; ++frame) {
         const auto absolute_frame = start_frame + frame;
+        expire_mono_notes(engine, absolute_frame);
         consume_attached_events(engine, absolute_frame);
         advance_transport(engine, absolute_frame);
         for (uint32_t index = 0; index < engine.output_ramp_count;) {
@@ -2828,6 +2927,7 @@ nk_result NK_CALL nk_audio_dsp_engine_render(nk_audio_dsp_engine engine_handle,
             uint32_t event_index = 0;
             std::vector<ActiveParameterRamp> ramps;
             for (uint32_t frame = 0; frame < target->frame_count; ++frame) {
+                expire_mono_notes(*engine, engine->offline_frame + frame);
                 for (auto ramp = ramps.begin(); ramp != ramps.end();) {
                     if (const auto result = apply_parameter_ramp(*engine, *ramp, frame);
                         result != NK_OK)

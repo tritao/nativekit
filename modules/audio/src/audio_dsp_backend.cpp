@@ -140,7 +140,15 @@ struct Voice::Impl {
     uint32_t retrigger_length = 1;
     uint32_t route_count = 0;
     uint32_t oscillator_count = 0;
-    float base_frequency = 440.0f;
+    float base_frequency = 440.0f, target_frequency = 440.0f;
+    double glide_ratio = 1.0, glide_frequency = 440.0;
+    uint32_t glide_remaining = 0;
+    bool legato = false;
+    float glide_seconds = 0.0f;
+    float accent_gain = 0.0f, accent_filter_semitones = 0.0f, accent_threshold = 0.8f;
+    float accent = 0.0f, accent_target = 0.0f, accent_step = 0.0f;
+    float velocity_target = 0.0f, velocity_step = 0.0f;
+    uint32_t expression_remaining = 0;
     float velocity = 0.0f;
     bool gate = false;
     bool active = false;
@@ -216,6 +224,8 @@ void Voice::init(uint32_t sample_rate) noexcept {
     impl_->oscillator_count = 0;
     impl_->base_frequency = 440.0f;
     impl_->velocity = 0.0f;
+    impl_->glide_remaining = impl_->expression_remaining = 0;
+    impl_->accent = impl_->accent_target = 0.0f;
     impl_->gate = false;
     impl_->active = false;
 }
@@ -229,6 +239,11 @@ void Voice::set_parameters(const PatchParameters &parameters) noexcept {
         parameters.source.options.kind != NK_AUDIO_DSP_SOURCE_KARPLUS_STRING &&
         parameters.source.options.kind != NK_AUDIO_DSP_SOURCE_RESONATOR;
     impl_->gain = parameters.gain;
+    impl_->legato = parameters.legato;
+    impl_->glide_seconds = parameters.glide_seconds;
+    impl_->accent_gain = parameters.accent_gain;
+    impl_->accent_filter_semitones = parameters.accent_filter_semitones;
+    impl_->accent_threshold = parameters.accent_velocity_threshold;
     impl_->oscillator_count = parameters.oscillator_count;
     impl_->unison = parameters.unison;
     for (uint32_t copy = 0; copy < max_unison_copies; ++copy) {
@@ -338,16 +353,33 @@ void Voice::set_parameters(const PatchParameters &parameters) noexcept {
         impl_->filter.SetFreq(impl_->filter_cutoff_hz);
 }
 
-void Voice::note_on(uint32_t note, float velocity) noexcept {
+void Voice::note_on(uint32_t note, float velocity, bool connected) noexcept {
+    const auto frequency = 440.0f * std::pow(2.0f, (static_cast<float>(note) - 69.0f) / 12.0f);
+    const bool overlap = connected && impl_->active && impl_->gate && impl_->note_rendered;
+    impl_->target_frequency = frequency;
+    impl_->glide_remaining = overlap ? static_cast<uint32_t>(impl_->glide_seconds * impl_->sample_rate) : 0;
+    if (impl_->glide_remaining) {
+        impl_->glide_frequency = impl_->base_frequency;
+        impl_->glide_ratio = std::pow(static_cast<double>(frequency) / impl_->base_frequency,
+                                     1.0 / impl_->glide_remaining);
+    }
+    else impl_->base_frequency = frequency;
+    impl_->accent_target = std::clamp((velocity - impl_->accent_threshold) / (1.0f - impl_->accent_threshold), 0.0f, 1.0f);
+    impl_->velocity_target = velocity;
+    if (overlap && impl_->legato) {
+        impl_->expression_remaining = impl_->retrigger_length;
+        impl_->velocity_step = (velocity - impl_->velocity) / impl_->expression_remaining;
+        impl_->accent_step = (impl_->accent_target - impl_->accent) / impl_->expression_remaining;
+        return;
+    }
+    impl_->expression_remaining = 0;
+    impl_->accent = impl_->accent_target;
     // Preserve the last audible sample across a hard phase/envelope restart.
     // A finite smoothstep correction avoids a discontinuity without rendering
     // another voice or allocating on the audio callback, even under rapid reuse.
     impl_->retrigger_frames = impl_->active ? impl_->retrigger_length : 0;
     impl_->retrigger_offset = impl_->last_output;
     impl_->note_rendered = false;
-    const auto semitones = static_cast<float>(note) - 69.0f;
-    const auto frequency = 440.0f * std::pow(2.0f, semitones / 12.0f);
-    impl_->base_frequency = frequency;
     impl_->source.trigger(clamp_frequency(frequency, impl_->sample_rate), note);
     for (uint32_t copy = 0; copy < impl_->unison.count; ++copy) {
         for (uint32_t index = 0; index < impl_->oscillator_count; ++index) {
@@ -387,6 +419,8 @@ void Voice::reset() noexcept {
     impl_->last_output = {};
     impl_->retrigger_frames = 0;
     impl_->velocity = 0.0f;
+    impl_->glide_remaining = impl_->expression_remaining = 0;
+    impl_->accent = impl_->accent_target = 0.0f;
     impl_->gate = false;
     impl_->active = false;
     impl_->note_rendered = false;
@@ -421,6 +455,17 @@ StereoSample Voice::process_stereo() noexcept {
         impl_->active = impl_->retrigger_frames > 0;
         return output;
     }
+    if (impl_->glide_remaining) {
+        impl_->glide_frequency *= impl_->glide_ratio;
+        impl_->base_frequency = static_cast<float>(impl_->glide_frequency);
+        if (--impl_->glide_remaining == 0) impl_->base_frequency = impl_->target_frequency;
+    }
+    if (impl_->expression_remaining) {
+        impl_->velocity += impl_->velocity_step; impl_->accent += impl_->accent_step;
+        if (--impl_->expression_remaining == 0) {
+            impl_->velocity = impl_->velocity_target; impl_->accent = impl_->accent_target;
+        }
+    }
     impl_->note_rendered = true;
     const auto envelope = impl_->envelope.Process(impl_->gate);
     if (!impl_->gate && !impl_->envelope.IsRunning()) {
@@ -439,7 +484,8 @@ StereoSample Voice::process_stereo() noexcept {
     std::array<float, NK_AUDIO_DSP_MAX_OSCILLATORS> phase_offsets{};
     std::array<float, NK_AUDIO_DSP_MAX_OSCILLATORS> frequency_offsets{};
     auto filter_offset = 0.0f;
-    auto filter_semitones = filter_envelope * impl_->filter_envelope_amount;
+    auto filter_semitones = filter_envelope * impl_->filter_envelope_amount
+        + impl_->accent * impl_->accent_filter_semitones;
     auto pan_offset = 0.0f;
     auto amplitude_offset = 0.0f;
     const auto add_oscillator_route = [&](std::array<float, NK_AUDIO_DSP_MAX_OSCILLATORS> &values,
@@ -584,7 +630,7 @@ StereoSample Voice::process_stereo() noexcept {
             stereo.right = impl_->right_filter.Low();
         }
     }
-    const auto amplitude = impl_->gain * std::max(0.0f, 1.0f + amplitude_offset);
+    const auto amplitude = impl_->gain * (1.0f + impl_->accent * impl_->accent_gain) * std::max(0.0f, 1.0f + amplitude_offset);
     const auto pan = std::clamp(pan_offset, -1.0f, 1.0f);
     StereoSample output{
         sample * amplitude * impl_->velocity * envelope * (1.0f - std::max(0.0f, pan)),
