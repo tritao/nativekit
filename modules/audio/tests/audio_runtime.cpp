@@ -276,11 +276,27 @@ static void late_play_keeps_requested_origin() {
     assert(nk_audio_dsp_instrument_destroy(i)==NK_OK);
 }
 
+static void choke_groups() {
+    auto e = engine(); auto open = instrument(e); auto closed = instrument(e); auto kick = instrument(e);
+    assert(nk_audio_dsp_instrument_set_choke_group(open, 1) == NK_OK);
+    assert(nk_audio_dsp_instrument_set_choke_group(closed, 1) == NK_OK);
+    assert(nk_audio_dsp_instrument_set_choke_group(open, 256) == NK_ERROR_INVALID_ARGUMENT);
+    note(e, open, 0); note(e, kick, 0); render(e, 256);
+    note(e, closed, 256); render(e, 4096);
+    uint32_t voices = 0, tails = 0;
+    assert(nk_audio_dsp_engine_get_voice_counts(e, &voices, &tails) == NK_OK && voices == 2);
+    assert(status(e).dropped_notes == 0 && status(e).stolen_voices == 0);
+    assert(nk_audio_dsp_engine_destroy(e) == NK_OK);
+    assert(nk_audio_dsp_instrument_destroy(open) == NK_OK);
+    assert(nk_audio_dsp_instrument_destroy(closed) == NK_OK);
+    assert(nk_audio_dsp_instrument_destroy(kick) == NK_OK);
+}
+
 int main() {
     nk_init_options init{}; init.struct_size = sizeof(init); init.api_version = NK_API_VERSION;
     assert(nk_init(&init) == NK_OK);
     assert(nk_audio_test_use_offline_device() == NK_OK);
-    tokens_and_stealing();
+    tokens_and_stealing(); choke_groups();
     auto fixed = sequence(256,false);
     assert(fixed == sequence(73,false));
     assert(fixed == sequence(256,true));

@@ -645,6 +645,13 @@ NKAUDIO_API nk_result NK_CALL nk_audio_dsp_instrument_create(
 /** Destroys an instrument and releases any voices using it. */
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_instrument_destroy(nk_audio_dsp_instrument instrument);
 /** Sets one instrument parameter between render calls. */
+/** New admitted notes release previous notes in the same nonzero engine-local group.
+ * Group 0 disables choking. Groups 1..255 are captured at note onset; updates affect
+ * future notes only. Existing release envelopes smooth the transition.
+ */
+NKAUDIO_API nk_result NK_CALL nk_audio_dsp_instrument_set_choke_group(
+    nk_audio_dsp_instrument instrument, uint32_t group);
+
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_instrument_set_parameter(
     nk_audio_dsp_instrument instrument, nk_audio_dsp_parameter parameter, float value);
 /** Sets one oscillator-specific parameter between render calls. */

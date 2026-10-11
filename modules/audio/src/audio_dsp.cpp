@@ -81,6 +81,7 @@ struct DspInstrumentResource final : nk::core::Resource {
     std::shared_ptr<nk::audio_dsp::InstrumentSource> provider;
     DspParameters defaults;
     DspParameters current;
+    std::atomic<uint32_t> choke_group{0};
     uint64_t parameters_version = 1;
     std::array<std::atomic<float>, 9> published{};
     std::array<std::array<std::atomic<float>, 4>, NK_AUDIO_DSP_MAX_OSCILLATORS> published_oscillators{};
@@ -103,6 +104,7 @@ struct DspVoice {
     uint64_t release_frame = 0;
     uint64_t score_cycle = 0;
     uint32_t score_note = 0;
+    uint32_t choke_group = 0;
     int32_t priority = 0;
     uint32_t fade_remaining = 0, fade_in_remaining = 0;
     float energy = 0;
@@ -897,6 +899,8 @@ DspVoice *allocate_voice(DspEngineResource &engine, int32_t priority) {
     return nullptr; // Reserved tail budget is exhausted; never allocate a tail here.
 }
 
+void release_voice(DspVoice *voice);
+
 nk_result start_voice(DspEngineResource &engine,
                       const std::shared_ptr<DspInstrumentResource> &instrument,
                       const nk_audio_dsp_event &event, uint64_t token = 0,
@@ -939,6 +943,10 @@ nk_result start_voice(DspEngineResource &engine,
             return NK_ERROR_QUEUE_FULL;
         }
     } else voice->backend.note_on(event.note, event.velocity);
+    voice->choke_group = instrument->choke_group.load(std::memory_order_relaxed);
+    if (voice->choke_group) for (auto &other : engine.voices)
+        if (&other != voice && other.active && !other.released && other.choke_group == voice->choke_group)
+            release_voice(&other);
     return NK_OK;
 }
 
@@ -2622,6 +2630,18 @@ nk_result NK_CALL nk_audio_dsp_instrument_destroy(nk_audio_dsp_instrument instru
                 return NK_ERROR_INVALID_HANDLE;
             return NK_OK;
         });
+}
+
+nk_result NK_CALL nk_audio_dsp_instrument_set_choke_group(nk_audio_dsp_instrument handle, uint32_t group) {
+    return nk::core::result_boundary("setting DSP choke group", [&]() -> nk_result {
+        if (const auto result = enter_dsp(); result != NK_OK) return result;
+        if (group > 255) return invalid_argument("DSP choke group must be 0..255");
+        auto instrument = get_instrument(handle);
+        if (!instrument) return NK_ERROR_INVALID_HANDLE;
+        if (instrument->engine.expired()) return NK_ERROR_INVALID_HANDLE;
+        instrument->choke_group.store(group, std::memory_order_relaxed);
+        return NK_OK;
+    });
 }
 
 nk_result NK_CALL nk_audio_dsp_instrument_set_parameter(nk_audio_dsp_instrument instrument_handle,
