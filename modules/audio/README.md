@@ -348,6 +348,13 @@ renderer reference through a private interface while attached, and callbacks use
 or allocation. Teardown waits for that renderer's active callback reads before
 releasing its source and voice state. All engines use the same device clock.
 
+The miniaudio fork keeps a detached input-list entry linked until any reader
+which already selected it advances. It then unlinks the entry and drains
+selection before clearing its links. Rerouting waits on the old destination
+bus. This preserves unrelated source clocks during live song graph retirement;
+`miniaudio_detach` gates a reader to cover removal, rerouting and neighboring
+removal without a device.
+
 The DaisySP fork implements white noise with defined unsigned wrapping, preserving
 its sequence without signed-overflow undefined behavior.
 

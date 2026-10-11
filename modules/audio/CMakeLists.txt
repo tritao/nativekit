@@ -112,6 +112,17 @@ if(NK_BUILD_TESTS)
     add_test(NAME miniaudio_splitter COMMAND nativekit_miniaudio_splitter_tests)
     set_tests_properties(miniaudio_splitter PROPERTIES LABELS "audio")
 
+    find_package(Threads REQUIRED)
+    add_executable(nativekit_miniaudio_detach_tests
+        "${NK_VENDOR_DIR}/miniaudio/tests/node_graph/detach_iteration.cpp")
+    target_compile_features(nativekit_miniaudio_detach_tests PRIVATE cxx_std_17)
+    target_link_libraries(nativekit_miniaudio_detach_tests PRIVATE Threads::Threads)
+    if(UNIX)
+        target_link_libraries(nativekit_miniaudio_detach_tests PRIVATE m)
+    endif()
+    add_test(NAME miniaudio_detach COMMAND nativekit_miniaudio_detach_tests)
+    set_tests_properties(miniaudio_detach PROPERTIES LABELS "audio" TIMEOUT 15)
+
     target_compile_definitions(nativekit PRIVATE NK_AUDIO_TESTING)
     add_executable(nativekit_audio_multi_dsp_tests tests/audio_multi_dsp.cpp)
     target_compile_features(nativekit_audio_multi_dsp_tests PRIVATE cxx_std_17)
