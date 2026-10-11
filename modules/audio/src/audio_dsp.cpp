@@ -205,6 +205,7 @@ struct DspEngineResource final : nk::core::Resource, nk::audio_dsp::DeviceOutput
     uint32_t note_heap_count = 0;
     std::atomic<uint64_t> status_sequence{0}, status_frame{0}, status_loops{0};
     std::atomic<uint32_t> status_section{0}, status_playing{0};
+    std::atomic<uint32_t> status_voices{0}, status_tails{0};
     std::atomic<double> status_bpm{120};
     std::array<ScheduledDspEvent, scheduled_event_capacity> scheduled_events{};
     std::atomic<uint32_t> scheduled_write{0};
@@ -1315,6 +1316,10 @@ void publish_transport_status(DspEngineResource &engine, uint64_t frame) {
     engine.status_frame.store(frame, std::memory_order_relaxed);
     engine.status_loops.store(engine.transport.loops, std::memory_order_relaxed);
     engine.status_bpm.store(engine.transport.bpm, std::memory_order_relaxed);
+    engine.status_voices.store(static_cast<uint32_t>(std::count_if(engine.voices.begin(),
+        engine.voices.end(), [](const auto &voice) { return voice.active; })), std::memory_order_relaxed);
+    engine.status_tails.store(static_cast<uint32_t>(std::count_if(engine.tails.begin(),
+        engine.tails.end(), [](const auto &voice) { return voice.active; })), std::memory_order_relaxed);
     engine.status_sequence.fetch_add(1, std::memory_order_release);
 }
 
@@ -2142,6 +2147,25 @@ nk_result NK_CALL nk_audio_dsp_engine_collect(nk_audio_dsp_engine handle) {
         if (!engine) return NK_ERROR_INVALID_HANDLE;
         std::lock_guard lock(engine->mutex);
         collect_resources(*engine); return NK_OK;
+    });
+}
+
+nk_result NK_CALL nk_audio_dsp_engine_get_voice_counts(nk_audio_dsp_engine handle,
+    uint32_t *out_active_voices, uint32_t *out_active_tails) {
+    return nk::core::result_boundary("reading DSP voice counts", [&]() -> nk_result {
+        if (const auto result = enter_dsp(); result != NK_OK) return result;
+        if (!out_active_voices || !out_active_tails) return invalid_argument("voice count outputs are required");
+        auto engine = get_engine(handle);
+        if (!engine) return NK_ERROR_INVALID_HANDLE;
+        uint32_t voices, tails;
+        for (;;) {
+            const auto before = engine->status_sequence.load(std::memory_order_acquire);
+            if (before & 1) continue;
+            voices = engine->status_voices.load(std::memory_order_relaxed);
+            tails = engine->status_tails.load(std::memory_order_relaxed);
+            if (before == engine->status_sequence.load(std::memory_order_acquire)) break;
+        }
+        *out_active_voices = voices; *out_active_tails = tails; return NK_OK;
     });
 }
 

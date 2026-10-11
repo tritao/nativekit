@@ -66,11 +66,18 @@ static void tokens_and_stealing() {
     nk_audio_dsp_voice_policy_options policy{sizeof(policy), 1, 1, 240};
     assert(nk_audio_dsp_engine_set_voice_policy(e, &policy) == NK_OK);
     const auto old = note(e, i, 0, 0, 10); render(e, 1000);
+    uint32_t voices=99, tails=99;
+    assert(nk_audio_dsp_engine_get_voice_counts(e,&voices,&tails)==NK_OK && voices==1 && tails==0);
+    assert(nk_audio_dsp_engine_get_voice_counts(e,nullptr,&tails)==NK_ERROR_INVALID_ARGUMENT);
     note(e, i, 1000, 0, 5); render(e, 1); // Lower priority cannot replace the held voice.
     assert(status(e).dropped_notes == 1);
     const auto replacement = note(e, i, 1001, 0, 20);
     assert(replacement != old);
-    auto bridge = render(e, 240);
+    auto bridge = render(e, 1);
+    assert(nk_audio_dsp_engine_get_voice_counts(e,&voices,&tails)==NK_OK && voices==1 && tails==1);
+    auto remainder = render(e, 239);
+    bridge.insert(bridge.end(),remainder.begin(),remainder.end());
+    assert(nk_audio_dsp_engine_get_voice_counts(e,&voices,&tails)==NK_OK && voices==1 && tails==0);
     assert(status(e).stolen_voices == 1);
     for (uint32_t frame = 1; frame < 240; ++frame)
         assert(std::abs(bridge[frame*2] - bridge[(frame-1)*2]) < 0.02f);
@@ -80,6 +87,7 @@ static void tokens_and_stealing() {
     assert(nk_audio_dsp_engine_note_off(e, replacement, 3289) == NK_OK);
     auto ended = render(e, 2048);
     assert(std::all_of(ended.end()-256, ended.end(), [](float x) { return x == 0; }));
+    assert(nk_audio_dsp_engine_get_voice_counts(e,&voices,&tails)==NK_OK && voices==0 && tails==0);
     // Future commands may arrive out of time order; the bounded heap orders them.
     const auto future = note(e, i, 10000, 500);
     assert(nk_audio_dsp_engine_note_off(e, future, 10300) == NK_OK);

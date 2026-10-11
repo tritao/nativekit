@@ -739,6 +739,14 @@ typedef struct nk_audio_dsp_runtime_status {
     uint64_t clock_discontinuities;
 } nk_audio_dsp_runtime_status;
 
+/** Last completed render block's occupied note slots and stealing tails.
+ * Counts include release envelopes, and exclude queued notes and SF2 layers.
+ * Reading these counters never inspects callback-owned voices directly.
+ */
+NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_get_voice_counts(
+    nk_audio_dsp_engine engine, uint32_t *out_active_voices NK_OUT,
+    uint32_t *out_active_tails NK_OUT);
+
 typedef struct nk_audio_dsp_transport_track {
     nk_audio_dsp_engine engine;
     uint64_t program_id;
