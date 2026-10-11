@@ -2432,9 +2432,12 @@ nk_result NK_CALL nk_audio_dsp_engine_attach_device(nk_audio_dsp_engine engine_h
             source->sample_rate = ma_engine_get_sample_rate(&engine->engine);
             source->channels = ma_engine_get_channels(&engine->engine);
             source->allocation = &engine->engine.allocationCallbacks;
+            auto quantum = ma_node_graph_get_processing_size_in_frames(ma_engine_get_node_graph(&engine->engine));
+            if (const auto *device = ma_engine_get_device(&engine->engine))
+                quantum = std::max(quantum, device->playback.internalPeriodSizeInFrames);
             const auto result = nk::audio_dsp::attach_device(engine_handle,
                 engine->device_time_frames.load(std::memory_order_acquire),
-                source->sample_rate, source->channels);
+                source->sample_rate, source->channels, quantum);
             if (result != NK_OK) return result;
             auto config = ma_node_config_init();
             config.vtable = &dsp_source_vtable;
@@ -3216,6 +3219,21 @@ nk_result NK_CALL nk_audio_bus_effect_create_stereo_delay(nk_audio_bus bus, nk_a
         return create_audio_processor_effect(std::move(value), NK_AUDIO_EFFECT_STEREO_DELAY, out_effect);
     });
 }
+nk_result NK_CALL nk_audio_bus_effect_bind_dsp_tempo(nk_audio_bus_effect handle,
+    nk_audio_dsp_engine engine, float beats) {
+    return nk::core::result_boundary("binding delay to native transport tempo", [&]() -> nk_result {
+        if (const auto result = enter_audio_ui(); result != NK_OK) return result;
+        auto clock = nk::audio_dsp::transport_clock(engine);
+        if (!clock) return NK_ERROR_INVALID_HANDLE;
+        return with_effect(handle, "could not bind native transport tempo",
+            [&](AudioEffectResource &effect, AudioBusResource &, const char *) -> nk_result {
+                if (!effect.processor || !effect.processor->processor->bind_tempo(std::move(clock), beats))
+                    return invalid_argument("invalid or unsupported delay tempo binding");
+                return NK_OK;
+            });
+    });
+}
+
 nk_result NK_CALL nk_audio_bus_effect_set_delay_tempo(nk_audio_bus_effect handle, float bpm, float beats) {
     return nk::core::result_boundary("unexpected error while setting delay tempo", [&]() -> nk_result {
         if (const auto result = enter_audio_ui(); result != NK_OK) return result;

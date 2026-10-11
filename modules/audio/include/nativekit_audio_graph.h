@@ -162,6 +162,13 @@ NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_create_dynamics(
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_create_stereo_delay(
     nk_audio_bus bus, nk_audio_bus_effect *out_effect NK_OUT NK_OWNED);
 /** Sets tempo and beat length together. Effective time must not exceed 4 seconds. */
+/** Follow the engine's native tempo at effect processing boundaries, with
+ * smoothed delay-time changes. Binding retains the clock after engine disposal.
+ * Explicit set_delay_tempo switches the effect back to manual tempo control.
+ */
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_bind_dsp_tempo(
+    nk_audio_bus_effect effect, nk_audio_dsp_engine engine, float beats);
+
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_set_delay_tempo(
     nk_audio_bus_effect effect, float bpm, float beats);
 /** Sets a finite, range-checked parameter; changes are smoothed by the processor. */

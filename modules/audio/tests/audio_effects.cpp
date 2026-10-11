@@ -165,10 +165,28 @@ void test_graph_tail() {
     ma_node_graph_uninit(&graph, nullptr);
 }
 } // namespace
+static void test_native_tempo_binding() {
+    auto delay=create_stereo_delay_processor(48000,2);
+    auto clock=std::make_shared<nk::audio_dsp::TransportClock>();
+    assert(delay->bind_tempo(clock,0.5f));
+    std::array<float,512> silence{}, output{};
+    clock->bpm.store(88);
+    delay->process(silence.data(),output.data(),256);
+    float value=0;
+    assert(delay->get_parameter(NK_AUDIO_EFFECT_PARAMETER_BPM,value) && value==88);
+    clock->bpm.store(120);
+    delay->process(silence.data(),output.data(),256);
+    assert(delay->get_parameter(NK_AUDIO_EFFECT_PARAMETER_DELAY_SECONDS,value) && value==0.25f);
+    assert(delay->set_tempo(100,0.5f)); // Manual control unbinds the native clock.
+    clock->bpm.store(150);
+    delay->process(silence.data(),output.data(),256);
+    assert(delay->get_parameter(NK_AUDIO_EFFECT_PARAMETER_BPM,value) && value==100);
+}
 int main() {
     test_reverb();
     test_dynamics();
     test_stereo_delay();
+    test_native_tempo_binding();
     test_graph_tail();
     std::puts("PASS: offline reverb decay/reset, dynamics gain, and graph tails");
 }

@@ -116,6 +116,8 @@ class Voice final {
     void note_on(uint32_t note, float velocity) noexcept;
     void note_off() noexcept;
     void reset() noexcept;
+    // Drop borrowed resources while the engine still pins the owning instrument.
+    void release_resources() noexcept;
     float process() noexcept;
     StereoSample process_stereo() noexcept;
     bool active() const noexcept;

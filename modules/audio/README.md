@@ -463,3 +463,61 @@ channel. Existing patches with no new routes keep their prior sound.
 `audio_dsp_voice` also checks independent LFO contributions, shared-source tick
 counts, phase modes, zero-sweep filter-envelope routing, stereo balance clamping,
 missing-source validation, the v1 voice-options prefix and callback/offline parity.
+
+
+## Prepared native scores, notes and sampled instruments
+
+`nk_audio_dsp_engine_prepare_transport` copies immutable section/event/bar data
+on a preparation thread. Events use fractional frame positions; rendering
+carries the fractional phase through loops and section changes. Play/section
+commands are consumed on the device clock. Group play/request publishes one
+common cutoff to independently routed track engines, rejecting different
+section/bar boundaries or clock domains before changing any track. A group
+request must identify the current program. The admission cutoff accounts for
+both device and DSP processing sizes. Late play commands keep their requested
+origin and seek past overdue onsets, preserving the shared track timeline.
+Group publication and scalar
+parameter snapshots do not take a control mutex in the audio callback.
+
+`nk_audio_dsp_engine_note_on` returns a monotonically increasing 64-bit identity.
+A hold deadline and explicit token release are native operations. A release
+before an onset cancels it. `set_voice_policy` prepares fixed stealing tails;
+allocation prefers released, lower-priority, quiet/old voices and preserves the
+outgoing waveform while fading it out. With no available tail/voice budget,
+new notes are dropped and counted. The command ring holds 64 commands, the
+timed-note heap 512 events; prepared scores allow at most 128 events in each
+integer-frame interval and at most 256 after fractional rebasing.
+
+Programs, instruments, PCM and provider resources retain control-side pins.
+Retire handles/programs when no longer needed and call `engine_collect` on the
+control thread. Callback references can be released without final resource
+destruction there. Reset/detach cancel timed commands and native playback; first
+attachment starts a fresh device clock domain. Prepared programs remain valid
+for explicit replay. Forward source-clock discontinuities skip overdue score
+onsets with bounded seeking; reverse clocks stop old programs. Ordinary UI
+stalls do not interrupt the native timeline. Runtime status counts clock gaps,
+stealing, drops and retained retired resources.
+
+`instrument_create_from_sample` copies finite mono/stereo PCM with root-note
+pitch, a validated ADSR and optional looping through release.
+`nk_audio_soundfont_load_memory` decodes uncompressed SF2 on a preparation
+thread. Preset metadata exposes index, MIDI bank/program and name;
+`instrument_create_from_soundfont` prepares independent preallocated playback
+slots. Closing the bank handle leaves existing instruments valid. Both use the
+same token/release/stealing/routing contract as procedural instruments.
+
+SF2 uses the pinned upstream MIT TinySoundFont submodule with no source changes.
+The private adapter bounds RIFF/hydra/sample indices and counter durations,
+bounds pre-decode expansion to 4096 regions per preset, 65536 regions per bank
+and 4096 presets, limits playback to 64 overlapping layers, and preallocates
+all TSF voice storage. SF3, SF2 modulators and region chorus/reverb sends are
+unsupported; route mixer sends explicitly. Rendering one sample at a time
+preserves exact event and block-partition timing; profile representative banks
+at the intended polyphony on target devices. `audio_soundfont` verifies no TSF
+allocation or free in device processing with our original sine fixture,
+including 32 voices and eight concurrent stealing tails. This does not qualify
+arbitrary complex bank fidelity or CPU cost.
+
+Stereo delay's `effect_bind_dsp_tempo` reads an independent shared native BPM
+snapshot at effect processing block boundaries. Explicit tempo setting removes
+the binding. The snapshot can outlive its engine without retaining DSP voices.

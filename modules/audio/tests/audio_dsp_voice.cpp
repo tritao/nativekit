@@ -45,7 +45,8 @@ nk_audio_dsp_voice_options advanced() {
     return v;
 }
 std::vector<float> render(nk_audio_dsp_patch patch, uint32_t channels = 2, uint32_t block = 256,
-                          bool attached = false, bool retrigger = false) {
+                          bool attached = false, bool retrigger = false, uint32_t repeat_interval = 0,
+                          nk_audio_dsp_patch replacement_patch = NK_INVALID_HANDLE) {
     nk_audio_dsp_engine_options e{};
     e.struct_size = sizeof(e); e.sample_rate = 48000; e.channels = channels;
     e.block_size = 256; e.max_voices = 4;
@@ -57,6 +58,12 @@ std::vector<float> render(nk_audio_dsp_patch patch, uint32_t channels = 2, uint3
     note.struct_size = sizeof(note); note.kind = NK_AUDIO_DSP_EVENT_NOTE_ON;
     note.instrument = instrument; note.voice_id = 1; note.note = 57; note.velocity = 1;
     nk_audio_dsp_event off = note; off.kind = retrigger ? NK_AUDIO_DSP_EVENT_NOTE_ON : NK_AUDIO_DSP_EVENT_NOTE_OFF;
+    nk_audio_dsp_instrument replacement = NK_INVALID_HANDLE;
+    if (replacement_patch != NK_INVALID_HANDLE) {
+        assert(retrigger);
+        assert(nk_audio_dsp_instrument_create_from_patch(engine, replacement_patch, &replacement) == NK_OK);
+        off.instrument = replacement;
+    }
     constexpr uint32_t frames = 40000, release = 16384;
     if (attached) {
         assert(channels == 2);
@@ -64,10 +71,16 @@ std::vector<float> render(nk_audio_dsp_patch patch, uint32_t channels = 2, uint3
         assert(nk_audio_get_time_pcm_frames(&now) == NK_OK);
         assert(nk_audio_dsp_engine_attach_device(engine) == NK_OK);
         off.frame_offset = release;
-        const nk_audio_dsp_event events[] = {note, off};
+        std::vector<nk_audio_dsp_event> events{note};
+        if (repeat_interval > 0) {
+            for (uint32_t frame = repeat_interval; frame < release; frame += repeat_interval) {
+                auto repeated = note; repeated.frame_offset = frame; events.push_back(repeated);
+            }
+        }
+        events.push_back(off);
         // Schedule ahead of any suffix already cached by the mixer graph. This also
         // checks a newly attached source after another source has been detached.
-        assert(nk_audio_dsp_engine_schedule(engine, now + 1024, events, 2) == NK_OK);
+        assert(nk_audio_dsp_engine_schedule(engine, now + 1024, events.data(), static_cast<uint32_t>(events.size())) == NK_OK);
         std::vector<float> warmup(1024 * channels);
         assert(nk_audio_test_render(warmup.data(), 1024) == NK_OK);
     }
@@ -75,20 +88,27 @@ std::vector<float> render(nk_audio_dsp_patch patch, uint32_t channels = 2, uint3
     for (uint32_t start = 0; start < frames;) {
         // Stop a block at release to vary partitioning without changing event time.
         auto count = std::min(block, frames - start);
-        if (start < release) count = std::min(count, release - start);
+        if (start < release) {
+            count = std::min(count, release - start);
+            if (repeat_interval > 0)
+                count = std::min(count, repeat_interval - start % repeat_interval);
+        }
         if (attached) {
             assert(nk_audio_test_render(output.data() + start * channels, count) == NK_OK);
         } else {
             nk_audio_dsp_render_target t{};
             t.struct_size = sizeof(t); t.samples = output.data() + start * channels;
             t.sample_count = count * channels; t.frame_count = count; t.channels = channels;
-            auto *event = start == 0 ? &note : start == release ? &off : nullptr;
+            auto *event = start == 0 ? &note : start == release ? &off :
+                repeat_interval > 0 && start < release && start % repeat_interval == 0 ? &note : nullptr;
             assert(nk_audio_dsp_engine_render(engine, &t, event, event ? 1 : 0) == NK_OK);
         }
         start += count;
     }
     if (attached) assert(nk_audio_dsp_engine_detach_device(engine) == NK_OK);
     assert(nk_audio_dsp_instrument_destroy(instrument) == NK_OK);
+    if (replacement != NK_INVALID_HANDLE)
+        assert(nk_audio_dsp_instrument_destroy(replacement) == NK_OK);
     assert(nk_audio_dsp_engine_destroy(engine) == NK_OK);
     return output;
 }
@@ -212,7 +232,35 @@ int main() {
         assert(render(patch) != moving_signal); nk_audio_dsp_patch_destroy(patch);
     }
     auto restarted = render(motion_patch, 2, 256, false, true);
-    assert(std::equal(restarted.begin(), restarted.begin()+4096, restarted.begin()+16384*2));
+    // Reuse is continuous in both channels, then converges to the restarted
+    // oscillator/envelope/LFO phase once the five-millisecond correction ends.
+    for (uint32_t channel = 0; channel < 2; ++channel)
+        assert(std::abs(restarted[16384*2 + channel] - restarted[16383*2 + channel]) < 1e-7f);
+    assert(std::equal(restarted.begin()+480, restarted.begin()+4096,
+                      restarted.begin()+16384*2+480));
+    assert(restarted == render(motion_patch, 2, 71, false, true));
+    assert(restarted == render(motion_patch, 2, 256, true, true));
+    // Switching instruments on a reused voice retains stereo continuity too.
+    const auto switched = render(motion_patch, 2, 256, false, true, 0, legacy);
+    for (uint32_t channel = 0; channel < 2; ++channel)
+        assert(std::abs(switched[16384*2+channel] - switched[16383*2+channel]) < 1e-7f);
+    assert(switched == render(motion_patch, 2, 71, false, true, 0, legacy));
+    assert(switched == render(motion_patch, 2, 256, true, true, 0, legacy));
+    for (const auto value : switched) assert(std::isfinite(value) && std::abs(value) < 1);
+    // Include reuses faster than the continuity bridge, and immediate releases.
+    auto rapid_options = motion; rapid_options.envelope.release_seconds = 0;
+    auto rapid_patch = create(rapid_options, &moving);
+    for (uint32_t interval : {64u, 1024u}) {
+        const auto repeated = render(rapid_patch, 2, 256, false, false, interval);
+        assert(repeated == render(rapid_patch, 2, 71, false, false, interval));
+        assert(repeated == render(rapid_patch, 2, 256, true, false, interval));
+        for (uint32_t frame = interval; frame < 16384; frame += interval)
+            for (uint32_t channel = 0; channel < 2; ++channel)
+                assert(std::abs(repeated[frame*2+channel] - repeated[(frame-1)*2+channel]) < 1e-7f);
+        for (const auto value : repeated) assert(std::isfinite(value) && std::abs(value) < 1);
+        assert(energy(repeated, repeated.size()-2000, repeated.size()) == 0);
+    }
+    assert(nk_audio_dsp_patch_destroy(rapid_patch) == NK_OK);
     auto running = moving; running.additional_lfos[0].mode = NK_AUDIO_DSP_LFO_FREE_RUNNING;
     auto running_patch = create(motion, &running);
     auto continuous = render(running_patch, 2, 256, false, true);

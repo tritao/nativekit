@@ -14,6 +14,13 @@ class StereoDelay final : public EffectProcessor {
     size_t position = 0;
     std::atomic<float> wet{0.3f}, dry{1}, feedback{0.35f}, ping_pong{0};
     std::atomic<float> bpm{120}, beats{0}, manual_seconds{0.25f}, delay_seconds{0.25f};
+    struct TempoBinding {
+        std::shared_ptr<const nk::audio_dsp::TransportClock> clock;
+        float beats;
+    };
+    // Prepared bindings stay pinned until the processor is detached/destroyed.
+    std::vector<std::unique_ptr<TempoBinding>> tempo_bindings;
+    std::atomic<const TempoBinding *> tempo_binding{nullptr};
     std::atomic<bool> reset_requested{false};
     double from_delay, to_delay;
     uint32_t fade_position = 0;
@@ -41,8 +48,17 @@ class StereoDelay final : public EffectProcessor {
             !std::isfinite(length) || length <= 0 || length > 8) return false;
         const auto seconds = 60 * length / tempo;
         if (!valid_time(seconds)) return false;
+        tempo_binding.store(nullptr, std::memory_order_release);
         bpm.store(tempo); beats.store(length); delay_seconds.store(seconds);
         return true;
+    }
+    bool bind_tempo(std::shared_ptr<const nk::audio_dsp::TransportClock> clock, float length) override {
+        if (!clock || !std::isfinite(length) || length <= 0 || length > 8 || tempo_bindings.size() >= 64)
+            return false;
+        auto binding = std::make_unique<TempoBinding>();
+        binding->clock = std::move(clock); binding->beats = length;
+        const auto *published = binding.get(); tempo_bindings.push_back(std::move(binding));
+        tempo_binding.store(published, std::memory_order_release); return true;
     }
     bool set_parameter(nk_audio_effect_parameter parameter, float value) noexcept override {
         if (!std::isfinite(value)) return false;
@@ -92,6 +108,13 @@ class StereoDelay final : public EffectProcessor {
         return static_cast<uint32_t>(std::ceil(delay_seconds.load() * rate * std::max(1.0, echoes))) + fade_frames;
     }
     void process(const float *input, float *output, uint32_t frames) noexcept override {
+        if (const auto *binding = tempo_binding.load(std::memory_order_acquire)) {
+            const auto tempo = binding->clock->bpm.load(std::memory_order_acquire);
+            const auto seconds = 60 * binding->beats / tempo;
+            if (std::isfinite(tempo) && tempo > 0 && valid_time(seconds)) {
+                bpm.store(tempo); beats.store(binding->beats); delay_seconds.store(seconds);
+            }
+        }
         if (reset_requested.exchange(false)) {
             std::fill(history.begin(), history.end(), std::array<float, 2>{});
             position = 0; fading = false; fade_position = 0;

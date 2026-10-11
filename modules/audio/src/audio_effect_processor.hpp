@@ -1,5 +1,6 @@
 #pragma once
 #include "nativekit_audio_graph.h"
+#include "audio_transport_clock.hpp"
 #include <cstdint>
 #include <memory>
 
@@ -14,6 +15,7 @@ class EffectProcessor {
     virtual bool set_parameter(nk_audio_effect_parameter parameter, float value) noexcept = 0;
     virtual bool get_parameter(nk_audio_effect_parameter parameter, float &value) const noexcept = 0;
     virtual bool set_tempo(float, float) noexcept { return false; }
+    virtual bool bind_tempo(std::shared_ptr<const nk::audio_dsp::TransportClock>, float) { return false; }
     virtual void request_reset() noexcept = 0;
     virtual uint32_t latency_frames() const noexcept = 0;
     virtual uint32_t tail_frames() const noexcept = 0;

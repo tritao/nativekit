@@ -3,11 +3,60 @@
 #include "audio_daisy_random.hpp"
 #include "PhysicalModeling/KarplusString.h"
 #include "Synthesis/oscillator.h"
+#include "Filters/svf.h"
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
 #include <vector>
 using namespace nk::audio_dsp;
+// Independent pre-cache SVF equations: ensure the optimization preserves all
+// outputs with audio-rate cutoff changes and live resonance/drive updates.
+static void svf_cached_resonance_matches_reference() {
+    for (const float rate : {44100.f, 48000.f, 96000.f}) {
+        daisysp::Svf filter;
+        filter.Init(rate);
+        float resonance = 0.5f, drive = 0.5f, pre_drive = 0.5f;
+        float low = 0, band = 0;
+        for (uint32_t i = 0; i < 20000; ++i) {
+            if (i > 0 && i % 503 == 0) {
+                resonance = static_cast<float>((i / 503) % 11) / 10;
+                filter.SetRes(resonance);
+                drive = pre_drive * resonance;
+            }
+            if (i > 0 && i % 307 == 0) {
+                const float value = static_cast<float>((i / 307) % 11);
+                filter.SetDrive(value);
+                pre_drive = std::clamp(value * 0.1f, 0.f, 1.f);
+                drive = pre_drive * resonance;
+            }
+            const float cutoff = std::clamp(100.f + 24000.f * std::abs(std::sin(i * 0.001f)),
+                                            1e-6f, rate / 3.f);
+            const float frequency = 2.f * sinf(PI_F * std::min(0.25f, cutoff / (rate * 2.f)));
+            const float damping = std::min(2.f * (1.f - powf(resonance, 0.25f)),
+                                           std::min(2.f, 2.f / frequency - frequency * 0.5f));
+            const float input = 0.1f * std::sin(i * 0.017f);
+            float expected_low = 0, expected_high = 0, expected_band = 0;
+            float expected_peak = 0, expected_notch = 0;
+            for (uint32_t pass = 0; pass < 2; ++pass) {
+                const float notch = input - damping * band;
+                low += frequency * band;
+                const float high = notch - low;
+                band = frequency * high + band - drive * band * band * band;
+                expected_low += 0.5f * low;
+                expected_high += 0.5f * high;
+                expected_band += 0.5f * band;
+                expected_peak += 0.5f * (low - high);
+                expected_notch += 0.5f * notch;
+            }
+            filter.SetFreq(cutoff);
+            filter.Process(input);
+            assert(filter.Low() == expected_low && filter.High() == expected_high);
+            assert(filter.Band() == expected_band && filter.Peak() == expected_peak);
+            assert(filter.Notch() == expected_notch && std::isfinite(filter.Low()));
+        }
+    }
+}
 static void fm2_zero_index_tracks_carrier_pitch() {
     PatchParameters reference, fm;
     nk_audio_dsp_source_options config{};
@@ -216,6 +265,7 @@ static void analog_snare_shell_decays_without_note_off() {
     assert(late_energy < early_energy * .0001);
 }
 int main() {
+    svf_cached_resonance_matches_reference();
     karplus_linear_string_tracks_pitch();
     karplus_damping_controls_natural_decay();
     karplus_bridge_mode_is_not_clamped_to_linear();

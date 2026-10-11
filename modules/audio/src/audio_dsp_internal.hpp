@@ -2,6 +2,7 @@
 #define NATIVEKIT_AUDIO_DSP_INTERNAL_HPP
 
 #include "nativekit_audio_dsp.h"
+#include "audio_transport_clock.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -10,7 +11,7 @@ namespace nk::audio_dsp {
 
 /* These functions bridge the standalone DSP renderer to NativeKit's device. */
 nk_result attach_device(nk_audio_dsp_engine engine, uint64_t device_frame,
-                        uint32_t sample_rate, uint32_t channels);
+                        uint32_t sample_rate, uint32_t channels, uint32_t clock_quantum);
 nk_result require_attached(nk_audio_dsp_engine engine);
 /** Private typed source boundary; retained by the graph node for callback lifetime. */
 class DeviceOutput {
@@ -21,6 +22,7 @@ class DeviceOutput {
     virtual void detach() noexcept = 0;
 };
 std::shared_ptr<DeviceOutput> device_output(nk_audio_dsp_engine engine);
+std::shared_ptr<const TransportClock> transport_clock(nk_audio_dsp_engine engine);
 
 } // namespace nk::audio_dsp
 

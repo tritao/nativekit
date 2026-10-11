@@ -1,12 +1,14 @@
 #include "nativekit_audio_dsp.h"
 
 #include "audio_dsp_backend.hpp"
+#include "audio_soundfont.hpp"
 #include "audio_dsp_internal.hpp"
 #include "core/boundary.hpp"
 #include "core/error.hpp"
 #include "core/handle_registry.hpp"
 #include "core/runtime.hpp"
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cmath>
@@ -53,6 +55,9 @@ struct ScheduledDspEvent {
     uint64_t frame = 0;
     uint64_t generation = 0;
     nk_audio_dsp_event event{};
+    uint64_t note_token = 0, sequence = 0;
+    uint64_t hold_frames = 0;
+    int32_t priority = 0;
     std::shared_ptr<DspInstrumentResource> instrument;
 };
 
@@ -64,31 +69,60 @@ struct DspWavetableResource final : nk::core::Resource {
     std::shared_ptr<const nk::audio_dsp::Wavetable> table;
 };
 
+struct SoundFontResource final : nk::core::Resource {
+    std::shared_ptr<nk::audio_dsp::SoundFontBank> bank;
+    struct Preset { uint32_t bank, program; std::string name; };
+    std::vector<Preset> presets;
+};
+
 struct DspInstrumentResource final : nk::core::Resource {
     std::weak_ptr<DspEngineResource> engine;
     std::shared_ptr<DspPatchResource> patch;
+    std::shared_ptr<nk::audio_dsp::InstrumentSource> provider;
     DspParameters defaults;
     DspParameters current;
     uint64_t parameters_version = 1;
+    std::array<std::atomic<float>, 9> published{};
+    std::array<std::array<std::atomic<float>, 4>, NK_AUDIO_DSP_MAX_OSCILLATORS> published_oscillators{};
+    bool retired = false;
 };
 
 struct DspVoice {
     nk::audio_dsp::Voice backend;
+    std::shared_ptr<nk::audio_dsp::InstrumentSource> provider;
+    int provider_slot = -1;
     std::shared_ptr<DspInstrumentResource> instrument;
     uint32_t voice_id = 0;
     uint32_t note = 0;
     float velocity = 0.0f;
     uint64_t parameters_version = 0;
     bool active = false;
+    bool released = false;
+    uint64_t note_token = 0;
+    uint64_t started = 0;
+    uint64_t release_frame = 0;
+    uint64_t score_cycle = 0;
+    uint32_t score_note = 0;
+    int32_t priority = 0;
+    uint32_t fade_remaining = 0, fade_in_remaining = 0;
+    float energy = 0;
 
     void clear() noexcept {
-        backend.reset();
+        if (provider) provider->release(provider_slot);
+        provider_slot = -1;
+        provider.reset();
+        backend.release_resources();
         instrument.reset();
         voice_id = 0;
         note = 0;
         velocity = 0.0f;
         parameters_version = 0;
         active = false;
+        released = false;
+        note_token = started = release_frame = score_cycle = 0;
+        score_note = fade_remaining = fade_in_remaining = 0;
+        priority = 0;
+        energy = 0;
     }
 };
 
@@ -102,11 +136,76 @@ struct ActiveParameterRamp {
     uint64_t end_frame;
 };
 
+struct TransportEvent {
+    nk_audio_dsp_transport_event value{};
+    std::shared_ptr<DspInstrumentResource> instrument;
+};
+struct TransportTempo { double frame, bpm; };
+struct TransportSection {
+    double length = 0;
+    std::vector<TransportEvent> events;
+    std::vector<double> bars;
+    std::vector<TransportTempo> tempos;
+};
+struct TransportProgram {
+    uint64_t id = 0, last_command = 0;
+    bool retired = false;
+    std::vector<TransportSection> sections;
+};
+struct RuntimePublication {
+    std::atomic<bool> ready{false};
+    std::atomic<uint32_t> remaining{0};
+    uint64_t frame = 0;
+};
+struct TransportCommand {
+    enum Kind { play, request, stop, queued_note } kind = stop;
+    TransportProgram *program = nullptr;
+    uint64_t sequence = 0, frame = 0;
+    uint32_t section = 0;
+    ScheduledDspEvent note;
+    std::shared_ptr<RuntimePublication> publication;
+};
+constexpr uint32_t transport_command_capacity = 64;
+struct NativeTransport {
+    TransportProgram *program = nullptr;
+    uint64_t start = 0, cycle = 1, loops = 0;
+    double origin = 0;
+    uint32_t section = 0, event = 0;
+    uint32_t pending = UINT32_MAX;
+    double boundary = 0;
+    double bpm = 120;
+    uint64_t next_frame = 0;
+    bool has_frame = false;
+};
+
 struct DspEngineResource final : nk::core::Resource, nk::audio_dsp::DeviceOutput {
     nk_audio_dsp_engine_options options{};
     std::mutex mutex;
     std::vector<DspVoice> voices;
-    std::vector<std::weak_ptr<DspInstrumentResource>> instruments;
+    // Strong control-side pins prevent final destruction on the audio callback.
+    std::vector<std::shared_ptr<DspInstrumentResource>> instruments;
+    std::vector<DspVoice> tails;
+    bool stealing = false;
+    uint32_t fade_frames = 240;
+    uint64_t voice_serial = 0, offline_frame = 0;
+    uint64_t runtime_next_frame = 0;
+    bool runtime_has_frame = false;
+    std::atomic<uint64_t> next_note_token{1};
+    std::atomic<uint64_t> stolen_voices{0}, dropped_notes{0}, clock_discontinuities{0};
+    std::vector<std::unique_ptr<TransportProgram>> programs;
+    uint64_t next_program = 1, next_command = 1;
+    std::array<TransportCommand, transport_command_capacity> transport_commands{};
+    std::atomic<uint32_t> transport_write{0}, transport_read{0};
+    std::atomic<uint64_t> consumed_command{0}, active_program{0};
+    NativeTransport transport;
+    const std::shared_ptr<nk::audio_dsp::TransportClock> clock =
+        std::make_shared<nk::audio_dsp::TransportClock>();
+    std::vector<std::shared_ptr<RuntimePublication>> publications;
+    std::array<ScheduledDspEvent, 512> note_heap{};
+    uint32_t note_heap_count = 0;
+    std::atomic<uint64_t> status_sequence{0}, status_frame{0}, status_loops{0};
+    std::atomic<uint32_t> status_section{0}, status_playing{0};
+    std::atomic<double> status_bpm{120};
     std::array<ScheduledDspEvent, scheduled_event_capacity> scheduled_events{};
     std::atomic<uint32_t> scheduled_write{0};
     std::atomic<uint32_t> scheduled_read{0};
@@ -115,7 +214,7 @@ struct DspEngineResource final : nk::core::Resource, nk::audio_dsp::DeviceOutput
     std::atomic<uint32_t> output_readers{0};
     uint64_t output_frame = 0;
     uint32_t output_sample_rate = 0;
-    uint32_t output_channels = 0;
+    uint32_t output_channels = 0, device_quantum = 0;
     std::vector<float> output_scratch;
     std::array<ActiveParameterRamp, max_attached_parameter_ramps> output_ramps{};
     uint32_t output_ramp_count = 0;
@@ -123,6 +222,13 @@ struct DspEngineResource final : nk::core::Resource, nk::audio_dsp::DeviceOutput
     void process(float *, uint64_t, uint32_t, uint32_t, uint64_t) noexcept override;
     void detach() noexcept override;
     bool alive = true;
+    ~DspEngineResource() override {
+        for (auto &command : transport_commands) if (command.publication) {
+            auto *publication = command.publication.get();
+            command.publication.reset();
+            publication->remaining.fetch_sub(1, std::memory_order_release);
+        }
+    }
 };
 
 
@@ -666,6 +772,26 @@ float get_oscillator_parameter(const DspParameters &parameters, uint32_t oscilla
     }
 }
 
+void publish_parameters(DspInstrumentResource &instrument) noexcept {
+    for (uint32_t p = 0; p < 9; ++p)
+        instrument.published[p].store(get_parameter(instrument.current, p), std::memory_order_relaxed);
+    for (uint32_t o = 0; o < NK_AUDIO_DSP_MAX_OSCILLATORS; ++o)
+        for (uint32_t p = 0; p < 4; ++p)
+            instrument.published_oscillators[o][p].store(
+                get_oscillator_parameter(instrument.current, o, p + 9), std::memory_order_relaxed);
+}
+
+DspParameters control_parameters(const DspInstrumentResource &instrument) {
+    auto parameters = instrument.defaults;
+    for (uint32_t p = 0; p < 9; ++p)
+        (void)set_parameter(parameters, p, instrument.published[p].load(std::memory_order_relaxed));
+    for (uint32_t o = 0; o < parameters.oscillator_count; ++o)
+        for (uint32_t p = 0; p < 4; ++p)
+            (void)set_oscillator_parameter(parameters, o, p + 9,
+                instrument.published_oscillators[o][p].load(std::memory_order_relaxed));
+    return parameters;
+}
+
 bool instrument_belongs_to(const std::shared_ptr<DspInstrumentResource> &instrument,
                            const DspEngineResource &engine) {
     return instrument && instrument->engine.lock().get() == &engine;
@@ -680,6 +806,7 @@ nk_result create_instrument_resource(const std::shared_ptr<DspEngineResource> &e
     instrument->patch = patch;
     instrument->defaults = parameters;
     instrument->current = parameters;
+    publish_parameters(*instrument);
     std::lock_guard lock(engine->mutex);
     if (!engine->alive)
         return invalid_request("audio DSP engine is no longer alive");
@@ -697,7 +824,7 @@ nk_result create_instrument_resource(const std::shared_ptr<DspEngineResource> &e
 void sync_voice_parameters(DspVoice &voice) noexcept {
     if (!voice.instrument || voice.parameters_version == voice.instrument->parameters_version)
         return;
-    voice.backend.set_parameters(voice.instrument->current);
+    if (!voice.instrument->provider) voice.backend.set_parameters(voice.instrument->current);
     voice.parameters_version = voice.instrument->parameters_version;
 }
 
@@ -705,14 +832,22 @@ nk::audio_dsp::StereoSample voice_sample(DspVoice &voice) noexcept {
     if (!voice.active || !voice.instrument)
         return {};
     sync_voice_parameters(voice);
-    const auto result = voice.backend.process_stereo();
-    voice.active = voice.backend.active();
+    auto result = voice.provider ? voice.provider->process(voice.provider_slot)
+                                 : voice.backend.process_stereo();
+    voice.active = voice.provider ? voice.provider->active(voice.provider_slot)
+                                  : voice.backend.active();
+    if (voice.provider) {
+        result.left *= voice.instrument->current.gain;
+        result.right *= voice.instrument->current.gain;
+    }
+    voice.energy += 0.01f * ((std::abs(result.left) + std::abs(result.right)) * 0.5f - voice.energy);
+    if (!voice.active) voice.clear();
     return result;
 }
 
 DspVoice *find_voice(DspEngineResource &engine, uint32_t voice_id) {
     for (auto &voice : engine.voices) {
-        if (voice.active && voice.voice_id == voice_id)
+        if (voice.active && voice.note_token == 0 && voice.voice_id == voice_id)
             return &voice;
     }
     return nullptr;
@@ -726,6 +861,119 @@ DspVoice *find_free_voice(DspEngineResource &engine) {
     return nullptr;
 }
 
+DspVoice *find_token(DspEngineResource &engine, uint64_t token) {
+    for (auto &voice : engine.voices)
+        if (voice.active && voice.note_token == token) return &voice;
+    return nullptr;
+}
+
+DspVoice *allocate_voice(DspEngineResource &engine, int32_t priority) {
+    if (auto *voice = find_free_voice(engine)) {
+        voice->clear();
+        return voice;
+    }
+    if (!engine.stealing) return nullptr;
+    DspVoice *candidate = nullptr;
+    for (auto &voice : engine.voices) {
+        if (!candidate || (voice.released != candidate->released ? voice.released :
+            voice.priority != candidate->priority ? voice.priority < candidate->priority :
+            voice.released && voice.energy != candidate->energy ? voice.energy < candidate->energy :
+            voice.started < candidate->started)) candidate = &voice;
+    }
+    if (!candidate || (!candidate->released && candidate->priority > priority)) return nullptr;
+    for (auto &tail : engine.tails) {
+        if (tail.active) continue;
+        tail.clear();
+        std::swap(tail, *candidate); // Both backends were allocated during preparation.
+        if (tail.provider) tail.provider->note_off(tail.provider_slot);
+        else tail.backend.note_off();
+        tail.released = true;
+        tail.fade_remaining = engine.fade_frames;
+        candidate->fade_in_remaining = engine.fade_frames;
+        engine.stolen_voices.fetch_add(1, std::memory_order_relaxed);
+        return candidate;
+    }
+    return nullptr; // Reserved tail budget is exhausted; never allocate a tail here.
+}
+
+nk_result start_voice(DspEngineResource &engine,
+                      const std::shared_ptr<DspInstrumentResource> &instrument,
+                      const nk_audio_dsp_event &event, uint64_t token = 0,
+                      int32_t priority = 0, uint64_t release_frame = 0,
+                      uint64_t score_cycle = 0, uint32_t score_note = 0) {
+    auto *voice = token == 0 ? find_voice(engine, event.voice_id) : find_token(engine, token);
+    if (!voice) voice = allocate_voice(engine, priority);
+    if (!voice) {
+        engine.dropped_notes.fetch_add(1, std::memory_order_relaxed);
+        return NK_ERROR_QUEUE_FULL;
+    }
+    const bool instrument_changed = voice->instrument.get() != instrument.get();
+    // Keep the previous owner pinned until its backend references are replaced.
+    const auto previous_instrument = voice->instrument;
+    voice->instrument = instrument;
+    voice->voice_id = event.voice_id;
+    voice->note_token = token;
+    voice->note = event.note;
+    voice->velocity = event.velocity;
+    voice->priority = priority;
+    voice->started = ++engine.voice_serial;
+    voice->release_frame = release_frame;
+    voice->score_cycle = score_cycle;
+    voice->score_note = score_note;
+    voice->released = false;
+    voice->active = true;
+    if (instrument_changed) {
+        voice->parameters_version = 0;
+        if (instrument->provider) voice->backend.release_resources();
+    }
+    sync_voice_parameters(*voice);
+    if (voice->provider) voice->provider->release(voice->provider_slot);
+    voice->provider = instrument->provider;
+    voice->provider_slot = -1;
+    if (voice->provider) {
+        voice->provider_slot = voice->provider->acquire(event.note, event.velocity);
+        if (voice->provider_slot < 0) {
+            voice->clear();
+            engine.dropped_notes.fetch_add(1, std::memory_order_relaxed);
+            return NK_ERROR_QUEUE_FULL;
+        }
+    } else voice->backend.note_on(event.note, event.velocity);
+    return NK_OK;
+}
+
+void release_voice(DspVoice *voice) {
+    if (!voice) return;
+    if (voice->provider) voice->provider->note_off(voice->provider_slot);
+    else voice->backend.note_off();
+    voice->released = true;
+    voice->release_frame = 0;
+}
+
+nk::audio_dsp::StereoSample mix_voices(DspEngineResource &engine, uint64_t frame) {
+    nk::audio_dsp::StereoSample mixed;
+    for (auto &voice : engine.voices) {
+        if (voice.release_frame && frame >= voice.release_frame) release_voice(&voice);
+        auto sample = voice_sample(voice);
+        if (voice.fade_in_remaining) {
+            const auto t = 1.0f - static_cast<float>(voice.fade_in_remaining) / engine.fade_frames;
+            const auto gain = t * t * (3.0f - 2.0f * t);
+            sample.left *= gain; sample.right *= gain;
+            --voice.fade_in_remaining;
+        }
+        mixed.left += sample.left; mixed.right += sample.right;
+    }
+    for (auto &voice : engine.tails) {
+        if (!voice.active) continue;
+        const auto remaining = voice.fade_remaining;
+        const auto sample = voice_sample(voice);
+        const auto t = static_cast<float>(remaining) / engine.fade_frames;
+        const auto gain = t * t * (3.0f - 2.0f * t);
+        mixed.left += sample.left * gain; mixed.right += sample.right * gain;
+        if (voice.active && --voice.fade_remaining == 0) voice.clear();
+    }
+    return mixed;
+}
+
 nk_result apply_parameter_value(DspEngineResource &engine,
                                 const std::shared_ptr<DspInstrumentResource> &instrument,
                                 nk_audio_dsp_parameter parameter, uint32_t oscillator_index,
@@ -734,6 +982,8 @@ nk_result apply_parameter_value(DspEngineResource &engine,
         return NK_ERROR_INVALID_HANDLE;
     if (!instrument_belongs_to(instrument, engine))
         return invalid_request("audio DSP instrument belongs to another engine");
+    if (instrument->provider && parameter != NK_AUDIO_DSP_PARAMETER_GAIN)
+        return invalid_argument("Sampled instruments expose only output gain as a DSP parameter");
     auto parameters = instrument->current;
     auto result = valid_oscillator_parameter(parameter)
                       ? set_oscillator_parameter(parameters, oscillator_index, parameter, value)
@@ -742,8 +992,10 @@ nk_result apply_parameter_value(DspEngineResource &engine,
         result = validate_engine_parameters(parameters, engine);
     if (result == NK_OK)
         instrument->current = parameters;
-    if (result == NK_OK)
+    if (result == NK_OK) {
         ++instrument->parameters_version;
+        publish_parameters(*instrument);
+    }
     return result;
 }
 
@@ -755,32 +1007,13 @@ nk_result apply_event(DspEngineResource &engine, const nk_audio_dsp_event &event
             return NK_ERROR_INVALID_HANDLE;
         if (!instrument_belongs_to(instrument, engine))
             return invalid_request("audio DSP instrument belongs to another engine");
-        auto *voice = find_voice(engine, event.voice_id);
-        if (!voice)
-            voice = find_free_voice(engine);
-        if (!voice) {
-            nk::core::set_error("audio DSP voice limit reached");
-            return NK_ERROR_QUEUE_FULL;
-        }
-        const auto instrument_changed = voice->instrument.get() != instrument.get();
-        if (!voice->active)
-            voice->clear();
-        voice->instrument = std::move(instrument);
-        voice->voice_id = event.voice_id;
-        voice->note = event.note;
-        voice->velocity = event.velocity;
-        voice->active = true;
-        if (instrument_changed)
-            voice->parameters_version = 0;
-        sync_voice_parameters(*voice);
-        voice->backend.note_on(event.note, event.velocity);
-        return NK_OK;
+        return start_voice(engine, instrument, event);
     }
     case NK_AUDIO_DSP_EVENT_NOTE_OFF: {
         auto *voice = find_voice(engine, event.voice_id);
         if (!voice)
             return NK_OK;
-        voice->backend.note_off();
+        release_voice(voice);
         return NK_OK;
     }
     case NK_AUDIO_DSP_EVENT_PARAMETER: {
@@ -864,7 +1097,9 @@ nk_result validate_event(const DspEngineResource &engine, const nk_audio_dsp_eve
             return invalid_request("audio DSP instrument belongs to another engine");
         if (event.kind == NK_AUDIO_DSP_EVENT_PARAMETER ||
             event.kind == NK_AUDIO_DSP_EVENT_PARAMETER_RAMP) {
-            auto parameters = instrument->current;
+            if (instrument->provider && event.parameter != NK_AUDIO_DSP_PARAMETER_GAIN)
+                return invalid_argument("unsupported sampled-instrument DSP parameter");
+            auto parameters = control_parameters(*instrument);
             const auto result = valid_oscillator_parameter(event.parameter)
                                     ? set_oscillator_parameter(parameters, event.oscillator_index,
                                                                event.parameter, event.value)
@@ -874,7 +1109,7 @@ nk_result validate_event(const DspEngineResource &engine, const nk_audio_dsp_eve
             if (const auto result = validate_engine_parameters(parameters, engine); result != NK_OK)
                 return result;
             if (event.kind == NK_AUDIO_DSP_EVENT_PARAMETER_RAMP) {
-                parameters = instrument->current;
+                parameters = control_parameters(*instrument);
                 const auto end_result = valid_oscillator_parameter(event.parameter)
                                              ? set_oscillator_parameter(parameters,
                                                                         event.oscillator_index,
@@ -894,8 +1129,10 @@ nk_result validate_event(const DspEngineResource &engine, const nk_audio_dsp_eve
 }
 
 void reset_voices(DspEngineResource &engine) {
-    for (auto &voice : engine.voices)
-        voice.clear();
+    for (auto &voice : engine.voices) voice.clear();
+    for (auto &voice : engine.tails) voice.clear();
+    for (uint32_t i = 0; i < engine.note_heap_count; ++i) engine.note_heap[i].instrument.reset();
+    engine.note_heap_count = 0;
 }
 
 nk_result apply_scheduled_event(DspEngineResource &engine,
@@ -906,31 +1143,14 @@ nk_result apply_scheduled_event(DspEngineResource &engine,
         auto instrument = scheduled.instrument;
         if (!instrument || !instrument_belongs_to(instrument, engine))
             return NK_ERROR_INVALID_HANDLE;
-        auto *voice = find_voice(engine, event.voice_id);
-        if (!voice)
-            voice = find_free_voice(engine);
-        if (!voice) {
-            nk::core::set_error("audio DSP voice limit reached");
-            return NK_ERROR_QUEUE_FULL;
-        }
-        const auto instrument_changed = voice->instrument.get() != instrument.get();
-        if (!voice->active)
-            voice->clear();
-        voice->instrument = std::move(instrument);
-        voice->voice_id = event.voice_id;
-        voice->note = event.note;
-        voice->velocity = event.velocity;
-        voice->active = true;
-        if (instrument_changed)
-            voice->parameters_version = 0;
-        sync_voice_parameters(*voice);
-        voice->backend.note_on(event.note, event.velocity);
-        return NK_OK;
+        const auto release_frame = scheduled.hold_frames ? scheduled.frame + scheduled.hold_frames : 0;
+        return start_voice(engine, instrument, event, scheduled.note_token,
+                           scheduled.priority, release_frame);
     }
     case NK_AUDIO_DSP_EVENT_NOTE_OFF: {
-        auto *voice = find_voice(engine, event.voice_id);
-        if (voice)
-            voice->backend.note_off();
+        auto *voice = scheduled.note_token ? find_token(engine, scheduled.note_token) :
+                                              find_voice(engine, event.voice_id);
+        release_voice(voice);
         return NK_OK;
     }
     case NK_AUDIO_DSP_EVENT_PARAMETER:
@@ -958,6 +1178,398 @@ nk_result begin_attached_parameter_ramp(DspEngineResource &engine,
     return NK_OK;
 }
 
+uint64_t next_note_token(DspEngineResource &engine) {
+    auto next = engine.next_note_token.load(std::memory_order_relaxed);
+    while (next != UINT64_MAX) {
+        if (engine.next_note_token.compare_exchange_weak(next, next + 1,
+                                                       std::memory_order_relaxed)) return next;
+    }
+    return 0;
+}
+
+void release_transport_voices(DspEngineResource &engine) {
+    for (auto &voice : engine.voices)
+        if (voice.active && voice.score_cycle) release_voice(&voice);
+}
+
+bool enqueue_command(DspEngineResource &engine, TransportCommand command) {
+    const auto write = engine.transport_write.load(std::memory_order_relaxed);
+    const auto read = engine.transport_read.load(std::memory_order_acquire);
+    if (write - read == transport_command_capacity) return false;
+    command.sequence = engine.next_command++;
+    if (command.program) command.program->last_command = command.sequence;
+    engine.transport_commands[write % transport_command_capacity] = std::move(command);
+    engine.transport_write.store(write + 1, std::memory_order_release);
+    return true;
+}
+
+void collect_resources(DspEngineResource &engine) {
+    for (auto i = engine.publications.begin(); i != engine.publications.end();) {
+        if ((*i)->remaining.load(std::memory_order_acquire) == 0) i = engine.publications.erase(i);
+        else ++i;
+    }
+    const auto active = engine.active_program.load(std::memory_order_acquire);
+    const auto consumed = engine.consumed_command.load(std::memory_order_acquire);
+    for (auto i = engine.programs.begin(); i != engine.programs.end();) {
+        const auto &program = *i;
+        if (program->retired && program->id != active && program->last_command <= consumed)
+            i = engine.programs.erase(i);
+        else ++i;
+    }
+    for (auto i = engine.instruments.begin(); i != engine.instruments.end();) {
+        if ((*i)->retired && i->use_count() == 1) i = engine.instruments.erase(i);
+        else ++i;
+    }
+}
+
+/** Atomically publish one musical action to independently routed track engines. */
+nk_result publish_group(const nk_audio_dsp_transport_track *tracks,
+                       uint32_t count, uint32_t section, uint64_t start, bool play) {
+    if (!tracks || !count || count > 128)
+        return invalid_argument("invalid DSP transport group");
+    std::vector<std::shared_ptr<DspEngineResource>> engines;
+    for (uint32_t i = 0; i < count; ++i) {
+        auto engine = get_engine(tracks[i].engine);
+        if (!engine) return NK_ERROR_INVALID_HANDLE;
+        for (const auto &previous : engines)
+            if (previous.get() == engine.get()) return invalid_argument("duplicate DSP group engine");
+        engines.push_back(std::move(engine));
+    }
+    auto ordered = engines;
+    std::sort(ordered.begin(), ordered.end(), [](const auto &a, const auto &b) {
+        return std::less<DspEngineResource *>{}(a.get(), b.get());
+    });
+    std::vector<std::unique_lock<std::mutex>> locks;
+    for (auto &engine : ordered) locks.emplace_back(engine->mutex);
+    std::vector<TransportProgram *> programs;
+    uint32_t rate = engines[0]->options.sample_rate;
+    const auto attached = engines[0]->attached.load(std::memory_order_acquire);
+    for (uint32_t i = 0; i < count; ++i) {
+        auto &engine = *engines[i];
+        if (!engine.alive || engine.options.sample_rate != rate ||
+            engine.attached.load(std::memory_order_acquire) != attached)
+            return invalid_request("DSP group engines require the same live sample clock");
+        const auto write = engine.transport_write.load(std::memory_order_relaxed);
+        const auto read = engine.transport_read.load(std::memory_order_acquire);
+        if (write-read == transport_command_capacity) return NK_ERROR_QUEUE_FULL;
+        TransportProgram *program = nullptr;
+        if (play) {
+            for (const auto &p : engine.programs) if (p->id == tracks[i].program_id && !p->retired) program = p.get();
+        } else {
+            bool queued = false;
+            for (uint32_t cursor = write; cursor != read;) {
+                const auto &command = engine.transport_commands[(--cursor)%transport_command_capacity];
+                if (command.kind == TransportCommand::stop) { queued = true; break; }
+                if (command.kind == TransportCommand::play) { program = command.program; queued = true; break; }
+            }
+            if (!queued) {
+                const auto id = engine.active_program.load(std::memory_order_acquire);
+                for (const auto &p : engine.programs) if (p->id == id) program = p.get();
+            }
+        }
+        if (!program || (!play && program->id != tracks[i].program_id) ||
+            section >= program->sections.size())
+            return invalid_argument("unknown DSP group program or section");
+        programs.push_back(program);
+    }
+    // Independently routed tracks must share musical boundaries. Otherwise one
+    // atomic section request could still commit at different sample frames.
+    for (uint32_t i = 1; i < count; ++i) {
+        if (programs[i]->sections.size() != programs[0]->sections.size())
+            return invalid_argument("DSP group section count differs");
+        for (uint32_t j = 0; j < programs[0]->sections.size(); ++j) {
+            const auto &a = programs[0]->sections[j];
+            const auto &b = programs[i]->sections[j];
+            if (a.length != b.length || a.bars != b.bars)
+                return invalid_argument("DSP group musical boundaries differ");
+        }
+    }
+    auto publication = std::make_shared<RuntimePublication>();
+    publication->remaining.store(count, std::memory_order_relaxed);
+    // All callback-visible commands are gated until every engine has its command.
+    for (uint32_t i = 0; i < count; ++i) {
+        TransportCommand command;
+        command.kind = play ? TransportCommand::play : TransportCommand::request;
+        command.program = programs[i]; command.section = section;
+        command.publication = publication;
+        engines[i]->publications.push_back(publication);
+        (void)enqueue_command(*engines[i], std::move(command));
+    }
+    uint64_t cutoff = start;
+    for (const auto &engine : engines) {
+        const auto frame = engine->status_frame.load(std::memory_order_acquire);
+        // Two render blocks cover commands becoming visible between source nodes
+        // in one device callback. Offline starts retain the requested exact origin.
+        if (!play || engine->attached.load(std::memory_order_acquire))
+            cutoff = std::max(cutoff, frame + uint64_t(std::max(engine->options.block_size, engine->device_quantum))*2);
+    }
+    publication->frame = cutoff;
+    publication->ready.store(true, std::memory_order_release);
+    return NK_OK;
+}
+
+void publish_transport_status(DspEngineResource &engine, uint64_t frame) {
+    engine.status_sequence.fetch_add(1, std::memory_order_acq_rel);
+    engine.status_playing.store(engine.transport.program != nullptr, std::memory_order_relaxed);
+    engine.status_section.store(engine.transport.section, std::memory_order_relaxed);
+    engine.status_frame.store(frame, std::memory_order_relaxed);
+    engine.status_loops.store(engine.transport.loops, std::memory_order_relaxed);
+    engine.status_bpm.store(engine.transport.bpm, std::memory_order_relaxed);
+    engine.status_sequence.fetch_add(1, std::memory_order_release);
+}
+
+bool note_later(const ScheduledDspEvent &a, const ScheduledDspEvent &b) {
+    return a.frame != b.frame ? a.frame > b.frame : a.sequence > b.sequence;
+}
+
+// Fixed-capacity scan: cancel future starts without reusing note identities.
+void cancel_pending_note(DspEngineResource &engine, uint64_t token) {
+    for (uint32_t i = 0; i < engine.note_heap_count;) {
+        auto &pending = engine.note_heap[i];
+        if (pending.note_token == token &&
+            pending.event.kind == NK_AUDIO_DSP_EVENT_NOTE_ON) {
+            const auto last = --engine.note_heap_count;
+            if (i != last) pending = std::move(engine.note_heap[last]);
+            engine.note_heap[last].instrument.reset();
+        } else ++i;
+    }
+    std::make_heap(engine.note_heap.begin(), engine.note_heap.begin() + engine.note_heap_count, note_later);
+}
+
+void consume_runtime_commands(DspEngineResource &engine, uint64_t frame) {
+    auto read = engine.transport_read.load(std::memory_order_relaxed);
+    const auto write = engine.transport_write.load(std::memory_order_acquire);
+    while (read != write) {
+        auto &command = engine.transport_commands[read % transport_command_capacity];
+        auto &transport = engine.transport;
+        if (command.publication) {
+            if (!command.publication->ready.load(std::memory_order_acquire)) break;
+            command.frame = command.publication->frame;
+        }
+        if (command.kind == TransportCommand::queued_note && command.note.generation !=
+            engine.scheduled_generation.load(std::memory_order_acquire)) {
+            // Invalidated note command: retire its reference below.
+        } else if (command.kind == TransportCommand::queued_note) {
+            command.note.sequence = command.sequence;
+            if (engine.note_heap_count < engine.note_heap.size()) {
+                engine.note_heap[engine.note_heap_count++] = std::move(command.note);
+                std::push_heap(engine.note_heap.begin(), engine.note_heap.begin() + engine.note_heap_count,
+                               note_later);
+            } else {
+                // Never strand a held note when timed-command capacity is exhausted.
+                if (command.note.event.kind == NK_AUDIO_DSP_EVENT_NOTE_OFF) {
+                    cancel_pending_note(engine, command.note.note_token);
+                    release_voice(find_token(engine, command.note.note_token));
+                }
+                engine.dropped_notes.fetch_add(1, std::memory_order_relaxed);
+            }
+        } else if (command.kind == TransportCommand::play) {
+            release_transport_voices(engine);
+            transport.program = command.program;
+            transport.start = command.frame;
+            transport.origin = 0;
+            transport.section = command.section;
+            transport.event = 0;
+            transport.pending = UINT32_MAX;
+            ++transport.cycle;
+            transport.loops = 0;
+            transport.bpm = 120;
+            transport.has_frame = false;
+            engine.active_program.store(command.program->id, std::memory_order_release);
+        } else if (command.kind == TransportCommand::stop) {
+            release_transport_voices(engine);
+            transport.program = nullptr;
+            engine.active_program.store(0, std::memory_order_release);
+        } else if (transport.program && command.section < transport.program->sections.size()) {
+            transport.pending = command.section;
+            const auto &section = transport.program->sections[transport.section];
+            const auto cutoff = std::max(frame, command.frame);
+            transport.boundary = section.length;
+            for (const auto bar : section.bars) {
+                if (std::floor(transport.origin + bar + 0.5) >=
+                    static_cast<double>(cutoff >= transport.start ? cutoff - transport.start : 0)) {
+                    transport.boundary = bar;
+                    break;
+                }
+            }
+        }
+        command.note.instrument.reset();
+        if (command.publication) {
+            auto *publication = command.publication.get();
+            command.publication.reset(); // Control pins own final destruction.
+            publication->remaining.fetch_sub(1, std::memory_order_release);
+        }
+        engine.consumed_command.store(command.sequence, std::memory_order_release);
+        ++read;
+    }
+    engine.transport_read.store(read, std::memory_order_release);
+    while (engine.note_heap_count && engine.note_heap[0].frame <= frame) {
+        std::pop_heap(engine.note_heap.begin(), engine.note_heap.begin() + engine.note_heap_count,
+                      note_later);
+        auto note = std::move(engine.note_heap[--engine.note_heap_count]);
+        if (note.event.kind == NK_AUDIO_DSP_EVENT_NOTE_OFF && note.note_token)
+            cancel_pending_note(engine, note.note_token);
+        // Do not replay one-shots whose entire lifetime passed during a source
+        // clock gap. Held notes and releases still take effect at this frame.
+        if (note.event.kind != NK_AUDIO_DSP_EVENT_NOTE_ON || !note.hold_frames ||
+            note.frame + note.hold_frames > frame)
+            (void)apply_scheduled_event(engine, note);
+        note.instrument.reset();
+    }
+}
+
+void seek_transport(DspEngineResource &engine, uint64_t relative) {
+    auto &transport = engine.transport;
+    release_transport_voices(engine);
+    for (auto &voice : engine.voices)
+        if (voice.active && voice.score_cycle) voice.fade_in_remaining = engine.fade_frames;
+    for (auto &tail : engine.tails) tail.clear();
+    if (relative > 9007199254740991ULL) {
+        transport.program = nullptr;
+        engine.active_program.store(0, std::memory_order_release);
+        return;
+    }
+    if (transport.pending != UINT32_MAX &&
+        std::floor(transport.origin + transport.boundary + 0.5) <= relative) {
+        transport.origin += transport.boundary;
+        transport.section = transport.pending; transport.pending = UINT32_MAX;
+        ++transport.cycle; ++transport.loops;
+    }
+    const auto &section = transport.program->sections[transport.section];
+    const auto distance = static_cast<double>(relative) - transport.origin;
+    auto loops = distance > 0 ? static_cast<uint64_t>(std::floor(distance / section.length)) : 0;
+    // Account for the same round-half-up rule as ordinary boundary consumption.
+    if (loops && std::floor(transport.origin + loops * section.length + 0.5) > relative) --loops;
+    if (std::floor(transport.origin + (loops + 1) * section.length + 0.5) <= relative) ++loops;
+    transport.origin += loops * section.length;
+    transport.cycle += loops; transport.loops += loops;
+    const auto first = std::lower_bound(section.events.begin(), section.events.end(), relative,
+        [&](const TransportEvent &event, uint64_t frame) {
+            return std::floor(transport.origin + event.value.frame + 0.5) < frame;
+        });
+    transport.event = static_cast<uint32_t>(first - section.events.begin());
+    const auto tempo = std::upper_bound(section.tempos.begin(), section.tempos.end(), relative,
+        [&](uint64_t frame, const TransportTempo &tempo) {
+            return frame < std::floor(transport.origin + tempo.frame + 0.5);
+        });
+    if (tempo != section.tempos.begin()) {
+        transport.bpm = (tempo - 1)->bpm;
+        engine.clock->bpm.store(static_cast<float>(transport.bpm), std::memory_order_release);
+    }
+}
+
+// Called only after the attached callback gate has closed, or for offline reset.
+void stop_runtime(DspEngineResource &engine) {
+    for (auto &voice : engine.voices)
+        if (voice.active && (voice.note_token || voice.score_cycle)) release_voice(&voice);
+    engine.transport.program = nullptr;
+    engine.transport.pending = UINT32_MAX;
+    engine.transport.has_frame = false;
+    engine.runtime_has_frame = false;
+    engine.active_program.store(0, std::memory_order_release);
+    for (auto &command : engine.transport_commands) {
+        command.note.instrument.reset();
+        if (command.publication) {
+            auto *publication = command.publication.get(); command.publication.reset();
+            publication->remaining.fetch_sub(1, std::memory_order_release);
+        }
+    }
+    engine.transport_read.store(engine.transport_write.load(std::memory_order_acquire), std::memory_order_release);
+    engine.consumed_command.store(engine.next_command-1, std::memory_order_release);
+    for (uint32_t i=0; i<engine.note_heap_count; ++i) engine.note_heap[i].instrument.reset();
+    engine.note_heap_count=0;
+    for (auto &event : engine.scheduled_events) event.instrument.reset();
+    engine.scheduled_read.store(engine.scheduled_write.load(std::memory_order_acquire), std::memory_order_release);
+    for (auto &ramp : engine.output_ramps) ramp.instrument.reset();
+    engine.output_ramp_count=0;
+}
+
+void advance_transport(DspEngineResource &engine, uint64_t frame) {
+    if (engine.runtime_has_frame && frame != engine.runtime_next_frame)
+        engine.clock_discontinuities.fetch_add(1, std::memory_order_relaxed);
+    engine.runtime_has_frame = true; engine.runtime_next_frame = frame + 1;
+    consume_runtime_commands(engine, frame);
+    auto &transport = engine.transport;
+    if (!transport.program) return;
+    if ((!transport.has_frame && frame > transport.start) ||
+        (transport.has_frame && frame != transport.next_frame)) {
+        if (transport.has_frame && frame < transport.next_frame) {
+            release_transport_voices(engine); transport.program = nullptr;
+            engine.active_program.store(0, std::memory_order_release); return;
+        }
+        if (frame >= transport.start) seek_transport(engine, frame - transport.start);
+        if (!transport.program) return;
+    }
+    transport.has_frame = true; transport.next_frame = frame + 1;
+    if (frame < transport.start) return;
+    const auto relative = frame - transport.start;
+    // Prepared programs are validated to have positive lengths and bounded
+    // simultaneous events. Ordinary callback progress cannot replay stale time.
+    for (;;) {
+        const auto &section = transport.program->sections[transport.section];
+        const auto stop = transport.pending == UINT32_MAX ? section.length : transport.boundary;
+        while (transport.event < section.events.size()) {
+            const auto &next = section.events[transport.event].value;
+            const auto sample = std::floor(transport.origin + next.frame + 0.5);
+            if (next.frame > stop || sample > relative) break;
+            // Fractional origin changes which exact positions share a sample.
+            // Reorder each actual sample so releases precede new note starts.
+            std::array<const TransportEvent *, 256> due;
+            uint32_t count = 0;
+            while (transport.event < section.events.size()) {
+                const auto &prepared = section.events[transport.event];
+                if (prepared.value.frame > stop ||
+                    std::floor(transport.origin + prepared.value.frame + 0.5) != sample) break;
+                due[count++] = &prepared;
+                ++transport.event;
+            }
+            std::sort(due.begin(), due.begin() + count, [](const auto *a, const auto *b) {
+                const auto rank = [](uint32_t kind) { return kind == 2 ? 0 : kind == 1 ? 1 : 2; };
+                if (a->value.kind != b->value.kind) return rank(a->value.kind) < rank(b->value.kind);
+                if (a->value.kind == 2) return a->value.frame < b->value.frame;
+                return a->value.note_id < b->value.note_id;
+            });
+            for (uint32_t index = 0; index < count; ++index) {
+                const auto &prepared = *due[index];
+                const auto &event = prepared.value;
+                if (event.kind == 2) {
+                    transport.bpm = event.bpm;
+                    engine.clock->bpm.store(static_cast<float>(event.bpm), std::memory_order_release);
+                }
+                else if (event.kind == 0) {
+                    if (transport.pending == UINT32_MAX || event.frame < stop) {
+                        nk_audio_dsp_event note{};
+                        note.kind = NK_AUDIO_DSP_EVENT_NOTE_ON;
+                        note.note = event.note; note.velocity = event.velocity;
+                        const auto token = next_note_token(engine);
+                        if (token) (void)start_voice(engine, prepared.instrument, note, token, 0, 0,
+                                                     transport.cycle, event.note_id);
+                    }
+                } else {
+                    for (auto &voice : engine.voices)
+                        if (voice.active && voice.score_cycle == transport.cycle &&
+                            voice.score_note == event.note_id) release_voice(&voice);
+                }
+            }
+        }
+        if (std::floor(transport.origin + stop + 0.5) > relative) break;
+        release_transport_voices(engine);
+        transport.origin += stop;
+        if (transport.pending != UINT32_MAX) {
+            transport.section = transport.pending;
+            transport.pending = UINT32_MAX;
+        }
+        transport.event = 0;
+        ++transport.cycle;
+        ++transport.loops;
+        if (transport.origin > 9007199254740991.0) {
+            transport.program = nullptr;
+            engine.active_program.store(0, std::memory_order_release);
+            break;
+        }
+    }
+}
+
 void consume_attached_events(DspEngineResource &engine, uint64_t frame) noexcept {
     auto read = engine.scheduled_read.load(std::memory_order_relaxed);
     for (;;) {
@@ -965,6 +1577,8 @@ void consume_attached_events(DspEngineResource &engine, uint64_t frame) noexcept
         const auto generation = engine.scheduled_generation.load(std::memory_order_acquire);
         if (engine.output_generation != generation) {
             reset_voices(engine);
+            for (uint32_t i = 0; i < engine.output_ramp_count; ++i)
+                engine.output_ramps[i].instrument.reset();
             engine.output_ramp_count = 0;
             engine.output_generation = generation;
         }
@@ -972,6 +1586,7 @@ void consume_attached_events(DspEngineResource &engine, uint64_t frame) noexcept
             break;
         auto &scheduled = engine.scheduled_events[read & scheduled_event_mask];
         if (scheduled.generation != generation) {
+            scheduled.instrument.reset();
             ++read;
             continue;
         }
@@ -981,6 +1596,7 @@ void consume_attached_events(DspEngineResource &engine, uint64_t frame) noexcept
             (void)begin_attached_parameter_ramp(engine, scheduled, frame);
         else
             (void)apply_scheduled_event(engine, scheduled);
+        scheduled.instrument.reset(); // Control-side pin owns final destruction.
         ++read;
     }
     engine.scheduled_read.store(read, std::memory_order_release);
@@ -993,12 +1609,15 @@ void render_attached_block(DspEngineResource &engine, uint64_t start_frame,
     for (uint32_t frame = 0; frame < frame_count; ++frame) {
         const auto absolute_frame = start_frame + frame;
         consume_attached_events(engine, absolute_frame);
+        advance_transport(engine, absolute_frame);
         for (uint32_t index = 0; index < engine.output_ramp_count;) {
             auto &ramp = engine.output_ramps[index];
             if (absolute_frame >= ramp.end_frame) {
                 (void)apply_parameter_value(engine, ramp.instrument, ramp.parameter,
                                              ramp.oscillator_index, ramp.end_value);
-                ramp = std::move(engine.output_ramps[--engine.output_ramp_count]);
+                const auto last = --engine.output_ramp_count;
+                if (index != last) ramp = std::move(engine.output_ramps[last]);
+                engine.output_ramps[last].instrument.reset();
                 continue;
             }
             const auto progress = static_cast<float>(absolute_frame - ramp.start_frame) /
@@ -1008,18 +1627,14 @@ void render_attached_block(DspEngineResource &engine, uint64_t start_frame,
                 ramp.start_value + (ramp.end_value - ramp.start_value) * progress);
             ++index;
         }
-        nk::audio_dsp::StereoSample mixed;
-        for (auto &voice : engine.voices) {
-            const auto sample = voice_sample(voice);
-            mixed.left += sample.left;
-            mixed.right += sample.right;
-        }
+        const auto mixed = mix_voices(engine, absolute_frame);
         for (uint32_t channel = 0; channel < engine.options.channels; ++channel)
             engine.output_scratch[static_cast<uint64_t>(frame) * engine.options.channels +
                                   channel] = engine.options.channels == 1 || channel > 1
                     ? (mixed.left + mixed.right) * 0.5f : (channel == 0 ? mixed.left : mixed.right);
     }
     consume_attached_events(engine, start_frame + frame_count);
+    publish_transport_status(engine, start_frame + frame_count);
 }
 
 void DspEngineResource::detach() noexcept {
@@ -1030,7 +1645,8 @@ void DspEngineResource::detach() noexcept {
     engine->attached.store(false, std::memory_order_seq_cst);
     while (engine->output_readers.load(std::memory_order_seq_cst) != 0)
         std::this_thread::yield();
-    engine->output_ramp_count = 0;
+    stop_runtime(*engine);
+    publish_transport_status(*engine, engine->output_frame);
     engine->scheduled_read.store(engine->scheduled_write.load(std::memory_order_acquire),
                                  std::memory_order_release);
 }
@@ -1044,6 +1660,9 @@ void DspEngineResource::process(float *frames_out, uint64_t frame_count, uint32_
         engine->output_readers.fetch_sub(1, std::memory_order_seq_cst);
         return;
     }
+    #ifdef NK_AUDIO_TESTING
+    nk::audio_dsp::soundfont_callback_begin();
+    #endif
     engine->output_frame = start_frame;
     uint64_t output_offset = 0;
     while (output_offset < frame_count) {
@@ -1058,6 +1677,9 @@ void DspEngineResource::process(float *frames_out, uint64_t frame_count, uint32_
         engine->output_frame += block;
         output_offset += block;
     }
+    #ifdef NK_AUDIO_TESTING
+    nk::audio_dsp::soundfont_callback_end();
+    #endif
     engine->output_readers.fetch_sub(1, std::memory_order_seq_cst);
 }
 
@@ -1066,7 +1688,7 @@ void DspEngineResource::process(float *frames_out, uint64_t frame_count, uint32_
 namespace nk::audio_dsp {
 
 nk_result attach_device(nk_audio_dsp_engine engine_handle, uint64_t device_frame,
-                        uint32_t sample_rate, uint32_t channels) {
+                        uint32_t sample_rate, uint32_t channels, uint32_t clock_quantum) {
     auto engine = get_engine(engine_handle);
     if (!engine)
         return NK_ERROR_INVALID_HANDLE;
@@ -1076,12 +1698,17 @@ nk_result attach_device(nk_audio_dsp_engine engine_handle, uint64_t device_frame
     if (engine->options.sample_rate != sample_rate || engine->options.channels != channels)
         return invalid_request("audio DSP engine format does not match the playback device");
     if (engine->attached.load(std::memory_order_acquire)) return NK_OK;
+    // Moving from an offline frame domain to the device starts a fresh native
+    // timeline. Prepared programs remain available for an explicit play call.
+    stop_runtime(*engine);
     const auto write = engine->scheduled_write.load(std::memory_order_acquire);
     engine->scheduled_read.store(write, std::memory_order_release);
     engine->scheduled_generation.fetch_add(1, std::memory_order_acq_rel);
     engine->output_frame = device_frame;
     engine->output_sample_rate = sample_rate;
     engine->output_channels = channels;
+    engine->device_quantum = clock_quantum;
+    publish_transport_status(*engine, device_frame);
     engine->output_ramp_count = 0;
     engine->attached.store(true, std::memory_order_release);
     return NK_OK;
@@ -1095,6 +1722,11 @@ nk_result require_attached(nk_audio_dsp_engine engine_handle) {
     return NK_OK;
 }
 
+std::shared_ptr<const TransportClock> transport_clock(nk_audio_dsp_engine engine_handle) {
+    auto engine = get_engine(engine_handle);
+    return engine ? engine->clock : nullptr;
+}
+
 std::shared_ptr<DeviceOutput> device_output(nk_audio_dsp_engine engine_handle) {
     return get_engine(engine_handle);
 }
@@ -1102,6 +1734,143 @@ std::shared_ptr<DeviceOutput> device_output(nk_audio_dsp_engine engine_handle) {
 } // namespace nk::audio_dsp
 
 extern "C" {
+
+nk_result NK_CALL nk_audio_dsp_group_play_transport(const nk_audio_dsp_transport_track *tracks,
+    uint32_t count, uint32_t section, uint64_t start) {
+    return nk::core::result_boundary("publishing a native score group", [&]() -> nk_result {
+        if (const auto result = enter_dsp(); result != NK_OK) return result;
+        return publish_group(tracks, count, section, start, true);
+    });
+}
+nk_result NK_CALL nk_audio_dsp_group_request_section(const nk_audio_dsp_transport_track *tracks,
+    uint32_t count, uint32_t section) {
+    return nk::core::result_boundary("requesting a native score group section", [&]() -> nk_result {
+        if (const auto result = enter_dsp(); result != NK_OK) return result;
+        return publish_group(tracks, count, section, 0, false);
+    });
+}
+
+nk_result NK_CALL nk_audio_dsp_instrument_create_from_sample(nk_audio_dsp_engine handle,
+    const nk_audio_dsp_sample_options *options, const float *samples, uint32_t count,
+    nk_audio_dsp_instrument *out_instrument) {
+    return nk::core::result_boundary("preparing a PCM instrument", [&]() -> nk_result {
+        if (const auto result = enter_dsp(); result != NK_OK) return result;
+        if (!out_instrument) return invalid_argument("PCM instrument output is missing");
+        *out_instrument = NK_INVALID_HANDLE;
+        auto engine = get_engine(handle);
+        if (!engine) return NK_ERROR_INVALID_HANDLE;
+        if (!options || options->struct_size < sizeof(*options) ||
+            !std::isfinite(options->gain) || options->gain < 0 || options->gain > 4)
+            return invalid_argument("invalid PCM instrument options");
+        DspParameters parameters;
+        if (options->envelope.struct_size < sizeof(options->envelope))
+            return invalid_argument("PCM envelope options are too small");
+        parameters.envelope = {options->envelope.attack_seconds, options->envelope.decay_seconds,
+            options->envelope.sustain_level, options->envelope.release_seconds};
+        if (!valid_patch_parameters(parameters)) return invalid_argument("invalid PCM envelope");
+        auto provider = nk::audio_dsp::prepare_sample_source(*options, samples, count,
+            engine->options.max_voices + 64, engine->options.sample_rate);
+        if (!provider) return invalid_argument("invalid PCM samples or loop bounds");
+        auto instrument = std::make_shared<DspInstrumentResource>();
+        instrument->engine = engine; instrument->provider = std::move(provider);
+        instrument->defaults.gain = instrument->current.gain = options->gain;
+        publish_parameters(*instrument);
+        std::lock_guard lock(engine->mutex);
+        if (!engine->alive) return invalid_request("DSP engine is no longer alive");
+        const auto made = nk::core::handles().insert(nk::core::ResourceType::audio_dsp_instrument, instrument);
+        if (made == NK_INVALID_HANDLE) return NK_ERROR_OUT_OF_MEMORY;
+        engine->instruments.emplace_back(instrument); *out_instrument = made; return NK_OK;
+    });
+}
+
+nk_result NK_CALL nk_audio_soundfont_load_memory(const uint8_t *bytes, uint32_t byte_count,
+                                                nk_audio_soundfont *out_soundfont) {
+    return nk::core::result_boundary("loading a SoundFont bank", [&]() -> nk_result {
+        if (const auto result = enter_dsp(); result != NK_OK) return result;
+        if (!out_soundfont) return invalid_argument("SoundFont output is missing");
+        *out_soundfont = NK_INVALID_HANDLE;
+        auto bank = nk::audio_dsp::SoundFontBank::load(bytes, byte_count);
+        if (!bank) return invalid_argument("invalid or unsupported SF2 bank");
+        auto resource = std::make_shared<SoundFontResource>();
+        resource->bank = std::move(bank);
+        resource->presets.resize(resource->bank->preset_count());
+        for (uint32_t i = 0; i < resource->presets.size(); ++i) {
+            auto &p = resource->presets[i];
+            resource->bank->preset_info(i, p.bank, p.program, p.name);
+        }
+        const auto handle = nk::core::handles().insert(nk::core::ResourceType::audio_soundfont, resource);
+        if (handle == NK_INVALID_HANDLE) return NK_ERROR_OUT_OF_MEMORY;
+        *out_soundfont = handle;
+        return NK_OK;
+    });
+}
+
+nk_result NK_CALL nk_audio_soundfont_destroy(nk_audio_soundfont handle) {
+    return nk::core::result_boundary("destroying a SoundFont bank", [&]() -> nk_result {
+        if (const auto result = enter_dsp(); result != NK_OK) return result;
+        return nk::core::handles().erase(handle, nk::core::ResourceType::audio_soundfont)
+            ? NK_OK : NK_ERROR_INVALID_HANDLE;
+    });
+}
+
+nk_result NK_CALL nk_audio_soundfont_get_preset_count(nk_audio_soundfont handle, uint32_t *out_count) {
+    return nk::core::result_boundary("reading SoundFont presets", [&]() -> nk_result {
+        if (const auto result = enter_dsp(); result != NK_OK) return result;
+        if (!out_count) return invalid_argument("SoundFont preset count output is missing");
+        const auto resource = std::dynamic_pointer_cast<SoundFontResource>(
+            nk::core::handles().get(handle, nk::core::ResourceType::audio_soundfont));
+        if (!resource) return NK_ERROR_INVALID_HANDLE;
+        *out_count = resource->presets.size(); return NK_OK;
+    });
+}
+
+nk_result NK_CALL nk_audio_soundfont_get_preset_info(nk_audio_soundfont handle, uint32_t index,
+                                                    nk_audio_soundfont_preset_info *out_info) {
+    return nk::core::result_boundary("reading a SoundFont preset", [&]() -> nk_result {
+        if (const auto result = enter_dsp(); result != NK_OK) return result;
+        if (!out_info || out_info->struct_size < sizeof(*out_info))
+            return invalid_argument("SoundFont preset info output is missing");
+        const auto resource = std::dynamic_pointer_cast<SoundFontResource>(
+            nk::core::handles().get(handle, nk::core::ResourceType::audio_soundfont));
+        if (!resource) return NK_ERROR_INVALID_HANDLE;
+        if (index >= resource->presets.size()) return invalid_argument("SoundFont preset index is invalid");
+        const auto &p = resource->presets[index];
+        out_info->bank = p.bank; out_info->program = p.program; out_info->name = p.name.c_str();
+        return NK_OK;
+    });
+}
+
+nk_result NK_CALL nk_audio_dsp_instrument_create_from_soundfont(nk_audio_dsp_engine engine_handle,
+    nk_audio_soundfont soundfont_handle, uint32_t preset, float gain,
+    nk_audio_dsp_instrument *out_instrument) {
+    return nk::core::result_boundary("preparing a SoundFont instrument", [&]() -> nk_result {
+        if (const auto result = enter_dsp(); result != NK_OK) return result;
+        if (!out_instrument || !std::isfinite(gain) || gain < 0 || gain > 4)
+            return invalid_argument("invalid SoundFont instrument options");
+        *out_instrument = NK_INVALID_HANDLE;
+        const auto engine = get_engine(engine_handle);
+        const auto bank = std::dynamic_pointer_cast<SoundFontResource>(
+            nk::core::handles().get(soundfont_handle, nk::core::ResourceType::audio_soundfont));
+        if (!engine || !bank) return NK_ERROR_INVALID_HANDLE;
+        // Reserve every possible stealing tail so future policy changes cannot
+        // exceed the prepared provider's capacity.
+        auto pool = nk::audio_dsp::SoundFontPool::prepare(bank->bank, preset,
+            engine->options.max_voices + 64, engine->options.sample_rate);
+        if (!pool) return invalid_argument("invalid SF2 preset or excessive region layering");
+        auto instrument = std::make_shared<DspInstrumentResource>();
+        instrument->engine = engine;
+        instrument->provider = std::move(pool);
+        instrument->defaults.gain = instrument->current.gain = gain;
+        publish_parameters(*instrument);
+        std::lock_guard lock(engine->mutex);
+        if (!engine->alive) return invalid_request("audio DSP engine is no longer alive");
+        const auto handle = nk::core::handles().insert(nk::core::ResourceType::audio_dsp_instrument, instrument);
+        if (handle == NK_INVALID_HANDLE) return NK_ERROR_OUT_OF_MEMORY;
+        engine->instruments.emplace_back(instrument);
+        *out_instrument = handle; return NK_OK;
+    });
+}
+
 
 nk_result NK_CALL nk_audio_dsp_engine_create(const nk_audio_dsp_engine_options *options,
                                              nk_audio_dsp_engine *out_engine) {
@@ -1131,6 +1900,279 @@ nk_result NK_CALL nk_audio_dsp_engine_create(const nk_audio_dsp_engine_options *
             *out_engine = handle;
             return NK_OK;
         });
+}
+
+nk_result NK_CALL nk_audio_dsp_engine_set_voice_policy(
+    nk_audio_dsp_engine handle, const nk_audio_dsp_voice_policy_options *options) {
+    return nk::core::result_boundary("configuring DSP voice admission", [&]() -> nk_result {
+        if (const auto result = enter_dsp(); result != NK_OK) return result;
+        auto engine = get_engine(handle);
+        if (!engine) return NK_ERROR_INVALID_HANDLE;
+        if (!options || options->struct_size < sizeof(*options) || options->steal_enabled > 1 ||
+            options->tail_voices > 64 || options->fade_frames == 0 ||
+            options->fade_frames > engine->options.sample_rate / 10 ||
+            (options->steal_enabled && !options->tail_voices))
+            return invalid_argument("invalid DSP voice admission options");
+        std::lock_guard lock(engine->mutex);
+        if (!engine->alive || engine->attached.load(std::memory_order_acquire))
+            return invalid_request("configure DSP voice admission before attaching");
+        for (const auto &voice : engine->voices)
+            if (voice.active) return invalid_request("configure DSP voice admission before playing");
+        for (const auto &voice : engine->tails)
+            if (voice.active) return invalid_request("DSP stealing tails are still active");
+        engine->tails.clear(); engine->tails.resize(options->tail_voices);
+        for (auto &tail : engine->tails) tail.backend.init(engine->options.sample_rate);
+        engine->stealing = options->steal_enabled != 0;
+        engine->fade_frames = options->fade_frames;
+        return NK_OK;
+    });
+}
+
+nk_result NK_CALL nk_audio_dsp_engine_note_on(nk_audio_dsp_engine handle,
+    nk_audio_dsp_instrument instrument_handle, const nk_audio_dsp_note_options *options,
+    uint64_t *out_note_token) {
+    return nk::core::result_boundary("submitting a DSP note", [&]() -> nk_result {
+        if (const auto result = enter_dsp(); result != NK_OK) return result;
+        if (!out_note_token) return invalid_argument("DSP note token output is missing");
+        *out_note_token = 0;
+        auto engine = get_engine(handle); auto instrument = get_instrument(instrument_handle);
+        if (!engine || !instrument) return NK_ERROR_INVALID_HANDLE;
+        if (!options || options->struct_size < sizeof(*options) || options->note > 127 ||
+            !std::isfinite(options->velocity) || options->velocity < 0 || options->velocity > 1 ||
+            options->hold_frames > UINT64_MAX - options->start_frame)
+            return invalid_argument("invalid DSP note options");
+        if (!instrument_belongs_to(instrument, *engine))
+            return invalid_request("DSP note instrument belongs to another engine");
+        std::lock_guard lock(engine->mutex);
+        if (!engine->alive || instrument->retired) return invalid_request("DSP instrument retired");
+        TransportCommand command; command.kind = TransportCommand::queued_note;
+        command.note.instrument = std::move(instrument);
+        command.note.event.kind = NK_AUDIO_DSP_EVENT_NOTE_ON;
+        command.note.event.note = options->note; command.note.event.velocity = options->velocity;
+        command.note.frame = options->start_frame;
+        command.note.generation = engine->scheduled_generation.load(std::memory_order_acquire);
+        command.note.hold_frames = options->hold_frames; command.note.priority = options->priority;
+        command.note.note_token = next_note_token(*engine);
+        if (!command.note.note_token) return invalid_request("DSP note tokens exhausted");
+        const auto token = command.note.note_token;
+        if (!enqueue_command(*engine, std::move(command))) {
+            engine->dropped_notes.fetch_add(1, std::memory_order_relaxed);
+            nk::core::set_error("DSP runtime command queue is full");
+            return NK_ERROR_QUEUE_FULL;
+        }
+        *out_note_token = token;
+        return NK_OK;
+    });
+}
+
+nk_result NK_CALL nk_audio_dsp_engine_note_off(nk_audio_dsp_engine handle,
+                                              uint64_t token, uint64_t frame) {
+    return nk::core::result_boundary("releasing a DSP note", [&]() -> nk_result {
+        if (const auto result = enter_dsp(); result != NK_OK) return result;
+        auto engine = get_engine(handle);
+        if (!engine) return NK_ERROR_INVALID_HANDLE;
+        if (!token) return invalid_argument("DSP note token is zero");
+        std::lock_guard lock(engine->mutex);
+        if (!engine->alive) return invalid_request("DSP engine destroyed");
+        TransportCommand command; command.kind = TransportCommand::queued_note;
+        command.note.event.kind = NK_AUDIO_DSP_EVENT_NOTE_OFF;
+        command.note.note_token = token; command.note.frame = frame;
+        command.note.generation = engine->scheduled_generation.load(std::memory_order_acquire);
+        return enqueue_command(*engine, std::move(command)) ? NK_OK :
+            NK_ERROR_QUEUE_FULL;
+    });
+}
+
+nk_result NK_CALL nk_audio_dsp_engine_prepare_transport(nk_audio_dsp_engine handle,
+    const nk_audio_dsp_transport_section *sections, uint32_t section_count,
+    const nk_audio_dsp_transport_event *events, uint32_t event_count,
+    const double *bars, uint32_t bar_count, uint64_t *out_program_id) {
+    return nk::core::result_boundary("preparing native DSP transport", [&]() -> nk_result {
+        if (const auto result = enter_dsp(); result != NK_OK) return result;
+        if (!out_program_id) return invalid_argument("transport program output is missing");
+        *out_program_id = 0;
+        auto engine = get_engine(handle);
+        if (!engine) return NK_ERROR_INVALID_HANDLE;
+        if (!sections || !section_count || section_count > 128 || event_count > 65536 ||
+            bar_count > 65536 || (event_count && !events) || (bar_count && !bars))
+            return invalid_argument("invalid transport arrays");
+        auto program = std::make_unique<TransportProgram>();
+        for (uint32_t i = 0; i < section_count; ++i) {
+            const auto &source = sections[i];
+            if (!std::isfinite(source.length_frames) || source.length_frames < 1 ||
+                source.length_frames > 9007199254740991.0 || source.event_offset > event_count ||
+                source.event_count > event_count - source.event_offset || source.bar_offset > bar_count ||
+                source.bar_count > bar_count - source.bar_offset)
+                return invalid_argument("invalid transport section bounds");
+            TransportSection section; section.length = source.length_frames;
+            double previous = -1; uint32_t simultaneous = 0; uint64_t previous_sample = UINT64_MAX;
+            std::vector<uint32_t> held;
+            for (uint32_t j = 0; j < source.event_count; ++j) {
+                const auto &event = events[source.event_offset + j];
+                if (!std::isfinite(event.frame) || event.frame < 0 || event.frame < previous ||
+                    event.frame > source.length_frames || event.kind > 2 ||
+                    (event.kind == 0 && event.frame == source.length_frames))
+                    return invalid_argument("invalid transport event position");
+                previous = event.frame;
+                const auto sample = static_cast<uint64_t>(std::floor(event.frame));
+                simultaneous = sample == previous_sample ? simultaneous + 1 : 1;
+                previous_sample = sample;
+                if (simultaneous > 128) return invalid_argument("transport event burst exceeds callback budget");
+                TransportEvent prepared; prepared.value = event;
+                if (event.kind == 2) {
+                    if (!std::isfinite(event.bpm) || event.bpm < 1 || event.bpm > 1000)
+                        return invalid_argument("invalid transport tempo");
+                    section.tempos.push_back({event.frame, event.bpm});
+                } else if (!event.note_id) return invalid_argument("transport note identity is zero");
+                else if (event.kind == 0) {
+                    if (event.note > 127 || !std::isfinite(event.velocity) ||
+                        event.velocity < 0 || event.velocity > 1 ||
+                        std::find(held.begin(), held.end(), event.note_id) != held.end())
+                        return invalid_argument("invalid or overlapping transport note identity");
+                    prepared.instrument = get_instrument(event.instrument);
+                    if (!prepared.instrument) return NK_ERROR_INVALID_HANDLE;
+                    if (!instrument_belongs_to(prepared.instrument, *engine))
+                        return invalid_request("transport instrument belongs to another engine");
+                    held.push_back(event.note_id);
+                } else {
+                    const auto found = std::find(held.begin(), held.end(), event.note_id);
+                    if (found == held.end()) return invalid_argument("transport release has no paired start");
+                    held.erase(found);
+                }
+                section.events.push_back(std::move(prepared));
+            }
+            if (!held.empty()) return invalid_argument("transport contains unreleased notes");
+            previous = -1;
+            for (uint32_t j = 0; j < source.bar_count; ++j) {
+                const auto bar = bars[source.bar_offset + j];
+                if (!std::isfinite(bar) || bar < 0 || bar <= previous || bar > section.length)
+                    return invalid_argument("invalid transport bar boundary");
+                section.bars.push_back(bar); previous = bar;
+            }
+            program->sections.push_back(std::move(section));
+        }
+        std::lock_guard lock(engine->mutex);
+        if (!engine->alive) return invalid_request("DSP engine destroyed");
+        collect_resources(*engine);
+        if (engine->programs.size() >= 64) return invalid_request("too many retained transport programs");
+        program->id = engine->next_program++;
+        *out_program_id = program->id;
+        engine->programs.push_back(std::move(program));
+        return NK_OK;
+    });
+}
+
+nk_result NK_CALL nk_audio_dsp_engine_play_transport(nk_audio_dsp_engine handle,
+    uint64_t id, uint32_t section, uint64_t frame) {
+    return nk::core::result_boundary("starting native DSP transport", [&]() -> nk_result {
+        if (const auto result = enter_dsp(); result != NK_OK) return result;
+        auto engine = get_engine(handle);
+        if (!engine) return NK_ERROR_INVALID_HANDLE;
+        std::lock_guard lock(engine->mutex);
+        if (!engine->alive) return invalid_request("DSP engine destroyed");
+        for (const auto &program : engine->programs) if (program->id == id && !program->retired) {
+            if (section >= program->sections.size()) return invalid_argument("unknown transport section");
+            TransportCommand command; command.kind = TransportCommand::play;
+            command.program = program.get(); command.section = section; command.frame = frame;
+            return enqueue_command(*engine, std::move(command)) ? NK_OK :
+                invalid_request("DSP runtime command queue is full");
+        }
+        return invalid_argument("unknown or retired transport program");
+    });
+}
+
+nk_result NK_CALL nk_audio_dsp_engine_request_section(nk_audio_dsp_engine handle, uint32_t section) {
+    return nk::core::result_boundary("requesting native transport section", [&]() -> nk_result {
+        if (const auto result = enter_dsp(); result != NK_OK) return result;
+        auto engine = get_engine(handle);
+        if (!engine) return NK_ERROR_INVALID_HANDLE;
+        std::lock_guard lock(engine->mutex);
+        if (!engine->alive) return invalid_request("DSP engine destroyed");
+        // The most recently queued program is authoritative even before its
+        // first callback. Programs remain pinned while commands reference them.
+        TransportProgram *program = nullptr;
+        bool queued_stop = false;
+        const auto write = engine->transport_write.load(std::memory_order_acquire);
+        const auto read = engine->transport_read.load(std::memory_order_acquire);
+        for (uint32_t cursor = write; cursor != read;) {
+            const auto &command = engine->transport_commands[(--cursor) % transport_command_capacity];
+            if (command.kind == TransportCommand::stop) { queued_stop = true; break; }
+            if (command.kind == TransportCommand::play) { program = command.program; break; }
+        }
+        if (!program && !queued_stop) {
+            const auto id = engine->active_program.load(std::memory_order_acquire);
+            for (const auto &entry : engine->programs) if (entry->id == id) program = entry.get();
+        }
+        if (!program || section >= program->sections.size()) return invalid_argument("unknown transport section");
+        TransportCommand command; command.kind = TransportCommand::request; command.section = section;
+        return enqueue_command(*engine, std::move(command)) ? NK_OK :
+            invalid_request("DSP runtime command queue is full");
+    });
+}
+
+nk_result NK_CALL nk_audio_dsp_engine_stop_transport(nk_audio_dsp_engine handle) {
+    return nk::core::result_boundary("stopping native DSP transport", [&]() -> nk_result {
+        if (const auto result = enter_dsp(); result != NK_OK) return result;
+        auto engine = get_engine(handle);
+        if (!engine) return NK_ERROR_INVALID_HANDLE;
+        std::lock_guard lock(engine->mutex);
+        if (!engine->alive) return invalid_request("DSP engine destroyed");
+        TransportCommand command;
+        return enqueue_command(*engine, command) ? NK_OK : invalid_request("DSP runtime command queue is full");
+    });
+}
+
+nk_result NK_CALL nk_audio_dsp_engine_retire_transport(nk_audio_dsp_engine handle, uint64_t id) {
+    return nk::core::result_boundary("retiring native DSP transport", [&]() -> nk_result {
+        if (const auto result = enter_dsp(); result != NK_OK) return result;
+        auto engine = get_engine(handle);
+        if (!engine) return NK_ERROR_INVALID_HANDLE;
+        std::lock_guard lock(engine->mutex);
+        for (const auto &program : engine->programs) if (program->id == id) {
+            program->retired = true; collect_resources(*engine); return NK_OK;
+        }
+        return invalid_argument("unknown transport program");
+    });
+}
+
+nk_result NK_CALL nk_audio_dsp_engine_collect(nk_audio_dsp_engine handle) {
+    return nk::core::result_boundary("collecting retired DSP resources", [&]() -> nk_result {
+        if (const auto result = enter_dsp(); result != NK_OK) return result;
+        auto engine = get_engine(handle);
+        if (!engine) return NK_ERROR_INVALID_HANDLE;
+        std::lock_guard lock(engine->mutex);
+        collect_resources(*engine); return NK_OK;
+    });
+}
+
+nk_result NK_CALL nk_audio_dsp_engine_get_runtime_status(nk_audio_dsp_engine handle,
+                                                       nk_audio_dsp_runtime_status *out_status) {
+    return nk::core::result_boundary("reading native DSP transport status", [&]() -> nk_result {
+        if (const auto result = enter_dsp(); result != NK_OK) return result;
+        auto engine = get_engine(handle);
+        if (!engine) return NK_ERROR_INVALID_HANDLE;
+        if (!out_status || out_status->struct_size < sizeof(*out_status))
+            return invalid_argument("DSP runtime status output is too small");
+        std::lock_guard lock(engine->mutex);
+        collect_resources(*engine);
+        nk_audio_dsp_runtime_status status{}; status.struct_size = sizeof(status);
+        for (;;) {
+            const auto before = engine->status_sequence.load(std::memory_order_acquire);
+            if (before & 1) continue;
+            status.playing = engine->status_playing.load(std::memory_order_relaxed);
+            status.section = engine->status_section.load(std::memory_order_relaxed);
+            status.frame = engine->status_frame.load(std::memory_order_relaxed);
+            status.loops = engine->status_loops.load(std::memory_order_relaxed);
+            status.bpm = engine->status_bpm.load(std::memory_order_relaxed);
+            if (before == engine->status_sequence.load(std::memory_order_acquire)) break;
+        }
+        status.stolen_voices = engine->stolen_voices.load(std::memory_order_relaxed);
+        status.dropped_notes = engine->dropped_notes.load(std::memory_order_relaxed);
+        status.clock_discontinuities = engine->clock_discontinuities.load(std::memory_order_relaxed);
+        for (const auto &program : engine->programs) if (program->retired) ++status.retired_resources;
+        for (const auto &instrument : engine->instruments) if (instrument->retired) ++status.retired_resources;
+        *out_status = status; return NK_OK;
+    });
 }
 
 nk_result NK_CALL nk_audio_dsp_engine_destroy(nk_audio_dsp_engine engine_handle) {
@@ -1209,16 +2251,22 @@ nk_result NK_CALL nk_audio_dsp_engine_reset(nk_audio_dsp_engine engine_handle) {
                 return invalid_request("audio DSP engine is no longer alive");
             if (engine->attached.load(std::memory_order_acquire))
                 return invalid_request("detach the audio DSP engine before offline rendering or resetting");
+            stop_runtime(*engine);
             reset_voices(*engine);
+            engine->offline_frame = 0;
+            engine->transport.origin = 0; engine->transport.section = 0;
+            engine->transport.loops = 0; engine->transport.bpm = 120;
+            engine->clock->bpm.store(120, std::memory_order_release);
+            publish_transport_status(*engine, 0);
             for (auto iterator = engine->instruments.begin();
                  iterator != engine->instruments.end();) {
-                if (auto instrument = iterator->lock()) {
+                auto &instrument = *iterator;
+                if (!instrument->retired) {
                     instrument->current = instrument->defaults;
+                    publish_parameters(*instrument);
                     ++instrument->parameters_version;
-                    ++iterator;
-                } else {
-                    iterator = engine->instruments.erase(iterator);
                 }
+                ++iterator;
             }
             return NK_OK;
         });
@@ -1537,9 +2585,12 @@ nk_result NK_CALL nk_audio_dsp_instrument_destroy(nk_audio_dsp_instrument instru
                 return NK_ERROR_INVALID_HANDLE;
             if (auto engine = instrument->engine.lock()) {
                 std::lock_guard lock(engine->mutex);
-                for (auto &voice : engine->voices) {
-                    if (voice.instrument.get() == instrument.get())
-                        voice.clear();
+                instrument->retired = true;
+                if (!engine->attached.load(std::memory_order_acquire)) {
+                    for (auto &voice : engine->voices)
+                        if (voice.instrument.get() == instrument.get()) voice.clear();
+                    for (auto &voice : engine->tails)
+                        if (voice.instrument.get() == instrument.get()) voice.clear();
                 }
             }
             if (!nk::core::handles().erase(instrument_handle,
@@ -1565,12 +2616,22 @@ nk_result NK_CALL nk_audio_dsp_instrument_set_parameter(nk_audio_dsp_instrument 
             std::lock_guard lock(engine->mutex);
             if (!engine->alive)
                 return invalid_request("audio DSP engine is no longer alive");
-            auto parameters = instrument->current;
+            if (instrument->provider && parameter != NK_AUDIO_DSP_PARAMETER_GAIN)
+                return invalid_argument("unsupported sampled-instrument DSP parameter");
+            auto parameters = control_parameters(*instrument);
             auto result = set_parameter(parameters, parameter, value);
             if (result == NK_OK)
                 result = validate_engine_parameters(parameters, *engine);
-            if (result == NK_OK)
-                instrument->current = parameters;
+            if (result == NK_OK && engine->attached.load(std::memory_order_acquire)) {
+                TransportCommand command; command.kind = TransportCommand::queued_note;
+                command.note.event.kind = NK_AUDIO_DSP_EVENT_PARAMETER;
+                command.note.event.parameter = parameter;
+                command.note.event.value = value;
+                command.note.instrument = instrument;
+                command.note.generation = engine->scheduled_generation.load(std::memory_order_acquire);
+                return enqueue_command(*engine, std::move(command)) ? NK_OK : NK_ERROR_QUEUE_FULL;
+            }
+            if (result == NK_OK) { instrument->current = parameters; publish_parameters(*instrument); }
             if (result == NK_OK)
                 ++instrument->parameters_version;
             return result;
@@ -1593,12 +2654,22 @@ nk_result NK_CALL nk_audio_dsp_instrument_set_oscillator_parameter(
             std::lock_guard lock(engine->mutex);
             if (!engine->alive)
                 return invalid_request("audio DSP engine is no longer alive");
-            auto parameters = instrument->current;
+            if (instrument->provider) return invalid_argument("Sampled instrument has no DSP oscillators");
+            auto parameters = control_parameters(*instrument);
             auto result = set_oscillator_parameter(parameters, oscillator_index, parameter, value);
             if (result == NK_OK)
                 result = validate_engine_parameters(parameters, *engine);
-            if (result == NK_OK)
-                instrument->current = parameters;
+            if (result == NK_OK && engine->attached.load(std::memory_order_acquire)) {
+                TransportCommand command; command.kind = TransportCommand::queued_note;
+                command.note.event.kind = NK_AUDIO_DSP_EVENT_PARAMETER;
+                command.note.event.parameter = parameter;
+                command.note.event.oscillator_index = oscillator_index;
+                command.note.event.value = value;
+                command.note.instrument = instrument;
+                command.note.generation = engine->scheduled_generation.load(std::memory_order_acquire);
+                return enqueue_command(*engine, std::move(command)) ? NK_OK : NK_ERROR_QUEUE_FULL;
+            }
+            if (result == NK_OK) { instrument->current = parameters; publish_parameters(*instrument); }
             if (result == NK_OK)
                 ++instrument->parameters_version;
             return result;
@@ -1627,7 +2698,9 @@ nk_result NK_CALL nk_audio_dsp_instrument_get_parameter(nk_audio_dsp_instrument 
             std::lock_guard lock(engine->mutex);
             if (!engine->alive)
                 return invalid_request("audio DSP engine is no longer alive");
-            *out_value = get_parameter(instrument->current, parameter);
+            if (instrument->provider && parameter != NK_AUDIO_DSP_PARAMETER_GAIN)
+                return invalid_argument("unsupported sampled-instrument DSP parameter");
+            *out_value = instrument->published[parameter].load(std::memory_order_relaxed);
             return NK_OK;
         });
 }
@@ -1652,9 +2725,10 @@ nk_result NK_CALL nk_audio_dsp_instrument_get_oscillator_parameter(
             std::lock_guard lock(engine->mutex);
             if (!engine->alive)
                 return invalid_request("audio DSP engine is no longer alive");
-            if (oscillator_index >= instrument->current.oscillator_count)
+            if (instrument->provider) return invalid_argument("Sampled instrument has no DSP oscillators");
+            if (oscillator_index >= instrument->defaults.oscillator_count)
                 return invalid_argument("audio DSP oscillator parameter target is invalid");
-            *out_value = get_oscillator_parameter(instrument->current, oscillator_index, parameter);
+            *out_value = instrument->published_oscillators[oscillator_index][parameter - 9].load(std::memory_order_relaxed);
             return NK_OK;
         });
 }
@@ -1712,6 +2786,8 @@ nk_result NK_CALL nk_audio_dsp_engine_render(nk_audio_dsp_engine engine_handle,
                     else
                         ++ramp;
                 }
+                consume_attached_events(*engine, engine->offline_frame + frame);
+                advance_transport(*engine, engine->offline_frame + frame);
                 while (event_index < event_count && events[event_index].frame_offset == frame) {
                     const auto result = events[event_index].kind == NK_AUDIO_DSP_EVENT_PARAMETER_RAMP
                                             ? begin_parameter_ramp(*engine, events[event_index], ramps)
@@ -1720,17 +2796,14 @@ nk_result NK_CALL nk_audio_dsp_engine_render(nk_audio_dsp_engine engine_handle,
                         return result;
                     ++event_index;
                 }
-                nk::audio_dsp::StereoSample mixed;
-                for (auto &voice : engine->voices) {
-                    const auto sample = voice_sample(voice);
-                    mixed.left += sample.left;
-                    mixed.right += sample.right;
-                }
+                const auto mixed = mix_voices(*engine, engine->offline_frame + frame);
                 for (uint32_t channel = 0; channel < target->channels; ++channel)
                     target->samples[static_cast<uint64_t>(frame) * target->channels + channel] =
                         target->channels == 1 || channel > 1 ? (mixed.left + mixed.right) * 0.5f
                             : (channel == 0 ? mixed.left : mixed.right);
             }
+            engine->offline_frame += target->frame_count;
+            publish_transport_status(*engine, engine->offline_frame);
             for (auto ramp = ramps.begin(); ramp != ramps.end();) {
                 if (const auto result = apply_parameter_ramp(*engine, *ramp, target->frame_count);
                     result != NK_OK)

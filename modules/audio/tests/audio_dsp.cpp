@@ -454,7 +454,8 @@ int main() {
     free_running_note_off.frame_offset = 0;
     free_running_note_off.voice_id = 2;
     assert(nk_audio_dsp_engine_render(engine, &target, &free_running_note_off, 1) == NK_OK);
-    assert(nk_audio_dsp_engine_render(engine, &target, nullptr, 0) == NK_OK);
+    for (uint32_t i = 0; i < 240; ++i)
+        assert(nk_audio_dsp_engine_render(engine, &target, nullptr, 0) == NK_OK);
     assert(all_silent(samples, 1));
 
     auto retrigger_options = free_running_options;
@@ -474,7 +475,13 @@ int main() {
     assert(all_silent(samples, 1));
     assert(nk_audio_dsp_engine_render(engine, &target, nullptr, 0) == NK_OK);
     assert(contains_signal(samples, 1));
+    const auto before_retrigger = samples[0];
     assert(nk_audio_dsp_engine_render(engine, &target, &retrigger_note_on, 1) == NK_OK);
+    assert(std::abs(samples[0] - before_retrigger) < 1e-7f);
+    // The LFO still restarts; its first sample is bridged from the old voice.
+    for (uint32_t i = 0; i < 239; ++i)
+        assert(nk_audio_dsp_engine_render(engine, &target, nullptr, 0) == NK_OK);
+    assert(nk_audio_dsp_engine_render(engine, &target, nullptr, 0) == NK_OK);
     assert(all_silent(samples, 1));
 
     assert(nk_audio_dsp_engine_reset(engine) == NK_OK);

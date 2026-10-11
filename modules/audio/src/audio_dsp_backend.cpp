@@ -146,12 +146,35 @@ struct Voice::Impl {
     float filter_resonance = 0.0f;
     std::array<ModulationRoute, NK_AUDIO_DSP_MAX_MODULATION_ROUTES> routes{};
     std::array<uint32_t, NK_AUDIO_DSP_MAX_OSCILLATORS> oscillator_order{};
+    std::array<std::array<uint32_t, NK_AUDIO_DSP_MAX_MODULATION_ROUTES>,
+               NK_AUDIO_DSP_MAX_OSCILLATORS> operator_routes{};
+    std::array<uint32_t, NK_AUDIO_DSP_MAX_OSCILLATORS> operator_route_counts{};
+    StereoSample last_output{};
+    StereoSample retrigger_offset{};
+    uint32_t retrigger_frames = 0;
+    uint32_t retrigger_length = 1;
     uint32_t route_count = 0;
     uint32_t oscillator_count = 0;
     float base_frequency = 440.0f;
     float velocity = 0.0f;
     bool gate = false;
     bool active = false;
+
+    StereoSample bridge_retrigger(StereoSample output) noexcept {
+        if (retrigger_frames > 0) {
+            if (retrigger_frames == retrigger_length) {
+                retrigger_offset.left -= output.left;
+                retrigger_offset.right -= output.right;
+            }
+            const auto t = static_cast<float>(retrigger_frames) / retrigger_length;
+            const auto weight = t * t * (3.0f - 2.0f * t);
+            output.left += retrigger_offset.left * weight;
+            output.right += retrigger_offset.right * weight;
+            --retrigger_frames;
+        }
+        last_output = output;
+        return output;
+    }
 };
 
 Voice::Voice() : impl_(std::make_unique<Impl>()) {}
@@ -164,6 +187,9 @@ Voice &Voice::operator=(Voice &&) noexcept = default;
 
 void Voice::init(uint32_t sample_rate) noexcept {
     impl_->sample_rate = sample_rate;
+    impl_->retrigger_length = std::max(1u, sample_rate / 200); // Five milliseconds.
+    impl_->last_output = {};
+    impl_->retrigger_frames = 0;
     for (auto &copy : impl_->oscillators) {
         for (auto &oscillator : copy) {
             oscillator.oscillator.Init(static_cast<float>(sample_rate));
@@ -258,6 +284,14 @@ void Voice::set_parameters(const PatchParameters &parameters) noexcept {
     impl_->filter_envelope_used = parameters.filter_envelope_amount_semitones != 0;
     impl_->routes = parameters.routes;
     impl_->route_count = parameters.route_count;
+    impl_->operator_route_counts = {};
+    for (uint32_t i = 0; i < impl_->route_count; ++i) {
+        const auto &route = impl_->routes[i];
+        if (route.source == NK_AUDIO_DSP_MODULATION_SOURCE_OSCILLATOR) {
+            const auto target = route.oscillator_index - 1;
+            impl_->operator_routes[target][impl_->operator_route_counts[target]++] = i;
+        }
+    }
     for (uint32_t i = 0; i < impl_->route_count; ++i) {
         switch (impl_->routes[i].source) {
         case NK_AUDIO_DSP_MODULATION_SOURCE_LFO: impl_->lfo_used[0] = true; break;
@@ -315,6 +349,11 @@ void Voice::set_parameters(const PatchParameters &parameters) noexcept {
 }
 
 void Voice::note_on(uint32_t note, float velocity) noexcept {
+    // Preserve the last audible sample across a hard phase/envelope restart.
+    // A finite smoothstep correction avoids a discontinuity without rendering
+    // another voice or allocating on the audio callback, even under rapid reuse.
+    impl_->retrigger_frames = impl_->active ? impl_->retrigger_length : 0;
+    impl_->retrigger_offset = impl_->last_output;
     const auto semitones = static_cast<float>(note) - 69.0f;
     const auto frequency = 440.0f * std::pow(2.0f, semitones / 12.0f);
     impl_->base_frequency = frequency;
@@ -352,10 +391,23 @@ void Voice::note_off() noexcept {
 }
 
 void Voice::reset() noexcept {
+    impl_->last_output = {};
+    impl_->retrigger_frames = 0;
     impl_->velocity = 0.0f;
     impl_->gate = false;
     impl_->active = false;
     for (auto &lfo : impl_->lfos) lfo.Reset(0.0f);
+}
+
+void Voice::release_resources() noexcept {
+    reset();
+    for (auto &copy : impl_->oscillators) {
+        for (auto &oscillator : copy) {
+            oscillator.wavetable_oscillator.SetTables(nullptr, 0);
+            oscillator.wavetable.reset();
+        }
+    }
+    impl_->source.configure(SourceParameters{}, impl_->sample_rate);
 }
 
 float Voice::process() noexcept {
@@ -368,8 +420,9 @@ StereoSample Voice::process_stereo() noexcept {
         return {};
     const auto envelope = impl_->envelope.Process(impl_->gate);
     if (!impl_->gate && !impl_->envelope.IsRunning()) {
-        impl_->active = false;
-        return {};
+        const auto output = impl_->bridge_retrigger({});
+        impl_->active = impl_->retrigger_frames > 0;
+        return output;
     }
     const auto filter_envelope = impl_->filter_envelope_used
                                      ? impl_->filter_envelope.Process(impl_->gate) : 0.0f;
@@ -461,11 +514,9 @@ StereoSample Voice::process_stereo() noexcept {
              position < impl_->oscillator_count && !impl_->source_replaces_oscillators; ++position) {
             const auto index = impl_->oscillator_order[position];
             auto &oscillator = impl_->oscillators[copy][index];
-            for (uint32_t route_index = 0; route_index < impl_->route_count; ++route_index) {
-                const auto &route = impl_->routes[route_index];
-                if (route.source != NK_AUDIO_DSP_MODULATION_SOURCE_OSCILLATOR ||
-                    route.oscillator_index != index + 1)
-                    continue;
+            for (uint32_t operator_index = 0;
+                 operator_index < impl_->operator_route_counts[index]; ++operator_index) {
+                const auto &route = impl_->routes[impl_->operator_routes[index][operator_index]];
                 auto source_value = oscillator_outputs[route.source_oscillator_index - 1];
                 if (route.polarity == NK_AUDIO_DSP_MODULATION_UNIPOLAR)
                     source_value = 0.5f * (source_value + 1.0f);
@@ -478,14 +529,14 @@ StereoSample Voice::process_stereo() noexcept {
             const auto oscillator_frequency = pitched_frequencies[index] * oscillator.tuning;
             const auto detuned_frequency = clamp_frequency(
                 oscillator_frequency + copy_frequency_offsets[index], impl_->sample_rate);
-            oscillator.wavetable_oscillator.SetFreq(detuned_frequency);
-            oscillator.oscillator.SetFreq(detuned_frequency);
             const auto phase_offset = oscillator.phase + copy_phase_offsets[index];
             const auto level = std::max(0.0f, 1.0f + level_offsets[index]);
             auto oscillator_output = 0.0f;
             if (oscillator.wavetable) {
+                oscillator.wavetable_oscillator.SetFreq(detuned_frequency);
                 oscillator_output = oscillator.wavetable_oscillator.Process(phase_offset) * level;
             } else {
+                oscillator.oscillator.SetFreq(detuned_frequency);
                 oscillator_output = oscillator.oscillator.Process(phase_offset) * level;
             }
             oscillator_outputs[index] = oscillator_output;
@@ -531,9 +582,11 @@ StereoSample Voice::process_stereo() noexcept {
     }
     const auto amplitude = impl_->gain * std::max(0.0f, 1.0f + amplitude_offset);
     const auto pan = std::clamp(pan_offset, -1.0f, 1.0f);
-    return {sample * amplitude * impl_->velocity * envelope * (1.0f - std::max(0.0f, pan)),
-            (is_stereo ? stereo.right : sample) * amplitude * impl_->velocity * envelope *
-                (1.0f + std::min(0.0f, pan))};
+    StereoSample output{
+        sample * amplitude * impl_->velocity * envelope * (1.0f - std::max(0.0f, pan)),
+        (is_stereo ? stereo.right : sample) * amplitude * impl_->velocity * envelope *
+            (1.0f + std::min(0.0f, pan))};
+    return impl_->bridge_retrigger(output);
 }
 
 bool Voice::active() const noexcept {

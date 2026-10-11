@@ -17,3 +17,6 @@
 [submodule "vendor/signalsmith-dsp"]
 	path = vendor/signalsmith-dsp
 	url = https://github.com/Signalsmith-Audio/dsp.git
+[submodule "vendor/tinysoundfont"]
+	path = vendor/tinysoundfont
+	url = https://github.com/schellingb/TinySoundFont.git

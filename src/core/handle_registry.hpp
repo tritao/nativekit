@@ -45,7 +45,8 @@ enum class ResourceType : std::uint8_t {
     audio_dsp_patch,
     audio_dsp_instrument,
     audio_dsp_wavetable,
-    audio_bus_send
+    audio_bus_send,
+    audio_soundfont
 };
 
 struct Resource {

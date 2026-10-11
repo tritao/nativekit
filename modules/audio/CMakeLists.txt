@@ -2,6 +2,10 @@ if(NOT EXISTS "${NK_VENDOR_DIR}/daisysp/Source/daisysp.h")
     message(FATAL_ERROR "DaisySP submodule is missing; run git submodule update --init")
 endif()
 
+if(NOT EXISTS "${NK_VENDOR_DIR}/tinysoundfont/tsf.h")
+    message(FATAL_ERROR "TinySoundFont submodule is missing; run git submodule update --init --recursive")
+endif()
+
 foreach(NK_SIGNALSMITH_FILE
     "${NK_VENDOR_DIR}/signalsmith-basics/include/signalsmith-basics/reverb.h"
     "${NK_VENDOR_DIR}/signalsmith-dsp/include/signalsmith-dsp/delay.h")
@@ -56,6 +60,8 @@ target_sources(nativekit PRIVATE
     src/audio_effect_processor.cpp
     src/audio_delay_processor.cpp
     src/audio_dsp.cpp
+    src/audio_sample_source.cpp
+    src/audio_soundfont.cpp
     src/audio_dsp_backend.cpp
     src/audio_daisy_source.cpp
     $<TARGET_OBJECTS:nativekit_daisysp>)
@@ -68,7 +74,8 @@ target_include_directories(nativekit SYSTEM PRIVATE
     "${NK_VENDOR_DIR}/daisysp/Source"
     "${NK_VENDOR_DIR}/daisysp/Source/Utility"
     "${NK_VENDOR_DIR}/signalsmith-basics/include"
-    "${NK_VENDOR_DIR}/signalsmith-dsp/include")
+    "${NK_VENDOR_DIR}/signalsmith-dsp/include"
+    "${NK_VENDOR_DIR}/tinysoundfont")
 if(APPLE)
     target_link_libraries(nativekit PRIVATE "-framework CoreAudio" "-framework AudioToolbox")
 endif()
@@ -161,6 +168,20 @@ if(NK_BUILD_TESTS)
     add_test(NAME audio_dsp_voice COMMAND nativekit_audio_dsp_voice_tests)
     set_tests_properties(audio_dsp_voice PROPERTIES LABELS "audio")
 
+    add_executable(nativekit_audio_soundfont_tests tests/audio_soundfont.cpp)
+    target_compile_features(nativekit_audio_soundfont_tests PRIVATE cxx_std_17)
+    target_compile_definitions(nativekit_audio_soundfont_tests PRIVATE
+        NK_SF2_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/minimal.sf2")
+    target_link_libraries(nativekit_audio_soundfont_tests PRIVATE NativeKit::audio_dsp)
+    add_test(NAME audio_soundfont COMMAND nativekit_audio_soundfont_tests)
+    set_tests_properties(audio_soundfont PROPERTIES LABELS "audio")
+
+    add_executable(nativekit_audio_runtime_tests tests/audio_runtime.cpp)
+    target_compile_features(nativekit_audio_runtime_tests PRIVATE cxx_std_17)
+    target_link_libraries(nativekit_audio_runtime_tests PRIVATE NativeKit::audio_dsp)
+    add_test(NAME audio_runtime COMMAND nativekit_audio_runtime_tests)
+    set_tests_properties(audio_runtime PROPERTIES LABELS "audio")
+
     add_executable(nativekit_audio_dsp_tests tests/audio_dsp.cpp)
     target_compile_features(nativekit_audio_dsp_tests PRIVATE cxx_std_17)
     target_link_libraries(nativekit_audio_dsp_tests PRIVATE NativeKit::audio_dsp)
@@ -192,3 +213,6 @@ install(FILES "${NK_VENDOR_DIR}/signalsmith-dsp/LICENSE.txt"
 
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/patches/Signalsmith-STFX-LICENSE.txt"
     DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/NativeKit)
+
+install(FILES "${NK_VENDOR_DIR}/tinysoundfont/LICENSE"
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/NativeKit RENAME TinySoundFont-LICENSE)
