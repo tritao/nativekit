@@ -264,7 +264,48 @@ static void analog_snare_shell_decays_without_note_off() {
     assert(early_energy > .0001);
     assert(late_energy < early_energy * .0001);
 }
+static void source_retriggers_match_fresh_state() {
+    // Exercise the real variant emplacement path, including pitch changes and
+    // replacing a different model in storage previously used by another source.
+    for (uint32_t rate : {44100u, 48000u, 96000u}) {
+        DaisySource reused;
+        for (uint32_t kind = 1; kind <= NK_AUDIO_DSP_SOURCE_KIND_COUNT; ++kind) {
+            nk_audio_dsp_source_options options{};
+            options.struct_size = sizeof(options); options.kind = kind;
+            for (uint32_t p = 0; p < NK_AUDIO_DSP_SOURCE_PARAMETER_COUNT; ++p) {
+                float lo, hi, value;
+                if (source_parameter_info(kind, p, lo, hi, value)) options.values[p] = value;
+            }
+            if (kind == NK_AUDIO_DSP_SOURCE_OSCILLATOR_BANK || kind == NK_AUDIO_DSP_SOURCE_HARMONIC)
+                options.amplitudes[0] = 1;
+            float pcm[128];
+            for (int i=0; i<128; ++i) pcm[i] = .25f*std::sin(i*.2f);
+            SourceParameters parameters;
+            const bool granular = kind == NK_AUDIO_DSP_SOURCE_GRANULAR;
+            assert(normalize_source(options, granular ? pcm : nullptr, granular ? 128 : 0, parameters));
+            reused.configure(parameters, rate);
+            for (uint32_t note : {36u, 55u, 72u, 84u}) {
+                const float frequency = 440.f*std::pow(2.f,(static_cast<float>(note)-69)/12.f);
+                DaisySource fresh; fresh.configure(parameters, rate); fresh.trigger(frequency, note);
+                std::vector<float> expected;
+                for (int i=0; i<8193; ++i) expected.push_back(fresh.process(frequency, 0));
+                for (int pass=0; pass<2; ++pass) {
+                    reused.trigger(frequency, note);
+                    for (size_t i=0; i<expected.size(); ++i) {
+                        const float sample = reused.process(frequency, 0);
+                        if (!std::isfinite(sample) || sample != expected[i]) {
+                            std::fprintf(stderr,"Daisy retrigger source=%u rate=%u note=%u pass=%d sample=%zu\n",
+                                         kind, rate, note, pass, i);
+                            std::abort();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 int main() {
+    source_retriggers_match_fresh_state();
     svf_cached_resonance_matches_reference();
     karplus_linear_string_tracks_pitch();
     karplus_damping_controls_natural_decay();

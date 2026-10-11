@@ -157,6 +157,15 @@ if(NK_BUILD_TESTS)
     add_test(NAME audio_daisy_boundaries COMMAND nativekit_audio_daisy_boundaries_tests)
     set_tests_properties(audio_daisy_boundaries PROPERTIES LABELS "audio")
 
+    add_executable(nativekit_audio_daisy_initialization_tests
+        tests/audio_daisy_initialization.cpp $<TARGET_OBJECTS:nativekit_daisysp>)
+    target_compile_features(nativekit_audio_daisy_initialization_tests PRIVATE cxx_std_17)
+    target_include_directories(nativekit_audio_daisy_initialization_tests PRIVATE src)
+    target_include_directories(nativekit_audio_daisy_initialization_tests SYSTEM PRIVATE
+        "${NK_VENDOR_DIR}/daisysp/Source" "${NK_VENDOR_DIR}/daisysp/Source/Utility")
+    add_test(NAME audio_daisy_initialization COMMAND nativekit_audio_daisy_initialization_tests)
+    set_tests_properties(audio_daisy_initialization PROPERTIES LABELS "audio")
+
     add_executable(nativekit_audio_daisy_sources_tests tests/audio_daisy_sources.cpp)
     target_link_libraries(nativekit_audio_daisy_sources_tests PRIVATE NativeKit::audio_dsp)
     add_test(NAME audio_daisy_sources COMMAND nativekit_audio_daisy_sources_tests)

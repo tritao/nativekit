@@ -2,7 +2,9 @@
 
 The upstream submodule remains unchanged. Translation wrappers in `src/daisysp`
 select these small MIT implementations instead of their upstream `.cpp` files.
-Their public classes and headers remain upstream-owned. Each adapted file
+Most class headers remain upstream-owned; private copies of `synthsnaredrum.h`
+and `harmonic_osc.h` accompany state fixes without changing the public NativeKit
+ABI. Each adapted file
 includes the upstream copyright and license; DaisySP-LICENSE is installed.
 
 - `fm2.cpp`: initializes the carrier/modulator frequencies alongside their
@@ -31,6 +33,20 @@ includes the upstream copyright and license; DaisySP-LICENSE is installed.
   instead of saturating its control, and applies the trigger's one-pole filter
   instead of clamping it. The noise cutoff clamp is retained. A held-gate
   regression checks that the shell decays without an outer note release.
+- `synthbassdrum.cpp`: resets the transient envelope and its low-pass state in
+  `Init()`. The omitted low-pass state previously made first hits depend on old
+  object storage and settle over subsequent hits, and could propagate NaNs.
+- `stringvoice.cpp`, `modalvoice.cpp`: reset the internal trigger latch on
+  initialization; StringVoice also resets its auxiliary output.
+- `formantosc.cpp`: resets the pending phase-shift increment before processing.
+- `variableshapeosc.cpp`: initializes pulse width and slave frequency before
+  the setters that read them. Default startup no longer depends on old storage
+  or starts with a zero-width pulse and nonfinite output.
+- `oscillatorbank.cpp`, `harmonic_osc.h`: initialize cached values before the
+  setters compare them with new values.
+- `synthsnaredrum.cpp` and its private header: move the alternating envelope
+  clock from a process-wide global into each model, and reset it on `Init()`.
+  Concurrent snare voices and engines no longer affect each other's decay.
 
 `audio_daisy_random.hpp` redirects vendor RNG calls into a scoped per-voice
 xorshift state. It avoids global libc RNG locking and isolates simultaneous
@@ -41,3 +57,11 @@ reset on note-on; source configurations remain immutable for a patch's lifetime.
 
 Keep these adaptations covered by the source lifecycle and control-boundary
 regressions when updating the DaisySP pin.
+
+`audio_daisy_initialization` covers all 24 exposed models at 44.1/48/96 kHz,
+using zero, finite-pattern, NaN-pattern and uninitialized object storage. It
+compares startup and post-playback `Init()` output, including processing before
+the first trigger, and checks that interleaved snares preserve independent
+envelope clocks. It can also be compiled with MemorySanitizer. The source
+boundary suite checks exact first-hit/retrigger equivalence through NativeKit's
+variant adapter, with pitch changes and model replacement.

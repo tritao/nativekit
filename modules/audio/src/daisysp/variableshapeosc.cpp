@@ -1,4 +1,4 @@
 #include "../audio_daisy_random.hpp"
 #define rand nk_daisy_rand
-#include "Synthesis/variableshapeosc.cpp"
+#include "../../patches/daisysp/variableshapeosc.cpp"
 #undef rand

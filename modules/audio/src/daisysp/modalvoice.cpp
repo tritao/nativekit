@@ -1,4 +1,4 @@
 #include "../audio_daisy_random.hpp"
 #define rand nk_daisy_rand
-#include "PhysicalModeling/modalvoice.cpp"
+#include "../../patches/daisysp/modalvoice.cpp"
 #undef rand

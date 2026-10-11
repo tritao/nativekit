@@ -408,6 +408,8 @@ Drip uses initialized filter values and portable random scaling; analog snare
 resonators run linearly to avoid nonlinear SVF divergence on trigger pulses.
 Its Q conversion and trigger one-pole filter preserve the natural shell decay,
 covered independently of the outer note release.
+Initialization adaptations reset transient/filter and trigger state, order
+setter dependencies, and give each synthetic snare its own envelope clock.
 These changes are documented in `patches/daisysp/README.md`; no LGPL modules or
 SF2 decoder are introduced.
 
@@ -416,6 +418,10 @@ invalid configuration and retained PCM lifetime. `audio_daisy_boundaries` checks
 supported control limits at MIDI 0/60/69/127 and can run with AddressSanitizer and
 UndefinedBehaviorSanitizer. Live device coverage additionally auditions every
 source in Beartooth's private null-sink integration check.
+`audio_daisy_initialization` checks first-hit and post-playback initialization
+against different prior storage for all 24 models at three sample rates, plus
+independent snare clocks; it also supports MemorySanitizer. Source boundaries
+include exact retrigger comparisons after pitch and model changes.
 
 ## Extended synth voice options
 
