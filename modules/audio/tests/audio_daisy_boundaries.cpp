@@ -305,6 +305,18 @@ static void source_retriggers_match_fresh_state() {
     }
 }
 int main() {
+    // Cancellation before the first sample must also retain continuity when a
+    // sounding voice identity was just retriggered and immediately released.
+    {
+        Voice voice; voice.init(48000); voice.set_parameters(PatchParameters{});
+        voice.note_on(69,1);
+        float previous=0;
+        for (int i=0;i<137;++i) previous=voice.process();
+        voice.note_on(72,1); voice.note_off();
+        assert(std::abs(voice.process()-previous)<.00001f);
+        for (int i=0;i<256;++i) assert(std::isfinite(voice.process()));
+        assert(!voice.active());
+    }
     source_retriggers_match_fresh_state();
     svf_cached_resonance_matches_reference();
     karplus_linear_string_tracks_pitch();

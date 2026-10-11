@@ -292,11 +292,29 @@ static void choke_groups() {
     assert(nk_audio_dsp_instrument_destroy(kick) == NK_OK);
 }
 
+static void same_frame_choke_cancels_unheard_note() {
+    auto e = engine(); auto first = instrument(e); auto second = instrument(e);
+    assert(nk_audio_dsp_instrument_set_choke_group(first, 1) == NK_OK);
+    assert(nk_audio_dsp_instrument_set_choke_group(second, 1) == NK_OK);
+    note(e, first, 0);
+    const auto token = note(e, second, 0);
+    const auto output = render(e, 4096);
+    uint32_t voices=0, tails=0;
+    assert(nk_audio_dsp_engine_get_voice_counts(e,&voices,&tails)==NK_OK);
+    assert(voices==1 && tails==0 && status(e).dropped_notes==0);
+    assert(std::any_of(output.begin(),output.end(),[](float x) {return std::abs(x)>.01f;}));
+    assert(nk_audio_dsp_engine_note_off(e,token,4096)==NK_OK);
+    render(e,4096);
+    assert(nk_audio_dsp_engine_get_voice_counts(e,&voices,&tails)==NK_OK && voices==0);
+    assert(nk_audio_dsp_instrument_destroy(first)==NK_OK);
+    assert(nk_audio_dsp_instrument_destroy(second)==NK_OK);
+    assert(nk_audio_dsp_engine_destroy(e)==NK_OK);
+}
 int main() {
     nk_init_options init{}; init.struct_size = sizeof(init); init.api_version = NK_API_VERSION;
     assert(nk_init(&init) == NK_OK);
     assert(nk_audio_test_use_offline_device() == NK_OK);
-    tokens_and_stealing(); choke_groups();
+    tokens_and_stealing(); choke_groups(); same_frame_choke_cancels_unheard_note();
     auto fixed = sequence(256,false);
     assert(fixed == sequence(73,false));
     assert(fixed == sequence(256,true));

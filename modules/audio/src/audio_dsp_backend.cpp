@@ -159,6 +159,7 @@ struct Voice::Impl {
     float velocity = 0.0f;
     bool gate = false;
     bool active = false;
+    bool note_rendered = false;
 
     StereoSample bridge_retrigger(StereoSample output) noexcept {
         if (retrigger_frames > 0) {
@@ -354,6 +355,7 @@ void Voice::note_on(uint32_t note, float velocity) noexcept {
     // another voice or allocating on the audio callback, even under rapid reuse.
     impl_->retrigger_frames = impl_->active ? impl_->retrigger_length : 0;
     impl_->retrigger_offset = impl_->last_output;
+    impl_->note_rendered = false;
     const auto semitones = static_cast<float>(note) - 69.0f;
     const auto frequency = 440.0f * std::pow(2.0f, semitones / 12.0f);
     impl_->base_frequency = frequency;
@@ -396,6 +398,7 @@ void Voice::reset() noexcept {
     impl_->velocity = 0.0f;
     impl_->gate = false;
     impl_->active = false;
+    impl_->note_rendered = false;
     for (auto &lfo : impl_->lfos) lfo.Reset(0.0f);
 }
 
@@ -418,6 +421,16 @@ float Voice::process() noexcept {
 StereoSample Voice::process_stereo() noexcept {
     if (!impl_->active)
         return {};
+    // A same-frame note-off/choke can precede the first envelope sample. Daisy's
+    // ADSR has not observed a rising gate yet, so a falling gate cannot release
+    // its forced attack. Cancel the unheard note, preserving any prior audible
+    // sample through the existing bounded retrigger bridge.
+    if (!impl_->gate && !impl_->note_rendered) {
+        const auto output = impl_->bridge_retrigger({});
+        impl_->active = impl_->retrigger_frames > 0;
+        return output;
+    }
+    impl_->note_rendered = true;
     const auto envelope = impl_->envelope.Process(impl_->gate);
     if (!impl_->gate && !impl_->envelope.IsRunning()) {
         const auto output = impl_->bridge_retrigger({});
