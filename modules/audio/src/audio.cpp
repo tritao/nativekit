@@ -13,6 +13,15 @@
 
 #include "miniaudio.h"
 
+#if defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+// AudioWorkletGlobalScope may lack a monotonic wall clock. Never proxy a clock
+// request to the main thread from the realtime callback, or use Date.now().
+EM_JS(double, nk_audio_callback_monotonic_ms, (), {
+    return typeof performance !== 'undefined' ? performance.now() : 0;
+});
+#endif
+
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -130,13 +139,17 @@ void audio_engine_data_callback(ma_device *, void *frames_out, const void *frame
     (void)frames_in;
     const bool measure = engine->diagnostics_enabled.load(std::memory_order_relaxed);
     const auto stamp = []() noexcept -> uint64_t {
+#if defined(__EMSCRIPTEN__)
+        return static_cast<uint64_t>(nk_audio_callback_monotonic_ms() * 1000000.0);
+#else
         return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count());
+#endif
     };
     const uint64_t start_ns = measure ? stamp() : 0;
     const uint64_t budget_ns = measure ? uint64_t(frame_count) * 1000000000ull /
         ma_engine_get_sample_rate(&engine->engine) : 0;
-    if (measure) {
+    if (measure && start_ns) {
         const auto previous = engine->previous_callback_ns.exchange(start_ns, std::memory_order_relaxed);
         const auto previous_budget = engine->previous_budget_ns.exchange(budget_ns, std::memory_order_relaxed);
         // A single device callback writer owns these maxima. Lifecycle/API calls only read them.
@@ -163,7 +176,8 @@ void audio_engine_data_callback(ma_device *, void *frames_out, const void *frame
                               ma_format_f32, channels);
     }
     if (measure) {
-        const auto elapsed = stamp() - start_ns;
+        const auto end_ns = start_ns ? stamp() : 0;
+        const auto elapsed = end_ns >= start_ns ? end_ns - start_ns : 0;
         if (elapsed > engine->max_callback_ns.load(std::memory_order_relaxed))
             engine->max_callback_ns.store(elapsed, std::memory_order_relaxed);
         if (elapsed > budget_ns) engine->budget_overruns.fetch_add(1, std::memory_order_relaxed);

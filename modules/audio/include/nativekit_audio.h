@@ -38,6 +38,8 @@ extern "C" {
 
 /** Opt-in callback telemetry, cumulative for the engine lifetime. Fields are independent
  * atomic samples, not a transaction. Late gaps are timing observations, not backend XRUNs.
+ * In browser AudioWorklets without a monotonic wall clock, callback/frame/error
+ * counts remain available; timing and timing-overrun fields remain zero.
  */
 typedef struct nk_audio_diagnostics {
     uint32_t struct_size;
