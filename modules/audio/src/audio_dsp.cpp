@@ -151,6 +151,7 @@ struct ActiveParameterRamp {
 
 struct TransportEvent {
     nk_audio_dsp_transport_event value{};
+    double end_frame = 0;
     std::shared_ptr<DspInstrumentResource> instrument;
 };
 struct TransportTempo { double frame, bpm; };
@@ -171,10 +172,12 @@ struct RuntimePublication {
     uint64_t frame = 0;
 };
 struct TransportCommand {
-    enum Kind { play, request, stop, queued_note } kind = stop;
+    enum Kind { play, relocate, set_paused, request, stop, queued_note } kind = stop;
     TransportProgram *program = nullptr;
     uint64_t sequence = 0, frame = 0;
     uint32_t section = 0;
+    double position = 0;
+    bool paused = false;
     ScheduledDspEvent note;
     std::shared_ptr<RuntimePublication> publication;
 };
@@ -189,6 +192,9 @@ struct NativeTransport {
     double bpm = 120;
     uint64_t next_frame = 0;
     bool has_frame = false;
+    bool paused = false;
+    double paused_position = 0;
+    uint64_t paused_frame = 0;
 };
 
 struct DspEngineResource final : nk::core::Resource, nk::audio_dsp::DeviceOutput {
@@ -1058,6 +1064,7 @@ void expire_mono_notes(DspEngineResource &engine, uint64_t frame) {
 nk::audio_dsp::StereoSample mix_voices(DspEngineResource &engine, uint64_t frame) {
     nk::audio_dsp::StereoSample mixed;
     for (auto &voice : engine.voices) {
+        if (engine.transport.paused && voice.score_cycle) continue;
         if (voice.release_frame && frame >= voice.release_frame) release_voice(&voice);
         auto sample = voice_sample(voice);
         if (voice.fade_in_remaining) {
@@ -1069,7 +1076,7 @@ nk::audio_dsp::StereoSample mix_voices(DspEngineResource &engine, uint64_t frame
         mixed.left += sample.left; mixed.right += sample.right;
     }
     for (auto &voice : engine.tails) {
-        if (!voice.active) continue;
+        if (!voice.active || (engine.transport.paused && voice.score_cycle)) continue;
         const auto remaining = voice.fade_remaining;
         const auto sample = voice_sample(voice);
         const auto t = static_cast<float>(remaining) / engine.fade_frames;
@@ -1335,7 +1342,10 @@ void collect_resources(DspEngineResource &engine) {
 
 /** Atomically publish one musical action to independently routed track engines. */
 nk_result publish_group(const nk_audio_dsp_transport_track *tracks,
-                       uint32_t count, uint32_t section, uint64_t start, bool play) {
+                       uint32_t count, uint32_t section, uint64_t start, TransportCommand::Kind operation,
+                       double position = -1, bool paused = false) {
+    const bool play = operation == TransportCommand::play || operation == TransportCommand::relocate;
+    const bool pause_only = operation == TransportCommand::set_paused;
     if (!tracks || !count || count > 128)
         return invalid_argument("invalid DSP transport group");
     std::vector<std::shared_ptr<DspEngineResource>> engines;
@@ -1371,7 +1381,7 @@ nk_result publish_group(const nk_audio_dsp_transport_track *tracks,
             for (uint32_t cursor = write; cursor != read;) {
                 const auto &command = engine.transport_commands[(--cursor)%transport_command_capacity];
                 if (command.kind == TransportCommand::stop) { queued = true; break; }
-                if (command.kind == TransportCommand::play) { program = command.program; queued = true; break; }
+                if (command.kind == TransportCommand::play || command.kind == TransportCommand::relocate) { program = command.program; queued = true; break; }
             }
             if (!queued) {
                 const auto id = engine.active_program.load(std::memory_order_acquire);
@@ -1381,6 +1391,8 @@ nk_result publish_group(const nk_audio_dsp_transport_track *tracks,
         if (!program || (!play && program->id != tracks[i].program_id) ||
             section >= program->sections.size())
             return invalid_argument("unknown DSP group program or section");
+        if (position >= 0 && position >= program->sections[section].length)
+            return invalid_argument("seek position outside section");
         programs.push_back(program);
     }
     // Independently routed tracks must share musical boundaries. Otherwise one
@@ -1400,7 +1412,8 @@ nk_result publish_group(const nk_audio_dsp_transport_track *tracks,
     // All callback-visible commands are gated until every engine has its command.
     for (uint32_t i = 0; i < count; ++i) {
         TransportCommand command;
-        command.kind = play ? TransportCommand::play : TransportCommand::request;
+        command.kind = operation;
+        command.position = position; command.paused = paused;
         command.program = programs[i]; command.section = section;
         command.publication = publication;
         engines[i]->publications.push_back(publication);
@@ -1411,8 +1424,10 @@ nk_result publish_group(const nk_audio_dsp_transport_track *tracks,
         const auto frame = engine->status_frame.load(std::memory_order_acquire);
         // Two render blocks cover commands becoming visible between source nodes
         // in one device callback. Offline starts retain the requested exact origin.
-        if (!play || engine->attached.load(std::memory_order_acquire))
+        if ((!play && !pause_only) || engine->attached.load(std::memory_order_acquire))
             cutoff = std::max(cutoff, frame + uint64_t(std::max(engine->options.block_size, engine->device_quantum))*2);
+        else if (position >= 0 || pause_only)
+            cutoff = std::max(cutoff, frame);
     }
     publication->frame = cutoff;
     publication->ready.store(true, std::memory_order_release);
@@ -1421,7 +1436,7 @@ nk_result publish_group(const nk_audio_dsp_transport_track *tracks,
 
 void publish_transport_status(DspEngineResource &engine, uint64_t frame) {
     engine.status_sequence.fetch_add(1, std::memory_order_acq_rel);
-    engine.status_playing.store(engine.transport.program != nullptr, std::memory_order_relaxed);
+    engine.status_playing.store(engine.transport.program != nullptr && !engine.transport.paused, std::memory_order_relaxed);
     engine.status_section.store(engine.transport.section, std::memory_order_relaxed);
     engine.status_frame.store(frame, std::memory_order_relaxed);
     engine.status_loops.store(engine.transport.loops, std::memory_order_relaxed);
@@ -1432,6 +1447,7 @@ void publish_transport_status(DspEngineResource &engine, uint64_t frame) {
         const auto length = transport.program->sections[transport.section].length;
         position = std::fmod(std::max(0.0, static_cast<double>(frame - transport.start) - transport.origin), length);
     }
+    if (transport.paused) position = transport.paused_position;
     engine.status_section_frame.store(position, std::memory_order_relaxed);
     engine.status_voices.store(static_cast<uint32_t>(std::count_if(engine.voices.begin(),
         engine.voices.end(), [](const auto &voice) { return voice.active; })), std::memory_order_relaxed);
@@ -1468,6 +1484,7 @@ void consume_runtime_commands(DspEngineResource &engine, uint64_t frame) {
             if (!command.publication->ready.load(std::memory_order_acquire)) break;
             command.frame = command.publication->frame;
         }
+        if ((command.kind == TransportCommand::relocate || command.kind == TransportCommand::set_paused) && frame < command.frame) break;
         if (command.kind == TransportCommand::queued_note && command.note.generation !=
             engine.scheduled_generation.load(std::memory_order_acquire)) {
             // Invalidated note command: retire its reference below.
@@ -1485,11 +1502,14 @@ void consume_runtime_commands(DspEngineResource &engine, uint64_t frame) {
                 }
                 engine.dropped_notes.fetch_add(1, std::memory_order_relaxed);
             }
-        } else if (command.kind == TransportCommand::play) {
+        } else if (command.kind == TransportCommand::play || command.kind == TransportCommand::relocate) {
             release_transport_voices(engine);
             transport.program = command.program;
             transport.start = command.frame;
-            transport.origin = 0;
+            transport.origin = command.kind == TransportCommand::relocate ? -command.position : 0;
+            transport.paused = command.paused;
+            transport.paused_position = std::max(0.0, command.position);
+            transport.paused_frame = frame;
             transport.section = command.section;
             transport.event = 0;
             transport.pending = UINT32_MAX;
@@ -1498,6 +1518,45 @@ void consume_runtime_commands(DspEngineResource &engine, uint64_t frame) {
             transport.bpm = 120;
             transport.has_frame = false;
             engine.active_program.store(command.program->id, std::memory_order_release);
+            if (command.kind == TransportCommand::relocate) {
+                const auto &section = transport.program->sections[transport.section];
+                transport.event = 0;
+                while (transport.event < section.events.size() &&
+                       section.events[transport.event].value.frame < command.position) {
+                    const auto &prepared = section.events[transport.event++];
+                    const auto &event = prepared.value;
+                    if (event.kind == 2) transport.bpm = event.bpm;
+                    if (event.kind == 0 && prepared.end_frame > command.position) {
+                        nk_audio_dsp_event note{};
+                        note.kind = NK_AUDIO_DSP_EVENT_NOTE_ON;
+                        note.note = event.note; note.velocity = event.velocity;
+                        const auto token = next_note_token(engine);
+                        if (token) (void)start_voice(engine, prepared.instrument, note, token, 0, 0,
+                                                     transport.cycle, event.note_id);
+                    }
+                }
+                const auto tempo = std::upper_bound(section.tempos.begin(), section.tempos.end(), command.position,
+                    [](double position, const TransportTempo &tempo) { return position < tempo.frame; });
+                if (tempo != section.tempos.begin()) transport.bpm = (tempo - 1)->bpm;
+                engine.clock->bpm.store(static_cast<float>(transport.bpm), std::memory_order_release);
+                transport.has_frame = true; transport.next_frame = frame;
+            }
+        } else if (command.kind == TransportCommand::set_paused) {
+            if (transport.program && transport.paused != command.paused) {
+                if (command.paused) {
+                    const auto relative = frame >= transport.start ? frame - transport.start : 0;
+                    const auto length = transport.program->sections[transport.section].length;
+                    transport.paused_position = std::fmod(std::max(0.0,
+                        static_cast<double>(relative) - transport.origin), length);
+                    transport.paused_frame = frame;
+                } else {
+                    // Preserve events, pending transitions and all voice DSP state.
+                    transport.start += frame - transport.paused_frame;
+                    transport.has_frame = true;
+                    transport.next_frame = frame;
+                }
+                transport.paused = command.paused;
+            }
         } else if (command.kind == TransportCommand::stop) {
             release_transport_voices(engine);
             transport.program = nullptr;
@@ -1612,7 +1671,7 @@ void advance_transport(DspEngineResource &engine, uint64_t frame) {
     engine.runtime_has_frame = true; engine.runtime_next_frame = frame + 1;
     consume_runtime_commands(engine, frame);
     auto &transport = engine.transport;
-    if (!transport.program) return;
+    if (!transport.program || transport.paused) return;
     if ((!transport.has_frame && frame > transport.start) ||
         (transport.has_frame && frame != transport.next_frame)) {
         if (transport.has_frame && frame < transport.next_frame) {
@@ -1865,14 +1924,31 @@ nk_result NK_CALL nk_audio_dsp_group_play_transport(const nk_audio_dsp_transport
     uint32_t count, uint32_t section, uint64_t start) {
     return nk::core::result_boundary("publishing a native score group", [&]() -> nk_result {
         if (const auto result = enter_dsp(); result != NK_OK) return result;
-        return publish_group(tracks, count, section, start, true);
+        return publish_group(tracks, count, section, start, TransportCommand::play);
+    });
+}
+nk_result NK_CALL nk_audio_dsp_group_set_paused(const nk_audio_dsp_transport_track *tracks,
+    uint32_t count, uint32_t paused) {
+    return nk::core::result_boundary("pausing a native score group", [&]() -> nk_result {
+        if (const auto result = enter_dsp(); result != NK_OK) return result;
+        if (paused > 1) return invalid_argument("invalid transport pause state");
+        return publish_group(tracks, count, 0, 0, TransportCommand::set_paused, -1, paused != 0);
+    });
+}
+nk_result NK_CALL nk_audio_dsp_group_seek_transport(const nk_audio_dsp_transport_track *tracks,
+    uint32_t count, uint32_t section, double position, uint32_t paused) {
+    return nk::core::result_boundary("seeking a native score group", [&]() -> nk_result {
+        if (const auto result = enter_dsp(); result != NK_OK) return result;
+        if (!std::isfinite(position) || position < 0 || paused > 1)
+            return invalid_argument("invalid transport seek");
+        return publish_group(tracks, count, section, 0, TransportCommand::relocate, position, paused != 0);
     });
 }
 nk_result NK_CALL nk_audio_dsp_group_request_section(const nk_audio_dsp_transport_track *tracks,
     uint32_t count, uint32_t section) {
     return nk::core::result_boundary("requesting a native score group section", [&]() -> nk_result {
         if (const auto result = enter_dsp(); result != NK_OK) return result;
-        return publish_group(tracks, count, section, 0, false);
+        return publish_group(tracks, count, section, 0, TransportCommand::request);
     });
 }
 
@@ -2168,6 +2244,21 @@ nk_result NK_CALL nk_audio_dsp_engine_prepare_transport(nk_audio_dsp_engine hand
                 section.events.push_back(std::move(prepared));
             }
             if (!held.empty()) return invalid_argument("transport contains unreleased notes");
+            // Pair note lifetimes off the callback for sustained-note reconstruction on seek.
+            std::vector<std::pair<uint32_t, size_t>> starts;
+            for (size_t event_index = 0; event_index < section.events.size(); ++event_index) {
+                auto &event = section.events[event_index];
+                if (event.value.kind == 0) starts.emplace_back(event.value.note_id, event_index);
+                else if (event.value.kind == 1) {
+                    auto found = std::find_if(starts.begin(), starts.end(), [&](const auto &entry) {
+                        return entry.first == event.value.note_id;
+                    });
+                    if (found != starts.end()) {
+                        section.events[found->second].end_frame = event.value.frame;
+                        starts.erase(found);
+                    }
+                }
+            }
             previous = -1;
             for (uint32_t j = 0; j < source.bar_count; ++j) {
                 const auto bar = bars[source.bar_offset + j];
@@ -2223,7 +2314,7 @@ nk_result NK_CALL nk_audio_dsp_engine_request_section(nk_audio_dsp_engine handle
         for (uint32_t cursor = write; cursor != read;) {
             const auto &command = engine->transport_commands[(--cursor) % transport_command_capacity];
             if (command.kind == TransportCommand::stop) { queued_stop = true; break; }
-            if (command.kind == TransportCommand::play) { program = command.program; break; }
+            if (command.kind == TransportCommand::play || command.kind == TransportCommand::relocate) { program = command.program; break; }
         }
         if (!program && !queued_stop) {
             const auto id = engine->active_program.load(std::memory_order_acquire);

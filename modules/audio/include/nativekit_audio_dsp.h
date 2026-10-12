@@ -783,6 +783,14 @@ typedef struct nk_audio_dsp_transport_track {
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_group_play_transport(
     const nk_audio_dsp_transport_track *tracks NK_IN_ARRAY(track_count), uint32_t track_count,
     uint32_t initial_section, uint64_t start_frame);
+/** Pause/resume all tracks atomically, preserving note and section state. */
+NKAUDIO_API nk_result NK_CALL nk_audio_dsp_group_set_paused(
+    const nk_audio_dsp_transport_track *tracks NK_IN_ARRAY(track_count), uint32_t track_count,
+    uint32_t paused);
+/** Seek every track together; paused preserves the section-local position. */
+NKAUDIO_API nk_result NK_CALL nk_audio_dsp_group_seek_transport(
+    const nk_audio_dsp_transport_track *tracks NK_IN_ARRAY(track_count), uint32_t track_count,
+    uint32_t section_index, double position_frames, uint32_t paused);
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_group_request_section(
     const nk_audio_dsp_transport_track *tracks NK_IN_ARRAY(track_count), uint32_t track_count,
     uint32_t section_index);

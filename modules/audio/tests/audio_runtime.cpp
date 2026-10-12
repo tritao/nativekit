@@ -181,6 +181,49 @@ static void transitions_and_retirement() {
     assert(nk_audio_dsp_instrument_destroy(i) == NK_OK);
     assert(nk_audio_dsp_engine_destroy(e) == NK_OK);
 }
+static void group_pause_preserves_notes() {
+    auto a=engine(), b=engine(), reference=engine();
+    auto ia=instrument(a), ib=instrument(b), ir=instrument(reference);
+    auto pa=program(a,ia), pb=program(b,ib), pr=program(reference,ir);
+    nk_audio_dsp_transport_track tracks[]={{a,pa},{b,pb}};
+    assert(nk_audio_dsp_group_play_transport(tracks,2,0,0)==NK_OK);
+    assert(nk_audio_dsp_engine_play_transport(reference,pr,0,0)==NK_OK);
+    assert(render(a,100)==render(reference,100)); render(b,100);
+    assert(nk_audio_dsp_group_set_paused(tracks,2,1)==NK_OK);
+    auto silence=render(a,1000); assert(silence==render(b,1000));
+    assert(std::all_of(silence.begin(),silence.end(),[](float x) { return x==0; }));
+    uint32_t section; double position;
+    assert(nk_audio_dsp_engine_get_transport_position(a,&section,&position)==NK_OK);
+    assert(section==0 && position==100 && !status(a).playing);
+    // Repeated Pause must preserve both playhead and held voice state.
+    assert(nk_audio_dsp_group_set_paused(tracks,2,1)==NK_OK);
+    render(a,100); render(b,100);
+    assert(nk_audio_dsp_group_set_paused(tracks,2,0)==NK_OK);
+    auto resumed=render(a,200); assert(resumed==render(b,200));
+    assert(resumed==render(reference,200)); // No fresh note attack or envelope reset.
+    assert(status(a).playing && status(a).clock_discontinuities==0);
+    // Pending section transitions survive a pause and resume.
+    nk_audio_dsp_transport_track all[]={{a,pa},{b,pb},{reference,pr}};
+    assert(nk_audio_dsp_group_request_section(all,3,1)==NK_OK);
+    assert(nk_audio_dsp_group_set_paused(tracks,2,1)==NK_OK);
+    render(a,1000); render(b,1000);
+    assert(nk_audio_dsp_group_set_paused(tracks,2,0)==NK_OK);
+    resumed=render(a,2000); assert(resumed==render(b,2000));
+    assert(resumed==render(reference,2000) && status(a).section==1);
+    // Seek while paused prepares held notes for the dedicated Resume operation.
+    assert(nk_audio_dsp_group_seek_transport(tracks,2,0,200,1)==NK_OK);
+    render(a,10); render(b,10);
+    assert(nk_audio_dsp_group_set_paused(tracks,2,0)==NK_OK);
+    resumed=render(a,100); assert(resumed==render(b,100));
+    assert(std::any_of(resumed.begin(),resumed.end(),[](float x) {return std::abs(x)>.001f;}));
+    assert(nk_audio_dsp_group_set_paused(tracks,2,2)==NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_audio_dsp_engine_destroy(a)==NK_OK);
+    assert(nk_audio_dsp_engine_destroy(b)==NK_OK);
+    assert(nk_audio_dsp_engine_destroy(reference)==NK_OK);
+    assert(nk_audio_dsp_instrument_destroy(ia)==NK_OK);
+    assert(nk_audio_dsp_instrument_destroy(ib)==NK_OK);
+    assert(nk_audio_dsp_instrument_destroy(ir)==NK_OK);
+}
 static void group_publication() {
     auto a=engine(); auto b=engine(); auto ia=instrument(a); auto ib=instrument(b);
     auto pa=program(a,ia); auto pb=program(b,ib);
@@ -206,6 +249,7 @@ static void group_publication() {
     assert(first==second && status(a).section==1 && status(b).section==1);
     for (uint32_t i=0;i<64;++i) note(b,ib,100000+i,100);
     assert(nk_audio_dsp_group_request_section(tracks,2,0)==NK_ERROR_QUEUE_FULL);
+    assert(nk_audio_dsp_group_set_paused(tracks,2,1)==NK_ERROR_QUEUE_FULL);
     render(a,2000); render(b,2000);
     assert(status(a).section==1 && status(b).section==1); // Failed batch changed neither track.
     assert(nk_audio_dsp_engine_retire_transport(a,pa)==NK_OK);
@@ -341,6 +385,7 @@ int main() {
     assert(fixed == sequence(256,true));
     transitions_and_retirement();
     group_publication();
+    group_pause_preserves_notes();
     cancellation_reset_and_clock_gaps();
     late_play_keeps_requested_origin();
     assert(sample_playback(256)==sample_playback(73));
