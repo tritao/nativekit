@@ -110,6 +110,26 @@ static uint64_t program(nk_audio_dsp_engine e, nk_audio_dsp_instrument i, double
     assert(nk_audio_dsp_engine_prepare_transport(e, sections, 2, events, 6, bars, 4, &id) == NK_OK);
     assert(id); return id;
 }
+static void transport_position() {
+    auto e=engine();auto i=instrument(e);auto id=program(e,i);
+    uint32_t section=99;double frame=-1;
+    assert(nk_audio_dsp_engine_get_transport_position(e,nullptr,&frame)==NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_audio_dsp_engine_play_transport(e,id,0,400)==NK_OK);
+    render(e,200);
+    assert(nk_audio_dsp_engine_get_transport_position(e,&section,&frame)==NK_OK);
+    assert(section==0 && frame==0);
+    render(e,700);
+    assert(nk_audio_dsp_engine_get_transport_position(e,&section,&frame)==NK_OK);
+    assert(section==0 && std::abs(frame-500)<0.001);
+    render(e,1200);
+    assert(nk_audio_dsp_engine_get_transport_position(e,&section,&frame)==NK_OK);
+    assert(section==0 && std::abs(frame-699.7)<0.001);
+    assert(nk_audio_dsp_engine_request_section(e,1)==NK_OK);
+    render(e,1000);
+    assert(nk_audio_dsp_engine_get_transport_position(e,&section,&frame)==NK_OK);
+    assert(section==1 && frame>=0 && frame<2000.3);
+    assert(nk_audio_dsp_engine_destroy(e)==NK_OK);
+}
 static std::vector<float> sequence(uint32_t block, bool attached) {
     auto e = engine(); auto i = instrument(e); auto id = program(e, i);
     uint64_t start = 0;
@@ -314,6 +334,7 @@ int main() {
     nk_init_options init{}; init.struct_size = sizeof(init); init.api_version = NK_API_VERSION;
     assert(nk_init(&init) == NK_OK);
     assert(nk_audio_test_use_offline_device() == NK_OK);
+    transport_position();
     tokens_and_stealing(); choke_groups(); same_frame_choke_cancels_unheard_note();
     auto fixed = sequence(256,false);
     assert(fixed == sequence(73,false));

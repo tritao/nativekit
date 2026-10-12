@@ -219,7 +219,7 @@ struct DspEngineResource final : nk::core::Resource, nk::audio_dsp::DeviceOutput
     std::atomic<uint64_t> status_sequence{0}, status_frame{0}, status_loops{0};
     std::atomic<uint32_t> status_section{0}, status_playing{0};
     std::atomic<uint32_t> status_voices{0}, status_tails{0};
-    std::atomic<double> status_bpm{120};
+    std::atomic<double> status_bpm{120}, status_section_frame{0};
     std::array<ScheduledDspEvent, scheduled_event_capacity> scheduled_events{};
     std::atomic<uint32_t> scheduled_write{0};
     std::atomic<uint32_t> scheduled_read{0};
@@ -1426,6 +1426,13 @@ void publish_transport_status(DspEngineResource &engine, uint64_t frame) {
     engine.status_frame.store(frame, std::memory_order_relaxed);
     engine.status_loops.store(engine.transport.loops, std::memory_order_relaxed);
     engine.status_bpm.store(engine.transport.bpm, std::memory_order_relaxed);
+    double position = 0;
+    const auto &transport = engine.transport;
+    if (transport.program && frame >= transport.start) {
+        const auto length = transport.program->sections[transport.section].length;
+        position = std::fmod(std::max(0.0, static_cast<double>(frame - transport.start) - transport.origin), length);
+    }
+    engine.status_section_frame.store(position, std::memory_order_relaxed);
     engine.status_voices.store(static_cast<uint32_t>(std::count_if(engine.voices.begin(),
         engine.voices.end(), [](const auto &voice) { return voice.active; })), std::memory_order_relaxed);
     engine.status_tails.store(static_cast<uint32_t>(std::count_if(engine.tails.begin(),
@@ -2280,6 +2287,24 @@ nk_result NK_CALL nk_audio_dsp_engine_get_voice_counts(nk_audio_dsp_engine handl
             if (before == engine->status_sequence.load(std::memory_order_acquire)) break;
         }
         *out_active_voices = voices; *out_active_tails = tails; return NK_OK;
+    });
+}
+
+nk_result NK_CALL nk_audio_dsp_engine_get_transport_position(
+    nk_audio_dsp_engine handle, uint32_t *out_section, double *out_frame) {
+    return nk::core::result_boundary("reading native DSP transport position", [&]() -> nk_result {
+        if (const auto result = enter_dsp(); result != NK_OK) return result;
+        if (!out_section || !out_frame) return invalid_argument("Transport position outputs are required");
+        auto engine = get_engine(handle);
+        if (!engine) return NK_ERROR_INVALID_HANDLE;
+        for (;;) {
+            const auto before = engine->status_sequence.load(std::memory_order_acquire);
+            if (before & 1) continue;
+            const auto section = engine->status_section.load(std::memory_order_relaxed);
+            const auto frame = engine->status_section_frame.load(std::memory_order_relaxed);
+            if (before != engine->status_sequence.load(std::memory_order_acquire)) continue;
+            *out_section = section; *out_frame = frame; return NK_OK;
+        }
     });
 }
 

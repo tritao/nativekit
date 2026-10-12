@@ -811,6 +811,11 @@ NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_stop_transport(nk_audio_dsp_en
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_retire_transport(
     nk_audio_dsp_engine engine, uint64_t program_id);
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_collect(nk_audio_dsp_engine engine);
+/** Last completed block's coherent section and local frame position.
+ * Position includes fractional tempo origins and wraps with the native loop. */
+NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_get_transport_position(
+    nk_audio_dsp_engine engine, uint32_t *out_section NK_OUT, double *out_frame NK_OUT);
+
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_get_runtime_status(
     nk_audio_dsp_engine engine, nk_audio_dsp_runtime_status *out_status NK_INOUT);
 
