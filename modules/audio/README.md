@@ -112,6 +112,15 @@ applications should enumerate immediately before choosing one. Configuration
 after engine initialization returns `NK_ERROR_INVALID_REQUEST`; call
 `nk_shutdown()` before configuring a new device generation.
 
+`resource_loading` defaults to `NK_AUDIO_RESOURCE_LOADING_BACKGROUND`. Apps using
+prepared/decoded, SF2 and DSP sources can select
+`NK_AUDIO_RESOURCE_LOADING_SYNCHRONOUS` to avoid miniaudio file-resource workers
+and their shutdown joins. This is useful on the browser main thread. The policy
+occupies a formerly reserved field without changing the options structure's size
+or offsets. Synchronous mode performs file loading on the caller and is unsuitable
+for background file decoding or streamed miniaudio file voices. NativeKit stream
+workers remain independent. The policy is immutable after engine initialization.
+
 `nk_audio_device_start()`, `nk_audio_device_stop()`, and
 `nk_audio_device_restart()` control the device without destroying the mixer
 graph. `nk_audio_device_get_state()` exposes the transition state and backend

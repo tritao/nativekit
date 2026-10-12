@@ -93,6 +93,7 @@ struct PendingAudioDeviceConfig {
     uint32_t period_size_in_frames = 0;
     uint32_t period_size_in_milliseconds = 0;
     bool no_auto_start = false;
+    nk_audio_resource_loading resource_loading = NK_AUDIO_RESOURCE_LOADING_BACKGROUND;
     bool has_playback_device_id = false;
 #ifdef NK_AUDIO_TESTING
     bool offline = false;
@@ -108,6 +109,7 @@ void audio_engine_data_callback(ma_device *device, void *frames_out, const void 
 
 struct AudioEngineResource final : nk::core::Resource {
     ma_engine engine{};
+    std::unique_ptr<ma_resource_manager> resource_manager;
     std::unordered_map<nk_audio_dsp_engine, std::unique_ptr<DspSourceNode>> dsp_sources;
     bool initialized = false;
     std::atomic<bool> interrupted{false};
@@ -127,6 +129,8 @@ struct AudioEngineResource final : nk::core::Resource {
                                                        std::memory_order_acq_rel);
         if (initialized)
             ma_engine_uninit(&engine);
+        if (resource_manager)
+            ma_resource_manager_uninit(resource_manager.get());
     }
 };
 
@@ -1241,6 +1245,24 @@ std::shared_ptr<AudioEngineResource> ensure_engine(nk_result &out_result) {
     config.noAutoStart = MA_TRUE; // Finish preparing the graph before starting the callback.
     config.notificationCallback = audio_device_notification_callback;
     config.dataCallback = audio_engine_data_callback;
+    if (device_config.resource_loading == NK_AUDIO_RESOURCE_LOADING_SYNCHRONOUS) {
+        // The engine borrows this manager. Keep it alive through engine teardown;
+        // synchronous loading has no background resource worker to join.
+        auto resource_config = ma_resource_manager_config_init();
+        resource_config.decodedFormat = ma_format_f32;
+        resource_config.jobThreadCount = 0;
+        resource_config.flags = MA_RESOURCE_MANAGER_FLAG_NO_THREADING;
+        auto resource_manager = std::make_unique<ma_resource_manager>();
+        const auto resource_result = ma_resource_manager_init(&resource_config,
+                                                             resource_manager.get());
+        if (resource_result != MA_SUCCESS) {
+            out_result = map_miniaudio_result(resource_result,
+                                             "could not initialize audio resource manager");
+            return {};
+        }
+        next->resource_manager = std::move(resource_manager);
+        config.pResourceManager = next->resource_manager.get();
+    }
 
     active_engine_resource.store(next.get(), std::memory_order_release);
     const auto result = ma_engine_init(&config, &next->engine);
@@ -2318,6 +2340,8 @@ nk_result NK_CALL nk_audio_device_configure(const nk_audio_device_options *optio
                 return invalid_argument("audio device options are missing");
             if (options->struct_size < sizeof(nk_audio_device_options))
                 return invalid_argument("audio device options are missing or too small");
+            if (options->resource_loading > NK_AUDIO_RESOURCE_LOADING_SYNCHRONOUS)
+                return invalid_argument("audio resource loading policy is invalid");
             if (options->no_auto_start > 1)
                 return invalid_argument("audio device no_auto_start must be zero or one");
             if (options->period_size_in_frames != 0 && options->period_size_in_milliseconds != 0)
@@ -2338,6 +2362,7 @@ nk_result NK_CALL nk_audio_device_configure(const nk_audio_device_options *optio
             next.period_size_in_frames = options->period_size_in_frames;
             next.period_size_in_milliseconds = options->period_size_in_milliseconds;
             next.no_auto_start = options->no_auto_start != 0;
+            next.resource_loading = options->resource_loading;
 
             if (next.playback_device_index != NK_AUDIO_DEVICE_DEFAULT) {
                 std::vector<EnumeratedAudioDevice> devices;

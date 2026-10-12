@@ -374,7 +374,34 @@ static void same_frame_choke_cancels_unheard_note() {
     assert(nk_audio_dsp_instrument_destroy(second)==NK_OK);
     assert(nk_audio_dsp_engine_destroy(e)==NK_OK);
 }
+static void resource_loading_policy(nk_audio_resource_loading policy) {
+    nk_init_options init{}; init.struct_size=sizeof(init); init.api_version=NK_API_VERSION;
+    assert(nk_init(&init)==NK_OK);
+    nk_audio_device_options options{}; options.struct_size=sizeof(options);
+    options.playback_device_index=NK_AUDIO_DEVICE_DEFAULT;
+    options.no_auto_start=1;
+    options.resource_loading=2;
+    assert(nk_audio_device_configure(&options)==NK_ERROR_INVALID_ARGUMENT);
+    options.resource_loading=policy;
+    assert(nk_audio_device_configure(&options)==NK_OK);
+    assert(nk_audio_test_use_offline_device()==NK_OK);
+    uint32_t rate=0;
+    assert(nk_audio_get_sample_rate(&rate)==NK_OK && rate==48000);
+    auto e=engine(); auto i=instrument(e);
+    assert(nk_audio_dsp_engine_attach_device(e)==NK_OK);
+    note(e,i,0);
+    std::vector<float> output(512);
+    assert(nk_audio_test_render(output.data(),256)==NK_OK);
+    assert(std::any_of(output.begin(),output.end(),[](float value){return std::abs(value)>.001f;}));
+    options.resource_loading=policy==NK_AUDIO_RESOURCE_LOADING_BACKGROUND
+        ? NK_AUDIO_RESOURCE_LOADING_SYNCHRONOUS : NK_AUDIO_RESOURCE_LOADING_BACKGROUND;
+    assert(nk_audio_device_configure(&options)==NK_ERROR_INVALID_REQUEST);
+    // Teardown must work with borrowed synchronous and owned background managers.
+    nk_shutdown();
+}
 int main() {
+    resource_loading_policy(NK_AUDIO_RESOURCE_LOADING_BACKGROUND);
+    resource_loading_policy(NK_AUDIO_RESOURCE_LOADING_SYNCHRONOUS);
     nk_init_options init{}; init.struct_size = sizeof(init); init.api_version = NK_API_VERSION;
     assert(nk_init(&init) == NK_OK);
     assert(nk_audio_test_use_offline_device() == NK_OK);

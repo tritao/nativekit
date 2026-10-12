@@ -140,6 +140,18 @@ enum NK_ENUM(nk_audio_device_state) {
     NK_AUDIO_DEVICE_INTERRUPTED = 5
 };
 
+/** Policy for loading miniaudio file resources; DSP and prepared sources are independent. */
+typedef uint32_t nk_audio_resource_loading;
+enum NK_ENUM(nk_audio_resource_loading) {
+    /** Default: use miniaudio's background file-resource workers. */
+    NK_AUDIO_RESOURCE_LOADING_BACKGROUND = 0,
+    /** Load file resources synchronously, with no resource workers to join.
+     * Suitable for browser apps using preloaded/decoded, SF2 and DSP sources.
+     * File loading can block the caller; do not use for background file decoding
+     * or streamed miniaudio file voices. Does not change NativeKit stream workers. */
+    NK_AUDIO_RESOURCE_LOADING_SYNCHRONOUS = 1
+};
+
 /** Configuration applied when NativeKit lazily creates its audio device. */
 typedef struct nk_audio_device_options {
     /** Set to sizeof(nk_audio_device_options) before passing the structure. */
@@ -157,8 +169,9 @@ typedef struct nk_audio_device_options {
     uint32_t period_size_in_milliseconds;
     /** Do not start the device automatically during engine initialization. */
     nk_bool no_auto_start;
-    /** Reserved; set to zero. */
-    uint32_t reserved;
+    /** File-resource loading policy. Zero retains background loading. Uses the
+     * formerly reserved 32-bit slot, preserving this structure's ABI layout. */
+    nk_audio_resource_loading resource_loading;
     /** Reserved for compatible extensions; set all elements to zero. */
     uint64_t reserved2[2];
 } nk_audio_device_options;
