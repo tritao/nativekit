@@ -11,7 +11,11 @@
 #define USE_DL_PREFIX 1
 #define HAVE_MMAP 0
 #define HAVE_MORECORE 0
+// Emscripten defines USE_LOCKS for shared-memory builds itself. This mspace
+// is created unlocked; the adapter guards both operations and accounting.
+#ifndef __EMSCRIPTEN_SHARED_MEMORY__
 #define USE_LOCKS 0
+#endif
 #define MALLOC_ALIGNMENT 16
 #define MALLOC_INSPECT_ALL 1
 #define NO_MALLOC_STATS 1

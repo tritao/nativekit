@@ -13,7 +13,7 @@ target_link_libraries(my_wasm_host PRIVATE NativeKit::wasm_host_allocator)
 
 The target provides `malloc`, `free`, `calloc`, `realloc`, aligned allocation,
 and C++ `new`/`delete`, and propagates Emscripten's `-sMALLOC=none` setting. Its
-arena starts at `__heap_base` and ends at `NK_WASM_HOST_HEAP_LIMIT`, an exclusive
+arena starts after any main-thread TLS reservation at `__heap_base` and ends at `NK_WASM_HOST_HEAP_LIMIT`, an exclusive
 byte offset configurable at CMake time (128 MiB by default). The host module's
 initial linear memory must extend at least to that limit. The adapter checks
 this before using the arena and never grows it.
@@ -35,8 +35,21 @@ uses a separate Haxeon allocator there. Host and guest objects must be released
 by the allocator that created them; the shared `WebAssembly.Memory` does not
 make their allocation domains interchangeable.
 
-Browser hosts that register guest callbacks must configure
-`NK_WEB_EXPORTED_RUNTIME_METHODS=ccall,addFunction,removeFunction` before adding
-NativeKit. The default is `ccall`. NativeKit's transitive Emscripten runtime
-export option must include the consumer's methods because a later option replaces
-an earlier export list rather than merging it.
+With shared memory, the adapter guards initialization, mspace operations and
+accounting as one transaction. It reserves Emscripten's main-thread TLS before
+the first allocation, including allocations that precede the Wasm-worker
+startup constructor. The realtime audio path must still avoid allocation;
+allocator synchronization does not make allocation suitable for callbacks.
+
+For miniaudio AudioWorklets, configure `NK_BUILD_AUDIO=ON` and
+`NK_AUDIO_WEB_WORKLETS=ON`. NativeKit propagates pthread compilation and
+AudioWorklet/Wasm-worker/Asyncify linking settings. Set `add_compile_options(-pthread)`
+before adding any other dependencies: Emscripten requires every linked object
+to support shared memory, including third-party font/render libraries. The application supplies a
+prestarted pthread pool, the memory contract, activation UI, and COOP/COEP
+headers. The worker allocator regression can be run with
+`tools/test-wasm-host-allocator-workers.sh`.
+
+Browser hosts that register guest callbacks must export Emscripten's
+`addFunction` and `removeFunction` runtime methods. Configure the export list
+on the final executable; NativeKit declares its own JavaScript dependencies.

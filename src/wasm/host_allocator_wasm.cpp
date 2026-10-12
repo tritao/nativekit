@@ -2,6 +2,7 @@
 
 #include <emscripten/heap.h>
 #include <malloc.h>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -14,7 +15,31 @@
 
 extern "C" unsigned char __heap_base;
 
+// Emscripten's Wasm-worker startup reserves main-thread TLS through this
+// pointer before C++ constructors run. Start the bounded arena after that TLS
+// reservation, rather than overlapping it at __heap_base.
 namespace {
+std::uintptr_t host_heap_start = 0;
+}
+extern "C" std::uintptr_t *emscripten_get_sbrk_ptr() {
+    if (host_heap_start == 0)
+        host_heap_start = reinterpret_cast<std::uintptr_t>(&__heap_base);
+    return &host_heap_start;
+}
+
+namespace {
+
+// The bounded allocator and its accounting form one transaction. Audio hosts
+// share this heap with pthreads and Wasm workers; guard initialization too.
+#if defined(__EMSCRIPTEN_SHARED_MEMORY__)
+std::atomic_flag allocator_lock = ATOMIC_FLAG_INIT;
+struct AllocatorGuard {
+    AllocatorGuard() { while (allocator_lock.test_and_set(std::memory_order_acquire)) {} }
+    ~AllocatorGuard() { allocator_lock.clear(std::memory_order_release); }
+};
+#else
+struct AllocatorGuard {};
+#endif
 
 nk::wasm::WasmHostAllocator allocator;
 bool allocator_initialization_attempted = false;
@@ -25,10 +50,22 @@ bool ensure_allocator() {
         return allocator_ready;
     allocator_initialization_attempted = true;
 
-    const auto base = reinterpret_cast<std::uintptr_t>(&__heap_base);
+    auto base = *emscripten_get_sbrk_ptr();
+#if defined(__EMSCRIPTEN_SHARED_MEMORY__)
+    // Emscripten may malloc before the Wasm-worker TLS constructor. Reserve
+    // its region up front; that constructor can later initialize TLS safely.
+    const auto align_up = [](std::uintptr_t value, std::uintptr_t alignment) {
+        return (value + alignment - 1) & ~(alignment - 1);
+    };
+    const auto tls_alignment = __builtin_wasm_tls_align() > 16 ? __builtin_wasm_tls_align() : 16;
+    const auto tls_base = align_up(reinterpret_cast<std::uintptr_t>(&__heap_base), tls_alignment);
+    const auto tls_end = tls_base + align_up(__builtin_wasm_tls_size(), alignof(std::max_align_t));
+    if (base < tls_end) base = tls_end;
+    base = align_up(base, 16);
+#endif
     if (base >= NK_WASM_HOST_HEAP_LIMIT || emscripten_get_heap_size() < NK_WASM_HOST_HEAP_LIMIT)
         return false;
-    allocator_ready = allocator.initialize(&__heap_base, NK_WASM_HOST_HEAP_LIMIT - base);
+    allocator_ready = allocator.initialize(reinterpret_cast<void *>(base), NK_WASM_HOST_HEAP_LIMIT - base);
     return allocator_ready;
 }
 
@@ -47,28 +84,34 @@ void *allocate_zeroed(std::size_t count, std::size_t size) {
 } // namespace
 
 extern "C" void *malloc(std::size_t size) {
+    [[maybe_unused]] AllocatorGuard guard;
     return ensure_allocator() ? allocator.allocate(size) : nullptr;
 }
 
 // Native solvers use the writable capacity to reuse their allocation buffers.
 extern "C" std::size_t malloc_usable_size(void *pointer) {
+    [[maybe_unused]] AllocatorGuard guard;
     return ensure_allocator() ? allocator.usable_size(pointer) : 0;
 }
 
 extern "C" void free(void *pointer) {
+    [[maybe_unused]] AllocatorGuard guard;
     if (ensure_allocator())
         allocator.release(pointer);
 }
 
 extern "C" void *calloc(std::size_t count, std::size_t size) {
+    [[maybe_unused]] AllocatorGuard guard;
     return allocate_zeroed(count, size);
 }
 
 extern "C" void *realloc(void *pointer, std::size_t size) {
+    [[maybe_unused]] AllocatorGuard guard;
     return ensure_allocator() ? allocator.reallocate(pointer, size) : nullptr;
 }
 
 extern "C" void *aligned_alloc(std::size_t alignment, std::size_t size) {
+    [[maybe_unused]] AllocatorGuard guard;
     return ensure_allocator() ? allocator.allocate_aligned(alignment, size) : nullptr;
 }
 
@@ -118,6 +161,7 @@ extern "C" void __libc_free(void *pointer) {
 
 // OCCT's OSD_MemInfo reports heap use through this.
 extern "C" struct mallinfo mallinfo() {
+    [[maybe_unused]] AllocatorGuard guard;
     struct mallinfo result{};
     if (!ensure_allocator())
         return result;
@@ -132,6 +176,7 @@ extern "C" struct mallinfo mallinfo() {
 // Host heap figures for diagnostics, in bytes: 0 arena, 1 in use, 2 peak in use, 3 largest free
 // block, 4 free blocks (a count). Returns 0 for an unknown index.
 extern "C" uint32_t nk_wasm_host_allocator_statistic(uint32_t index) {
+    [[maybe_unused]] AllocatorGuard guard;
     if (!ensure_allocator())
         return 0;
     const auto stats = allocator.statistics();
@@ -152,6 +197,7 @@ extern "C" uint32_t nk_wasm_host_allocator_statistic(uint32_t index) {
 }
 
 extern "C" uint32_t nk_wasm_host_allocator_status() {
+    [[maybe_unused]] AllocatorGuard guard;
     return ensure_allocator() ? 0u : 1u;
 }
 
