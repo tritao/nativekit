@@ -95,12 +95,13 @@ bool receive_message(nk_transport transport, const char *expected) {
 }
 
 std::uint16_t listen_port(nk_listener *out_listener, nk_transport_kind kind,
-                          const char *path = nullptr, const char *subprotocols = nullptr) {
+                          const char *path = nullptr, const char *subprotocols = nullptr,
+                          nk_transport_flags flags = 0) {
     for (std::uint16_t port = 39000; port != 39300; ++port) {
         nk_transport_options options{};
         options.struct_size = sizeof(options);
         options.kind = kind;
-        options.flags = NK_TRANSPORT_REUSE_ADDRESS;
+        options.flags = NK_TRANSPORT_REUSE_ADDRESS | flags;
         options.host = "127.0.0.1";
         options.port = port;
         options.path = path;
@@ -118,7 +119,7 @@ void roundtrip(nk_transport_kind kind, const char *path = nullptr,
     assert(port != 0);
 #if !defined(_WIN32)
     if (kind == NK_TRANSPORT_LOCAL) {
-        struct stat socket_info{};
+        struct stat socket_info {};
         assert(::lstat(path, &socket_info) == 0);
         assert(S_ISSOCK(socket_info.st_mode));
         assert((socket_info.st_mode & 0777) == 0600);
@@ -173,6 +174,67 @@ void roundtrip(nk_transport_kind kind, const char *path = nullptr,
     assert(nk_transport_close(server) == NK_OK);
     assert(nk_transport_get_send_queue(server, &queued, &capacity) == NK_ERROR_INVALID_HANDLE);
     assert(nk_listener_close(listener) == NK_OK);
+}
+
+void message_contract() {
+    nk_listener listener = NK_INVALID_HANDLE;
+    const auto flags = NK_TRANSPORT_MESSAGES | NK_TRANSPORT_TEXT;
+    const auto port = listen_port(&listener, NK_TRANSPORT_WEBSOCKET, "/messages", nullptr, flags);
+    assert(port);
+    nk_transport_options options{};
+    options.struct_size = sizeof(options);
+    options.kind = NK_TRANSPORT_WEBSOCKET;
+    options.flags = flags;
+    options.host = "127.0.0.1";
+    options.port = port;
+    options.path = "/messages";
+    nk_transport client = NK_INVALID_HANDLE, server = NK_INVALID_HANDLE;
+    assert(nk_transport_connect(&options, &client) == NK_OK);
+    bool a = false, b = false;
+    assert(poll_transport_events(client, &server, &a, &b));
+    const char invalid[] = {static_cast<char>(0xff)};
+    assert(nk_transport_send(client, invalid, sizeof(invalid)) == NK_ERROR_INVALID_ARGUMENT);
+    // Back-to-back messages and an empty message must not coalesce. A short read
+    // reports the complete required size and leaves the first message queued.
+    for (auto sender : {client, server}) {
+        const auto receiver = sender == client ? server : client;
+        assert(nk_transport_send(sender, "hello", 5) == NK_OK);
+        assert(nk_transport_send(sender, nullptr, 0) == NK_OK);
+        assert(nk_transport_send(sender, "world", 5) == NK_OK);
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        char buffer[16]{};
+        uint64_t size = 0;
+        nk_result result;
+        do {
+            result = nk_transport_receive(receiver, buffer, 2, &size);
+            if (result == NK_TRANSPORT_ERROR_WOULD_BLOCK)
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        } while (result == NK_TRANSPORT_ERROR_WOULD_BLOCK &&
+                 std::chrono::steady_clock::now() < deadline);
+        assert(result == NK_ERROR_PAYLOAD_TOO_LARGE && size == 5);
+        assert(nk_transport_receive(receiver, buffer, sizeof(buffer), &size) == NK_OK);
+        assert(size == 5 && std::memcmp(buffer, "hello", 5) == 0);
+        for (const auto expected : {std::string(), std::string("world")}) {
+            do {
+                result = nk_transport_receive(receiver, buffer, sizeof(buffer), &size);
+                if (result == NK_TRANSPORT_ERROR_WOULD_BLOCK)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            } while (result == NK_TRANSPORT_ERROR_WOULD_BLOCK &&
+                     std::chrono::steady_clock::now() < deadline);
+            assert(result == NK_OK && size == expected.size());
+            assert(size == 0 || std::memcmp(buffer, expected.data(), size) == 0);
+        }
+        assert(nk_transport_receive(receiver, buffer, sizeof(buffer), &size) ==
+               NK_TRANSPORT_ERROR_WOULD_BLOCK);
+    }
+    assert(nk_transport_close(client) == NK_OK);
+    assert(nk_transport_close(server) == NK_OK);
+    assert(nk_listener_close(listener) == NK_OK);
+    options.kind = NK_TRANSPORT_TCP;
+    assert(nk_transport_connect(&options, &client) == NK_ERROR_INVALID_ARGUMENT);
+    options.kind = NK_TRANSPORT_WEBSOCKET;
+    options.flags = NK_TRANSPORT_TEXT;
+    assert(nk_transport_connect(&options, &client) == NK_ERROR_INVALID_ARGUMENT);
 }
 
 void contract_extensions() {
@@ -252,7 +314,7 @@ void local_security() {
     assert(ordinary_file >= 0);
     assert(::close(ordinary_file) == 0);
     assert(nk_transport_listen(&options, &listener) == NK_ERROR_PERMISSION_DENIED);
-    struct stat existing{};
+    struct stat existing {};
     assert(::lstat(socket_path.c_str(), &existing) == 0 && S_ISREG(existing.st_mode));
     assert(::unlink(socket_path.c_str()) == 0);
 
@@ -279,8 +341,8 @@ void local_security() {
             const int peer = ::socket(AF_UNIX, SOCK_STREAM, 0);
             if (peer < 0)
                 ::_exit(3);
-            const int connected = ::connect(peer, reinterpret_cast<const sockaddr *>(&address),
-                                            sizeof(address));
+            const int connected =
+                ::connect(peer, reinterpret_cast<const sockaddr *>(&address), sizeof(address));
             ::close(peer);
             ::_exit(connected == 0 ? 0 : 4);
         }
@@ -325,6 +387,7 @@ int main() {
     assert((nk_get_capabilities() & NK_CAP_TRANSPORT) != 0);
 
     contract_extensions();
+    message_contract();
 
     roundtrip(NK_TRANSPORT_TCP);
     roundtrip(NK_TRANSPORT_UDP);

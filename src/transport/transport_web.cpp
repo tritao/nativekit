@@ -14,6 +14,7 @@ struct WebTransport final : nk::core::Resource {
     uint64_t generation = 0;
     uint64_t receive_limit = web_default_buffer;
     uint64_t incoming_bytes = 0;
+    nk_transport_flags flags = 0;
     bool open = false;
     bool closed = false;
     nk_result terminal_result = NK_OK;
@@ -43,7 +44,7 @@ bool web_event(nk_event_kind kind, nk_handle source, nk_result result = NK_OK) {
 }
 
 bool web_data_event(const std::shared_ptr<WebTransport> &transport) {
-    if (transport->data_pending || !transport->open || !transport->incoming_bytes)
+    if (transport->data_pending || !transport->open || transport->incoming.empty())
         return true;
     nk_transport_data_event payload{};
     payload.struct_size = sizeof(payload);
@@ -74,9 +75,15 @@ EM_BOOL web_open_callback(int, const EmscriptenWebSocketOpenEvent *, void *user_
 
 EM_BOOL web_message_callback(int, const EmscriptenWebSocketMessageEvent *event, void *user_data) {
     const auto handle = web_handle(user_data);
-    if (event->isText || !nk_websocket_received(handle, event->data, event->numBytes)) {
-        nk_websocket_terminal(handle, event->isText ? NK_TRANSPORT_ERROR_PROTOCOL
-                                                   : NK_TRANSPORT_ERROR_RECEIVE_OVERFLOW);
+    auto transport = web_get(handle);
+    if (!transport)
+        return EM_TRUE;
+    // Emscripten includes the terminating NUL in numBytes for text messages.
+    const auto size = event->isText && event->numBytes ? event->numBytes - 1 : event->numBytes;
+    const bool unsupported_text = event->isText && !(transport->flags & NK_TRANSPORT_MESSAGES);
+    if (unsupported_text || !nk_websocket_received(handle, event->data, size)) {
+        nk_websocket_terminal(handle, unsupported_text ? NK_TRANSPORT_ERROR_PROTOCOL
+                                                       : NK_TRANSPORT_ERROR_RECEIVE_OVERFLOW);
         (void)emscripten_websocket_close(event->socket, 1009, "receive rejected");
     }
     return EM_TRUE;
@@ -152,8 +159,16 @@ int web_socket_send(uint32_t handle, const void *data, uint32_t size) {
             EMSCRIPTEN_RESULT_SUCCESS ||
         size > transport->send_limit - std::min<uint64_t>(transport->send_limit, buffered))
         return 0;
-    if (emscripten_websocket_send_binary(transport->socket, const_cast<void *>(data), size) !=
-        EMSCRIPTEN_RESULT_SUCCESS)
+    std::string text;
+    if (transport->flags & NK_TRANSPORT_TEXT) {
+        if (size)
+            text.assign(static_cast<const char *>(data), size);
+    }
+    const auto sent =
+        (transport->flags & NK_TRANSPORT_TEXT)
+            ? emscripten_websocket_send_utf8_text(transport->socket, text.c_str())
+            : emscripten_websocket_send_binary(transport->socket, const_cast<void *>(data), size);
+    if (sent != EMSCRIPTEN_RESULT_SUCCESS)
         return -1;
     if (!transport->writable_poll_pending) {
         transport->writable_poll_pending = true;
@@ -172,7 +187,8 @@ void web_socket_dispose(uint32_t handle) {
 }
 
 void web_finish(const std::shared_ptr<WebTransport> &transport, nk_result result) {
-    if (transport->closed) return;
+    if (transport->closed)
+        return;
     transport->closed = true;
     transport->open = false;
     transport->terminal_result = result;
@@ -183,7 +199,9 @@ void web_finish(const std::shared_ptr<WebTransport> &transport, nk_result result
 } // namespace
 
 namespace nk::transport {
-nk_capabilities capabilities() noexcept { return NK_CAP_TRANSPORT; }
+nk_capabilities capabilities() noexcept {
+    return NK_CAP_TRANSPORT;
+}
 void shutdown() noexcept {
     for (const auto handle :
          nk::core::handles().handles_of_type(nk::core::ResourceType::transport)) {
@@ -198,8 +216,7 @@ void shutdown() noexcept {
 extern "C" {
 EMSCRIPTEN_KEEPALIVE void nk_websocket_opened(nk_transport handle) {
     auto transport = web_get(handle);
-    if (!transport || transport->closed ||
-        !nk::core::is_runtime_generation(transport->generation))
+    if (!transport || transport->closed || !nk::core::is_runtime_generation(transport->generation))
         return;
     transport->open = true;
     (void)web_event(NK_EVENT_TRANSPORT_CONNECTED, handle);
@@ -211,11 +228,15 @@ EMSCRIPTEN_KEEPALIVE int nk_websocket_received(nk_transport handle, const void *
     auto transport = web_get(handle);
     if (!transport || !transport->open || transport->closed ||
         !nk::core::is_runtime_generation(transport->generation) ||
+        ((transport->flags & NK_TRANSPORT_MESSAGES) && transport->incoming.size() >= 1024) ||
         size > transport->receive_limit -
                    std::min(transport->receive_limit, transport->incoming_bytes))
         return 0;
+    if (size == 0 && !(transport->flags & NK_TRANSPORT_MESSAGES))
+        return 1;
     std::vector<uint8_t> bytes(size);
-    if (size) std::memcpy(bytes.data(), data, size);
+    if (size)
+        std::memcpy(bytes.data(), data, size);
     transport->incoming_bytes += size;
     transport->incoming.push_back(std::move(bytes));
     return web_data_event(transport) ? 1 : 0;
@@ -235,27 +256,32 @@ EMSCRIPTEN_KEEPALIVE void nk_websocket_terminal(nk_transport handle, nk_result r
 
 nk_result NK_CALL nk_transport_query_capabilities(nk_transport_kind kind,
                                                   nk_transport_capabilities *out) {
-    if (!out) return web_fail(NK_ERROR_INVALID_ARGUMENT, "transport capability output is null");
+    if (!out)
+        return web_fail(NK_ERROR_INVALID_ARGUMENT, "transport capability output is null");
     *out = 0;
     if (kind < NK_TRANSPORT_TCP || kind > NK_TRANSPORT_LOCAL)
         return web_fail(NK_ERROR_INVALID_ARGUMENT, "transport kind is invalid");
     if (kind == NK_TRANSPORT_WEBSOCKET)
-        *out = NK_TRANSPORT_CAP_CLIENT | NK_TRANSPORT_CAP_SECURE_CLIENT |
-               NK_TRANSPORT_CAP_SUBPROTOCOL;
+        *out =
+            NK_TRANSPORT_CAP_CLIENT | NK_TRANSPORT_CAP_SECURE_CLIENT | NK_TRANSPORT_CAP_SUBPROTOCOL;
     return NK_OK;
 }
 
 nk_result NK_CALL nk_transport_connect(const nk_transport_options *options,
                                        nk_transport *out_transport) {
-    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK) return thread;
-    if (!out_transport) return web_fail(NK_ERROR_INVALID_ARGUMENT, "transport output is null");
+    if (const auto thread = nk::core::require_ui_thread(); thread != NK_OK)
+        return thread;
+    if (!out_transport)
+        return web_fail(NK_ERROR_INVALID_ARGUMENT, "transport output is null");
     *out_transport = NK_INVALID_HANDLE;
     if (!options || options->struct_size < NK_TRANSPORT_OPTIONS_V1_SIZE ||
         (options->struct_size != NK_TRANSPORT_OPTIONS_V1_SIZE &&
          options->struct_size < sizeof(*options)) ||
         options->kind != NK_TRANSPORT_WEBSOCKET || !options->host || !*options->host ||
         options->reserved0 || options->reserved[0] || options->reserved[1] ||
-        (options->flags & ~(NK_TRANSPORT_NO_DELAY | NK_TRANSPORT_SECURE)))
+        (options->flags & ~(NK_TRANSPORT_NO_DELAY | NK_TRANSPORT_SECURE | NK_TRANSPORT_MESSAGES |
+                            NK_TRANSPORT_TEXT)) ||
+        ((options->flags & NK_TRANSPORT_TEXT) && !(options->flags & NK_TRANSPORT_MESSAGES)))
         return web_fail(NK_ERROR_INVALID_ARGUMENT, "browser transport options are invalid");
     const char *protocols = nullptr;
     if (options->struct_size >= sizeof(*options)) {
@@ -273,12 +299,14 @@ nk_result NK_CALL nk_transport_connect(const nk_transport_options *options,
         url += host;
     url += ":" + std::to_string(port);
     const char *path = options->path && *options->path ? options->path : "/";
-    if (*path != '/') url += '/';
+    if (*path != '/')
+        url += '/';
     url += path;
     auto transport = std::make_shared<WebTransport>();
+    transport->flags = options->flags;
     transport->generation = nk::core::runtime_generation();
-    transport->receive_limit = options->receive_buffer_size ? options->receive_buffer_size
-                                                             : web_default_buffer;
+    transport->receive_limit =
+        options->receive_buffer_size ? options->receive_buffer_size : web_default_buffer;
     const auto send_limit =
         options->send_buffer_size ? options->send_buffer_size : web_default_buffer;
     const auto handle = nk::core::handles().insert(nk::core::ResourceType::transport, transport);
@@ -296,7 +324,8 @@ nk_result NK_CALL nk_transport_connect(const nk_transport_options *options,
 }
 
 nk_result NK_CALL nk_transport_listen(const nk_transport_options *, nk_listener *out_listener) {
-    if (out_listener) *out_listener = NK_INVALID_HANDLE;
+    if (out_listener)
+        *out_listener = NK_INVALID_HANDLE;
     return NK_ERROR_UNSUPPORTED;
 }
 
@@ -304,21 +333,29 @@ nk_result NK_CALL nk_transport_send(nk_transport handle, const void *data, uint6
     if ((size && !data) || size > UINT32_MAX)
         return web_fail(NK_ERROR_INVALID_ARGUMENT, "transport data is invalid");
     auto transport = web_get(handle);
-    if (!transport) return web_fail(NK_ERROR_INVALID_HANDLE, "invalid transport handle");
+    if (!transport)
+        return web_fail(NK_ERROR_INVALID_HANDLE, "invalid transport handle");
     if (!transport->open || transport->closed)
         return web_fail(NK_ERROR_INVALID_REQUEST, "transport is not open");
+    if ((transport->flags & NK_TRANSPORT_TEXT) &&
+        (!nk::platform::valid_utf8(
+             std::string_view(size ? static_cast<const char *>(data) : "", size)) ||
+         (size && std::memchr(data, 0, size))))
+        return web_fail(NK_ERROR_INVALID_ARGUMENT,
+                        "browser text send needs UTF-8 without embedded NUL");
     const int result = web_socket_send(handle, data, static_cast<uint32_t>(size));
     return result > 0 ? NK_OK : result == 0 ? NK_ERROR_QUEUE_FULL : NK_ERROR_INVALID_REQUEST;
 }
 
 nk_result NK_CALL nk_transport_get_send_queue(nk_transport handle, uint64_t *out_queued_bytes,
-                                               uint64_t *out_capacity) {
+                                              uint64_t *out_capacity) {
     if (!out_queued_bytes || !out_capacity)
         return web_fail(NK_ERROR_INVALID_ARGUMENT, "send queue output is null");
     *out_queued_bytes = 0;
     *out_capacity = 0;
     auto transport = web_get(handle);
-    if (!transport) return web_fail(NK_ERROR_INVALID_HANDLE, "invalid transport handle");
+    if (!transport)
+        return web_fail(NK_ERROR_INVALID_HANDLE, "invalid transport handle");
     size_t buffered = 0;
     if (transport->open && !transport->closed &&
         emscripten_websocket_get_buffered_amount(transport->socket, &buffered) !=
@@ -335,23 +372,34 @@ nk_result NK_CALL nk_transport_receive(nk_transport handle, void *data, uint64_t
         return web_fail(NK_ERROR_INVALID_ARGUMENT, "transport receive arguments are invalid");
     *out_received = 0;
     auto transport = web_get(handle);
-    if (!transport) return web_fail(NK_ERROR_INVALID_HANDLE, "invalid transport handle");
+    if (!transport)
+        return web_fail(NK_ERROR_INVALID_HANDLE, "invalid transport handle");
     if (transport->incoming.empty())
         return transport->closed ? transport->terminal_result : NK_TRANSPORT_ERROR_WOULD_BLOCK;
     auto &chunk = transport->incoming.front();
+    if ((transport->flags & NK_TRANSPORT_MESSAGES) && size < chunk.size()) {
+        *out_received = chunk.size();
+        return web_fail(NK_ERROR_PAYLOAD_TOO_LARGE,
+                        "receive buffer cannot hold the complete message");
+    }
     const auto amount = std::min<uint64_t>(size, chunk.size());
-    if (amount) std::memcpy(data, chunk.data(), static_cast<std::size_t>(amount));
+    if (amount)
+        std::memcpy(data, chunk.data(), static_cast<std::size_t>(amount));
     *out_received = amount;
     transport->incoming_bytes -= amount;
-    if (amount == chunk.size()) transport->incoming.pop_front();
-    else chunk.erase(chunk.begin(), chunk.begin() + static_cast<std::ptrdiff_t>(amount));
-    if (transport->incoming.empty()) transport->data_pending = false;
+    if (amount == chunk.size())
+        transport->incoming.pop_front();
+    else
+        chunk.erase(chunk.begin(), chunk.begin() + static_cast<std::ptrdiff_t>(amount));
+    if (transport->incoming.empty())
+        transport->data_pending = false;
     return NK_OK;
 }
 
 nk_result NK_CALL nk_transport_cancel(nk_transport handle) {
     auto transport = web_get(handle);
-    if (!transport) return web_fail(NK_ERROR_INVALID_HANDLE, "invalid transport handle");
+    if (!transport)
+        return web_fail(NK_ERROR_INVALID_HANDLE, "invalid transport handle");
     if (!transport->closed) {
         web_finish(transport, NK_TRANSPORT_ERROR_CANCELED);
         web_socket_dispose(handle);
@@ -361,19 +409,22 @@ nk_result NK_CALL nk_transport_cancel(nk_transport handle) {
 
 nk_result NK_CALL nk_transport_close(nk_transport handle) {
     auto transport = web_get(handle);
-    if (!transport) return web_fail(NK_ERROR_INVALID_HANDLE, "invalid transport handle");
-    if (!transport->closed) web_finish(transport, NK_TRANSPORT_ERROR_CANCELED);
+    if (!transport)
+        return web_fail(NK_ERROR_INVALID_HANDLE, "invalid transport handle");
+    if (!transport->closed)
+        web_finish(transport, NK_TRANSPORT_ERROR_CANCELED);
     web_socket_dispose(handle);
     nk::core::handles().erase(handle, nk::core::ResourceType::transport);
     return NK_OK;
 }
 
-nk_result NK_CALL nk_listener_close(nk_listener) { return NK_ERROR_UNSUPPORTED; }
+nk_result NK_CALL nk_listener_close(nk_listener) {
+    return NK_ERROR_UNSUPPORTED;
+}
 
 nk_result NK_CALL nk_transport_event_data(const nk_event *event, nk_transport_data_event *out) {
     if (!event || !out || out->struct_size < sizeof(*out) ||
-        event->kind != NK_EVENT_TRANSPORT_DATA ||
-        !event->data || event->data_size != sizeof(*out))
+        event->kind != NK_EVENT_TRANSPORT_DATA || !event->data || event->data_size != sizeof(*out))
         return web_fail(NK_ERROR_INVALID_ARGUMENT, "transport data event is invalid");
     std::memcpy(out, event->data, sizeof(*out));
     return NK_OK;

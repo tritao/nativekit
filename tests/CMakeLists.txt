@@ -74,6 +74,11 @@ target_include_directories(nativekit_worker_pool_tests PRIVATE ${PROJECT_SOURCE_
 target_link_libraries(nativekit_worker_pool_tests PRIVATE NativeKit::nativekit)
 add_test(NAME worker_pool COMMAND nativekit_worker_pool_tests)
 
+if(NOT EMSCRIPTEN)
+    add_executable(nativekit_secure_transport_probe unit/transport_secure.cpp)
+    target_compile_features(nativekit_secure_transport_probe PRIVATE cxx_std_17)
+    target_link_libraries(nativekit_secure_transport_probe PRIVATE NativeKit::nativekit)
+endif()
 add_executable(nativekit_transport_contract_test unit/transport_contract.cpp)
 target_compile_features(nativekit_transport_contract_test PRIVATE cxx_std_17)
 target_link_libraries(nativekit_transport_contract_test PRIVATE NativeKit::nativekit)
@@ -160,6 +165,11 @@ target_include_directories(nativekit_wasm_host_allocator_test PRIVATE ${PROJECT_
 add_test(NAME wasm_host_allocator COMMAND nativekit_wasm_host_allocator_test)
 
 if(EMSCRIPTEN)
+    add_executable(nativekit_web_transport_messages integration/web_transport_messages.c)
+    target_compile_features(nativekit_web_transport_messages PRIVATE c_std_11)
+    target_link_libraries(nativekit_web_transport_messages PRIVATE NativeKit::nativekit)
+    target_link_options(nativekit_web_transport_messages PRIVATE "-lwebsocket.js")
+    set_target_properties(nativekit_web_transport_messages PROPERTIES SUFFIX ".html" LINKER_LANGUAGE CXX)
     add_executable(nativekit_web_tasks integration/web_tasks.c)
     target_compile_features(nativekit_web_tasks PRIVATE c_std_11)
     target_link_libraries(nativekit_web_tasks PRIVATE NativeKit::nativekit)

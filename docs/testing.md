@@ -177,3 +177,30 @@ messages. Parent destruction with a pending evaluation verifies deterministic
 cancellation and suppression of late callbacks. Dialogs and real drag sessions
 are compiled but not opened automatically because unattended native UI is not a
 reliable CI interaction surface.
+
+## WebSocket message-mode regressions
+
+`transport_contract` checks byte-stream compatibility plus opt-in text/message mode on both client and listener: back-to-back
+messages, an empty message, short-buffer size reporting without consumption, and invalid text/options. `net_contract` checks
+HTTP and `c_abi` checks the public C ABI.
+
+Two optional loopback fixtures require Python's `websockets` package. They never contact an external service:
+
+```sh
+cmake --build build --target nativekit_secure_transport_probe
+python3 tools/test-secure-transport.py build/tests/nativekit_secure_transport_probe
+# Configure an Emscripten build first; Chrome/Chromium must be installed.
+cmake --build build-web --target nativekit_web_transport_messages
+python3 tools/test-web-transport.py build-web
+```
+
+The WSS fixture creates a temporary localhost certificate and passes its CA file only to the probe process; it does not alter
+system trust or disable verification. It checks text writes, empty messages, ping handling, and a 20 kB message fragmented
+across libwebsockets callbacks. The Chrome fixture checks text sends, fragmented replies, empty messages and atomic receives
+through Emscripten. Both fixtures clean up their owned processes and temporary files.
+
+`NK_TRANSPORT_MESSAGES` preserves complete WebSocket messages. `NK_TRANSPORT_TEXT` selects UTF-8 text sends without embedded
+NUL (the Emscripten text-send API is NUL-terminated). Byte-stream behavior remains the default. Message-mode receives report
+the required size and leave the message queued on `NK_ERROR_PAYLOAD_TOO_LARGE`; `NK_OK` with zero bytes is an empty message.
+Receive queues are bounded by the configured byte limit and 1024 messages; native message send queues are also limited to
+1024 entries, including empty messages. Browser send buffering retains the user-agent limits described in the C header.

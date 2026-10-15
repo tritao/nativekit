@@ -27,7 +27,8 @@ enum NK_ENUM(nk_transport_kind) {
     NK_TRANSPORT_UDP = 2,
     /** RFC 6455 WebSocket frames over a plain TCP connection. */
     NK_TRANSPORT_WEBSOCKET = 3,
-    /** Reliable byte stream over a local operating-system endpoint (Unix socket or Windows named pipe). */
+    /** Reliable byte stream over a local operating-system endpoint (Unix socket or Windows named
+       pipe). */
     NK_TRANSPORT_LOCAL = 4
 };
 
@@ -37,7 +38,11 @@ enum NK_FLAGS(nk_transport_flags) {
     /** Request TCP_NODELAY for TCP and WebSocket connections. */
     NK_TRANSPORT_NO_DELAY = 1u << 1,
     /** Use TLS for a WebSocket client connection (wss://). */
-    NK_TRANSPORT_SECURE = 1u << 2
+    NK_TRANSPORT_SECURE = 1u << 2,
+    /** WebSocket sends and receives preserve complete message boundaries. */
+    NK_TRANSPORT_MESSAGES = 1u << 3,
+    /** Send WebSocket messages as UTF-8 text without embedded NUL; requires MESSAGES. */
+    NK_TRANSPORT_TEXT = 1u << 4
 };
 
 enum NK_FLAGS(nk_transport_capabilities) {
@@ -154,14 +159,14 @@ NK_API nk_result NK_CALL nk_transport_listen(const nk_transport_options *options
  * Copies bytes into the bounded asynchronous send queue. This call is thread-safe.
  * TCP, local, and WebSocket transports expose one reliable ordered byte stream; a send
  * does not define a receive boundary. UDP preserves datagram boundaries. WebSocket frame
- * boundaries are deliberately hidden. NK_ERROR_QUEUE_FULL means no bytes were accepted;
- * WRITABLE is emitted after a previously non-empty queue drains. In browsers the limit
- * includes bytes reported by WebSocket.bufferedAmount, but cannot bound buffering held
- * internally by the user agent.
+ * boundaries are hidden unless NK_TRANSPORT_MESSAGES is set. In message mode a send
+ * is one message (including an empty message), and TEXT selects UTF-8 text sends.
+ * NK_ERROR_QUEUE_FULL means no bytes were accepted; WRITABLE is emitted after a previously
+ * non-empty queue drains. In browsers the limit includes bytes reported by
+ * WebSocket.bufferedAmount, but cannot bound buffering held internally by the user agent.
  */
 NK_API nk_result NK_CALL nk_transport_send(nk_transport transport,
-                                           const void *data NK_IN_ARRAY(size),
-                                           uint64_t size);
+                                           const void *data NK_IN_ARRAY(size), uint64_t size);
 
 /** Returns queued application send bytes and the configured send capacity. Thread-safe. */
 NK_API nk_result NK_CALL nk_transport_get_send_queue(nk_transport transport,
@@ -173,11 +178,16 @@ NK_API nk_result NK_CALL nk_transport_get_send_queue(nk_transport transport,
  * DATA reports a snapshot of available bytes and may be coalesced. Call receive until it
  * returns NK_TRANSPORT_ERROR_WOULD_BLOCK. Receive overflow closes the connection with a
  * failure; application bytes are never silently discarded.
+ * In WebSocket message mode, one successful receive consumes exactly one complete
+ * message. A buffer that is too small returns NK_ERROR_PAYLOAD_TOO_LARGE, reports
+ * the required size in out_received and leaves the message queued. NK_OK with zero
+ * bytes denotes an empty message; WOULD_BLOCK denotes an empty queue. Queues are
+ * bounded by both receive_buffer_size bytes and 1024 messages.
  * The mutable counted buffer annotation borrows its capacity for the call and
  * copies received bytes back when managed and native memory differ (GC Wasm).
  */
-NK_API nk_result NK_CALL nk_transport_receive(nk_transport transport, void *data NK_IN_ARRAY(size), uint64_t size,
-                                              uint64_t *out_received NK_OUT);
+NK_API nk_result NK_CALL nk_transport_receive(nk_transport transport, void *data NK_IN_ARRAY(size),
+                                              uint64_t size, uint64_t *out_received NK_OUT);
 
 /**
  * Cancels connection/negotiation or closes an open connection without disposing its handle.

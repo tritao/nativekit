@@ -9,6 +9,7 @@
 #include "core/error.hpp"
 #include "core/handle_registry.hpp"
 #include "core/runtime.hpp"
+#include "core/resource_events.hpp"
 
 #include <algorithm>
 #include <array>
@@ -155,9 +156,10 @@ bool valid_subprotocols(std::string_view value) {
 
 bool copy_options(const nk_transport_options *input, TransportOptions &output, bool listening) {
     if (!input || input->struct_size < NK_TRANSPORT_OPTIONS_V1_SIZE || !valid_kind(input->kind) ||
-        (input->struct_size != NK_TRANSPORT_OPTIONS_V1_SIZE && input->struct_size < sizeof(*input)) ||
-        (input->flags & ~(NK_TRANSPORT_REUSE_ADDRESS | NK_TRANSPORT_NO_DELAY |
-                          NK_TRANSPORT_SECURE)) != 0 ||
+        (input->struct_size != NK_TRANSPORT_OPTIONS_V1_SIZE &&
+         input->struct_size < sizeof(*input)) ||
+        (input->flags & ~(NK_TRANSPORT_REUSE_ADDRESS | NK_TRANSPORT_NO_DELAY | NK_TRANSPORT_SECURE |
+                          NK_TRANSPORT_MESSAGES | NK_TRANSPORT_TEXT)) != 0 ||
         input->reserved0 != 0 || input->reserved[0] != 0 || input->reserved[1] != 0)
         return false;
     if (!copy_string(input->host, output.host) || !copy_string(input->path, output.path))
@@ -169,6 +171,11 @@ bool copy_options(const nk_transport_options *input, TransportOptions &output, b
             return false;
     }
     if ((input->flags & NK_TRANSPORT_SECURE) != 0 && input->kind != NK_TRANSPORT_WEBSOCKET)
+        return false;
+    if ((input->flags & (NK_TRANSPORT_MESSAGES | NK_TRANSPORT_TEXT)) &&
+        input->kind != NK_TRANSPORT_WEBSOCKET)
+        return false;
+    if ((input->flags & NK_TRANSPORT_TEXT) && !(input->flags & NK_TRANSPORT_MESSAGES))
         return false;
     if (!output.subprotocols.empty() && input->kind != NK_TRANSPORT_WEBSOCKET)
         return false;
@@ -182,8 +189,8 @@ bool copy_options(const nk_transport_options *input, TransportOptions &output, b
             const unsigned char character = static_cast<unsigned char>(output.path[index]);
             if (!((character >= 'a' && character <= 'z') ||
                   (character >= 'A' && character <= 'Z') ||
-                  (character >= '0' && character <= '9') || character == '-' ||
-                  character == '_' || character == '.'))
+                  (character >= '0' && character <= '9') || character == '-' || character == '_' ||
+                  character == '.'))
                 return false;
         }
 #else
@@ -277,7 +284,7 @@ bool utf8_to_wide(std::string_view value, std::wstring &out) {
         return true;
     }
     const int count = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(),
-                                           static_cast<int>(value.size()), nullptr, 0);
+                                          static_cast<int>(value.size()), nullptr, 0);
     if (count <= 0)
         return false;
     out.resize(static_cast<std::size_t>(count));
@@ -302,13 +309,14 @@ struct CurrentUserPipeSecurity {
             return false;
         }
         token_user.resize(needed);
-        const bool read_user = GetTokenInformation(token, TokenUser, token_user.data(), needed,
-                                                    &needed) != 0;
+        const bool read_user =
+            GetTokenInformation(token, TokenUser, token_user.data(), needed, &needed) != 0;
         CloseHandle(token);
         if (!read_user)
             return false;
         const auto *user = reinterpret_cast<const TOKEN_USER *>(token_user.data());
-        const DWORD acl_size = sizeof(ACL) + GetLengthSid(user->User.Sid) + sizeof(ACCESS_ALLOWED_ACE);
+        const DWORD acl_size =
+            sizeof(ACL) + GetLengthSid(user->User.Sid) + sizeof(ACCESS_ALLOWED_ACE);
         acl_storage.resize(acl_size);
         auto *acl = reinterpret_cast<ACL *>(acl_storage.data());
         if (!InitializeAcl(acl, acl_size, ACL_REVISION) ||
@@ -333,8 +341,7 @@ pipe_type create_local_pipe(const std::string &path) {
     return CreateNamedPipeW(wide_path.c_str(), PIPE_ACCESS_DUPLEX,
                             PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_NOWAIT |
                                 PIPE_REJECT_REMOTE_CLIENTS,
-                            PIPE_UNLIMITED_INSTANCES, 65536, 65536, 0,
-                            &security.attributes);
+                            PIPE_UNLIMITED_INSTANCES, 65536, 65536, 0, &security.attributes);
 }
 
 nk_result connect_local_pipe(const TransportOptions &options, pipe_type &out_pipe,
@@ -346,8 +353,9 @@ nk_result connect_local_pipe(const TransportOptions &options, pipe_type &out_pip
     for (;;) {
         if (stopping.load(std::memory_order_acquire))
             return NK_TRANSPORT_ERROR_CANCELED;
-        const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
-            deadline - clock_type::now()).count();
+        const auto remaining =
+            std::chrono::duration_cast<std::chrono::milliseconds>(deadline - clock_type::now())
+                .count();
         if (remaining < 0)
             return NK_TRANSPORT_ERROR_TIMEOUT;
         const DWORD wait_ms = static_cast<DWORD>(std::min<int64_t>(remaining, 100));
@@ -699,7 +707,7 @@ struct SocketAddress {
 #if !defined(_WIN32)
 bool local_peer_is_current_user(socket_type socket) noexcept {
 #if defined(__linux__)
-    struct ucred credentials{};
+    struct ucred credentials {};
     socklen_t length = sizeof(credentials);
     return ::getsockopt(socket, SOL_SOCKET, SO_PEERCRED, &credentials, &length) == 0 &&
            length == sizeof(credentials) && credentials.uid == ::geteuid();
@@ -817,9 +825,10 @@ nk_result create_listener_socket(const TransportOptions &options, socket_type &o
 #else
         const auto slash = options.path.find_last_of('/');
         if (slash == std::string::npos || slash + 1 == options.path.size())
-            return fail(NK_ERROR_INVALID_ARGUMENT, "local socket needs a parent directory and name");
+            return fail(NK_ERROR_INVALID_ARGUMENT,
+                        "local socket needs a parent directory and name");
         const std::string parent = slash == 0 ? "/" : options.path.substr(0, slash);
-        struct stat parent_info{};
+        struct stat parent_info {};
         if (::lstat(parent.c_str(), &parent_info) != 0 || !S_ISDIR(parent_info.st_mode) ||
             parent_info.st_uid != ::geteuid() || (parent_info.st_mode & 077) != 0)
             return fail(NK_ERROR_PERMISSION_DENIED,
@@ -827,7 +836,7 @@ nk_result create_listener_socket(const TransportOptions &options, socket_type &o
         sockaddr_un address{};
         address.sun_family = AF_UNIX;
         std::memcpy(address.sun_path, options.path.data(), options.path.size());
-        struct stat existing{};
+        struct stat existing {};
         if (::lstat(options.path.c_str(), &existing) == 0) {
             if (!S_ISSOCK(existing.st_mode) || existing.st_uid != ::geteuid())
                 return fail(NK_ERROR_PERMISSION_DENIED,
@@ -839,8 +848,8 @@ nk_result create_listener_socket(const TransportOptions &options, socket_type &o
                 close_socket(probe);
                 return NK_TRANSPORT_ERROR_CONNECTION;
             }
-            const int connected = ::connect(probe, reinterpret_cast<const sockaddr *>(&address),
-                                            sizeof(address));
+            const int connected =
+                ::connect(probe, reinterpret_cast<const sockaddr *>(&address), sizeof(address));
             const int probe_error = connected == 0 ? 0 : socket_error();
             close_socket(probe);
             if (connected == 0 || probe_error != ECONNREFUSED)
@@ -1018,7 +1027,8 @@ class TransportResource final : public nk::core::Resource,
     void wake_service() noexcept {
 #if defined(NK_HAS_LIBWEBSOCKETS)
         std::lock_guard lock(lws_context_mutex);
-        if (lws_context_handle) lws_cancel_service(lws_context_handle);
+        if (lws_context_handle)
+            lws_cancel_service(lws_context_handle);
 #endif
     }
 
@@ -1291,7 +1301,7 @@ void TransportResource::emit_data() noexcept {
     payload.struct_size = sizeof(payload);
     {
         std::lock_guard lock(mutex);
-        if (data_event_pending || incoming_bytes == 0 || state != State::open)
+        if (data_event_pending || incoming.empty() || state != State::open)
             return;
         payload.available = incoming_bytes;
         data_event_pending = true;
@@ -1329,19 +1339,22 @@ void TransportResource::emit_connected() noexcept {
 }
 
 bool TransportResource::receive_application(const uint8_t *data, std::size_t size) noexcept {
-    if (size == 0)
+    if (size == 0 && !(options.flags & NK_TRANSPORT_MESSAGES))
         return true;
 #if NK_ENABLE_NO_EXCEPTIONS
     {
         std::lock_guard lock(mutex);
         if (state != State::open)
             return false;
-        if (size >
-            options.receive_buffer_size - std::min(options.receive_buffer_size, incoming_bytes)) {
+        if (((options.flags & NK_TRANSPORT_MESSAGES) && incoming.size() >= 1024) ||
+            size > options.receive_buffer_size -
+                       std::min(options.receive_buffer_size, incoming_bytes)) {
             receive_overflow.store(true, std::memory_order_release);
             return false;
         }
-        incoming.emplace_back(data, data + size);
+        incoming.emplace_back();
+        if (size)
+            incoming.back().assign(data, data + size);
         incoming_bytes += size;
     }
 #else
@@ -1349,12 +1362,15 @@ bool TransportResource::receive_application(const uint8_t *data, std::size_t siz
         std::lock_guard lock(mutex);
         if (state != State::open)
             return false;
-        if (size >
-            options.receive_buffer_size - std::min(options.receive_buffer_size, incoming_bytes)) {
+        if (((options.flags & NK_TRANSPORT_MESSAGES) && incoming.size() >= 1024) ||
+            size > options.receive_buffer_size -
+                       std::min(options.receive_buffer_size, incoming_bytes)) {
             receive_overflow.store(true, std::memory_order_release);
             return false;
         }
-        incoming.emplace_back(data, data + size);
+        incoming.emplace_back();
+        if (size)
+            incoming.back().assign(data, data + size);
         incoming_bytes += size;
     } catch (...) {
         return false;
@@ -1386,7 +1402,7 @@ bool TransportResource::parse_websocket_frames() noexcept {
                 size = (size << 8) | wire_input[2 + index];
             header_size = 10;
         }
-        if (size > max_message || (opcode >= 8 && (!final || size > 125)))
+        if ((first & 0x70) || size > max_message || (opcode >= 8 && (!final || size > 125)))
             return false;
         const std::size_t mask_size = masked ? 4 : 0;
         std::size_t frame_size = 0;
@@ -1426,8 +1442,14 @@ bool TransportResource::parse_websocket_frames() noexcept {
         if (opcode == 0) {
             if (ws_fragment_opcode == 0)
                 return false;
+            if (payload.size() > max_message - ws_fragment.size())
+                return false;
             ws_fragment.insert(ws_fragment.end(), payload.begin(), payload.end());
             if (final) {
+                if (ws_fragment_opcode == 1 &&
+                    !nk::platform::valid_utf8(std::string_view(
+                        reinterpret_cast<const char *>(ws_fragment.data()), ws_fragment.size())))
+                    return false;
                 if (!receive_application(ws_fragment.data(), ws_fragment.size()))
                     return false;
                 ws_fragment.clear();
@@ -1440,6 +1462,9 @@ bool TransportResource::parse_websocket_frames() noexcept {
         if (ws_fragment_opcode != 0)
             return false;
         if (final) {
+            if (opcode == 1 && !nk::platform::valid_utf8(std::string_view(
+                                   reinterpret_cast<const char *>(payload.data()), payload.size())))
+                return false;
             if (!receive_application(payload.data(), payload.size()))
                 return false;
         } else {
@@ -1521,8 +1546,8 @@ bool TransportResource::write_socket() noexcept {
             lock.unlock();
             DWORD sent = 0;
             const DWORD amount = static_cast<DWORD>(std::min<std::size_t>(remaining, 0x7fffffffu));
-            const BOOL succeeded = WriteFile(pipe, chunk.data() + outgoing_offset, amount,
-                                             &sent, nullptr);
+            const BOOL succeeded =
+                WriteFile(pipe, chunk.data() + outgoing_offset, amount, &sent, nullptr);
             const DWORD error = succeeded ? ERROR_SUCCESS : GetLastError();
             lock.lock();
             if (succeeded && sent > 0) {
@@ -1534,8 +1559,7 @@ bool TransportResource::write_socket() noexcept {
                 }
                 continue;
             }
-            if (!succeeded && error == ERROR_NO_DATA)
-            {
+            if (!succeeded && error == ERROR_NO_DATA) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(5));
                 return true;
             }
@@ -1640,16 +1664,16 @@ nk_result TransportResource::websocket_handshake() noexcept {
     const std::string key = "dGhlIHNhbXBsZSBub25jZQ==";
     const std::string host = options.host + ":" + std::to_string(options.port);
     std::string request = "GET " + options.path +
-                                " HTTP/1.1\r\n"
-                                "Host: " +
-                                host +
-                                "\r\n"
-                                "Upgrade: websocket\r\n"
-                                "Connection: Upgrade\r\n"
-                                "Sec-WebSocket-Key: " +
-                                key +
-                                "\r\n"
-                                "Sec-WebSocket-Version: 13\r\n";
+                          " HTTP/1.1\r\n"
+                          "Host: " +
+                          host +
+                          "\r\n"
+                          "Upgrade: websocket\r\n"
+                          "Connection: Upgrade\r\n"
+                          "Sec-WebSocket-Key: " +
+                          key +
+                          "\r\n"
+                          "Sec-WebSocket-Version: 13\r\n";
     if (!options.subprotocols.empty())
         request += "Sec-WebSocket-Protocol: " + options.subprotocols + "\r\n";
     request += "\r\n";
@@ -1711,11 +1735,25 @@ int secure_websocket_callback(lws *socket, lws_callback_reasons reason, void *, 
         transport->emit_writable();
         return 0;
     case LWS_CALLBACK_CLIENT_RECEIVE:
+        if (transport->options.flags & NK_TRANSPORT_MESSAGES) {
+            if (size > max_message - transport->ws_fragment.size()) {
+                transport->terminal_result = NK_TRANSPORT_ERROR_RECEIVE_OVERFLOW;
+                return -1;
+            }
+            const auto *bytes = static_cast<const uint8_t *>(input);
+            if (size)
+                transport->ws_fragment.insert(transport->ws_fragment.end(), bytes, bytes + size);
+            if (!lws_is_final_fragment(socket) || lws_remaining_packet_payload(socket) != 0)
+                return 0;
+            input = transport->ws_fragment.data();
+            size = transport->ws_fragment.size();
+        }
         if (!transport->receive_application(static_cast<const uint8_t *>(input), size)) {
             if (transport->receive_overflow.load(std::memory_order_acquire))
                 transport->terminal_result = NK_TRANSPORT_ERROR_RECEIVE_OVERFLOW;
             return -1;
         }
+        transport->ws_fragment.clear();
         return 0;
     case LWS_CALLBACK_CLIENT_WRITEABLE: {
         std::unique_lock lock(transport->mutex);
@@ -1731,7 +1769,10 @@ int secure_websocket_callback(lws *socket, lws_callback_reasons reason, void *, 
         lock.unlock();
         std::vector<unsigned char> framed(LWS_PRE + payload.size());
         std::memcpy(framed.data() + LWS_PRE, payload.data(), payload.size());
-        if (lws_write(socket, framed.data() + LWS_PRE, payload.size(), LWS_WRITE_BINARY) < 0)
+        if (lws_write(socket, framed.data() + LWS_PRE, payload.size(),
+                      (transport->options.flags & NK_TRANSPORT_TEXT)
+                          ? LWS_WRITE_TEXT
+                          : LWS_WRITE_BINARY) < static_cast<int>(payload.size()))
             return -1;
         if (more)
             lws_callback_on_writable(socket);
@@ -1815,9 +1856,9 @@ void TransportResource::run_secure_websocket() noexcept {
     }
     lws_context_destroy(closing);
     lws_handle = nullptr;
-    const auto result = stopping.load(std::memory_order_acquire)
-                            ? NK_TRANSPORT_ERROR_CANCELED
-                            : terminal_result == NK_OK ? NK_TRANSPORT_ERROR_CLOSED : terminal_result;
+    const auto result = stopping.load(std::memory_order_acquire) ? NK_TRANSPORT_ERROR_CANCELED
+                        : terminal_result == NK_OK               ? NK_TRANSPORT_ERROR_CLOSED
+                                                                 : terminal_result;
     finish(result);
 }
 #endif
@@ -1837,7 +1878,7 @@ void TransportResource::run() noexcept {
             result = connect_local_pipe(options, pipe, stopping);
         else
 #endif
-        result = open_client_socket();
+            result = open_client_socket();
         if (result == NK_OK && options.kind == NK_TRANSPORT_WEBSOCKET)
             result = websocket_handshake();
     } else if (server_side && options.kind == NK_TRANSPORT_WEBSOCKET) {
@@ -1935,8 +1976,7 @@ void ListenerResource::run() noexcept {
             transport->handle = static_cast<nk_transport>(transport_handle);
             if (transport_handle == NK_INVALID_HANDLE || !transport->start()) {
                 if (transport_handle != NK_INVALID_HANDLE)
-                    nk::core::handles().erase(transport_handle,
-                                              nk::core::ResourceType::transport);
+                    nk::core::handles().erase(transport_handle, nk::core::ResourceType::transport);
                 close_pipe(transport->pipe);
                 transport->pipe = invalid_pipe;
                 continue;
@@ -2078,8 +2118,8 @@ void shutdown() noexcept {
 
 extern "C" {
 
-nk_result NK_CALL nk_transport_query_capabilities(
-    nk_transport_kind kind, nk_transport_capabilities *out_capabilities) {
+nk_result NK_CALL nk_transport_query_capabilities(nk_transport_kind kind,
+                                                  nk_transport_capabilities *out_capabilities) {
     if (!out_capabilities)
         return fail(NK_ERROR_INVALID_ARGUMENT, "transport capability output is null");
     *out_capabilities = 0;
@@ -2154,8 +2194,8 @@ nk_result NK_CALL nk_transport_listen(const nk_transport_options *options,
                 result = NK_ERROR_PERMISSION_DENIED;
         } else
 #endif
-            result = create_listener_socket(listener->options, listener->socket,
-                                             listener->local_path);
+            result =
+                create_listener_socket(listener->options, listener->socket, listener->local_path);
         if (result != NK_OK)
             return fail(result, "listener socket creation failed");
         const auto handle = nk::core::handles().insert(nk::core::ResourceType::listener, listener);
@@ -2204,17 +2244,26 @@ nk_result NK_CALL nk_transport_send(nk_transport handle, const void *data, uint6
             return fail(NK_ERROR_OUT_OF_MEMORY, "transport payload allocation failed");
         }
 #endif
+        if ((transport->options.flags & NK_TRANSPORT_TEXT) &&
+            (!nk::platform::valid_utf8(std::string_view(size ? static_cast<const char *>(data) : "",
+                                                        static_cast<std::size_t>(size))) ||
+             (size && std::memchr(data, 0, size))))
+            return fail(NK_ERROR_INVALID_ARGUMENT,
+                        "WebSocket text must be UTF-8 without embedded NUL");
         if (size != 0)
             std::memcpy(payload.data(), data, static_cast<std::size_t>(size));
         if (transport->options.kind == NK_TRANSPORT_WEBSOCKET &&
             (transport->options.flags & NK_TRANSPORT_SECURE) == 0)
-            payload = websocket_frame(payload.data(), payload.size(), !transport->server_side, 2);
+            payload = websocket_frame(payload.data(), payload.size(), !transport->server_side,
+                                      (transport->options.flags & NK_TRANSPORT_TEXT) ? 1 : 2);
 
         {
             std::lock_guard lock(transport->mutex);
             if (transport->state == TransportResource::State::closed)
                 return fail(NK_ERROR_INVALID_REQUEST, "transport is closed");
-            if (payload.size() > transport->options.send_buffer_size ||
+            if (((transport->options.flags & NK_TRANSPORT_MESSAGES) &&
+                 transport->outgoing.size() >= 1024) ||
+                payload.size() > transport->options.send_buffer_size ||
                 transport->outgoing_bytes > transport->options.send_buffer_size - payload.size())
                 return fail(NK_ERROR_QUEUE_FULL, "transport send queue is full");
             transport->outgoing_bytes += payload.size();
@@ -2227,7 +2276,7 @@ nk_result NK_CALL nk_transport_send(nk_transport handle, const void *data, uint6
 }
 
 nk_result NK_CALL nk_transport_get_send_queue(nk_transport handle, uint64_t *out_queued_bytes,
-                                               uint64_t *out_capacity) {
+                                              uint64_t *out_capacity) {
     return nk::core::result_boundary("transport get send queue", [&]() -> nk_result {
         if (!out_queued_bytes || !out_capacity)
             return fail(NK_ERROR_INVALID_ARGUMENT, "send queue output is null");
@@ -2259,6 +2308,11 @@ nk_result NK_CALL nk_transport_receive(nk_transport handle, void *data, uint64_t
             return NK_TRANSPORT_ERROR_WOULD_BLOCK;
         }
         auto &chunk = transport->incoming.front();
+        if ((transport->options.flags & NK_TRANSPORT_MESSAGES) && size < chunk.size()) {
+            *out_received = chunk.size();
+            return fail(NK_ERROR_PAYLOAD_TOO_LARGE,
+                        "receive buffer cannot hold the complete message");
+        }
         const auto amount = std::min<std::size_t>(static_cast<std::size_t>(size), chunk.size());
         if (amount != 0)
             std::memcpy(data, chunk.data(), amount);
