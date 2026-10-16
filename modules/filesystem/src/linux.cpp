@@ -138,7 +138,9 @@ nk_result fail(nk_result result, const char *message) {
     return result;
 }
 
-void clear_error() { last_error.clear(); }
+void clear_error() {
+    last_error.clear();
+}
 
 bool valid_utf8(const char *text, size_t length) {
     const auto *p = reinterpret_cast<const unsigned char *>(text);
@@ -173,8 +175,8 @@ bool valid_utf8(const char *text, size_t length) {
                 return false;
             cp = (cp << 6) | (*p & 0x3f);
         }
-        if ((trailing == 2 && cp < 0x800) || (trailing == 3 && cp < 0x10000) ||
-            cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff))
+        if ((trailing == 2 && cp < 0x800) || (trailing == 3 && cp < 0x10000) || cp > 0x10ffff ||
+            (cp >= 0xd800 && cp <= 0xdfff))
             return false;
     }
     return true;
@@ -225,22 +227,29 @@ nk_result map_errno(int error, bool directory_operation = false) {
 
 const char *errno_message(int error) {
     switch (error) {
-    case ENOENT: return "path does not exist";
+    case ENOENT:
+        return "path does not exist";
     case EACCES:
-    case EPERM: return "access to the requested path was denied";
+    case EPERM:
+        return "access to the requested path was denied";
     case EXDEV:
-    case ELOOP: return "path resolution would leave the authorized root";
-    case ENOTDIR: return "path is not a directory";
+    case ELOOP:
+        return "path resolution would leave the authorized root";
+    case ENOTDIR:
+        return "path is not a directory";
     case ENOSYS:
     case EINVAL:
-    case E2BIG: return "secure root-relative resolution is unavailable on this system";
-    default: return "filesystem operation failed";
+    case E2BIG:
+        return "secure root-relative resolution is unavailable on this system";
+    default:
+        return "filesystem operation failed";
     }
 }
 
 bool output_entry(nk_filesystem_entry *entry) {
     if (!entry || entry->struct_size != sizeof(nk_filesystem_entry)) {
-        fail(NK_ERROR_INVALID_ARGUMENT, "entry output must use the current NativeKit filesystem ABI size");
+        fail(NK_ERROR_INVALID_ARGUMENT,
+             "entry output must use the current NativeKit filesystem ABI size");
         return false;
     }
     std::memset(reinterpret_cast<char *>(entry) + sizeof(entry->struct_size), 0,
@@ -320,7 +329,8 @@ nk_result NK_CALL nk_filesystem_root_open(const char *absolute_path,
     const size_t length = std::strlen(absolute_path);
     if (length == 0 || length > NK_FILESYSTEM_MAX_PATH_BYTES || absolute_path[0] != '/' ||
         !valid_utf8(absolute_path, length))
-        return fail(NK_ERROR_INVALID_ARGUMENT, "root must be an absolute UTF-8 path within the configured limit");
+        return fail(NK_ERROR_INVALID_ARGUMENT,
+                    "root must be an absolute UTF-8 path within the configured limit");
 
     const int fd = open(absolute_path, O_PATH | O_DIRECTORY | O_CLOEXEC);
     if (fd < 0)
@@ -352,7 +362,8 @@ nk_result NK_CALL nk_filesystem_stat(nk_filesystem_handle handle, const char *re
                                      nk_filesystem_entry *out_entry) {
     clear_error();
     if (!output_entry(out_entry) || !valid_relative_path(relative_path))
-        return fail(NK_ERROR_INVALID_ARGUMENT, "stat requires a canonical UTF-8 path relative to the root");
+        return fail(NK_ERROR_INVALID_ARGUMENT,
+                    "stat requires a canonical UTF-8 path relative to the root");
     auto root = get_root(handle);
     if (!root)
         return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale filesystem root handle");
@@ -386,7 +397,8 @@ nk_result NK_CALL nk_filesystem_directory_open(nk_filesystem_handle handle,
     if (!out_cursor || !valid_relative_path(relative_path)) {
         if (out_cursor)
             *out_cursor = 0;
-        return fail(NK_ERROR_INVALID_ARGUMENT, "directory open requires a canonical UTF-8 relative path and output handle");
+        return fail(NK_ERROR_INVALID_ARGUMENT,
+                    "directory open requires a canonical UTF-8 relative path and output handle");
     }
     *out_cursor = 0;
     auto root = get_root(handle);
@@ -491,14 +503,14 @@ nk_result NK_CALL nk_filesystem_directory_close(nk_filesystem_handle handle) {
     return NK_OK;
 }
 
-nk_result NK_CALL nk_filesystem_file_open(nk_filesystem_handle handle,
-                                          const char *relative_path,
+nk_result NK_CALL nk_filesystem_file_open(nk_filesystem_handle handle, const char *relative_path,
                                           nk_filesystem_handle *out_file) {
     clear_error();
     if (!out_file || !valid_relative_path(relative_path) || relative_path[0] == '\0') {
         if (out_file)
             *out_file = 0;
-        return fail(NK_ERROR_INVALID_ARGUMENT, "file open requires a non-empty canonical UTF-8 path and output handle");
+        return fail(NK_ERROR_INVALID_ARGUMENT,
+                    "file open requires a non-empty canonical UTF-8 path and output handle");
     }
     *out_file = 0;
     auto root = get_root(handle);
@@ -548,7 +560,8 @@ nk_result NK_CALL nk_filesystem_file_info(nk_filesystem_handle handle,
     if (fstat(file->fd, &info) != 0)
         return fail(map_errno(errno), errno_message(errno));
     if (!S_ISREG(info.st_mode))
-        return fail(NK_ERROR_INVALID_REQUEST, "opened filesystem object is no longer a regular file");
+        return fail(NK_ERROR_INVALID_REQUEST,
+                    "opened filesystem object is no longer a regular file");
     out_entry->struct_size = sizeof(nk_filesystem_entry);
     fill_entry(info, *out_entry);
     return NK_OK;
@@ -576,10 +589,12 @@ nk_result NK_CALL nk_filesystem_file_read(nk_filesystem_handle handle, uint64_t 
     if (fstat(file->fd, &info) != 0)
         return fail(map_errno(errno), errno_message(errno));
     if (!S_ISREG(info.st_mode) || info.st_size < 0)
-        return fail(NK_ERROR_INVALID_REQUEST, "opened filesystem object is no longer a regular file");
+        return fail(NK_ERROR_INVALID_REQUEST,
+                    "opened filesystem object is no longer a regular file");
     const uint64_t size = static_cast<uint64_t>(info.st_size);
-    const uint32_t required = offset >= size ? 0 : static_cast<uint32_t>(
-        std::min<uint64_t>(requested_bytes, size - offset));
+    const uint32_t required =
+        offset >= size ? 0
+                       : static_cast<uint32_t>(std::min<uint64_t>(requested_bytes, size - offset));
     if (required == 0)
         return NK_OK;
     if (!out_bytes || capacity < required) {
@@ -603,6 +618,8 @@ nk_result NK_CALL nk_filesystem_file_close(nk_filesystem_handle handle) {
     return NK_OK;
 }
 
-const char *NK_CALL nk_filesystem_last_error(void) { return last_error.c_str(); }
+const char *NK_CALL nk_filesystem_last_error(void) {
+    return last_error.c_str();
+}
 
 } // extern "C"

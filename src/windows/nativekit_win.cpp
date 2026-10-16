@@ -100,8 +100,7 @@ void enable_process_dpi_awareness() {
     // Keep the backend usable on Windows versions that predate per-monitor v2.
     if (HMODULE shcore = LoadLibraryW(L"Shcore.dll")) {
         using SetProcessDpiAwarenessFn = HRESULT(WINAPI *)(int);
-        const FARPROC set_awareness_address =
-            GetProcAddress(shcore, "SetProcessDpiAwareness");
+        const FARPROC set_awareness_address = GetProcAddress(shcore, "SetProcessDpiAwareness");
         SetProcessDpiAwarenessFn set_awareness = nullptr;
         static_assert(sizeof(set_awareness) == sizeof(set_awareness_address));
         std::memcpy(&set_awareness, &set_awareness_address, sizeof(set_awareness));
@@ -795,8 +794,8 @@ double dpi_scale(HWND window) {
 void update_text_input_anchor(WinWindowResource &resource) {
     if (!resource.window)
         return;
-    const auto anchor = nk::core::text_input_anchor_rect(
-        resource.text_input_state, resource.text_input_selection_rects);
+    const auto anchor = nk::core::text_input_anchor_rect(resource.text_input_state,
+                                                         resource.text_input_selection_rects);
     const auto target_surface = get_surface(resource.text_input_target);
     const double offset_x = target_surface ? target_surface->x : 0.0;
     const double offset_y = target_surface ? target_surface->y : 0.0;
@@ -969,9 +968,8 @@ void apply_text_edit_state(WinWindowResource &resource, nk_text_edit_action acti
                            nk_text_position selection_end, nk_text_position composition_start,
                            nk_text_position composition_end) {
     const auto history_kind = nk::core::infer_text_edit_history_kind(
-        action, resource.text_input_state.selection_start,
-        resource.text_input_state.selection_end, replace_start, replace_end,
-        resource.text_composing);
+        action, resource.text_input_state.selection_start, resource.text_input_state.selection_end,
+        replace_start, replace_end, resource.text_composing);
     resource.text_input_state.selection_start = selection_start;
     resource.text_input_state.selection_end = selection_end;
     resource.text_input_state.composition_start = composition_start;
@@ -1965,8 +1963,9 @@ LRESULT CALLBACK surface_window_proc(HWND window, UINT message, WPARAM wparam, L
         return HTTRANSPARENT;
     if (surface && message == surface_frame_message)
         surface->frame_message_pending = false;
-    if (surface && (message == surface_frame_message ||
-                    (message == WM_TIMER && wparam == surface_frame_timer)) &&
+    if (surface &&
+        (message == surface_frame_message ||
+         (message == WM_TIMER && wparam == surface_frame_timer)) &&
         surface->frame_callback && !surface->destroying) {
         if (!surface->frame_requests.should_draw()) {
             /* An idle on-demand surface stops its timer until the next request. */
@@ -2679,15 +2678,22 @@ UINT message_box_type(const WinDialogContext &context) {
 void run_message_dialog(const std::shared_ptr<WinDialogContext> &context) noexcept {
     context->thread_id = GetCurrentThreadId();
     int response = IDCANCEL;
-    if (!context->canceled && (context->buttons & (NK_MESSAGE_BUTTON_SAVE | NK_MESSAGE_BUTTON_DONT_SAVE))) {
+    if (!context->canceled &&
+        (context->buttons & (NK_MESSAGE_BUTTON_SAVE | NK_MESSAGE_BUTTON_DONT_SAVE))) {
         HMODULE controls = LoadLibraryW(L"comctl32.dll");
-        using ShowTaskDialog = HRESULT (WINAPI *)(const TASKDIALOGCONFIG *, int *, int *, BOOL *);
-        auto show = controls ? reinterpret_cast<ShowTaskDialog>(GetProcAddress(controls, "TaskDialogIndirect")) : nullptr;
+        using ShowTaskDialog = HRESULT(WINAPI *)(const TASKDIALOGCONFIG *, int *, int *, BOOL *);
+        auto show =
+            controls
+                ? reinterpret_cast<ShowTaskDialog>(GetProcAddress(controls, "TaskDialogIndirect"))
+                : nullptr;
         TASKDIALOG_BUTTON buttons[3]{};
         UINT button_count = 0;
-        if (context->buttons & NK_MESSAGE_BUTTON_DONT_SAVE) buttons[button_count++] = {IDNO, L"Don't Save"};
-        if (context->buttons & NK_MESSAGE_BUTTON_CANCEL) buttons[button_count++] = {IDCANCEL, L"Cancel"};
-        if (context->buttons & NK_MESSAGE_BUTTON_SAVE) buttons[button_count++] = {IDYES, L"Save"};
+        if (context->buttons & NK_MESSAGE_BUTTON_DONT_SAVE)
+            buttons[button_count++] = {IDNO, L"Don't Save"};
+        if (context->buttons & NK_MESSAGE_BUTTON_CANCEL)
+            buttons[button_count++] = {IDCANCEL, L"Cancel"};
+        if (context->buttons & NK_MESSAGE_BUTTON_SAVE)
+            buttons[button_count++] = {IDYES, L"Save"};
         TASKDIALOGCONFIG config{};
         config.cbSize = sizeof(config);
         config.hwndParent = context->parent;
@@ -2700,9 +2706,11 @@ void run_message_dialog(const std::shared_ptr<WinDialogContext> &context) noexce
         config.pButtons = buttons;
         config.nDefaultButton = IDCANCEL;
         if (!show || FAILED(show(&config, &response, nullptr, nullptr)))
-            response = MessageBoxW(context->parent, context->message.c_str(), context->title.c_str(),
-                                   MB_ICONWARNING | MB_YESNOCANCEL | MB_DEFBUTTON3);
-        if (controls) FreeLibrary(controls);
+            response =
+                MessageBoxW(context->parent, context->message.c_str(), context->title.c_str(),
+                            MB_ICONWARNING | MB_YESNOCANCEL | MB_DEFBUTTON3);
+        if (controls)
+            FreeLibrary(controls);
     } else if (!context->canceled)
         response = MessageBoxW(context->parent, context->message.c_str(), context->title.c_str(),
                                message_box_type(*context));
@@ -3361,9 +3369,8 @@ nk_result NK_CALL nk_window_set_title(nk_handle handle, const char *title) {
     });
 }
 
-nk_result NK_CALL nk_window_set_icons(nk_handle handle, const uint8_t *pixels,
-                                      uint32_t byte_count, const nk_icon_image *images,
-                                      uint32_t image_count) {
+nk_result NK_CALL nk_window_set_icons(nk_handle handle, const uint8_t *pixels, uint32_t byte_count,
+                                      const nk_icon_image *images, uint32_t image_count) {
     return nk::core::result_boundary("unexpected error while setting window icons", [&] {
         if (const auto result = enter_ui(); result != NK_OK)
             return result;
@@ -3439,13 +3446,13 @@ nk_result NK_CALL nk_window_set_icons(nk_handle handle, const uint8_t *pixels,
             }
             return selected;
         };
-        const auto small_index = closest(GetSystemMetrics(SM_CXSMICON),
-                                         GetSystemMetrics(SM_CYSMICON));
-        const auto big_index = closest(GetSystemMetrics(SM_CXICON),
-                                       GetSystemMetrics(SM_CYICON));
+        const auto small_index =
+            closest(GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON));
+        const auto big_index = closest(GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON));
         HICON small_icon = native_icons[small_index];
         HICON big_icon = native_icons[big_index];
-        SendMessageW(resource->window, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(small_icon));
+        SendMessageW(resource->window, WM_SETICON, ICON_SMALL,
+                     reinterpret_cast<LPARAM>(small_icon));
         SendMessageW(resource->window, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(big_icon));
         if (resource->icon_small)
             DestroyIcon(resource->icon_small);
@@ -3656,8 +3663,9 @@ nk_result NK_CALL nk_pointer_button_get_state(nk_handle handle, nk_pointer_butto
         return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale window handle");
     const int virtual_keys[] = {VK_LBUTTON, VK_RBUTTON, VK_MBUTTON, VK_XBUTTON1, VK_XBUTTON2};
     *out_action = button < 5
-        ? ((GetAsyncKeyState(virtual_keys[button]) & 0x8000) ? NK_INPUT_PRESS : NK_INPUT_RELEASE)
-        : resource->pointer_buttons[button];
+                      ? ((GetAsyncKeyState(virtual_keys[button]) & 0x8000) ? NK_INPUT_PRESS
+                                                                           : NK_INPUT_RELEASE)
+                      : resource->pointer_buttons[button];
     return NK_OK;
 }
 
@@ -3900,7 +3908,8 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
                             "text input state ranges or hints are invalid");
             auto resource = get_text_input_window(handle);
             if (!resource)
-                return fail(NK_ERROR_INVALID_HANDLE, "text input requires a live surface or window");
+                return fail(NK_ERROR_INVALID_HANDLE,
+                            "text input requires a live surface or window");
             resource->text_input_target = handle;
             resource->text_input_text = text;
             resource->text_input_state = *state;
@@ -3920,8 +3929,8 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
 nk_result NK_CALL nk_surface_set_text_input_geometry(
     nk_handle handle, nk_text_position selection_start, nk_text_position selection_end,
     nk_text_position composition_start, nk_text_position composition_end,
-    const uint8_t *selection_rects, uint32_t selection_rect_bytes,
-    const uint8_t *composition_rects, uint32_t composition_rect_bytes) {
+    const uint8_t *selection_rects, uint32_t selection_rect_bytes, const uint8_t *composition_rects,
+    uint32_t composition_rect_bytes) {
     return nk::core::result_boundary(
         "unexpected error while setting Windows text input geometry", [&]() -> nk_result {
             if (const auto result = enter_ui(); result != NK_OK)
@@ -3936,14 +3945,12 @@ nk_result NK_CALL nk_surface_set_text_input_geometry(
                     selection_start, selection_end, composition_start, composition_end,
                     selection_rects, selection_rect_bytes, composition_rects,
                     composition_rect_bytes, &geometry) ||
-                !nk::core::text_input_geometry_matches_state(geometry,
-                                                               resource->text_input_state))
+                !nk::core::text_input_geometry_matches_state(geometry, resource->text_input_state))
                 return fail(NK_ERROR_INVALID_ARGUMENT,
                             "text input geometry ranges do not match the current state");
             resource->text_input_selection_rects = std::move(geometry.selection_rects);
             resource->text_input_composition_rects = std::move(geometry.composition_rects);
-            resource->text_input_selection_range_rects =
-                std::move(geometry.selection_range_rects);
+            resource->text_input_selection_range_rects = std::move(geometry.selection_range_rects);
             resource->text_input_composition_range_rects =
                 std::move(geometry.composition_range_rects);
             update_text_input_anchor(*resource);
@@ -3961,7 +3968,8 @@ nk_result NK_CALL nk_surface_set_text_input_active(nk_handle handle, uint32_t ac
                             "text input active state must be zero or one");
             auto resource = get_text_input_window(handle);
             if (!resource)
-                return fail(NK_ERROR_INVALID_HANDLE, "text input requires a live surface or window");
+                return fail(NK_ERROR_INVALID_HANDLE,
+                            "text input requires a live surface or window");
             resource->text_input_target = handle;
             resource->text_input_active = active != 0;
             if (!resource->text_input_active) {

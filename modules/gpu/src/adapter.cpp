@@ -2089,7 +2089,7 @@ nkgpu_result nkgpu_buffer_create_stream(nkgpu_renderer r, uint32_t capacity,
     return save_buffer(r, object, capacity, usage, true, true, nullptr, out);
 }
 nkgpu_result nkgpu_buffer_get_stream_info(nkgpu_renderer r, nkgpu_buffer h,
-                                           nkgpu_stream_buffer_info *out) {
+                                          nkgpu_stream_buffer_info *out) {
     auto *renderer = renderer_pool.get(r);
     auto *buffer = buffer_pool.get(h);
     if (!renderer || !buffer || buffer->value.owner != r)
@@ -2105,7 +2105,7 @@ nkgpu_result nkgpu_buffer_get_stream_info(nkgpu_renderer r, nkgpu_buffer h,
     // Testing a full aligned capacity also detects Sokol's lazy frame rewind.
     const uint32_t aligned_capacity = buffer->value.size & ~uint32_t{3};
     const bool has_appends = aligned_capacity && selected_api->query_buffer_will_overflow(
-        buffer->value.object, aligned_capacity);
+                                                     buffer->value.object, aligned_capacity);
     const auto info = selected_api->query_buffer_info(buffer->value.object);
     const uint32_t used = has_appends ? static_cast<uint32_t>(info.append_pos) : 0;
     *out = {sizeof(*out), buffer->value.size, used,
@@ -2379,7 +2379,8 @@ nkgpu_result nkgpu_buffer_update(nkgpu_renderer r, nkgpu_buffer h, uint32_t offs
                     sg_destroy_view(storage_view);
                 sg_destroy_buffer(object);
                 record_allocation_failure(r);
-                return fail_creation(NKGPU_ERROR_OUT_OF_MEMORY, "updated storage-buffer view failed");
+                return fail_creation(NKGPU_ERROR_OUT_OF_MEMORY,
+                                     "updated storage-buffer view failed");
             }
         }
         if (s->value.storage_view.id)
@@ -3714,7 +3715,8 @@ nkgpu_result nkgpu_image_create_desc(nkgpu_renderer r, const nkgpu_image_desc *i
                 sg_destroy_view(image_value.view);
             sg_destroy_image(object);
             record_allocation_failure(r);
-            return fail_creation(NKGPU_ERROR_OUT_OF_MEMORY, "color attachment view creation failed");
+            return fail_creation(NKGPU_ERROR_OUT_OF_MEMORY,
+                                 "color attachment view creation failed");
         }
         if (sample_count == 1) {
             view_desc = {};
@@ -3726,7 +3728,8 @@ nkgpu_result nkgpu_image_create_desc(nkgpu_renderer r, const nkgpu_image_desc *i
                     sg_destroy_view(image_value.view);
                 sg_destroy_image(object);
                 record_allocation_failure(r);
-                return fail_creation(NKGPU_ERROR_OUT_OF_MEMORY, "resolve attachment view creation failed");
+                return fail_creation(NKGPU_ERROR_OUT_OF_MEMORY,
+                                     "resolve attachment view creation failed");
             }
         }
     }
@@ -3751,7 +3754,8 @@ nkgpu_result nkgpu_image_create_desc(nkgpu_renderer r, const nkgpu_image_desc *i
                 sg_destroy_view(image_value.view);
             sg_destroy_image(object);
             record_allocation_failure(r);
-            return fail_creation(NKGPU_ERROR_OUT_OF_MEMORY, "depth attachment view creation failed");
+            return fail_creation(NKGPU_ERROR_OUT_OF_MEMORY,
+                                 "depth attachment view creation failed");
         }
     }
 

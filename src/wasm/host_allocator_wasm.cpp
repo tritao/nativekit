@@ -34,7 +34,10 @@ namespace {
 #if defined(__EMSCRIPTEN_SHARED_MEMORY__)
 std::atomic_flag allocator_lock = ATOMIC_FLAG_INIT;
 struct AllocatorGuard {
-    AllocatorGuard() { while (allocator_lock.test_and_set(std::memory_order_acquire)) {} }
+    AllocatorGuard() {
+        while (allocator_lock.test_and_set(std::memory_order_acquire)) {
+        }
+    }
     ~AllocatorGuard() { allocator_lock.clear(std::memory_order_release); }
 };
 #else
@@ -60,12 +63,14 @@ bool ensure_allocator() {
     const auto tls_alignment = __builtin_wasm_tls_align() > 16 ? __builtin_wasm_tls_align() : 16;
     const auto tls_base = align_up(reinterpret_cast<std::uintptr_t>(&__heap_base), tls_alignment);
     const auto tls_end = tls_base + align_up(__builtin_wasm_tls_size(), alignof(std::max_align_t));
-    if (base < tls_end) base = tls_end;
+    if (base < tls_end)
+        base = tls_end;
     base = align_up(base, 16);
 #endif
     if (base >= NK_WASM_HOST_HEAP_LIMIT || emscripten_get_heap_size() < NK_WASM_HOST_HEAP_LIMIT)
         return false;
-    allocator_ready = allocator.initialize(reinterpret_cast<void *>(base), NK_WASM_HOST_HEAP_LIMIT - base);
+    allocator_ready =
+        allocator.initialize(reinterpret_cast<void *>(base), NK_WASM_HOST_HEAP_LIMIT - base);
     return allocator_ready;
 }
 
@@ -162,7 +167,7 @@ extern "C" void __libc_free(void *pointer) {
 // OCCT's OSD_MemInfo reports heap use through this.
 extern "C" struct mallinfo mallinfo() {
     [[maybe_unused]] AllocatorGuard guard;
-    struct mallinfo result{};
+    struct mallinfo result {};
     if (!ensure_allocator())
         return result;
     const auto stats = allocator.statistics();

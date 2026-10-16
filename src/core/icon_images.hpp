@@ -15,7 +15,8 @@ inline bool valid_icon_images(const uint8_t *pixels, uint32_t byte_count,
         if (image.width <= 0 || image.height <= 0 || image.width > INT32_MAX / 4 ||
             image.stride < image.width * 4 ||
             static_cast<uint64_t>(image.offset) +
-                    static_cast<uint64_t>(image.stride) * image.height > byte_count)
+                    static_cast<uint64_t>(image.stride) * image.height >
+                byte_count)
             return false;
     }
     return true;

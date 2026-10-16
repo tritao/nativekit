@@ -59,12 +59,12 @@ int32_t set(const Request &request, const uint8_t *secret, uint32_t secret_size)
     credential.CredentialBlob = const_cast<LPBYTE>(secret);
     credential.Persist = CRED_PERSIST_LOCAL_MACHINE;
     if (!CredWriteW(&credential, 0))
-        return status_error(GetLastError(), "the operating-system credential store could not save the credential");
+        return status_error(GetLastError(),
+                            "the operating-system credential store could not save the credential");
     return NK_OK;
 }
 
-int32_t get(const Request &request, uint8_t *secret, uint32_t capacity,
-            uint32_t *out_secret_size) {
+int32_t get(const Request &request, uint8_t *secret, uint32_t capacity, uint32_t *out_secret_size) {
     std::wstring target;
     if (!target_name(request, target)) {
         set_error("could not encode the credential name as UTF-16");
@@ -72,7 +72,8 @@ int32_t get(const Request &request, uint8_t *secret, uint32_t capacity,
     }
     PCREDENTIALW credential = nullptr;
     if (!CredReadW(target.c_str(), CRED_TYPE_GENERIC, 0, &credential))
-        return status_error(GetLastError(), "the operating-system credential store could not read the credential");
+        return status_error(GetLastError(),
+                            "the operating-system credential store could not read the credential");
     const auto size = credential->CredentialBlobSize;
     *out_secret_size = size;
     if (size > NK_CREDENTIALS_MAX_SECRET_BYTES) {
@@ -97,7 +98,9 @@ int32_t erase(const Request &request) {
         return NK_ERROR_INVALID_ARGUMENT;
     }
     if (!CredDeleteW(target.c_str(), CRED_TYPE_GENERIC, 0))
-        return status_error(GetLastError(), "the operating-system credential store could not delete the credential");
+        return status_error(
+            GetLastError(),
+            "the operating-system credential store could not delete the credential");
     return NK_OK;
 }
 

@@ -2133,9 +2133,12 @@ extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_text_input_event(uint32_t route
     state->callbacks.text_input(event, state->user_data);
 }
 
-// Keys pressed while the focused text input has them (see emitKey above); text itself arrives as input events.
-extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_text_input_key(uint32_t route, int key_code, int location,
-                                                               uint32_t key_modifiers, int repeat, int down) {
+// Keys pressed while the focused text input has them (see emitKey above); text itself arrives as
+// input events.
+extern "C" EMSCRIPTEN_KEEPALIVE void nk_web_host_text_input_key(uint32_t route, int key_code,
+                                                                int location,
+                                                                uint32_t key_modifiers, int repeat,
+                                                                int down) {
     auto *state = state_for_route(route);
     if (!state || !state->callbacks.key)
         return;

@@ -426,10 +426,10 @@ typedef struct nk_icon_image {
  * window chrome and taskbar; macOS applies them to the application icon too.
  * All image bytes are copied before return. UI thread only. */
 NK_API nk_result NK_CALL nk_window_set_icons(nk_window window,
-                                            const uint8_t *pixels NK_IN_ARRAY(byte_count),
-                                            uint32_t byte_count,
-                                            const nk_icon_image *images NK_IN_ARRAY(image_count),
-                                            uint32_t image_count);
+                                             const uint8_t *pixels NK_IN_ARRAY(byte_count),
+                                             uint32_t byte_count,
+                                             const nk_icon_image *images NK_IN_ARRAY(image_count),
+                                             uint32_t image_count);
 
 /** Moves and resizes a top-level window in logical pixels. UI thread only. */
 NK_API nk_result NK_CALL nk_window_set_bounds(nk_window window, int32_t x, int32_t y, int32_t width,

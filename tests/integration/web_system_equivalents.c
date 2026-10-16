@@ -153,17 +153,19 @@ static void test_text_input_focus_handoff(void) {
     state.cursor_height = 18;
     NK_TEST_ASSERT(nk_surface_set_text_input_state(surface, &state) == NK_OK);
     NK_TEST_ASSERT(nk_surface_set_text_input_active(surface, 1) == NK_OK);
-    NK_TEST_ASSERT(EM_ASM_INT({ return document.activeElement.id === "__nativekit_text_input"; }));
+    NK_TEST_ASSERT(EM_ASM_INT({ return document.activeElement.id == = "__nativekit_text_input"; }));
     NK_TEST_ASSERT(EM_ASM_INT({
         const input = document.activeElement;
-        const shifted = new KeyboardEvent("keydown", {key: "F10", keyCode: 121,
-            shiftKey: true, bubbles: true, cancelable: true});
+        const shifted = new KeyboardEvent(
+            "keydown",
+            {key : "F10", keyCode : 121, shiftKey : true, bubbles : true, cancelable : true});
         input.dispatchEvent(shifted);
-        const menu = new KeyboardEvent("keydown", {key: "ContextMenu", keyCode: 93,
-            bubbles: true, cancelable: true});
+        const menu = new KeyboardEvent(
+            "keydown", {key : "ContextMenu", keyCode : 93, bubbles : true, cancelable : true});
         input.dispatchEvent(menu);
-        input.dispatchEvent(new KeyboardEvent("keydown", {key: "Meta", keyCode: 92,
-            location: 2, bubbles: true, cancelable: true}));
+        input.dispatchEvent(new KeyboardEvent(
+            "keydown",
+            {key : "Meta", keyCode : 92, location : 2, bubbles : true, cancelable : true}));
         return shifted.defaultPrevented && menu.defaultPrevented;
     }));
     int menu_seen = 0, right_super_seen = 0;
@@ -178,16 +180,19 @@ static void test_text_input_focus_handoff(void) {
         }
         if (event.kind == NK_EVENT_KEY && event.data_size >= sizeof(nk_key_event)) {
             const nk_key_event *key = (const nk_key_event *)event.data;
-            if (key->key == NK_KEY_MENU) menu_seen = 1;
-            if (key->key == NK_KEY_RIGHT_SUPER) right_super_seen = 1;
+            if (key->key == NK_KEY_MENU)
+                menu_seen = 1;
+            if (key->key == NK_KEY_RIGHT_SUPER)
+                right_super_seen = 1;
         }
         const int empty = event.kind == NK_EVENT_NONE;
         nk_event_release(&event);
-        if (empty) break;
+        if (empty)
+            break;
     }
     NK_TEST_ASSERT(menu_seen && right_super_seen);
     NK_TEST_ASSERT(nk_surface_set_text_input_active(surface, 0) == NK_OK);
-    NK_TEST_ASSERT(EM_ASM_INT({ return document.activeElement.id === "canvas"; }));
+    NK_TEST_ASSERT(EM_ASM_INT({ return document.activeElement.id == = "canvas"; }));
     EM_ASM({
         const external = document.createElement("button");
         external.id = "nativekit-external-focus";
@@ -195,10 +200,11 @@ static void test_text_input_focus_handoff(void) {
         external.focus();
     });
     NK_TEST_ASSERT(nk_surface_set_text_input_active(surface, 0) == NK_OK);
-    NK_TEST_ASSERT(EM_ASM_INT({ return document.activeElement.id === "nativekit-external-focus"; }));
+    NK_TEST_ASSERT(
+        EM_ASM_INT({ return document.activeElement.id == = "nativekit-external-focus"; }));
     EM_ASM({ document.getElementById("nativekit-external-focus").remove(); });
     NK_TEST_ASSERT(nk_surface_set_text_input_active(surface, 1) == NK_OK);
-    NK_TEST_ASSERT(EM_ASM_INT({ return document.activeElement.id === "__nativekit_text_input"; }));
+    NK_TEST_ASSERT(EM_ASM_INT({ return document.activeElement.id == = "__nativekit_text_input"; }));
     for (int index = 0; index < 32; ++index) {
         nk_event event = {0};
         event.struct_size = sizeof(event);
@@ -210,7 +216,8 @@ static void test_text_input_focus_handoff(void) {
         }
         const int empty = event.kind == NK_EVENT_NONE;
         nk_event_release(&event);
-        if (empty) break;
+        if (empty)
+            break;
     }
     EM_ASM({ window.dispatchEvent(new FocusEvent("blur")); });
     nk_window_state window_state = {0};
@@ -227,7 +234,8 @@ static void test_text_input_focus_handoff(void) {
         NK_TEST_ASSERT(nk_poll_event(&event) == NK_OK);
         const int empty = event.kind == NK_EVENT_NONE;
         nk_event_release(&event);
-        if (empty) break;
+        if (empty)
+            break;
     }
     NK_TEST_ASSERT(nk_surface_destroy(surface) == NK_OK);
     NK_TEST_ASSERT(nk_window_destroy(window) == NK_OK);
@@ -242,7 +250,8 @@ static void test_window_styling(void) {
     nk_window window = NK_INVALID_HANDLE;
     NK_TEST_ASSERT(nk_window_create(&options, &window) == NK_OK);
 
-    // Ordinary capture is best effort without a live pointer and must not request relative pointer lock.
+    // Ordinary capture is best effort without a live pointer and must not request relative pointer
+    // lock.
     // clang-format off
     EM_ASM({
         Module._nkCapturePointerLockCalls = 0;

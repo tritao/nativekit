@@ -7,12 +7,11 @@
 namespace {
 
 const SecretSchema *schema() {
-    static const SecretSchema value = {
-        "org.nativekit.Credential",
-        SECRET_SCHEMA_NONE,
-        {{"service", SECRET_SCHEMA_ATTRIBUTE_STRING},
-         {"account", SECRET_SCHEMA_ATTRIBUTE_STRING},
-         {nullptr, static_cast<SecretSchemaAttributeType>(0)}}};
+    static const SecretSchema value = {"org.nativekit.Credential",
+                                       SECRET_SCHEMA_NONE,
+                                       {{"service", SECRET_SCHEMA_ATTRIBUTE_STRING},
+                                        {"account", SECRET_SCHEMA_ATTRIBUTE_STRING},
+                                        {nullptr, static_cast<SecretSchemaAttributeType>(0)}}};
     return &value;
 }
 
@@ -28,9 +27,10 @@ int32_t report_error(GError *error) {
         nkc::set_error("the operating-system credential store denied access");
         return NK_ERROR_PERMISSION_DENIED;
     }
-    nkc::set_error(error && error->domain == SECRET_ERROR && error->code == SECRET_ERROR_IS_LOCKED
-                       ? "the operating-system credential store is locked"
-                       : "the operating-system credential store is unavailable or rejected the request");
+    nkc::set_error(
+        error && error->domain == SECRET_ERROR && error->code == SECRET_ERROR_IS_LOCKED
+            ? "the operating-system credential store is locked"
+            : "the operating-system credential store is unavailable or rejected the request");
     return NK_ERROR_UNKNOWN;
 }
 
@@ -56,8 +56,7 @@ int32_t set(const Request &request, const uint8_t *secret, uint32_t secret_size)
     return NK_OK;
 }
 
-int32_t get(const Request &request, uint8_t *secret, uint32_t capacity,
-            uint32_t *out_secret_size) {
+int32_t get(const Request &request, uint8_t *secret, uint32_t capacity, uint32_t *out_secret_size) {
     auto *attrs = attributes(request);
     GError *error = nullptr;
     auto *value = secret_password_lookupv_binary_sync(schema(), attrs, nullptr, &error);
@@ -72,7 +71,8 @@ int32_t get(const Request &request, uint8_t *secret, uint32_t capacity,
         return NK_ERROR_NOT_FOUND;
     }
     gsize value_size = 0;
-    const auto *value_data = reinterpret_cast<const uint8_t *>(secret_value_get(value, &value_size));
+    const auto *value_data =
+        reinterpret_cast<const uint8_t *>(secret_value_get(value, &value_size));
     if (value_size > NK_CREDENTIALS_MAX_SECRET_BYTES) {
         secret_value_unref(value);
         set_error("stored credential exceeds the portable 2048-byte limit");

@@ -80,10 +80,10 @@ static_assert(sizeof(nk_text_input_range_rect) == 32);
 
 namespace {
 void text_input_geometry_contract() {
-    const nk_text_input_range_rect selection_rect{sizeof(nk_text_input_range_rect), 0.f, 0.f,
-                                                  20.f, 10.f, 3, 5, 1};
-    const nk_text_input_range_rect composition_rect{sizeof(nk_text_input_range_rect), 20.f, 0.f,
-                                                    10.f, 10.f, 4, 5, 1};
+    const nk_text_input_range_rect selection_rect{
+        sizeof(nk_text_input_range_rect), 0.f, 0.f, 20.f, 10.f, 3, 5, 1};
+    const nk_text_input_range_rect composition_rect{
+        sizeof(nk_text_input_range_rect), 20.f, 0.f, 10.f, 10.f, 4, 5, 1};
     nk::core::TextInputGeometry geometry;
     NK_CHECK(nk::core::decode_text_input_geometry(
         3, 5, 4, 5, reinterpret_cast<const uint8_t *>(&selection_rect), sizeof(selection_rect),
@@ -96,12 +96,10 @@ void text_input_geometry_contract() {
     state.cursor_x = 31.f;
     state.cursor_width = 2.f;
     NK_CHECK(nk::core::text_input_geometry_matches_state(geometry, state));
-    NK_CHECK(geometry.selection_rects.size() == 1 &&
-             geometry.selection_range_rects.size() == 1 &&
+    NK_CHECK(geometry.selection_rects.size() == 1 && geometry.selection_range_rects.size() == 1 &&
              geometry.composition_rects.size() == 1 &&
              geometry.composition_range_rects.size() == 1);
-    const auto anchor = nk::core::text_input_anchor_rect(
-        state, geometry.selection_rects);
+    const auto anchor = nk::core::text_input_anchor_rect(state, geometry.selection_rects);
     NK_CHECK(anchor.x == state.cursor_x && anchor.width == state.cursor_width);
     const auto left_hit = nk::core::text_input_hit_test_range_rects(
         geometry.selection_range_rects, geometry.composition_range_rects, 22.f, 5.f);
@@ -109,27 +107,25 @@ void text_input_geometry_contract() {
         geometry.selection_range_rects, geometry.composition_range_rects, 28.f, 5.f);
     NK_CHECK(left_hit.matched && left_hit.position == 4);
     NK_CHECK(right_hit.matched && right_hit.position == 5);
-    const nk_text_input_range_rect rtl_rect{sizeof(nk_text_input_range_rect), 0.f, 0.f,
-                                            20.f, 10.f, 6, 8, 0};
-    const auto rtl_left_hit = nk::core::text_input_hit_test_range_rects(
-        {rtl_rect}, {}, 2.f, 5.f);
-    const auto rtl_right_hit = nk::core::text_input_hit_test_range_rects(
-        {rtl_rect}, {}, 18.f, 5.f);
+    const nk_text_input_range_rect rtl_rect{
+        sizeof(nk_text_input_range_rect), 0.f, 0.f, 20.f, 10.f, 6, 8, 0};
+    const auto rtl_left_hit = nk::core::text_input_hit_test_range_rects({rtl_rect}, {}, 2.f, 5.f);
+    const auto rtl_right_hit = nk::core::text_input_hit_test_range_rects({rtl_rect}, {}, 18.f, 5.f);
     NK_CHECK(rtl_left_hit.matched && rtl_left_hit.position == 8);
     NK_CHECK(rtl_right_hit.matched && rtl_right_hit.position == 6);
 
-    const nk_text_input_range_rect outside_range{sizeof(nk_text_input_range_rect), 0.f, 0.f,
-                                                 20.f, 10.f, 2, 5, 1};
-    NK_CHECK(!nk::core::decode_text_input_geometry(
-        3, 5, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
-        reinterpret_cast<const uint8_t *>(&outside_range), sizeof(outside_range), nullptr, 0,
-        &geometry));
-    const nk_text_input_range_rect invalid_direction{sizeof(nk_text_input_range_rect), 0.f, 0.f,
-                                                     20.f, 10.f, 3, 5, 2};
-    NK_CHECK(!nk::core::decode_text_input_geometry(
-        3, 5, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
-        reinterpret_cast<const uint8_t *>(&invalid_direction), sizeof(invalid_direction), nullptr,
-        0, &geometry));
+    const nk_text_input_range_rect outside_range{
+        sizeof(nk_text_input_range_rect), 0.f, 0.f, 20.f, 10.f, 2, 5, 1};
+    NK_CHECK(
+        !nk::core::decode_text_input_geometry(3, 5, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
+                                              reinterpret_cast<const uint8_t *>(&outside_range),
+                                              sizeof(outside_range), nullptr, 0, &geometry));
+    const nk_text_input_range_rect invalid_direction{
+        sizeof(nk_text_input_range_rect), 0.f, 0.f, 20.f, 10.f, 3, 5, 2};
+    NK_CHECK(
+        !nk::core::decode_text_input_geometry(3, 5, NK_TEXT_POSITION_NONE, NK_TEXT_POSITION_NONE,
+                                              reinterpret_cast<const uint8_t *>(&invalid_direction),
+                                              sizeof(invalid_direction), nullptr, 0, &geometry));
 }
 
 void text_edit_history_contract() {
@@ -155,8 +151,8 @@ void text_edit_history_contract() {
     NK_CHECK(infer_text_edit_history_kind(NK_TEXT_EDIT_DELETE, 5, 5, 3, 4) ==
              NK_TEXT_EDIT_HISTORY_GENERIC);
     NK_CHECK(infer_text_edit_history_kind(NK_TEXT_EDIT_COMMIT, NK_TEXT_POSITION_NONE,
-                                          NK_TEXT_POSITION_NONE, 0, 0) ==
-             NK_TEXT_EDIT_HISTORY_GENERIC);
+                                          NK_TEXT_POSITION_NONE, 0,
+                                          0) == NK_TEXT_EDIT_HISTORY_GENERIC);
 }
 } // namespace
 
@@ -317,7 +313,8 @@ int main() {
     right->own = reentrant.insert(nk::core::ResourceType::window, right);
     left->peer = right->own;
     right->peer = left->own;
-    left.reset(); right.reset();
+    left.reset();
+    right.reset();
     reentrant.clear();
     NK_CHECK(cleared_one && cleared_two);
 

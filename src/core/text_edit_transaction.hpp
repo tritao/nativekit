@@ -6,10 +6,11 @@
 namespace nk::core {
 
 /** Infers the default edit grouping from its shape and the previous selection. */
-inline nk_text_edit_history_kind infer_text_edit_history_kind(
-    nk_text_edit_action action, nk_text_position current_selection_start,
-    nk_text_position current_selection_end, nk_text_position replacement_start,
-    nk_text_position replacement_end, bool composition_active = false) noexcept {
+inline nk_text_edit_history_kind
+infer_text_edit_history_kind(nk_text_edit_action action, nk_text_position current_selection_start,
+                             nk_text_position current_selection_end,
+                             nk_text_position replacement_start, nk_text_position replacement_end,
+                             bool composition_active = false) noexcept {
     if (composition_active && action == NK_TEXT_EDIT_COMMIT)
         return NK_TEXT_EDIT_HISTORY_COMPOSITION;
 

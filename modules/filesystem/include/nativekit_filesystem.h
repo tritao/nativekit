@@ -46,7 +46,8 @@ typedef struct nk_filesystem_entry {
     uint64_t file_id_high;
     uint64_t file_id_low;
     int64_t changed_unix_ns;
-    /** Non-zero means the native filename was not valid UTF-8 and cannot be addressed by this API. */
+    /** Non-zero means the native filename was not valid UTF-8 and cannot be addressed by this API.
+     */
     uint32_t name_unsupported;
     uint32_t reserved;
 } nk_filesystem_entry;
@@ -87,11 +88,13 @@ NKFS_API nk_result NK_CALL nk_filesystem_directory_next(nk_filesystem_handle cur
                                                         nk_bool *out_end NK_OUT);
 NKFS_API nk_result NK_CALL nk_filesystem_directory_close(nk_filesystem_handle cursor);
 
-/** Open an in-root regular file for bounded positional reads. Final symlinks are followed only in-root. */
+/** Open an in-root regular file for bounded positional reads. Final symlinks are followed only
+ * in-root. */
 NKFS_API nk_result NK_CALL nk_filesystem_file_open(nk_filesystem_handle root,
                                                    const char *relative_path NK_UTF8,
                                                    nk_filesystem_handle *out_file NK_OUT);
-/** Read the opened file's current identity and metadata. The handle pins its original file identity. */
+/** Read the opened file's current identity and metadata. The handle pins its original file
+ * identity. */
 NKFS_API nk_result NK_CALL nk_filesystem_file_info(nk_filesystem_handle file,
                                                    nk_filesystem_entry *out_entry NK_OUT);
 /**
@@ -99,8 +102,7 @@ NKFS_API nk_result NK_CALL nk_filesystem_file_info(nk_filesystem_handle file,
  * with zero capacity queries the required size; a short buffer is not written.
  * Requests are capped at NK_FILESYSTEM_MAX_READ_BYTES. EOF returns zero bytes.
  */
-NKFS_API nk_result NK_CALL nk_filesystem_file_read(nk_filesystem_handle file,
-                                                   uint64_t offset,
+NKFS_API nk_result NK_CALL nk_filesystem_file_read(nk_filesystem_handle file, uint64_t offset,
                                                    uint32_t requested_bytes,
                                                    uint8_t *out_bytes NK_OUT_BUFFER(inout_bytes),
                                                    uint32_t *inout_bytes NK_INOUT);

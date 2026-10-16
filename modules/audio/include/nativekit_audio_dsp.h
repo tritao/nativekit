@@ -42,22 +42,22 @@ typedef struct nk_audio_soundfont_preset_info {
     const char *name NK_UTF8;
 } nk_audio_soundfont_preset_info;
 
-NKAUDIO_API nk_result NK_CALL nk_audio_soundfont_load_memory(
-    const uint8_t *bytes NK_IN_ARRAY(byte_count), uint32_t byte_count,
-    nk_audio_soundfont *out_soundfont NK_OUT NK_OWNED);
+NKAUDIO_API nk_result NK_CALL
+nk_audio_soundfont_load_memory(const uint8_t *bytes NK_IN_ARRAY(byte_count), uint32_t byte_count,
+                               nk_audio_soundfont *out_soundfont NK_OUT NK_OWNED);
 NKAUDIO_API nk_result NK_CALL nk_audio_soundfont_destroy(nk_audio_soundfont soundfont);
-NKAUDIO_API nk_result NK_CALL nk_audio_soundfont_get_preset_count(
-    nk_audio_soundfont soundfont, uint32_t *out_count NK_OUT);
-NKAUDIO_API nk_result NK_CALL nk_audio_soundfont_get_preset_info(
-    nk_audio_soundfont soundfont, uint32_t index,
-    nk_audio_soundfont_preset_info *out_info NK_INOUT);
+NKAUDIO_API nk_result NK_CALL nk_audio_soundfont_get_preset_count(nk_audio_soundfont soundfont,
+                                                                  uint32_t *out_count NK_OUT);
+NKAUDIO_API nk_result NK_CALL
+nk_audio_soundfont_get_preset_info(nk_audio_soundfont soundfont, uint32_t index,
+                                   nk_audio_soundfont_preset_info *out_info NK_INOUT);
 /** Prepare independent note slots and layered voices before attaching/playing.
  * SF2 envelopes and filters are preserved; gain is applied to the dry output.
  * SF2 modulators and per-region reverb/chorus sends are not supported.
  */
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_instrument_create_from_soundfont(
-    nk_audio_dsp_engine engine, nk_audio_soundfont soundfont, uint32_t preset_index,
-    float gain, nk_audio_dsp_instrument *out_instrument NK_OUT NK_OWNED);
+    nk_audio_dsp_engine engine, nk_audio_soundfont soundfont, uint32_t preset_index, float gain,
+    nk_audio_dsp_instrument *out_instrument NK_OUT NK_OWNED);
 
 /** Features implemented by the selected DSP backend. */
 typedef uint32_t nk_audio_dsp_capabilities;
@@ -259,7 +259,6 @@ NKAUDIO_API nk_result NK_CALL nk_audio_dsp_instrument_create_from_sample(
     nk_audio_dsp_engine engine, const nk_audio_dsp_sample_options *options,
     const float *samples NK_IN_ARRAY(sample_count), uint32_t sample_count,
     nk_audio_dsp_instrument *out_instrument NK_OUT NK_OWNED);
-
 
 /** Filter component in a reusable patch. */
 typedef struct nk_audio_dsp_filter_options {
@@ -637,9 +636,8 @@ NKAUDIO_API nk_result NK_CALL nk_audio_dsp_patch_create_extended(
 /** Extended specialized-source factory; unison_count must be zero or one. */
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_patch_create_source_extended(
     const nk_audio_dsp_patch_options *options, const nk_audio_dsp_voice_options *voice_options,
-    const nk_audio_dsp_source_options *source,
-    const float *samples NK_IN_ARRAY(sample_count), uint32_t sample_count,
-    nk_audio_dsp_patch *out_patch NK_OUT NK_OWNED);
+    const nk_audio_dsp_source_options *source, const float *samples NK_IN_ARRAY(sample_count),
+    uint32_t sample_count, nk_audio_dsp_patch *out_patch NK_OUT NK_OWNED);
 /** Destroys a patch definition; instruments created from it retain their copy. */
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_patch_destroy(nk_audio_dsp_patch patch);
 /** Destroys a wavetable handle; patches retain tables they reference. */
@@ -667,8 +665,8 @@ NKAUDIO_API nk_result NK_CALL nk_audio_dsp_instrument_destroy(nk_audio_dsp_instr
  * Group 0 disables choking. Groups 1..255 are captured at note onset; updates affect
  * future notes only. Existing release envelopes smooth the transition.
  */
-NKAUDIO_API nk_result NK_CALL nk_audio_dsp_instrument_set_choke_group(
-    nk_audio_dsp_instrument instrument, uint32_t group);
+NKAUDIO_API nk_result NK_CALL
+nk_audio_dsp_instrument_set_choke_group(nk_audio_dsp_instrument instrument, uint32_t group);
 
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_instrument_set_parameter(
     nk_audio_dsp_instrument instrument, nk_audio_dsp_parameter parameter, float value);
@@ -703,7 +701,6 @@ NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_render_buffer(
     nk_audio_dsp_engine engine, void *samples NK_IN_ARRAY(sample_bytes), uint64_t sample_bytes,
     uint32_t frame_count, uint32_t channels,
     const nk_audio_dsp_event *events NK_IN_ARRAY(event_count), uint32_t event_count);
-
 
 /** Native voice admission. Configure before attaching the engine. Legacy engines
  * retain strict admission until explicitly configured. Reserved tails continue
@@ -768,9 +765,9 @@ typedef struct nk_audio_dsp_runtime_status {
  * Counts include release envelopes, and exclude queued notes and SF2 layers.
  * Reading these counters never inspects callback-owned voices directly.
  */
-NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_get_voice_counts(
-    nk_audio_dsp_engine engine, uint32_t *out_active_voices NK_OUT,
-    uint32_t *out_active_tails NK_OUT);
+NKAUDIO_API nk_result NK_CALL
+nk_audio_dsp_engine_get_voice_counts(nk_audio_dsp_engine engine, uint32_t *out_active_voices NK_OUT,
+                                     uint32_t *out_active_tails NK_OUT);
 
 typedef struct nk_audio_dsp_transport_track {
     nk_audio_dsp_engine engine;
@@ -784,9 +781,9 @@ NKAUDIO_API nk_result NK_CALL nk_audio_dsp_group_play_transport(
     const nk_audio_dsp_transport_track *tracks NK_IN_ARRAY(track_count), uint32_t track_count,
     uint32_t initial_section, uint64_t start_frame);
 /** Pause/resume all tracks atomically, preserving note and section state. */
-NKAUDIO_API nk_result NK_CALL nk_audio_dsp_group_set_paused(
-    const nk_audio_dsp_transport_track *tracks NK_IN_ARRAY(track_count), uint32_t track_count,
-    uint32_t paused);
+NKAUDIO_API nk_result NK_CALL
+nk_audio_dsp_group_set_paused(const nk_audio_dsp_transport_track *tracks NK_IN_ARRAY(track_count),
+                              uint32_t track_count, uint32_t paused);
 /** Seek every track together; paused preserves the section-local position. */
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_group_seek_transport(
     const nk_audio_dsp_transport_track *tracks NK_IN_ARRAY(track_count), uint32_t track_count,
@@ -797,27 +794,30 @@ NKAUDIO_API nk_result NK_CALL nk_audio_dsp_group_request_section(
 
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_set_voice_policy(
     nk_audio_dsp_engine engine, const nk_audio_dsp_voice_policy_options *options);
-NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_note_on(
-    nk_audio_dsp_engine engine, nk_audio_dsp_instrument instrument,
-    const nk_audio_dsp_note_options *options, uint64_t *out_note_token NK_OUT);
-NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_note_off(
-    nk_audio_dsp_engine engine, uint64_t note_token, uint64_t frame);
+NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_note_on(nk_audio_dsp_engine engine,
+                                                          nk_audio_dsp_instrument instrument,
+                                                          const nk_audio_dsp_note_options *options,
+                                                          uint64_t *out_note_token NK_OUT);
+NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_note_off(nk_audio_dsp_engine engine,
+                                                           uint64_t note_token, uint64_t frame);
 /** Copies/validates an immutable program on the calling thread. A program ID is
  * engine-local. prepare never attaches nodes or changes the sounding program. */
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_prepare_transport(
     nk_audio_dsp_engine engine,
-    const nk_audio_dsp_transport_section *sections NK_IN_ARRAY(section_count), uint32_t section_count,
-    const nk_audio_dsp_transport_event *events NK_IN_ARRAY(event_count), uint32_t event_count,
-    const double *bars NK_IN_ARRAY(bar_count), uint32_t bar_count,
+    const nk_audio_dsp_transport_section *sections NK_IN_ARRAY(section_count),
+    uint32_t section_count, const nk_audio_dsp_transport_event *events NK_IN_ARRAY(event_count),
+    uint32_t event_count, const double *bars NK_IN_ARRAY(bar_count), uint32_t bar_count,
     uint64_t *out_program_id NK_OUT);
-NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_play_transport(
-    nk_audio_dsp_engine engine, uint64_t program_id, uint32_t initial_section, uint64_t start_frame);
+NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_play_transport(nk_audio_dsp_engine engine,
+                                                                 uint64_t program_id,
+                                                                 uint32_t initial_section,
+                                                                 uint64_t start_frame);
 /** Changes section at the next bar not yet consumed by the native renderer. */
-NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_request_section(
-    nk_audio_dsp_engine engine, uint32_t section);
+NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_request_section(nk_audio_dsp_engine engine,
+                                                                  uint32_t section);
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_stop_transport(nk_audio_dsp_engine engine);
-NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_retire_transport(
-    nk_audio_dsp_engine engine, uint64_t program_id);
+NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_retire_transport(nk_audio_dsp_engine engine,
+                                                                   uint64_t program_id);
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_collect(nk_audio_dsp_engine engine);
 /** Last completed block's coherent section and local frame position.
  * Position includes fractional tempo origins and wraps with the native loop. */

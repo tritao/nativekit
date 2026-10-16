@@ -80,7 +80,8 @@ struct Pty final : nk::core::Resource {
             monitor.join();
         if (pid > 0 && !exited.load()) {
             int code = 0;
-            while (::waitpid(pid, &code, 0) < 0 && errno == EINTR) {}
+            while (::waitpid(pid, &code, 0) < 0 && errno == EINTR) {
+            }
             status.store(code);
             exited.store(true);
         }
@@ -155,15 +156,21 @@ bool bounded_string(const char *value) {
 extern "C" {
 
 nk_result NK_CALL nk_pty_spawn(const char *program, const char *const *argv, uint32_t argc,
-                              const char *cwd, const char *const *env, uint32_t envc,
-                              uint16_t columns, uint16_t rows, nk_pty *out_pty) {
+                               const char *cwd, const char *const *env, uint32_t envc,
+                               uint16_t columns, uint16_t rows, nk_pty *out_pty) {
     return nk::core::result_boundary("nk_pty_spawn failed", [&] {
         nk::core::clear_error();
         if (out_pty)
             *out_pty = NK_INVALID_HANDLE;
 #if !NK_POSIX_PTY
-        (void)program; (void)argv; (void)argc; (void)cwd; (void)env; (void)envc;
-        (void)columns; (void)rows;
+        (void)program;
+        (void)argv;
+        (void)argc;
+        (void)cwd;
+        (void)env;
+        (void)envc;
+        (void)columns;
+        (void)rows;
         return fail(NK_ERROR_UNSUPPORTED, "PTY is unavailable on this platform");
 #else
         if (!out_pty || !program || program[0] != '/' || !bounded_string(program) ||
@@ -252,10 +259,12 @@ nk_result NK_CALL nk_pty_spawn(const char *program, const char *const *argv, uin
     });
 }
 
-nk_result NK_CALL nk_pty_read(nk_pty handle, void *buffer, uint64_t capacity,
-                              uint64_t *out_read) {
+nk_result NK_CALL nk_pty_read(nk_pty handle, void *buffer, uint64_t capacity, uint64_t *out_read) {
 #if !NK_POSIX_PTY
-    (void)handle; (void)buffer; (void)capacity; (void)out_read;
+    (void)handle;
+    (void)buffer;
+    (void)capacity;
+    (void)out_read;
     return fail(NK_ERROR_UNSUPPORTED, "PTY is unavailable on this platform");
 #else
     nk::core::clear_error();
@@ -288,7 +297,10 @@ nk_result NK_CALL nk_pty_read(nk_pty handle, void *buffer, uint64_t capacity,
 nk_result NK_CALL nk_pty_write(nk_pty handle, const void *buffer, uint64_t size,
                                uint64_t *out_written) {
 #if !NK_POSIX_PTY
-    (void)handle; (void)buffer; (void)size; (void)out_written;
+    (void)handle;
+    (void)buffer;
+    (void)size;
+    (void)out_written;
     return fail(NK_ERROR_UNSUPPORTED, "PTY is unavailable on this platform");
 #else
     nk::core::clear_error();
@@ -313,7 +325,9 @@ nk_result NK_CALL nk_pty_write(nk_pty handle, const void *buffer, uint64_t size,
 
 nk_result NK_CALL nk_pty_resize(nk_pty handle, uint16_t columns, uint16_t rows) {
 #if !NK_POSIX_PTY
-    (void)handle; (void)columns; (void)rows;
+    (void)handle;
+    (void)columns;
+    (void)rows;
     return fail(NK_ERROR_UNSUPPORTED, "PTY is unavailable on this platform");
 #else
     nk::core::clear_error();
@@ -331,10 +345,11 @@ nk_result NK_CALL nk_pty_resize(nk_pty handle, uint16_t columns, uint16_t rows) 
 #endif
 }
 
-nk_result NK_CALL nk_pty_exit_status(nk_pty handle, int32_t *out_code,
-                                     int32_t *out_signal) {
+nk_result NK_CALL nk_pty_exit_status(nk_pty handle, int32_t *out_code, int32_t *out_signal) {
 #if !NK_POSIX_PTY
-    (void)handle; (void)out_code; (void)out_signal;
+    (void)handle;
+    (void)out_code;
+    (void)out_signal;
     return fail(NK_ERROR_UNSUPPORTED, "PTY is unavailable on this platform");
 #else
     nk::core::clear_error();

@@ -1334,7 +1334,7 @@ typedef struct nkgpu_stream_buffer_info {
 
 /** Queries a stream without advancing its cursor or changing its overflow state. */
 NKGPU_API nkgpu_result nkgpu_buffer_get_stream_info(nkgpu_renderer renderer, nkgpu_buffer buffer,
-    nkgpu_stream_buffer_info *out_info NKGPU_OUT);
+                                                    nkgpu_stream_buffer_info *out_info NKGPU_OUT);
 
 /**
  * Appends bytes and returns their byte offset. A capacity failure returns

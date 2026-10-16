@@ -89,8 +89,7 @@ int main() {
 
     const char *command[] = {"-c", "printf '%s:%s\\n' \"$PT_MARKER\" \"$(pwd)\""};
     const char *environment[] = {"PT_MARKER=environment-ok", "PATH=/usr/bin:/bin"};
-    assert(nk_pty_spawn("/bin/sh", command, 2, "/tmp", environment, 2,
-                        80, 24, &pty) == NK_OK);
+    assert(nk_pty_spawn("/bin/sh", command, 2, "/tmp", environment, 2, 80, 24, &pty) == NK_OK);
     collect(pty, "environment-ok:/tmp");
     while (nk_pty_exit_status(pty, &code, &signal) == NK_PENDING &&
            std::chrono::steady_clock::now() < deadline + std::chrono::seconds(5))
@@ -102,7 +101,8 @@ int main() {
     const int sentinel = ::open("/dev/null", O_RDONLY);
     assert(sentinel >= 3);
     assert(::fcntl(sentinel, F_SETFD, 0) == 0);
-    const auto probe = "if (: <&" + std::to_string(sentinel) + ") 2>/dev/null; then printf leaked; else printf isolated; fi";
+    const auto probe = "if (: <&" + std::to_string(sentinel) +
+                       ") 2>/dev/null; then printf leaked; else printf isolated; fi";
     const char *isolation[] = {"-c", probe.c_str()};
     assert(nk_pty_spawn("/bin/sh", isolation, 2, nullptr, nullptr, 0, 80, 24, &pty) == NK_OK);
     collect(pty, "isolated");
@@ -114,8 +114,7 @@ int main() {
     assert(nk_pty_spawn("/bin/sh", args, 1, nullptr, nullptr, 0, 80, 24, &pty) == NK_OK);
     assert(nk_pty_close(pty) == NK_OK);
     const char *long_command[] = {"-c", "sleep 100 & wait"};
-    assert(nk_pty_spawn("/bin/sh", long_command, 2, nullptr, nullptr, 0,
-                        80, 24, &pty) == NK_OK);
+    assert(nk_pty_spawn("/bin/sh", long_command, 2, nullptr, nullptr, 0, 80, 24, &pty) == NK_OK);
     const auto close_start = std::chrono::steady_clock::now();
     assert(nk_pty_close(pty) == NK_OK);
     assert(std::chrono::steady_clock::now() - close_start < std::chrono::seconds(2));

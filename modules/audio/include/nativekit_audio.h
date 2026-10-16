@@ -58,7 +58,8 @@ typedef struct nk_audio_diagnostics {
 /** Enables timing collection. Disabled by default; counters persist when disabled. */
 NKAUDIO_API nk_result NK_CALL nk_audio_set_diagnostics_enabled(nk_bool enabled);
 /** Reads telemetry without resetting it. Initialize struct_size before calling. */
-NKAUDIO_API nk_result NK_CALL nk_audio_get_diagnostics(nk_audio_diagnostics *out_diagnostics NK_INOUT);
+NKAUDIO_API nk_result NK_CALL
+nk_audio_get_diagnostics(nk_audio_diagnostics *out_diagnostics NK_INOUT);
 
 /** Opaque handle for one reusable audio clip source. */
 typedef uint32_t nk_audio_clip NK_HANDLE NK_HANDLE_DESTROY(nk_audio_clip_destroy);
@@ -239,9 +240,8 @@ nk_audio_clip_create_from_file(const char *path NK_UTF8, nk_audio_clip *out_clip
  * bytes before returning, so the caller may release its buffer after the
  * call. The source currently supports WAV, FLAC, and MP3.
  */
-NKAUDIO_API nk_result NK_CALL
-nk_audio_clip_create_from_memory(const void *data, uint64_t data_size,
-                                 nk_audio_clip *out_clip NK_OUT NK_OWNED);
+NKAUDIO_API nk_result NK_CALL nk_audio_clip_create_from_memory(
+    const void *data, uint64_t data_size, nk_audio_clip *out_clip NK_OUT NK_OWNED);
 
 /**
  * Creates a reusable clip from a ready asset in the core resource cache.

@@ -187,7 +187,8 @@ struct GtkWindowResource final : nk::core::Resource {
     }
 };
 
-nk_window_decoration_region_kind decoration_region_at(const std::vector<nk_window_decoration_region> &regions, float x, float y);
+nk_window_decoration_region_kind
+decoration_region_at(const std::vector<nk_window_decoration_region> &regions, float x, float y);
 bool begin_decoration_drag(GtkWindowResource &resource, GdkEventButton &event);
 nk_result apply_pointer_cursor(GtkWindowResource &resource);
 
@@ -1582,9 +1583,10 @@ nk_result enter_ui() {
     return nk::core::require_ui_thread();
 }
 
-// gtk_init_check installs the user's locale for every category. Numbers in this process (JSON, geometry
-// artifacts, saved documents) must keep parsing and printing with a period, or a decimal-comma locale such
-// as pt_PT turns 0.7071 into 0 and writes "0,5" into files. Restore the numeric category afterwards.
+// gtk_init_check installs the user's locale for every category. Numbers in this process (JSON,
+// geometry artifacts, saved documents) must keep parsing and printing with a period, or a
+// decimal-comma locale such as pt_PT turns 0.7071 into 0 and writes "0,5" into files. Restore the
+// numeric category afterwards.
 bool init_gtk_keeping_numeric_locale() {
     int argc = 0;
     char **argv = nullptr;
@@ -1910,7 +1912,8 @@ gboolean on_pointer_button(GtkWidget *, GdkEventButton *button_event, gpointer d
             nk::core::callback_boundary([&] {
                 auto *resource = static_cast<GtkWindowResource *>(data);
                 if (!resource->decorated && !resource->wrapped && resource->resizable &&
-                    decoration_region_at(resource->decoration_regions, button_event->x, button_event->y) == NK_WINDOW_DECORATION_DRAG) {
+                    decoration_region_at(resource->decoration_regions, button_event->x,
+                                         button_event->y) == NK_WINDOW_DECORATION_DRAG) {
                     if (gtk_window_is_maximized(GTK_WINDOW(resource->window)))
                         gtk_window_unmaximize(GTK_WINDOW(resource->window));
                     else
@@ -1985,12 +1988,12 @@ gboolean on_pointer_crossing(GtkWidget *, GdkEventCrossing *crossing, gpointer d
         // A button release outside an unsuccessful grab has no button event
         // for this window. The crossing state reflects the actual buttons at
         // re-entry, so state queries can cancel a stale UI drag.
-        constexpr GdkModifierType button_masks[] = {
-            GDK_BUTTON1_MASK, GDK_BUTTON3_MASK, GDK_BUTTON2_MASK,
-            GDK_BUTTON4_MASK, GDK_BUTTON5_MASK};
+        constexpr GdkModifierType button_masks[] = {GDK_BUTTON1_MASK, GDK_BUTTON3_MASK,
+                                                    GDK_BUTTON2_MASK, GDK_BUTTON4_MASK,
+                                                    GDK_BUTTON5_MASK};
         for (nk_pointer_button button = 0; button < 5; ++button)
-            resource->buttons[button] = (crossing->state & button_masks[button])
-                ? NK_INPUT_PRESS : NK_INPUT_RELEASE;
+            resource->buttons[button] =
+                (crossing->state & button_masks[button]) ? NK_INPUT_PRESS : NK_INPUT_RELEASE;
         apply_pointer_cursor(*resource);
     }
     nk::core::QueuedEvent event;
@@ -2072,8 +2075,8 @@ void arm_surface_frames(const std::shared_ptr<GtkSurfaceResource> &resource) {
         return;
     /* A GtkGLArea's tick callback stalls after queuing its own GL render on GTK 3. */
     resource->frame_tick_widget = frame_clock_widget;
-    resource->frame_tick = gtk_widget_add_tick_callback(
-        frame_clock_widget, on_surface_tick, resource.get(), on_surface_tick_removed);
+    resource->frame_tick = gtk_widget_add_tick_callback(frame_clock_widget, on_surface_tick,
+                                                        resource.get(), on_surface_tick_removed);
     if (!resource->frame_tick)
         resource->frame_tick_widget = nullptr;
 }
@@ -3600,12 +3603,15 @@ bool wait_events(std::uint64_t sequence, std::chrono::milliseconds timeout) noex
         },
         ready,
         [](GSource *, GSourceFunc, gpointer) -> gboolean { return G_SOURCE_CONTINUE; },
-        nullptr, nullptr, nullptr};
+        nullptr,
+        nullptr,
+        nullptr};
     auto *wake = g_source_new(&functions, sizeof(EventWaitSource));
     reinterpret_cast<EventWaitSource *>(wake)->sequence = sequence;
     g_source_attach(wake, nullptr);
     auto *timer = g_timeout_source_new(static_cast<guint>(timeout.count()));
-    g_source_set_callback(timer, [](gpointer) -> gboolean { return G_SOURCE_REMOVE; }, nullptr, nullptr);
+    g_source_set_callback(
+        timer, [](gpointer) -> gboolean { return G_SOURCE_REMOVE; }, nullptr, nullptr);
     g_source_attach(timer, nullptr);
     g_main_context_iteration(nullptr, TRUE);
     g_source_destroy(timer);
@@ -3890,9 +3896,8 @@ nk_result NK_CALL nk_window_set_title(nk_handle handle, const char *title) {
     return NK_OK;
 }
 
-nk_result NK_CALL nk_window_set_icons(nk_handle handle, const uint8_t *pixels,
-                                      uint32_t byte_count, const nk_icon_image *images,
-                                      uint32_t image_count) {
+nk_result NK_CALL nk_window_set_icons(nk_handle handle, const uint8_t *pixels, uint32_t byte_count,
+                                      const nk_icon_image *images, uint32_t image_count) {
     if (const auto result = enter_ui(); result != NK_OK)
         return result;
     auto resource = window(handle);
@@ -3905,8 +3910,7 @@ nk_result NK_CALL nk_window_set_icons(nk_handle handle, const uint8_t *pixels,
     GList *icons = nullptr;
     for (uint32_t index = 0; index < image_count; ++index) {
         const auto &image = images[index];
-        GdkPixbuf *icon = gdk_pixbuf_new(GDK_COLORSPACE_RGB, TRUE, 8,
-                                        image.width, image.height);
+        GdkPixbuf *icon = gdk_pixbuf_new(GDK_COLORSPACE_RGB, TRUE, 8, image.width, image.height);
         if (!icon) {
             g_list_free_full(icons, g_object_unref);
             return fail(NK_ERROR_OUT_OF_MEMORY, "could not allocate window icon");
@@ -4394,8 +4398,8 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
 nk_result NK_CALL nk_surface_set_text_input_geometry(
     nk_handle handle, nk_text_position selection_start, nk_text_position selection_end,
     nk_text_position composition_start, nk_text_position composition_end,
-    const uint8_t *selection_rects, uint32_t selection_rect_bytes,
-    const uint8_t *composition_rects, uint32_t composition_rect_bytes) {
+    const uint8_t *selection_rects, uint32_t selection_rect_bytes, const uint8_t *composition_rects,
+    uint32_t composition_rect_bytes) {
     return nk::core::result_boundary(
         "unexpected error while setting GTK text input geometry", [&]() -> nk_result {
             if (const auto result = enter_ui(); result != NK_OK)
@@ -4410,8 +4414,7 @@ nk_result NK_CALL nk_surface_set_text_input_geometry(
                     selection_start, selection_end, composition_start, composition_end,
                     selection_rects, selection_rect_bytes, composition_rects,
                     composition_rect_bytes, &geometry) ||
-                !nk::core::text_input_geometry_matches_state(geometry,
-                                                               resource->text_input_state))
+                !nk::core::text_input_geometry_matches_state(geometry, resource->text_input_state))
                 return fail(NK_ERROR_INVALID_ARGUMENT,
                             "text input geometry ranges do not match the current state");
             resource->text_input_selection_rects = std::move(geometry.selection_rects);
@@ -4419,11 +4422,10 @@ nk_result NK_CALL nk_surface_set_text_input_geometry(
             if (resource->im_context) {
                 const auto anchor = nk::core::text_input_anchor_rect(
                     resource->text_input_state, resource->text_input_selection_rects);
-                GdkRectangle cursor{
-                    static_cast<gint>(std::lround(anchor.x)),
-                    static_cast<gint>(std::lround(anchor.y)),
-                    std::max(static_cast<gint>(std::lround(anchor.width)), 1),
-                    std::max(static_cast<gint>(std::lround(anchor.height)), 1)};
+                GdkRectangle cursor{static_cast<gint>(std::lround(anchor.x)),
+                                    static_cast<gint>(std::lround(anchor.y)),
+                                    std::max(static_cast<gint>(std::lround(anchor.width)), 1),
+                                    std::max(static_cast<gint>(std::lround(anchor.height)), 1)};
                 gtk_im_context_set_cursor_location(resource->im_context, &cursor);
             }
             return NK_OK;

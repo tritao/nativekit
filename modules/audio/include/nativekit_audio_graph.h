@@ -76,16 +76,17 @@ typedef uint32_t nk_audio_bus_send NK_HANDLE NK_HANDLE_DESTROY(nk_audio_bus_send
 #define NK_AUDIO_MAX_BUS_SENDS 8
 
 /** Creates a post-fader send with gain in [0, 1]. Parent/send routing cycles are rejected. */
-NKAUDIO_API nk_result NK_CALL nk_audio_bus_send_create(nk_audio_bus source, nk_audio_bus destination,
-    float volume, nk_audio_bus_send *out_send NK_OUT NK_OWNED);
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_send_create(nk_audio_bus source,
+                                                       nk_audio_bus destination, float volume,
+                                                       nk_audio_bus_send *out_send NK_OUT NK_OWNED);
 /** Disconnects the send without resetting the destination's effect tails. */
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_send_destroy(nk_audio_bus_send send);
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_send_set_volume(nk_audio_bus_send send, float volume);
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_send_get_volume(nk_audio_bus_send send,
-    float *out_volume NK_OUT);
+                                                           float *out_volume NK_OUT);
 /** Sends are invalidated when either endpoint's bus handle is destroyed. */
-NKAUDIO_API nk_result NK_CALL nk_audio_bus_send_get_destination(nk_audio_bus_send send,
-    nk_audio_bus *out_destination NK_OUT);
+NKAUDIO_API nk_result NK_CALL
+nk_audio_bus_send_get_destination(nk_audio_bus_send send, nk_audio_bus *out_destination NK_OUT);
 
 /** Built-in processing effect types available on mixer buses. */
 typedef uint32_t nk_audio_effect_type;
@@ -106,7 +107,8 @@ enum NK_ENUM(nk_audio_effect_type) {
     NK_AUDIO_EFFECT_DUCKING = 6
 };
 
-/** Parameters for reverb, dynamics, and stereo delay processors; unsupported combinations are rejected. */
+/** Parameters for reverb, dynamics, and stereo delay processors; unsupported combinations are
+ * rejected. */
 typedef uint32_t nk_audio_effect_parameter;
 enum NK_ENUM(nk_audio_effect_parameter) {
     NK_AUDIO_EFFECT_PARAMETER_WET = 0,
@@ -156,7 +158,7 @@ enum NK_ENUM(nk_audio_effect_parameter) {
  * must be initialized. Destroying the routed bus restores master routing.
  */
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_engine_set_bus(nk_audio_dsp_engine engine,
-                                                        nk_audio_bus bus);
+                                                          nk_audio_bus bus);
 
 /** Creates a stereo reverb (room 80 ms, decay 3 s, wet 0.5, dry 1). */
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_create_reverb(
@@ -176,32 +178,35 @@ NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_create_stereo_delay(
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_create_ducking(
     nk_audio_bus bus, nk_audio_bus key_bus, nk_audio_bus_effect *out_effect NK_OUT NK_OWNED);
 /** Latest applied linear gain, [0,1], read atomically without callback work. */
-NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_get_duck_gain(
-    nk_audio_bus_effect effect, float *out_gain NK_OUT);
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_get_duck_gain(nk_audio_bus_effect effect,
+                                                                float *out_gain NK_OUT);
 /** Sets tempo and beat length together. Effective time must not exceed 4 seconds. */
 /** Follow the engine's native tempo at effect processing boundaries, with
  * smoothed delay-time changes. Binding retains the clock after engine disposal.
  * Explicit set_delay_tempo switches the effect back to manual tempo control.
  */
-NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_bind_dsp_tempo(
-    nk_audio_bus_effect effect, nk_audio_dsp_engine engine, float beats);
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_bind_dsp_tempo(nk_audio_bus_effect effect,
+                                                                 nk_audio_dsp_engine engine,
+                                                                 float beats);
 
-NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_set_delay_tempo(
-    nk_audio_bus_effect effect, float bpm, float beats);
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_set_delay_tempo(nk_audio_bus_effect effect,
+                                                                  float bpm, float beats);
 /** Sets a finite, range-checked parameter; changes are smoothed by the processor. */
-NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_set_parameter(
-    nk_audio_bus_effect effect, nk_audio_effect_parameter parameter, float value);
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_set_parameter(nk_audio_bus_effect effect,
+                                                                nk_audio_effect_parameter parameter,
+                                                                float value);
 /** Returns the target parameter value, rather than its intermediate smoothed value. */
-NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_get_parameter(
-    nk_audio_bus_effect effect, nk_audio_effect_parameter parameter, float *out_value NK_OUT);
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_get_parameter(nk_audio_bus_effect effect,
+                                                                nk_audio_effect_parameter parameter,
+                                                                float *out_value NK_OUT);
 /** Requests state/tail reset at the next processing block, preserving target parameters. */
 NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_reset(nk_audio_bus_effect effect);
 /** Returns algorithmic latency in PCM frames for reverb/dynamics processors. */
-NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_get_latency(
-    nk_audio_bus_effect effect, uint32_t *out_frames NK_OUT);
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_get_latency(nk_audio_bus_effect effect,
+                                                              uint32_t *out_frames NK_OUT);
 /** Returns an estimated -60 dB tail in PCM frames for reverb/dynamics processors. */
-NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_get_tail(
-    nk_audio_bus_effect effect, uint32_t *out_frames NK_OUT);
+NKAUDIO_API nk_result NK_CALL nk_audio_bus_effect_get_tail(nk_audio_bus_effect effect,
+                                                           uint32_t *out_frames NK_OUT);
 
 /* ------------------------------------------------------------------------- */
 /* Mixer buses                                                               */

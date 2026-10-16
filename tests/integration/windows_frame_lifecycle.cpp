@@ -65,7 +65,8 @@ int main() {
     text.composition_end = NK_TEXT_POSITION_NONE;
     assert(nk_surface_set_text_input_state(surface, &text) == NK_OK);
     assert(nk_surface_set_text_input_geometry(surface, 0, 0, NK_TEXT_POSITION_NONE,
-                                            NK_TEXT_POSITION_NONE, nullptr, 0, nullptr, 0) == NK_OK);
+                                              NK_TEXT_POSITION_NONE, nullptr, 0, nullptr,
+                                              0) == NK_OK);
     assert(nk_surface_set_text_input_active(surface, 0) == NK_OK);
     assert(nk_surface_set_text_input_active(window, 1) == NK_OK);
     assert(nk_surface_set_text_input_active(window, 0) == NK_OK);

@@ -17,7 +17,8 @@ static int crossing_events(nk_window window, bool entered) {
             ++count;
         }
         nk_event_release(&event);
-        if (kind == NK_EVENT_NONE) return count;
+        if (kind == NK_EVENT_NONE)
+            return count;
     }
 }
 
@@ -40,16 +41,16 @@ int main() {
     g_list_free(windows);
     crossing_events(window, false);
 
-    const auto crossing = [&](bool enter, GdkCrossingMode mode,
-                              GdkNotifyType detail, bool hovered, int expected_events) {
+    const auto crossing = [&](bool enter, GdkCrossingMode mode, GdkNotifyType detail, bool hovered,
+                              int expected_events) {
         GdkEventCrossing event{};
         event.type = enter ? GDK_ENTER_NOTIFY : GDK_LEAVE_NOTIFY;
         event.window = gtk_widget_get_window(widget);
         event.mode = mode;
         event.detail = detail;
         gboolean handled = FALSE;
-        g_signal_emit_by_name(widget, enter ? "enter-notify-event" : "leave-notify-event",
-                              &event, &handled);
+        g_signal_emit_by_name(widget, enter ? "enter-notify-event" : "leave-notify-event", &event,
+                              &handled);
         uint32_t actual = 0;
         assert(nk_window_get_hovered(window, &actual) == NK_OK);
         assert(actual == (hovered ? 1u : 0u));
@@ -58,9 +59,8 @@ int main() {
 
     crossing(true, GDK_CROSSING_NORMAL, GDK_NOTIFY_NONLINEAR, true, 1);
     // Clicking/capturing and releasing must preserve both hover and event state.
-    for (auto mode : {GDK_CROSSING_GRAB, GDK_CROSSING_UNGRAB,
-                      GDK_CROSSING_GTK_GRAB, GDK_CROSSING_GTK_UNGRAB,
-                      GDK_CROSSING_STATE_CHANGED, GDK_CROSSING_TOUCH_BEGIN,
+    for (auto mode : {GDK_CROSSING_GRAB, GDK_CROSSING_UNGRAB, GDK_CROSSING_GTK_GRAB,
+                      GDK_CROSSING_GTK_UNGRAB, GDK_CROSSING_STATE_CHANGED, GDK_CROSSING_TOUCH_BEGIN,
                       GDK_CROSSING_TOUCH_END, GDK_CROSSING_DEVICE_SWITCH}) {
         crossing(false, mode, GDK_NOTIFY_NONLINEAR, true, 0);
         crossing(true, mode, GDK_NOTIFY_NONLINEAR, true, 0);

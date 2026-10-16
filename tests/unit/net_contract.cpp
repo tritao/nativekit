@@ -167,8 +167,8 @@ bool poll_until(nk_request_id request, nk_http_stream stream, std::string *compl
                         const std::string name(header.name, header.name_size);
                         if (name == "X-Mode") {
                             const std::string value(header.value, header.value_size);
-                            NK_CHECK(value == "buffered" || value == "stream" ||
-                                     value == "limit" || value == "cancel");
+                            NK_CHECK(value == "buffered" || value == "stream" || value == "limit" ||
+                                     value == "cancel");
                             saw_mode_header = true;
                         }
                     }

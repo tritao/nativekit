@@ -2295,8 +2295,8 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
 nk_result NK_CALL nk_surface_set_text_input_geometry(
     nk_handle handle, nk_text_position selection_start, nk_text_position selection_end,
     nk_text_position composition_start, nk_text_position composition_end,
-    const uint8_t *selection_rects, uint32_t selection_rect_bytes,
-    const uint8_t *composition_rects, uint32_t composition_rect_bytes) {
+    const uint8_t *selection_rects, uint32_t selection_rect_bytes, const uint8_t *composition_rects,
+    uint32_t composition_rect_bytes) {
     if (const auto thread = require_thread(); thread != NK_OK)
         return thread;
     auto resource = surface(handle);
@@ -2312,7 +2312,7 @@ nk_result NK_CALL nk_surface_set_text_input_geometry(
                     selection_rects, selection_rect_bytes, composition_rects,
                     composition_rect_bytes, &geometry) ||
                 !nk::core::text_input_geometry_matches_state(geometry,
-                                                               resource->text_input_state)) {
+                                                             resource->text_input_state)) {
                 nk::core::set_error("text input geometry ranges do not match the current state");
                 return NK_ERROR_INVALID_ARGUMENT;
             }
@@ -2364,25 +2364,21 @@ nk_result NK_CALL nk_surface_set_text_input_geometry(
     arguments[0].l = resource->view;
     arguments[1].i = static_cast<jint>(selection_start);
     arguments[2].i = static_cast<jint>(selection_end);
-    arguments[3].i = composition_start == NK_TEXT_POSITION_NONE
-                         ? -1
-                         : static_cast<jint>(composition_start);
-    arguments[4].i = composition_end == NK_TEXT_POSITION_NONE
-                         ? -1
-                         : static_cast<jint>(composition_end);
+    arguments[3].i =
+        composition_start == NK_TEXT_POSITION_NONE ? -1 : static_cast<jint>(composition_start);
+    arguments[4].i =
+        composition_end == NK_TEXT_POSITION_NONE ? -1 : static_cast<jint>(composition_end);
     arguments[5].l = selection;
     arguments[6].l = composition;
-    const auto result = java_void_surface(
-        resource, "setSurfaceTextInputGeometry",
-        "(Landroid/view/SurfaceView;IIII[F[F)V", arguments);
+    const auto result = java_void_surface(resource, "setSurfaceTextInputGeometry",
+                                          "(Landroid/view/SurfaceView;IIII[F[F)V", arguments);
     env->DeleteLocalRef(selection);
     env->DeleteLocalRef(composition);
     if (result == NK_OK) {
         resource->text_input_selection_rects = std::move(geometry.selection_rects);
         resource->text_input_composition_rects = std::move(geometry.composition_rects);
         resource->text_input_selection_range_rects = std::move(geometry.selection_range_rects);
-        resource->text_input_composition_range_rects =
-            std::move(geometry.composition_range_rects);
+        resource->text_input_composition_range_rects = std::move(geometry.composition_range_rects);
     }
     return result;
 }
@@ -3877,8 +3873,7 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnTextEdit(
     payload.composition_end = position(composition_end);
     payload.history_kind = nk::core::infer_text_edit_history_kind(
         payload.action, resource->text_input_state.selection_start,
-        resource->text_input_state.selection_end, payload.replace_start,
-        payload.replace_end,
+        resource->text_input_state.selection_end, payload.replace_start, payload.replace_end,
         resource->text_input_state.composition_start != NK_TEXT_POSITION_NONE);
     nk::core::QueuedEvent event;
     event.kind = NK_EVENT_TEXT_EDIT;

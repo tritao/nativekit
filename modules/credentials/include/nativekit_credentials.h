@@ -30,9 +30,9 @@ enum { NK_CREDENTIALS_MAX_SECRET_BYTES = 2048 };
  * included in diagnostics.
  */
 NKC_API nk_result NK_CALL nk_credentials_set(const char *service NK_UTF8,
-                                              const char *account NK_UTF8,
-                                              const uint8_t *secret NK_IN_ARRAY(secret_size),
-                                              uint32_t secret_size);
+                                             const char *account NK_UTF8,
+                                             const uint8_t *secret NK_IN_ARRAY(secret_size),
+                                             uint32_t secret_size);
 
 /**
  * Retrieve a secret. Set `secret` to NULL and `*inout_size` to zero to query
@@ -41,13 +41,13 @@ NKC_API nk_result NK_CALL nk_credentials_set(const char *service NK_UTF8,
  * to zero on a missing item and to the required size when the item exists.
  */
 NKC_API nk_result NK_CALL nk_credentials_get(const char *service NK_UTF8,
-                                              const char *account NK_UTF8,
-                                              uint8_t *NK_NULLABLE secret NK_OUT_BUFFER(inout_size),
-                                              uint32_t *inout_size NK_INOUT);
+                                             const char *account NK_UTF8,
+                                             uint8_t *NK_NULLABLE secret NK_OUT_BUFFER(inout_size),
+                                             uint32_t *inout_size NK_INOUT);
 
 /** Delete a stored secret. A missing item returns NK_ERROR_NOT_FOUND. */
 NKC_API nk_result NK_CALL nk_credentials_delete(const char *service NK_UTF8,
-                                                 const char *account NK_UTF8);
+                                                const char *account NK_UTF8);
 
 /** Thread-local diagnostic for the most recent credentials call. */
 NKC_API const char *NK_CALL nk_credentials_last_error(void) NK_RETURNS_BORROWED_UTF8;

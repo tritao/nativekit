@@ -14,7 +14,8 @@ static void drain_events() {
         assert(nk_poll_event(&event) == NK_OK);
         const auto kind = event.kind;
         nk_event_release(&event);
-        if (kind == NK_EVENT_NONE) return;
+        if (kind == NK_EVENT_NONE)
+            return;
     }
 }
 
@@ -27,15 +28,21 @@ int main() {
 
     // Unrelated GLib activity must not turn a timed wait into a busy poll.
     bool unrelated = false, explicitly_woken = false;
-    g_timeout_add(1, [](gpointer data) -> gboolean {
-        *static_cast<bool *>(data) = true;
-        return G_SOURCE_REMOVE;
-    }, &unrelated);
-    g_timeout_add(20, [](gpointer data) -> gboolean {
-        *static_cast<bool *>(data) = true;
-        nk_wake_events();
-        return G_SOURCE_REMOVE;
-    }, &explicitly_woken);
+    g_timeout_add(
+        1,
+        [](gpointer data) -> gboolean {
+            *static_cast<bool *>(data) = true;
+            return G_SOURCE_REMOVE;
+        },
+        &unrelated);
+    g_timeout_add(
+        20,
+        [](gpointer data) -> gboolean {
+            *static_cast<bool *>(data) = true;
+            nk_wake_events();
+            return G_SOURCE_REMOVE;
+        },
+        &explicitly_woken);
     assert(nk_wait_events_timeout(1.0) == NK_OK);
     assert(unrelated && explicitly_woken);
 
@@ -63,22 +70,28 @@ int main() {
     drain_events();
 
     int frames = 0;
-    assert(nk_surface_set_frame_callback(surface,
-        [](nk_surface, int32_t, int32_t, void *data) {
-            ++*static_cast<int *>(data);
-        }, &frames) == NK_OK);
+    assert(nk_surface_set_frame_callback(
+               surface,
+               [](nk_surface, int32_t, int32_t, void *data) { ++*static_cast<int *>(data); },
+               &frames) == NK_OK);
     assert(nk_surface_set_frame_mode(surface, NK_SURFACE_FRAME_ON_DEMAND) == NK_OK);
     // Request from inside the wait, so polling beforehand cannot render it.
-    g_timeout_add(5, [](gpointer data) -> gboolean {
-        assert(nk_surface_request_frame(*static_cast<nk_surface *>(data)) == NK_OK);
-        return G_SOURCE_REMOVE;
-    }, &surface);
+    g_timeout_add(
+        5,
+        [](gpointer data) -> gboolean {
+            assert(nk_surface_request_frame(*static_cast<nk_surface *>(data)) == NK_OK);
+            return G_SOURCE_REMOVE;
+        },
+        &surface);
     bool watchdog_fired = false;
-    const guint watchdog = g_timeout_add(1000, [](gpointer data) -> gboolean {
-        *static_cast<bool *>(data) = true;
-        nk_wake_events();
-        return G_SOURCE_REMOVE;
-    }, &watchdog_fired);
+    const guint watchdog = g_timeout_add(
+        1000,
+        [](gpointer data) -> gboolean {
+            *static_cast<bool *>(data) = true;
+            nk_wake_events();
+            return G_SOURCE_REMOVE;
+        },
+        &watchdog_fired);
     while (!frames && !watchdog_fired)
         assert(nk_wait_events_timeout(2.0) == NK_OK);
     assert(frames == 1 && !watchdog_fired);

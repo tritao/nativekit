@@ -450,8 +450,7 @@ static int probe_resource_io(const char *path, const char *uri) {
         !require_ok("nk_resource_stream_info_get", nk_resource_stream_info_get(stream, &info)) ||
         !(info.flags & NK_RESOURCE_STREAM_SEEKABLE) ||
         !require_ok("nk_resource_commit", nk_resource_commit(stream, &commit)) ||
-        commit == NK_INVALID_REQUEST_ID ||
-        !wait_for_request(commit, &commit_event) ||
+        commit == NK_INVALID_REQUEST_ID || !wait_for_request(commit, &commit_event) ||
         commit_event.kind != NK_EVENT_RESOURCE_COMMIT_COMPLETE || commit_event.result != NK_OK ||
         !require_ok("nk_resource_close", nk_resource_close(stream))) {
         nk_event_release(&commit_event);

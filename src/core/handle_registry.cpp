@@ -92,7 +92,8 @@ void HandleRegistry::clear() {
         std::lock_guard lock(mutex_);
         released.reserve(slots_.size());
         for (auto &slot : slots_) {
-            if (slot.resource) released.push_back(std::move(slot.resource));
+            if (slot.resource)
+                released.push_back(std::move(slot.resource));
             slot.type = ResourceType::none;
             if (slot.retired)
                 continue;

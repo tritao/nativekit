@@ -293,7 +293,7 @@ bool is_web_file_handle_uri(const char *uri) {
 
 bool is_web_download_uri(const char *uri) {
     return uri && std::string_view(uri).compare(0, web_download_uri_prefix.size(),
-                                               web_download_uri_prefix) == 0;
+                                                web_download_uri_prefix) == 0;
 }
 
 void flush_web_resource_writes() noexcept {
@@ -956,8 +956,8 @@ void configure_text_input(WebSurfaceResource &surface) {
         config.selection_end = state.selection_end;
         config.composition_start = state.composition_start;
         config.composition_end = state.composition_end;
-        const auto anchor = nk::core::text_input_anchor_rect(
-            state, surface.text_input_selection_rects);
+        const auto anchor =
+            nk::core::text_input_anchor_rect(state, surface.text_input_selection_rects);
         config.cursor_x = anchor.x;
         config.cursor_y = anchor.y;
         config.cursor_width = anchor.width;
@@ -1461,8 +1461,8 @@ void queue_text_edit(WebSurfaceResource &surface, nk_text_edit_action action,
     payload.composition_start = composition_start;
     payload.composition_end = composition_end;
     payload.history_kind = nk::core::infer_text_edit_history_kind(
-        action, surface.text_input_state.selection_start,
-        surface.text_input_state.selection_end, replace_start, replace_end,
+        action, surface.text_input_state.selection_start, surface.text_input_state.selection_end,
+        replace_start, replace_end,
         surface.text_input_state.composition_start != NK_TEXT_POSITION_NONE);
 
     nk::core::QueuedEvent queued;
@@ -2575,7 +2575,8 @@ nk_result NK_CALL nk_resource_open(const nk_resource *resource, uint32_t flags,
                 return unsupported("browser resource reads use nk_resource_load_async");
             if (!is_web_file_handle_uri(resource->uri) && !is_web_download_uri(resource->uri))
                 return unsupported("web resource streams require a retained file handle");
-            if (is_web_file_handle_uri(resource->uri) && !nk::web::has_resource_handle(resource->uri))
+            if (is_web_file_handle_uri(resource->uri) &&
+                !nk::web::has_resource_handle(resource->uri))
                 return unsupported("browser file handle is no longer available");
 
             auto resource_stream = std::make_shared<WebResourceStream>();
@@ -2884,8 +2885,8 @@ nk_result NK_CALL nk_window_set_title(nk_handle handle, const char *title) {
     return nk::web::set_title(window->title.c_str()) ? NK_OK : NK_ERROR_UNKNOWN;
 }
 
-nk_result NK_CALL nk_window_set_icons(nk_handle, const uint8_t *, uint32_t,
-                                      const nk_icon_image *, uint32_t) {
+nk_result NK_CALL nk_window_set_icons(nk_handle, const uint8_t *, uint32_t, const nk_icon_image *,
+                                      uint32_t) {
     return NK_ERROR_UNSUPPORTED;
 }
 
@@ -3433,8 +3434,8 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
 nk_result NK_CALL nk_surface_set_text_input_geometry(
     nk_handle handle, nk_text_position selection_start, nk_text_position selection_end,
     nk_text_position composition_start, nk_text_position composition_end,
-    const uint8_t *selection_rects, uint32_t selection_rect_bytes,
-    const uint8_t *composition_rects, uint32_t composition_rect_bytes) {
+    const uint8_t *selection_rects, uint32_t selection_rect_bytes, const uint8_t *composition_rects,
+    uint32_t composition_rect_bytes) {
     if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
         return result;
     auto surface = get_surface(handle);
@@ -3449,8 +3450,7 @@ nk_result NK_CALL nk_surface_set_text_input_geometry(
                     selection_start, selection_end, composition_start, composition_end,
                     selection_rects, selection_rect_bytes, composition_rects,
                     composition_rect_bytes, &geometry) ||
-                !nk::core::text_input_geometry_matches_state(geometry,
-                                                               surface->text_input_state))
+                !nk::core::text_input_geometry_matches_state(geometry, surface->text_input_state))
                 return invalid_argument(
                     "text input geometry ranges do not match the current state");
             return NK_OK;
@@ -3460,8 +3460,7 @@ nk_result NK_CALL nk_surface_set_text_input_geometry(
     surface->text_input_selection_rects = std::move(geometry.selection_rects);
     surface->text_input_composition_rects = std::move(geometry.composition_rects);
     surface->text_input_selection_range_rects = std::move(geometry.selection_range_rects);
-    surface->text_input_composition_range_rects =
-        std::move(geometry.composition_range_rects);
+    surface->text_input_composition_range_rects = std::move(geometry.composition_range_rects);
     if (surface->text_input_active)
         configure_text_input(*surface);
     return NK_OK;
@@ -3664,14 +3663,15 @@ nk_result NK_CALL nk_window_set_cursor_mode(nk_handle handle, nk_cursor_mode mod
     auto window = get_window(handle);
     if (!window)
         return invalid_handle("invalid web window handle");
-    // Captured keeps a press's pointer events on the canvas, which pointer capture does; only disabled (relative)
-    // mode locks the pointer.
+    // Captured keeps a press's pointer events on the canvas, which pointer capture does; only
+    // disabled (relative) mode locks the pointer.
     if (window->cursor_mode == NK_CURSOR_MODE_CAPTURED && mode != NK_CURSOR_MODE_CAPTURED)
         nk::web::set_pointer_capture(window->selector.c_str(), false);
     if (window->cursor_mode == NK_CURSOR_MODE_DISABLED && mode != NK_CURSOR_MODE_DISABLED)
         nk::web::exit_pointer_lock();
     if (mode != NK_CURSOR_MODE_DISABLED) {
-        // Capture is best effort: without a pressed pointer, events still reach the canvas while over it.
+        // Capture is best effort: without a pressed pointer, events still reach the canvas while
+        // over it.
         if (mode == NK_CURSOR_MODE_CAPTURED)
             nk::web::set_pointer_capture(window->selector.c_str(), true);
         window->cursor_mode = mode;
