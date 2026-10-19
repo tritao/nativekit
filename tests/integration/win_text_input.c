@@ -353,6 +353,15 @@ int main(void) {
     }
 
     ImmReleaseContext(hwnd, context);
+    // Enter, Ctrl+Enter, Tab, Ctrl+Z, Escape and Ctrl+Backspace characters are
+    // key commands, not text. The first commit must therefore be the following 'Z'.
+    if (SendMessageW(hwnd, WM_CHAR, (WPARAM)L'\r', 0) != 0 ||
+        SendMessageW(hwnd, WM_CHAR, (WPARAM)L'\n', 0) != 0 ||
+        SendMessageW(hwnd, WM_CHAR, (WPARAM)L'\t', 0) != 0 ||
+        SendMessageW(hwnd, WM_CHAR, (WPARAM)0x1a, 0) != 0 ||
+        SendMessageW(hwnd, WM_CHAR, (WPARAM)0x1b, 0) != 0 ||
+        SendMessageW(hwnd, WM_CHAR, (WPARAM)0x7f, 0) != 0)
+        return skip_test(window, hwnd, NULL);
     if (SendMessageW(hwnd, WM_CHAR, (WPARAM)L'Z', 0) != 0)
         return skip_test(window, hwnd, NULL);
     nk_event direct_character = {0};

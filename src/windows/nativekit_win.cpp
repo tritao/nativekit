@@ -1486,7 +1486,10 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
                 return 0;
         }
         if (message == WM_CHAR) {
-            if (wparam == '\b')
+            // TranslateMessage turns Enter, Tab, Escape, Backspace and Ctrl+letter into
+            // C0 controls and DEL. Those keys already arrive as key events; GTK and Cocoa
+            // never commit them as text, so a terminal would otherwise receive them twice.
+            if (wparam < 0x20 || wparam == 0x7f)
                 return 0;
             nk::core::callback_boundary(
                 [&] { emit_text_character(*resource, static_cast<wchar_t>(wparam)); });
