@@ -98,6 +98,12 @@ int main() {
     send(pty, "mode con\r");
     collect(pty, "100");
 
+    // Input is UTF-8; characters of every encoded length reach the shell unchanged. (Shells
+    // that read key events, such as PowerShell, also need the terminal to honor ConPTY's
+    // win32-input-mode request; that is the terminal's job, not the PTY's.)
+    send(pty, "echo in:\xC3\xA9\xE2\x82\xAC\xE2\x9C\x93\xF0\x9F\x98\x80.\r");
+    collect(pty, "in:\xC3\xA9\xE2\x82\xAC\xE2\x9C\x93\xF0\x9F\x98\x80.");
+
     // A large producer must not make one UI read block or return unbounded data.
     send(pty, "for /L %i in (1,1,20000) do @echo xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\r");
     ::Sleep(200);
