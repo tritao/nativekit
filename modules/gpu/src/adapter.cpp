@@ -576,6 +576,17 @@ static nkgpu_result require_streaming_resource_access(Handle handle) {
     return NKGPU_OK;
 }
 
+static nkgpu_result require_active_frame(Handle handle) {
+    auto *slot = renderer_pool.get(handle);
+    if (!slot)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    if (slot->value.state == RendererState::Lost)
+        return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
+    if (!renderer_is_active(slot->value) || active_renderer != handle)
+        return fail(NKGPU_ERROR_WRONG_STATE, "operation requires an active frame");
+    return NKGPU_OK;
+}
+
 static nkgpu_result require_active_pass(Handle handle) {
     auto *slot = renderer_pool.get(handle);
     if (!slot)
@@ -4362,7 +4373,7 @@ nkgpu_result nkgpu_timestamp_begin_desc(nkgpu_renderer r, const nkgpu_timestamp_
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid timestamp descriptor or output");
     *out = 0;
     Renderer *renderer = renderer_pool.get(r) ? &renderer_pool.get(r)->value : nullptr;
-    const nkgpu_result pass = require_active_pass(r);
+    const nkgpu_result pass = require_active_frame(r);
     if (pass != NKGPU_OK)
         return pass;
     const nk_sokol_transfer_api *transfer = renderer ? renderer->api->transfer : nullptr;
@@ -4389,7 +4400,7 @@ nkgpu_result nkgpu_timestamp_end(nkgpu_renderer r, nkgpu_timestamp h) {
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign timestamp");
     if (timestamp->value.ended)
         return fail(NKGPU_ERROR_WRONG_STATE, "timestamp has already ended");
-    const nkgpu_result pass = require_active_pass(r);
+    const nkgpu_result pass = require_active_frame(r);
     if (pass != NKGPU_OK)
         return pass;
     auto *renderer = renderer_pool.get(r);

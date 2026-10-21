@@ -1526,11 +1526,11 @@ NKGPU_API nkgpu_result nkgpu_readback_read(nkgpu_renderer renderer, nkgpu_readba
 /** Destroys a readback object, whether pending or ready. */
 NKGPU_API nkgpu_result nkgpu_readback_destroy(nkgpu_renderer renderer, nkgpu_readback readback);
 
-/** Begins a GPU timestamp interval inside the active frame/pass. */
+/** Begins a GPU timestamp interval inside the active frame (including pass resolves). */
 NKGPU_API nkgpu_result nkgpu_timestamp_begin(nkgpu_renderer renderer,
                                              nkgpu_timestamp *out_timestamp NKGPU_OUT);
 
-/** Begins a named GPU timestamp interval inside the active frame/pass. */
+/** Begins a named GPU timestamp interval inside the active frame (including pass resolves). */
 NKGPU_API nkgpu_result nkgpu_timestamp_begin_desc(nkgpu_renderer renderer,
                                                   const nkgpu_timestamp_desc *desc,
                                                   nkgpu_timestamp *out_timestamp NKGPU_OUT);

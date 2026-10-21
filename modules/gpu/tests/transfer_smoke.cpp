@@ -719,14 +719,15 @@ int main() {
         if (!expect_result(nkgpu_timestamp_begin(resources.renderer, &legacy_timestamp),
                            NKGPU_OK, "nkgpu_timestamp_begin(legacy)"))
             return 1;
-        if (!expect_result(nkgpu_timestamp_end(resources.renderer, legacy_timestamp), NKGPU_OK,
-                           "nkgpu_timestamp_end(legacy)"))
-            return 1;
         if (!expect_result(nkgpu_timestamp_end(resources.renderer, scene_timestamp),
                            NKGPU_ERROR_WRONG_STATE, "nkgpu_timestamp_end(repeated)"))
             return 1;
         if (!expect_result(nkgpu_end_pass(resources.renderer), NKGPU_OK,
                            "nkgpu_end_pass(timestamp)"))
+            return 1;
+        // A resolve is issued by end_pass: timing must be allowed to span it.
+        if (!expect_result(nkgpu_timestamp_end(resources.renderer, legacy_timestamp), NKGPU_OK,
+                           "nkgpu_timestamp_end(after pass resolve)"))
             return 1;
         if (!expect_result(nkgpu_end_frame(resources.renderer), NKGPU_OK,
                            "nkgpu_end_frame(timestamp)"))
