@@ -58,6 +58,9 @@ typedef struct nk_file_watch_options {
  * Payload stored in NK_EVENT_FILE_CHANGED and NK_EVENT_FILE_WATCH_OVERFLOW.
  * `path_offset` and `old_path_offset` are byte offsets from this header to
  * NUL-terminated UTF-8 strings. An absent old path has offset and length zero.
+ * Paths are absolute but not canonical: letter case and separators may differ
+ * from the registered spelling, so compare them normalized where the
+ * filesystem is case-insensitive.
  */
 typedef struct nk_file_changed_event {
     nk_file_change_type change_type;

@@ -15,6 +15,9 @@ notifications use the central NativeKit event queue.
   the new path, and an old path when the backend can pair a rename. Rename
   pairing is best effort and is never a guarantee that a complete history was
   observed.
+- Event paths are absolute but not canonical. They may differ from the
+  registered spelling in letter case and separators, so applications compare
+  them case- and separator-insensitively where the filesystem is.
 - Native queue overflow produces `NK_EVENT_FILE_WATCH_OVERFLOW` with the
   rescan flag. Applications must rescan all watched directories after that
   event rather than infer missing individual changes.
@@ -29,8 +32,9 @@ notifications use the central NativeKit event queue.
   NativeKit writes are allowed to produce events, and repeated changes may be
   coalesced to one pending event per watch.
 - The target desktop contract treats Linux and Windows as full capability
-  families. This milestone implements Linux; Windows and macOS backends remain
-  deferred until their native sources are added. macOS clipboard notifications
+  families. Linux implements both families and Windows implements file
+  watching; Windows clipboard watching and the macOS backends remain deferred
+  until their native sources are added. macOS clipboard notifications
   and mobile listeners/polling are advisory and may be delayed while an app is
   suspended. Mobile file access is sandbox-only. Web reports both families
   unsupported.
