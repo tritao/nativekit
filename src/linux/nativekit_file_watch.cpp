@@ -147,7 +147,10 @@ struct FileWatchResource final : nk::core::Resource {
         event.kind = event_kind;
         event.source = handle;
         event.data = nk::core::file_changed_payload(change, item_kind, flags, path, old_path);
-        nk::core::push_event(std::move(event));
+        /* A change rejected by a full queue becomes an overflow, which the
+         * queue always accepts, so callers rescan instead of missing it. */
+        if (nk::core::push_event(std::move(event)) == NK_ERROR_QUEUE_FULL)
+            nk::core::push_event(nk::core::file_watch_overflow_event(handle));
     }
 
     void emit_overflow() {
