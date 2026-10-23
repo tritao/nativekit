@@ -61,7 +61,7 @@ QueuedEvent file_watch_overflow_event(nk_file_watch source) {
 
 } // namespace nk::core
 
-#if !defined(__linux__) || defined(__ANDROID__) || defined(ANDROID)
+#if (!defined(__linux__) || defined(__ANDROID__) || defined(ANDROID)) && !defined(_WIN32)
 namespace nk::backend {
 
 nk_result file_watch_create(const nk_file_watch_options *, nk_file_watch *) noexcept {
