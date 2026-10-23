@@ -2,9 +2,11 @@
 
 #include "core/boundary.hpp"
 #include "core/error.hpp"
+#include "core/file_watch.hpp"
 #include "core/runtime.hpp"
 
 #include <cstddef>
+#include <cstring>
 
 namespace {
 
@@ -19,6 +21,45 @@ bool valid_options(const nk_file_watch_options *options, nk_file_watch *out_watc
 }
 
 } // namespace
+
+namespace nk::core {
+
+std::vector<std::byte> file_changed_payload(nk_file_change_type change, nk_file_item_kind kind,
+                                            nk_file_event_flags flags, std::string_view path,
+                                            std::string_view old_path) {
+    nk_file_changed_event header{};
+    header.change_type = change;
+    header.item_kind = kind;
+    header.flags = flags;
+    header.path_offset = path.empty() ? 0u : static_cast<uint32_t>(sizeof(header));
+    header.path_length = static_cast<uint32_t>(path.size());
+    header.old_path_offset = old_path.empty() ? 0u : header.path_offset + header.path_length + 1u;
+    header.old_path_length = static_cast<uint32_t>(old_path.size());
+    std::size_t size = sizeof(header);
+    if (!path.empty())
+        size = header.path_offset + path.size() + 1u;
+    if (!old_path.empty())
+        size = header.old_path_offset + old_path.size() + 1u;
+    std::vector<std::byte> result(size);
+    std::memcpy(result.data(), &header, sizeof(header));
+    if (!path.empty())
+        std::memcpy(result.data() + header.path_offset, path.data(), path.size());
+    if (!old_path.empty())
+        std::memcpy(result.data() + header.old_path_offset, old_path.data(), old_path.size());
+    return result;
+}
+
+QueuedEvent file_watch_overflow_event(nk_file_watch source) {
+    QueuedEvent event;
+    event.kind = NK_EVENT_FILE_WATCH_OVERFLOW;
+    event.source = source;
+    event.data =
+        file_changed_payload(NK_FILE_CHANGE_MODIFIED, NK_FILE_ITEM_UNKNOWN,
+                             NK_FILE_EVENT_FLAG_OVERFLOW | NK_FILE_EVENT_FLAG_RESCAN_REQUIRED, {});
+    return event;
+}
+
+} // namespace nk::core
 
 #if !defined(__linux__) || defined(__ANDROID__) || defined(ANDROID)
 namespace nk::backend {

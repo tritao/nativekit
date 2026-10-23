@@ -1,12 +1,12 @@
 #include "nativekit_file_watch.h"
 
 #include "core/error.hpp"
+#include "core/file_watch.hpp"
 #include "core/runtime.hpp"
 
 #include <atomic>
 #include <chrono>
 #include <cstddef>
-#include <cstring>
 #include <filesystem>
 #include <memory>
 #include <mutex>
@@ -137,33 +137,6 @@ struct FileWatchResource final : nk::core::Resource {
         return NK_OK;
     }
 
-    static std::vector<std::byte> make_payload(nk_file_change_type change, nk_file_item_kind kind,
-                                               nk_file_event_flags flags, const std::string &path,
-                                               const std::string &old_path) {
-        nk_file_changed_event header{};
-        header.change_type = change;
-        header.item_kind = kind;
-        header.flags = flags;
-        header.path_offset = path.empty() ? 0u : static_cast<uint32_t>(sizeof(header));
-        header.path_length = static_cast<uint32_t>(path.size());
-        header.old_path_offset =
-            old_path.empty() ? 0u : header.path_offset + header.path_length + 1u;
-        header.old_path_length = static_cast<uint32_t>(old_path.size());
-        std::size_t size = sizeof(header);
-        if (!path.empty())
-            size = header.path_offset + path.size() + 1u;
-        if (!old_path.empty())
-            size = header.old_path_offset + old_path.size() + 1u;
-        std::vector<std::byte> result(size);
-        std::memcpy(result.data(), &header, sizeof(header));
-        if (!path.empty())
-            std::memcpy(result.data() + header.path_offset, path.c_str(), path.size() + 1u);
-        if (!old_path.empty())
-            std::memcpy(result.data() + header.old_path_offset, old_path.c_str(),
-                        old_path.size() + 1u);
-        return result;
-    }
-
     void emit(nk_event_kind event_kind, nk_file_change_type change, nk_file_item_kind item_kind,
               nk_file_event_flags flags, const std::string &path,
               const std::string &old_path = {}) {
@@ -173,8 +146,15 @@ struct FileWatchResource final : nk::core::Resource {
         nk::core::QueuedEvent event;
         event.kind = event_kind;
         event.source = handle;
-        event.data = make_payload(change, item_kind, flags, path, old_path);
+        event.data = nk::core::file_changed_payload(change, item_kind, flags, path, old_path);
         nk::core::push_event(std::move(event));
+    }
+
+    void emit_overflow() {
+        if (stopping.load(std::memory_order_acquire) ||
+            !nk::core::is_runtime_generation(generation))
+            return;
+        nk::core::push_event(nk::core::file_watch_overflow_event(handle));
     }
 
     std::string directory_path(int watch_descriptor) {
@@ -236,8 +216,7 @@ struct FileWatchResource final : nk::core::Resource {
 
     void process(inotify_event *record, const char *name) {
         if (record->mask & IN_Q_OVERFLOW) {
-            emit(NK_EVENT_FILE_WATCH_OVERFLOW, NK_FILE_CHANGE_MODIFIED, NK_FILE_ITEM_UNKNOWN,
-                 NK_FILE_EVENT_FLAG_OVERFLOW | NK_FILE_EVENT_FLAG_RESCAN_REQUIRED, {});
+            emit_overflow();
             return;
         }
         const auto base = directory_path(record->wd);
