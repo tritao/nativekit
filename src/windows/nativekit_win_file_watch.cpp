@@ -259,6 +259,10 @@ struct FileWatchResource final : nk::core::Resource {
     bool running = true;
     /* Reused by the worker to build lookup keys without allocating. */
     std::wstring scratch;
+    /* Folded keys of excluded subtrees. ReadDirectoryChangesW cannot skip a subtree, so their changes are dropped. */
+    std::vector<std::wstring> excluded;
+    std::wstring excluded_scratch;
+    std::uint64_t next_registration = 0;
 
     ~FileWatchResource() override { stop(); }
 
@@ -281,7 +285,36 @@ struct FileWatchResource final : nk::core::Resource {
 
     /* --- Registration (UI thread) --- */
 
+    /* Registration is synchronous here, so a successful add is ready at once. */
     nk_result add_directory(const char *raw_path, bool recursive) {
+        const auto result = register_directory(raw_path, recursive);
+        if (result == NK_OK && nk::core::is_runtime_generation(generation)) {
+            std::uint64_t registration = 0;
+            {
+                std::lock_guard lock(mutex);
+                registration = ++next_registration;
+            }
+            (void)nk::core::push_event(
+                nk::core::file_watch_ready_event(handle, trimmed_original(raw_path), registration));
+            nk::core::wake_events();
+        }
+        return result;
+    }
+
+    nk_result exclude_directory(const char *raw_path) {
+        std::wstring path;
+        if (!raw_path || !to_wide(raw_path, path) || !is_absolute(path)) {
+            nk::core::set_error("file-watch path must be an absolute UTF-8 directory");
+            return NK_ERROR_INVALID_ARGUMENT;
+        }
+        const auto key = key_of(full_path(path));
+        std::lock_guard lock(mutex);
+        if (std::find(excluded.begin(), excluded.end(), key) == excluded.end())
+            excluded.push_back(key);
+        return NK_OK;
+    }
+
+    nk_result register_directory(const char *raw_path, bool recursive) {
         std::wstring path;
         if (!raw_path || !to_wide(raw_path, path)) {
             nk::core::set_error("file-watch path must be an absolute UTF-8 directory");
@@ -816,10 +849,27 @@ struct FileWatchResource final : nk::core::Resource {
         emit_locked(watch, NK_FILE_CHANGE_REMOVED, watch.rename_kind, watch.rename_old, {}, events);
     }
 
+    /* Whether a change below the top lies in an excluded subtree. */
+    bool excluded_locked(const Watch &watch, std::wstring_view name) {
+        if (excluded.empty())
+            return false;
+        excluded_scratch = watch.key;
+        excluded_scratch += L'\\';
+        append_folded(excluded_scratch, name);
+        for (const auto &directory : excluded)
+            if (excluded_scratch.size() >= directory.size() &&
+                excluded_scratch.compare(0, directory.size(), directory) == 0 &&
+                (excluded_scratch.size() == directory.size() || excluded_scratch[directory.size()] == L'\\'))
+                return true;
+        return false;
+    }
+
     /* Whether a change below the top falls inside a registration: anything
      * under a recursive one, a direct child of any registered directory, or a
      * registered directory itself. */
     bool wanted_locked(const Watch &watch, std::wstring_view name, nk_file_item_kind kind) {
+        if (excluded_locked(watch, name))
+            return false;
         if (watch.recursive)
             return true;
         const auto slash = name.rfind(L'\\');
@@ -938,6 +988,11 @@ nk_result file_watch_add_directory(nk_file_watch watch, const char *path,
                                    nk_bool recursive) noexcept {
     const auto resource = find(watch);
     return resource ? resource->add_directory(path, recursive != 0) : NK_ERROR_INVALID_HANDLE;
+}
+
+nk_result file_watch_exclude_directory(nk_file_watch watch, const char *path) noexcept {
+    const auto resource = find(watch);
+    return resource ? resource->exclude_directory(path) : NK_ERROR_INVALID_HANDLE;
 }
 
 nk_result file_watch_remove_directory(nk_file_watch watch, const char *path) noexcept {

@@ -59,6 +59,15 @@ QueuedEvent file_watch_overflow_event(nk_file_watch source) {
     return event;
 }
 
+QueuedEvent file_watch_ready_event(nk_file_watch source, std::string_view path, nk_request_id registration) {
+    QueuedEvent event;
+    event.kind = NK_EVENT_FILE_WATCH_READY;
+    event.source = source;
+    event.request_id = registration;
+    event.data = file_changed_payload(NK_FILE_CHANGE_ADDED, NK_FILE_ITEM_DIRECTORY, 0, path);
+    return event;
+}
+
 } // namespace nk::core
 
 #if (!defined(__linux__) || defined(__ANDROID__) || defined(ANDROID)) && !defined(_WIN32)
@@ -75,6 +84,11 @@ nk_result file_watch_add_directory(nk_file_watch, const char *, nk_bool) noexcep
 }
 
 nk_result file_watch_remove_directory(nk_file_watch, const char *) noexcept {
+    nk::core::set_error("file watching is unavailable on this backend");
+    return NK_ERROR_UNSUPPORTED;
+}
+
+nk_result file_watch_exclude_directory(nk_file_watch, const char *) noexcept {
     nk::core::set_error("file watching is unavailable on this backend");
     return NK_ERROR_UNSUPPORTED;
 }
@@ -120,6 +134,15 @@ nk_result NK_CALL nk_file_watch_remove_directory(nk_file_watch watch, const char
             if (const auto result = enter_ui(); result != NK_OK)
                 return result;
             return nk::backend::file_watch_remove_directory(watch, path);
+        });
+}
+
+nk_result NK_CALL nk_file_watch_exclude_directory(nk_file_watch watch, const char *path) {
+    return nk::core::result_boundary(
+        "unexpected error while excluding file-watch directory", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            return nk::backend::file_watch_exclude_directory(watch, path);
         });
 }
 

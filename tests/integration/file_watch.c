@@ -27,6 +27,7 @@ static void remove_directory(const char *path) {
     RemoveDirectoryA(path);
 }
 #else
+#include <sys/stat.h>
 #include <unistd.h>
 
 static int make_temporary_directory(char *directory, size_t size) {
@@ -51,6 +52,83 @@ static int has_path(const nk_event *event, const char *path) {
         payload.path_offset + payload.path_length > event->data_size)
         return 0;
     return memcmp((const char *)event->data + payload.path_offset, path, payload.path_length) == 0;
+}
+
+static int make_child_directory(const char *parent, const char *name, char *out, size_t size) {
+    snprintf(out, size, "%s/%s", parent, name);
+#ifdef _WIN32
+    return CreateDirectoryA(out, NULL) != 0;
+#else
+    return mkdir(out, 0700) == 0;
+#endif
+}
+
+static void write_file(const char *path) {
+    FILE *file = fopen(path, "wb");
+    assert(file != NULL);
+    assert(fwrite("watch", 1, 5, file) == 5);
+    fclose(file);
+}
+
+/* Polls until an event of `kind` names `path`, or `attempts` polls pass; counts events naming `unwanted`. */
+static int await_path(nk_event_kind kind, const char *path, int attempts, const char *unwanted, int *unwanted_seen) {
+    for (int attempt = 0; attempt < attempts; ++attempt) {
+        nk_event event = {0};
+        event.struct_size = sizeof(event);
+        assert(nk_poll_event(&event) == NK_OK);
+        const int found = event.kind == kind && path && has_path(&event, path);
+        if (unwanted && unwanted_seen && event.kind == NK_EVENT_FILE_CHANGED && has_path(&event, unwanted))
+            ++*unwanted_seen;
+        nk_event_release(&event);
+        if (found)
+            return 1;
+        sleep_briefly();
+    }
+    return 0;
+}
+
+/* A recursive add reports READY for its directory once everything under it is watched, then reports changes deep in
+ * the tree; an excluded subtree reports nothing, including a directory created in it afterwards. */
+static void recursive_ready_and_exclusion(const char *root) {
+    char tree[512], a[512], b[512], skip[512], inner[512];
+    assert(make_child_directory(root, "tree", tree, sizeof(tree)));
+    assert(make_child_directory(tree, "a", a, sizeof(a)));
+    assert(make_child_directory(a, "b", b, sizeof(b)));
+    assert(make_child_directory(tree, "skip", skip, sizeof(skip)));
+    assert(make_child_directory(skip, "inner", inner, sizeof(inner)));
+    nk_file_watch_options options = {0};
+    options.struct_size = sizeof(options);
+    nk_file_watch watch = NK_INVALID_HANDLE;
+    assert(nk_file_watch_create(&options, &watch) == NK_OK);
+    assert(nk_file_watch_exclude_directory(watch, skip) == NK_OK);
+    assert(nk_file_watch_add_directory(watch, tree, 1) == NK_OK);
+    assert(await_path(NK_EVENT_FILE_WATCH_READY, tree, 200, NULL, NULL));
+
+    char deep[600], hidden[600], created[600], created_file[700];
+    snprintf(deep, sizeof(deep), "%s/deep.txt", b);
+    snprintf(hidden, sizeof(hidden), "%s/hidden.txt", inner);
+    write_file(hidden);
+    assert(make_child_directory(skip, "created", created, sizeof(created)));
+    snprintf(created_file, sizeof(created_file), "%s/later.txt", created);
+    write_file(created_file);
+    write_file(deep);
+    int unwanted = 0;
+    assert(await_path(NK_EVENT_FILE_CHANGED, deep, 100, hidden, &unwanted));
+    /* Changes in the excluded subtree would have arrived before the later write's. */
+    assert(unwanted == 0);
+    int created_seen = 0;
+    (void)await_path(NK_EVENT_FILE_CHANGED, NULL, 20, created_file, &created_seen);
+    assert(created_seen == 0);
+    assert(nk_file_watch_destroy(watch) == NK_OK);
+    remove(deep);
+    remove(hidden);
+    remove(created_file);
+    remove_directory(created);
+    remove_directory(inner);
+    remove_directory(skip);
+    remove_directory(b);
+    remove_directory(a);
+    remove_directory(tree);
 }
 
 static int has_rename(const nk_event *event, const char *path, const char *old_path) {
@@ -122,6 +200,7 @@ int main(void) {
     assert(renamed);
     assert(nk_file_watch_destroy(watch) == NK_OK);
     assert(nk_file_watch_destroy(watch) == NK_ERROR_INVALID_HANDLE);
+    recursive_ready_and_exclusion(directory);
     nk_shutdown();
     remove(path);
     remove(renamed_path);

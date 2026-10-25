@@ -21,6 +21,18 @@ notifications use the central NativeKit event queue.
 - Native queue overflow produces `NK_EVENT_FILE_WATCH_OVERFLOW` with the
   rescan flag. Applications must rescan all watched directories after that
   event rather than infer missing individual changes.
+- A recursive add returns once its directory is watched. Where the platform
+  has no native recursive watch (Linux inotify), the directories under it are
+  registered afterwards on the watcher's thread, so a large tree does not hold
+  the caller. `NK_EVENT_FILE_WATCH_READY` names the added directory once all
+  of it is watched; changes before it may be missing, so an application that
+  relies on events treats the directory as watched only from then. Windows
+  registers synchronously and reports ready at once. The queue keeps READY
+  like other readiness events, never dropping it.
+- `nk_file_watch_exclude_directory` leaves a subtree out of recursive
+  registrations, including directories created there later, for build output
+  and other trees whose changes do not matter. Linux does not watch it at all;
+  Windows, whose recursive watch cannot skip a subtree, drops its changes.
 - Watcher backends copy events into NativeKit's queue. No native callback calls
   application code. Destroy and runtime shutdown stop the backend source and
   wait for worker/listener cleanup before the event queue is destroyed.

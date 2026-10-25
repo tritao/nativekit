@@ -294,6 +294,9 @@ enum NK_ENUM(nk_event_kind) {
     NK_EVENT_FILE_CHANGED = 410,
     /** A file-watch queue overflow requires a complete directory rescan. */
     NK_EVENT_FILE_WATCH_OVERFLOW = 411,
+    /** A directory added to a file watcher is watched, with everything under it for a recursive add. The payload is
+     * an nk_file_changed_event whose path is the added directory. Changes before this may not have been reported. */
+    NK_EVENT_FILE_WATCH_READY = 412,
     /** A notification was delivered by the platform. */
     NK_EVENT_NOTIFICATION_DELIVERED = 500,
     /** A user activated a notification. */

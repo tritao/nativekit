@@ -59,7 +59,9 @@ bool is_coalescible(nk_event_kind kind) {
 }
 
 bool is_persistent_readiness(nk_event_kind kind) {
-    return kind == NK_EVENT_HTTP_HEADERS || kind == NK_EVENT_HTTP_DATA_AVAILABLE;
+    /* A file watcher's consumer relies on READY to stop polling, so it is kept like HTTP readiness. */
+    return kind == NK_EVENT_HTTP_HEADERS || kind == NK_EVENT_HTTP_DATA_AVAILABLE ||
+           kind == NK_EVENT_FILE_WATCH_READY;
 }
 
 bool same_readiness_target(const QueuedEvent &first, const QueuedEvent &second) {

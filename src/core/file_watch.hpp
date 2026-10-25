@@ -18,4 +18,6 @@ std::vector<std::byte> file_changed_payload(nk_file_change_type change, nk_file_
 /* An overflow from `source`: changes were missed, so its directories need a
  * rescan. The event queue always accepts these and keeps one per source. */
 QueuedEvent file_watch_overflow_event(nk_file_watch source);
+/** NK_EVENT_FILE_WATCH_READY for `path`; `registration` tells repeated registrations of one path apart. */
+QueuedEvent file_watch_ready_event(nk_file_watch source, std::string_view path, nk_request_id registration);
 } // namespace nk::core

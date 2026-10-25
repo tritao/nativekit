@@ -62,6 +62,7 @@ nk_result file_watch_create(const nk_file_watch_options *options,
 nk_result file_watch_add_directory(nk_file_watch watch, const char *path,
                                    nk_bool recursive) noexcept;
 nk_result file_watch_remove_directory(nk_file_watch watch, const char *path) noexcept;
+nk_result file_watch_exclude_directory(nk_file_watch watch, const char *path) noexcept;
 nk_result file_watch_destroy(nk_file_watch watch) noexcept;
 nk_result clipboard_watch_start(const nk_clipboard_watch_options *options,
                                 nk_clipboard_watch *out_watch) noexcept;
