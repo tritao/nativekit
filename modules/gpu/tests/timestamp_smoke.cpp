@@ -112,6 +112,42 @@ bool read_frame_timing(TestResources &resources, nkgpu_frame_timing &timing) {
                          "nkgpu_get_frame_timing");
 }
 
+/* Explicit timestamps nest inside each other and inside a timed frame. */
+bool check_nested_timestamps(TestResources &resources, uint32_t width, uint32_t height) {
+    if (!expect_result(nkgpu_frame_begin(resources.renderer), NKGPU_OK, "nkgpu_frame_begin(nested)") ||
+        !expect_result(nkgpu_begin_window_pass(resources.renderer, width, height, 1), NKGPU_OK,
+                       "nkgpu_begin_window_pass(nested)") ||
+        !expect_result(nkgpu_timestamp_begin(resources.renderer, &resources.first_timestamp),
+                       NKGPU_OK, "nkgpu_timestamp_begin(outer)") ||
+        !expect_result(nkgpu_timestamp_begin(resources.renderer, &resources.second_timestamp),
+                       NKGPU_OK, "nkgpu_timestamp_begin(inner)") ||
+        !expect_result(nkgpu_timestamp_end(resources.renderer, resources.second_timestamp),
+                       NKGPU_OK, "nkgpu_timestamp_end(inner)") ||
+        !expect_result(nkgpu_timestamp_end(resources.renderer, resources.first_timestamp),
+                       NKGPU_OK, "nkgpu_timestamp_end(outer)") ||
+        !expect_result(nkgpu_end_pass(resources.renderer), NKGPU_OK, "nkgpu_end_pass(nested)") ||
+        !expect_result(nkgpu_end_frame(resources.renderer), NKGPU_OK, "nkgpu_end_frame(nested)") ||
+        !collect_ready(resources))
+        return false;
+    nkgpu_timestamp_info outer{}, inner{};
+    outer.struct_size = sizeof(outer);
+    inner.struct_size = sizeof(inner);
+    if (!expect_result(nkgpu_timestamp_query(resources.renderer, resources.first_timestamp, &outer),
+                       NKGPU_OK, "nkgpu_timestamp_query(outer)") ||
+        !expect_result(nkgpu_timestamp_query(resources.renderer, resources.second_timestamp, &inner),
+                       NKGPU_OK, "nkgpu_timestamp_query(inner)"))
+        return false;
+    if (inner.nanoseconds > outer.nanoseconds) {
+        std::fprintf(stderr, "inner timestamp outlasted the outer one\n");
+        return false;
+    }
+    nkgpu_timestamp_destroy(resources.renderer, resources.first_timestamp);
+    nkgpu_timestamp_destroy(resources.renderer, resources.second_timestamp);
+    resources.first_timestamp = {};
+    resources.second_timestamp = {};
+    return true;
+}
+
 /* Timed frames report results a few frames late; once timing is off, results stop after the
    frames already in flight. */
 bool check_frame_timing(TestResources &resources, uint32_t width, uint32_t height) {
@@ -130,6 +166,8 @@ bool check_frame_timing(TestResources &resources, uint32_t width, uint32_t heigh
         if (!draw_frames(resources, width, height, 1) || !read_frame_timing(resources, timing))
             return false;
     }
+    if (!check_nested_timestamps(resources, width, height) || !read_frame_timing(resources, timing))
+        return false;
     if (timing.timed_frames < 3) {
         std::fprintf(stderr, "only %llu frames were timed\n",
                      static_cast<unsigned long long>(timing.timed_frames));

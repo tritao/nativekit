@@ -53,6 +53,19 @@ typedef struct nk_sokol_readback_slot {
 } nk_sokol_readback_slot;
 
 static nk_sokol_readback_slot readbacks[NK_SOKOL_READBACK_CAPACITY];
+#if defined(NK_SOKOL_BACKEND_GLCORE)
+enum { NK_SOKOL_TIMESTAMP_CAPACITY = 256 };
+
+typedef struct nk_sokol_timestamp_slot {
+    uint32_t generation;
+    GLuint queries[2];
+    int active;
+    int ended;
+    int flushed;
+} nk_sokol_timestamp_slot;
+
+static nk_sokol_timestamp_slot timestamps[NK_SOKOL_TIMESTAMP_CAPACITY];
+#endif
 enum {
     NK_SOKOL_TIMESTAMP_PENDING = 1,
     NK_SOKOL_TIMESTAMP_READY = 2,
@@ -119,8 +132,8 @@ enum {
 #ifndef GL_UNSIGNED_INT_24_8
 #define GL_UNSIGNED_INT_24_8 0x84FA
 #endif
-#ifndef GL_TIME_ELAPSED
-#define GL_TIME_ELAPSED 0x88BF
+#ifndef GL_TIMESTAMP
+#define GL_TIMESTAMP 0x8E28
 #endif
 #ifndef GL_QUERY_RESULT
 #define GL_QUERY_RESULT 0x8866
@@ -219,6 +232,28 @@ static nk_sokol_readback_slot *readback_slot(uint32_t token) {
     nk_sokol_readback_slot *slot = &readbacks[encoded_index - 1u];
     return slot->active && slot->generation == generation ? slot : 0;
 }
+
+#if defined(NK_SOKOL_BACKEND_GLCORE)
+static nk_sokol_timestamp_slot *timestamp_slot(uint32_t token) {
+    const uint32_t encoded_index = token & 0xFFFFu;
+    const uint32_t generation = token >> 16;
+    if (!encoded_index || encoded_index > NK_SOKOL_TIMESTAMP_CAPACITY || !generation)
+        return 0;
+    nk_sokol_timestamp_slot *slot = &timestamps[encoded_index - 1u];
+    return slot->active && slot->generation == generation ? slot : 0;
+}
+
+static void timestamp_release(nk_sokol_timestamp_slot *slot) {
+    if (!slot)
+        return;
+    glDeleteQueries(2, slot->queries);
+    slot->queries[0] = slot->queries[1] = 0;
+    slot->active = 0;
+    slot->ended = 0;
+    slot->flushed = 0;
+    slot->generation = (slot->generation % 0xFFFFu) + 1u;
+}
+#endif
 
 static void readback_release(nk_sokol_readback_slot *slot) {
     if (!slot)
@@ -1198,21 +1233,33 @@ static void nk_sokol_readback_destroy(uint32_t token) {
         readback_release(slot);
 }
 
+/* A timestamp is a pair of GL_TIMESTAMP counters rather than one GL_TIME_ELAPSED query: elapsed
+   queries cannot nest, counters can, so a timed frame may contain timed passes. */
 static uint32_t nk_sokol_timestamp_begin(void) {
 #if !defined(NK_SOKOL_BACKEND_GLCORE)
     return 0;
 #else
-    GLuint query = 0;
-    clear_gl_errors();
-    glGenQueries(1, &query);
-    if (!query)
-        return 0;
-    glBeginQuery(GL_TIME_ELAPSED, query);
-    if (glGetError() != GL_NO_ERROR) {
-        glDeleteQueries(1, &query);
-        return 0;
+    for (uint32_t index = 0; index < NK_SOKOL_TIMESTAMP_CAPACITY; ++index) {
+        nk_sokol_timestamp_slot *slot = &timestamps[index];
+        if (slot->active)
+            continue;
+        clear_gl_errors();
+        glGenQueries(2, slot->queries);
+        if (slot->queries[0] && slot->queries[1])
+            glQueryCounter(slot->queries[0], GL_TIMESTAMP);
+        if (!slot->queries[0] || !slot->queries[1] || glGetError() != GL_NO_ERROR) {
+            glDeleteQueries(2, slot->queries);
+            slot->queries[0] = slot->queries[1] = 0;
+            return 0;
+        }
+        if (!slot->generation)
+            slot->generation = 1;
+        slot->active = 1;
+        slot->ended = 0;
+        slot->flushed = 0;
+        return readback_token(index, slot->generation);
     }
-    return query;
+    return 0;
 #endif
 }
 
@@ -1221,12 +1268,13 @@ static int nk_sokol_timestamp_end(uint32_t timestamp) {
     (void)timestamp;
     return 0;
 #else
-    if (!timestamp)
+    nk_sokol_timestamp_slot *slot = timestamp_slot(timestamp);
+    if (!slot || slot->ended)
         return 0;
     clear_gl_errors();
-    glEndQuery(GL_TIME_ELAPSED);
-    glFlush();
-    return glGetError() == GL_NO_ERROR;
+    glQueryCounter(slot->queries[1], GL_TIMESTAMP);
+    slot->ended = glGetError() == GL_NO_ERROR;
+    return slot->ended;
 #endif
 }
 
@@ -1235,14 +1283,23 @@ static uint32_t nk_sokol_timestamp_status(uint32_t timestamp) {
     (void)timestamp;
     return NK_SOKOL_TIMESTAMP_FAILED;
 #else
-    if (!timestamp)
+    nk_sokol_timestamp_slot *slot = timestamp_slot(timestamp);
+    if (!slot || !slot->ended)
         return NK_SOKOL_TIMESTAMP_FAILED;
     GLuint available = 0;
     clear_gl_errors();
-    glGetQueryObjectuiv(timestamp, GL_QUERY_RESULT_AVAILABLE, &available);
+    glGetQueryObjectuiv(slot->queries[1], GL_QUERY_RESULT_AVAILABLE, &available);
     if (glGetError() != GL_NO_ERROR)
         return NK_SOKOL_TIMESTAMP_FAILED;
-    return available ? NK_SOKOL_TIMESTAMP_READY : NK_SOKOL_TIMESTAMP_PENDING;
+    if (available)
+        return NK_SOKOL_TIMESTAMP_READY;
+    /* Submit the counters once if nothing else has, so a caller polling without drawing more
+       frames still sees the result arrive. */
+    if (!slot->flushed) {
+        glFlush();
+        slot->flushed = 1;
+    }
+    return NK_SOKOL_TIMESTAMP_PENDING;
 #endif
 }
 
@@ -1251,11 +1308,13 @@ static uint64_t nk_sokol_timestamp_elapsed_ns(uint32_t timestamp) {
     (void)timestamp;
     return 0;
 #else
-    if (!timestamp)
+    nk_sokol_timestamp_slot *slot = timestamp_slot(timestamp);
+    if (!slot || !slot->ended)
         return 0;
-    GLuint64 elapsed = 0;
-    glGetQueryObjectui64v(timestamp, GL_QUERY_RESULT, &elapsed);
-    return (uint64_t)elapsed;
+    GLuint64 begin = 0, end = 0;
+    glGetQueryObjectui64v(slot->queries[0], GL_QUERY_RESULT, &begin);
+    glGetQueryObjectui64v(slot->queries[1], GL_QUERY_RESULT, &end);
+    return end > begin ? (uint64_t)(end - begin) : 0;
 #endif
 }
 
@@ -1263,10 +1322,7 @@ static void nk_sokol_timestamp_destroy(uint32_t timestamp) {
 #if !defined(NK_SOKOL_BACKEND_GLCORE)
     (void)timestamp;
 #else
-    if (timestamp) {
-        GLuint query = timestamp;
-        glDeleteQueries(1, &query);
-    }
+    timestamp_release(timestamp_slot(timestamp));
 #endif
 }
 
@@ -1430,6 +1486,11 @@ void nk_sokol_runtime_release(void) {
         for (uint32_t i = 0; i < NK_SOKOL_READBACK_CAPACITY; ++i)
             if (readbacks[i].active)
                 readback_release(&readbacks[i]);
+#if defined(NK_SOKOL_BACKEND_GLCORE)
+        for (uint32_t i = 0; i < NK_SOKOL_TIMESTAMP_CAPACITY; ++i)
+            if (timestamps[i].active)
+                timestamp_release(&timestamps[i]);
+#endif
 #if defined(__EMSCRIPTEN__)
         if (webgl_depth_readback_program)
             glDeleteProgram(webgl_depth_readback_program);

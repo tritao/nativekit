@@ -1568,9 +1568,8 @@ NKGPU_API nkgpu_result nkgpu_timestamp_destroy(nkgpu_renderer renderer, nkgpu_ti
 
 /**
  * Measures the GPU time of each frame the renderer begins, window and batch
- * frames alike, while enabled. Off by default. On OpenGL a frame interval
- * cannot nest, so explicit timestamps inside a timed frame fail; leave timing
- * off when using them. Unsupported backends accept the call and time nothing.
+ * frames alike, while enabled. Off by default. Explicit timestamps work inside
+ * a timed frame. Unsupported backends accept the call and time nothing.
  */
 NKGPU_API nkgpu_result nkgpu_set_frame_timing(nkgpu_renderer renderer, uint32_t enabled);
 
