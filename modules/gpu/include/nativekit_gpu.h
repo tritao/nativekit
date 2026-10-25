@@ -623,6 +623,18 @@ typedef struct nkgpu_timestamp_desc {
     const char *label NKGPU_UTF8;
 } nkgpu_timestamp_desc;
 
+/** Reports GPU frame timing returned by nkgpu_get_frame_timing(). */
+typedef struct nkgpu_frame_timing {
+    uint32_t struct_size NK_STRUCT_SIZE;
+    /** Frames whose GPU time has been measured since the renderer was created. */
+    uint64_t timed_frames;
+    /**
+     * GPU time of the newest measured frame in nanoseconds, or 0 before the
+     * first. A result arrives a few frames after its frame ends.
+     */
+    uint64_t last_frame_nanoseconds;
+} nkgpu_frame_timing;
+
 /** Reports one item returned by nkgpu_timestamp_collect(). */
 typedef struct nkgpu_timestamp_result {
     uint32_t struct_size NK_STRUCT_SIZE;
@@ -1553,6 +1565,18 @@ NKGPU_API const char *nkgpu_timestamp_get_label(nkgpu_renderer renderer, nkgpu_t
 
 /** Destroys a timestamp query. */
 NKGPU_API nkgpu_result nkgpu_timestamp_destroy(nkgpu_renderer renderer, nkgpu_timestamp timestamp);
+
+/**
+ * Measures the GPU time of each frame the renderer begins, window and batch
+ * frames alike, while enabled. Off by default. On OpenGL a frame interval
+ * cannot nest, so explicit timestamps inside a timed frame fail; leave timing
+ * off when using them. Unsupported backends accept the call and time nothing.
+ */
+NKGPU_API nkgpu_result nkgpu_set_frame_timing(nkgpu_renderer renderer, uint32_t enabled);
+
+/** Reports the renderer's frame timing (see nkgpu_set_frame_timing). */
+NKGPU_API nkgpu_result nkgpu_get_frame_timing(nkgpu_renderer renderer,
+                                              nkgpu_frame_timing *out_timing NKGPU_OUT);
 
 /**
  * Creates a texture sampler with independent minification and magnification

@@ -440,6 +440,24 @@ int main() {
         }
     }
 
+    /* Frame timing measures batch frames, which begin their frame inside submission. */
+    if (features.timestamps) {
+        EXPECT_RESULT(nkgpu_set_frame_timing(renderer, 1), NKGPU_OK);
+        nkgpu_frame_timing timing{};
+        timing.struct_size = sizeof(timing);
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (timing.timed_frames == 0 && std::chrono::steady_clock::now() < deadline) {
+            EXPECT_RESULT(nkgpu_batch_submit(renderer, batch), NKGPU_OK);
+            EXPECT_RESULT(nkgpu_get_frame_timing(renderer, &timing), NKGPU_OK);
+        }
+        if (timing.timed_frames == 0) {
+            std::fprintf(stderr, "batch frames were not timed\n");
+            result = __LINE__;
+            goto cleanup;
+        }
+        EXPECT_RESULT(nkgpu_set_frame_timing(renderer, 0), NKGPU_OK);
+    }
+
     /* Resource retention must keep a sealed batch replayable after its compute resources are
        released by the caller. */
     if (compute_supported) {
