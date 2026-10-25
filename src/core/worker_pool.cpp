@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <deque>
 #include <new>
+#include <string>
 #include <utility>
 
 namespace nk::core {
@@ -38,10 +39,13 @@ nk_result WorkerPool::start(std::size_t worker_count, std::size_t queue_capacity
 #endif
         workers_.reserve(worker_count);
         for (std::size_t index = 0; index < worker_count; ++index)
-            workers_.emplace_back([this, index, thread_name] {
-                name_current_thread_format("%s.%zu", thread_name, index);
-                worker_loop();
-            });
+            // The name is copied here, where a failed allocation is caught, so the thread only
+            // formats it.
+            workers_.emplace_back(
+                [this, index, name = std::string(thread_name ? thread_name : "nk.pool")] {
+                    name_current_thread_format("%s.%zu", name.c_str(), index);
+                    worker_loop();
+                });
 #if !NK_ENABLE_NO_EXCEPTIONS
     }
     catch (const std::bad_alloc &) {
