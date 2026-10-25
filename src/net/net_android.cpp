@@ -1,4 +1,5 @@
 #include "net_backend.hpp"
+#include "core/thread_name.hpp"
 
 #include "android/nativekit_android_internal.hpp"
 
@@ -1122,11 +1123,17 @@ nk_result backend_start(const RequestPtr &request) noexcept {
         return NK_ERROR_UNSUPPORTED;
     nk::backend::android_jni_detach(attached);
 #if NK_ENABLE_NO_EXCEPTIONS
-    std::thread([request] { perform_request(request); }).detach();
+    std::thread([request] {
+        nk::core::name_current_thread("nk.net.request");
+        perform_request(request);
+    }).detach();
     return NK_OK;
 #else
     try {
-        std::thread([request] { perform_request(request); }).detach();
+        std::thread([request] {
+        nk::core::name_current_thread("nk.net.request");
+        perform_request(request);
+    }).detach();
         return NK_OK;
     } catch (const std::bad_alloc &) {
         return NK_ERROR_OUT_OF_MEMORY;

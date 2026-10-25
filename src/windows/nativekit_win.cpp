@@ -12,6 +12,7 @@
 #include "core/error.hpp"
 #include "core/boundary.hpp"
 #include "core/frame_request.hpp"
+#include "core/thread_name.hpp"
 #include "core/frame_backend.hpp"
 #include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
@@ -2836,7 +2837,10 @@ nk_result start_file_dialog(nk_handle parent_handle, const nk_file_dialog_option
         std::lock_guard lock(dialogs_mutex);
         dialogs.emplace(context->request, context);
     }
-    context->worker = std::thread(run_file_dialog, context);
+    context->worker = std::thread([context] {
+        nk::core::name_current_thread("nk.dialog.file");
+        run_file_dialog(context);
+    });
     *out_request = context->request;
     return NK_OK;
 }
@@ -5228,7 +5232,10 @@ nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
             std::lock_guard lock(dialogs_mutex);
             dialogs.emplace(context->request, context);
         }
-        context->worker = std::thread(run_message_dialog, context);
+        context->worker = std::thread([context] {
+            nk::core::name_current_thread("nk.dialog.message");
+            run_message_dialog(context);
+        });
         *out_request = context->request;
         return NK_OK;
     }

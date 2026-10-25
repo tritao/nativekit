@@ -3,6 +3,7 @@
 #include "core/boundary.hpp"
 #include "core/error.hpp"
 #include "core/runtime.hpp"
+#include "core/thread_name.hpp"
 
 #include <atomic>
 #include <cstddef>
@@ -57,6 +58,7 @@ bool known_executor(nk_executor executor) noexcept {
 }
 
 void render_loop() noexcept {
+    nk::core::name_current_thread("nk.render");
     {
         std::lock_guard lock(executor_mutex);
         render_thread_id = std::this_thread::get_id();

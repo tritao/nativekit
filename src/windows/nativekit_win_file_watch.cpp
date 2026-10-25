@@ -3,6 +3,7 @@
 #include "core/error.hpp"
 #include "core/file_watch.hpp"
 #include "core/runtime.hpp"
+#include "core/thread_name.hpp"
 
 #define WIN32_LEAN_AND_MEAN
 #ifndef NOMINMAX
@@ -925,7 +926,10 @@ nk_result file_watch_create(const nk_file_watch_options *, nk_file_watch *out_wa
     if (handle == NK_INVALID_HANDLE)
         return NK_ERROR_OUT_OF_MEMORY;
     resource->handle = handle;
-    resource->worker = std::thread([resource = resource.get()] { resource->run(); });
+    resource->worker = std::thread([resource = resource.get()] {
+        nk::core::name_current_thread("nk.file-watch");
+        resource->run();
+    });
     *out_watch = handle;
     return NK_OK;
 }

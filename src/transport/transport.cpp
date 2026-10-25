@@ -10,6 +10,7 @@
 #include "core/handle_registry.hpp"
 #include "core/runtime.hpp"
 #include "core/resource_events.hpp"
+#include "core/thread_name.hpp"
 
 #include <algorithm>
 #include <array>
@@ -104,6 +105,22 @@ struct TransportOptions {
     uint64_t send_buffer_size = default_buffer_size;
     std::string subprotocols;
 };
+
+/** A transport worker's thread name: "<prefix>.<kind> <endpoint>", with a local endpoint's last path component. */
+std::string transport_thread_name(const char *prefix, const TransportOptions &options) {
+    const char *kind = options.kind == NK_TRANSPORT_UDP         ? "udp"
+                       : options.kind == NK_TRANSPORT_WEBSOCKET ? "ws"
+                       : options.kind == NK_TRANSPORT_LOCAL     ? "local"
+                                                                : "tcp";
+    std::string endpoint;
+    if (!options.path.empty()) {
+        const auto slash = options.path.find_last_of("/\\");
+        endpoint = slash == std::string::npos ? options.path : options.path.substr(slash + 1);
+    } else {
+        endpoint = options.host + ":" + std::to_string(options.port);
+    }
+    return std::string(prefix) + "." + kind + " " + endpoint;
+}
 
 nk_result fail(nk_result result, const char *message) noexcept {
     nk::core::set_error(message);
@@ -1012,11 +1029,17 @@ class TransportResource final : public nk::core::Resource,
 
     bool start() noexcept {
 #if NK_ENABLE_NO_EXCEPTIONS
-        worker = std::thread([self = shared_from_this()] { self->run(); });
+        worker = std::thread([self = shared_from_this()] {
+            nk::core::name_current_thread(transport_thread_name("nk", self->options));
+            self->run();
+        });
         return true;
 #else
         try {
-            worker = std::thread([self = shared_from_this()] { self->run_safely(); });
+            worker = std::thread([self = shared_from_this()] {
+                nk::core::name_current_thread(transport_thread_name("nk", self->options));
+                self->run_safely();
+            });
             return true;
         } catch (...) {
             return false;
@@ -1142,11 +1165,17 @@ class ListenerResource final : public nk::core::Resource,
 
     bool start() noexcept {
 #if NK_ENABLE_NO_EXCEPTIONS
-        worker = std::thread([self = shared_from_this()] { self->run(); });
+        worker = std::thread([self = shared_from_this()] {
+            nk::core::name_current_thread(transport_thread_name("nk.listen", self->options));
+            self->run();
+        });
         return true;
 #else
         try {
-            worker = std::thread([self = shared_from_this()] { self->run_safely(); });
+            worker = std::thread([self = shared_from_this()] {
+                nk::core::name_current_thread(transport_thread_name("nk.listen", self->options));
+                self->run_safely();
+            });
             return true;
         } catch (...) {
             return false;

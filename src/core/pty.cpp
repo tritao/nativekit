@@ -5,6 +5,7 @@
 #include "core/error.hpp"
 #include "core/handle_registry.hpp"
 #include "core/runtime.hpp"
+#include "core/thread_name.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -562,14 +563,32 @@ nk_result win_spawn(const char *program, const char *const *argv, uint32_t argc,
         return fail(NK_ERROR_OUT_OF_MEMORY, "PTY handle allocation failed");
     nk::core::register_runtime_shutdown_hook(&shutdown_ptys);
 #if NK_ENABLE_NO_EXCEPTIONS
-    pty->reader = std::thread([pty] { pty->read_output(); });
-    pty->writer = std::thread([pty] { pty->write_input(); });
-    pty->monitor = std::thread([pty] { pty->watch_process(); });
+    pty->reader = std::thread([pty] {
+            nk::core::name_current_thread("nk.pty." + std::to_string(pty->handle) + ".read");
+            pty->read_output();
+        });
+    pty->writer = std::thread([pty] {
+            nk::core::name_current_thread("nk.pty." + std::to_string(pty->handle) + ".write");
+            pty->write_input();
+        });
+    pty->monitor = std::thread([pty] {
+            nk::core::name_current_thread("nk.pty." + std::to_string(pty->handle) + ".monitor");
+            pty->watch_process();
+        });
 #else
     try {
-        pty->reader = std::thread([pty] { pty->read_output(); });
-        pty->writer = std::thread([pty] { pty->write_input(); });
-        pty->monitor = std::thread([pty] { pty->watch_process(); });
+        pty->reader = std::thread([pty] {
+            nk::core::name_current_thread("nk.pty." + std::to_string(pty->handle) + ".read");
+            pty->read_output();
+        });
+        pty->writer = std::thread([pty] {
+            nk::core::name_current_thread("nk.pty." + std::to_string(pty->handle) + ".write");
+            pty->write_input();
+        });
+        pty->monitor = std::thread([pty] {
+            nk::core::name_current_thread("nk.pty." + std::to_string(pty->handle) + ".monitor");
+            pty->watch_process();
+        });
     } catch (...) {
         nk::core::handles().erase(pty->handle, nk::core::ResourceType::pty);
         throw;
@@ -768,10 +787,16 @@ nk_result NK_CALL nk_pty_spawn(const char *program, const char *const *argv, uin
             return fail(NK_ERROR_OUT_OF_MEMORY, "PTY handle allocation failed");
         nk::core::register_runtime_shutdown_hook(&shutdown_ptys);
 #if NK_ENABLE_NO_EXCEPTIONS
-        pty->monitor = std::thread([pty] { pty->run(); });
+        pty->monitor = std::thread([pty] {
+            nk::core::name_current_thread("nk.pty." + std::to_string(pty->handle));
+            pty->run();
+        });
 #else
         try {
-            pty->monitor = std::thread([pty] { pty->run(); });
+            pty->monitor = std::thread([pty] {
+            nk::core::name_current_thread("nk.pty." + std::to_string(pty->handle));
+            pty->run();
+        });
         } catch (...) {
             nk::core::handles().erase(pty->handle, nk::core::ResourceType::pty);
             throw;
