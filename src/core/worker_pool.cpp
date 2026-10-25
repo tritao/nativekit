@@ -15,7 +15,8 @@ WorkerPool::~WorkerPool() {
     shutdown();
 }
 
-nk_result WorkerPool::start(std::size_t worker_count, std::size_t queue_capacity, const char *thread_name) {
+nk_result WorkerPool::start(std::size_t worker_count, std::size_t queue_capacity,
+                            const char *thread_name) {
 #if defined(NK_BACKEND_WEB)
     (void)worker_count;
     (void)queue_capacity;
@@ -37,8 +38,8 @@ nk_result WorkerPool::start(std::size_t worker_count, std::size_t queue_capacity
 #endif
         workers_.reserve(worker_count);
         for (std::size_t index = 0; index < worker_count; ++index)
-            workers_.emplace_back([this, index, name = std::string(thread_name)] {
-                name_current_thread(name + "." + std::to_string(index));
+            workers_.emplace_back([this, index, thread_name] {
+                name_current_thread_format("%s.%zu", thread_name, index);
                 worker_loop();
             });
 #if !NK_ENABLE_NO_EXCEPTIONS
@@ -341,7 +342,7 @@ class SignalWorkerPool final {
             workers_.reserve(worker_count);
             for (unsigned index = 0; index < worker_count; ++index)
                 workers_.emplace_back([this, index] {
-                    nk::core::name_current_thread("nk.worker." + std::to_string(index));
+                    nk::core::name_current_thread_format("nk.worker.%u", index);
                     run_worker();
                 });
 #if !NK_ENABLE_NO_EXCEPTIONS

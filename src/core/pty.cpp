@@ -564,29 +564,35 @@ nk_result win_spawn(const char *program, const char *const *argv, uint32_t argc,
     nk::core::register_runtime_shutdown_hook(&shutdown_ptys);
 #if NK_ENABLE_NO_EXCEPTIONS
     pty->reader = std::thread([pty] {
-            nk::core::name_current_thread("nk.pty." + std::to_string(pty->handle) + ".read");
-            pty->read_output();
-        });
+        nk::core::name_current_thread_format("nk.pty.%llu.%s",
+                                             static_cast<unsigned long long>(pty->handle), "read");
+        pty->read_output();
+    });
     pty->writer = std::thread([pty] {
-            nk::core::name_current_thread("nk.pty." + std::to_string(pty->handle) + ".write");
-            pty->write_input();
-        });
+        nk::core::name_current_thread_format("nk.pty.%llu.%s",
+                                             static_cast<unsigned long long>(pty->handle), "write");
+        pty->write_input();
+    });
     pty->monitor = std::thread([pty] {
-            nk::core::name_current_thread("nk.pty." + std::to_string(pty->handle) + ".monitor");
-            pty->watch_process();
-        });
+        nk::core::name_current_thread_format(
+            "nk.pty.%llu.%s", static_cast<unsigned long long>(pty->handle), "monitor");
+        pty->watch_process();
+    });
 #else
     try {
         pty->reader = std::thread([pty] {
-            nk::core::name_current_thread("nk.pty." + std::to_string(pty->handle) + ".read");
+            nk::core::name_current_thread_format(
+                "nk.pty.%llu.%s", static_cast<unsigned long long>(pty->handle), "read");
             pty->read_output();
         });
         pty->writer = std::thread([pty] {
-            nk::core::name_current_thread("nk.pty." + std::to_string(pty->handle) + ".write");
+            nk::core::name_current_thread_format(
+                "nk.pty.%llu.%s", static_cast<unsigned long long>(pty->handle), "write");
             pty->write_input();
         });
         pty->monitor = std::thread([pty] {
-            nk::core::name_current_thread("nk.pty." + std::to_string(pty->handle) + ".monitor");
+            nk::core::name_current_thread_format(
+                "nk.pty.%llu.%s", static_cast<unsigned long long>(pty->handle), "monitor");
             pty->watch_process();
         });
     } catch (...) {
@@ -788,15 +794,17 @@ nk_result NK_CALL nk_pty_spawn(const char *program, const char *const *argv, uin
         nk::core::register_runtime_shutdown_hook(&shutdown_ptys);
 #if NK_ENABLE_NO_EXCEPTIONS
         pty->monitor = std::thread([pty] {
-            nk::core::name_current_thread("nk.pty." + std::to_string(pty->handle));
+            nk::core::name_current_thread_format("nk.pty.%llu",
+                                                 static_cast<unsigned long long>(pty->handle));
             pty->run();
         });
 #else
         try {
             pty->monitor = std::thread([pty] {
-            nk::core::name_current_thread("nk.pty." + std::to_string(pty->handle));
-            pty->run();
-        });
+                nk::core::name_current_thread_format("nk.pty.%llu",
+                                                     static_cast<unsigned long long>(pty->handle));
+                pty->run();
+            });
         } catch (...) {
             nk::core::handles().erase(pty->handle, nk::core::ResourceType::pty);
             throw;

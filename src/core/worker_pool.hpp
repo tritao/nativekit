@@ -23,7 +23,8 @@ class WorkerPool final {
     ~WorkerPool();
 
     /** Starts worker_count workers, named "<thread_name>.<index>". */
-    nk_result start(std::size_t worker_count, std::size_t queue_capacity, const char *thread_name = "nk.pool");
+    nk_result start(std::size_t worker_count, std::size_t queue_capacity,
+                    const char *thread_name = "nk.pool");
     nk_result submit(std::function<void()> work);
     void shutdown() noexcept;
     bool accepting() const noexcept;

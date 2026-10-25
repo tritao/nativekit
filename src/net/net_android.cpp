@@ -1131,9 +1131,9 @@ nk_result backend_start(const RequestPtr &request) noexcept {
 #else
     try {
         std::thread([request] {
-        nk::core::name_current_thread("nk.net.request");
-        perform_request(request);
-    }).detach();
+            nk::core::name_current_thread("nk.net.request");
+            perform_request(request);
+        }).detach();
         return NK_OK;
     } catch (const std::bad_alloc &) {
         return NK_ERROR_OUT_OF_MEMORY;

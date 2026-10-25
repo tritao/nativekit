@@ -9,6 +9,8 @@
 #include <pthread.h>
 #endif
 
+#include <cstdarg>
+#include <cstdio>
 #include <cstring>
 
 namespace nk::core {
@@ -36,8 +38,14 @@ void name_current_thread(const char *name) noexcept {
 #endif
 }
 
-void name_current_thread(const std::string &name) noexcept {
-    name_current_thread(name.c_str());
+void name_current_thread_format(const char *format, ...) noexcept {
+    char name[128];
+    va_list arguments;
+    va_start(arguments, format);
+    const int length = std::vsnprintf(name, sizeof(name), format, arguments);
+    va_end(arguments);
+    if (length > 0)
+        name_current_thread(name);
 }
 
 } // namespace nk::core
