@@ -15,9 +15,6 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <timeapi.h>
-#if defined(_MSC_VER)
-#pragma comment(lib, "winmm.lib")
-#endif
 #endif
 
 namespace {

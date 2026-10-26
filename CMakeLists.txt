@@ -316,7 +316,7 @@ elseif(WIN32)
         src/windows/nativekit_win_joystick.cpp)
     target_compile_definitions(nativekit PRIVATE NK_BACKEND_WINDOWS=1)
     target_link_libraries(nativekit PRIVATE user32 shell32 ole32 oleaut32 advapi32 imm32
-        d3d11 dxgi xinput)
+        d3d11 dxgi xinput winmm)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     target_sources(nativekit PRIVATE
         src/ios/nativekit_ios.mm
