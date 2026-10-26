@@ -1467,6 +1467,7 @@ struct EvalContext {
 #endif
 
 struct DialogContext {
+    GtkWidget *checkbox = nullptr;
     GObject *object = nullptr;
     nk_request_id request = NK_INVALID_REQUEST_ID;
     nk_handle parent = NK_INVALID_HANDLE;
@@ -3149,7 +3150,8 @@ void on_dialog_response(GObject *, int response, gpointer data) {
             event.kind = NK_EVENT_DIALOG_MESSAGE_COMPLETE;
             event.request_id = context->request;
             event.flags = context->kind;
-            const nk_dialog_message_result payload{message_result(response)};
+            const nk_dialog_message_result payload{message_result(response),
+                context->checkbox && gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(context->checkbox)) ? 1u : 0u};
             event.data = bytes_of(payload);
             nk::core::push_event(std::move(event));
         } else {
@@ -6102,7 +6104,7 @@ nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
         "unexpected error while opening message dialog", [&]() -> nk_result {
             if (const auto result = enter_ui(); result != NK_OK)
                 return result;
-            if (!options || options->struct_size < sizeof(*options) || !out_request ||
+            if (!options || options->struct_size < offsetof(nk_message_dialog_options, yes_label) || !out_request ||
                 !options->message)
                 return fail(NK_ERROR_INVALID_ARGUMENT, "invalid message dialog options");
             std::shared_ptr<GtkWindowResource> parent;
@@ -6139,7 +6141,8 @@ nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
             if (buttons & NK_MESSAGE_BUTTON_CANCEL)
                 gtk_dialog_add_button(GTK_DIALOG(dialog), "_Cancel", GTK_RESPONSE_CANCEL);
             if (buttons & NK_MESSAGE_BUTTON_YES)
-                gtk_dialog_add_button(GTK_DIALOG(dialog), "_Yes", GTK_RESPONSE_YES);
+                gtk_dialog_add_button(GTK_DIALOG(dialog),
+                    options->struct_size >= sizeof(*options) && options->yes_label ? options->yes_label : "_Yes", GTK_RESPONSE_YES);
             if (buttons & NK_MESSAGE_BUTTON_NO)
                 gtk_dialog_add_button(GTK_DIALOG(dialog), "_No", GTK_RESPONSE_NO);
             if (buttons & NK_MESSAGE_BUTTON_SAVE)
@@ -6154,6 +6157,12 @@ nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
             context->generation = nk::core::runtime_generation();
             context->parent = parent_handle;
             context->kind = NK_DIALOG_MESSAGE;
+            if (options->struct_size >= sizeof(*options) && options->checkbox_label) {
+                context->checkbox = gtk_check_button_new_with_label(options->checkbox_label);
+                gtk_box_pack_start(GTK_BOX(gtk_message_dialog_get_message_area(GTK_MESSAGE_DIALOG(dialog))),
+                                   context->checkbox, FALSE, FALSE, 0);
+                gtk_widget_show(context->checkbox);
+            }
             dialogs.emplace(context->request, context.get());
             g_signal_connect(dialog, "response", G_CALLBACK(on_dialog_response), context.get());
             gtk_widget_show(dialog);

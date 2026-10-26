@@ -213,6 +213,8 @@ struct WinDialogContext {
     std::wstring initial_path;
     std::wstring suggested_name;
     std::wstring message;
+    std::wstring yes_label;
+    std::wstring checkbox_label;
     uint32_t flags = 0;
     uint32_t message_kind = 0;
     uint32_t buttons = 0;
@@ -2740,15 +2742,17 @@ UINT message_box_type(const WinDialogContext &context) {
 void run_message_dialog(const std::shared_ptr<WinDialogContext> &context) noexcept {
     context->thread_id = GetCurrentThreadId();
     int response = IDCANCEL;
+    BOOL checkbox_checked = FALSE;
     if (!context->canceled &&
-        (context->buttons & (NK_MESSAGE_BUTTON_SAVE | NK_MESSAGE_BUTTON_DONT_SAVE))) {
+        (context->buttons & (NK_MESSAGE_BUTTON_SAVE | NK_MESSAGE_BUTTON_DONT_SAVE) ||
+         !context->yes_label.empty() || !context->checkbox_label.empty())) {
         HMODULE controls = LoadLibraryW(L"comctl32.dll");
         using ShowTaskDialog = HRESULT(WINAPI *)(const TASKDIALOGCONFIG *, int *, int *, BOOL *);
         auto show =
             controls
                 ? reinterpret_cast<ShowTaskDialog>(GetProcAddress(controls, "TaskDialogIndirect"))
                 : nullptr;
-        TASKDIALOG_BUTTON buttons[3]{};
+        TASKDIALOG_BUTTON buttons[6]{};
         UINT button_count = 0;
         if (context->buttons & NK_MESSAGE_BUTTON_DONT_SAVE)
             buttons[button_count++] = {IDNO, L"Don't Save"};
@@ -2756,6 +2760,12 @@ void run_message_dialog(const std::shared_ptr<WinDialogContext> &context) noexce
             buttons[button_count++] = {IDCANCEL, L"Cancel"};
         if (context->buttons & NK_MESSAGE_BUTTON_SAVE)
             buttons[button_count++] = {IDYES, L"Save"};
+        if (context->buttons & NK_MESSAGE_BUTTON_YES)
+            buttons[button_count++] = {IDYES, context->yes_label.empty() ? L"Yes" : context->yes_label.c_str()};
+        if (context->buttons & NK_MESSAGE_BUTTON_NO)
+            buttons[button_count++] = {IDNO, L"No"};
+        if (context->buttons & NK_MESSAGE_BUTTON_OK)
+            buttons[button_count++] = {IDOK, L"OK"};
         TASKDIALOGCONFIG config{};
         config.cbSize = sizeof(config);
         config.hwndParent = context->parent;
@@ -2763,14 +2773,18 @@ void run_message_dialog(const std::shared_ptr<WinDialogContext> &context) noexce
         config.dwCommonButtons = 0;
         config.pszWindowTitle = context->title.c_str();
         config.pszContent = context->message.c_str();
+        config.pszVerificationText = context->checkbox_label.empty() ? nullptr : context->checkbox_label.c_str();
         config.pszMainIcon = TD_WARNING_ICON;
         config.cButtons = button_count;
         config.pButtons = buttons;
         config.nDefaultButton = IDCANCEL;
-        if (!show || FAILED(show(&config, &response, nullptr, nullptr)))
-            response =
-                MessageBoxW(context->parent, context->message.c_str(), context->title.c_str(),
-                            MB_ICONWARNING | MB_YESNOCANCEL | MB_DEFBUTTON3);
+        if (!show || FAILED(show(&config, &response, nullptr, &checkbox_checked))) {
+            checkbox_checked = FALSE;
+            response = context->yes_label.empty() && context->checkbox_label.empty()
+                ? MessageBoxW(context->parent, context->message.c_str(), context->title.c_str(),
+                              MB_ICONWARNING | MB_YESNOCANCEL | MB_DEFBUTTON3)
+                : IDCANCEL;
+        }
         if (controls)
             FreeLibrary(controls);
     } else if (!context->canceled)
@@ -2791,7 +2805,7 @@ void run_message_dialog(const std::shared_ptr<WinDialogContext> &context) noexce
     event.request_id = context->request;
     event.flags = context->kind;
     event.result = response ? NK_OK : NK_ERROR_UNKNOWN;
-    event.data = bytes_of(nk_dialog_message_result{button});
+    event.data = bytes_of(nk_dialog_message_result{button, checkbox_checked ? 1u : 0u});
     nk::core::push_event(std::move(event));
 }
 
@@ -5253,7 +5267,7 @@ nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
     {
         if (const auto result = enter_ui(); result != NK_OK)
             return result;
-        if (!options || options->struct_size < sizeof(*options) || !out_request ||
+        if (!options || options->struct_size < offsetof(nk_message_dialog_options, yes_label) || !out_request ||
             !options->message)
             return fail(NK_ERROR_INVALID_ARGUMENT, "invalid message dialog options");
         auto context = std::make_shared<WinDialogContext>();
@@ -5269,6 +5283,10 @@ nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
         if (!copy_wide(options->title, context->title) ||
             !copy_wide(options->message, context->message))
             return fail(NK_ERROR_INVALID_ARGUMENT, "message dialog option is not valid UTF-8");
+        if (options->struct_size >= sizeof(*options) &&
+            (!copy_wide(options->yes_label, context->yes_label) ||
+             !copy_wide(options->checkbox_label, context->checkbox_label)))
+            return fail(NK_ERROR_INVALID_ARGUMENT, "message dialog labels are not valid UTF-8");
         context->message_kind = options->kind;
         context->buttons = options->buttons;
         {

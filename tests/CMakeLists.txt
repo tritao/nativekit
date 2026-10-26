@@ -217,6 +217,11 @@ if(NK_BACKEND_GTK_AVAILABLE)
             add_test(NAME gtk_create_destroy
                 COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_integration>)
         endif()
+        add_executable(nativekit_gtk_message_dialog integration/gtk_message_dialog.c)
+        target_link_libraries(nativekit_gtk_message_dialog PRIVATE NativeKit::nativekit PkgConfig::GTK3)
+        set_target_properties(nativekit_gtk_message_dialog PROPERTIES LINKER_LANGUAGE CXX)
+        add_test(NAME gtk_message_dialog
+            COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_message_dialog>)
         add_executable(nativekit_gtk_native_window integration/gtk_native_window.c)
         target_link_libraries(nativekit_gtk_native_window PRIVATE NativeKit::nativekit)
         set_target_properties(nativekit_gtk_native_window PROPERTIES LINKER_LANGUAGE CXX)
