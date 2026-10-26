@@ -26,7 +26,8 @@ std::atomic<const nk_trace_sink *> host_sink{nullptr};
  * QueryPerformanceCounter values, which an input hook in another process and HashLink's GC trace
  * share, so the files merge on one timeline; elsewhere they are steady-clock nanoseconds. Kinds: M
  * pointer move (screen x, y), B pointer button (screen x, y), K key (key code, 1 down / 0 up), m, b
- * and k the application polled a move, a button or a key, W wait begins, w wait ends, F frame
+ * and k the application polled a move, a button or a key, r and s a window or a surface resize (new
+ * width, height), W wait begins, w wait ends, F frame
  * begins, f frame ends. Other zones are not written.
  */
 std::FILE *open_trace_file() noexcept {
@@ -132,6 +133,12 @@ void NK_CALL file_event(void *, nk_trace_event_kind kind, std::uint64_t, std::in
         break;
     case NK_TRACE_EVENT_POLLED_KEY:
         write_line('k', 0, 0);
+        break;
+    case NK_TRACE_EVENT_POLLED_WINDOW_RESIZE:
+        write_line('r', a, b);
+        break;
+    case NK_TRACE_EVENT_POLLED_SURFACE_RESIZE:
+        write_line('s', a, b);
         break;
     default:
         break;

@@ -842,6 +842,9 @@ poll. A pointer move that the queue merged into a newer one carries the stamp of
 the oldest input it stands for, so it reports the age of the oldest input not yet
 delivered. Backends set `QueuedEvent::os_time_ns` when they queue an input.
 
+`nk_poll_event()` also sends `NK_TRACE_EVENT_POLLED_WINDOW_RESIZE` and `_SURFACE_RESIZE` when it hands the application a
+resize, with the new width and height; these carry no OS stamp.
+
 The input stamp is coarse. GTK reports milliseconds, rebuilt from the 32-bit GDK
 event time against the monotonic clock; Windows reports the system tick
 (usually 15.6 ms) from `GetMessageTime()`. Use the stamp to find delays of tens

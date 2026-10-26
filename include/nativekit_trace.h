@@ -68,7 +68,14 @@ enum {
      */
     NK_TRACE_EVENT_POLLED_MOVE = 4,
     NK_TRACE_EVENT_POLLED_BUTTON = 5,
-    NK_TRACE_EVENT_POLLED_KEY = 6
+    NK_TRACE_EVENT_POLLED_KEY = 6,
+    /**
+     * nk_poll_event() handed the application a window or a surface resize. `os_time_ns` is 0; `a`,
+     * `b`: the new width and height in logical pixels. Resizes of one window are merged in the
+     * queue, so the application sees fewer than the platform sent while a window is dragged.
+     */
+    NK_TRACE_EVENT_POLLED_WINDOW_RESIZE = 7,
+    NK_TRACE_EVENT_POLLED_SURFACE_RESIZE = 8
 };
 
 /**

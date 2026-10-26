@@ -17,6 +17,8 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <memory>
 #include <mutex>
 #include <new>
@@ -276,6 +278,18 @@ nk_result NK_CALL nk_poll_event(nk_event *event) {
             break;
         case NK_EVENT_KEY:
             NK_TRACE_EVENT(NK_TRACE_EVENT_POLLED_KEY, os_time_ns, 0, 0);
+            break;
+        case NK_EVENT_WINDOW_RESIZE:
+        case NK_EVENT_SURFACE_RESIZE:
+            /* Both payloads start with the new width and height. */
+            if (NK_TRACE_ACTIVE() && event->data && event->data_size >= 2 * sizeof(std::int32_t)) {
+                std::int32_t size[2];
+                std::memcpy(size, event->data, sizeof(size));
+                NK_TRACE_EVENT(event->kind == NK_EVENT_WINDOW_RESIZE
+                                   ? NK_TRACE_EVENT_POLLED_WINDOW_RESIZE
+                                   : NK_TRACE_EVENT_POLLED_SURFACE_RESIZE,
+                               0, size[0], size[1]);
+            }
             break;
         default:
             break;
