@@ -3255,20 +3255,67 @@ nk_result get_string(nk_system_string_kind kind, std::string &out_value) {
 } // namespace nk::core::system_backend
 
 namespace nk::backend {
+namespace {
+/* Signalled by wake_events() so a wait that sleeps on the window queue also wakes for work that
+ * arrives from other threads. Auto-reset: a stale signal costs one extra sequence check. */
+HANDLE event_wake_handle() noexcept {
+    static const HANDLE handle = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    return handle;
+}
+
+bool is_frame_message(const MSG &message) noexcept {
+    return message.message == surface_frame_message ||
+           (message.message == WM_TIMER && message.wParam == surface_frame_timer);
+}
+} // namespace
+
+bool wait_events(std::uint64_t sequence, std::chrono::milliseconds timeout) noexcept {
+    const auto ready = [sequence] {
+        return nk::core::wake_sequence() != sequence || nk::core::events_pending();
+    };
+    if (ready())
+        return true;
+    const HANDLE wake = event_wake_handle();
+    /* Window input wakes the wait too: a condition variable alone sleeps through it until the
+     * timeout. MWMO_INPUTAVAILABLE also reports input a PeekMessage call left in the queue. */
+    const DWORD result = MsgWaitForMultipleObjectsEx(wake ? 1 : 0, wake ? &wake : nullptr,
+                                                     static_cast<DWORD>(timeout.count()),
+                                                     QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+    return result != WAIT_TIMEOUT || ready();
+}
+
+void wake_event_wait() noexcept {
+    if (const HANDLE wake = event_wake_handle())
+        SetEvent(wake);
+}
+
 void pump_events() noexcept {
     nk::windows_joystick::pump();
     /* The hooks run while tracing, so input from the first traced pump on gets a precise stamp. */
     nk::windows_input_stamps::update(NK_TRACE_ACTIVE());
     MSG message;
-    while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+    /* Windows hands out sent and posted messages before queued input, and every frame requests
+     * its successor by posting a message. Take input first, or a busy frame loop keeps it
+     * waiting in the system queue indefinitely. */
+    while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE | PM_QS_INPUT)) {
         if (nk::backend::menu_backend_translate_accelerator(message))
             continue;
         TranslateMessage(&message);
         DispatchMessageW(&message);
-        // Yield to the application after one on-demand frame. A callback may
-        // request its successor; draining those messages forever starves input.
-        if (message.message == surface_frame_message)
-            break;
+    }
+    /* Input the application has not polled yet comes before any more frames: a frame rendered
+     * now would delay the event it should be reacting to. The frame message stays queued. */
+    if (!nk::core::events_pending()) {
+        while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+            if (nk::backend::menu_backend_translate_accelerator(message))
+                continue;
+            TranslateMessage(&message);
+            DispatchMessageW(&message);
+            // Yield to the application after one on-demand frame. A callback may
+            // request its successor; draining those messages forever starves input.
+            if (is_frame_message(message))
+                break;
+        }
     }
     reap_dialogs();
     poll_monitor_orientations();

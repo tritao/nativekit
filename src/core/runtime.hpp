@@ -50,7 +50,7 @@ void run_runtime_shutdown_hooks() noexcept;
 
 namespace nk::backend {
 void pump_events() noexcept;
-#if defined(NK_BACKEND_GTK)
+#if defined(NK_BACKEND_GTK) || defined(NK_BACKEND_WINDOWS)
 bool wait_events(std::uint64_t sequence, std::chrono::milliseconds timeout) noexcept;
 void wake_event_wait() noexcept;
 #endif
