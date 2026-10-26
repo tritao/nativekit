@@ -13,6 +13,7 @@
 #include "core/error.hpp"
 #include "core/boundary.hpp"
 #include "core/frame_request.hpp"
+#include "core/surface_frame.hpp"
 #include "core/trace.hpp"
 #include "core/thread_name.hpp"
 #include "core/frame_backend.hpp"
@@ -1992,6 +1993,41 @@ bool apply_pending_resize(WinSurfaceResource &surface) {
     return rebuild_surface_targets(surface, width, height);
 }
 
+/**
+ * Draws one frame for a posted frame message or a frame-timer tick. Both reach the surface's window
+ * procedure, also while a modal loop (a window drag or resize) dispatches messages instead of
+ * pump_events().
+ */
+void draw_surface_frame(WinSurfaceResource &surface) {
+    if (!surface.frame_requests.should_draw()) {
+        /* An idle on-demand surface stops its timer until the next request. */
+        disarm_surface_frames(surface);
+        return;
+    }
+    auto active = get_surface(surface.handle);
+    if (!active)
+        return;
+    // Preserve pending requests while RENDER owns the previous frame.
+    // Its PLATFORM completion releases the ticket before the next callback.
+    if (nk::core::surface_has_open_frame(active->handle))
+        return;
+    active->frame_requests.begin_frame();
+    nk::core::run_surface_frame([&] {
+        if (nk_surface_make_current(active->handle) != NK_OK)
+            return;
+        const auto callback = active->frame_callback;
+        void *user_data = active->frame_user_data;
+        callback(active->handle, active->framebuffer_width, active->framebuffer_height, user_data);
+        // A ticket hands presentation to the asynchronous renderer. Only
+        // callbacks using the synchronous surface API present here.
+        if (active->frame_prepared && !nk::core::surface_has_open_frame(active->handle))
+            nk_surface_present(active->handle);
+    });
+    arm_surface_frames(*active);
+    // A completed callback is work even when it produces no input event.
+    nk::core::wake_events();
+}
+
 LRESULT CALLBACK surface_window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
     auto *surface =
         reinterpret_cast<WinSurfaceResource *>(GetWindowLongPtrW(window, GWLP_USERDATA));
@@ -2015,34 +2051,7 @@ LRESULT CALLBACK surface_window_proc(HWND window, UINT message, WPARAM wparam, L
         (message == surface_frame_message ||
          (message == WM_TIMER && wparam == surface_frame_timer)) &&
         surface->frame_callback && !surface->destroying) {
-        if (!surface->frame_requests.should_draw()) {
-            /* An idle on-demand surface stops its timer until the next request. */
-            disarm_surface_frames(*surface);
-            return 0;
-        }
-        auto active = get_surface(surface->handle);
-        if (!active)
-            return 0;
-        // Preserve pending requests while RENDER owns the previous frame.
-        // Its PLATFORM completion releases the ticket before the next callback.
-        if (nk::core::surface_has_open_frame(active->handle))
-            return 0;
-        active->frame_requests.begin_frame();
-        nk::core::callback_boundary([&] {
-            if (nk_surface_make_current(active->handle) != NK_OK)
-                return;
-            const auto callback = active->frame_callback;
-            void *user_data = active->frame_user_data;
-            callback(active->handle, active->framebuffer_width, active->framebuffer_height,
-                     user_data);
-            // A ticket hands presentation to the asynchronous renderer. Only
-            // callbacks using the synchronous surface API present here.
-            if (active->frame_prepared && !nk::core::surface_has_open_frame(active->handle))
-                nk_surface_present(active->handle);
-        });
-        arm_surface_frames(*active);
-        // A completed callback is work even when it produces no input event.
-        nk::core::wake_events();
+        draw_surface_frame(*surface);
         return 0;
     }
     if (surface && message == WM_SIZE && surface->handle != NK_INVALID_HANDLE &&
@@ -3191,18 +3200,12 @@ void pump_events() noexcept {
     while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
         if (nk::backend::menu_backend_translate_accelerator(message))
             continue;
-        if (message.message == surface_frame_message) {
-            {
-                NK_TRACE_ZONE("nk.frame");
-                TranslateMessage(&message);
-                DispatchMessageW(&message);
-            }
-            // Yield to the application after one on-demand frame. A callback may
-            // request its successor; draining those messages forever starves input.
-            break;
-        }
         TranslateMessage(&message);
         DispatchMessageW(&message);
+        // Yield to the application after one on-demand frame. A callback may
+        // request its successor; draining those messages forever starves input.
+        if (message.message == surface_frame_message)
+            break;
     }
     reap_dialogs();
     poll_monitor_orientations();

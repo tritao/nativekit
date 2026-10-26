@@ -25,6 +25,7 @@
 #include "core/system_internal.hpp"
 #include "core/resource_events.hpp"
 #include "core/text_input_geometry.hpp"
+#include "core/surface_frame.hpp"
 #include "core/trace.hpp"
 
 #include <clocale>
@@ -2088,8 +2089,7 @@ gboolean on_surface_render(GtkGLArea *area, GdkGLContext *, gpointer data) {
     if (!scheduled && !resource->frame_requests.continuous())
         return TRUE;
     const int scale = gtk_widget_get_scale_factor(GTK_WIDGET(area));
-    NK_TRACE_ZONE("nk.frame");
-    nk::core::callback_boundary([&] {
+    nk::core::run_surface_frame([&] {
         const auto callback = resource->frame_callback;
         void *user_data = resource->frame_user_data;
         if (!callback || !nk::core::is_runtime_generation(resource->generation))
