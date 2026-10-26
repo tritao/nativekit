@@ -3267,6 +3267,32 @@ bool is_frame_message(const MSG &message) noexcept {
     return message.message == surface_frame_message ||
            (message.message == WM_TIMER && message.wParam == surface_frame_timer);
 }
+
+bool is_key_message(UINT message) noexcept {
+    return message == WM_KEYDOWN || message == WM_KEYUP || message == WM_SYSKEYDOWN ||
+           message == WM_SYSKEYUP;
+}
+
+/* Set when a frame message was left queued for an unpolled event; the next pump renders it. */
+bool frame_deferred = false;
+
+/* TranslateMessage posts the characters of a key message. They are not input messages, so they
+ * would sit behind every later key and move in the queue: take them right after their key. */
+void dispatch_posted_text() noexcept {
+    MSG text;
+    while (PeekMessageW(&text, nullptr, WM_CHAR, WM_UNICHAR, PM_REMOVE) ||
+           PeekMessageW(&text, nullptr, WM_IME_STARTCOMPOSITION, WM_IME_COMPOSITION, PM_REMOVE) ||
+           PeekMessageW(&text, nullptr, WM_IME_CHAR, WM_IME_CHAR, PM_REMOVE))
+        DispatchMessageW(&text);
+}
+
+/* Dispatches a message, then the characters its translation posted. */
+void translate_and_dispatch(const MSG &message) noexcept {
+    TranslateMessage(&message);
+    DispatchMessageW(&message);
+    if (is_key_message(message.message))
+        dispatch_posted_text();
+}
 } // namespace
 
 bool wait_events(std::uint64_t sequence, std::chrono::milliseconds timeout) noexcept {
@@ -3291,6 +3317,11 @@ bool wait_events(std::uint64_t sequence, std::chrono::milliseconds timeout) noex
          * message ends the wait without a new sequence. */
         if (result == WAIT_OBJECT_0 + (wake ? 1 : 0))
             return true;
+        if (result == WAIT_FAILED) {
+            /* Do not spin on a failing wait: sleep out the timeout the caller asked for. */
+            Sleep(static_cast<DWORD>(remaining.count()));
+            return ready();
+        }
     }
 }
 
@@ -3306,26 +3337,33 @@ void pump_events() noexcept {
     MSG message;
     /* Windows hands out sent and posted messages before queued input, and every frame requests
      * its successor by posting a message. Take input first, or a busy frame loop keeps it
-     * waiting in the system queue indefinitely. */
-    while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE | PM_QS_INPUT)) {
+     * waiting in the system queue indefinitely. Sent messages are named too: a queue filter
+     * otherwise leaves cross-thread SendMessage callers blocked while input streams in. */
+    while (PeekMessageW(&message, nullptr, 0, 0,
+                        PM_REMOVE | PM_QS_INPUT | PM_QS_SENDMESSAGE)) {
         if (nk::backend::menu_backend_translate_accelerator(message))
             continue;
-        TranslateMessage(&message);
-        DispatchMessageW(&message);
+        translate_and_dispatch(message);
     }
-    /* Input the application has not polled yet comes before any more frames: a frame rendered
-     * now would delay the event it should be reacting to. The frame message stays queued. */
-    if (!nk::core::events_pending()) {
-        while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
-            if (nk::backend::menu_backend_translate_accelerator(message))
-                continue;
-            TranslateMessage(&message);
-            DispatchMessageW(&message);
-            // Yield to the application after one on-demand frame. A callback may
-            // request its successor; draining those messages forever starves input.
-            if (is_frame_message(message))
+    /* Everything else, in queue order. A frame message waits one pump while the application has
+     * an unpolled event, so the event is returned before more rendering; it never waits twice,
+     * so sustained input cannot hold frames back. Paint and timers are not deferred at all. */
+    while (PeekMessageW(&message, nullptr, 0, 0, PM_NOREMOVE)) {
+        if (is_frame_message(message)) {
+            if (nk::core::events_pending() && !frame_deferred) {
+                frame_deferred = true;
                 break;
+            }
+            frame_deferred = false;
         }
+        PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE);
+        if (nk::backend::menu_backend_translate_accelerator(message))
+            continue;
+        translate_and_dispatch(message);
+        // Yield to the application after one on-demand frame. A callback may
+        // request its successor; draining those messages forever starves input.
+        if (is_frame_message(message))
+            break;
     }
     reap_dialogs();
     poll_monitor_orientations();
