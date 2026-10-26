@@ -348,6 +348,11 @@ void drain_app_tasks() noexcept {
     }
 }
 
+bool app_tasks_pending() noexcept {
+    std::lock_guard lock(task_mutex);
+    return !pending_tasks.empty();
+}
+
 void clear_app_tasks() noexcept {
     std::deque<AppTask> discarded;
     {

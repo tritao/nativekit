@@ -2,6 +2,7 @@
 
 #include "core/boundary.hpp"
 #include "core/error.hpp"
+#include "core/executor.hpp"
 #include "core/runtime.hpp"
 
 #include <algorithm>
@@ -37,7 +38,10 @@ nk_result wait_until(const Clock::time_point *deadline) {
     const auto sequence = nk::core::wake_sequence();
     for (;;) {
         nk::backend::pump_events();
-        if (nk::core::events_pending() || nk::core::wake_sequence() != sequence)
+        /* A task queued after the caller last polled already spent its wake before `sequence` was read. Waiting would
+         * strand it until the timeout: a render completion that lands there holds the next frame for a full wait. */
+        if (nk::core::events_pending() || nk::core::app_tasks_pending() ||
+            nk::core::wake_sequence() != sequence)
             return NK_OK;
         auto duration = pump_interval;
         if (deadline) {

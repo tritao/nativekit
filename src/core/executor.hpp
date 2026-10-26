@@ -75,6 +75,9 @@ NK_INTERNAL_API void fail_next_platform_dispatch() noexcept;
 /** Runs the tasks queued so far on the application executor. */
 void drain_app_tasks() noexcept;
 
+/** Reports whether tasks are queued on the application executor. */
+bool app_tasks_pending() noexcept;
+
 /** Discards queued tasks without invoking them. */
 void clear_app_tasks() noexcept;
 

@@ -48,6 +48,20 @@ int main() {
     assert(wake_result == NK_OK);
     assert(wake_elapsed < std::chrono::milliseconds(500));
 
+    // A task queued before the wait starts has already woken the pump once; the wait must still see it.
+    std::atomic<bool> task_ran{false};
+    std::thread dispatcher([&] {
+        assert(nk_dispatch_to_app([](void *ran) { static_cast<std::atomic<bool> *>(ran)->store(true); },
+                                  &task_ran) == NK_OK);
+    });
+    dispatcher.join();
+    const auto queued_start = std::chrono::steady_clock::now();
+    assert(nk_wait_events_timeout(1.0) == NK_OK);
+    const auto queued_elapsed = std::chrono::steady_clock::now() - queued_start;
+    assert(queued_elapsed < std::chrono::milliseconds(200));
+    drain_events();
+    assert(task_ran.load());
+
     const auto timeout_start = std::chrono::steady_clock::now();
     assert(nk_wait_events_timeout(0.04) == NK_OK);
     const auto timeout_elapsed = std::chrono::steady_clock::now() - timeout_start;
