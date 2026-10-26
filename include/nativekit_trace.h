@@ -58,7 +58,17 @@ enum {
     NK_TRACE_EVENT_INPUT_BUTTON = 2,
     /** The UI thread dequeued a key transition. `a`: platform key code; `b`: 1 pressed, 0 released.
      */
-    NK_TRACE_EVENT_INPUT_KEY = 3
+    NK_TRACE_EVENT_INPUT_KEY = 3,
+    /**
+     * nk_poll_event() handed the application a pointer move, a pointer button transition or a key
+     * transition. These come after the NK_TRACE_EVENT_INPUT_* of the same input: `os_time_ns` is
+     * again when the OS stamped it, so the difference between the two is the time the event waited
+     * in NativeKit's queue and the work done before the poll. A coalesced move carries the stamp of
+     * the oldest input it stands for. `a`, `b`: zero.
+     */
+    NK_TRACE_EVENT_POLLED_MOVE = 4,
+    NK_TRACE_EVENT_POLLED_BUTTON = 5,
+    NK_TRACE_EVENT_POLLED_KEY = 6
 };
 
 /**

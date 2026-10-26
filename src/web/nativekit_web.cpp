@@ -1330,8 +1330,9 @@ void on_resize(const nk::web::CanvasSize &size, void *user_data) {
     });
 }
 
-// TODO(trace): send NK_TRACE_EVENT (core/trace.hpp) for each key, pointer button and pointer move
-// queued here and in on_pointer, as the Windows and GTK backends do. A DOM event's timeStamp is on
+// TODO(trace): also set QueuedEvent::os_time_ns on each such event, which nk_poll_event reports.
+// Send NK_TRACE_EVENT (core/trace.hpp) for each key, pointer button and pointer move queued here
+// and in on_pointer, as the Windows and GTK backends do. A DOM event's timeStamp is on
 // performance.now()'s clock; pass it through KeyEvent and PointerEvent and convert it to
 // nk_time_now_ns()'s clock.
 void on_key(const nk::web::KeyEvent &event, void *user_data) {

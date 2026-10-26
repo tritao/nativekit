@@ -595,6 +595,11 @@ void queue_input_event(nk_event_kind kind, nk_handle source, std::vector<std::by
     event.source = source;
     event.flags = flags;
     event.data = std::move(data);
+    // Called while the message that caused the event is being handled, so its stamp is the input's.
+    if ((kind == NK_EVENT_POINTER_MOVE || kind == NK_EVENT_POINTER_BUTTON ||
+         kind == NK_EVENT_KEY) &&
+        NK_TRACE_ACTIVE())
+        event.os_time_ns = message_time_ns();
     nk::core::push_event(std::move(event));
 }
 

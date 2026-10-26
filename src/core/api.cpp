@@ -9,6 +9,7 @@
 #include "core/runtime.hpp"
 #include "core/worker_pool.hpp"
 #include "core/system_internal.hpp"
+#include "core/trace.hpp"
 #include "core/task.hpp"
 #include "net/net_backend.hpp"
 
@@ -260,9 +261,25 @@ nk_result NK_CALL nk_poll_event(nk_event *event) {
     nk::backend::pump_events();
     nk::core::run_cooperative_tasks();
     nk_result result = NK_OK;
+    std::uint64_t os_time_ns = 0;
     {
         std::lock_guard lock(state_mutex);
-        result = event_queue->poll(*event);
+        result = event_queue->poll(*event, &os_time_ns);
+    }
+    if (result == NK_OK) {
+        switch (event->kind) {
+        case NK_EVENT_POINTER_MOVE:
+            NK_TRACE_EVENT(NK_TRACE_EVENT_POLLED_MOVE, os_time_ns, 0, 0);
+            break;
+        case NK_EVENT_POINTER_BUTTON:
+            NK_TRACE_EVENT(NK_TRACE_EVENT_POLLED_BUTTON, os_time_ns, 0, 0);
+            break;
+        case NK_EVENT_KEY:
+            NK_TRACE_EVENT(NK_TRACE_EVENT_POLLED_KEY, os_time_ns, 0, 0);
+            break;
+        default:
+            break;
+        }
     }
     if (result == NK_OK && nk::core::dispatch_resource_data_event(*event))
         nk_event_release(event);

@@ -3728,9 +3728,10 @@ JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnSurfaceFrame(JN
     });
 }
 
-// TODO(trace): send NK_TRACE_EVENT (core/trace.hpp) for each key, pointer button and pointer move
-// these bridge calls queue, as the Windows and GTK backends do. The Java side must pass the event
-// time: MotionEvent.getEventTimeNanos() and KeyEvent.getEventTime() count on CLOCK_MONOTONIC, which
+// TODO(trace): also set QueuedEvent::os_time_ns on each such event, which nk_poll_event reports.
+// Send NK_TRACE_EVENT (core/trace.hpp) for each key, pointer button and pointer move these bridge
+// calls queue, as the Windows and GTK backends do. The Java side must pass the event time:
+// MotionEvent.getEventTimeNanos() and KeyEvent.getEventTime() count on CLOCK_MONOTONIC, which
 // should be nk_time_now_ns()'s clock on Android (check it).
 JNIEXPORT void JNICALL Java_io_nativekit_NativeKitBridge_nativeOnTouch(
     JNIEnv *, jclass, jlong handle_value, jint pointer_id, jint action, jint tool, jfloat x,

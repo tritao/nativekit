@@ -1913,6 +1913,7 @@ gboolean on_key(GtkWidget *, GdkEventKey *key_event, gpointer data) {
         event.kind = NK_EVENT_KEY;
         event.source = resource->handle;
         event.data = bytes_of(payload);
+        event.os_time_ns = NK_TRACE_ACTIVE() ? input_time_ns(key_event->time) : 0;
         nk::core::push_event(std::move(event));
         if (resource->im_context)
             im_handled = gtk_im_context_filter_keypress(resource->im_context, key_event);
@@ -1933,6 +1934,7 @@ gboolean on_pointer_move(GtkWidget *widget, GdkEventMotion *motion, gpointer dat
         event.kind = NK_EVENT_POINTER_MOVE;
         event.source = resource->handle;
         event.data = bytes_of(payload);
+        event.os_time_ns = NK_TRACE_ACTIVE() ? input_time_ns(motion->time) : 0;
         nk::core::push_event(std::move(event));
     });
     return FALSE;
@@ -1980,6 +1982,7 @@ gboolean on_pointer_button(GtkWidget *widget, GdkEventButton *button_event, gpoi
         event.kind = NK_EVENT_POINTER_BUTTON;
         event.source = resource->handle;
         event.data = bytes_of(payload);
+        event.os_time_ns = NK_TRACE_ACTIVE() ? input_time_ns(button_event->time) : 0;
         nk::core::push_event(std::move(event));
     });
     return TRUE;

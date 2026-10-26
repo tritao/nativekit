@@ -834,6 +834,14 @@ on no host. The sink receives:
   pressed or 0 for released. `os_time_ns` is when the OS stamped the input, on
   the clock of `nk_time_now_ns()`, or 0 when unknown.
 
+A second instant follows each of those when the application takes the event from
+the queue: `NK_TRACE_EVENT_POLLED_MOVE`, `_BUTTON` and `_KEY`, sent by
+`nk_poll_event()`, with the same `os_time_ns`. Their difference from the first is
+the time an input waited in NativeKit's queue and behind the work done before the
+poll. A pointer move that the queue merged into a newer one carries the stamp of
+the oldest input it stands for, so it reports the age of the oldest input not yet
+delivered. Backends set `QueuedEvent::os_time_ns` when they queue an input.
+
 The input stamp is coarse. GTK reports milliseconds, rebuilt from the 32-bit GDK
 event time against the monotonic clock; Windows reports the system tick
 (usually 15.6 ms) from `GetMessageTime()`. Use the stamp to find delays of tens

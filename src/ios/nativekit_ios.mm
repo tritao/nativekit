@@ -1412,9 +1412,10 @@ nk_key key_from_hid(UIKeyboardHIDUsage code) {
     }
 }
 
-// TODO(trace): send NK_TRACE_EVENT (core/trace.hpp) for each key, pointer button and pointer move
-// these emitters queue, as the Windows and GTK backends do. UIEvent.timestamp counts seconds since
-// boot; convert it to nk_time_now_ns()'s clock, or pass 0 if the two clocks cannot be matched.
+// TODO(trace): also set QueuedEvent::os_time_ns on each such event, which nk_poll_event reports.
+// Send NK_TRACE_EVENT (core/trace.hpp) for each key, pointer button and pointer move these emitters
+// queue, as the Windows and GTK backends do. UIEvent.timestamp counts seconds since boot; convert
+// it to nk_time_now_ns()'s clock, or pass 0 if the two clocks cannot be matched.
 void emit_key_transition(IOSSurface &resource, UIKey *key, nk_input_action action) {
     if (!key)
         return;

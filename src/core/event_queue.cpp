@@ -59,7 +59,8 @@ bool is_coalescible(nk_event_kind kind) {
 }
 
 bool is_persistent_readiness(nk_event_kind kind) {
-    /* A file watcher's consumer relies on READY to stop polling, so it is kept like HTTP readiness. */
+    /* A file watcher's consumer relies on READY to stop polling, so it is kept like HTTP readiness.
+     */
     return kind == NK_EVENT_HTTP_HEADERS || kind == NK_EVENT_HTTP_DATA_AVAILABLE ||
            kind == NK_EVENT_FILE_WATCH_READY;
 }
@@ -103,6 +104,14 @@ bool same_coalescing_target(const QueuedEvent &first, const QueuedEvent &second)
     std::memcpy(&first_axis, first.data.data(), sizeof(first_axis));
     std::memcpy(&second_axis, second.data.data(), sizeof(second_axis));
     return first_axis == second_axis;
+}
+
+/* A coalesced event stands for every input it replaced: it keeps the oldest OS stamp, so the age
+ * reported when it is polled is that of the oldest input not yet delivered. */
+void keep_oldest_stamp(const QueuedEvent &replaced, QueuedEvent &replacement) {
+    if (replaced.os_time_ns != 0 &&
+        (replacement.os_time_ns == 0 || replaced.os_time_ns < replacement.os_time_ns))
+        replacement.os_time_ns = replaced.os_time_ns;
 }
 } // namespace
 
@@ -158,6 +167,7 @@ nk_result EventQueue::push(QueuedEvent event) {
             for (auto item = queue_.rbegin(); item != queue_.rend(); ++item) {
                 if (same_coalescing_target(*item, event)) {
                     queued_bytes_ -= item->data.size();
+                    keep_oldest_stamp(*item, event);
                     *item = std::move(event);
                     queued_bytes_ += event_bytes;
                     return NK_OK;
@@ -165,6 +175,7 @@ nk_result EventQueue::push(QueuedEvent event) {
             }
         } else if (same_coalescing_target(queue_.back(), event)) {
             queued_bytes_ -= queue_.back().data.size();
+            keep_oldest_stamp(queue_.back(), event);
             queue_.back() = std::move(event);
             queued_bytes_ += event_bytes;
             return NK_OK;
@@ -222,7 +233,7 @@ nk_result EventQueue::push(QueuedEvent event) {
     return NK_OK;
 }
 
-nk_result EventQueue::poll(nk_event &output) {
+nk_result EventQueue::poll(nk_event &output, std::uint64_t *os_time_ns) {
     std::lock_guard lock(mutex_);
     promote_deferred_readiness(queue_, deferred_readiness_, capacity_);
     promote_pending_overflow(queue_, pending_file_watch_overflows_, capacity_);
@@ -247,6 +258,8 @@ nk_result EventQueue::poll(nk_event &output) {
     output.data_count = event.data_count;
     output.data = payload;
     output.data_size = event.data.size();
+    if (os_time_ns)
+        *os_time_ns = event.os_time_ns;
     queued_bytes_ -= event.data.size();
     queue_.pop_front();
     promote_deferred_readiness(queue_, deferred_readiness_, capacity_);

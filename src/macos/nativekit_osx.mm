@@ -1811,11 +1811,11 @@ nk_key key_from_cocoa(unsigned short code) {
     }
 }
 
-// TODO(trace): send NK_TRACE_EVENT (core/trace.hpp) for each key, pointer button and pointer move
-// taken off the event queue here and in the view's mouse handlers, as the Windows and GTK backends
-// do: screen position in physical pixels, or key code and pressed. NSEvent.timestamp counts seconds
-// since boot; convert it to nk_time_now_ns()'s clock, or pass 0 if the two clocks cannot be
-// matched.
+// TODO(trace): also set QueuedEvent::os_time_ns on each such event, which nk_poll_event reports.
+// Send NK_TRACE_EVENT (core/trace.hpp) for each key, pointer button and pointer move taken off the
+// event queue here and in the view's mouse handlers, as the Windows and GTK backends do: screen
+// position in physical pixels, or key code and pressed. NSEvent.timestamp counts seconds since
+// boot; convert it to nk_time_now_ns()'s clock, or pass 0 if the two clocks cannot be matched.
 void emit_key_transition(MacWindowResource &resource, NSEvent *event, nk_input_action action) {
     const auto key = key_from_cocoa(event.keyCode);
     if (key != NK_KEY_UNKNOWN)
