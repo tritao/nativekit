@@ -60,7 +60,6 @@ if(WIN32)
     add_executable(nativekit_input_stamps_tests
         unit/input_stamps_tests.cpp
         ${PROJECT_SOURCE_DIR}/src/core/thread_name.cpp
-        ${PROJECT_SOURCE_DIR}/src/windows/input_stamp_log.cpp
         ${PROJECT_SOURCE_DIR}/src/windows/nativekit_win_input_stamps.cpp)
     target_compile_features(nativekit_input_stamps_tests PRIVATE cxx_std_17)
     target_include_directories(nativekit_input_stamps_tests PRIVATE ${PROJECT_SOURCE_DIR}/src)

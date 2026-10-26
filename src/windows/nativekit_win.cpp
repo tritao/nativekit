@@ -114,71 +114,20 @@ struct InputMessageScope {
 };
 thread_local InputMessageScope *InputMessageScope::current = nullptr;
 
-bool stamped_input_message(UINT message) noexcept {
-    switch (message) {
-    case WM_MOUSEMOVE:
-    case WM_LBUTTONDOWN:
-    case WM_LBUTTONUP:
-    case WM_LBUTTONDBLCLK:
-    case WM_RBUTTONDOWN:
-    case WM_RBUTTONUP:
-    case WM_RBUTTONDBLCLK:
-    case WM_MBUTTONDOWN:
-    case WM_MBUTTONUP:
-    case WM_MBUTTONDBLCLK:
-    case WM_XBUTTONDOWN:
-    case WM_XBUTTONUP:
-    case WM_XBUTTONDBLCLK:
-    case WM_KEYDOWN:
-    case WM_KEYUP:
-    case WM_SYSKEYDOWN:
-    case WM_SYSKEYUP:
-        return true;
-    default:
-        return false;
-    }
-}
-
 /** The hook's stamp for `scope`'s message, or 0 when the hooks did not see it. */
 std::uint64_t hooked_message_time_ns(const InputMessageScope &scope) noexcept {
     namespace stamps = nk::windows_input_stamps;
     const auto time = static_cast<std::uint32_t>(GetMessageTime());
-    const UINT message = scope.message;
-    if (message == WM_KEYDOWN || message == WM_KEYUP || message == WM_SYSKEYDOWN ||
-        message == WM_SYSKEYUP) {
-        const auto scan_code = static_cast<std::uint32_t>((scope.lparam >> 16) & 0xff);
-        const bool extended = (scope.lparam & (1ll << 24)) != 0;
-        const bool released = message == WM_KEYUP || message == WM_SYSKEYUP;
-        return stamps::take(stamps::Kind::key, time, 0, 0,
-                            stamps::key_code(scan_code, extended, released));
-    }
+    const auto scan_code = static_cast<std::uint32_t>((scope.lparam >> 16) & 0xff);
+    const bool extended = (scope.lparam & (1ll << 24)) != 0;
+    if (const auto key = stamps::key_input(scope.message, scan_code, extended, time))
+        return stamps::match(*key);
     POINT screen{GET_X_LPARAM(scope.lparam), GET_Y_LPARAM(scope.lparam)};
     ClientToScreen(scope.window, &screen);
-    if (message == WM_MOUSEMOVE)
-        return stamps::take(stamps::Kind::move, time, screen.x, screen.y, 0);
-    /* The hook sees a press where the window may get a double click. */
-    UINT transition = message;
-    switch (message) {
-    case WM_LBUTTONDBLCLK:
-        transition = WM_LBUTTONDOWN;
-        break;
-    case WM_RBUTTONDBLCLK:
-        transition = WM_RBUTTONDOWN;
-        break;
-    case WM_MBUTTONDBLCLK:
-        transition = WM_MBUTTONDOWN;
-        break;
-    case WM_XBUTTONDBLCLK:
-        transition = WM_XBUTTONDOWN;
-        break;
-    default:
-        break;
-    }
-    const std::uint32_t xbutton = transition == WM_XBUTTONDOWN || transition == WM_XBUTTONUP
-                                      ? GET_XBUTTON_WPARAM(scope.wparam)
-                                      : 0u;
-    return stamps::take(stamps::Kind::button, time, screen.x, screen.y,
-                        stamps::button_code(transition, xbutton));
+    if (const auto mouse = stamps::mouse_input(scope.message, GET_XBUTTON_WPARAM(scope.wparam),
+                                               screen.x, screen.y, time))
+        return stamps::match(*mouse);
+    return 0;
 }
 
 /**
@@ -1607,7 +1556,7 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
         if (message == WM_CAPTURECHANGED && reinterpret_cast<HWND>(lparam) != window)
             resource->pointer_captured = false;
         std::optional<InputMessageScope> input_scope;
-        if (NK_TRACE_ACTIVE() && stamped_input_message(message))
+        if (NK_TRACE_ACTIVE() && nk::windows_input_stamps::is_input_message(message))
             input_scope.emplace(window, message, wparam, lparam);
         bool pointer_handled = false;
         nk::core::callback_boundary(
@@ -3308,9 +3257,8 @@ nk_result get_string(nk_system_string_kind kind, std::string &out_value) {
 namespace nk::backend {
 void pump_events() noexcept {
     nk::windows_joystick::pump();
-    /* Started on the first pump while tracing, so input from then on gets a precise stamp. */
-    if (NK_TRACE_ACTIVE())
-        nk::windows_input_stamps::ensure_started();
+    /* The hooks run while tracing, so input from the first traced pump on gets a precise stamp. */
+    nk::windows_input_stamps::update(NK_TRACE_ACTIVE());
     MSG message;
     while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
         if (nk::backend::menu_backend_translate_accelerator(message))
