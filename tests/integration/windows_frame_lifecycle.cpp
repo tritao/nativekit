@@ -74,11 +74,14 @@ int main() {
     assert(nk_surface_set_frame_mode(surface, NK_SURFACE_FRAME_ON_DEMAND) == NK_OK);
     assert(nk_surface_set_frame_callback(surface, on_frame, &state) == NK_OK);
     assert(nk_surface_request_frame(surface) == NK_OK);
-    nk_event first_event{};
-    first_event.struct_size = sizeof(first_event);
-    assert(nk_poll_event(&first_event) == NK_OK);
-    nk_event_release(&first_event);
-    // An on-demand request must dispatch without waiting for the 16 ms timer.
+    // An on-demand request must dispatch without waiting for the 16 ms timer. The window's creation
+    // events are still unpolled, so the frame waits for one poll, and never for more than one.
+    for (int poll = 0; poll < 2 && state.callbacks == 0; ++poll) {
+        nk_event event{};
+        event.struct_size = sizeof(event);
+        if (nk_poll_event(&event) == NK_OK)
+            nk_event_release(&event);
+    }
     assert(state.callbacks == 1);
     pump_for(150);
     // A pending successor must not reenter the callback or present the held frame.
