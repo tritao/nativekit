@@ -8,9 +8,31 @@
 #include <chrono>
 #include <cmath>
 
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <timeapi.h>
+#if defined(_MSC_VER)
+#pragma comment(lib, "winmm.lib")
+#endif
+#endif
+
 namespace {
 using Clock = std::chrono::steady_clock;
 constexpr auto pump_interval = std::chrono::milliseconds(10);
+
+/* At the default timer resolution (15.6 ms) a short timed wait on Windows wakes up to a whole tick late, so an input or
+ * frame deadline a few milliseconds away is missed by ~16 ms. Hold 1 ms resolution only while waiting, as HashLink's
+ * Sys.sleep does. */
+struct FineTimerScope {
+#if defined(_WIN32)
+    FineTimerScope() { timeBeginPeriod(1); }
+    ~FineTimerScope() { timeEndPeriod(1); }
+#endif
+};
 
 nk_result wait_until(const Clock::time_point *deadline) {
     if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
@@ -30,6 +52,7 @@ nk_result wait_until(const Clock::time_point *deadline) {
             if (duration.count() == 0)
                 duration = std::chrono::milliseconds(1);
         }
+        const FineTimerScope fine_timer;
 #if defined(NK_BACKEND_GTK)
         if (nk::backend::wait_events(sequence, duration))
 #else
