@@ -842,10 +842,24 @@ poll. A pointer move that the queue merged into a newer one carries the stamp of
 the oldest input it stands for, so it reports the age of the oldest input not yet
 delivered. Backends set `QueuedEvent::os_time_ns` when they queue an input.
 
-The input stamp is coarse. GTK reports milliseconds, rebuilt from the 32-bit GDK
-event time against the monotonic clock; Windows reports the system tick
-(usually 15.6 ms) from `GetMessageTime()`. Use the stamp to find delays of tens
-of milliseconds, not to time single frames.
+GTK's input stamp is coarse: milliseconds, rebuilt from the 32-bit GDK event
+time against the monotonic clock. Use it to find delays of tens of milliseconds,
+not to time single frames.
+
+On Windows a message carries only `GetMessageTime()`, which counts milliseconds
+on the system tick (15.6 ms; `timeBeginPeriod` does not refine it). While a
+trace is active NativeKit therefore installs low-level mouse and keyboard hooks
+(`WH_MOUSE_LL`, `WH_KEYBOARD_LL`) on a thread of their own, the first time
+`nk_poll_event()` or a wait for events reads the platform queue. The system calls them as it takes each input, before the input
+reaches a queue, and the thread stamps it with the steady clock, within tens of
+microseconds. The UI thread finds the stamp for a pointer move, button or key by
+the tick time the hook and the message share, and by the position, button or
+scan code. An input the hooks did not see, such as a move the system made up
+after a window moved, falls back to the tick. The stamp is when the system took
+the input, not when the device sent it; USB polling and the driver come before.
+Setting `NK_INPUT_STAMP_HOOK=0` turns the hooks off. Every input on the desktop
+passes through them, so a traced process stopped in a debugger delays all input
+until Windows times the hook out.
 
 The sink's optional `enabled` pointer is a switch the host owns. While it reads
 zero, a trace point costs one load and calls nothing; with no sink it costs the

@@ -56,6 +56,19 @@ target_compile_features(nativekit_trace_tests PRIVATE cxx_std_17)
 target_link_libraries(nativekit_trace_tests PRIVATE NativeKit::nativekit)
 add_test(NAME trace COMMAND nativekit_trace_tests)
 
+if(WIN32)
+    add_executable(nativekit_input_stamps_tests
+        unit/input_stamps_tests.cpp
+        ${PROJECT_SOURCE_DIR}/src/core/thread_name.cpp
+        ${PROJECT_SOURCE_DIR}/src/windows/input_stamp_log.cpp
+        ${PROJECT_SOURCE_DIR}/src/windows/nativekit_win_input_stamps.cpp)
+    target_compile_features(nativekit_input_stamps_tests PRIVATE cxx_std_17)
+    target_include_directories(nativekit_input_stamps_tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
+    target_link_libraries(nativekit_input_stamps_tests PRIVATE NativeKit::nativekit user32)
+    add_test(NAME input_stamps COMMAND nativekit_input_stamps_tests)
+    set_tests_properties(input_stamps PROPERTIES TIMEOUT 30)
+endif()
+
 add_executable(nativekit_plugin_tests unit/plugin_tests.cpp)
 target_compile_features(nativekit_plugin_tests PRIVATE cxx_std_17)
 target_link_libraries(nativekit_plugin_tests PRIVATE NativeKit::nativekit)

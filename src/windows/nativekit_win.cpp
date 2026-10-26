@@ -25,6 +25,7 @@
 #include "core/resource_events.hpp"
 #include "core/text_edit_transaction.hpp"
 #include "core/text_input_geometry.hpp"
+#include "windows/input_stamps.hpp"
 #include "windows/joystick.hpp"
 
 #define UNICODE
@@ -70,6 +71,7 @@
 #include <limits>
 #include <mutex>
 #include <new>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -88,11 +90,113 @@ constexpr UINT notification_message = WM_APP + 42;
 constexpr UINT surface_frame_message = WM_APP + 43;
 
 /**
- * When the OS stamped the message being handled, on nk_time_now_ns()'s clock. GetMessageTime counts
- * milliseconds on the system tick, so the stamp is only as fine as the tick (usually 15.6 ms).
+ * The input message the window procedure is handling, so message_time_ns() can find its precise
+ * stamp. Window procedures nest (SendMessage), so each scope restores the one it replaced.
+ */
+struct InputMessageScope {
+    HWND window;
+    UINT message;
+    WPARAM wparam;
+    LPARAM lparam;
+    InputMessageScope *outer;
+    bool resolved = false;
+    std::uint64_t stamp_ns = 0;
+
+    static thread_local InputMessageScope *current;
+
+    InputMessageScope(HWND window_, UINT message_, WPARAM wparam_, LPARAM lparam_) noexcept
+        : window(window_), message(message_), wparam(wparam_), lparam(lparam_), outer(current) {
+        current = this;
+    }
+    ~InputMessageScope() { current = outer; }
+    InputMessageScope(const InputMessageScope &) = delete;
+    InputMessageScope &operator=(const InputMessageScope &) = delete;
+};
+thread_local InputMessageScope *InputMessageScope::current = nullptr;
+
+bool stamped_input_message(UINT message) noexcept {
+    switch (message) {
+    case WM_MOUSEMOVE:
+    case WM_LBUTTONDOWN:
+    case WM_LBUTTONUP:
+    case WM_LBUTTONDBLCLK:
+    case WM_RBUTTONDOWN:
+    case WM_RBUTTONUP:
+    case WM_RBUTTONDBLCLK:
+    case WM_MBUTTONDOWN:
+    case WM_MBUTTONUP:
+    case WM_MBUTTONDBLCLK:
+    case WM_XBUTTONDOWN:
+    case WM_XBUTTONUP:
+    case WM_XBUTTONDBLCLK:
+    case WM_KEYDOWN:
+    case WM_KEYUP:
+    case WM_SYSKEYDOWN:
+    case WM_SYSKEYUP:
+        return true;
+    default:
+        return false;
+    }
+}
+
+/** The hook's stamp for `scope`'s message, or 0 when the hooks did not see it. */
+std::uint64_t hooked_message_time_ns(const InputMessageScope &scope) noexcept {
+    namespace stamps = nk::windows_input_stamps;
+    const auto time = static_cast<std::uint32_t>(GetMessageTime());
+    const UINT message = scope.message;
+    if (message == WM_KEYDOWN || message == WM_KEYUP || message == WM_SYSKEYDOWN ||
+        message == WM_SYSKEYUP) {
+        const auto scan_code = static_cast<std::uint32_t>((scope.lparam >> 16) & 0xff);
+        const bool extended = (scope.lparam & (1ll << 24)) != 0;
+        const bool released = message == WM_KEYUP || message == WM_SYSKEYUP;
+        return stamps::take(stamps::Kind::key, time, 0, 0,
+                            stamps::key_code(scan_code, extended, released));
+    }
+    POINT screen{GET_X_LPARAM(scope.lparam), GET_Y_LPARAM(scope.lparam)};
+    ClientToScreen(scope.window, &screen);
+    if (message == WM_MOUSEMOVE)
+        return stamps::take(stamps::Kind::move, time, screen.x, screen.y, 0);
+    /* The hook sees a press where the window may get a double click. */
+    UINT transition = message;
+    switch (message) {
+    case WM_LBUTTONDBLCLK:
+        transition = WM_LBUTTONDOWN;
+        break;
+    case WM_RBUTTONDBLCLK:
+        transition = WM_RBUTTONDOWN;
+        break;
+    case WM_MBUTTONDBLCLK:
+        transition = WM_MBUTTONDOWN;
+        break;
+    case WM_XBUTTONDBLCLK:
+        transition = WM_XBUTTONDOWN;
+        break;
+    default:
+        break;
+    }
+    const std::uint32_t xbutton = transition == WM_XBUTTONDOWN || transition == WM_XBUTTONUP
+                                      ? GET_XBUTTON_WPARAM(scope.wparam)
+                                      : 0u;
+    return stamps::take(stamps::Kind::button, time, screen.x, screen.y,
+                        stamps::button_code(transition, xbutton));
+}
+
+/**
+ * When the OS stamped the message being handled, on nk_time_now_ns()'s clock. For a pointer move,
+ * button or key that the low-level hooks saw, that is the hook thread's steady-clock stamp, within
+ * tens of microseconds of the system taking the input. Otherwise it is rebuilt from GetMessageTime,
+ * which counts milliseconds on the system tick, so it is only as fine as the tick (15.6 ms).
  */
 std::uint64_t message_time_ns() noexcept {
     const std::uint64_t now = nk_time_now_ns();
+    if (InputMessageScope *scope = InputMessageScope::current) {
+        if (!scope->resolved) {
+            scope->resolved = true;
+            scope->stamp_ns = hooked_message_time_ns(*scope);
+        }
+        if (scope->stamp_ns != 0 && scope->stamp_ns <= now)
+            return scope->stamp_ns;
+    }
     const std::uint64_t age = static_cast<std::uint64_t>(static_cast<DWORD>(
                                   GetTickCount() - static_cast<DWORD>(GetMessageTime()))) *
                               1000000u;
@@ -1502,6 +1606,9 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
         }
         if (message == WM_CAPTURECHANGED && reinterpret_cast<HWND>(lparam) != window)
             resource->pointer_captured = false;
+        std::optional<InputMessageScope> input_scope;
+        if (NK_TRACE_ACTIVE() && stamped_input_message(message))
+            input_scope.emplace(window, message, wparam, lparam);
         bool pointer_handled = false;
         nk::core::callback_boundary(
             [&] { pointer_handled = handle_pointer_message(*resource, message, wparam); });
@@ -3201,6 +3308,9 @@ nk_result get_string(nk_system_string_kind kind, std::string &out_value) {
 namespace nk::backend {
 void pump_events() noexcept {
     nk::windows_joystick::pump();
+    /* Started on the first pump while tracing, so input from then on gets a precise stamp. */
+    if (NK_TRACE_ACTIVE())
+        nk::windows_input_stamps::ensure_started();
     MSG message;
     while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
         if (nk::backend::menu_backend_translate_accelerator(message))
@@ -3217,6 +3327,7 @@ void pump_events() noexcept {
 }
 
 void shutdown() noexcept {
+    nk::windows_input_stamps::shutdown();
     nk::windows_joystick::shutdown();
     menu_backend_shutdown();
     while (!notifications.empty())
