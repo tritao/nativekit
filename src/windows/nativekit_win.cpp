@@ -3273,15 +3273,25 @@ bool wait_events(std::uint64_t sequence, std::chrono::milliseconds timeout) noex
     const auto ready = [sequence] {
         return nk::core::wake_sequence() != sequence || nk::core::events_pending();
     };
-    if (ready())
-        return true;
     const HANDLE wake = event_wake_handle();
-    /* Window input wakes the wait too: a condition variable alone sleeps through it until the
-     * timeout. MWMO_INPUTAVAILABLE also reports input a PeekMessage call left in the queue. */
-    const DWORD result = MsgWaitForMultipleObjectsEx(wake ? 1 : 0, wake ? &wake : nullptr,
-                                                     static_cast<DWORD>(timeout.count()),
-                                                     QS_ALLINPUT, MWMO_INPUTAVAILABLE);
-    return result != WAIT_TIMEOUT || ready();
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    for (;;) {
+        if (ready())
+            return true;
+        const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now());
+        if (remaining.count() <= 0)
+            return false;
+        /* Window input wakes the wait too: a condition variable alone sleeps through it until the
+         * timeout. MWMO_INPUTAVAILABLE also reports input a PeekMessage call left in the queue. */
+        const DWORD result = MsgWaitForMultipleObjectsEx(
+            wake ? 1 : 0, wake ? &wake : nullptr, static_cast<DWORD>(remaining.count()),
+            QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+        /* The wake event stays signalled after a wake the caller already saw. Only a window
+         * message ends the wait without a new sequence. */
+        if (result == WAIT_OBJECT_0 + (wake ? 1 : 0))
+            return true;
+    }
 }
 
 void wake_event_wait() noexcept {
