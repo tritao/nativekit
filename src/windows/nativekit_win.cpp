@@ -3356,7 +3356,9 @@ void pump_events() noexcept {
             }
             frame_deferred = false;
         }
-        PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE);
+        // Remove the message that was inspected, not whatever another thread queued meanwhile.
+        if (!PeekMessageW(&message, message.hwnd, message.message, message.message, PM_REMOVE))
+            continue;
         if (nk::backend::menu_backend_translate_accelerator(message))
             continue;
         translate_and_dispatch(message);
