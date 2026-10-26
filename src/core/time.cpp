@@ -3,6 +3,7 @@
 #include "core/boundary.hpp"
 #include "core/error.hpp"
 #include "core/executor.hpp"
+#include "core/latency_trace.hpp"
 #include "core/runtime.hpp"
 
 #include <algorithm>
@@ -54,11 +55,15 @@ nk_result wait_until(const Clock::time_point *deadline) {
                 duration = std::chrono::milliseconds(1);
         }
         const FineTimerScope fine_timer;
+        nk::core::latency_trace_flush();
+        nk::core::latency_trace('W', duration.count());
 #if defined(NK_BACKEND_GTK)
-        if (nk::backend::wait_events(sequence, duration))
+        const bool woken = nk::backend::wait_events(sequence, duration);
 #else
-        if (nk::core::wait_for_wake(sequence, duration))
+        const bool woken = nk::core::wait_for_wake(sequence, duration);
 #endif
+        nk::core::latency_trace('w', woken ? 1 : 0);
+        if (woken)
             return NK_OK;
     }
 }

@@ -12,6 +12,7 @@
 #include "core/error.hpp"
 #include "core/boundary.hpp"
 #include "core/frame_request.hpp"
+#include "core/latency_trace.hpp"
 #include "core/thread_name.hpp"
 #include "core/frame_backend.hpp"
 #include "core/graphics_frame_target.hpp"
@@ -83,6 +84,15 @@ constexpr wchar_t window_class_name[] = L"NativeKitWindow";
 constexpr wchar_t surface_class_name[] = L"NativeKitD3D11Surface";
 constexpr UINT notification_message = WM_APP + 42;
 constexpr UINT surface_frame_message = WM_APP + 43;
+
+/** Records a mouse message for the latency trace, in screen coordinates as an OS input hook sees them. */
+void trace_mouse_message(HWND window, char kind, LPARAM lparam) noexcept {
+    if (!nk::core::latency_trace_enabled())
+        return;
+    POINT screen{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
+    ClientToScreen(window, &screen);
+    nk::core::latency_trace(kind, screen.x, screen.y);
+}
 constexpr UINT_PTR surface_frame_timer = 1;
 ATOM window_class = 0;
 ATOM surface_window_class = 0;
@@ -1484,6 +1494,8 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             return message == WM_XBUTTONDOWN || message == WM_XBUTTONUP ? TRUE : 0;
         if (message == WM_KEYDOWN || message == WM_SYSKEYDOWN || message == WM_KEYUP ||
             message == WM_SYSKEYUP) {
+            nk::core::latency_trace('K', static_cast<std::int64_t>(wparam),
+                                    message == WM_KEYDOWN || message == WM_SYSKEYDOWN ? 1 : 0);
             nk::core::callback_boundary([&] {
                 const bool released = message == WM_KEYUP || message == WM_SYSKEYUP;
                 const nk_key key = key_from_windows(wparam, lparam);
@@ -1547,6 +1559,7 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             return 0;
         }
         if (message == WM_MOUSEMOVE) {
+            trace_mouse_message(window, 'M', lparam);
             nk::core::callback_boundary([&] {
                 if (!resource->pointer_tracking) {
                     TRACKMOUSEEVENT tracking{sizeof(tracking), TME_LEAVE, window, 0};
@@ -1567,6 +1580,7 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             return 0;
         }
         if (pointer_button_message(message)) {
+            trace_mouse_message(window, 'B', lparam);
             nk::core::callback_boundary([&] {
                 update_pointer_position(*resource, lparam);
                 const bool released = message == WM_LBUTTONUP || message == WM_RBUTTONUP ||
@@ -3162,8 +3176,13 @@ void pump_events() noexcept {
     while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
         if (nk::backend::menu_backend_translate_accelerator(message))
             continue;
+        const bool frame = message.message == surface_frame_message;
+        if (frame)
+            nk::core::latency_trace('F');
         TranslateMessage(&message);
         DispatchMessageW(&message);
+        if (frame)
+            nk::core::latency_trace('f');
         // Yield to the application after one on-demand frame. A callback may
         // request its successor; draining those messages forever starves input.
         if (message.message == surface_frame_message)

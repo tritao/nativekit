@@ -168,6 +168,7 @@ add_library(nativekit ${NK_LIBRARY_TYPE}
     src/core/system.cpp
     src/core/text_input.cpp
     src/core/thread_name.cpp
+    src/core/latency_trace.cpp
     src/core/time.cpp
     src/core/vulkan.cpp
     src/core/worker_pool.cpp
