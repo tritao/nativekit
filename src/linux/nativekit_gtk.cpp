@@ -251,6 +251,10 @@ struct GtkSurfaceResource final : nk::core::Resource {
     uint32_t share_dependents = 0;
     nk_surface_frame_callback frame_callback = nullptr;
     void *frame_user_data = nullptr;
+    /* glGetIntegerv, resolved on the first frame target query: the renderer asks for a frame target
+       several times a frame, and resolving the function searches the symbol tables of every loaded
+       library. */
+    void (*gl_get_integerv)(unsigned int, int *) = nullptr;
     guint frame_tick = 0;
     GtkWidget *frame_tick_widget = nullptr;
     nk::core::FrameRequestState frame_requests;
@@ -5519,12 +5523,18 @@ nk_result NK_CALL nk_surface_get_frame_target(nk_handle handle,
     if (const auto result = nk_surface_get_framebuffer_size(handle, &width, &height);
         result != NK_OK)
         return result;
-    nk_graphics_proc proc = nullptr;
-    if (const auto result = nk_surface_get_proc_address(handle, "glGetIntegerv", &proc);
-        result != NK_OK)
+    // The query below needs the surface's context current, as resolving the function made it.
+    if (const auto result = nk_surface_make_current(handle); result != NK_OK)
         return result;
-    using GlGetIntegerv = void (*)(unsigned int, int *);
-    auto get_integerv = reinterpret_cast<GlGetIntegerv>(proc);
+    if (!resource->gl_get_integerv) {
+        nk_graphics_proc proc = nullptr;
+        if (const auto result = nk_surface_get_proc_address(handle, "glGetIntegerv", &proc);
+            result != NK_OK)
+            return result;
+        using GlGetIntegerv = void (*)(unsigned int, int *);
+        resource->gl_get_integerv = reinterpret_cast<GlGetIntegerv>(proc);
+    }
+    const auto get_integerv = resource->gl_get_integerv;
     int framebuffer = 0;
     get_integerv(0x8CA6u, &framebuffer); // GL_DRAW_FRAMEBUFFER_BINDING
     nk_surface_frame_target target{};
