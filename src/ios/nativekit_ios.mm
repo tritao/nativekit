@@ -1412,6 +1412,9 @@ nk_key key_from_hid(UIKeyboardHIDUsage code) {
     }
 }
 
+// TODO(trace): send NK_TRACE_EVENT (core/trace.hpp) for each key, pointer button and pointer move
+// these emitters queue, as the Windows and GTK backends do. UIEvent.timestamp counts seconds since
+// boot; convert it to nk_time_now_ns()'s clock, or pass 0 if the two clocks cannot be matched.
 void emit_key_transition(IOSSurface &resource, UIKey *key, nk_input_action action) {
     if (!key)
         return;
@@ -1859,6 +1862,8 @@ void frame_tick(nk_handle handle) noexcept {
         auto active = surface(handle);
         if (!active || !active->frame_callback)
             return;
+        // TODO(trace): draw through nk::core::run_surface_frame (core/surface_frame.hpp), as
+        // Windows and GTK do, so each drawn frame is an nk.frame zone.
         const auto callback = active->frame_callback;
         void *user_data = active->frame_user_data;
         callback(handle, active->framebuffer_width, active->framebuffer_height, user_data);

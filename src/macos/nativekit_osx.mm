@@ -1811,6 +1811,11 @@ nk_key key_from_cocoa(unsigned short code) {
     }
 }
 
+// TODO(trace): send NK_TRACE_EVENT (core/trace.hpp) for each key, pointer button and pointer move
+// taken off the event queue here and in the view's mouse handlers, as the Windows and GTK backends
+// do: screen position in physical pixels, or key code and pressed. NSEvent.timestamp counts seconds
+// since boot; convert it to nk_time_now_ns()'s clock, or pass 0 if the two clocks cannot be
+// matched.
 void emit_key_transition(MacWindowResource &resource, NSEvent *event, nk_input_action action) {
     const auto key = key_from_cocoa(event.keyCode);
     if (key != NK_KEY_UNKNOWN)
@@ -5497,6 +5502,9 @@ nk_result NK_CALL nk_surface_set_frame_callback(nk_handle handle,
                                        return;
                                    }
                                    active->frame_requests.begin_frame();
+                                   // TODO(trace): draw through nk::core::run_surface_frame
+                                   // (core/surface_frame.hpp), as Windows and GTK do, so each drawn
+                                   // frame is an nk.frame zone.
                                    nk::core::callback_boundary([&] {
                                        if (nk_surface_make_current(handle) != NK_OK)
                                            return;
