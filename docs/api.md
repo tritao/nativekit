@@ -816,6 +816,43 @@ deadline and returns `NK_OK` on either an event, explicit wake, or timeout; call
 `nk_poll_event()` afterwards to distinguish an event from an empty wake. GTK is
 pumped in bounded blocking slices, and already-queued events return immediately.
 
+## Trace sink
+
+`nativekit_trace.h` lets a host that records a timeline (a profiler, Tracy, ETW)
+see the work that decides how fast an application reacts to input. The host
+installs an `nk_trace_sink`, a table of C callbacks, with `nk_set_trace_sink()`;
+NativeKit keeps no clock, buffer or file of its own for these marks and depends
+on no host. The sink receives:
+
+- zones, as `zone_begin(location)` and `zone_end()` pairs on the calling thread:
+  `nk.wait` around each wait for events and `nk.frame` around each drawn
+  surface frame. Each `nk_trace_location` is static, so a sink can key a
+  location by its address and describe it once;
+- instants, as `event(kind, os_time_ns, a, b)`, one per pointer move, pointer
+  button or key the UI thread takes off the platform queue. `a` and `b` are the
+  screen position in physical pixels, or the platform key code and 1 for
+  pressed or 0 for released. `os_time_ns` is when the OS stamped the input, on
+  the clock of `nk_time_now_ns()`, or 0 when unknown.
+
+The input stamp is coarse. GTK reports milliseconds, rebuilt from the 32-bit GDK
+event time against the monotonic clock; Windows reports the system tick
+(usually 15.6 ms) from `GetMessageTime()`. Use the stamp to find delays of tens
+of milliseconds, not to time single frames.
+
+The sink's optional `enabled` pointer is a switch the host owns. While it reads
+zero, a trace point costs one load and calls nothing; with no sink it costs the
+same. Callbacks may run on any thread and must not call back into NativeKit.
+`nk_set_trace_sink()` may be called before `nk_init()`, and the sink must stay
+valid while a trace point can still reach it. Configuring with `-DNK_TRACE=OFF`
+removes the trace points. The header is for native hosts and is not part of the
+generated language bindings.
+
+Without a host sink, setting `NK_LATENCY_TRACE` to a file path makes NativeKit
+write waits, frames and input as text lines (`<kind> <ticks> <a> <b>`, with the
+clock named on the first line), for measuring without a host that records a
+timeline. Trace points exist on Windows and GTK; the other backends are listed
+in `platform-parity.md`.
+
 ## Shell and system strings
 
 Shell operations submit work to the desktop on the UI thread. Reveal first uses

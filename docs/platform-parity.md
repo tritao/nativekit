@@ -168,6 +168,14 @@ each milestone lands, the following gaps remain explicitly `Deferred`:
 | iOS | Mobile host, WebView, dialogs, Metal, input, clipboard, URI clipboard, host drag/drop, shell, appearance, notifications, resource sharing, resource I/O, dynamic loading of embedded code-signed framework executables, joystick, sensors, system haptics, controller haptics where exposed, accessibility, surface frame callbacks | sandbox file watching and clipboard watching |
 | Web | Window, geometry and CSS-backed styling, clipboard and URI clipboard, drag/drop and resource drops, input, cursor/capture, GLES, shell URL opening, appearance, notifications, Gamepad API, resource picker equivalents, resource sharing via Web Share API, resource I/O, accessibility, surface frame callbacks, optional Device Motion and haptics APIs | — |
 
+Trace points (`nativekit_trace.h`) are implemented on Windows and Linux/GTK:
+zones for event waits and drawn surface frames, and input events carrying the
+OS timestamp. They are `Deferred` on macOS, iOS, Android and Web. Each of those
+backends has `TODO(trace)` comments at its frame draw and its input handlers
+naming the work and the platform's timestamp clock; `git grep 'TODO(trace)'`
+lists them. Event waits are traced on every backend that uses the shared wait in
+`core/time.cpp`.
+
 The path-shaped iOS system-font and Web application/storage/system-font
 capabilities are intentional `Not applicable` exceptions for APIs that return
 real filesystem paths; they are not deferred implementations.
