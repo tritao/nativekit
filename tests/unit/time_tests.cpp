@@ -6,6 +6,15 @@
 #include <chrono>
 #include <thread>
 
+#if defined(_WIN32)
+#include <stdlib.h>
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+
 namespace {
 void drain_events() {
     for (;;) {
@@ -21,6 +30,11 @@ void drain_events() {
 } // namespace
 
 int main() {
+#if defined(_WIN32)
+    // A failed assertion exits with a status instead of opening a modal CRT or fault dialog.
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+#endif
     const auto nanoseconds = nk_time_now_ns();
     const auto seconds = nk_time_seconds();
     assert(nk_time_now_ns() >= nanoseconds);
