@@ -3,7 +3,7 @@
 #include "core/boundary.hpp"
 #include "core/error.hpp"
 #include "core/executor.hpp"
-#include "core/latency_trace.hpp"
+#include "core/trace.hpp"
 #include "core/runtime.hpp"
 
 #include <algorithm>
@@ -23,9 +23,9 @@ namespace {
 using Clock = std::chrono::steady_clock;
 constexpr auto pump_interval = std::chrono::milliseconds(10);
 
-/* At the default timer resolution (15.6 ms) a short timed wait on Windows wakes up to a whole tick late, so an input or
- * frame deadline a few milliseconds away is missed by ~16 ms. Hold 1 ms resolution only while waiting, as HashLink's
- * Sys.sleep does. */
+/* At the default timer resolution (15.6 ms) a short timed wait on Windows wakes up to a whole tick
+ * late, so an input or frame deadline a few milliseconds away is missed by ~16 ms. Hold 1 ms
+ * resolution only while waiting, as HashLink's Sys.sleep does. */
 struct FineTimerScope {
 #if defined(_WIN32)
     FineTimerScope() { timeBeginPeriod(1); }
@@ -39,8 +39,9 @@ nk_result wait_until(const Clock::time_point *deadline) {
     const auto sequence = nk::core::wake_sequence();
     for (;;) {
         nk::backend::pump_events();
-        /* A task queued after the caller last polled already spent its wake before `sequence` was read. Waiting would
-         * strand it until the timeout: a render completion that lands there holds the next frame for a full wait. */
+        /* A task queued after the caller last polled already spent its wake before `sequence` was
+         * read. Waiting would strand it until the timeout: a render completion that lands there
+         * holds the next frame for a full wait. */
         if (nk::core::events_pending() || nk::core::app_tasks_pending() ||
             nk::core::wake_sequence() != sequence)
             return NK_OK;
@@ -55,14 +56,16 @@ nk_result wait_until(const Clock::time_point *deadline) {
                 duration = std::chrono::milliseconds(1);
         }
         const FineTimerScope fine_timer;
-        nk::core::latency_trace_flush();
-        nk::core::latency_trace('W', duration.count());
+        nk::core::trace_flush();
+        bool woken;
+        {
+            NK_TRACE_ZONE("nk.wait");
 #if defined(NK_BACKEND_GTK)
-        const bool woken = nk::backend::wait_events(sequence, duration);
+            woken = nk::backend::wait_events(sequence, duration);
 #else
-        const bool woken = nk::core::wait_for_wake(sequence, duration);
+            woken = nk::core::wait_for_wake(sequence, duration);
 #endif
-        nk::core::latency_trace('w', woken ? 1 : 0);
+        }
         if (woken)
             return NK_OK;
     }

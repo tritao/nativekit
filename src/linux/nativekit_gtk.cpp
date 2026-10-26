@@ -8,6 +8,7 @@
 #include "nativekit_notification.h"
 #include "nativekit_resource.h"
 #include "nativekit_system.h"
+#include "nativekit_time.h"
 #include "nativekit_view.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
@@ -24,6 +25,7 @@
 #include "core/system_internal.hpp"
 #include "core/resource_events.hpp"
 #include "core/text_input_geometry.hpp"
+#include "core/trace.hpp"
 
 #include <clocale>
 #include <gtk/gtk.h>
@@ -1860,7 +1862,37 @@ gboolean on_input_focus(GtkWidget *, GdkEventFocus *focus, gpointer data) {
     return FALSE;
 }
 
+/**
+ * When the OS stamped an input event, on nk_time_now_ns()'s clock, or 0 when unknown. GDK carries
+ * 32-bit milliseconds; X servers and Wayland compositors on Linux count them on CLOCK_MONOTONIC,
+ * the clock of nk_time_now_ns(), so the full time is rebuilt near now. A stamp more than 10 s old
+ * or 50 ms ahead is taken to be on some other clock.
+ */
+std::uint64_t input_time_ns(guint32 time_ms) noexcept {
+    if (time_ms == GDK_CURRENT_TIME)
+        return 0;
+    const std::uint64_t now_ms = nk_time_now_ns() / 1000000u;
+    const auto age_ms = static_cast<std::int32_t>(static_cast<std::uint32_t>(now_ms) - time_ms);
+    if (age_ms > 10000 || age_ms < -50 || static_cast<std::int64_t>(now_ms) < age_ms)
+        return 0;
+    return static_cast<std::uint64_t>(static_cast<std::int64_t>(now_ms) - age_ms) * 1000000u;
+}
+
+/** Traces a dequeued pointer event at its screen position in physical pixels. */
+void trace_pointer_event(GtkWidget *widget, nk_trace_event_kind kind, guint32 time_ms,
+                         gdouble x_root, gdouble y_root) noexcept {
+    if (!NK_TRACE_ACTIVE())
+        return;
+    const int scale = gtk_widget_get_scale_factor(widget);
+    NK_TRACE_EVENT(kind, input_time_ns(time_ms), static_cast<std::int64_t>(x_root * scale),
+                   static_cast<std::int64_t>(y_root * scale));
+}
+
 gboolean on_key(GtkWidget *, GdkEventKey *key_event, gpointer data) {
+    if (NK_TRACE_ACTIVE())
+        NK_TRACE_EVENT(NK_TRACE_EVENT_INPUT_KEY, input_time_ns(key_event->time),
+                       static_cast<std::int64_t>(key_event->hardware_keycode),
+                       key_event->type == GDK_KEY_RELEASE ? 0 : 1);
     gboolean im_handled = FALSE;
     nk::core::callback_boundary([&] {
         auto *resource = static_cast<GtkWindowResource *>(data);
@@ -1887,7 +1919,9 @@ gboolean on_key(GtkWidget *, GdkEventKey *key_event, gpointer data) {
     return im_handled;
 }
 
-gboolean on_pointer_move(GtkWidget *, GdkEventMotion *motion, gpointer data) {
+gboolean on_pointer_move(GtkWidget *widget, GdkEventMotion *motion, gpointer data) {
+    trace_pointer_event(widget, NK_TRACE_EVENT_INPUT_MOVE, motion->time, motion->x_root,
+                        motion->y_root);
     nk::core::callback_boundary([&] {
         auto *resource = static_cast<GtkWindowResource *>(data);
         resource->pointer_x = motion->x;
@@ -1903,7 +1937,7 @@ gboolean on_pointer_move(GtkWidget *, GdkEventMotion *motion, gpointer data) {
     return FALSE;
 }
 
-gboolean on_pointer_button(GtkWidget *, GdkEventButton *button_event, gpointer data) {
+gboolean on_pointer_button(GtkWidget *widget, GdkEventButton *button_event, gpointer data) {
     // GTK emits GDK_2BUTTON_PRESS/GDK_3BUTTON_PRESS in addition to the ordinary
     // GDK_BUTTON_PRESS for that physical click. Forwarding both makes a double-click
     // look like a triple-click to consumers that count press/release transitions.
@@ -1924,6 +1958,8 @@ gboolean on_pointer_button(GtkWidget *, GdkEventButton *button_event, gpointer d
         return TRUE;
     }
 
+    trace_pointer_event(widget, NK_TRACE_EVENT_INPUT_BUTTON, button_event->time,
+                        button_event->x_root, button_event->y_root);
     nk::core::callback_boundary([&] {
         auto *resource = static_cast<GtkWindowResource *>(data);
         if (begin_decoration_drag(*resource, *button_event))
@@ -2052,6 +2088,7 @@ gboolean on_surface_render(GtkGLArea *area, GdkGLContext *, gpointer data) {
     if (!scheduled && !resource->frame_requests.continuous())
         return TRUE;
     const int scale = gtk_widget_get_scale_factor(GTK_WIDGET(area));
+    NK_TRACE_ZONE("nk.frame");
     nk::core::callback_boundary([&] {
         const auto callback = resource->frame_callback;
         void *user_data = resource->frame_user_data;

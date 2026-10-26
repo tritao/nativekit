@@ -37,6 +37,7 @@ set(NK_NET_BACKEND_CURL OFF)
 option(NK_ENABLE_NO_EXCEPTIONS
     "Compile NativeKit production targets without C++ exception support" ON)
 option(NK_BUILD_AUDIO "Build the experimental miniaudio playback module" OFF)
+option(NK_TRACE "Compile NativeKit's trace points (see nativekit_trace.h)" ON)
 option(NK_AUDIO_WEB_WORKLETS "Use Emscripten AudioWorklets and shared native audio memory" OFF)
 if(NK_AUDIO_WEB_WORKLETS)
     add_compile_options(-pthread)
@@ -168,7 +169,7 @@ add_library(nativekit ${NK_LIBRARY_TYPE}
     src/core/system.cpp
     src/core/text_input.cpp
     src/core/thread_name.cpp
-    src/core/latency_trace.cpp
+    src/core/trace.cpp
     src/core/time.cpp
     src/core/vulkan.cpp
     src/core/worker_pool.cpp
@@ -212,6 +213,9 @@ target_include_directories(nativekit
     PRIVATE src
 )
 target_compile_definitions(nativekit PRIVATE NK_BUILDING_LIBRARY)
+if(NK_TRACE)
+    target_compile_definitions(nativekit PRIVATE NK_TRACE_ENABLED=1)
+endif()
 if(NK_ENABLE_NO_EXCEPTIONS)
     target_compile_definitions(nativekit PRIVATE NK_ENABLE_NO_EXCEPTIONS=1)
 endif()

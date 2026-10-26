@@ -51,6 +51,11 @@ target_compile_features(nativekit_time_tests PRIVATE cxx_std_17)
 target_link_libraries(nativekit_time_tests PRIVATE NativeKit::nativekit)
 add_test(NAME time COMMAND nativekit_time_tests)
 
+add_executable(nativekit_trace_tests unit/trace_tests.cpp)
+target_compile_features(nativekit_trace_tests PRIVATE cxx_std_17)
+target_link_libraries(nativekit_trace_tests PRIVATE NativeKit::nativekit)
+add_test(NAME trace COMMAND nativekit_trace_tests)
+
 add_executable(nativekit_plugin_tests unit/plugin_tests.cpp)
 target_compile_features(nativekit_plugin_tests PRIVATE cxx_std_17)
 target_link_libraries(nativekit_plugin_tests PRIVATE NativeKit::nativekit)
@@ -463,7 +468,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
         $<$<COMPILE_LANGUAGE:OBJCXX>:-fblocks>)
     # The portable binaries remain compile/link probes for the iOS SDK. The
     # application-hosted runtime target is launched by the simulator workflow.
-    set_tests_properties(c_abi core time platform_parity wasm_host_allocator PROPERTIES DISABLED TRUE)
+    set_tests_properties(c_abi core time trace platform_parity wasm_host_allocator PROPERTIES DISABLED TRUE)
 endif()
 
 if(NK_ENABLE_SANITIZERS AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
