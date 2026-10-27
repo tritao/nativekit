@@ -145,7 +145,7 @@ bool poll_until(nk_request_id request, nk_http_stream stream, std::string *compl
                 NK_CHECK(nk_http_stream_info_get(stream, &info) == NK_OK);
                 char body[64];
                 uint64_t read = 0;
-                const auto read_result = nk_http_stream_read(stream, body, sizeof(body), &read);
+                const auto read_result = nk_http_stream_read(stream, reinterpret_cast<uint8_t *>(body), sizeof(body), &read);
                 NK_CHECK(read_result == NK_OK);
                 NK_CHECK(read != 0);
             } else if (event.kind == NK_EVENT_HTTP_COMPLETE) {
@@ -265,7 +265,7 @@ int main() {
     NK_CHECK(stream_info.flags & NK_HTTP_STREAM_COMPLETE);
     char remaining[64];
     uint64_t remaining_size = 0;
-    NK_CHECK(nk_http_stream_read(stream, remaining, sizeof(remaining), &remaining_size) == NK_OK);
+    NK_CHECK(nk_http_stream_read(stream, reinterpret_cast<uint8_t *>(remaining), sizeof(remaining), &remaining_size) == NK_OK);
     NK_CHECK(nk_http_stream_close(stream) == NK_OK);
 
     nk_http_request_options limited_options{};

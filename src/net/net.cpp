@@ -833,7 +833,7 @@ nk_result NK_CALL nk_http_stream_info_get(nk_http_stream handle, nk_http_stream_
     return NK_OK;
 }
 
-nk_result NK_CALL nk_http_stream_read(nk_http_stream handle, void *buffer, uint64_t size,
+nk_result NK_CALL nk_http_stream_read(nk_http_stream handle, uint8_t *buffer, uint64_t size,
                                       uint64_t *out_read) {
     if ((!buffer && size != 0) || !out_read)
         return fail(NK_ERROR_INVALID_ARGUMENT, "HTTP stream read arguments are invalid");
@@ -849,7 +849,7 @@ nk_result NK_CALL nk_http_stream_read(nk_http_stream handle, void *buffer, uint6
             return NK_HTTP_ERROR_WOULD_BLOCK;
         return NK_OK;
     }
-    auto *destination = static_cast<std::byte *>(buffer);
+    auto *destination = reinterpret_cast<std::byte *>(buffer);
     while (size != 0 && !stream->request->chunks.empty()) {
         auto &chunk = stream->request->chunks.front();
         const auto amount = std::min<uint64_t>(size, chunk.size());
