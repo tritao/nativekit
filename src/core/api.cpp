@@ -35,6 +35,9 @@ std::atomic<std::uint64_t> event_wake_sequence{0};
 std::mutex event_wake_mutex;
 std::condition_variable event_wake_condition;
 constexpr std::uint32_t default_queue_capacity = 1024;
+/* Polls answered from the queue since the last pump; nk_poll_event runs on the UI thread only. */
+std::uint32_t polls_since_pump = 0;
+constexpr std::uint32_t max_polls_between_pumps = 64;
 std::mutex shutdown_hook_mutex;
 std::vector<nk::core::RuntimeShutdownHook> shutdown_hooks;
 
@@ -258,7 +261,13 @@ nk_result NK_CALL nk_poll_event(nk_event *event) {
     if (thread_result != NK_OK)
         return thread_result;
     nk::core::drain_app_tasks();
-    nk::backend::pump_events();
+    /* Return the events already queued before pumping again: a pump can render frames, and
+     * rendering between the events of one burst delays the rest of it. Background threads keep
+     * queueing too, so the pump never waits for more than a bounded number of polls. */
+    if (!nk::core::events_pending() || ++polls_since_pump >= max_polls_between_pumps) {
+        polls_since_pump = 0;
+        nk::backend::pump_events();
+    }
     nk::core::run_cooperative_tasks();
     nk_result result = NK_OK;
     std::uint64_t os_time_ns = 0;

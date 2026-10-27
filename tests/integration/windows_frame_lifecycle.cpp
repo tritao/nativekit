@@ -75,12 +75,16 @@ int main() {
     assert(nk_surface_set_frame_callback(surface, on_frame, &state) == NK_OK);
     assert(nk_surface_request_frame(surface) == NK_OK);
     // An on-demand request must dispatch without waiting for the 16 ms timer. The window's creation
-    // events are still unpolled, so the frame waits for one poll, and never for more than one.
-    for (int poll = 0; poll < 2 && state.callbacks == 0; ++poll) {
+    // events are still unpolled, so the frame waits until they have been returned: it renders by
+    // the second empty poll, well before the timer could fire.
+    for (int poll = 0, empty = 0; poll < 64 && empty < 2 && state.callbacks == 0; ++poll) {
         nk_event event{};
         event.struct_size = sizeof(event);
-        if (nk_poll_event(&event) == NK_OK)
+        if (nk_poll_event(&event) == NK_OK) {
+            if (event.kind == NK_EVENT_NONE)
+                ++empty;
             nk_event_release(&event);
+        }
     }
     assert(state.callbacks == 1);
     pump_for(150);

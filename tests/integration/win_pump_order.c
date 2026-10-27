@@ -1,7 +1,7 @@
 /* Posts key messages and a frame request to the window's own queue (no synthesized hardware
  * input) and checks what nk_poll_event delivers: characters stay right behind the key that
- * produced them, system keys keep their place, and a requested frame is held back for unpolled
- * events at most once. */
+ * produced them, system keys keep their place, and a requested frame waits for the queued events
+ * but is never starved by them. */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
@@ -144,6 +144,23 @@ int main(void) {
     CHECK(keys[1] == 0);
     CHECK(keys[2] == -NK_KEY_A);
     CHECK(keys[3] == NK_KEY_F10);
+
+    // A frame requested behind a burst of queued keys renders once the burst has been returned.
+    for (int i = 0; i < 20; ++i)
+        poll_once(kinds, &count, 16);
+    const int burst_before = frame_count;
+    for (int i = 0; i < 3; ++i)
+        post_key(hwnd, VK_F13, 0x64);
+    CHECK(nk_surface_request_frame(surface) == NK_OK);
+    count = 0;
+    while (count < 3) {
+        const int polled = count;
+        poll_once(kinds, &count, 16);
+        CHECK(count == polled + 1);
+        CHECK(frame_count == burst_before);
+    }
+    poll_once(kinds, &count, 16);
+    CHECK(frame_count > burst_before);
 
     // Events keep arriving, yet a requested frame renders on the second pump at the latest.
     for (int i = 0; i < 20; ++i)
