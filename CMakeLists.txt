@@ -318,6 +318,7 @@ elseif(WIN32)
         src/windows/nativekit_win_menu.cpp
         src/windows/nativekit_win_accessibility.cpp
         src/windows/nativekit_win_file_watch.cpp
+        src/windows/nativekit_win_input_stamps.cpp
         src/windows/nativekit_win_joystick.cpp)
     target_compile_definitions(nativekit PRIVATE NK_BACKEND_WINDOWS=1)
     target_link_libraries(nativekit PRIVATE user32 shell32 ole32 oleaut32 advapi32 imm32

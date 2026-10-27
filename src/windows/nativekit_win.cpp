@@ -25,6 +25,7 @@
 #include "core/resource_events.hpp"
 #include "core/text_edit_transaction.hpp"
 #include "core/text_input_geometry.hpp"
+#include "windows/input_stamps.hpp"
 #include "windows/joystick.hpp"
 
 #define UNICODE
@@ -70,6 +71,7 @@
 #include <limits>
 #include <mutex>
 #include <new>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -88,11 +90,62 @@ constexpr UINT notification_message = WM_APP + 42;
 constexpr UINT surface_frame_message = WM_APP + 43;
 
 /**
- * When the OS stamped the message being handled, on nk_time_now_ns()'s clock. GetMessageTime counts
- * milliseconds on the system tick, so the stamp is only as fine as the tick (usually 15.6 ms).
+ * The input message the window procedure is handling, so message_time_ns() can find its precise
+ * stamp. Window procedures nest (SendMessage), so each scope restores the one it replaced.
+ */
+struct InputMessageScope {
+    HWND window;
+    UINT message;
+    WPARAM wparam;
+    LPARAM lparam;
+    InputMessageScope *outer;
+    bool resolved = false;
+    std::uint64_t stamp_ns = 0;
+
+    static thread_local InputMessageScope *current;
+
+    InputMessageScope(HWND window_, UINT message_, WPARAM wparam_, LPARAM lparam_) noexcept
+        : window(window_), message(message_), wparam(wparam_), lparam(lparam_), outer(current) {
+        current = this;
+    }
+    ~InputMessageScope() { current = outer; }
+    InputMessageScope(const InputMessageScope &) = delete;
+    InputMessageScope &operator=(const InputMessageScope &) = delete;
+};
+thread_local InputMessageScope *InputMessageScope::current = nullptr;
+
+/** The hook's stamp for `scope`'s message, or 0 when the hooks did not see it. */
+std::uint64_t hooked_message_time_ns(const InputMessageScope &scope) noexcept {
+    namespace stamps = nk::windows_input_stamps;
+    const auto time = static_cast<std::uint32_t>(GetMessageTime());
+    const auto scan_code = static_cast<std::uint32_t>((scope.lparam >> 16) & 0xff);
+    const bool extended = (scope.lparam & (1ll << 24)) != 0;
+    if (const auto key = stamps::key_input(scope.message, scan_code, extended, time))
+        return stamps::match(*key);
+    POINT screen{GET_X_LPARAM(scope.lparam), GET_Y_LPARAM(scope.lparam)};
+    ClientToScreen(scope.window, &screen);
+    if (const auto mouse = stamps::mouse_input(scope.message, GET_XBUTTON_WPARAM(scope.wparam),
+                                               screen.x, screen.y, time))
+        return stamps::match(*mouse);
+    return 0;
+}
+
+/**
+ * When the OS stamped the message being handled, on nk_time_now_ns()'s clock. For a pointer move,
+ * button or key that the low-level hooks saw, that is the hook thread's steady-clock stamp, within
+ * tens of microseconds of the system taking the input. Otherwise it is rebuilt from GetMessageTime,
+ * which counts milliseconds on the system tick, so it is only as fine as the tick (15.6 ms).
  */
 std::uint64_t message_time_ns() noexcept {
     const std::uint64_t now = nk_time_now_ns();
+    if (InputMessageScope *scope = InputMessageScope::current) {
+        if (!scope->resolved) {
+            scope->resolved = true;
+            scope->stamp_ns = hooked_message_time_ns(*scope);
+        }
+        if (scope->stamp_ns != 0 && scope->stamp_ns <= now)
+            return scope->stamp_ns;
+    }
     const std::uint64_t age = static_cast<std::uint64_t>(static_cast<DWORD>(
                                   GetTickCount() - static_cast<DWORD>(GetMessageTime()))) *
                               1000000u;
@@ -1504,6 +1557,9 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
         }
         if (message == WM_CAPTURECHANGED && reinterpret_cast<HWND>(lparam) != window)
             resource->pointer_captured = false;
+        std::optional<InputMessageScope> input_scope;
+        if (NK_TRACE_ACTIVE() && nk::windows_input_stamps::is_input_message(message))
+            input_scope.emplace(window, message, wparam, lparam);
         bool pointer_handled = false;
         nk::core::callback_boundary(
             [&] { pointer_handled = handle_pointer_message(*resource, message, wparam); });
@@ -3213,17 +3269,136 @@ nk_result get_string(nk_system_string_kind kind, std::string &out_value) {
 } // namespace nk::core::system_backend
 
 namespace nk::backend {
+namespace {
+/* Signalled by wake_events() so a wait that sleeps on the window queue also wakes for work that
+ * arrives from other threads. Auto-reset: a stale signal costs one extra sequence check. */
+HANDLE event_wake_handle() noexcept {
+    static const HANDLE handle = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    return handle;
+}
+
+bool is_frame_message(const MSG &message) noexcept {
+    return message.message == surface_frame_message ||
+           (message.message == WM_TIMER && message.wParam == surface_frame_timer);
+}
+
+bool is_key_message(UINT message) noexcept {
+    return message == WM_KEYDOWN || message == WM_KEYUP || message == WM_SYSKEYDOWN ||
+           message == WM_SYSKEYUP;
+}
+
+/* Set when a frame message was left queued for an unpolled event; the next pump renders it. */
+bool frame_deferred = false;
+
+/* Whether a frame message waits for the next pump: it does while the application has an unpolled
+ * event, but never twice in a row, so sustained input cannot hold frames back. */
+bool hold_frame(const MSG &message) noexcept {
+    if (!is_frame_message(message))
+        return false;
+    if (nk::core::events_pending() && !frame_deferred) {
+        frame_deferred = true;
+        return true;
+    }
+    frame_deferred = false;
+    return false;
+}
+
+/* TranslateMessage posts the characters of a key message. They are not input messages, so they
+ * would sit behind every later key and move in the queue: take them right after their key. The
+ * character ranges skip WM_SYSKEYDOWN and WM_SYSKEYUP, which lie between them: those are keys,
+ * and must keep their place, their translation and the accelerator check. */
+void dispatch_posted_text() noexcept {
+    MSG text;
+    while (PeekMessageW(&text, nullptr, WM_CHAR, WM_DEADCHAR, PM_REMOVE) ||
+           PeekMessageW(&text, nullptr, WM_SYSCHAR, WM_UNICHAR, PM_REMOVE) ||
+           PeekMessageW(&text, nullptr, WM_IME_STARTCOMPOSITION, WM_IME_COMPOSITION, PM_REMOVE) ||
+           PeekMessageW(&text, nullptr, WM_IME_CHAR, WM_IME_CHAR, PM_REMOVE))
+        DispatchMessageW(&text);
+}
+
+/* Dispatches a message, then the characters its translation posted. */
+void translate_and_dispatch(const MSG &message) noexcept {
+    TranslateMessage(&message);
+    DispatchMessageW(&message);
+    if (is_key_message(message.message))
+        dispatch_posted_text();
+}
+} // namespace
+
+bool wait_events(std::uint64_t sequence, std::chrono::milliseconds timeout) noexcept {
+    const auto ready = [sequence] {
+        return nk::core::wake_sequence() != sequence || nk::core::events_pending();
+    };
+    const HANDLE wake = event_wake_handle();
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    for (;;) {
+        if (ready())
+            return true;
+        const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now());
+        if (remaining.count() <= 0)
+            return false;
+        /* Window input wakes the wait too: a condition variable alone sleeps through it until the
+         * timeout. MWMO_INPUTAVAILABLE also reports input a PeekMessage call left in the queue. */
+        const DWORD result = MsgWaitForMultipleObjectsEx(
+            wake ? 1 : 0, wake ? &wake : nullptr, static_cast<DWORD>(remaining.count()),
+            QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+        /* The wake event stays signalled after a wake the caller already saw. Only a window
+         * message ends the wait without a new sequence. */
+        if (result == WAIT_OBJECT_0 + (wake ? 1 : 0))
+            return true;
+        if (result == WAIT_FAILED) {
+            /* Do not spin on a failing wait: sleep out the timeout the caller asked for. */
+            Sleep(static_cast<DWORD>(remaining.count()));
+            return ready();
+        }
+    }
+}
+
+void wake_event_wait() noexcept {
+    if (const HANDLE wake = event_wake_handle())
+        SetEvent(wake);
+}
+
 void pump_events() noexcept {
     nk::windows_joystick::pump();
+    /* The hooks run while tracing, so input from the first traced pump on gets a precise stamp. */
+    nk::windows_input_stamps::update(NK_TRACE_ACTIVE());
     MSG message;
-    while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+    /* Windows hands out sent and posted messages before queued input, and every frame requests
+     * its successor by posting a message. Take input first, or a busy frame loop keeps it
+     * waiting in the system queue indefinitely. Sent messages are named too: a queue filter
+     * otherwise leaves cross-thread SendMessage callers blocked while input streams in. */
+    while (PeekMessageW(&message, nullptr, 0, 0,
+                        PM_REMOVE | PM_QS_INPUT | PM_QS_SENDMESSAGE)) {
         if (nk::backend::menu_backend_translate_accelerator(message))
             continue;
-        TranslateMessage(&message);
-        DispatchMessageW(&message);
+        translate_and_dispatch(message);
+    }
+    /* Everything else, in queue order. A frame message waits one pump while the application has
+     * an unpolled event, so the event is returned before more rendering; it never waits twice,
+     * so sustained input cannot hold frames back. Paint and timers are not deferred at all. */
+    while (PeekMessageW(&message, nullptr, 0, 0, PM_NOREMOVE)) {
+        if (hold_frame(message))
+            break;
+        /* Remove the message that was inspected, not whatever another thread queued meanwhile. A
+         * null window filter would match every window, so thread messages use -1, which matches
+         * only them. */
+        const MSG inspected = message;
+        const HWND window = inspected.hwnd ? inspected.hwnd : reinterpret_cast<HWND>(-1);
+        if (!PeekMessageW(&message, window, inspected.message, inspected.message, PM_REMOVE))
+            continue;
+        /* The filter cannot name a timer, so another timer of the same window can come out
+         * instead. A frame timer taken that way gets its own check; when it has to wait, it is
+         * dropped, and the timer, which repeats, renders the frame on a later pump. */
+        if (message.wParam != inspected.wParam && hold_frame(message))
+            break;
+        if (nk::backend::menu_backend_translate_accelerator(message))
+            continue;
+        translate_and_dispatch(message);
         // Yield to the application after one on-demand frame. A callback may
         // request its successor; draining those messages forever starves input.
-        if (message.message == surface_frame_message)
+        if (is_frame_message(message))
             break;
     }
     reap_dialogs();
@@ -3231,6 +3406,7 @@ void pump_events() noexcept {
 }
 
 void shutdown() noexcept {
+    nk::windows_input_stamps::shutdown();
     nk::windows_joystick::shutdown();
     menu_backend_shutdown();
     while (!notifications.empty())

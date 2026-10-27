@@ -845,10 +845,33 @@ delivered. Backends set `QueuedEvent::os_time_ns` when they queue an input.
 `nk_poll_event()` also sends `NK_TRACE_EVENT_POLLED_WINDOW_RESIZE` and `_SURFACE_RESIZE` when it hands the application a
 resize, with the new width and height; these carry no OS stamp.
 
-The input stamp is coarse. GTK reports milliseconds, rebuilt from the 32-bit GDK
-event time against the monotonic clock; Windows reports the system tick
-(usually 15.6 ms) from `GetMessageTime()`. Use the stamp to find delays of tens
-of milliseconds, not to time single frames.
+GTK's input stamp is coarse: milliseconds, rebuilt from the 32-bit GDK event
+time against the monotonic clock. Use it to find delays of tens of milliseconds,
+not to time single frames.
+
+On Windows a message carries only `GetMessageTime()`, which counts milliseconds
+on the system tick (15.6 ms; `timeBeginPeriod` does not refine it). While a
+trace is active NativeKit therefore installs low-level mouse and keyboard hooks
+(`WH_MOUSE_LL`, `WH_KEYBOARD_LL`) on a thread of their own, from the first time
+`nk_poll_event()` or a wait for events reads the platform queue, and removes
+them when the trace stops. The system calls them as it takes each input, before
+the input reaches a queue, and the thread stamps it with the steady clock,
+within tens of microseconds. The UI thread finds the stamp for a pointer move,
+button or key by the tick time the hook and the message share and by the
+button or scan code, preferring the stamp at the message's position (the hook
+sees the cursor before it is clipped, and a window that is not per-monitor DPI
+aware gets scaled coordinates). The stamp is when the system took the input,
+not when the device sent it; USB polling and the driver come before.
+
+Some input falls back to the tick: a move the system made up (after a window
+moved, or `SetCursorPos`), mouse messages promoted from touch and pen, and
+input that arrives while the hooks are gone. Every input on the desktop passes
+through the hooks, so a traced process stopped in a debugger delays all input
+until Windows times the hook out, and Windows then removes the hook without
+notice. NativeKit notices when a button or key arrives that no hook saw, and
+reinstalls the hooks, at most once a second. Within one tick a key or button
+meant for another application can lend its stamp to the same transition in
+this one. Setting `NK_INPUT_STAMP_HOOK=0` turns the hooks off.
 
 The sink's optional `enabled` pointer is a switch the host owns. While it reads
 zero, a trace point costs one load and calls nothing; with no sink it costs the

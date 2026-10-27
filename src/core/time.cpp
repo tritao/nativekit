@@ -60,7 +60,7 @@ nk_result wait_until(const Clock::time_point *deadline) {
         bool woken;
         {
             NK_TRACE_ZONE("nk.wait");
-#if defined(NK_BACKEND_GTK)
+#if defined(NK_BACKEND_GTK) || defined(NK_BACKEND_WINDOWS)
             woken = nk::backend::wait_events(sequence, duration);
 #else
             woken = nk::core::wait_for_wake(sequence, duration);

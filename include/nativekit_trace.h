@@ -101,8 +101,10 @@ typedef struct nk_trace_sink {
     void(NK_CALL *zone_end)(void *user_data);
     /**
      * An instant of `kind`. `os_time_ns` is when the OS stamped the input, on
-     * the clock of nk_time_now_ns(), or 0 when the platform gives no stamp. The
-     * stamp is coarse: 1 ms on GTK, the system tick (usually 15.6 ms) on Windows.
+     * the clock of nk_time_now_ns(), or 0 when the platform gives no stamp. On
+     * GTK the stamp has 1 ms resolution. On Windows a low-level input hook
+     * stamps each input with the steady clock as the system takes it; an input
+     * the hook missed falls back to the system tick (15.6 ms).
      */
     void(NK_CALL *event)(void *user_data, nk_trace_event_kind kind, uint64_t os_time_ns, int64_t a,
                          int64_t b);
