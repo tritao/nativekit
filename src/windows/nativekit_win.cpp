@@ -3276,11 +3276,27 @@ bool is_key_message(UINT message) noexcept {
 /* Set when a frame message was left queued for an unpolled event; the next pump renders it. */
 bool frame_deferred = false;
 
+/* Whether a frame message waits for the next pump: it does while the application has an unpolled
+ * event, but never twice in a row, so sustained input cannot hold frames back. */
+bool hold_frame(const MSG &message) noexcept {
+    if (!is_frame_message(message))
+        return false;
+    if (nk::core::events_pending() && !frame_deferred) {
+        frame_deferred = true;
+        return true;
+    }
+    frame_deferred = false;
+    return false;
+}
+
 /* TranslateMessage posts the characters of a key message. They are not input messages, so they
- * would sit behind every later key and move in the queue: take them right after their key. */
+ * would sit behind every later key and move in the queue: take them right after their key. The
+ * character ranges skip WM_SYSKEYDOWN and WM_SYSKEYUP, which lie between them: those are keys,
+ * and must keep their place, their translation and the accelerator check. */
 void dispatch_posted_text() noexcept {
     MSG text;
-    while (PeekMessageW(&text, nullptr, WM_CHAR, WM_UNICHAR, PM_REMOVE) ||
+    while (PeekMessageW(&text, nullptr, WM_CHAR, WM_DEADCHAR, PM_REMOVE) ||
+           PeekMessageW(&text, nullptr, WM_SYSCHAR, WM_UNICHAR, PM_REMOVE) ||
            PeekMessageW(&text, nullptr, WM_IME_STARTCOMPOSITION, WM_IME_COMPOSITION, PM_REMOVE) ||
            PeekMessageW(&text, nullptr, WM_IME_CHAR, WM_IME_CHAR, PM_REMOVE))
         DispatchMessageW(&text);
@@ -3349,16 +3365,20 @@ void pump_events() noexcept {
      * an unpolled event, so the event is returned before more rendering; it never waits twice,
      * so sustained input cannot hold frames back. Paint and timers are not deferred at all. */
     while (PeekMessageW(&message, nullptr, 0, 0, PM_NOREMOVE)) {
-        if (is_frame_message(message)) {
-            if (nk::core::events_pending() && !frame_deferred) {
-                frame_deferred = true;
-                break;
-            }
-            frame_deferred = false;
-        }
-        // Remove the message that was inspected, not whatever another thread queued meanwhile.
-        if (!PeekMessageW(&message, message.hwnd, message.message, message.message, PM_REMOVE))
+        if (hold_frame(message))
+            break;
+        /* Remove the message that was inspected, not whatever another thread queued meanwhile. A
+         * null window filter would match every window, so thread messages use -1, which matches
+         * only them. */
+        const MSG inspected = message;
+        const HWND window = inspected.hwnd ? inspected.hwnd : reinterpret_cast<HWND>(-1);
+        if (!PeekMessageW(&message, window, inspected.message, inspected.message, PM_REMOVE))
             continue;
+        /* The filter cannot name a timer, so another timer of the same window can come out
+         * instead. A frame timer taken that way gets its own check; when it has to wait, it is
+         * dropped, and the timer, which repeats, renders the frame on a later pump. */
+        if (message.wParam != inspected.wParam && hold_frame(message))
+            break;
         if (nk::backend::menu_backend_translate_accelerator(message))
             continue;
         translate_and_dispatch(message);
