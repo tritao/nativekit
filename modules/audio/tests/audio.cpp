@@ -110,8 +110,18 @@ int main() {
     uint64_t clock_before = 0;
     uint64_t clock_after = 0;
     assert(nk_audio_get_time_pcm_frames(&clock_before) == NK_OK);
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    assert(nk_audio_get_time_pcm_frames(&clock_after) == NK_OK);
+    // Starting a device can prime its buffers before the backend begins regular
+    // callbacks. Wait for actual playback progress instead of assuming that the
+    // backend resumes within one fixed 50 ms sleep.
+    const auto clock_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    do {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        assert(nk_audio_get_time_pcm_frames(&clock_after) == NK_OK);
+    } while (clock_after <= clock_before && std::chrono::steady_clock::now() < clock_deadline);
+    if (clock_after <= clock_before)
+        std::fprintf(stderr, "audio device clock did not advance within 2 seconds: %llu -> %llu frames\n",
+                     static_cast<unsigned long long>(clock_before),
+                     static_cast<unsigned long long>(clock_after));
     assert(clock_after > clock_before);
     device_options.sample_rate = 44100;
     assert(nk_audio_device_configure(&device_options) == NK_ERROR_INVALID_REQUEST);
