@@ -407,7 +407,10 @@ nk_result connect_local_pipe(const TransportOptions &options, pipe_type &out_pip
     }
 }
 
-int wait_pipe(pipe_type pipe, bool readable, bool writable, uint32_t timeout_ms) noexcept {
+int wait_pipe(pipe_type pipe, bool readable, bool writable, uint32_t timeout_ms,
+              std::condition_variable &condition, std::mutex &mutex,
+              const std::deque<std::vector<uint8_t>> &outgoing,
+              const std::atomic<bool> &stopping) noexcept {
     if (pipe == invalid_pipe)
         return -1;
     const auto deadline = clock_type::now() + std::chrono::milliseconds(timeout_ms);
@@ -429,7 +432,14 @@ int wait_pipe(pipe_type pipe, bool readable, bool writable, uint32_t timeout_ms)
             return ready;
         if (timeout_ms == 0 || clock_type::now() >= deadline)
             return 0;
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        std::unique_lock lock(mutex);
+        condition.wait_for(lock, std::chrono::milliseconds(5), [&] {
+            return stopping.load(std::memory_order_acquire) || !outgoing.empty();
+        });
+        if (!outgoing.empty())
+            return 2;
+        if (stopping.load(std::memory_order_acquire))
+            return 0;
     } while (clock_type::now() < deadline);
     return 0;
 }
@@ -461,17 +471,90 @@ bool set_no_delay(socket_type socket) noexcept {
                       sizeof(value)) == 0;
 }
 
-int wait_socket(socket_type socket, bool readable, bool writable, uint32_t timeout_ms) noexcept {
+// A private readable endpoint lets producers interrupt the same wait as socket IO.
+// Full wake buffers already represent a pending wake; notifications need no allocation.
+class SocketWakeup {
+  public:
+    ~SocketWakeup() {
+        close_socket(endpoints_[0]);
+        close_socket(endpoints_[1]);
+    }
+    SocketWakeup() = default;
+    SocketWakeup(const SocketWakeup &) = delete;
+    SocketWakeup &operator=(const SocketWakeup &) = delete;
+
+    bool initialize() noexcept {
+#if defined(_WIN32)
+        initialize_sockets();
+        if (socket_start_result != 0)
+            return false;
+        sockaddr_in addresses[2]{};
+        for (int index = 0; index != 2; ++index) {
+            endpoints_[index] = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+            addresses[index].sin_family = AF_INET;
+            addresses[index].sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+            int length = sizeof(addresses[index]);
+            if (endpoints_[index] == invalid_socket ||
+                ::bind(endpoints_[index], reinterpret_cast<sockaddr *>(&addresses[index]), length) != 0 ||
+                getsockname(endpoints_[index], reinterpret_cast<sockaddr *>(&addresses[index]), &length) != 0 ||
+                !SetHandleInformation(reinterpret_cast<HANDLE>(endpoints_[index]), HANDLE_FLAG_INHERIT, 0))
+                return false;
+        }
+        for (int index = 0; index != 2; ++index)
+            if (::connect(endpoints_[index], reinterpret_cast<sockaddr *>(&addresses[1-index]),
+                          sizeof(addresses[0])) != 0)
+                return false;
+#else
+        int flags = SOCK_STREAM;
+#if defined(SOCK_CLOEXEC)
+        flags |= SOCK_CLOEXEC;
+#endif
+        if (::socketpair(AF_UNIX, flags, 0, endpoints_) != 0)
+            return false;
+        for (auto endpoint : endpoints_)
+            if (fcntl(endpoint, F_SETFD, FD_CLOEXEC) != 0)
+                return false;
+#endif
+        return set_nonblocking(endpoints_[0]) && set_nonblocking(endpoints_[1]);
+    }
+    socket_type reader() const noexcept { return endpoints_[0]; }
+    void notify() noexcept {
+        if (endpoints_[1] == invalid_socket || pending_.exchange(true))
+            return;
+        const char byte = 1;
+        decltype(::send(endpoints_[1], &byte, 1, send_flags)) sent;
+        do {
+            sent = ::send(endpoints_[1], &byte, 1, send_flags);
+        } while (sent < 0 && socket_interrupted(socket_error()));
+        if (sent < 0 && !socket_would_block(socket_error()))
+            pending_.store(false);
+    }
+    void drain() noexcept {
+        char bytes[4096];
+        while (::recv(endpoints_[0], bytes, sizeof(bytes), 0) < 0 && socket_interrupted(socket_error())) {}
+        // The worker rechecks the output queue after draining. A producer that
+        // coalesced its notification before this reset is observed there.
+        pending_.store(false);
+    }
+  private:
+    socket_type endpoints_[2]{invalid_socket, invalid_socket};
+    std::atomic<bool> pending_{false};
+};
+
+int wait_socket(socket_type socket, bool readable, bool writable, uint32_t timeout_ms,
+                socket_type wakeup = invalid_socket) noexcept {
     if (socket == invalid_socket)
         return -1;
 #if defined(_WIN32)
     fd_set read_set{};
     fd_set write_set{};
     fd_set error_set{};
+    FD_ZERO(&read_set);
     if (readable) {
-        FD_ZERO(&read_set);
         FD_SET(socket, &read_set);
     }
+    if (wakeup != invalid_socket)
+        FD_SET(wakeup, &read_set);
     if (writable) {
         FD_ZERO(&write_set);
         FD_SET(socket, &write_set);
@@ -481,7 +564,7 @@ int wait_socket(socket_type socket, bool readable, bool writable, uint32_t timeo
     timeval timeout{};
     timeout.tv_sec = static_cast<long>(timeout_ms / 1000u);
     timeout.tv_usec = static_cast<long>((timeout_ms % 1000u) * 1000u);
-    const int result = ::select(0, readable ? &read_set : nullptr, writable ? &write_set : nullptr,
+    const int result = ::select(0, readable || wakeup != invalid_socket ? &read_set : nullptr, writable ? &write_set : nullptr,
                                 &error_set, &timeout);
     if (result <= 0)
         return result;
@@ -490,22 +573,28 @@ int wait_socket(socket_type socket, bool readable, bool writable, uint32_t timeo
         ready |= 1;
     if ((writable && FD_ISSET(socket, &write_set)) || FD_ISSET(socket, &error_set))
         ready |= 2;
+    if (wakeup != invalid_socket && FD_ISSET(wakeup, &read_set))
+        ready |= 4;
     return ready;
 #else
-    pollfd descriptor{};
-    descriptor.fd = socket;
-    descriptor.events = static_cast<short>((readable ? POLLIN : 0) | (writable ? POLLOUT : 0));
+    pollfd descriptors[2]{};
+    descriptors[0].fd = socket;
+    descriptors[0].events = static_cast<short>((readable ? POLLIN : 0) | (writable ? POLLOUT : 0));
+    descriptors[1].fd = wakeup;
+    descriptors[1].events = POLLIN;
     const auto timeout = timeout_ms > static_cast<uint32_t>(std::numeric_limits<int>::max())
                              ? std::numeric_limits<int>::max()
                              : static_cast<int>(timeout_ms);
-    const int result = poll(&descriptor, 1, timeout);
+    const int result = poll(descriptors, wakeup == invalid_socket ? 1 : 2, timeout);
     if (result <= 0)
         return result;
     int ready = 0;
-    if ((descriptor.revents & (POLLIN | POLLERR | POLLHUP)) != 0)
+    if ((descriptors[0].revents & (POLLIN | POLLERR | POLLHUP)) != 0)
         ready |= 1;
-    if ((descriptor.revents & (POLLOUT | POLLERR)) != 0)
+    if ((descriptors[0].revents & (POLLOUT | POLLERR)) != 0)
         ready |= 2;
+    if ((descriptors[1].revents & POLLIN) != 0)
+        ready |= 4;
     return ready;
 #endif
 }
@@ -996,6 +1085,7 @@ class TransportResource final : public nk::core::Resource,
     std::mutex socket_mutex;
     std::mutex mutex;
     std::condition_variable condition;
+    SocketWakeup wakeup;
     std::thread worker;
 
     enum class State { connecting, open, closed };
@@ -1029,6 +1119,17 @@ class TransportResource final : public nk::core::Resource,
     }
 
     bool start() noexcept {
+        bool socket_worker = true;
+#if defined(_WIN32)
+        socket_worker = options.kind != NK_TRANSPORT_LOCAL;
+#endif
+#if defined(NK_HAS_LIBWEBSOCKETS)
+        if (!server_side && options.kind == NK_TRANSPORT_WEBSOCKET &&
+            (options.flags & NK_TRANSPORT_SECURE) != 0)
+            socket_worker = false;
+#endif
+        if (socket_worker && !wakeup.initialize())
+            return false;
 #if NK_ENABLE_NO_EXCEPTIONS
         worker = std::thread([self = shared_from_this()] {
             name_transport_thread("nk", self->options);
@@ -1049,6 +1150,7 @@ class TransportResource final : public nk::core::Resource,
     }
 
     void wake_service() noexcept {
+        wakeup.notify();
 #if defined(NK_HAS_LIBWEBSOCKETS)
         std::lock_guard lock(lws_context_mutex);
         if (lws_context_handle)
@@ -1933,10 +2035,10 @@ void TransportResource::run() noexcept {
         }
 #if defined(_WIN32)
         const auto ready = options.kind == NK_TRANSPORT_LOCAL
-                               ? wait_pipe(pipe, true, has_output, 100)
-                               : wait_socket(socket, true, has_output, 100);
+                               ? wait_pipe(pipe, true, has_output, 100, condition, mutex, outgoing, stopping)
+                               : wait_socket(socket, true, has_output, 100, wakeup.reader());
 #else
-        const auto ready = wait_socket(socket, true, has_output, 100);
+        const auto ready = wait_socket(socket, true, has_output, 100, wakeup.reader());
 #endif
         if (stopping.load(std::memory_order_acquire))
             break;
@@ -1944,6 +2046,8 @@ void TransportResource::run() noexcept {
             result = NK_TRANSPORT_ERROR_CONNECTION;
             break;
         }
+        if ((ready & 4) != 0)
+            wakeup.drain();
         if ((ready & 1) != 0 && !read_socket()) {
             result = receive_overflow.load(std::memory_order_acquire)
                          ? NK_TRANSPORT_ERROR_RECEIVE_OVERFLOW

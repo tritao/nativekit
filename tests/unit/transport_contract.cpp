@@ -4,6 +4,7 @@
 
 #include <cassert>
 #include <chrono>
+#include <cstdio>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -112,6 +113,25 @@ std::uint16_t listen_port(nk_listener *out_listener, nk_transport_kind kind,
     return 0;
 }
 
+void idle_sends(nk_transport client, nk_transport server, nk_transport_kind kind) {
+    // Each producer queues after the worker has entered its idle socket wait.
+    // Aggregate several sends so scheduler noise is tolerated, while the old
+    // 100 ms polling timeout cannot pass as an immediate wakeup.
+    double elapsed_ms = 0;
+    for (int iteration = 0; iteration != 8; ++iteration) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(17));
+        const auto sender = iteration % 2 == 0 ? client : server;
+        const auto receiver = iteration % 2 == 0 ? server : client;
+        const auto started = std::chrono::steady_clock::now();
+        assert(nk_transport_send(sender, "wake", 4) == NK_OK);
+        assert(receive_message(receiver, "wake"));
+        elapsed_ms += std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - started).count();
+    }
+    std::fprintf(stderr, "idle transport kind=%d: eight sends %.2f ms total\n", kind, elapsed_ms);
+    assert(elapsed_ms < 400.0);
+}
+
 void roundtrip(nk_transport_kind kind, const char *path = nullptr,
                const char *subprotocols = nullptr) {
     nk_listener listener = NK_INVALID_HANDLE;
@@ -169,6 +189,9 @@ void roundtrip(nk_transport_kind kind, const char *path = nullptr,
     const char response[] = "transport-nativekit";
     assert(nk_transport_send(server, response, sizeof(response) - 1) == NK_OK);
     assert(receive_message(client, response));
+
+    if (kind != NK_TRANSPORT_UDP)
+        idle_sends(client, server, kind);
 
     assert(nk_transport_close(client) == NK_OK);
     assert(nk_transport_close(server) == NK_OK);
