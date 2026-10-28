@@ -1548,7 +1548,7 @@ struct TrayMenuThread {
     std::atomic<HWND> owner{nullptr};
     std::atomic<bool> cancelled{false};
     std::atomic<bool> done{false};
-    std::thread thread;
+    HANDLE thread = nullptr;
 };
 std::unique_ptr<TrayMenuThread> tray_menu;
 
@@ -1560,7 +1560,8 @@ LRESULT CALLBACK tray_menu_owner_proc(HWND window, UINT message, WPARAM wparam, 
     return DefWindowProcW(window, message, wparam, lparam);
 }
 
-void run_tray_menu(TrayMenuThread *menu) noexcept {
+DWORD WINAPI run_tray_menu(void *parameter) noexcept {
+    auto *menu = static_cast<TrayMenuThread *>(parameter);
     WNDCLASSEXW definition{};
     definition.cbSize = sizeof(definition);
     definition.lpfnWndProc = tray_menu_owner_proc;
@@ -1587,6 +1588,7 @@ void run_tray_menu(TrayMenuThread *menu) noexcept {
     menu->done.store(true);
     PostMessageW(menu->reply, tray_menu_closed_message, chosen, 0);
     nk::core::wake_events();
+    return 0;
 }
 
 // UI thread: the menu thread finished; reports its choice.
@@ -1594,8 +1596,10 @@ void finish_tray_menu(UINT chosen) noexcept {
     if (!tray_menu || !tray_menu->done.load())
         return;
     auto menu = std::move(tray_menu);
-    if (menu->thread.joinable())
-        menu->thread.join();
+    if (menu->thread) {
+        WaitForSingleObject(menu->thread, INFINITE);
+        CloseHandle(menu->thread);
+    }
     if (!menu->cancelled.load())
         nk::backend::menu_backend_popup_chosen(menu->popup, chosen);
     nk::backend::menu_backend_popup_free(menu->popup);
@@ -1613,7 +1617,7 @@ void cancel_tray_menu() noexcept {
     }
     if (!tray_menu->done.load()) {
         // Still inside the menu after 3 s: let the thread finish on its own rather than block here.
-        tray_menu->thread.detach();
+        CloseHandle(tray_menu->thread);
         (void)tray_menu.release();
         return;
     }
@@ -6287,9 +6291,8 @@ nk_result NK_CALL nk_tray_show_menu(nk_tray handle, nk_menu menu) {
     opened->tray = handle;
     opened->reply = tray_window;
     GetCursorPos(&opened->point);
-    try {
-        opened->thread = std::thread(run_tray_menu, opened.get());
-    } catch (...) {
+    opened->thread = CreateThread(nullptr, 0, run_tray_menu, opened.get(), 0, nullptr);
+    if (!opened->thread) {
         nk::backend::menu_backend_popup_free(opened->popup);
         return fail(NK_ERROR_UNKNOWN, "could not start the tray menu thread");
     }
