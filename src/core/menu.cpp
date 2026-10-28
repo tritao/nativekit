@@ -142,9 +142,17 @@ nk_result fail(nk_result result, const char *message) {
 }
 
 void menu_item_activated(nk_menu_item handle) noexcept {
+    std::shared_ptr<MenuItemResource> resource;
     callback_boundary([&] {
-        const auto resource = std::static_pointer_cast<MenuItemResource>(
+        resource = std::static_pointer_cast<MenuItemResource>(
             handles().get(handle, ResourceType::menu_item));
+    });
+    menu_item_activated(resource);
+}
+
+void menu_item_activated(const std::shared_ptr<MenuItemResource> &resource) noexcept {
+    callback_boundary([&] {
+        const auto handle = resource ? resource->handle : NK_INVALID_HANDLE;
         if (!resource || (resource->flags & NK_MENU_ITEM_DISABLED) ||
             (resource->flags & NK_MENU_ITEM_HIDDEN) || resource->kind == NK_MENU_ITEM_SEPARATOR ||
             resource->kind == NK_MENU_ITEM_SUBMENU)

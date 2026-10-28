@@ -29,6 +29,8 @@ struct MenuItemResource final : Resource {
 };
 
 void menu_item_activated(nk_menu_item item) noexcept;
+/** Reports `item` as chosen; works after its menu was destroyed (a popup that outlived the call that showed it). */
+void menu_item_activated(const std::shared_ptr<MenuItemResource> &item) noexcept;
 
 } // namespace nk::core
 
