@@ -1544,6 +1544,14 @@ void fill_tray_icon(NOTIFYICONDATAW &icon, const WinTrayResource &tray) {
     icon.szTip[count] = L'\0';
 }
 
+// The tray for a handle, or null when the handle is not a live tray.
+std::shared_ptr<WinTrayResource> get_tray(nk_tray handle) {
+    return std::static_pointer_cast<WinTrayResource>(
+        nk::core::handles().get(handle, nk::core::ResourceType::tray));
+}
+
+nk_result invalid_tray_handle() { return fail(NK_ERROR_INVALID_HANDLE, "invalid tray handle"); }
+
 void remove_tray(const std::shared_ptr<WinTrayResource> &tray) noexcept {
     NOTIFYICONDATAW icon{};
     icon.cbSize = sizeof(icon);
@@ -6145,10 +6153,9 @@ nk_result NK_CALL nk_tray_create(const nk_tray_options *options, nk_tray *out_tr
 nk_result NK_CALL nk_tray_destroy(nk_tray handle) {
     if (const auto result = enter_ui(); result != NK_OK)
         return result;
-    const auto tray = std::static_pointer_cast<WinTrayResource>(
-        nk::core::handles().get(handle, nk::core::ResourceType::tray));
+    const auto tray = get_tray(handle);
     if (!tray)
-        return fail(NK_ERROR_INVALID_HANDLE, "invalid tray handle");
+        return invalid_tray_handle();
     nk::core::handles().erase(handle, nk::core::ResourceType::tray);
     remove_tray(tray);
     return NK_OK;
@@ -6157,10 +6164,9 @@ nk_result NK_CALL nk_tray_destroy(nk_tray handle) {
 nk_result NK_CALL nk_tray_set_tooltip(nk_tray handle, const char *tooltip) {
     if (const auto result = enter_ui(); result != NK_OK)
         return result;
-    const auto tray = std::static_pointer_cast<WinTrayResource>(
-        nk::core::handles().get(handle, nk::core::ResourceType::tray));
+    const auto tray = get_tray(handle);
     if (!tray)
-        return fail(NK_ERROR_INVALID_HANDLE, "invalid tray handle");
+        return invalid_tray_handle();
     const auto text = wide(tooltip);
     if (tooltip && *tooltip && text.empty())
         return fail(NK_ERROR_INVALID_ARGUMENT, "tray text is not valid UTF-8");
@@ -6175,10 +6181,9 @@ nk_result NK_CALL nk_tray_set_tooltip(nk_tray handle, const char *tooltip) {
 nk_result NK_CALL nk_tray_show_menu(nk_tray handle, nk_menu menu) {
     if (const auto result = enter_ui(); result != NK_OK)
         return result;
-    const auto tray = std::static_pointer_cast<WinTrayResource>(
-        nk::core::handles().get(handle, nk::core::ResourceType::tray));
+    const auto tray = get_tray(handle);
     if (!tray || !tray_window)
-        return fail(NK_ERROR_INVALID_HANDLE, "invalid tray handle");
+        return invalid_tray_handle();
     // The popup must belong to the foreground window, or it does not close
     // when the user clicks elsewhere (documented TrackPopupMenu behavior).
     SetForegroundWindow(tray_window);
