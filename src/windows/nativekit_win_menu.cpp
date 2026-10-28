@@ -498,6 +498,43 @@ bool menu_backend_translate_accelerator(MSG &message) noexcept {
     return TranslateAcceleratorW(root, state.accelerators, &message) != 0;
 }
 
+nk_result menu_backend_popup(nk_menu menu, HWND owner) noexcept {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    const auto resource = std::static_pointer_cast<nk::core::MenuResource>(
+        nk::core::handles().get(menu, nk::core::ResourceType::menu));
+    if (!resource) {
+        nk::core::set_error("invalid menu handle");
+        return NK_ERROR_INVALID_HANDLE;
+    }
+    BuildState build;
+    HMENU popup = CreatePopupMenu();
+    if (!popup) {
+        nk::core::set_error("Windows could not create the popup menu");
+        return NK_ERROR_UNKNOWN;
+    }
+    for (const auto child : resource->children) {
+        if (!append_item(popup, item(child), build)) {
+            DestroyMenu(popup);
+            nk::core::set_error("Windows could not create the popup menu");
+            return NK_ERROR_UNKNOWN;
+        }
+    }
+    POINT point{};
+    GetCursorPos(&point);
+    // TPM_RETURNCMD keeps the choice out of the owner's WM_COMMAND, so popup ids
+    // never collide with the application menu's ids.
+    const UINT chosen = static_cast<UINT>(TrackPopupMenuEx(
+        popup, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_NONOTIFY, point.x, point.y, owner, nullptr));
+    DestroyMenu(popup);
+    if (chosen) {
+        const auto found = build.items.find(chosen);
+        if (found != build.items.end())
+            nk::core::menu_item_activated(found->second);
+    }
+    return NK_OK;
+}
+
 void menu_backend_shutdown() noexcept {
     detach();
     state.windows.clear();

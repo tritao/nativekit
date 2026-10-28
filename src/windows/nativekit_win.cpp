@@ -3,6 +3,7 @@
 #include "nativekit_graphics.h"
 #include "nativekit_input.h"
 #include "nativekit_notification.h"
+#include "nativekit_tray.h"
 #include "nativekit_resource.h"
 #include "nativekit_system.h"
 #include "nativekit_monitor.h"
@@ -88,6 +89,7 @@ constexpr wchar_t window_class_name[] = L"NativeKitWindow";
 constexpr wchar_t surface_class_name[] = L"NativeKitD3D11Surface";
 constexpr UINT notification_message = WM_APP + 42;
 constexpr UINT surface_frame_message = WM_APP + 43;
+constexpr UINT tray_message = WM_APP + 44;
 
 /**
  * The input message the window procedure is handling, so message_time_ns() can find its precise
@@ -1515,7 +1517,103 @@ void remove_notification(nk_request_id request) noexcept {
     notifications.erase(found);
 }
 
+struct WinTrayResource final : nk::core::Resource {
+    nk_tray handle = NK_INVALID_HANDLE;
+    UINT id = 0;
+    HICON icon = nullptr;
+    bool owns_icon = false;
+    std::wstring tooltip;
+};
+
+// Trays live on a hidden top-level window: message-only windows never see the
+// TaskbarCreated broadcast that Explorer sends when it restarts.
+HWND tray_window = nullptr;
+UINT taskbar_created_message = 0;
+UINT next_tray_id = 1;
+std::unordered_map<UINT, std::shared_ptr<WinTrayResource>> trays;
+
+void fill_tray_icon(NOTIFYICONDATAW &icon, const WinTrayResource &tray) {
+    icon.cbSize = sizeof(icon);
+    icon.hWnd = tray_window;
+    icon.uID = tray.id;
+    icon.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
+    icon.uCallbackMessage = tray_message;
+    icon.hIcon = tray.icon;
+    const auto count = std::min(tray.tooltip.size(), std::size(icon.szTip) - 1);
+    std::wmemcpy(icon.szTip, tray.tooltip.data(), count);
+    icon.szTip[count] = L'\0';
+}
+
+void remove_tray(const std::shared_ptr<WinTrayResource> &tray) noexcept {
+    NOTIFYICONDATAW icon{};
+    icon.cbSize = sizeof(icon);
+    icon.hWnd = tray_window;
+    icon.uID = tray->id;
+    Shell_NotifyIconW(NIM_DELETE, &icon);
+    if (tray->owns_icon && tray->icon)
+        DestroyIcon(tray->icon);
+    tray->icon = nullptr;
+    trays.erase(tray->id);
+}
+
+void remove_all_trays() noexcept {
+    while (!trays.empty()) {
+        const auto tray = trays.begin()->second;
+        nk::core::handles().erase(tray->handle, nk::core::ResourceType::tray);
+        remove_tray(tray);
+    }
+    if (tray_window) {
+        DestroyWindow(tray_window);
+        tray_window = nullptr;
+    }
+}
+
+void emit_tray(nk_event_kind kind, nk_tray handle, uint32_t flags) noexcept {
+    nk::core::callback_boundary([&] {
+        nk::core::QueuedEvent event;
+        event.kind = kind;
+        event.source = handle;
+        event.flags = flags;
+        nk::core::push_event(std::move(event));
+    });
+}
+
+bool handle_tray_message(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
+    if (!tray_window || window != tray_window)
+        return false;
+    if (taskbar_created_message && message == taskbar_created_message) {
+        for (const auto &entry : trays) {
+            NOTIFYICONDATAW icon{};
+            fill_tray_icon(icon, *entry.second);
+            Shell_NotifyIconW(NIM_ADD, &icon);
+        }
+        return true;
+    }
+    if (message != tray_message)
+        return false;
+    const auto found = trays.find(static_cast<UINT>(wparam));
+    if (found == trays.end())
+        return true;
+    switch (static_cast<UINT>(lparam)) {
+    case WM_LBUTTONUP:
+        emit_tray(NK_EVENT_TRAY_ACTIVATED, found->second->handle, 0);
+        break;
+    case WM_LBUTTONDBLCLK:
+        emit_tray(NK_EVENT_TRAY_ACTIVATED, found->second->handle, 1);
+        break;
+    case WM_RBUTTONUP:
+    case WM_CONTEXTMENU:
+        emit_tray(NK_EVENT_TRAY_MENU_REQUESTED, found->second->handle, 0);
+        break;
+    default:
+        break;
+    }
+    return true;
+}
+
 LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
+    if (handle_tray_message(window, message, wparam, lparam))
+        return 0;
     if (window == notification_window && message == notification_message) {
         const auto found = notification_ids.find(static_cast<UINT>(wparam));
         if (found == notification_ids.end())
@@ -3409,6 +3507,7 @@ void shutdown() noexcept {
     nk::windows_input_stamps::shutdown();
     nk::windows_joystick::shutdown();
     menu_backend_shutdown();
+    remove_all_trays();
     while (!notifications.empty())
         remove_notification(notifications.begin()->first);
     if (notification_window) {
@@ -5994,5 +6093,97 @@ nk_result NK_CALL nk_notification_close(nk_request_id request) {
     remove_notification(request);
     emit_notification(NK_EVENT_NOTIFICATION_DISMISSED, request);
     return NK_OK;
+}
+nk_result NK_CALL nk_tray_create(const nk_tray_options *options, nk_tray *out_tray) {
+    return nk::core::result_boundary("unexpected error while creating tray icon", [&]() -> nk_result {
+        if (const auto result = enter_ui(); result != NK_OK)
+            return result;
+        if (!options || options->struct_size < sizeof(*options) || !out_tray)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "invalid tray options");
+        *out_tray = NK_INVALID_HANDLE;
+        const auto tooltip = wide(options->tooltip);
+        const auto icon_path = wide(options->icon);
+        if ((options->tooltip && *options->tooltip && tooltip.empty()) ||
+            (options->icon && *options->icon && icon_path.empty()))
+            return fail(NK_ERROR_INVALID_ARGUMENT, "tray text is not valid UTF-8");
+        if (!ensure_window_class())
+            return fail(NK_ERROR_UNSUPPORTED, "Windows tray host is unavailable");
+        if (!tray_window) {
+            tray_window = CreateWindowExW(WS_EX_TOOLWINDOW, window_class_name, L"NativeKit tray",
+                                          WS_POPUP, 0, 0, 0, 0, nullptr, nullptr,
+                                          GetModuleHandleW(nullptr), nullptr);
+            if (!tray_window)
+                return fail(NK_ERROR_UNSUPPORTED, "Windows tray host is unavailable");
+            taskbar_created_message = RegisterWindowMessageW(L"TaskbarCreated");
+        }
+        auto tray = std::make_shared<WinTrayResource>();
+        tray->id = next_tray_id++;
+        tray->tooltip = tooltip;
+        if (!icon_path.empty()) {
+            tray->icon = static_cast<HICON>(LoadImageW(nullptr, icon_path.c_str(), IMAGE_ICON,
+                                                       GetSystemMetrics(SM_CXSMICON),
+                                                       GetSystemMetrics(SM_CYSMICON),
+                                                       LR_LOADFROMFILE));
+            tray->owns_icon = tray->icon != nullptr;
+        }
+        if (!tray->icon)
+            tray->icon = LoadIconW(nullptr, IDI_APPLICATION);
+        NOTIFYICONDATAW icon{};
+        fill_tray_icon(icon, *tray);
+        if (!Shell_NotifyIconW(NIM_ADD, &icon)) {
+            if (tray->owns_icon)
+                DestroyIcon(tray->icon);
+            return fail(NK_ERROR_UNSUPPORTED, "Windows notification area rejected the tray icon");
+        }
+        tray->handle = nk::core::handles().insert(nk::core::ResourceType::tray, tray);
+        trays.emplace(tray->id, tray);
+        *out_tray = tray->handle;
+        return NK_OK;
+    });
+}
+
+nk_result NK_CALL nk_tray_destroy(nk_tray handle) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    const auto tray = std::static_pointer_cast<WinTrayResource>(
+        nk::core::handles().get(handle, nk::core::ResourceType::tray));
+    if (!tray)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid tray handle");
+    nk::core::handles().erase(handle, nk::core::ResourceType::tray);
+    remove_tray(tray);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_tray_set_tooltip(nk_tray handle, const char *tooltip) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    const auto tray = std::static_pointer_cast<WinTrayResource>(
+        nk::core::handles().get(handle, nk::core::ResourceType::tray));
+    if (!tray)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid tray handle");
+    const auto text = wide(tooltip);
+    if (tooltip && *tooltip && text.empty())
+        return fail(NK_ERROR_INVALID_ARGUMENT, "tray text is not valid UTF-8");
+    tray->tooltip = text;
+    NOTIFYICONDATAW icon{};
+    fill_tray_icon(icon, *tray);
+    icon.uFlags = NIF_TIP;
+    Shell_NotifyIconW(NIM_MODIFY, &icon);
+    return NK_OK;
+}
+
+nk_result NK_CALL nk_tray_show_menu(nk_tray handle, nk_menu menu) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    const auto tray = std::static_pointer_cast<WinTrayResource>(
+        nk::core::handles().get(handle, nk::core::ResourceType::tray));
+    if (!tray || !tray_window)
+        return fail(NK_ERROR_INVALID_HANDLE, "invalid tray handle");
+    // The popup must belong to the foreground window, or it does not close
+    // when the user clicks elsewhere (documented TrackPopupMenu behavior).
+    SetForegroundWindow(tray_window);
+    const auto result = nk::backend::menu_backend_popup(menu, tray_window);
+    PostMessageW(tray_window, WM_NULL, 0, 0);
+    return result;
 }
 }

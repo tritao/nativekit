@@ -315,6 +315,10 @@ enum NK_ENUM(nk_event_kind) {
     NK_EVENT_APPLICATION_SUSPENDED = 513,
     /** A hidden or cached browser page became active again. */
     NK_EVENT_APPLICATION_RESUMED = 514,
+    /** A tray icon was clicked; flags is 1 for a double click. See nativekit_tray.h. */
+    NK_EVENT_TRAY_ACTIVATED = 520,
+    /** A tray icon asked for its context menu; answer with nk_tray_show_menu. */
+    NK_EVENT_TRAY_MENU_REQUESTED = 521,
     /** The attached mobile host geometry or insets changed. */
     NK_EVENT_MOBILE_HOST_GEOMETRY_CHANGED = 600,
     /** A graphics surface became ready for rendering. */

@@ -156,6 +156,7 @@ add_library(nativekit ${NK_LIBRARY_TYPE}
     src/core/mobile.cpp
     src/core/menu.cpp
     src/core/menu_backend.cpp
+    src/core/tray.cpp
     src/core/monitor.cpp
     src/core/plugin.cpp
     src/core/request.cpp
