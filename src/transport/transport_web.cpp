@@ -347,6 +347,14 @@ nk_result NK_CALL nk_transport_send(nk_transport handle, const void *data, uint6
     return result > 0 ? NK_OK : result == 0 ? NK_ERROR_QUEUE_FULL : NK_ERROR_INVALID_REQUEST;
 }
 
+nk_result NK_CALL nk_transport_get_peer_process(nk_transport handle, uint64_t *out_process_id) {
+    (void)handle;
+    if (!out_process_id)
+        return web_fail(NK_ERROR_INVALID_ARGUMENT, "peer process output is null");
+    *out_process_id = 0;
+    return web_fail(NK_ERROR_UNSUPPORTED, "browsers have no local transports");
+}
+
 nk_result NK_CALL nk_transport_get_send_queue(nk_transport handle, uint64_t *out_queued_bytes,
                                               uint64_t *out_capacity) {
     if (!out_queued_bytes || !out_capacity)

@@ -349,21 +349,59 @@ struct CurrentUserPipeSecurity {
     }
 };
 
-pipe_type create_local_pipe(const std::string &path) {
+/**
+ * The listener's first instance is created with FILE_FLAG_FIRST_PIPE_INSTANCE, so listening
+ * fails when another process already holds the name instead of sharing it with a squatter.
+ */
+pipe_type create_local_pipe(const std::string &path, bool first = false) {
     std::wstring wide_path;
     if (!utf8_to_wide(path, wide_path))
         return invalid_pipe;
     CurrentUserPipeSecurity security;
     if (!security.initialize())
         return invalid_pipe;
-    return CreateNamedPipeW(wide_path.c_str(), PIPE_ACCESS_DUPLEX,
+    return CreateNamedPipeW(wide_path.c_str(),
+                            PIPE_ACCESS_DUPLEX | (first ? FILE_FLAG_FIRST_PIPE_INSTANCE : 0),
                             PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_NOWAIT |
                                 PIPE_REJECT_REMOTE_CLIENTS,
                             PIPE_UNLIMITED_INSTANCES, 65536, 65536, 0, &security.attributes);
 }
 
+/** True when the process runs as the same user as this process. */
+bool process_is_current_user(DWORD process_id) noexcept {
+    HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process_id);
+    if (!process)
+        return false;
+    HANDLE token = nullptr;
+    const bool opened = OpenProcessToken(process, TOKEN_QUERY, &token) != 0;
+    CloseHandle(process);
+    if (!opened)
+        return false;
+    HANDLE own = nullptr;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &own)) {
+        CloseHandle(token);
+        return false;
+    }
+    auto read_user = [](HANDLE source, std::vector<uint8_t> &storage) -> PSID {
+        DWORD needed = 0;
+        GetTokenInformation(source, TokenUser, nullptr, 0, &needed);
+        if (needed == 0)
+            return nullptr;
+        storage.resize(needed);
+        if (!GetTokenInformation(source, TokenUser, storage.data(), needed, &needed))
+            return nullptr;
+        return reinterpret_cast<const TOKEN_USER *>(storage.data())->User.Sid;
+    };
+    std::vector<uint8_t> peer_storage, own_storage;
+    const PSID peer = read_user(token, peer_storage);
+    const PSID self = read_user(own, own_storage);
+    CloseHandle(token);
+    CloseHandle(own);
+    return peer && self && EqualSid(peer, self);
+}
+
 nk_result connect_local_pipe(const TransportOptions &options, pipe_type &out_pipe,
-                             const std::atomic<bool> &stopping) {
+                             uint64_t &out_peer_process, const std::atomic<bool> &stopping) {
     std::wstring path;
     if (!utf8_to_wide(options.path, path))
         return NK_ERROR_INVALID_ARGUMENT;
@@ -396,6 +434,14 @@ nk_result connect_local_pipe(const TransportOptions &options, pipe_type &out_pip
             return error == ERROR_ACCESS_DENIED ? NK_ERROR_PERMISSION_DENIED
                                                 : NK_TRANSPORT_ERROR_CONNECTION;
         }
+        // A pipe name is predictable; only a server running as this user is trusted.
+        ULONG server_process = 0;
+        if (!GetNamedPipeServerProcessId(pipe, &server_process) ||
+            !process_is_current_user(server_process)) {
+            CloseHandle(pipe);
+            return NK_ERROR_PERMISSION_DENIED;
+        }
+        out_peer_process = server_process;
         DWORD mode = PIPE_READMODE_BYTE | PIPE_NOWAIT;
         if (!SetNamedPipeHandleState(pipe, &mode, nullptr, nullptr)) {
             CloseHandle(pipe);
@@ -812,6 +858,25 @@ struct SocketAddress {
 };
 
 #if !defined(_WIN32)
+/** The process at the other end of a connected local socket, or 0 when unknown. */
+uint64_t local_peer_process(socket_type socket) noexcept {
+#if defined(__linux__)
+    struct ucred credentials {};
+    socklen_t length = sizeof(credentials);
+    if (::getsockopt(socket, SOL_SOCKET, SO_PEERCRED, &credentials, &length) == 0 &&
+        length == sizeof(credentials) && credentials.pid > 0)
+        return static_cast<uint64_t>(credentials.pid);
+#elif defined(__APPLE__) && defined(LOCAL_PEERPID)
+    pid_t pid = 0;
+    socklen_t length = sizeof(pid);
+    if (::getsockopt(socket, SOL_LOCAL, LOCAL_PEERPID, &pid, &length) == 0 && pid > 0)
+        return static_cast<uint64_t>(pid);
+#else
+    (void)socket;
+#endif
+    return 0;
+}
+
 bool local_peer_is_current_user(socket_type socket) noexcept {
 #if defined(__linux__)
     struct ucred credentials {};
@@ -1077,6 +1142,8 @@ class TransportResource final : public nk::core::Resource,
 #if defined(_WIN32)
     pipe_type pipe = invalid_pipe;
 #endif
+    /** For a local transport, the peer's process id once connected (0 when unknown). */
+    std::atomic<uint64_t> peer_process{0};
     SocketAddress udp_peer{};
     bool udp_peer_valid = false;
 
@@ -2006,11 +2073,17 @@ void TransportResource::run() noexcept {
     nk_result result = NK_OK;
     if (!server_side && !udp_server) {
 #if defined(_WIN32)
-        if (options.kind == NK_TRANSPORT_LOCAL)
-            result = connect_local_pipe(options, pipe, stopping);
-        else
+        if (options.kind == NK_TRANSPORT_LOCAL) {
+            uint64_t server_process = 0;
+            result = connect_local_pipe(options, pipe, server_process, stopping);
+            peer_process.store(server_process, std::memory_order_release);
+        } else
 #endif
             result = open_client_socket();
+#if !defined(_WIN32)
+        if (result == NK_OK && options.kind == NK_TRANSPORT_LOCAL)
+            peer_process.store(local_peer_process(socket), std::memory_order_release);
+#endif
         if (result == NK_OK && options.kind == NK_TRANSPORT_WEBSOCKET)
             result = websocket_handshake();
     } else if (server_side && options.kind == NK_TRANSPORT_WEBSOCKET) {
@@ -2098,6 +2171,9 @@ void ListenerResource::run() noexcept {
             transport->listener = shared_from_this();
             transport->listener_handle = handle;
             transport->pipe = current;
+            ULONG client_process = 0;
+            if (GetNamedPipeClientProcessId(current, &client_process))
+                transport->peer_process.store(client_process, std::memory_order_release);
             pipe = create_local_pipe(options.path);
             if (pipe == invalid_pipe) {
                 transport->pipe = invalid_pipe;
@@ -2211,6 +2287,11 @@ void ListenerResource::run() noexcept {
         transport->listener = shared_from_this();
         transport->listener_handle = handle;
         transport->socket = accepted_socket;
+#if !defined(_WIN32)
+        if (options.kind == NK_TRANSPORT_LOCAL)
+            transport->peer_process.store(local_peer_process(accepted_socket),
+                                          std::memory_order_release);
+#endif
         const auto transport_handle =
             nk::core::handles().insert(nk::core::ResourceType::transport, transport);
         transport->handle = static_cast<nk_transport>(transport_handle);
@@ -2323,9 +2404,14 @@ nk_result NK_CALL nk_transport_listen(const nk_transport_options *options,
         nk_result result = NK_OK;
 #if defined(_WIN32)
         if (listener->options.kind == NK_TRANSPORT_LOCAL) {
-            listener->pipe = create_local_pipe(listener->options.path);
-            if (listener->pipe == invalid_pipe)
-                result = NK_ERROR_PERMISSION_DENIED;
+            listener->pipe = create_local_pipe(listener->options.path, true);
+            if (listener->pipe == invalid_pipe) {
+                // Another process holds the name: never share it.
+                const DWORD error = GetLastError();
+                result = error == ERROR_ACCESS_DENIED || error == ERROR_PIPE_BUSY
+                             ? NK_TRANSPORT_ERROR_ADDRESS_IN_USE
+                             : NK_ERROR_PERMISSION_DENIED;
+            }
         } else
 #endif
             result =
@@ -2423,6 +2509,22 @@ nk_result NK_CALL nk_transport_get_send_queue(nk_transport handle, uint64_t *out
         *out_queued_bytes = transport->outgoing_bytes;
         *out_capacity = transport->options.send_buffer_size;
         return NK_OK;
+    });
+}
+
+nk_result NK_CALL nk_transport_get_peer_process(nk_transport handle, uint64_t *out_process_id) {
+    return nk::core::result_boundary("transport get peer process", [&]() -> nk_result {
+        if (!out_process_id)
+            return fail(NK_ERROR_INVALID_ARGUMENT, "peer process output is null");
+        *out_process_id = 0;
+        auto transport = get_transport(handle);
+        if (!transport)
+            return fail(NK_ERROR_INVALID_HANDLE, "invalid transport handle");
+        if (transport->options.kind != NK_TRANSPORT_LOCAL)
+            return fail(NK_ERROR_UNSUPPORTED, "only local transports know their peer process");
+        *out_process_id = transport->peer_process.load(std::memory_order_acquire);
+        return *out_process_id == 0 ? fail(NK_ERROR_UNSUPPORTED, "peer process is unknown")
+                                    : NK_OK;
     });
 }
 

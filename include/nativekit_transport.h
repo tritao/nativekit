@@ -174,6 +174,18 @@ NK_API nk_result NK_CALL nk_transport_get_send_queue(nk_transport transport,
                                                      uint64_t *out_capacity NK_OUT);
 
 /**
+ * The process id at the other end of a connected local transport: the client for an
+ * accepted transport, the server for a connected one. It comes from the OS (named-pipe
+ * process id, SO_PEERCRED or LOCAL_PEERPID), not from anything the peer sent. On Windows
+ * a connecting client also refuses a server that does not run as the current user, and a
+ * listener fails with NK_TRANSPORT_ERROR_ADDRESS_IN_USE when another process already
+ * holds the pipe name. Returns NK_ERROR_UNSUPPORTED for other kinds or when the OS does
+ * not report it. Thread-safe.
+ */
+NK_API nk_result NK_CALL nk_transport_get_peer_process(nk_transport transport,
+                                                       uint64_t *out_process_id NK_OUT);
+
+/**
  * Reads currently buffered application bytes without blocking. This call is thread-safe.
  * DATA reports a snapshot of available bytes and may be coalesced. Call receive until it
  * returns NK_TRANSPORT_ERROR_WOULD_BLOCK. Receive overflow closes the connection with a

@@ -11,7 +11,9 @@
 #include <thread>
 #include <vector>
 
-#if !defined(_WIN32)
+#if defined(_WIN32)
+#include <windows.h>
+#else
 #include <cstdlib>
 #include <fcntl.h>
 #include <sys/socket.h>
@@ -178,6 +180,24 @@ void roundtrip(nk_transport_kind kind, const char *path = nullptr,
     assert(queued <= capacity);
     assert(nk_transport_get_send_queue(server, nullptr, &capacity) == NK_ERROR_INVALID_ARGUMENT);
 
+    uint64_t peer = 0;
+    if (kind == NK_TRANSPORT_LOCAL) {
+#if defined(_WIN32)
+        const uint64_t self = GetCurrentProcessId();
+#else
+        const uint64_t self = static_cast<uint64_t>(::getpid());
+#endif
+#if defined(_WIN32) || defined(__linux__)
+        assert(nk_transport_get_peer_process(server, &peer) == NK_OK && peer == self);
+        assert(nk_transport_get_peer_process(client, &peer) == NK_OK && peer == self);
+#else
+        (void)self;
+#endif
+    } else {
+        assert(nk_transport_get_peer_process(server, &peer) == NK_ERROR_UNSUPPORTED);
+    }
+    assert(nk_transport_get_peer_process(server, nullptr) == NK_ERROR_INVALID_ARGUMENT);
+
     if (kind == NK_TRANSPORT_LOCAL) {
         for (const char *byte = request; *byte; ++byte)
             assert(nk_transport_send(client, byte, 1) == NK_OK);
@@ -270,12 +290,9 @@ void contract_extensions() {
     assert(nk_transport_query_capabilities(0, &capabilities) == NK_ERROR_INVALID_ARGUMENT);
     assert(capabilities == 0);
     assert(nk_transport_query_capabilities(NK_TRANSPORT_LOCAL, &capabilities) == NK_OK);
-#if defined(_WIN32)
-    assert(capabilities == 0);
-#else
+    // Named pipes on Windows, Unix-domain sockets elsewhere.
     assert((capabilities & (NK_TRANSPORT_CAP_CLIENT | NK_TRANSPORT_CAP_LISTENER)) ==
            (NK_TRANSPORT_CAP_CLIENT | NK_TRANSPORT_CAP_LISTENER));
-#endif
 
     nk_transport_options options{};
     options.struct_size = sizeof(options);
@@ -399,6 +416,35 @@ void local_security() {
 }
 #endif
 
+#if defined(_WIN32)
+/** A pipe name someone else already holds is never shared: listening fails instead. */
+void local_pipe_security() {
+    const std::string path =
+        "\\\\.\\pipe\\nativekit-contract-" + std::to_string(GetCurrentProcessId());
+    roundtrip(NK_TRANSPORT_LOCAL, path.c_str());
+
+    nk_transport_options options{};
+    options.struct_size = sizeof(options);
+    options.kind = NK_TRANSPORT_LOCAL;
+    options.path = path.c_str();
+    nk_listener listener = NK_INVALID_HANDLE;
+    assert(nk_transport_listen(&options, &listener) == NK_OK);
+    nk_listener duplicate = NK_INVALID_HANDLE;
+    assert(nk_transport_listen(&options, &duplicate) == NK_TRANSPORT_ERROR_ADDRESS_IN_USE);
+    assert(duplicate == NK_INVALID_HANDLE);
+    assert(nk_listener_close(listener) == NK_OK);
+
+    const std::wstring wide(path.begin(), path.end());
+    HANDLE squatter = CreateNamedPipeW(wide.c_str(), PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE,
+                                       PIPE_UNLIMITED_INSTANCES, 1024, 1024, 0, nullptr);
+    assert(squatter != INVALID_HANDLE_VALUE);
+    assert(nk_transport_listen(&options, &listener) == NK_TRANSPORT_ERROR_ADDRESS_IN_USE);
+    assert(listener == NK_INVALID_HANDLE);
+    CloseHandle(squatter);
+    std::fprintf(stderr, "local pipe: peer process and first-instance checks passed\n");
+}
+#endif
+
 } // namespace
 
 int main() {
@@ -415,7 +461,9 @@ int main() {
     roundtrip(NK_TRANSPORT_TCP);
     roundtrip(NK_TRANSPORT_UDP);
     roundtrip(NK_TRANSPORT_WEBSOCKET, "/nativekit", "nativekit.v2,nativekit.v1");
-#if !defined(_WIN32)
+#if defined(_WIN32)
+    local_pipe_security();
+#else
     local_security();
 #endif
     nk_shutdown();
