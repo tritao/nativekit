@@ -128,6 +128,11 @@ bool parse_url(std::string_view value, ParsedUrl &out) {
         return false;
     URL_COMPONENTS components{};
     components.dwStructSize = sizeof(components);
+    // Nonzero lengths ask WinHttpCrackUrl for pointers into the URL; with zero it returns none.
+    components.dwSchemeLength = static_cast<DWORD>(-1);
+    components.dwHostNameLength = static_cast<DWORD>(-1);
+    components.dwUrlPathLength = static_cast<DWORD>(-1);
+    components.dwExtraInfoLength = static_cast<DWORD>(-1);
     if (!WinHttpCrackUrl(out.full.c_str(), 0, 0, &components) || !components.lpszHostName ||
         components.dwHostNameLength == 0 || !components.lpszScheme ||
         components.dwSchemeLength == 0)
@@ -317,15 +322,6 @@ std::shared_ptr<WinClientState> client_state(const nk::net::RequestPtr &request,
             return {};
         }
     }
-    if (request->client->config.cookie_policy == NK_HTTP_COOKIES_DISABLED) {
-        DWORD features = WINHTTP_DISABLE_COOKIES;
-        if (!WinHttpSetOption(session, WINHTTP_OPTION_DISABLE_FEATURE, &features,
-                              sizeof(features))) {
-            WinHttpCloseHandle(session);
-            result = NK_ERROR_UNSUPPORTED;
-            return {};
-        }
-    }
     auto state = std::make_shared<WinClientState>();
     state->session = session;
     request->client->backend_state = state;
@@ -495,6 +491,16 @@ nk_result perform_impl(nk::net::RequestPtr request) {
             !configure_security(win_request, request)) {
             close_request();
             return NK_HTTP_ERROR_TLS;
+        }
+        // WINHTTP_OPTION_DISABLE_FEATURE applies to request handles only; on the session it fails.
+        if (request->client->config.cookie_policy == NK_HTTP_COOKIES_DISABLED) {
+            DWORD features = WINHTTP_DISABLE_COOKIES;
+            if (!WinHttpSetOption(win_request, WINHTTP_OPTION_DISABLE_FEATURE, &features,
+                                  sizeof(features))) {
+                const auto error = GetLastError();
+                close_request();
+                return map_error(error, *request);
+            }
         }
         DWORD redirect_policy = WINHTTP_OPTION_REDIRECT_POLICY_NEVER;
         if (!WinHttpSetOption(win_request, WINHTTP_OPTION_REDIRECT_POLICY, &redirect_policy,
