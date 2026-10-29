@@ -1532,6 +1532,98 @@ UINT taskbar_created_message = 0;
 UINT next_tray_id = 1;
 std::unordered_map<UINT, std::shared_ptr<WinTrayResource>> trays;
 
+// The open tray menu. TrackPopupMenuEx runs a modal loop until the menu closes; on the UI thread that
+// loop would stop the application's own loop (its transports, timers and replies) for as long as the
+// menu stays open. So the menu runs on its own thread, owned by a window of that thread, and the
+// choice comes back to the tray window as tray_menu_closed_message.
+constexpr UINT tray_menu_closed_message = WM_APP + 45;
+constexpr UINT tray_menu_end_message = WM_APP + 46;
+constexpr wchar_t tray_menu_class_name[] = L"NativeKitTrayMenuOwner";
+
+struct TrayMenuThread {
+    nk::backend::PopupMenu popup;
+    nk_tray tray = NK_INVALID_HANDLE;
+    POINT point{};
+    HWND reply = nullptr;
+    std::atomic<HWND> owner{nullptr};
+    std::atomic<bool> cancelled{false};
+    std::atomic<bool> done{false};
+    HANDLE thread = nullptr;
+};
+std::unique_ptr<TrayMenuThread> tray_menu;
+
+LRESULT CALLBACK tray_menu_owner_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
+    if (message == tray_menu_end_message) {
+        EndMenu(); // ends this thread's menu loop
+        return 0;
+    }
+    return DefWindowProcW(window, message, wparam, lparam);
+}
+
+DWORD WINAPI run_tray_menu(void *parameter) noexcept {
+    auto *menu = static_cast<TrayMenuThread *>(parameter);
+    WNDCLASSEXW definition{};
+    definition.cbSize = sizeof(definition);
+    definition.lpfnWndProc = tray_menu_owner_proc;
+    definition.hInstance = GetModuleHandleW(nullptr);
+    definition.lpszClassName = tray_menu_class_name;
+    RegisterClassExW(&definition); // fails harmlessly once registered
+    UINT chosen = 0;
+    HWND owner = CreateWindowExW(WS_EX_TOOLWINDOW, tray_menu_class_name, L"NativeKit tray menu", WS_POPUP,
+                                 0, 0, 0, 0, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+    if (owner) {
+        menu->owner.store(owner);
+        if (!menu->cancelled.load()) {
+            // The popup must belong to the foreground window, or it does not close when the user
+            // clicks elsewhere (documented TrackPopupMenu behavior).
+            SetForegroundWindow(owner);
+            chosen = static_cast<UINT>(TrackPopupMenuEx(menu->popup.menu,
+                                                        TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_NONOTIFY,
+                                                        menu->point.x, menu->point.y, owner, nullptr));
+            PostMessageW(owner, WM_NULL, 0, 0);
+        }
+        menu->owner.store(nullptr);
+        DestroyWindow(owner);
+    }
+    menu->done.store(true);
+    PostMessageW(menu->reply, tray_menu_closed_message, chosen, 0);
+    nk::core::wake_events();
+    return 0;
+}
+
+// UI thread: the menu thread finished; reports its choice.
+void finish_tray_menu(UINT chosen) noexcept {
+    if (!tray_menu || !tray_menu->done.load())
+        return;
+    auto menu = std::move(tray_menu);
+    if (menu->thread) {
+        WaitForSingleObject(menu->thread, INFINITE);
+        CloseHandle(menu->thread);
+    }
+    if (!menu->cancelled.load())
+        nk::backend::menu_backend_popup_chosen(menu->popup, chosen);
+    nk::backend::menu_backend_popup_free(menu->popup);
+}
+
+// UI thread: closes the open tray menu without a choice and waits for its thread.
+void cancel_tray_menu() noexcept {
+    if (!tray_menu)
+        return;
+    tray_menu->cancelled.store(true);
+    for (int attempt = 0; attempt < 300 && !tray_menu->done.load(); ++attempt) {
+        if (const HWND owner = tray_menu->owner.load())
+            PostMessageW(owner, tray_menu_end_message, 0, 0);
+        Sleep(10);
+    }
+    if (!tray_menu->done.load()) {
+        // Still inside the menu after 3 s: let the thread finish on its own rather than block here.
+        CloseHandle(tray_menu->thread);
+        (void)tray_menu.release();
+        return;
+    }
+    finish_tray_menu(0);
+}
+
 void fill_tray_icon(NOTIFYICONDATAW &icon, const WinTrayResource &tray) {
     icon.cbSize = sizeof(icon);
     icon.hWnd = tray_window;
@@ -1565,6 +1657,7 @@ void remove_tray(const std::shared_ptr<WinTrayResource> &tray) noexcept {
 }
 
 void remove_all_trays() noexcept {
+    cancel_tray_menu();
     while (!trays.empty()) {
         const auto tray = trays.begin()->second;
         nk::core::handles().erase(tray->handle, nk::core::ResourceType::tray);
@@ -1595,6 +1688,10 @@ bool handle_tray_message(HWND window, UINT message, WPARAM wparam, LPARAM lparam
             fill_tray_icon(icon, *entry.second);
             Shell_NotifyIconW(NIM_ADD, &icon);
         }
+        return true;
+    }
+    if (message == tray_menu_closed_message) {
+        finish_tray_menu(static_cast<UINT>(wparam));
         return true;
     }
     if (message != tray_message)
@@ -6156,6 +6253,8 @@ nk_result NK_CALL nk_tray_destroy(nk_tray handle) {
     const auto tray = get_tray(handle);
     if (!tray)
         return invalid_tray_handle();
+    if (tray_menu && tray_menu->tray == handle)
+        cancel_tray_menu();
     nk::core::handles().erase(handle, nk::core::ResourceType::tray);
     remove_tray(tray);
     return NK_OK;
@@ -6184,11 +6283,20 @@ nk_result NK_CALL nk_tray_show_menu(nk_tray handle, nk_menu menu) {
     const auto tray = get_tray(handle);
     if (!tray || !tray_window)
         return invalid_tray_handle();
-    // The popup must belong to the foreground window, or it does not close
-    // when the user clicks elsewhere (documented TrackPopupMenu behavior).
-    SetForegroundWindow(tray_window);
-    const auto result = nk::backend::menu_backend_popup(menu, tray_window);
-    PostMessageW(tray_window, WM_NULL, 0, 0);
-    return result;
+    if (tray_menu)
+        return NK_OK; // one tray menu at a time
+    auto opened = std::make_unique<TrayMenuThread>();
+    if (const auto result = nk::backend::menu_backend_popup_build(menu, opened->popup); result != NK_OK)
+        return result;
+    opened->tray = handle;
+    opened->reply = tray_window;
+    GetCursorPos(&opened->point);
+    opened->thread = CreateThread(nullptr, 0, run_tray_menu, opened.get(), 0, nullptr);
+    if (!opened->thread) {
+        nk::backend::menu_backend_popup_free(opened->popup);
+        return fail(NK_ERROR_UNKNOWN, "could not start the tray menu thread");
+    }
+    tray_menu = std::move(opened);
+    return NK_OK;
 }
 }

@@ -257,6 +257,7 @@ std::wstring item_label(const nk::core::MenuItemResource &resource) {
 struct BuildState {
     UINT next_id = 1;
     std::unordered_map<UINT, nk_menu_item> items;
+    std::unordered_map<UINT, std::shared_ptr<nk::core::MenuItemResource>> resources;
     std::vector<ACCEL> accelerators;
 };
 
@@ -317,6 +318,7 @@ bool append_item(HMENU parent, const std::shared_ptr<nk::core::MenuItemResource>
     UINT id = 0;
     if (!allocate_id(build, resource->handle, id))
         return false;
+    build.resources.emplace(id, resource);
     MENUITEMINFOW native{};
     native.cbSize = sizeof(native);
     native.fMask = MIIM_FTYPE | MIIM_ID | MIIM_STATE | MIIM_STRING;
@@ -533,6 +535,48 @@ nk_result menu_backend_popup(nk_menu menu, HWND owner) noexcept {
             nk::core::menu_item_activated(found->second);
     }
     return NK_OK;
+}
+
+nk_result menu_backend_popup_build(nk_menu menu, PopupMenu &out) noexcept {
+    if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
+        return result;
+    const auto resource = std::static_pointer_cast<nk::core::MenuResource>(
+        nk::core::handles().get(menu, nk::core::ResourceType::menu));
+    if (!resource) {
+        nk::core::set_error("invalid menu handle");
+        return NK_ERROR_INVALID_HANDLE;
+    }
+    BuildState build;
+    HMENU popup = CreatePopupMenu();
+    if (!popup) {
+        nk::core::set_error("Windows could not create the popup menu");
+        return NK_ERROR_UNKNOWN;
+    }
+    for (const auto child : resource->children) {
+        if (!append_item(popup, item(child), build)) {
+            DestroyMenu(popup);
+            nk::core::set_error("Windows could not create the popup menu");
+            return NK_ERROR_UNKNOWN;
+        }
+    }
+    out.menu = popup;
+    out.items = std::move(build.resources);
+    return NK_OK;
+}
+
+void menu_backend_popup_chosen(const PopupMenu &popup, UINT chosen) noexcept {
+    if (!chosen)
+        return;
+    const auto found = popup.items.find(chosen);
+    if (found != popup.items.end())
+        nk::core::menu_item_activated(found->second);
+}
+
+void menu_backend_popup_free(PopupMenu &popup) noexcept {
+    if (popup.menu)
+        DestroyMenu(popup.menu);
+    popup.menu = nullptr;
+    popup.items.clear();
 }
 
 void menu_backend_shutdown() noexcept {

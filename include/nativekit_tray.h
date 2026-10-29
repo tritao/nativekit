@@ -52,9 +52,13 @@ NK_API nk_result NK_CALL nk_tray_destroy(nk_tray tray);
 /** Replaces the hover text. */
 NK_API nk_result NK_CALL nk_tray_set_tooltip(nk_tray tray, const char *tooltip NK_UTF8);
 /**
- * Shows `menu` as a popup at the pointer and returns once it closes. A chosen
- * item is reported as NK_EVENT_MENU_ITEM_ACTIVATED, as for application menus.
- * The menu is not retained; the caller may destroy it after this returns.
+ * Shows `menu` as a popup at the pointer and returns at once: the popup's modal
+ * loop runs on its own thread, so the application's event loop keeps running
+ * while the menu is open. A chosen item is reported later as
+ * NK_EVENT_MENU_ITEM_ACTIVATED, as for application menus. The menu is copied;
+ * the caller may destroy it after this returns. While a tray menu is open,
+ * another call shows nothing and returns NK_OK. Destroying the tray closes its
+ * open menu without a choice.
  */
 NK_API nk_result NK_CALL nk_tray_show_menu(nk_tray tray, nk_menu menu);
 
