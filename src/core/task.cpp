@@ -119,7 +119,7 @@ class TaskManager final {
 #if !defined(NK_BACKEND_WEB)
         auto worker_count = std::thread::hardware_concurrency();
         worker_count = std::max(1u, std::min(worker_count, 8u));
-        const auto result = workers_.start(worker_count, worker_queue_capacity);
+        const auto result = workers_.start(worker_count, worker_queue_capacity, "nk.task");
         if (result != NK_OK) {
             accepting_ = false;
             generation_ = 0;

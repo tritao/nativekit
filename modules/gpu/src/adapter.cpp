@@ -220,6 +220,14 @@ struct Renderer {
     uint64_t failed_allocations = 0;
     nk_surface_frame_target frame_target{};
     bool has_frame_target = false;
+    /* Frame timing (nkgpu_set_frame_timing): the active frame's backend query, the ended queries oldest first while
+       their results are pending, and the newest result. */
+    bool frame_timing = false;
+    uint32_t frame_query = 0;
+    std::array<uint32_t, 4> timing_pending{};
+    uint32_t timing_pending_count = 0;
+    uint64_t timed_frames = 0;
+    uint64_t last_frame_gpu_nanoseconds = 0;
 #if defined(NKGPU_TESTING)
     uint64_t test_frames_before_loss = UINT64_MAX;
 #endif
@@ -517,6 +525,78 @@ static nkgpu_result activate_renderer(Handle handle,
     return NKGPU_OK;
 }
 
+/* ---- frame timing: one backend timestamp around each frame, read back a few frames later ---- */
+
+static const nk_sokol_transfer_api *frame_timing_api(const Renderer &renderer) {
+    const nk_sokol_transfer_api *transfer = renderer.api ? renderer.api->transfer : nullptr;
+    if (!transfer || !transfer->timestamp_supported || !transfer->timestamp_supported() ||
+        !transfer->timestamp_begin || !transfer->timestamp_end || !transfer->timestamp_status ||
+        !transfer->timestamp_elapsed_ns)
+        return nullptr;
+    return transfer;
+}
+
+/* Takes the results that have arrived, oldest first, so the newest result is the last frame measured. */
+static void collect_frame_timing(Renderer &renderer) {
+    const nk_sokol_transfer_api *transfer = frame_timing_api(renderer);
+    uint32_t done = 0;
+    if (!transfer)
+        return;
+    while (done < renderer.timing_pending_count) {
+        const uint32_t query = renderer.timing_pending[done];
+        const uint32_t state = transfer->timestamp_status(query);
+        if (state == NKGPU_TIMESTAMP_PENDING)
+            break;
+        if (state == NKGPU_TIMESTAMP_READY) {
+            renderer.last_frame_gpu_nanoseconds = transfer->timestamp_elapsed_ns(query);
+            ++renderer.timed_frames;
+        }
+        if (transfer->timestamp_destroy)
+            transfer->timestamp_destroy(query);
+        ++done;
+    }
+    for (uint32_t index = done; index < renderer.timing_pending_count; ++index)
+        renderer.timing_pending[index - done] = renderer.timing_pending[index];
+    renderer.timing_pending_count -= done;
+}
+
+/* Opens the frame's interval, after the frame is active. A frame finds every slot pending only when the GPU runs more
+   frames behind than there are slots, and goes untimed. */
+static void begin_frame_timing(Renderer &renderer) {
+    /* Results still arriving after timing was turned off are taken, which releases their queries. */
+    if (renderer.timing_pending_count)
+        collect_frame_timing(renderer);
+    if (!renderer.frame_timing)
+        return;
+    const nk_sokol_transfer_api *transfer = frame_timing_api(renderer);
+    if (transfer && renderer.timing_pending_count < renderer.timing_pending.size())
+        renderer.frame_query = transfer->timestamp_begin();
+}
+
+/* Closes the frame's interval before the frame is committed. */
+static void end_frame_timing(Renderer &renderer) {
+    if (!renderer.frame_query)
+        return;
+    const nk_sokol_transfer_api *transfer = frame_timing_api(renderer);
+    if (transfer && transfer->timestamp_end(renderer.frame_query))
+        renderer.timing_pending[renderer.timing_pending_count++] = renderer.frame_query;
+    else if (transfer && transfer->timestamp_destroy)
+        transfer->timestamp_destroy(renderer.frame_query);
+    renderer.frame_query = 0;
+}
+
+static void release_frame_timing(Renderer &renderer, bool backend_available) {
+    const nk_sokol_transfer_api *transfer = renderer.api ? renderer.api->transfer : nullptr;
+    if (backend_available && transfer && transfer->timestamp_destroy) {
+        if (renderer.frame_query)
+            transfer->timestamp_destroy(renderer.frame_query);
+        for (uint32_t index = 0; index < renderer.timing_pending_count; ++index)
+            transfer->timestamp_destroy(renderer.timing_pending[index]);
+    }
+    renderer.frame_query = 0;
+    renderer.timing_pending_count = 0;
+}
+
 static nkgpu_result begin_frame_with_target(Handle handle, const nk_surface_frame_target &target) {
     auto *slot = renderer_pool.get(handle);
     if (!slot)
@@ -551,6 +631,7 @@ static nkgpu_result begin_frame_with_target(Handle handle, const nk_surface_fram
     slot->value.copy_pass = false;
     slot->value.bindings = {};
     active_renderer = handle;
+    begin_frame_timing(slot->value);
     return NKGPU_OK;
 }
 
@@ -2019,6 +2100,7 @@ nkgpu_result nkgpu_renderer_destroy(nkgpu_renderer h) {
     }
     const nk_sokol_api *api = s->value.api;
     const nk_graphics_device device = s->value.device;
+    release_frame_timing(s->value, backend_available);
     destroy_owned(h, backend_available);
     renderer_pool.remove(*s);
     api->runtime_release();
@@ -3153,6 +3235,7 @@ nkgpu_result nkgpu_frame_begin(nkgpu_renderer h) {
     s->value.copy_pass = false;
     s->value.bindings = {};
     active_renderer = h;
+    begin_frame_timing(s->value);
     return NKGPU_OK;
 }
 
@@ -4361,6 +4444,30 @@ static nkgpu_result query_timestamp_backend(Renderer &renderer, Timestamp &times
     return NKGPU_OK;
 }
 
+nkgpu_result nkgpu_set_frame_timing(nkgpu_renderer r, uint32_t enabled) {
+    auto *slot = renderer_pool.get(r);
+    if (!slot)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    if (enabled > 1)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "frame timing takes 0 or 1");
+    /* A frame already open keeps its interval; the change applies from the next frame. */
+    slot->value.frame_timing = enabled != 0;
+    return NKGPU_OK;
+}
+
+nkgpu_result nkgpu_get_frame_timing(nkgpu_renderer r, nkgpu_frame_timing *out) {
+    auto *slot = renderer_pool.get(r);
+    if (!slot || !out)
+        return fail(!out ? NKGPU_ERROR_INVALID_ARGUMENT : NKGPU_ERROR_INVALID_HANDLE,
+                    "invalid frame timing query");
+    nkgpu_frame_timing timing{};
+    timing.struct_size = sizeof(timing);
+    timing.timed_frames = slot->value.timed_frames;
+    timing.last_frame_nanoseconds = slot->value.last_frame_gpu_nanoseconds;
+    *out = timing;
+    return NKGPU_OK;
+}
+
 nkgpu_result nkgpu_timestamp_begin(nkgpu_renderer r, nkgpu_timestamp *out) {
     nkgpu_timestamp_desc desc{};
     desc.struct_size = sizeof(desc);
@@ -5497,6 +5604,7 @@ nkgpu_result nkgpu_frame_abort(nkgpu_renderer r) {
         return fail(NKGPU_ERROR_UNKNOWN, "transfer pass could not be discarded");
     if (rs->value.in_pass && !rs->value.copy_pass)
         sg_end_pass();
+    end_frame_timing(rs->value);
     sg_commit();
     rs->value.state = RendererState::Ready;
     rs->value.in_pass = false;
@@ -5528,6 +5636,7 @@ static nkgpu_result end_frame(nkgpu_renderer r, bool present_surface) {
         return fail(NKGPU_ERROR_UNKNOWN, "transfer pass could not be completed");
     if (rs->value.in_pass && !rs->value.copy_pass)
         sg_end_pass();
+    end_frame_timing(rs->value);
     sg_commit();
     if (!present_surface && rs->value.frame_target.frame != NK_INVALID_HANDLE) {
         nk_result submitted = NK_OK;

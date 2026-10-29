@@ -92,6 +92,106 @@ bool collect_ready(TestResources &resources) {
     return info.state == NKGPU_TIMESTAMP_READY;
 }
 
+bool draw_frames(TestResources &resources, uint32_t width, uint32_t height, int count) {
+    for (int frame = 0; frame < count; ++frame) {
+        if (!expect_result(nkgpu_frame_begin(resources.renderer), NKGPU_OK,
+                           "nkgpu_frame_begin(timed)") ||
+            !expect_result(nkgpu_begin_window_pass(resources.renderer, width, height, 1), NKGPU_OK,
+                           "nkgpu_begin_window_pass(timed)") ||
+            !expect_result(nkgpu_end_pass(resources.renderer), NKGPU_OK, "nkgpu_end_pass(timed)") ||
+            !expect_result(nkgpu_end_frame(resources.renderer), NKGPU_OK, "nkgpu_end_frame(timed)"))
+            return false;
+    }
+    return true;
+}
+
+bool read_frame_timing(TestResources &resources, nkgpu_frame_timing &timing) {
+    timing = {};
+    timing.struct_size = sizeof(timing);
+    return expect_result(nkgpu_get_frame_timing(resources.renderer, &timing), NKGPU_OK,
+                         "nkgpu_get_frame_timing");
+}
+
+/* Explicit timestamps nest inside each other and inside a timed frame. */
+bool check_nested_timestamps(TestResources &resources, uint32_t width, uint32_t height) {
+    if (!expect_result(nkgpu_frame_begin(resources.renderer), NKGPU_OK, "nkgpu_frame_begin(nested)") ||
+        !expect_result(nkgpu_begin_window_pass(resources.renderer, width, height, 1), NKGPU_OK,
+                       "nkgpu_begin_window_pass(nested)") ||
+        !expect_result(nkgpu_timestamp_begin(resources.renderer, &resources.first_timestamp),
+                       NKGPU_OK, "nkgpu_timestamp_begin(outer)") ||
+        !expect_result(nkgpu_timestamp_begin(resources.renderer, &resources.second_timestamp),
+                       NKGPU_OK, "nkgpu_timestamp_begin(inner)") ||
+        !expect_result(nkgpu_timestamp_end(resources.renderer, resources.second_timestamp),
+                       NKGPU_OK, "nkgpu_timestamp_end(inner)") ||
+        !expect_result(nkgpu_timestamp_end(resources.renderer, resources.first_timestamp),
+                       NKGPU_OK, "nkgpu_timestamp_end(outer)") ||
+        !expect_result(nkgpu_end_pass(resources.renderer), NKGPU_OK, "nkgpu_end_pass(nested)") ||
+        !expect_result(nkgpu_end_frame(resources.renderer), NKGPU_OK, "nkgpu_end_frame(nested)") ||
+        !collect_ready(resources))
+        return false;
+    nkgpu_timestamp_info outer{}, inner{};
+    outer.struct_size = sizeof(outer);
+    inner.struct_size = sizeof(inner);
+    if (!expect_result(nkgpu_timestamp_query(resources.renderer, resources.first_timestamp, &outer),
+                       NKGPU_OK, "nkgpu_timestamp_query(outer)") ||
+        !expect_result(nkgpu_timestamp_query(resources.renderer, resources.second_timestamp, &inner),
+                       NKGPU_OK, "nkgpu_timestamp_query(inner)"))
+        return false;
+    if (inner.nanoseconds > outer.nanoseconds) {
+        std::fprintf(stderr, "inner timestamp outlasted the outer one\n");
+        return false;
+    }
+    nkgpu_timestamp_destroy(resources.renderer, resources.first_timestamp);
+    nkgpu_timestamp_destroy(resources.renderer, resources.second_timestamp);
+    resources.first_timestamp = {};
+    resources.second_timestamp = {};
+    return true;
+}
+
+/* Timed frames report results a few frames late; once timing is off, results stop after the
+   frames already in flight. */
+bool check_frame_timing(TestResources &resources, uint32_t width, uint32_t height) {
+    nkgpu_frame_timing timing{};
+    if (!read_frame_timing(resources, timing) || timing.timed_frames != 0) {
+        std::fprintf(stderr, "frames were timed before timing was enabled\n");
+        return false;
+    }
+    if (!expect_result(nkgpu_set_frame_timing(resources.renderer, 2),
+                       NKGPU_ERROR_INVALID_ARGUMENT, "nkgpu_set_frame_timing(2)") ||
+        !expect_result(nkgpu_set_frame_timing(resources.renderer, 1), NKGPU_OK,
+                       "nkgpu_set_frame_timing(1)"))
+        return false;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (timing.timed_frames < 3 && std::chrono::steady_clock::now() < deadline) {
+        if (!draw_frames(resources, width, height, 1) || !read_frame_timing(resources, timing))
+            return false;
+    }
+    if (!check_nested_timestamps(resources, width, height) || !read_frame_timing(resources, timing))
+        return false;
+    if (timing.timed_frames < 3) {
+        std::fprintf(stderr, "only %llu frames were timed\n",
+                     static_cast<unsigned long long>(timing.timed_frames));
+        return false;
+    }
+    if (!expect_result(nkgpu_set_frame_timing(resources.renderer, 0), NKGPU_OK,
+                       "nkgpu_set_frame_timing(0)"))
+        return false;
+    /* The first untimed frames take what was still in flight; later ones add nothing. */
+    nkgpu_frame_timing drained{}, after{};
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    if (!draw_frames(resources, width, height, 2) || !read_frame_timing(resources, drained) ||
+        !draw_frames(resources, width, height, 8) || !read_frame_timing(resources, after))
+        return false;
+    if (after.timed_frames != drained.timed_frames) {
+        std::fprintf(stderr, "frames were still timed after timing was disabled\n");
+        return false;
+    }
+    std::printf("frame timing: %llu frames, last %llu ns\n",
+                static_cast<unsigned long long>(after.timed_frames),
+                static_cast<unsigned long long>(after.last_frame_nanoseconds));
+    return true;
+}
+
 } // namespace
 
 int main() {
@@ -185,9 +285,9 @@ int main() {
 
     nkgpu_timestamp_info stale_info{};
     stale_info.struct_size = sizeof(stale_info);
-    return expect_result(nkgpu_timestamp_query(resources.renderer, resources.first_timestamp,
-                                               &stale_info),
-                         NKGPU_ERROR_INVALID_HANDLE, "nkgpu_timestamp_query(stale)")
-               ? 0
-               : 1;
+    if (!expect_result(nkgpu_timestamp_query(resources.renderer, resources.first_timestamp,
+                                             &stale_info),
+                       NKGPU_ERROR_INVALID_HANDLE, "nkgpu_timestamp_query(stale)"))
+        return 1;
+    return check_frame_timing(resources, window_options.width, window_options.height) ? 0 : 1;
 }

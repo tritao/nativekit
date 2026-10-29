@@ -12,6 +12,7 @@
 #include <winhttp.h>
 
 #include "net_backend.hpp"
+#include "core/thread_name.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -667,11 +668,17 @@ nk_capabilities capabilities() noexcept {
 
 nk_result backend_start(const RequestPtr &request) noexcept {
 #if NK_ENABLE_NO_EXCEPTIONS
-    std::thread([request] { perform(request); }).detach();
+    std::thread([request] {
+        nk::core::name_current_thread("nk.net.request");
+        perform(request);
+    }).detach();
     return NK_OK;
 #else
     try {
-        std::thread([request] { perform(request); }).detach();
+        std::thread([request] {
+            nk::core::name_current_thread("nk.net.request");
+            perform(request);
+        }).detach();
         return NK_OK;
     } catch (const std::bad_alloc &) {
         return NK_ERROR_OUT_OF_MEMORY;

@@ -18,13 +18,17 @@ struct QueuedEvent {
     nk_result result = NK_OK;
     std::uint32_t data_count = 0;
     std::vector<std::byte> data;
+    /** When the OS stamped the input behind this event, on nk_time_now_ns()'s clock; 0 when unknown
+     * or not an input. */
+    std::uint64_t os_time_ns = 0;
 };
 
 class EventQueue {
   public:
     explicit EventQueue(std::size_t capacity, std::size_t byte_capacity = 16u * 1024u * 1024u);
     nk_result push(QueuedEvent event);
-    nk_result poll(nk_event &output);
+    /** Takes the oldest event. `os_time_ns`, when given, receives its OS timestamp (0 for none). */
+    nk_result poll(nk_event &output, std::uint64_t *os_time_ns = nullptr);
     bool empty();
     void clear();
 

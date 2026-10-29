@@ -7,11 +7,15 @@
 #include "nativekit_system.h"
 #include "nativekit_monitor.h"
 #include "nativekit_webview.h"
+#include "nativekit_time.h"
 #include "nativekit_window.h"
 
 #include "core/error.hpp"
 #include "core/boundary.hpp"
 #include "core/frame_request.hpp"
+#include "core/surface_frame.hpp"
+#include "core/trace.hpp"
+#include "core/thread_name.hpp"
 #include "core/frame_backend.hpp"
 #include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
@@ -21,6 +25,7 @@
 #include "core/resource_events.hpp"
 #include "core/text_edit_transaction.hpp"
 #include "core/text_input_geometry.hpp"
+#include "windows/input_stamps.hpp"
 #include "windows/joystick.hpp"
 
 #define UNICODE
@@ -39,6 +44,9 @@
 #include <shobjidl.h>
 #include <shlobj.h>
 #include <shellapi.h>
+#if defined(NK_APPLICATION_ICON_RESOURCE_ID)
+#include <propkey.h>
+#endif
 #include <d3d11.h>
 #include <dxgi1_2.h>
 #include <wrl/client.h>
@@ -63,6 +71,7 @@
 #include <limits>
 #include <mutex>
 #include <new>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -79,6 +88,78 @@ constexpr wchar_t window_class_name[] = L"NativeKitWindow";
 constexpr wchar_t surface_class_name[] = L"NativeKitD3D11Surface";
 constexpr UINT notification_message = WM_APP + 42;
 constexpr UINT surface_frame_message = WM_APP + 43;
+
+/**
+ * The input message the window procedure is handling, so message_time_ns() can find its precise
+ * stamp. Window procedures nest (SendMessage), so each scope restores the one it replaced.
+ */
+struct InputMessageScope {
+    HWND window;
+    UINT message;
+    WPARAM wparam;
+    LPARAM lparam;
+    InputMessageScope *outer;
+    bool resolved = false;
+    std::uint64_t stamp_ns = 0;
+
+    static thread_local InputMessageScope *current;
+
+    InputMessageScope(HWND window_, UINT message_, WPARAM wparam_, LPARAM lparam_) noexcept
+        : window(window_), message(message_), wparam(wparam_), lparam(lparam_), outer(current) {
+        current = this;
+    }
+    ~InputMessageScope() { current = outer; }
+    InputMessageScope(const InputMessageScope &) = delete;
+    InputMessageScope &operator=(const InputMessageScope &) = delete;
+};
+thread_local InputMessageScope *InputMessageScope::current = nullptr;
+
+/** The hook's stamp for `scope`'s message, or 0 when the hooks did not see it. */
+std::uint64_t hooked_message_time_ns(const InputMessageScope &scope) noexcept {
+    namespace stamps = nk::windows_input_stamps;
+    const auto time = static_cast<std::uint32_t>(GetMessageTime());
+    const auto scan_code = static_cast<std::uint32_t>((scope.lparam >> 16) & 0xff);
+    const bool extended = (scope.lparam & (1ll << 24)) != 0;
+    if (const auto key = stamps::key_input(scope.message, scan_code, extended, time))
+        return stamps::match(*key);
+    POINT screen{GET_X_LPARAM(scope.lparam), GET_Y_LPARAM(scope.lparam)};
+    ClientToScreen(scope.window, &screen);
+    if (const auto mouse = stamps::mouse_input(scope.message, GET_XBUTTON_WPARAM(scope.wparam),
+                                               screen.x, screen.y, time))
+        return stamps::match(*mouse);
+    return 0;
+}
+
+/**
+ * When the OS stamped the message being handled, on nk_time_now_ns()'s clock. For a pointer move,
+ * button or key that the low-level hooks saw, that is the hook thread's steady-clock stamp, within
+ * tens of microseconds of the system taking the input. Otherwise it is rebuilt from GetMessageTime,
+ * which counts milliseconds on the system tick, so it is only as fine as the tick (15.6 ms).
+ */
+std::uint64_t message_time_ns() noexcept {
+    const std::uint64_t now = nk_time_now_ns();
+    if (InputMessageScope *scope = InputMessageScope::current) {
+        if (!scope->resolved) {
+            scope->resolved = true;
+            scope->stamp_ns = hooked_message_time_ns(*scope);
+        }
+        if (scope->stamp_ns != 0 && scope->stamp_ns <= now)
+            return scope->stamp_ns;
+    }
+    const std::uint64_t age = static_cast<std::uint64_t>(static_cast<DWORD>(
+                                  GetTickCount() - static_cast<DWORD>(GetMessageTime()))) *
+                              1000000u;
+    return age < now ? now - age : 0;
+}
+
+/** Traces a dequeued mouse message, in screen coordinates as an OS input hook sees them. */
+void trace_mouse_message(HWND window, nk_trace_event_kind kind, LPARAM lparam) noexcept {
+    if (!NK_TRACE_ACTIVE())
+        return;
+    POINT screen{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
+    ClientToScreen(window, &screen);
+    NK_TRACE_EVENT(kind, message_time_ns(), screen.x, screen.y);
+}
 constexpr UINT_PTR surface_frame_timer = 1;
 ATOM window_class = 0;
 ATOM surface_window_class = 0;
@@ -185,6 +266,8 @@ struct WinDialogContext {
     std::wstring initial_path;
     std::wstring suggested_name;
     std::wstring message;
+    std::wstring yes_label;
+    std::wstring checkbox_label;
     uint32_t flags = 0;
     uint32_t message_kind = 0;
     uint32_t buttons = 0;
@@ -342,8 +425,20 @@ struct WinWindowResource final : nk::core::Resource {
     ~WinWindowResource() override {
         if (pointer_captured && GetCapture() == window)
             ReleaseCapture();
-        if (owns_window && window && IsWindow(window))
+        if (owns_window && window && IsWindow(window)) {
+#if defined(NK_APPLICATION_ICON_RESOURCE_ID)
+            Microsoft::WRL::ComPtr<IPropertyStore> properties;
+            if (SUCCEEDED(SHGetPropertyStoreForWindow(window, IID_PPV_ARGS(&properties)))) {
+                // Window property-store values must be released before destruction.
+                const PROPVARIANT empty{};
+                properties->SetValue(PKEY_AppUserModel_ID, empty);
+                properties->SetValue(PKEY_AppUserModel_RelaunchIconResource, empty);
+                properties->SetValue(PKEY_AppUserModel_RelaunchCommand, empty);
+                properties->SetValue(PKEY_AppUserModel_RelaunchDisplayNameResource, empty);
+            }
+#endif
             DestroyWindow(window);
+        }
         if (icon_small)
             DestroyIcon(icon_small);
         if (icon_big && icon_big != icon_small)
@@ -555,6 +650,11 @@ void queue_input_event(nk_event_kind kind, nk_handle source, std::vector<std::by
     event.source = source;
     event.flags = flags;
     event.data = std::move(data);
+    // Called while the message that caused the event is being handled, so its stamp is the input's.
+    if ((kind == NK_EVENT_POINTER_MOVE || kind == NK_EVENT_POINTER_BUTTON ||
+         kind == NK_EVENT_KEY) &&
+        NK_TRACE_ACTIVE())
+        event.os_time_ns = message_time_ns();
     nk::core::push_event(std::move(event));
 }
 
@@ -1457,6 +1557,9 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
         }
         if (message == WM_CAPTURECHANGED && reinterpret_cast<HWND>(lparam) != window)
             resource->pointer_captured = false;
+        std::optional<InputMessageScope> input_scope;
+        if (NK_TRACE_ACTIVE() && nk::windows_input_stamps::is_input_message(message))
+            input_scope.emplace(window, message, wparam, lparam);
         bool pointer_handled = false;
         nk::core::callback_boundary(
             [&] { pointer_handled = handle_pointer_message(*resource, message, wparam); });
@@ -1468,6 +1571,10 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             return message == WM_XBUTTONDOWN || message == WM_XBUTTONUP ? TRUE : 0;
         if (message == WM_KEYDOWN || message == WM_SYSKEYDOWN || message == WM_KEYUP ||
             message == WM_SYSKEYUP) {
+            if (NK_TRACE_ACTIVE())
+                NK_TRACE_EVENT(NK_TRACE_EVENT_INPUT_KEY, message_time_ns(),
+                               static_cast<std::int64_t>(wparam),
+                               message == WM_KEYDOWN || message == WM_SYSKEYDOWN ? 1 : 0);
             nk::core::callback_boundary([&] {
                 const bool released = message == WM_KEYUP || message == WM_SYSKEYUP;
                 const nk_key key = key_from_windows(wparam, lparam);
@@ -1486,7 +1593,10 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
                 return 0;
         }
         if (message == WM_CHAR) {
-            if (wparam == '\b')
+            // TranslateMessage turns Enter, Tab, Escape, Backspace and Ctrl+letter into
+            // C0 controls and DEL. Those keys already arrive as key events; GTK and Cocoa
+            // never commit them as text, so a terminal would otherwise receive them twice.
+            if (wparam < 0x20 || wparam == 0x7f)
                 return 0;
             nk::core::callback_boundary(
                 [&] { emit_text_character(*resource, static_cast<wchar_t>(wparam)); });
@@ -1528,6 +1638,7 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             return 0;
         }
         if (message == WM_MOUSEMOVE) {
+            trace_mouse_message(window, NK_TRACE_EVENT_INPUT_MOVE, lparam);
             nk::core::callback_boundary([&] {
                 if (!resource->pointer_tracking) {
                     TRACKMOUSEEVENT tracking{sizeof(tracking), TME_LEAVE, window, 0};
@@ -1548,6 +1659,7 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             return 0;
         }
         if (pointer_button_message(message)) {
+            trace_mouse_message(window, NK_TRACE_EVENT_INPUT_BUTTON, lparam);
             nk::core::callback_boundary([&] {
                 update_pointer_position(*resource, lparam);
                 const bool released = message == WM_LBUTTONUP || message == WM_RBUTTONUP ||
@@ -1944,6 +2056,41 @@ bool apply_pending_resize(WinSurfaceResource &surface) {
     return rebuild_surface_targets(surface, width, height);
 }
 
+/**
+ * Draws one frame for a posted frame message or a frame-timer tick. Both reach the surface's window
+ * procedure, also while a modal loop (a window drag or resize) dispatches messages instead of
+ * pump_events().
+ */
+void draw_surface_frame(WinSurfaceResource &surface) {
+    if (!surface.frame_requests.should_draw()) {
+        /* An idle on-demand surface stops its timer until the next request. */
+        disarm_surface_frames(surface);
+        return;
+    }
+    auto active = get_surface(surface.handle);
+    if (!active)
+        return;
+    // Preserve pending requests while RENDER owns the previous frame.
+    // Its PLATFORM completion releases the ticket before the next callback.
+    if (nk::core::surface_has_open_frame(active->handle))
+        return;
+    active->frame_requests.begin_frame();
+    nk::core::run_surface_frame([&] {
+        if (nk_surface_make_current(active->handle) != NK_OK)
+            return;
+        const auto callback = active->frame_callback;
+        void *user_data = active->frame_user_data;
+        callback(active->handle, active->framebuffer_width, active->framebuffer_height, user_data);
+        // A ticket hands presentation to the asynchronous renderer. Only
+        // callbacks using the synchronous surface API present here.
+        if (active->frame_prepared && !nk::core::surface_has_open_frame(active->handle))
+            nk_surface_present(active->handle);
+    });
+    arm_surface_frames(*active);
+    // A completed callback is work even when it produces no input event.
+    nk::core::wake_events();
+}
+
 LRESULT CALLBACK surface_window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
     auto *surface =
         reinterpret_cast<WinSurfaceResource *>(GetWindowLongPtrW(window, GWLP_USERDATA));
@@ -1967,34 +2114,7 @@ LRESULT CALLBACK surface_window_proc(HWND window, UINT message, WPARAM wparam, L
         (message == surface_frame_message ||
          (message == WM_TIMER && wparam == surface_frame_timer)) &&
         surface->frame_callback && !surface->destroying) {
-        if (!surface->frame_requests.should_draw()) {
-            /* An idle on-demand surface stops its timer until the next request. */
-            disarm_surface_frames(*surface);
-            return 0;
-        }
-        auto active = get_surface(surface->handle);
-        if (!active)
-            return 0;
-        // Preserve pending requests while RENDER owns the previous frame.
-        // Its PLATFORM completion releases the ticket before the next callback.
-        if (nk::core::surface_has_open_frame(active->handle))
-            return 0;
-        active->frame_requests.begin_frame();
-        nk::core::callback_boundary([&] {
-            if (nk_surface_make_current(active->handle) != NK_OK)
-                return;
-            const auto callback = active->frame_callback;
-            void *user_data = active->frame_user_data;
-            callback(active->handle, active->framebuffer_width, active->framebuffer_height,
-                     user_data);
-            // A ticket hands presentation to the asynchronous renderer. Only
-            // callbacks using the synchronous surface API present here.
-            if (active->frame_prepared && !nk::core::surface_has_open_frame(active->handle))
-                nk_surface_present(active->handle);
-        });
-        arm_surface_frames(*active);
-        // A completed callback is work even when it produces no input event.
-        nk::core::wake_events();
+        draw_surface_frame(*surface);
         return 0;
     }
     if (surface && message == WM_SIZE && surface->handle != NK_INVALID_HANDLE &&
@@ -2678,15 +2798,17 @@ UINT message_box_type(const WinDialogContext &context) {
 void run_message_dialog(const std::shared_ptr<WinDialogContext> &context) noexcept {
     context->thread_id = GetCurrentThreadId();
     int response = IDCANCEL;
+    BOOL checkbox_checked = FALSE;
     if (!context->canceled &&
-        (context->buttons & (NK_MESSAGE_BUTTON_SAVE | NK_MESSAGE_BUTTON_DONT_SAVE))) {
+        (context->buttons & (NK_MESSAGE_BUTTON_SAVE | NK_MESSAGE_BUTTON_DONT_SAVE) ||
+         !context->yes_label.empty() || !context->checkbox_label.empty())) {
         HMODULE controls = LoadLibraryW(L"comctl32.dll");
         using ShowTaskDialog = HRESULT(WINAPI *)(const TASKDIALOGCONFIG *, int *, int *, BOOL *);
         auto show =
             controls
                 ? reinterpret_cast<ShowTaskDialog>(GetProcAddress(controls, "TaskDialogIndirect"))
                 : nullptr;
-        TASKDIALOG_BUTTON buttons[3]{};
+        TASKDIALOG_BUTTON buttons[6]{};
         UINT button_count = 0;
         if (context->buttons & NK_MESSAGE_BUTTON_DONT_SAVE)
             buttons[button_count++] = {IDNO, L"Don't Save"};
@@ -2694,6 +2816,12 @@ void run_message_dialog(const std::shared_ptr<WinDialogContext> &context) noexce
             buttons[button_count++] = {IDCANCEL, L"Cancel"};
         if (context->buttons & NK_MESSAGE_BUTTON_SAVE)
             buttons[button_count++] = {IDYES, L"Save"};
+        if (context->buttons & NK_MESSAGE_BUTTON_YES)
+            buttons[button_count++] = {IDYES, context->yes_label.empty() ? L"Yes" : context->yes_label.c_str()};
+        if (context->buttons & NK_MESSAGE_BUTTON_NO)
+            buttons[button_count++] = {IDNO, L"No"};
+        if (context->buttons & NK_MESSAGE_BUTTON_OK)
+            buttons[button_count++] = {IDOK, L"OK"};
         TASKDIALOGCONFIG config{};
         config.cbSize = sizeof(config);
         config.hwndParent = context->parent;
@@ -2701,14 +2829,18 @@ void run_message_dialog(const std::shared_ptr<WinDialogContext> &context) noexce
         config.dwCommonButtons = 0;
         config.pszWindowTitle = context->title.c_str();
         config.pszContent = context->message.c_str();
+        config.pszVerificationText = context->checkbox_label.empty() ? nullptr : context->checkbox_label.c_str();
         config.pszMainIcon = TD_WARNING_ICON;
         config.cButtons = button_count;
         config.pButtons = buttons;
         config.nDefaultButton = IDCANCEL;
-        if (!show || FAILED(show(&config, &response, nullptr, nullptr)))
-            response =
-                MessageBoxW(context->parent, context->message.c_str(), context->title.c_str(),
-                            MB_ICONWARNING | MB_YESNOCANCEL | MB_DEFBUTTON3);
+        if (!show || FAILED(show(&config, &response, nullptr, &checkbox_checked))) {
+            checkbox_checked = FALSE;
+            response = context->yes_label.empty() && context->checkbox_label.empty()
+                ? MessageBoxW(context->parent, context->message.c_str(), context->title.c_str(),
+                              MB_ICONWARNING | MB_YESNOCANCEL | MB_DEFBUTTON3)
+                : IDCANCEL;
+        }
         if (controls)
             FreeLibrary(controls);
     } else if (!context->canceled)
@@ -2729,7 +2861,7 @@ void run_message_dialog(const std::shared_ptr<WinDialogContext> &context) noexce
     event.request_id = context->request;
     event.flags = context->kind;
     event.result = response ? NK_OK : NK_ERROR_UNKNOWN;
-    event.data = bytes_of(nk_dialog_message_result{button});
+    event.data = bytes_of(nk_dialog_message_result{button, checkbox_checked ? 1u : 0u});
     nk::core::push_event(std::move(event));
 }
 
@@ -2818,7 +2950,10 @@ nk_result start_file_dialog(nk_handle parent_handle, const nk_file_dialog_option
         std::lock_guard lock(dialogs_mutex);
         dialogs.emplace(context->request, context);
     }
-    context->worker = std::thread(run_file_dialog, context);
+    context->worker = std::thread([context] {
+        nk::core::name_current_thread("nk.dialog.file");
+        run_file_dialog(context);
+    });
     *out_request = context->request;
     return NK_OK;
 }
@@ -3134,17 +3269,136 @@ nk_result get_string(nk_system_string_kind kind, std::string &out_value) {
 } // namespace nk::core::system_backend
 
 namespace nk::backend {
+namespace {
+/* Signalled by wake_events() so a wait that sleeps on the window queue also wakes for work that
+ * arrives from other threads. Auto-reset: a stale signal costs one extra sequence check. */
+HANDLE event_wake_handle() noexcept {
+    static const HANDLE handle = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    return handle;
+}
+
+bool is_frame_message(const MSG &message) noexcept {
+    return message.message == surface_frame_message ||
+           (message.message == WM_TIMER && message.wParam == surface_frame_timer);
+}
+
+bool is_key_message(UINT message) noexcept {
+    return message == WM_KEYDOWN || message == WM_KEYUP || message == WM_SYSKEYDOWN ||
+           message == WM_SYSKEYUP;
+}
+
+/* Set when a frame message was left queued for an unpolled event; the next pump renders it. */
+bool frame_deferred = false;
+
+/* Whether a frame message waits for the next pump: it does while the application has an unpolled
+ * event, but never twice in a row, so sustained input cannot hold frames back. */
+bool hold_frame(const MSG &message) noexcept {
+    if (!is_frame_message(message))
+        return false;
+    if (nk::core::events_pending() && !frame_deferred) {
+        frame_deferred = true;
+        return true;
+    }
+    frame_deferred = false;
+    return false;
+}
+
+/* TranslateMessage posts the characters of a key message. They are not input messages, so they
+ * would sit behind every later key and move in the queue: take them right after their key. The
+ * character ranges skip WM_SYSKEYDOWN and WM_SYSKEYUP, which lie between them: those are keys,
+ * and must keep their place, their translation and the accelerator check. */
+void dispatch_posted_text() noexcept {
+    MSG text;
+    while (PeekMessageW(&text, nullptr, WM_CHAR, WM_DEADCHAR, PM_REMOVE) ||
+           PeekMessageW(&text, nullptr, WM_SYSCHAR, WM_UNICHAR, PM_REMOVE) ||
+           PeekMessageW(&text, nullptr, WM_IME_STARTCOMPOSITION, WM_IME_COMPOSITION, PM_REMOVE) ||
+           PeekMessageW(&text, nullptr, WM_IME_CHAR, WM_IME_CHAR, PM_REMOVE))
+        DispatchMessageW(&text);
+}
+
+/* Dispatches a message, then the characters its translation posted. */
+void translate_and_dispatch(const MSG &message) noexcept {
+    TranslateMessage(&message);
+    DispatchMessageW(&message);
+    if (is_key_message(message.message))
+        dispatch_posted_text();
+}
+} // namespace
+
+bool wait_events(std::uint64_t sequence, std::chrono::milliseconds timeout) noexcept {
+    const auto ready = [sequence] {
+        return nk::core::wake_sequence() != sequence || nk::core::events_pending();
+    };
+    const HANDLE wake = event_wake_handle();
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    for (;;) {
+        if (ready())
+            return true;
+        const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now());
+        if (remaining.count() <= 0)
+            return false;
+        /* Window input wakes the wait too: a condition variable alone sleeps through it until the
+         * timeout. MWMO_INPUTAVAILABLE also reports input a PeekMessage call left in the queue. */
+        const DWORD result = MsgWaitForMultipleObjectsEx(
+            wake ? 1 : 0, wake ? &wake : nullptr, static_cast<DWORD>(remaining.count()),
+            QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+        /* The wake event stays signalled after a wake the caller already saw. Only a window
+         * message ends the wait without a new sequence. */
+        if (result == WAIT_OBJECT_0 + (wake ? 1 : 0))
+            return true;
+        if (result == WAIT_FAILED) {
+            /* Do not spin on a failing wait: sleep out the timeout the caller asked for. */
+            Sleep(static_cast<DWORD>(remaining.count()));
+            return ready();
+        }
+    }
+}
+
+void wake_event_wait() noexcept {
+    if (const HANDLE wake = event_wake_handle())
+        SetEvent(wake);
+}
+
 void pump_events() noexcept {
     nk::windows_joystick::pump();
+    /* The hooks run while tracing, so input from the first traced pump on gets a precise stamp. */
+    nk::windows_input_stamps::update(NK_TRACE_ACTIVE());
     MSG message;
-    while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+    /* Windows hands out sent and posted messages before queued input, and every frame requests
+     * its successor by posting a message. Take input first, or a busy frame loop keeps it
+     * waiting in the system queue indefinitely. Sent messages are named too: a queue filter
+     * otherwise leaves cross-thread SendMessage callers blocked while input streams in. */
+    while (PeekMessageW(&message, nullptr, 0, 0,
+                        PM_REMOVE | PM_QS_INPUT | PM_QS_SENDMESSAGE)) {
         if (nk::backend::menu_backend_translate_accelerator(message))
             continue;
-        TranslateMessage(&message);
-        DispatchMessageW(&message);
+        translate_and_dispatch(message);
+    }
+    /* Everything else, in queue order. A frame message waits one pump while the application has
+     * an unpolled event, so the event is returned before more rendering; it never waits twice,
+     * so sustained input cannot hold frames back. Paint and timers are not deferred at all. */
+    while (PeekMessageW(&message, nullptr, 0, 0, PM_NOREMOVE)) {
+        if (hold_frame(message))
+            break;
+        /* Remove the message that was inspected, not whatever another thread queued meanwhile. A
+         * null window filter would match every window, so thread messages use -1, which matches
+         * only them. */
+        const MSG inspected = message;
+        const HWND window = inspected.hwnd ? inspected.hwnd : reinterpret_cast<HWND>(-1);
+        if (!PeekMessageW(&message, window, inspected.message, inspected.message, PM_REMOVE))
+            continue;
+        /* The filter cannot name a timer, so another timer of the same window can come out
+         * instead. A frame timer taken that way gets its own check; when it has to wait, it is
+         * dropped, and the timer, which repeats, renders the frame on a later pump. */
+        if (message.wParam != inspected.wParam && hold_frame(message))
+            break;
+        if (nk::backend::menu_backend_translate_accelerator(message))
+            continue;
+        translate_and_dispatch(message);
         // Yield to the application after one on-demand frame. A callback may
         // request its successor; draining those messages forever starves input.
-        if (message.message == surface_frame_message)
+        if (is_frame_message(message))
             break;
     }
     reap_dialogs();
@@ -3152,6 +3406,7 @@ void pump_events() noexcept {
 }
 
 void shutdown() noexcept {
+    nk::windows_input_stamps::shutdown();
     nk::windows_joystick::shutdown();
     menu_backend_shutdown();
     while (!notifications.empty())
@@ -3219,7 +3474,7 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
         NK_CAP_JOYSTICK | NK_CAP_GAMEPAD_RUMBLE | NK_CAP_SYSTEM_INFO | NK_CAP_APPLICATION_PATH |
         NK_CAP_APPLICATION_STORAGE | NK_CAP_SYSTEM_FONTS | NK_CAP_KEEP_AWAKE |
         NK_CAP_DISPLAY_ORIENTATION | NK_CAP_WRAP_NATIVE_WINDOW | NK_CAP_SURFACE_FRAME_CALLBACK |
-        NK_CAP_WINDOW_CUSTOM_DECORATIONS | NK_CAP_APPLICATION_MENU;
+        NK_CAP_WINDOW_CUSTOM_DECORATIONS | NK_CAP_APPLICATION_MENU | NK_CAP_FILE_WATCH;
 #if defined(NK_HAS_WEBVIEW2)
     if (webview2_available())
         capabilities |= NK_CAP_WEBVIEW;
@@ -3236,6 +3491,12 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
             ((options->flags & NK_WINDOW_MODAL) && !options->owner))
             return fail(NK_ERROR_INVALID_ARGUMENT, "invalid window options");
         *out_window = NK_INVALID_HANDLE;
+        // Interpreter-hosted applications need their own identity so Explorer
+        // does not group their taskbar buttons under the runtime executable.
+        const auto application_id = nk::core::system_application_id();
+        if (!application_id.empty() &&
+            FAILED(SetCurrentProcessExplicitAppUserModelID(wide(application_id.c_str()).c_str())))
+            return fail(NK_ERROR_UNKNOWN, "could not set Windows application identity");
         enable_process_dpi_awareness();
         if (!ensure_window_class())
             return fail(NK_ERROR_UNKNOWN, "could not register Win32 window class");
@@ -3267,6 +3528,63 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
             nullptr, GetModuleHandleW(nullptr), resource.get());
         if (!resource->window)
             return fail(NK_ERROR_UNKNOWN, "could not create Win32 window");
+#if defined(NK_APPLICATION_ICON_RESOURCE_ID)
+        if (!application_id.empty() && options->kind == NK_WINDOW_NORMAL) {
+            // An explicit window ID and resource icon prevent Explorer from using
+            // the interpreter executable's generic icon for the taskbar group.
+            HMODULE module = nullptr;
+            if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                        GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                    reinterpret_cast<LPCWSTR>(&nk_window_create), &module))
+                return fail(NK_ERROR_UNKNOWN, "could not locate application icon module");
+            std::wstring path(32768, L'\0');
+            const DWORD length =
+                GetModuleFileNameW(module, path.data(), static_cast<DWORD>(path.size()));
+            if (!length || length >= path.size())
+                return fail(NK_ERROR_UNKNOWN, "could not read application icon module path");
+            path.resize(length);
+            const auto icon_resource =
+                path + L",-" + std::to_wstring(NK_APPLICATION_ICON_RESOURCE_ID);
+            Microsoft::WRL::ComPtr<IPropertyStore> properties;
+            if (FAILED(SHGetPropertyStoreForWindow(resource->window, IID_PPV_ARGS(&properties))))
+                return fail(NK_ERROR_UNKNOWN, "could not access Windows taskbar properties");
+            PROPVARIANT value{};
+            value.vt = VT_LPWSTR;
+            const auto environment_value = [](const wchar_t *name) {
+                const DWORD size = GetEnvironmentVariableW(name, nullptr, 0);
+                if (!size)
+                    return std::wstring{};
+                std::wstring text(size, L'\0');
+                const DWORD length = GetEnvironmentVariableW(name, text.data(), size);
+                if (!length || length >= size)
+                    return std::wstring{};
+                text.resize(length);
+                return text;
+            };
+            const auto relaunch_command = environment_value(L"NK_APPLICATION_RELAUNCH_COMMAND");
+            const auto relaunch_name = environment_value(L"NK_APPLICATION_RELAUNCH_DISPLAY_NAME");
+            const auto relaunch_icon = environment_value(L"NK_APPLICATION_RELAUNCH_ICON");
+            // Hosted applications can provide a launcher that restores their
+            // arguments and environment. Windows requires command and name together.
+            if (!relaunch_command.empty() && !relaunch_name.empty()) {
+                value.pwszVal = const_cast<wchar_t *>(relaunch_command.c_str());
+                if (FAILED(properties->SetValue(PKEY_AppUserModel_RelaunchCommand, value)))
+                    return fail(NK_ERROR_UNKNOWN, "could not set Windows taskbar relaunch command");
+                value.pwszVal = const_cast<wchar_t *>(relaunch_name.c_str());
+                if (FAILED(
+                        properties->SetValue(PKEY_AppUserModel_RelaunchDisplayNameResource, value)))
+                    return fail(NK_ERROR_UNKNOWN, "could not set Windows taskbar relaunch name");
+            }
+            value.pwszVal = const_cast<wchar_t *>(relaunch_icon.empty() ? icon_resource.c_str()
+                                                                        : relaunch_icon.c_str());
+            if (FAILED(properties->SetValue(PKEY_AppUserModel_RelaunchIconResource, value)))
+                return fail(NK_ERROR_UNKNOWN, "could not set Windows taskbar icon resource");
+            const auto id = wide(application_id.c_str());
+            value.pwszVal = const_cast<wchar_t *>(id.c_str());
+            if (FAILED(properties->SetValue(PKEY_AppUserModel_ID, value)))
+                return fail(NK_ERROR_UNKNOWN, "could not set Windows taskbar window identity");
+        }
+#endif
         resource->handle = nk::core::handles().insert(nk::core::ResourceType::window, resource);
         if (resource->handle == NK_INVALID_HANDLE)
             return fail(NK_ERROR_OUT_OF_MEMORY, "window handle registry is full");
@@ -5125,7 +5443,7 @@ nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
     {
         if (const auto result = enter_ui(); result != NK_OK)
             return result;
-        if (!options || options->struct_size < sizeof(*options) || !out_request ||
+        if (!options || options->struct_size < offsetof(nk_message_dialog_options, yes_label) || !out_request ||
             !options->message)
             return fail(NK_ERROR_INVALID_ARGUMENT, "invalid message dialog options");
         auto context = std::make_shared<WinDialogContext>();
@@ -5141,13 +5459,20 @@ nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
         if (!copy_wide(options->title, context->title) ||
             !copy_wide(options->message, context->message))
             return fail(NK_ERROR_INVALID_ARGUMENT, "message dialog option is not valid UTF-8");
+        if (options->struct_size >= sizeof(*options) &&
+            (!copy_wide(options->yes_label, context->yes_label) ||
+             !copy_wide(options->checkbox_label, context->checkbox_label)))
+            return fail(NK_ERROR_INVALID_ARGUMENT, "message dialog labels are not valid UTF-8");
         context->message_kind = options->kind;
         context->buttons = options->buttons;
         {
             std::lock_guard lock(dialogs_mutex);
             dialogs.emplace(context->request, context);
         }
-        context->worker = std::thread(run_message_dialog, context);
+        context->worker = std::thread([context] {
+            nk::core::name_current_thread("nk.dialog.message");
+            run_message_dialog(context);
+        });
         *out_request = context->request;
         return NK_OK;
     }

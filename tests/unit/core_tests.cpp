@@ -490,6 +490,47 @@ int main() {
     NK_CHECK(event.kind == NK_EVENT_HTTP_COMPLETE);
     nk_event_release(&event);
 
+    // The OS stamp of an input travels with its event to the poll, and a coalesced move keeps the
+    // oldest stamp, so the age reported when it is polled is that of the oldest input not yet
+    // delivered.
+    nk::core::EventQueue stamp_queue(8);
+    for (const std::uint64_t stamp : {100u, 150u, 200u}) {
+        nk::core::QueuedEvent move;
+        move.kind = NK_EVENT_POINTER_MOVE;
+        move.source = first;
+        move.os_time_ns = stamp;
+        NK_CHECK(stamp_queue.push(std::move(move)) == NK_OK);
+    }
+    nk::core::QueuedEvent stamped_key;
+    stamped_key.kind = NK_EVENT_KEY;
+    stamped_key.source = first;
+    stamped_key.os_time_ns = 120;
+    NK_CHECK(stamp_queue.push(std::move(stamped_key)) == NK_OK);
+    for (const std::uint64_t stamp : {0u, 300u}) {
+        nk::core::QueuedEvent move;
+        move.kind = NK_EVENT_POINTER_MOVE;
+        move.source = first;
+        move.os_time_ns = stamp;
+        NK_CHECK(stamp_queue.push(std::move(move)) == NK_OK);
+    }
+    std::uint64_t polled_stamp = 1;
+    event = {};
+    event.struct_size = sizeof(event);
+    NK_CHECK(stamp_queue.poll(event, &polled_stamp) == NK_OK);
+    NK_CHECK(event.kind == NK_EVENT_POINTER_MOVE && polled_stamp == 100);
+    nk_event_release(&event);
+    event.struct_size = sizeof(event);
+    NK_CHECK(stamp_queue.poll(event, &polled_stamp) == NK_OK);
+    NK_CHECK(event.kind == NK_EVENT_KEY && polled_stamp == 120);
+    nk_event_release(&event);
+    // An unstamped move that a stamped one replaces leaves the stamp of the newer.
+    event.struct_size = sizeof(event);
+    NK_CHECK(stamp_queue.poll(event, &polled_stamp) == NK_OK);
+    NK_CHECK(event.kind == NK_EVENT_POINTER_MOVE && polled_stamp == 300);
+    nk_event_release(&event);
+    event.struct_size = sizeof(event);
+    NK_CHECK(stamp_queue.poll(event) == NK_OK && event.kind == NK_EVENT_NONE);
+
     event.struct_size = sizeof(event);
     NK_CHECK(queue.poll(event) == NK_OK);
     NK_CHECK(event.kind == NK_EVENT_WEBVIEW_MESSAGE);

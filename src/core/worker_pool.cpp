@@ -1,11 +1,13 @@
 #include "core/worker_pool.hpp"
 
 #include "core/boundary.hpp"
+#include "core/thread_name.hpp"
 
 #include <algorithm>
 #include <cstdint>
 #include <deque>
 #include <new>
+#include <string>
 #include <utility>
 
 namespace nk::core {
@@ -14,10 +16,12 @@ WorkerPool::~WorkerPool() {
     shutdown();
 }
 
-nk_result WorkerPool::start(std::size_t worker_count, std::size_t queue_capacity) {
+nk_result WorkerPool::start(std::size_t worker_count, std::size_t queue_capacity,
+                            const char *thread_name) {
 #if defined(NK_BACKEND_WEB)
     (void)worker_count;
     (void)queue_capacity;
+    (void)thread_name;
     return NK_OK;
 #else
     if (worker_count == 0 || queue_capacity == 0)
@@ -35,7 +39,13 @@ nk_result WorkerPool::start(std::size_t worker_count, std::size_t queue_capacity
 #endif
         workers_.reserve(worker_count);
         for (std::size_t index = 0; index < worker_count; ++index)
-            workers_.emplace_back([this] { worker_loop(); });
+            // The name is copied here, where a failed allocation is caught, so the thread only
+            // formats it.
+            workers_.emplace_back(
+                [this, index, name = std::string(thread_name ? thread_name : "nk.pool")] {
+                    name_current_thread_format("%s.%zu", name.c_str(), index);
+                    worker_loop();
+                });
 #if !NK_ENABLE_NO_EXCEPTIONS
     }
     catch (const std::bad_alloc &) {
@@ -335,7 +345,10 @@ class SignalWorkerPool final {
 #endif
             workers_.reserve(worker_count);
             for (unsigned index = 0; index < worker_count; ++index)
-                workers_.emplace_back([this] { run_worker(); });
+                workers_.emplace_back([this, index] {
+                    nk::core::name_current_thread_format("nk.worker.%u", index);
+                    run_worker();
+                });
 #if !NK_ENABLE_NO_EXCEPTIONS
         }
         catch (...) {

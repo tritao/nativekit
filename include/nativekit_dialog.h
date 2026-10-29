@@ -134,12 +134,18 @@ typedef struct nk_message_dialog_options {
     const char *title NK_NULLABLE_UTF8;
     /** Required UTF-8 message text. */
     const char *message NK_UTF8;
+    /** Optional label for the affirmative (YES) button. */
+    const char *yes_label NK_NULLABLE_UTF8;
+    /** Optional unchecked verification checkbox; null hides it. */
+    const char *checkbox_label NK_NULLABLE_UTF8;
 } nk_message_dialog_options;
 
 /** Payload of NK_EVENT_DIALOG_MESSAGE_COMPLETE. */
 typedef struct nk_dialog_message_result {
     /** Button selected by the user, or NK_MESSAGE_RESULT_NONE on cancellation. */
     nk_message_result button;
+    /** Nonzero when the optional verification checkbox was checked. */
+    uint32_t checkbox_checked;
 } nk_dialog_message_result;
 
 /* ------------------------------------------------------------------------- */

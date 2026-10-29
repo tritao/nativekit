@@ -1811,6 +1811,11 @@ nk_key key_from_cocoa(unsigned short code) {
     }
 }
 
+// TODO(trace): also set QueuedEvent::os_time_ns on each such event, which nk_poll_event reports.
+// Send NK_TRACE_EVENT (core/trace.hpp) for each key, pointer button and pointer move taken off the
+// event queue here and in the view's mouse handlers, as the Windows and GTK backends do: screen
+// position in physical pixels, or key code and pressed. NSEvent.timestamp counts seconds since
+// boot; convert it to nk_time_now_ns()'s clock, or pass 0 if the two clocks cannot be matched.
 void emit_key_transition(MacWindowResource &resource, NSEvent *event, nk_input_action action) {
     const auto key = key_from_cocoa(event.keyCode);
     if (key != NK_KEY_UNKNOWN)
@@ -2337,7 +2342,8 @@ void finish_message_dialog(nk_request_id request, NSInteger response) noexcept {
         event.kind = NK_EVENT_DIALOG_MESSAGE_COMPLETE;
         event.request_id = request;
         event.flags = NK_DIALOG_MESSAGE;
-        event.data = bytes_of(nk_dialog_message_result{result});
+        event.data = bytes_of(nk_dialog_message_result{result,
+            [(NSAlert *)context->dialog suppressionButton].state == NSControlStateValueOn ? 1u : 0u});
         nk::core::push_event(std::move(event));
     });
 }
@@ -5497,6 +5503,9 @@ nk_result NK_CALL nk_surface_set_frame_callback(nk_handle handle,
                                        return;
                                    }
                                    active->frame_requests.begin_frame();
+                                   // TODO(trace): draw through nk::core::run_surface_frame
+                                   // (core/surface_frame.hpp), as Windows and GTK do, so each drawn
+                                   // frame is an nk.frame zone.
                                    nk::core::callback_boundary([&] {
                                        if (nk_surface_make_current(handle) != NK_OK)
                                            return;
@@ -5868,10 +5877,12 @@ nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
         "unexpected error while opening message dialog", [&]() -> nk_result {
             if (const auto result = enter_ui(); result != NK_OK)
                 return result;
-            if (!options || options->struct_size < sizeof(*options) || !options->message ||
+            if (!options || options->struct_size < offsetof(nk_message_dialog_options, yes_label) || !options->message ||
                 !out_request)
                 return fail(NK_ERROR_INVALID_ARGUMENT, "invalid message dialog options");
-            if (!valid_utf8(options->title) || !valid_utf8(options->message))
+            if (!valid_utf8(options->title) || !valid_utf8(options->message) ||
+                (options->struct_size >= sizeof(*options) &&
+                 (!valid_utf8(options->yes_label) || !valid_utf8(options->checkbox_label))))
                 return fail(NK_ERROR_INVALID_ARGUMENT, "message dialog option is not valid UTF-8");
             auto parent = parent_handle ? window(parent_handle) : nullptr;
             if (parent_handle && !parent)
@@ -5901,12 +5912,29 @@ nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
             add_button(NK_MESSAGE_BUTTON_SAVE, @"Save", NK_MESSAGE_RESULT_YES);
             add_button(NK_MESSAGE_BUTTON_DONT_SAVE, @"Don’t Save", NK_MESSAGE_RESULT_NO);
             add_button(NK_MESSAGE_BUTTON_OK, @"OK", NK_MESSAGE_RESULT_OK);
-            add_button(NK_MESSAGE_BUTTON_YES, @"Yes", NK_MESSAGE_RESULT_YES);
+            add_button(NK_MESSAGE_BUTTON_YES,
+                options->struct_size >= sizeof(*options) && options->yes_label ? string(options->yes_label) : @"Yes", NK_MESSAGE_RESULT_YES);
             add_button(NK_MESSAGE_BUTTON_NO, @"No", NK_MESSAGE_RESULT_NO);
             add_button(NK_MESSAGE_BUTTON_CANCEL, @"Cancel", NK_MESSAGE_RESULT_CANCEL);
             if (context->message_results.empty()) {
                 [alert addButtonWithTitle:@"OK"];
                 context->message_results.push_back(NK_MESSAGE_RESULT_OK);
+            }
+            if (options->struct_size >= sizeof(*options) && options->checkbox_label) {
+                alert.showsSuppressionButton = YES;
+                alert.suppressionButton.title = string(options->checkbox_label);
+                alert.suppressionButton.state = NSControlStateValueOff;
+            }
+            if ((options->buttons & NK_MESSAGE_BUTTON_CANCEL) &&
+                options->struct_size >= sizeof(*options) && options->yes_label) {
+                for (NSUInteger i = 0; i < context->message_results.size(); ++i) {
+                    NSButton *button = alert.buttons[i];
+                    button.keyEquivalent = @"";
+                    if (context->message_results[i] == NK_MESSAGE_RESULT_CANCEL) {
+                        button.keyEquivalent = @"\033";
+                        alert.window.defaultButtonCell = button.cell;
+                    }
+                }
             }
             context->dialog = alert;
             {

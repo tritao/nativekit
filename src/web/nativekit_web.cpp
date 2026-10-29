@@ -1330,6 +1330,11 @@ void on_resize(const nk::web::CanvasSize &size, void *user_data) {
     });
 }
 
+// TODO(trace): also set QueuedEvent::os_time_ns on each such event, which nk_poll_event reports.
+// Send NK_TRACE_EVENT (core/trace.hpp) for each key, pointer button and pointer move queued here
+// and in on_pointer, as the Windows and GTK backends do. A DOM event's timeStamp is on
+// performance.now()'s clock; pass it through KeyEvent and PointerEvent and convert it to
+// nk_time_now_ns()'s clock.
 void on_key(const nk::web::KeyEvent &event, void *user_data) {
     nk::core::callback_boundary([&] {
         auto *window = static_cast<WebWindowResource *>(user_data);
@@ -1848,6 +1853,8 @@ EM_BOOL frame_loop(double, void *user_data) {
         return EM_FALSE;
     sync_canvas_size(*window);
     surface->frame_requests.begin_frame();
+    // TODO(trace): draw through nk::core::run_surface_frame (core/surface_frame.hpp), as Windows
+    // and GTK do, so each drawn frame is an nk.frame zone.
     nk::core::callback_boundary([&] {
         if (surface->frame_callback)
             surface->frame_callback(surface->handle, surface->framebuffer_width,

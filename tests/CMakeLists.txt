@@ -17,6 +17,7 @@ add_executable(nativekit_core_tests
     ${PROJECT_SOURCE_DIR}/src/core/event_queue.cpp
     ${PROJECT_SOURCE_DIR}/src/core/gamepad_mapping.cpp
     ${PROJECT_SOURCE_DIR}/src/core/handle_registry.cpp
+    ${PROJECT_SOURCE_DIR}/src/core/thread_name.cpp
     ${PROJECT_SOURCE_DIR}/src/core/worker_pool.cpp
 )
 target_compile_features(nativekit_core_tests PRIVATE cxx_std_17)
@@ -50,6 +51,23 @@ target_compile_features(nativekit_time_tests PRIVATE cxx_std_17)
 target_link_libraries(nativekit_time_tests PRIVATE NativeKit::nativekit)
 add_test(NAME time COMMAND nativekit_time_tests)
 
+add_executable(nativekit_trace_tests unit/trace_tests.cpp)
+target_compile_features(nativekit_trace_tests PRIVATE cxx_std_17)
+target_link_libraries(nativekit_trace_tests PRIVATE NativeKit::nativekit)
+add_test(NAME trace COMMAND nativekit_trace_tests)
+
+if(WIN32)
+    add_executable(nativekit_input_stamps_tests
+        unit/input_stamps_tests.cpp
+        ${PROJECT_SOURCE_DIR}/src/core/thread_name.cpp
+        ${PROJECT_SOURCE_DIR}/src/windows/nativekit_win_input_stamps.cpp)
+    target_compile_features(nativekit_input_stamps_tests PRIVATE cxx_std_17)
+    target_include_directories(nativekit_input_stamps_tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
+    target_link_libraries(nativekit_input_stamps_tests PRIVATE NativeKit::nativekit user32)
+    add_test(NAME input_stamps COMMAND nativekit_input_stamps_tests)
+    set_tests_properties(input_stamps PROPERTIES TIMEOUT 30)
+endif()
+
 add_executable(nativekit_plugin_tests unit/plugin_tests.cpp)
 target_compile_features(nativekit_plugin_tests PRIVATE cxx_std_17)
 target_link_libraries(nativekit_plugin_tests PRIVATE NativeKit::nativekit)
@@ -68,6 +86,7 @@ add_test(NAME task COMMAND nativekit_task_tests)
 
 add_executable(nativekit_worker_pool_tests
     unit/worker_pool_tests.cpp
+    ${PROJECT_SOURCE_DIR}/src/core/thread_name.cpp
     ${PROJECT_SOURCE_DIR}/src/core/worker_pool.cpp)
 target_compile_features(nativekit_worker_pool_tests PRIVATE cxx_std_17)
 target_include_directories(nativekit_worker_pool_tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
@@ -91,6 +110,12 @@ if(UNIX AND NOT ANDROID AND NOT EMSCRIPTEN)
     target_link_libraries(nativekit_pty_contract_test PRIVATE NativeKit::nativekit)
     add_test(NAME pty_contract COMMAND nativekit_pty_contract_test)
     set_tests_properties(pty_contract PROPERTIES LABELS "core" TIMEOUT 30)
+elseif(WIN32)
+    add_executable(nativekit_pty_contract_test unit/pty_contract_win.cpp)
+    target_compile_features(nativekit_pty_contract_test PRIVATE cxx_std_17)
+    target_link_libraries(nativekit_pty_contract_test PRIVATE NativeKit::nativekit)
+    add_test(NAME pty_contract COMMAND nativekit_pty_contract_test)
+    set_tests_properties(pty_contract PROPERTIES LABELS "core" TIMEOUT 60)
 endif()
 
 if(NK_NET_BACKEND_CURL)
@@ -204,6 +229,11 @@ if(NK_BACKEND_GTK_AVAILABLE)
             add_test(NAME gtk_create_destroy
                 COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_integration>)
         endif()
+        add_executable(nativekit_gtk_message_dialog integration/gtk_message_dialog.c)
+        target_link_libraries(nativekit_gtk_message_dialog PRIVATE NativeKit::nativekit PkgConfig::GTK3)
+        set_target_properties(nativekit_gtk_message_dialog PROPERTIES LINKER_LANGUAGE CXX)
+        add_test(NAME gtk_message_dialog
+            COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_message_dialog>)
         add_executable(nativekit_gtk_native_window integration/gtk_native_window.c)
         target_link_libraries(nativekit_gtk_native_window PRIVATE NativeKit::nativekit)
         set_target_properties(nativekit_gtk_native_window PROPERTIES LINKER_LANGUAGE CXX)
@@ -327,6 +357,17 @@ if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
 endif()
 
 if(WIN32)
+    add_executable(nativekit_file_watch integration/file_watch.c)
+    target_link_libraries(nativekit_file_watch PRIVATE NativeKit::nativekit)
+    set_target_properties(nativekit_file_watch PROPERTIES LINKER_LANGUAGE CXX)
+    add_test(NAME file_watch COMMAND nativekit_file_watch)
+    set_tests_properties(file_watch PROPERTIES LABELS "windows;file-watch" TIMEOUT 30
+        SKIP_RETURN_CODE 77)
+    add_executable(nativekit_win_file_watch integration/win_file_watch.c)
+    target_link_libraries(nativekit_win_file_watch PRIVATE NativeKit::nativekit)
+    set_target_properties(nativekit_win_file_watch PROPERTIES LINKER_LANGUAGE CXX)
+    add_test(NAME win_file_watch COMMAND nativekit_win_file_watch)
+    set_tests_properties(win_file_watch PROPERTIES LABELS "windows;file-watch" TIMEOUT 60)
     add_executable(nativekit_win_menu integration/win_menu.cpp)
     target_link_libraries(nativekit_win_menu PRIVATE NativeKit::nativekit)
     add_test(NAME win_menu COMMAND nativekit_win_menu)
@@ -347,6 +388,11 @@ if(WIN32)
     set_target_properties(nativekit_win_surface_d3d11 PROPERTIES LINKER_LANGUAGE CXX)
     add_test(NAME win_surface_d3d11 COMMAND nativekit_win_surface_d3d11)
     set_tests_properties(win_surface_d3d11 PROPERTIES LABELS "windows;graphics" TIMEOUT 120)
+    add_executable(nativekit_win_pump_order integration/win_pump_order.c)
+    target_link_libraries(nativekit_win_pump_order PRIVATE NativeKit::nativekit)
+    set_target_properties(nativekit_win_pump_order PROPERTIES LINKER_LANGUAGE CXX)
+    add_test(NAME win_pump_order COMMAND nativekit_win_pump_order)
+    set_tests_properties(win_pump_order PROPERTIES LABELS "windows;graphics" TIMEOUT 60)
     add_executable(nativekit_win_text_input integration/win_text_input.c)
     target_link_libraries(nativekit_win_text_input PRIVATE NativeKit::nativekit imm32 ole32)
     set_target_properties(nativekit_win_text_input PROPERTIES LINKER_LANGUAGE CXX)
@@ -444,7 +490,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
         $<$<COMPILE_LANGUAGE:OBJCXX>:-fblocks>)
     # The portable binaries remain compile/link probes for the iOS SDK. The
     # application-hosted runtime target is launched by the simulator workflow.
-    set_tests_properties(c_abi core time platform_parity wasm_host_allocator PROPERTIES DISABLED TRUE)
+    set_tests_properties(c_abi core time trace platform_parity wasm_host_allocator PROPERTIES DISABLED TRUE)
 endif()
 
 if(NK_ENABLE_SANITIZERS AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")

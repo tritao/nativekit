@@ -9,6 +9,7 @@
 #include "core/runtime.hpp"
 #include "core/worker_pool.hpp"
 #include "core/system_internal.hpp"
+#include "core/trace.hpp"
 #include "core/task.hpp"
 #include "net/net_backend.hpp"
 
@@ -16,6 +17,8 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <memory>
 #include <mutex>
 #include <new>
@@ -34,6 +37,9 @@ std::atomic<std::uint64_t> event_wake_sequence{0};
 std::mutex event_wake_mutex;
 std::condition_variable event_wake_condition;
 constexpr std::uint32_t default_queue_capacity = 1024;
+/* Polls answered from the queue since the last pump; nk_poll_event runs on the UI thread only. */
+std::uint32_t polls_since_pump = 0;
+constexpr std::uint32_t max_polls_between_pumps = 64;
 std::mutex shutdown_hook_mutex;
 std::vector<nk::core::RuntimeShutdownHook> shutdown_hooks;
 
@@ -78,7 +84,7 @@ nk_result push_event(QueuedEvent event) noexcept {
     }
     if (result == NK_OK) {
         event_wake_condition.notify_all();
-#if defined(NK_BACKEND_GTK)
+#if defined(NK_BACKEND_GTK) || defined(NK_BACKEND_WINDOWS)
         nk::backend::wake_event_wait();
 #endif
     }
@@ -119,7 +125,7 @@ bool wait_for_wake(std::uint64_t sequence, std::chrono::milliseconds timeout) no
 void wake_events() noexcept {
     event_wake_sequence.fetch_add(1, std::memory_order_release);
     event_wake_condition.notify_all();
-#if defined(NK_BACKEND_GTK)
+#if defined(NK_BACKEND_GTK) || defined(NK_BACKEND_WINDOWS)
     nk::backend::wake_event_wait();
 #endif
 }
@@ -257,12 +263,46 @@ nk_result NK_CALL nk_poll_event(nk_event *event) {
     if (thread_result != NK_OK)
         return thread_result;
     nk::core::drain_app_tasks();
-    nk::backend::pump_events();
+    /* Return the events already queued before pumping again: a pump can render frames, and
+     * rendering between the events of one burst delays the rest of it. Background threads keep
+     * queueing too, so the pump never waits for more than a bounded number of polls. */
+    if (!nk::core::events_pending() || ++polls_since_pump >= max_polls_between_pumps) {
+        polls_since_pump = 0;
+        nk::backend::pump_events();
+    }
     nk::core::run_cooperative_tasks();
     nk_result result = NK_OK;
+    std::uint64_t os_time_ns = 0;
     {
         std::lock_guard lock(state_mutex);
-        result = event_queue->poll(*event);
+        result = event_queue->poll(*event, &os_time_ns);
+    }
+    if (result == NK_OK) {
+        switch (event->kind) {
+        case NK_EVENT_POINTER_MOVE:
+            NK_TRACE_EVENT(NK_TRACE_EVENT_POLLED_MOVE, os_time_ns, 0, 0);
+            break;
+        case NK_EVENT_POINTER_BUTTON:
+            NK_TRACE_EVENT(NK_TRACE_EVENT_POLLED_BUTTON, os_time_ns, 0, 0);
+            break;
+        case NK_EVENT_KEY:
+            NK_TRACE_EVENT(NK_TRACE_EVENT_POLLED_KEY, os_time_ns, 0, 0);
+            break;
+        case NK_EVENT_WINDOW_RESIZE:
+        case NK_EVENT_SURFACE_RESIZE:
+            /* Both payloads start with the new width and height. */
+            if (NK_TRACE_ACTIVE() && event->data && event->data_size >= 2 * sizeof(std::int32_t)) {
+                std::int32_t size[2];
+                std::memcpy(size, event->data, sizeof(size));
+                NK_TRACE_EVENT(event->kind == NK_EVENT_WINDOW_RESIZE
+                                   ? NK_TRACE_EVENT_POLLED_WINDOW_RESIZE
+                                   : NK_TRACE_EVENT_POLLED_SURFACE_RESIZE,
+                               0, size[0], size[1]);
+            }
+            break;
+        default:
+            break;
+        }
     }
     if (result == NK_OK && nk::core::dispatch_resource_data_event(*event))
         nk_event_release(event);

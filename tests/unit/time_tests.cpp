@@ -6,6 +6,15 @@
 #include <chrono>
 #include <thread>
 
+#if defined(_WIN32)
+#include <stdlib.h>
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+
 namespace {
 void drain_events() {
     for (;;) {
@@ -21,6 +30,11 @@ void drain_events() {
 } // namespace
 
 int main() {
+#if defined(_WIN32)
+    // A failed assertion exits with a status instead of opening a modal CRT or fault dialog.
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+#endif
     const auto nanoseconds = nk_time_now_ns();
     const auto seconds = nk_time_seconds();
     assert(nk_time_now_ns() >= nanoseconds);
@@ -47,6 +61,20 @@ int main() {
     waker.join();
     assert(wake_result == NK_OK);
     assert(wake_elapsed < std::chrono::milliseconds(500));
+
+    // A task queued before the wait starts has already woken the pump once; the wait must still see it.
+    std::atomic<bool> task_ran{false};
+    std::thread dispatcher([&] {
+        assert(nk_dispatch_to_app([](void *ran) { static_cast<std::atomic<bool> *>(ran)->store(true); },
+                                  &task_ran) == NK_OK);
+    });
+    dispatcher.join();
+    const auto queued_start = std::chrono::steady_clock::now();
+    assert(nk_wait_events_timeout(1.0) == NK_OK);
+    const auto queued_elapsed = std::chrono::steady_clock::now() - queued_start;
+    assert(queued_elapsed < std::chrono::milliseconds(200));
+    drain_events();
+    assert(task_ran.load());
 
     const auto timeout_start = std::chrono::steady_clock::now();
     assert(nk_wait_events_timeout(0.04) == NK_OK);

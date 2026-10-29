@@ -816,6 +816,77 @@ deadline and returns `NK_OK` on either an event, explicit wake, or timeout; call
 `nk_poll_event()` afterwards to distinguish an event from an empty wake. GTK is
 pumped in bounded blocking slices, and already-queued events return immediately.
 
+## Trace sink
+
+`nativekit_trace.h` lets a host that records a timeline (a profiler, Tracy, ETW)
+see the work that decides how fast an application reacts to input. The host
+installs an `nk_trace_sink`, a table of C callbacks, with `nk_set_trace_sink()`;
+NativeKit keeps no clock, buffer or file of its own for these marks and depends
+on no host. The sink receives:
+
+- zones, as `zone_begin(location)` and `zone_end()` pairs on the calling thread:
+  `nk.wait` around each wait for events and `nk.frame` around each drawn
+  surface frame. Each `nk_trace_location` is static, so a sink can key a
+  location by its address and describe it once;
+- instants, as `event(kind, os_time_ns, a, b)`, one per pointer move, pointer
+  button or key the UI thread takes off the platform queue. `a` and `b` are the
+  screen position in physical pixels, or the platform key code and 1 for
+  pressed or 0 for released. `os_time_ns` is when the OS stamped the input, on
+  the clock of `nk_time_now_ns()`, or 0 when unknown.
+
+A second instant follows each of those when the application takes the event from
+the queue: `NK_TRACE_EVENT_POLLED_MOVE`, `_BUTTON` and `_KEY`, sent by
+`nk_poll_event()`, with the same `os_time_ns`. Their difference from the first is
+the time an input waited in NativeKit's queue and behind the work done before the
+poll. A pointer move that the queue merged into a newer one carries the stamp of
+the oldest input it stands for, so it reports the age of the oldest input not yet
+delivered. Backends set `QueuedEvent::os_time_ns` when they queue an input.
+
+`nk_poll_event()` also sends `NK_TRACE_EVENT_POLLED_WINDOW_RESIZE` and `_SURFACE_RESIZE` when it hands the application a
+resize, with the new width and height; these carry no OS stamp.
+
+GTK's input stamp is coarse: milliseconds, rebuilt from the 32-bit GDK event
+time against the monotonic clock. Use it to find delays of tens of milliseconds,
+not to time single frames.
+
+On Windows a message carries only `GetMessageTime()`, which counts milliseconds
+on the system tick (15.6 ms; `timeBeginPeriod` does not refine it). While a
+trace is active NativeKit therefore installs low-level mouse and keyboard hooks
+(`WH_MOUSE_LL`, `WH_KEYBOARD_LL`) on a thread of their own, from the first time
+`nk_poll_event()` or a wait for events reads the platform queue, and removes
+them when the trace stops. The system calls them as it takes each input, before
+the input reaches a queue, and the thread stamps it with the steady clock,
+within tens of microseconds. The UI thread finds the stamp for a pointer move,
+button or key by the tick time the hook and the message share and by the
+button or scan code, preferring the stamp at the message's position (the hook
+sees the cursor before it is clipped, and a window that is not per-monitor DPI
+aware gets scaled coordinates). The stamp is when the system took the input,
+not when the device sent it; USB polling and the driver come before.
+
+Some input falls back to the tick: a move the system made up (after a window
+moved, or `SetCursorPos`), mouse messages promoted from touch and pen, and
+input that arrives while the hooks are gone. Every input on the desktop passes
+through the hooks, so a traced process stopped in a debugger delays all input
+until Windows times the hook out, and Windows then removes the hook without
+notice. NativeKit notices when a button or key arrives that no hook saw, and
+reinstalls the hooks, at most once a second. Within one tick a key or button
+meant for another application can lend its stamp to the same transition in
+this one. Setting `NK_INPUT_STAMP_HOOK=0` turns the hooks off.
+
+The sink's optional `enabled` pointer is a switch the host owns. While it reads
+zero, a trace point costs one load and calls nothing; with no sink it costs the
+same. Callbacks may run on any thread and must not call back into NativeKit.
+`nk_set_trace_sink()` may be called before `nk_init()`, and the sink must stay
+valid while a trace point can still reach it. Configuring with `-DNK_TRACE=OFF`
+removes the trace points. The header is for native hosts and is not part of the
+generated language bindings.
+
+Without a host sink, setting `NK_LATENCY_TRACE` to a file path makes NativeKit
+write waits, frames and input as text lines (`<kind> <ticks> <a> <b>`, with the
+clock named on the first line), for measuring without a host that records a
+timeline. Trace points exist on Windows and GTK; the other backends are listed
+in `platform-parity.md`.
+
 ## Shell and system strings
 
 Shell operations submit work to the desktop on the UI thread. Reveal first uses

@@ -2,15 +2,36 @@
 
 #include "core/boundary.hpp"
 #include "core/error.hpp"
+#include "core/executor.hpp"
+#include "core/trace.hpp"
 #include "core/runtime.hpp"
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <timeapi.h>
+#endif
+
 namespace {
 using Clock = std::chrono::steady_clock;
 constexpr auto pump_interval = std::chrono::milliseconds(10);
+
+/* At the default timer resolution (15.6 ms) a short timed wait on Windows wakes up to a whole tick
+ * late, so an input or frame deadline a few milliseconds away is missed by ~16 ms. Hold 1 ms
+ * resolution only while waiting, as HashLink's Sys.sleep does. */
+struct FineTimerScope {
+#if defined(_WIN32)
+    FineTimerScope() { timeBeginPeriod(1); }
+    ~FineTimerScope() { timeEndPeriod(1); }
+#endif
+};
 
 nk_result wait_until(const Clock::time_point *deadline) {
     if (const auto result = nk::core::require_ui_thread(); result != NK_OK)
@@ -18,7 +39,11 @@ nk_result wait_until(const Clock::time_point *deadline) {
     const auto sequence = nk::core::wake_sequence();
     for (;;) {
         nk::backend::pump_events();
-        if (nk::core::events_pending() || nk::core::wake_sequence() != sequence)
+        /* A task queued after the caller last polled already spent its wake before `sequence` was
+         * read. Waiting would strand it until the timeout: a render completion that lands there
+         * holds the next frame for a full wait. */
+        if (nk::core::events_pending() || nk::core::app_tasks_pending() ||
+            nk::core::wake_sequence() != sequence)
             return NK_OK;
         auto duration = pump_interval;
         if (deadline) {
@@ -30,11 +55,18 @@ nk_result wait_until(const Clock::time_point *deadline) {
             if (duration.count() == 0)
                 duration = std::chrono::milliseconds(1);
         }
-#if defined(NK_BACKEND_GTK)
-        if (nk::backend::wait_events(sequence, duration))
+        const FineTimerScope fine_timer;
+        nk::core::trace_flush();
+        bool woken;
+        {
+            NK_TRACE_ZONE("nk.wait");
+#if defined(NK_BACKEND_GTK) || defined(NK_BACKEND_WINDOWS)
+            woken = nk::backend::wait_events(sequence, duration);
 #else
-        if (nk::core::wait_for_wake(sequence, duration))
+            woken = nk::core::wait_for_wake(sequence, duration);
 #endif
+        }
+        if (woken)
             return NK_OK;
     }
 }

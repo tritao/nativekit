@@ -58,6 +58,9 @@ typedef struct nk_file_watch_options {
  * Payload stored in NK_EVENT_FILE_CHANGED and NK_EVENT_FILE_WATCH_OVERFLOW.
  * `path_offset` and `old_path_offset` are byte offsets from this header to
  * NUL-terminated UTF-8 strings. An absent old path has offset and length zero.
+ * Paths are absolute but not canonical: letter case and separators may differ
+ * from the registered spelling, so compare them normalized where the
+ * filesystem is case-insensitive.
  */
 typedef struct nk_file_changed_event {
     nk_file_change_type change_type;
@@ -73,9 +76,20 @@ typedef struct nk_file_changed_event {
 NK_API nk_result NK_CALL nk_file_watch_create(const nk_file_watch_options *options,
                                               nk_file_watch *out_watch NK_OUT NK_OWNED);
 
-/** Adds an absolute UTF-8 native filesystem directory to a watcher. */
+/**
+ * Adds an absolute UTF-8 native filesystem directory to a watcher, with everything under it when `recursive`.
+ * Returns once the directory itself is watched. A recursive add may register the directories under it afterwards,
+ * off the calling thread: NK_EVENT_FILE_WATCH_READY names the directory once all of it is watched.
+ */
 NK_API nk_result NK_CALL nk_file_watch_add_directory(nk_file_watch watch, const char *path NK_UTF8,
                                                      nk_bool recursive);
+
+/**
+ * Leaves an absolute UTF-8 native filesystem directory, and everything under it, out of a watcher's recursive
+ * registrations, including directories created there later. Directories already watched there stop being watched.
+ */
+NK_API nk_result NK_CALL nk_file_watch_exclude_directory(nk_file_watch watch,
+                                                         const char *path NK_UTF8);
 
 /** Removes a previously added absolute UTF-8 native filesystem directory. */
 NK_API nk_result NK_CALL nk_file_watch_remove_directory(nk_file_watch watch,

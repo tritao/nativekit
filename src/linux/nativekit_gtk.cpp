@@ -8,6 +8,7 @@
 #include "nativekit_notification.h"
 #include "nativekit_resource.h"
 #include "nativekit_system.h"
+#include "nativekit_time.h"
 #include "nativekit_view.h"
 #include "nativekit_webview.h"
 #include "nativekit_window.h"
@@ -24,6 +25,8 @@
 #include "core/system_internal.hpp"
 #include "core/resource_events.hpp"
 #include "core/text_input_geometry.hpp"
+#include "core/surface_frame.hpp"
+#include "core/trace.hpp"
 
 #include <clocale>
 #include <gtk/gtk.h>
@@ -248,6 +251,10 @@ struct GtkSurfaceResource final : nk::core::Resource {
     uint32_t share_dependents = 0;
     nk_surface_frame_callback frame_callback = nullptr;
     void *frame_user_data = nullptr;
+    /* glGetIntegerv, resolved on the first frame target query: the renderer asks for a frame target
+       several times a frame, and resolving the function searches the symbol tables of every loaded
+       library. */
+    void (*gl_get_integerv)(unsigned int, int *) = nullptr;
     guint frame_tick = 0;
     GtkWidget *frame_tick_widget = nullptr;
     nk::core::FrameRequestState frame_requests;
@@ -1460,6 +1467,7 @@ struct EvalContext {
 #endif
 
 struct DialogContext {
+    GtkWidget *checkbox = nullptr;
     GObject *object = nullptr;
     nk_request_id request = NK_INVALID_REQUEST_ID;
     nk_handle parent = NK_INVALID_HANDLE;
@@ -1860,7 +1868,37 @@ gboolean on_input_focus(GtkWidget *, GdkEventFocus *focus, gpointer data) {
     return FALSE;
 }
 
+/**
+ * When the OS stamped an input event, on nk_time_now_ns()'s clock, or 0 when unknown. GDK carries
+ * 32-bit milliseconds; X servers and Wayland compositors on Linux count them on CLOCK_MONOTONIC,
+ * the clock of nk_time_now_ns(), so the full time is rebuilt near now. A stamp more than 10 s old
+ * or 50 ms ahead is taken to be on some other clock.
+ */
+std::uint64_t input_time_ns(guint32 time_ms) noexcept {
+    if (time_ms == GDK_CURRENT_TIME)
+        return 0;
+    const std::uint64_t now_ms = nk_time_now_ns() / 1000000u;
+    const auto age_ms = static_cast<std::int32_t>(static_cast<std::uint32_t>(now_ms) - time_ms);
+    if (age_ms > 10000 || age_ms < -50 || static_cast<std::int64_t>(now_ms) < age_ms)
+        return 0;
+    return static_cast<std::uint64_t>(static_cast<std::int64_t>(now_ms) - age_ms) * 1000000u;
+}
+
+/** Traces a dequeued pointer event at its screen position in physical pixels. */
+void trace_pointer_event(GtkWidget *widget, nk_trace_event_kind kind, guint32 time_ms,
+                         gdouble x_root, gdouble y_root) noexcept {
+    if (!NK_TRACE_ACTIVE())
+        return;
+    const int scale = gtk_widget_get_scale_factor(widget);
+    NK_TRACE_EVENT(kind, input_time_ns(time_ms), static_cast<std::int64_t>(x_root * scale),
+                   static_cast<std::int64_t>(y_root * scale));
+}
+
 gboolean on_key(GtkWidget *, GdkEventKey *key_event, gpointer data) {
+    if (NK_TRACE_ACTIVE())
+        NK_TRACE_EVENT(NK_TRACE_EVENT_INPUT_KEY, input_time_ns(key_event->time),
+                       static_cast<std::int64_t>(key_event->hardware_keycode),
+                       key_event->type == GDK_KEY_RELEASE ? 0 : 1);
     gboolean im_handled = FALSE;
     nk::core::callback_boundary([&] {
         auto *resource = static_cast<GtkWindowResource *>(data);
@@ -1880,6 +1918,7 @@ gboolean on_key(GtkWidget *, GdkEventKey *key_event, gpointer data) {
         event.kind = NK_EVENT_KEY;
         event.source = resource->handle;
         event.data = bytes_of(payload);
+        event.os_time_ns = NK_TRACE_ACTIVE() ? input_time_ns(key_event->time) : 0;
         nk::core::push_event(std::move(event));
         if (resource->im_context)
             im_handled = gtk_im_context_filter_keypress(resource->im_context, key_event);
@@ -1887,7 +1926,9 @@ gboolean on_key(GtkWidget *, GdkEventKey *key_event, gpointer data) {
     return im_handled;
 }
 
-gboolean on_pointer_move(GtkWidget *, GdkEventMotion *motion, gpointer data) {
+gboolean on_pointer_move(GtkWidget *widget, GdkEventMotion *motion, gpointer data) {
+    trace_pointer_event(widget, NK_TRACE_EVENT_INPUT_MOVE, motion->time, motion->x_root,
+                        motion->y_root);
     nk::core::callback_boundary([&] {
         auto *resource = static_cast<GtkWindowResource *>(data);
         resource->pointer_x = motion->x;
@@ -1898,12 +1939,13 @@ gboolean on_pointer_move(GtkWidget *, GdkEventMotion *motion, gpointer data) {
         event.kind = NK_EVENT_POINTER_MOVE;
         event.source = resource->handle;
         event.data = bytes_of(payload);
+        event.os_time_ns = NK_TRACE_ACTIVE() ? input_time_ns(motion->time) : 0;
         nk::core::push_event(std::move(event));
     });
     return FALSE;
 }
 
-gboolean on_pointer_button(GtkWidget *, GdkEventButton *button_event, gpointer data) {
+gboolean on_pointer_button(GtkWidget *widget, GdkEventButton *button_event, gpointer data) {
     // GTK emits GDK_2BUTTON_PRESS/GDK_3BUTTON_PRESS in addition to the ordinary
     // GDK_BUTTON_PRESS for that physical click. Forwarding both makes a double-click
     // look like a triple-click to consumers that count press/release transitions.
@@ -1924,6 +1966,8 @@ gboolean on_pointer_button(GtkWidget *, GdkEventButton *button_event, gpointer d
         return TRUE;
     }
 
+    trace_pointer_event(widget, NK_TRACE_EVENT_INPUT_BUTTON, button_event->time,
+                        button_event->x_root, button_event->y_root);
     nk::core::callback_boundary([&] {
         auto *resource = static_cast<GtkWindowResource *>(data);
         if (begin_decoration_drag(*resource, *button_event))
@@ -1943,6 +1987,7 @@ gboolean on_pointer_button(GtkWidget *, GdkEventButton *button_event, gpointer d
         event.kind = NK_EVENT_POINTER_BUTTON;
         event.source = resource->handle;
         event.data = bytes_of(payload);
+        event.os_time_ns = NK_TRACE_ACTIVE() ? input_time_ns(button_event->time) : 0;
         nk::core::push_event(std::move(event));
     });
     return TRUE;
@@ -2052,7 +2097,7 @@ gboolean on_surface_render(GtkGLArea *area, GdkGLContext *, gpointer data) {
     if (!scheduled && !resource->frame_requests.continuous())
         return TRUE;
     const int scale = gtk_widget_get_scale_factor(GTK_WIDGET(area));
-    nk::core::callback_boundary([&] {
+    nk::core::run_surface_frame([&] {
         const auto callback = resource->frame_callback;
         void *user_data = resource->frame_user_data;
         if (!callback || !nk::core::is_runtime_generation(resource->generation))
@@ -3105,7 +3150,8 @@ void on_dialog_response(GObject *, int response, gpointer data) {
             event.kind = NK_EVENT_DIALOG_MESSAGE_COMPLETE;
             event.request_id = context->request;
             event.flags = context->kind;
-            const nk_dialog_message_result payload{message_result(response)};
+            const nk_dialog_message_result payload{message_result(response),
+                context->checkbox && gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(context->checkbox)) ? 1u : 0u};
             event.data = bytes_of(payload);
             nk::core::push_event(std::move(event));
         } else {
@@ -5479,12 +5525,18 @@ nk_result NK_CALL nk_surface_get_frame_target(nk_handle handle,
     if (const auto result = nk_surface_get_framebuffer_size(handle, &width, &height);
         result != NK_OK)
         return result;
-    nk_graphics_proc proc = nullptr;
-    if (const auto result = nk_surface_get_proc_address(handle, "glGetIntegerv", &proc);
-        result != NK_OK)
+    // The query below needs the surface's context current, as resolving the function made it.
+    if (const auto result = nk_surface_make_current(handle); result != NK_OK)
         return result;
-    using GlGetIntegerv = void (*)(unsigned int, int *);
-    auto get_integerv = reinterpret_cast<GlGetIntegerv>(proc);
+    if (!resource->gl_get_integerv) {
+        nk_graphics_proc proc = nullptr;
+        if (const auto result = nk_surface_get_proc_address(handle, "glGetIntegerv", &proc);
+            result != NK_OK)
+            return result;
+        using GlGetIntegerv = void (*)(unsigned int, int *);
+        resource->gl_get_integerv = reinterpret_cast<GlGetIntegerv>(proc);
+    }
+    const auto get_integerv = resource->gl_get_integerv;
     int framebuffer = 0;
     get_integerv(0x8CA6u, &framebuffer); // GL_DRAW_FRAMEBUFFER_BINDING
     nk_surface_frame_target target{};
@@ -6052,7 +6104,7 @@ nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
         "unexpected error while opening message dialog", [&]() -> nk_result {
             if (const auto result = enter_ui(); result != NK_OK)
                 return result;
-            if (!options || options->struct_size < sizeof(*options) || !out_request ||
+            if (!options || options->struct_size < offsetof(nk_message_dialog_options, yes_label) || !out_request ||
                 !options->message)
                 return fail(NK_ERROR_INVALID_ARGUMENT, "invalid message dialog options");
             std::shared_ptr<GtkWindowResource> parent;
@@ -6089,7 +6141,8 @@ nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
             if (buttons & NK_MESSAGE_BUTTON_CANCEL)
                 gtk_dialog_add_button(GTK_DIALOG(dialog), "_Cancel", GTK_RESPONSE_CANCEL);
             if (buttons & NK_MESSAGE_BUTTON_YES)
-                gtk_dialog_add_button(GTK_DIALOG(dialog), "_Yes", GTK_RESPONSE_YES);
+                gtk_dialog_add_button(GTK_DIALOG(dialog),
+                    options->struct_size >= sizeof(*options) && options->yes_label ? options->yes_label : "_Yes", GTK_RESPONSE_YES);
             if (buttons & NK_MESSAGE_BUTTON_NO)
                 gtk_dialog_add_button(GTK_DIALOG(dialog), "_No", GTK_RESPONSE_NO);
             if (buttons & NK_MESSAGE_BUTTON_SAVE)
@@ -6104,6 +6157,12 @@ nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
             context->generation = nk::core::runtime_generation();
             context->parent = parent_handle;
             context->kind = NK_DIALOG_MESSAGE;
+            if (options->struct_size >= sizeof(*options) && options->checkbox_label) {
+                context->checkbox = gtk_check_button_new_with_label(options->checkbox_label);
+                gtk_box_pack_start(GTK_BOX(gtk_message_dialog_get_message_area(GTK_MESSAGE_DIALOG(dialog))),
+                                   context->checkbox, FALSE, FALSE, 0);
+                gtk_widget_show(context->checkbox);
+            }
             dialogs.emplace(context->request, context.get());
             g_signal_connect(dialog, "response", G_CALLBACK(on_dialog_response), context.get());
             gtk_widget_show(dialog);

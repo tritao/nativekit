@@ -263,8 +263,8 @@ NK_API nk_result NK_CALL nk_http_request_stream(nk_request_id request,
 NK_API nk_result NK_CALL nk_http_stream_info_get(nk_http_stream stream,
                                                  nk_http_stream_info *out_info);
 /** Reads currently buffered bytes without blocking. Zero means no data or EOF. */
-NK_API nk_result NK_CALL nk_http_stream_read(nk_http_stream stream, void *buffer, uint64_t size,
-                                             uint64_t *out_read);
+NK_API nk_result NK_CALL nk_http_stream_read(nk_http_stream stream, uint8_t *buffer, uint64_t size,
+                                             uint64_t *out_read NK_OUT);
 /** Closes a stream and cancels its request. This call is thread-safe. */
 NK_API nk_result NK_CALL nk_http_stream_close(nk_http_stream stream);
 
