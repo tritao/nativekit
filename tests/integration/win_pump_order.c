@@ -13,12 +13,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define CHECK(condition)                                                          \
-    do {                                                                          \
-        if (!(condition)) {                                                       \
-            fprintf(stderr, "win_pump_order: line %d: %s\n", __LINE__, #condition); \
-            exit(1);                                                              \
-        }                                                                         \
+#define CHECK(condition)                                                                           \
+    do {                                                                                           \
+        if (!(condition)) {                                                                        \
+            fprintf(stderr, "win_pump_order: line %d: %s\n", __LINE__, #condition);                \
+            exit(1);                                                                               \
+        }                                                                                          \
     } while (0)
 
 static int frame_count = 0;
@@ -137,8 +137,8 @@ int main(void) {
         poll_keys(keys, &key_count, 16);
         Sleep(1);
     }
-    fprintf(stderr, "win_pump_order: keys=%d [%d %d %d %d]\n", key_count, keys[0], keys[1],
-            keys[2], keys[3]);
+    fprintf(stderr, "win_pump_order: keys=%d [%d %d %d %d]\n", key_count, keys[0], keys[1], keys[2],
+            keys[3]);
     CHECK(key_count >= 4);
     CHECK(keys[0] == NK_KEY_A);
     CHECK(keys[1] == 0);

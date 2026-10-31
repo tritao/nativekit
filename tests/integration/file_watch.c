@@ -70,14 +70,17 @@ static void write_file(const char *path) {
     fclose(file);
 }
 
-/* Polls until an event of `kind` names `path`, or `attempts` polls pass; counts events naming `unwanted`. */
-static int await_path(nk_event_kind kind, const char *path, int attempts, const char *unwanted, int *unwanted_seen) {
+/* Polls until an event of `kind` names `path`, or `attempts` polls pass; counts events naming
+ * `unwanted`. */
+static int await_path(nk_event_kind kind, const char *path, int attempts, const char *unwanted,
+                      int *unwanted_seen) {
     for (int attempt = 0; attempt < attempts; ++attempt) {
         nk_event event = {0};
         event.struct_size = sizeof(event);
         assert(nk_poll_event(&event) == NK_OK);
         const int found = event.kind == kind && path && has_path(&event, path);
-        if (unwanted && unwanted_seen && event.kind == NK_EVENT_FILE_CHANGED && has_path(&event, unwanted))
+        if (unwanted && unwanted_seen && event.kind == NK_EVENT_FILE_CHANGED &&
+            has_path(&event, unwanted))
             ++*unwanted_seen;
         nk_event_release(&event);
         if (found)
@@ -87,8 +90,9 @@ static int await_path(nk_event_kind kind, const char *path, int attempts, const 
     return 0;
 }
 
-/* A recursive add reports READY for its directory once everything under it is watched, then reports changes deep in
- * the tree; an excluded subtree reports nothing, including a directory created in it afterwards. */
+/* A recursive add reports READY for its directory once everything under it is watched, then reports
+ * changes deep in the tree; an excluded subtree reports nothing, including a directory created in
+ * it afterwards. */
 static void recursive_ready_and_exclusion(const char *root) {
     char tree[512], a[512], b[512], skip[512], inner[512];
     assert(make_child_directory(root, "tree", tree, sizeof(tree)));

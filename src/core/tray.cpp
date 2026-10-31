@@ -25,11 +25,16 @@ nk_result NK_CALL nk_tray_create(const nk_tray_options *, nk_tray *out_tray) {
     return unsupported();
 }
 
-nk_result NK_CALL nk_tray_destroy(nk_tray) { return unsupported(); }
+nk_result NK_CALL nk_tray_destroy(nk_tray) {
+    return unsupported();
+}
 
-nk_result NK_CALL nk_tray_set_tooltip(nk_tray, const char *) { return unsupported(); }
+nk_result NK_CALL nk_tray_set_tooltip(nk_tray, const char *) {
+    return unsupported();
+}
 
-nk_result NK_CALL nk_tray_show_menu(nk_tray, nk_menu) { return unsupported(); }
-
+nk_result NK_CALL nk_tray_show_menu(nk_tray, nk_menu) {
+    return unsupported();
+}
 }
 #endif

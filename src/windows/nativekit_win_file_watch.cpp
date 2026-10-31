@@ -259,7 +259,8 @@ struct FileWatchResource final : nk::core::Resource {
     bool running = true;
     /* Reused by the worker to build lookup keys without allocating. */
     std::wstring scratch;
-    /* Folded keys of excluded subtrees. ReadDirectoryChangesW cannot skip a subtree, so their changes are dropped. */
+    /* Folded keys of excluded subtrees. ReadDirectoryChangesW cannot skip a subtree, so their
+     * changes are dropped. */
     std::vector<std::wstring> excluded;
     std::wstring excluded_scratch;
     std::uint64_t next_registration = 0;
@@ -859,7 +860,8 @@ struct FileWatchResource final : nk::core::Resource {
         for (const auto &directory : excluded)
             if (excluded_scratch.size() >= directory.size() &&
                 excluded_scratch.compare(0, directory.size(), directory) == 0 &&
-                (excluded_scratch.size() == directory.size() || excluded_scratch[directory.size()] == L'\\'))
+                (excluded_scratch.size() == directory.size() ||
+                 excluded_scratch[directory.size()] == L'\\'))
                 return true;
         return false;
     }

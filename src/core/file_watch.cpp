@@ -59,7 +59,8 @@ QueuedEvent file_watch_overflow_event(nk_file_watch source) {
     return event;
 }
 
-QueuedEvent file_watch_ready_event(nk_file_watch source, std::string_view path, nk_request_id registration) {
+QueuedEvent file_watch_ready_event(nk_file_watch source, std::string_view path,
+                                   nk_request_id registration) {
     QueuedEvent event;
     event.kind = NK_EVENT_FILE_WATCH_READY;
     event.source = source;

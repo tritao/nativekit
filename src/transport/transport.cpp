@@ -360,11 +360,10 @@ pipe_type create_local_pipe(const std::string &path, bool first = false) {
     CurrentUserPipeSecurity security;
     if (!security.initialize())
         return invalid_pipe;
-    return CreateNamedPipeW(wide_path.c_str(),
-                            PIPE_ACCESS_DUPLEX | (first ? FILE_FLAG_FIRST_PIPE_INSTANCE : 0),
-                            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_NOWAIT |
-                                PIPE_REJECT_REMOTE_CLIENTS,
-                            PIPE_UNLIMITED_INSTANCES, 65536, 65536, 0, &security.attributes);
+    return CreateNamedPipeW(
+        wide_path.c_str(), PIPE_ACCESS_DUPLEX | (first ? FILE_FLAG_FIRST_PIPE_INSTANCE : 0),
+        PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_NOWAIT | PIPE_REJECT_REMOTE_CLIENTS,
+        PIPE_UNLIMITED_INSTANCES, 65536, 65536, 0, &security.attributes);
 }
 
 /** True when the process runs as the same user as this process. */
@@ -541,13 +540,16 @@ class SocketWakeup {
             addresses[index].sin_addr.s_addr = htonl(INADDR_LOOPBACK);
             int length = sizeof(addresses[index]);
             if (endpoints_[index] == invalid_socket ||
-                ::bind(endpoints_[index], reinterpret_cast<sockaddr *>(&addresses[index]), length) != 0 ||
-                getsockname(endpoints_[index], reinterpret_cast<sockaddr *>(&addresses[index]), &length) != 0 ||
-                !SetHandleInformation(reinterpret_cast<HANDLE>(endpoints_[index]), HANDLE_FLAG_INHERIT, 0))
+                ::bind(endpoints_[index], reinterpret_cast<sockaddr *>(&addresses[index]),
+                       length) != 0 ||
+                getsockname(endpoints_[index], reinterpret_cast<sockaddr *>(&addresses[index]),
+                            &length) != 0 ||
+                !SetHandleInformation(reinterpret_cast<HANDLE>(endpoints_[index]),
+                                      HANDLE_FLAG_INHERIT, 0))
                 return false;
         }
         for (int index = 0; index != 2; ++index)
-            if (::connect(endpoints_[index], reinterpret_cast<sockaddr *>(&addresses[1-index]),
+            if (::connect(endpoints_[index], reinterpret_cast<sockaddr *>(&addresses[1 - index]),
                           sizeof(addresses[0])) != 0)
                 return false;
 #else
@@ -577,11 +579,14 @@ class SocketWakeup {
     }
     void drain() noexcept {
         char bytes[4096];
-        while (::recv(endpoints_[0], bytes, sizeof(bytes), 0) < 0 && socket_interrupted(socket_error())) {}
+        while (::recv(endpoints_[0], bytes, sizeof(bytes), 0) < 0 &&
+               socket_interrupted(socket_error())) {
+        }
         // The worker rechecks the output queue after draining. A producer that
         // coalesced its notification before this reset is observed there.
         pending_.store(false);
     }
+
   private:
     socket_type endpoints_[2]{invalid_socket, invalid_socket};
     std::atomic<bool> pending_{false};
@@ -610,8 +615,8 @@ int wait_socket(socket_type socket, bool readable, bool writable, uint32_t timeo
     timeval timeout{};
     timeout.tv_sec = static_cast<long>(timeout_ms / 1000u);
     timeout.tv_usec = static_cast<long>((timeout_ms % 1000u) * 1000u);
-    const int result = ::select(0, readable || wakeup != invalid_socket ? &read_set : nullptr, writable ? &write_set : nullptr,
-                                &error_set, &timeout);
+    const int result = ::select(0, readable || wakeup != invalid_socket ? &read_set : nullptr,
+                                writable ? &write_set : nullptr, &error_set, &timeout);
     if (result <= 0)
         return result;
     int ready = 0;
@@ -2107,9 +2112,10 @@ void TransportResource::run() noexcept {
             has_output = !outgoing.empty();
         }
 #if defined(_WIN32)
-        const auto ready = options.kind == NK_TRANSPORT_LOCAL
-                               ? wait_pipe(pipe, true, has_output, 100, condition, mutex, outgoing, stopping)
-                               : wait_socket(socket, true, has_output, 100, wakeup.reader());
+        const auto ready =
+            options.kind == NK_TRANSPORT_LOCAL
+                ? wait_pipe(pipe, true, has_output, 100, condition, mutex, outgoing, stopping)
+                : wait_socket(socket, true, has_output, 100, wakeup.reader());
 #else
         const auto ready = wait_socket(socket, true, has_output, 100, wakeup.reader());
 #endif
@@ -2523,8 +2529,7 @@ nk_result NK_CALL nk_transport_get_peer_process(nk_transport handle, uint64_t *o
         if (transport->options.kind != NK_TRANSPORT_LOCAL)
             return fail(NK_ERROR_UNSUPPORTED, "only local transports know their peer process");
         *out_process_id = transport->peer_process.load(std::memory_order_acquire);
-        return *out_process_id == 0 ? fail(NK_ERROR_UNSUPPORTED, "peer process is unknown")
-                                    : NK_OK;
+        return *out_process_id == 0 ? fail(NK_ERROR_UNSUPPORTED, "peer process is unknown") : NK_OK;
     });
 }
 

@@ -1,5 +1,6 @@
-// A tray menu must not stop the caller's loop: nk_tray_show_menu returns while the popup is open, events
-// still flow, a choice is reported after the nk_menu was destroyed, and destroying the tray closes the popup.
+// A tray menu must not stop the caller's loop: nk_tray_show_menu returns while the popup is open,
+// events still flow, a choice is reported after the nk_menu was destroyed, and destroying the tray
+// closes the popup.
 
 #include "nativekit.h"
 #include "nativekit_menu.h"
@@ -26,7 +27,8 @@ BOOL CALLBACK find_popup(HWND window, LPARAM result) {
     GetWindowThreadProcessId(window, &process);
     wchar_t name[16] = {};
     GetClassNameW(window, name, 16);
-    if (process == GetCurrentProcessId() && IsWindowVisible(window) && lstrcmpW(name, L"#32768") == 0) {
+    if (process == GetCurrentProcessId() && IsWindowVisible(window) &&
+        lstrcmpW(name, L"#32768") == 0) {
         *reinterpret_cast<HWND *>(result) = window;
         return FALSE;
     }
@@ -73,7 +75,8 @@ nk_menu build_menu(nk_menu_item *out_item) {
     options.struct_size = sizeof(options);
     options.label = "Stop hosting";
     options.command_id = 7;
-    check(nk_menu_add_item(menu, NK_INVALID_HANDLE, &options, out_item) == NK_OK, "nk_menu_add_item");
+    check(nk_menu_add_item(menu, NK_INVALID_HANDLE, &options, out_item) == NK_OK,
+          "nk_menu_add_item");
     return menu;
 }
 
@@ -96,19 +99,22 @@ int main() {
         return 0;
     }
 
-    // 1. The call returns with the popup open; the caller's loop keeps running and can post itself work.
+    // 1. The call returns with the popup open; the caller's loop keeps running and can post itself
+    // work.
     nk_menu_item item = NK_INVALID_HANDLE;
     nk_menu menu = build_menu(&item);
     check(nk_tray_show_menu(tray, menu) == NK_OK, "nk_tray_show_menu");
     check(nk_menu_destroy(menu) == NK_OK, "the menu can be destroyed while its popup is open");
     HWND popup = wait_for_popup(true);
     check(popup != nullptr, "the popup did not open");
-    check(GetWindowThreadProcessId(popup, nullptr) != GetCurrentThreadId(), "the popup runs on the caller's thread");
+    check(GetWindowThreadProcessId(popup, nullptr) != GetCurrentThreadId(),
+          "the popup runs on the caller's thread");
     nk_event event = {};
     event.struct_size = sizeof(event);
     check(nk_poll_event(&event) == NK_OK, "events can be polled while the menu is open");
     nk_event_release(&event);
-    check(nk_tray_show_menu(tray, NK_INVALID_HANDLE) == NK_OK, "a second show while one is open is a no-op");
+    check(nk_tray_show_menu(tray, NK_INVALID_HANDLE) == NK_OK,
+          "a second show while one is open is a no-op");
 
     // 2. A choice made in the popup arrives as an event, although its nk_menu is gone.
     PostMessageW(popup, WM_KEYDOWN, VK_DOWN, 0);
@@ -117,8 +123,10 @@ int main() {
     for (int attempt = 0; attempt < 300 && !activated; ++attempt) {
         nk_event next;
         if (next_event(next)) {
-            activated = next.kind == NK_EVENT_MENU_ITEM_ACTIVATED && next.source == item && next.data_size >= 8 &&
-                        reinterpret_cast<const nk_menu_item_activated_event *>(next.data)->command_id == 7;
+            activated =
+                next.kind == NK_EVENT_MENU_ITEM_ACTIVATED && next.source == item &&
+                next.data_size >= 8 &&
+                reinterpret_cast<const nk_menu_item_activated_event *>(next.data)->command_id == 7;
             nk_event_release(&next);
         }
     }

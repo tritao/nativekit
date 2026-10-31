@@ -2342,8 +2342,10 @@ void finish_message_dialog(nk_request_id request, NSInteger response) noexcept {
         event.kind = NK_EVENT_DIALOG_MESSAGE_COMPLETE;
         event.request_id = request;
         event.flags = NK_DIALOG_MESSAGE;
-        event.data = bytes_of(nk_dialog_message_result{result,
-            [(NSAlert *)context->dialog suppressionButton].state == NSControlStateValueOn ? 1u : 0u});
+        event.data = bytes_of(nk_dialog_message_result{
+            result, [(NSAlert *)context->dialog suppressionButton].state == NSControlStateValueOn
+                        ? 1u
+                        : 0u});
         nk::core::push_event(std::move(event));
     });
 }
@@ -5877,8 +5879,8 @@ nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
         "unexpected error while opening message dialog", [&]() -> nk_result {
             if (const auto result = enter_ui(); result != NK_OK)
                 return result;
-            if (!options || options->struct_size < offsetof(nk_message_dialog_options, yes_label) || !options->message ||
-                !out_request)
+            if (!options || options->struct_size < offsetof(nk_message_dialog_options, yes_label) ||
+                !options->message || !out_request)
                 return fail(NK_ERROR_INVALID_ARGUMENT, "invalid message dialog options");
             if (!valid_utf8(options->title) || !valid_utf8(options->message) ||
                 (options->struct_size >= sizeof(*options) &&
@@ -5913,7 +5915,10 @@ nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
             add_button(NK_MESSAGE_BUTTON_DONT_SAVE, @"Don’t Save", NK_MESSAGE_RESULT_NO);
             add_button(NK_MESSAGE_BUTTON_OK, @"OK", NK_MESSAGE_RESULT_OK);
             add_button(NK_MESSAGE_BUTTON_YES,
-                options->struct_size >= sizeof(*options) && options->yes_label ? string(options->yes_label) : @"Yes", NK_MESSAGE_RESULT_YES);
+                       options->struct_size >= sizeof(*options) && options->yes_label
+                           ? string(options->yes_label)
+                           : @"Yes",
+                       NK_MESSAGE_RESULT_YES);
             add_button(NK_MESSAGE_BUTTON_NO, @"No", NK_MESSAGE_RESULT_NO);
             add_button(NK_MESSAGE_BUTTON_CANCEL, @"Cancel", NK_MESSAGE_RESULT_CANCEL);
             if (context->message_results.empty()) {

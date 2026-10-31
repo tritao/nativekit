@@ -134,7 +134,8 @@ std::uint64_t StampRing::match(const Input &input) noexcept {
             continue;
         const bool same_position =
             input.kind == Kind::key || (stamp.input.x == input.x && stamp.input.y == input.y);
-        // A move keeps the newest it finds; a button or key keeps overwriting, ending at the oldest.
+        // A move keeps the newest it finds; a button or key keeps overwriting, ending at the
+        // oldest.
         if (same_position && (consumed || !at_position))
             at_position = number;
         if (consumed || !at_time)
@@ -294,8 +295,7 @@ bool stop_locked() noexcept {
 
 void update(bool tracing) noexcept {
     const bool is_running = hooks_running.load(std::memory_order_acquire);
-    if (tracing ? is_running && !hooks_lost.load(std::memory_order_relaxed)
-                : !is_running)
+    if (tracing ? is_running && !hooks_lost.load(std::memory_order_relaxed) : !is_running)
         return;
     if (given_up.load(std::memory_order_relaxed))
         return;

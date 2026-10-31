@@ -127,8 +127,9 @@ void idle_sends(nk_transport client, nk_transport server, nk_transport_kind kind
         const auto started = std::chrono::steady_clock::now();
         assert(nk_transport_send(sender, "wake", 4) == NK_OK);
         assert(receive_message(receiver, "wake"));
-        elapsed_ms += std::chrono::duration<double, std::milli>(
-            std::chrono::steady_clock::now() - started).count();
+        elapsed_ms +=
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started)
+                .count();
     }
     std::fprintf(stderr, "idle transport kind=%d: eight sends %.2f ms total\n", kind, elapsed_ms);
     assert(elapsed_ms < 400.0);

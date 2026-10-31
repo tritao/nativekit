@@ -55,7 +55,8 @@ struct FileWatchResource final : nk::core::Resource {
     std::unordered_map<int, Directory> directories;
     /* Watch descriptor by path, so adding a directory does not scan every watched one. */
     std::unordered_map<std::string, int> by_path;
-    /* Recursive roots and the registration that walks them; a walk stops once its root is removed or added again. */
+    /* Recursive roots and the registration that walks them; a walk stops once its root is removed
+     * or added again. */
     std::unordered_map<std::string, std::uint64_t> roots;
     std::deque<Walk> walks;
     std::uint64_t next_registration = 0;
@@ -100,9 +101,9 @@ struct FileWatchResource final : nk::core::Resource {
     }
 
     static bool within(const std::string &path, const std::string &directory) {
-        return path == directory || (path.size() > directory.size() &&
-                                     path.compare(0, directory.size(), directory) == 0 &&
-                                     path[directory.size()] == '/');
+        return path == directory ||
+               (path.size() > directory.size() &&
+                path.compare(0, directory.size(), directory) == 0 && path[directory.size()] == '/');
     }
 
     bool excluded_locked(const std::string &path) const {
@@ -139,8 +140,10 @@ struct FileWatchResource final : nk::core::Resource {
                 return NK_ERROR_INVALID_ARGUMENT;
             return NK_ERROR_UNKNOWN;
         }
-        // The kernel returns an existing descriptor for an inode already watched under another path.
-        if (const auto existing = directories.find(watch_descriptor); existing != directories.end()) {
+        // The kernel returns an existing descriptor for an inode already watched under another
+        // path.
+        if (const auto existing = directories.find(watch_descriptor);
+            existing != directories.end()) {
             existing->second.recursive = existing->second.recursive || recursive;
             return NK_OK;
         }
@@ -149,12 +152,13 @@ struct FileWatchResource final : nk::core::Resource {
         return NK_OK;
     }
 
-    /* Watches every directory under `root`, skipping excluded subtrees, while `wanted` holds. Takes the lock for each
-     * directory only, so changes keep being reported while a large tree is registered. */
+    /* Watches every directory under `root`, skipping excluded subtrees, while `wanted` holds. Takes
+     * the lock for each directory only, so changes keep being reported while a large tree is
+     * registered. */
     template <typename Wanted> void walk(const std::string &root, Wanted wanted) {
         std::error_code error;
-        std::filesystem::recursive_directory_iterator
-            iterator(root, std::filesystem::directory_options::skip_permission_denied, error),
+        std::filesystem::recursive_directory_iterator iterator(
+            root, std::filesystem::directory_options::skip_permission_denied, error),
             end;
         while (!error && iterator != end) {
             if (stopping.load(std::memory_order_acquire))
@@ -421,7 +425,8 @@ struct FileWatchResource final : nk::core::Resource {
         while (!stopping.load(std::memory_order_acquire)) {
             run_walks();
             pollfd polls[2] = {{descriptor, POLLIN, 0}, {wake, POLLIN, 0}};
-            // The wake descriptor ends the wait for a queued walk or a stop; the timeout completes unpaired moves.
+            // The wake descriptor ends the wait for a queued walk or a stop; the timeout completes
+            // unpaired moves.
             const auto ready = poll(polls, 2, 100);
             if (ready < 0) {
                 if (errno == EINTR)

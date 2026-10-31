@@ -1532,10 +1532,10 @@ UINT taskbar_created_message = 0;
 UINT next_tray_id = 1;
 std::unordered_map<UINT, std::shared_ptr<WinTrayResource>> trays;
 
-// The open tray menu. TrackPopupMenuEx runs a modal loop until the menu closes; on the UI thread that
-// loop would stop the application's own loop (its transports, timers and replies) for as long as the
-// menu stays open. So the menu runs on its own thread, owned by a window of that thread, and the
-// choice comes back to the tray window as tray_menu_closed_message.
+// The open tray menu. TrackPopupMenuEx runs a modal loop until the menu closes; on the UI thread
+// that loop would stop the application's own loop (its transports, timers and replies) for as long
+// as the menu stays open. So the menu runs on its own thread, owned by a window of that thread, and
+// the choice comes back to the tray window as tray_menu_closed_message.
 constexpr UINT tray_menu_closed_message = WM_APP + 45;
 constexpr UINT tray_menu_end_message = WM_APP + 46;
 constexpr wchar_t tray_menu_class_name[] = L"NativeKitTrayMenuOwner";
@@ -1569,17 +1569,18 @@ DWORD WINAPI run_tray_menu(void *parameter) noexcept {
     definition.lpszClassName = tray_menu_class_name;
     RegisterClassExW(&definition); // fails harmlessly once registered
     UINT chosen = 0;
-    HWND owner = CreateWindowExW(WS_EX_TOOLWINDOW, tray_menu_class_name, L"NativeKit tray menu", WS_POPUP,
-                                 0, 0, 0, 0, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+    HWND owner =
+        CreateWindowExW(WS_EX_TOOLWINDOW, tray_menu_class_name, L"NativeKit tray menu", WS_POPUP, 0,
+                        0, 0, 0, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
     if (owner) {
         menu->owner.store(owner);
         if (!menu->cancelled.load()) {
             // The popup must belong to the foreground window, or it does not close when the user
             // clicks elsewhere (documented TrackPopupMenu behavior).
             SetForegroundWindow(owner);
-            chosen = static_cast<UINT>(TrackPopupMenuEx(menu->popup.menu,
-                                                        TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_NONOTIFY,
-                                                        menu->point.x, menu->point.y, owner, nullptr));
+            chosen = static_cast<UINT>(
+                TrackPopupMenuEx(menu->popup.menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_NONOTIFY,
+                                 menu->point.x, menu->point.y, owner, nullptr));
             PostMessageW(owner, WM_NULL, 0, 0);
         }
         menu->owner.store(nullptr);
@@ -1642,7 +1643,9 @@ std::shared_ptr<WinTrayResource> get_tray(nk_tray handle) {
         nk::core::handles().get(handle, nk::core::ResourceType::tray));
 }
 
-nk_result invalid_tray_handle() { return fail(NK_ERROR_INVALID_HANDLE, "invalid tray handle"); }
+nk_result invalid_tray_handle() {
+    return fail(NK_ERROR_INVALID_HANDLE, "invalid tray handle");
+}
 
 void remove_tray(const std::shared_ptr<WinTrayResource> &tray) noexcept {
     NOTIFYICONDATAW icon{};
@@ -3020,7 +3023,8 @@ void run_message_dialog(const std::shared_ptr<WinDialogContext> &context) noexce
         if (context->buttons & NK_MESSAGE_BUTTON_SAVE)
             buttons[button_count++] = {IDYES, L"Save"};
         if (context->buttons & NK_MESSAGE_BUTTON_YES)
-            buttons[button_count++] = {IDYES, context->yes_label.empty() ? L"Yes" : context->yes_label.c_str()};
+            buttons[button_count++] = {
+                IDYES, context->yes_label.empty() ? L"Yes" : context->yes_label.c_str()};
         if (context->buttons & NK_MESSAGE_BUTTON_NO)
             buttons[button_count++] = {IDNO, L"No"};
         if (context->buttons & NK_MESSAGE_BUTTON_OK)
@@ -3032,17 +3036,19 @@ void run_message_dialog(const std::shared_ptr<WinDialogContext> &context) noexce
         config.dwCommonButtons = 0;
         config.pszWindowTitle = context->title.c_str();
         config.pszContent = context->message.c_str();
-        config.pszVerificationText = context->checkbox_label.empty() ? nullptr : context->checkbox_label.c_str();
+        config.pszVerificationText =
+            context->checkbox_label.empty() ? nullptr : context->checkbox_label.c_str();
         config.pszMainIcon = TD_WARNING_ICON;
         config.cButtons = button_count;
         config.pButtons = buttons;
         config.nDefaultButton = IDCANCEL;
         if (!show || FAILED(show(&config, &response, nullptr, &checkbox_checked))) {
             checkbox_checked = FALSE;
-            response = context->yes_label.empty() && context->checkbox_label.empty()
-                ? MessageBoxW(context->parent, context->message.c_str(), context->title.c_str(),
-                              MB_ICONWARNING | MB_YESNOCANCEL | MB_DEFBUTTON3)
-                : IDCANCEL;
+            response =
+                context->yes_label.empty() && context->checkbox_label.empty()
+                    ? MessageBoxW(context->parent, context->message.c_str(), context->title.c_str(),
+                                  MB_ICONWARNING | MB_YESNOCANCEL | MB_DEFBUTTON3)
+                    : IDCANCEL;
         }
         if (controls)
             FreeLibrary(controls);
@@ -3543,9 +3549,9 @@ bool wait_events(std::uint64_t sequence, std::chrono::milliseconds timeout) noex
             return false;
         /* Window input wakes the wait too: a condition variable alone sleeps through it until the
          * timeout. MWMO_INPUTAVAILABLE also reports input a PeekMessage call left in the queue. */
-        const DWORD result = MsgWaitForMultipleObjectsEx(
-            wake ? 1 : 0, wake ? &wake : nullptr, static_cast<DWORD>(remaining.count()),
-            QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+        const DWORD result = MsgWaitForMultipleObjectsEx(wake ? 1 : 0, wake ? &wake : nullptr,
+                                                         static_cast<DWORD>(remaining.count()),
+                                                         QS_ALLINPUT, MWMO_INPUTAVAILABLE);
         /* The wake event stays signalled after a wake the caller already saw. Only a window
          * message ends the wait without a new sequence. */
         if (result == WAIT_OBJECT_0 + (wake ? 1 : 0))
@@ -3572,8 +3578,7 @@ void pump_events() noexcept {
      * its successor by posting a message. Take input first, or a busy frame loop keeps it
      * waiting in the system queue indefinitely. Sent messages are named too: a queue filter
      * otherwise leaves cross-thread SendMessage callers blocked while input streams in. */
-    while (PeekMessageW(&message, nullptr, 0, 0,
-                        PM_REMOVE | PM_QS_INPUT | PM_QS_SENDMESSAGE)) {
+    while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE | PM_QS_INPUT | PM_QS_SENDMESSAGE)) {
         if (nk::backend::menu_backend_translate_accelerator(message))
             continue;
         translate_and_dispatch(message);
@@ -5647,8 +5652,8 @@ nk_result NK_CALL nk_dialog_message(nk_handle parent_handle,
     {
         if (const auto result = enter_ui(); result != NK_OK)
             return result;
-        if (!options || options->struct_size < offsetof(nk_message_dialog_options, yes_label) || !out_request ||
-            !options->message)
+        if (!options || options->struct_size < offsetof(nk_message_dialog_options, yes_label) ||
+            !out_request || !options->message)
             return fail(NK_ERROR_INVALID_ARGUMENT, "invalid message dialog options");
         auto context = std::make_shared<WinDialogContext>();
         if (parent_handle != NK_INVALID_HANDLE) {
@@ -6200,51 +6205,52 @@ nk_result NK_CALL nk_notification_close(nk_request_id request) {
     return NK_OK;
 }
 nk_result NK_CALL nk_tray_create(const nk_tray_options *options, nk_tray *out_tray) {
-    return nk::core::result_boundary("unexpected error while creating tray icon", [&]() -> nk_result {
-        if (const auto result = enter_ui(); result != NK_OK)
-            return result;
-        if (!options || options->struct_size < sizeof(*options) || !out_tray)
-            return fail(NK_ERROR_INVALID_ARGUMENT, "invalid tray options");
-        *out_tray = NK_INVALID_HANDLE;
-        const auto tooltip = wide(options->tooltip);
-        const auto icon_path = wide(options->icon);
-        if ((options->tooltip && *options->tooltip && tooltip.empty()) ||
-            (options->icon && *options->icon && icon_path.empty()))
-            return fail(NK_ERROR_INVALID_ARGUMENT, "tray text is not valid UTF-8");
-        if (!ensure_window_class())
-            return fail(NK_ERROR_UNSUPPORTED, "Windows tray host is unavailable");
-        if (!tray_window) {
-            tray_window = CreateWindowExW(WS_EX_TOOLWINDOW, window_class_name, L"NativeKit tray",
-                                          WS_POPUP, 0, 0, 0, 0, nullptr, nullptr,
-                                          GetModuleHandleW(nullptr), nullptr);
-            if (!tray_window)
+    return nk::core::result_boundary(
+        "unexpected error while creating tray icon", [&]() -> nk_result {
+            if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            if (!options || options->struct_size < sizeof(*options) || !out_tray)
+                return fail(NK_ERROR_INVALID_ARGUMENT, "invalid tray options");
+            *out_tray = NK_INVALID_HANDLE;
+            const auto tooltip = wide(options->tooltip);
+            const auto icon_path = wide(options->icon);
+            if ((options->tooltip && *options->tooltip && tooltip.empty()) ||
+                (options->icon && *options->icon && icon_path.empty()))
+                return fail(NK_ERROR_INVALID_ARGUMENT, "tray text is not valid UTF-8");
+            if (!ensure_window_class())
                 return fail(NK_ERROR_UNSUPPORTED, "Windows tray host is unavailable");
-            taskbar_created_message = RegisterWindowMessageW(L"TaskbarCreated");
-        }
-        auto tray = std::make_shared<WinTrayResource>();
-        tray->id = next_tray_id++;
-        tray->tooltip = tooltip;
-        if (!icon_path.empty()) {
-            tray->icon = static_cast<HICON>(LoadImageW(nullptr, icon_path.c_str(), IMAGE_ICON,
-                                                       GetSystemMetrics(SM_CXSMICON),
-                                                       GetSystemMetrics(SM_CYSMICON),
-                                                       LR_LOADFROMFILE));
-            tray->owns_icon = tray->icon != nullptr;
-        }
-        if (!tray->icon)
-            tray->icon = LoadIconW(nullptr, IDI_APPLICATION);
-        NOTIFYICONDATAW icon{};
-        fill_tray_icon(icon, *tray);
-        if (!Shell_NotifyIconW(NIM_ADD, &icon)) {
-            if (tray->owns_icon)
-                DestroyIcon(tray->icon);
-            return fail(NK_ERROR_UNSUPPORTED, "Windows notification area rejected the tray icon");
-        }
-        tray->handle = nk::core::handles().insert(nk::core::ResourceType::tray, tray);
-        trays.emplace(tray->id, tray);
-        *out_tray = tray->handle;
-        return NK_OK;
-    });
+            if (!tray_window) {
+                tray_window = CreateWindowExW(WS_EX_TOOLWINDOW, window_class_name,
+                                              L"NativeKit tray", WS_POPUP, 0, 0, 0, 0, nullptr,
+                                              nullptr, GetModuleHandleW(nullptr), nullptr);
+                if (!tray_window)
+                    return fail(NK_ERROR_UNSUPPORTED, "Windows tray host is unavailable");
+                taskbar_created_message = RegisterWindowMessageW(L"TaskbarCreated");
+            }
+            auto tray = std::make_shared<WinTrayResource>();
+            tray->id = next_tray_id++;
+            tray->tooltip = tooltip;
+            if (!icon_path.empty()) {
+                tray->icon = static_cast<HICON>(LoadImageW(
+                    nullptr, icon_path.c_str(), IMAGE_ICON, GetSystemMetrics(SM_CXSMICON),
+                    GetSystemMetrics(SM_CYSMICON), LR_LOADFROMFILE));
+                tray->owns_icon = tray->icon != nullptr;
+            }
+            if (!tray->icon)
+                tray->icon = LoadIconW(nullptr, IDI_APPLICATION);
+            NOTIFYICONDATAW icon{};
+            fill_tray_icon(icon, *tray);
+            if (!Shell_NotifyIconW(NIM_ADD, &icon)) {
+                if (tray->owns_icon)
+                    DestroyIcon(tray->icon);
+                return fail(NK_ERROR_UNSUPPORTED,
+                            "Windows notification area rejected the tray icon");
+            }
+            tray->handle = nk::core::handles().insert(nk::core::ResourceType::tray, tray);
+            trays.emplace(tray->id, tray);
+            *out_tray = tray->handle;
+            return NK_OK;
+        });
 }
 
 nk_result NK_CALL nk_tray_destroy(nk_tray handle) {
@@ -6286,7 +6292,8 @@ nk_result NK_CALL nk_tray_show_menu(nk_tray handle, nk_menu menu) {
     if (tray_menu)
         return NK_OK; // one tray menu at a time
     auto opened = std::make_unique<TrayMenuThread>();
-    if (const auto result = nk::backend::menu_backend_popup_build(menu, opened->popup); result != NK_OK)
+    if (const auto result = nk::backend::menu_backend_popup_build(menu, opened->popup);
+        result != NK_OK)
         return result;
     opened->tray = handle;
     opened->reply = tray_window;

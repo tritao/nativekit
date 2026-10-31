@@ -32,7 +32,8 @@ struct Input {
     /** Screen position in physical pixels (move, button). */
     std::int32_t x = 0;
     std::int32_t y = 0;
-    /** Which transition: the button message and X button, or the scan code, extended and up flags. */
+    /** Which transition: the button message and X button, or the scan code, extended and up flags.
+     */
     std::uint32_t code = 0;
 };
 

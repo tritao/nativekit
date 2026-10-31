@@ -220,8 +220,8 @@ struct Renderer {
     uint64_t failed_allocations = 0;
     nk_surface_frame_target frame_target{};
     bool has_frame_target = false;
-    /* Frame timing (nkgpu_set_frame_timing): the active frame's backend query, the ended queries oldest first while
-       their results are pending, and the newest result. */
+    /* Frame timing (nkgpu_set_frame_timing): the active frame's backend query, the ended queries
+       oldest first while their results are pending, and the newest result. */
     bool frame_timing = false;
     uint32_t frame_query = 0;
     std::array<uint32_t, 4> timing_pending{};
@@ -536,7 +536,8 @@ static const nk_sokol_transfer_api *frame_timing_api(const Renderer &renderer) {
     return transfer;
 }
 
-/* Takes the results that have arrived, oldest first, so the newest result is the last frame measured. */
+/* Takes the results that have arrived, oldest first, so the newest result is the last frame
+ * measured. */
 static void collect_frame_timing(Renderer &renderer) {
     const nk_sokol_transfer_api *transfer = frame_timing_api(renderer);
     uint32_t done = 0;
@@ -560,10 +561,11 @@ static void collect_frame_timing(Renderer &renderer) {
     renderer.timing_pending_count -= done;
 }
 
-/* Opens the frame's interval, after the frame is active. A frame finds every slot pending only when the GPU runs more
-   frames behind than there are slots, and goes untimed. */
+/* Opens the frame's interval, after the frame is active. A frame finds every slot pending only when
+   the GPU runs more frames behind than there are slots, and goes untimed. */
 static void begin_frame_timing(Renderer &renderer) {
-    /* Results still arriving after timing was turned off are taken, which releases their queries. */
+    /* Results still arriving after timing was turned off are taken, which releases their queries.
+     */
     if (renderer.timing_pending_count)
         collect_frame_timing(renderer);
     if (!renderer.frame_timing)
