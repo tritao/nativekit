@@ -17,8 +17,10 @@
 #include <emscripten.h>
 // AudioWorkletGlobalScope may lack a monotonic wall clock. Never proxy a clock
 // request to the main thread from the realtime callback, or use Date.now().
+// clang-format off
 EM_JS(double, nk_audio_callback_monotonic_ms, (),
-      { return typeof performance != = 'undefined' ? performance.now() : 0; });
+      { return typeof performance !== 'undefined' ? performance.now() : 0; });
+// clang-format on
 #endif
 
 #include <algorithm>

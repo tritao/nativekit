@@ -153,7 +153,9 @@ static void test_text_input_focus_handoff(void) {
     state.cursor_height = 18;
     NK_TEST_ASSERT(nk_surface_set_text_input_state(surface, &state) == NK_OK);
     NK_TEST_ASSERT(nk_surface_set_text_input_active(surface, 1) == NK_OK);
-    NK_TEST_ASSERT(EM_ASM_INT({ return document.activeElement.id == = "__nativekit_text_input"; }));
+    // clang-format off
+    NK_TEST_ASSERT(EM_ASM_INT({ return document.activeElement.id === "__nativekit_text_input"; }));
+    // clang-format on
     NK_TEST_ASSERT(EM_ASM_INT({
         const input = document.activeElement;
         const shifted = new KeyboardEvent(
@@ -192,7 +194,8 @@ static void test_text_input_focus_handoff(void) {
     }
     NK_TEST_ASSERT(menu_seen && right_super_seen);
     NK_TEST_ASSERT(nk_surface_set_text_input_active(surface, 0) == NK_OK);
-    NK_TEST_ASSERT(EM_ASM_INT({ return document.activeElement.id == = "canvas"; }));
+    // clang-format off
+    NK_TEST_ASSERT(EM_ASM_INT({ return document.activeElement.id === "canvas"; }));
     EM_ASM({
         const external = document.createElement("button");
         external.id = "nativekit-external-focus";
@@ -200,11 +203,11 @@ static void test_text_input_focus_handoff(void) {
         external.focus();
     });
     NK_TEST_ASSERT(nk_surface_set_text_input_active(surface, 0) == NK_OK);
-    NK_TEST_ASSERT(
-        EM_ASM_INT({ return document.activeElement.id == = "nativekit-external-focus"; }));
+    NK_TEST_ASSERT(EM_ASM_INT({ return document.activeElement.id === "nativekit-external-focus"; }));
     EM_ASM({ document.getElementById("nativekit-external-focus").remove(); });
     NK_TEST_ASSERT(nk_surface_set_text_input_active(surface, 1) == NK_OK);
-    NK_TEST_ASSERT(EM_ASM_INT({ return document.activeElement.id == = "__nativekit_text_input"; }));
+    NK_TEST_ASSERT(EM_ASM_INT({ return document.activeElement.id === "__nativekit_text_input"; }));
+    // clang-format on
     for (int index = 0; index < 32; ++index) {
         nk_event event = {0};
         event.struct_size = sizeof(event);

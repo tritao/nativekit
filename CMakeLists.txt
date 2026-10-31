@@ -124,8 +124,14 @@ if(NK_CLANG_FORMAT)
         COMMAND ${NK_CLANG_FORMAT} -i ${NK_FORMAT_SOURCES}
         COMMENT "Formatting NativeKit sources"
         VERBATIM)
+    # ClangFormat reads JavaScript in EM_ASM/EM_JS as C++ and splits `===` and `!==`; the check below catches any
+    # embedded script left outside a `// clang-format off` region.
+    string(REPLACE ";" "\n" NK_FORMAT_SOURCE_LINES "${NK_FORMAT_SOURCES}")
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/format-sources.txt" "${NK_FORMAT_SOURCE_LINES}\n")
     add_custom_target(format-check
         COMMAND ${NK_CLANG_FORMAT} --dry-run --Werror ${NK_FORMAT_SOURCES}
+        COMMAND ${CMAKE_COMMAND} -DNK_FORMAT_SOURCE_LIST=${CMAKE_CURRENT_BINARY_DIR}/format-sources.txt
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckEmbeddedScript.cmake
         COMMENT "Checking NativeKit source formatting"
         VERBATIM)
 endif()
