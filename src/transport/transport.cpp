@@ -18,6 +18,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
+#include <cstdlib>
 #include <cstdint>
 #include <cctype>
 #include <cstring>
@@ -2019,6 +2020,16 @@ void TransportResource::run_secure_websocket() noexcept {
     context_info.port = CONTEXT_PORT_NO_LISTEN;
     context_info.protocols = protocols;
     context_info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
+#if defined(__ANDROID__)
+    /* libwebsockets with Mbed TLS has no system trust store on Android. The host exports the platform
+       trust anchors to a PEM file and names it here; without one the connection fails closed. */
+    const char *android_ca_file = getenv("NK_ANDROID_TLS_CA_FILE");
+    if (!android_ca_file || android_ca_file[0] != '/') {
+        finish(NK_TRANSPORT_ERROR_CONNECTION);
+        return;
+    }
+    context_info.client_ssl_ca_filepath = android_ca_file;
+#endif
     {
         std::lock_guard lock(lws_context_mutex);
         lws_context_handle = lws_create_context(&context_info);
