@@ -1189,7 +1189,9 @@ nk_result mobile_host_destroy(nk_handle handle) {
             });
         if (leaf == surfaces.end())
             break;
-        destroy_surface(leaf->first);
+        // A surface that cannot be destroyed now (a frame in flight, retained images) would be found again for ever.
+        if (destroy_surface(leaf->first) != NK_OK)
+            break;
     }
     for (const auto &[child, resource] : webviews)
         if (resource->host == handle)
