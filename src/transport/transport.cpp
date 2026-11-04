@@ -87,6 +87,10 @@ constexpr std::size_t max_option_string = 4096;
 constexpr std::size_t max_http_header = 64u * 1024u;
 constexpr std::size_t max_message = 16u * 1024u * 1024u;
 constexpr std::size_t read_chunk = 16u * 1024u;
+#if defined(_WIN32)
+/** Largest single write to a local pipe: well under its 64 KiB buffer (see write_socket). */
+constexpr std::size_t local_pipe_write_chunk = 16u * 1024u;
+#endif
 constexpr std::size_t max_udp_datagram = 64u * 1024u;
 constexpr uint64_t default_buffer_size = 4u * 1024u * 1024u;
 constexpr uint32_t default_timeout_ms = 5000;
@@ -1749,11 +1753,22 @@ bool TransportResource::write_socket() noexcept {
         if (options.kind == NK_TRANSPORT_LOCAL) {
             lock.unlock();
             DWORD sent = 0;
-            const DWORD amount = static_cast<DWORD>(std::min<std::size_t>(remaining, 0x7fffffffu));
+            // A PIPE_NOWAIT write is all or nothing: it succeeds with 0 bytes written
+            // whenever the whole request does not fit in the pipe's free buffer, so a
+            // request larger than the 64 KiB buffer would never be written. Bounded
+            // pieces fit once the reader drains enough.
+            const DWORD amount =
+                static_cast<DWORD>(std::min<std::size_t>(remaining, local_pipe_write_chunk));
             const BOOL succeeded =
                 WriteFile(pipe, chunk.data() + outgoing_offset, amount, &sent, nullptr);
             const DWORD error = succeeded ? ERROR_SUCCESS : GetLastError();
             lock.lock();
+            if (succeeded && sent == 0) {
+                // The pipe is full: wait for the reader instead of spinning on it.
+                lock.unlock();
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                return true;
+            }
             if (succeeded && sent > 0) {
                 outgoing_offset += sent;
                 if (outgoing_offset == chunk.size()) {
