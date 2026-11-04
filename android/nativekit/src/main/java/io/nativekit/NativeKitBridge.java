@@ -936,7 +936,10 @@ final class NativeKitBridge {
             nativeOnKey(nativeHandle, nativeKey(keyCode), event.getScanCode(), action,
                         modifiers(event.getMetaState()));
             int unicode = event.getUnicodeChar();
-            if (action == INPUT_PRESS && unicode != 0)
+            // Enter and Tab are keys, not text: the application inserts a newline itself where it wants one, as it does
+            // for a hardware keyboard on a desktop. Sending both made Enter type a line break into a field that
+            // sends on Enter.
+            if (action == INPUT_PRESS && unicode >= 0x20 && unicode != 0x7f)
                 nativeOnText(nativeHandle, unicode);
             return true;
         }
@@ -962,6 +965,14 @@ final class NativeKitBridge {
                     if (!structuredTextInput)
                         text.codePoints().forEach(value -> nativeOnText(nativeHandle, value));
                     return result;
+                }
+
+                /** The keyboard's action key (Send, Go, ...) is Enter to the application. */
+                @Override
+                public boolean performEditorAction(int actionCode) {
+                    nativeOnKey(nativeHandle, KEY_ENTER, 0, INPUT_PRESS, 0);
+                    nativeOnKey(nativeHandle, KEY_ENTER, 0, INPUT_RELEASE, 0);
+                    return true;
                 }
 
                 @Override
@@ -1106,6 +1117,8 @@ final class NativeKitBridge {
             documentLength = newDocumentLength;
             textInputType = inputType;
             textInputFlags = inputFlags;
+            // The keyboard reads the action when it connects; tell it when the field's action changes.
+            boolean actionChanged = textInputAction != action;
             textInputAction = action;
             cursorX = newCursorX;
             cursorY = newCursorY;
@@ -1132,6 +1145,7 @@ final class NativeKitBridge {
                     Selection.getSelectionEnd(editable),
                     BaseInputConnection.getComposingSpanStart(editable),
                     BaseInputConnection.getComposingSpanEnd(editable));
+            if (actionChanged && manager != null) manager.restartInput(this);
             updateCursorAnchor();
         }
 
