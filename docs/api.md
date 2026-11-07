@@ -438,6 +438,15 @@ does not report raw motion. GTK supports normal, hidden, and captured pointer
 modes. Disabled relative-pointer mode and raw motion are reported as unsupported
 because GTK 3 cannot provide consistent behavior across X11 and Wayland.
 
+On GTK, the selected window cursor expresses client intent. In normal mode,
+custom decoration hover temporarily takes precedence; hidden and captured modes
+retain client ownership. Leaving the window clears decoration ownership. Re-entry
+and native grab completion reconcile pointer position and publish a pointer move
+so client hover state can recover without another physical mouse movement.
+Returning to normal mode and changing window geometry or decoration regions also
+recompute the effective cursor, rather than relying on the client to resend an
+unchanged cursor selection.
+
 Window content sizes use logical pixels while framebuffer sizes use device
 pixels. Content scale is available per axis. Move, logical resize, and
 framebuffer resize events are coalesced independently. Global position and frame

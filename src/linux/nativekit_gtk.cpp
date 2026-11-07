@@ -195,6 +195,19 @@ decoration_region_at(const std::vector<nk_window_decoration_region> &regions, fl
 bool begin_decoration_drag(GtkWindowResource &resource, GdkEventButton &event);
 nk_result apply_pointer_cursor(GtkWindowResource &resource);
 
+// Geometry can change under a stationary pointer during a compositor-owned
+// move/resize. Never hit-test decorations using the pre-operation position.
+void refresh_pointer_position(GtkWindowResource &resource) {
+    if (!resource.window || !gtk_widget_get_realized(resource.window))
+        return;
+    auto *native = gtk_widget_get_window(resource.window);
+    auto *seat = gdk_display_get_default_seat(gdk_window_get_display(native));
+    auto *pointer = seat ? gdk_seat_get_pointer(seat) : nullptr;
+    if (pointer)
+        gdk_window_get_device_position_double(native, pointer, &resource.pointer_x,
+                                              &resource.pointer_y, nullptr);
+}
+
 struct GtkAccessibilityTextRange {
     nk_accessibility_text_position start = 0;
     nk_accessibility_text_position end = 0;
@@ -1653,6 +1666,18 @@ template <typename T> std::vector<std::byte> bytes_of(const T &value) {
     return {first, first + sizeof(value)};
 }
 
+// Crossing events carry no coordinates in the public ABI. Follow re-entry or
+// native-operation completion with a position so client hover/cursor intent is
+// reconciled too, even when the user has stopped moving the mouse.
+void queue_pointer_position(const GtkWindowResource &resource) {
+    const nk_pointer_move_event payload{resource.pointer_x, resource.pointer_y};
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_POINTER_MOVE;
+    event.source = resource.handle;
+    event.data = bytes_of(payload);
+    nk::core::push_event(std::move(event));
+}
+
 void update_window_state(GtkWindowResource &resource, uint32_t flags) {
     if (resource.state_flags == flags)
         return;
@@ -1679,6 +1704,8 @@ void on_window_unmap(GtkWidget *, gpointer data) {
         auto &resource = *static_cast<GtkWindowResource *>(data);
         if (!nk::core::is_runtime_generation(resource.generation))
             return;
+        resource.hovered = false;
+        apply_pointer_cursor(resource);
         update_window_state(resource, resource.state_flags &
                                           ~(NK_WINDOW_STATE_VISIBLE | NK_WINDOW_STATE_ACTIVE));
     });
@@ -1980,6 +2007,7 @@ gboolean on_pointer_button(GtkWidget *widget, GdkEventButton *button_event, gpoi
         resource->buttons[button] = action;
         resource->pointer_x = button_event->x;
         resource->pointer_y = button_event->y;
+        apply_pointer_cursor(*resource);
         const nk_pointer_button_event payload{
             button, action,          modifiers(static_cast<GdkModifierType>(button_event->state)),
             0,      button_event->x, button_event->y};
@@ -2025,10 +2053,22 @@ gboolean on_pointer_crossing(GtkWidget *, GdkEventCrossing *crossing, gpointer d
     // Grabs, widget state changes and touch handoffs synthesize crossings
     // without moving the pointer. Entering a child also leaves its ancestor
     // GdkWindow, but does not leave the NativeKit window. Neither changes hover.
-    if (crossing->mode != GDK_CROSSING_NORMAL || crossing->detail == GDK_NOTIFY_INFERIOR)
+    if (crossing->mode != GDK_CROSSING_NORMAL || crossing->detail == GDK_NOTIFY_INFERIOR) {
+        // Native move/resize and pointer capture finish with synthetic crossings.
+        // Reconcile presentation without inventing a physical hover transition.
+        if (crossing->mode == GDK_CROSSING_UNGRAB || crossing->mode == GDK_CROSSING_GTK_UNGRAB) {
+            auto *resource = static_cast<GtkWindowResource *>(data);
+            refresh_pointer_position(*resource);
+            apply_pointer_cursor(*resource);
+            if (resource->hovered)
+                queue_pointer_position(*resource);
+        }
         return FALSE;
+    }
     auto *resource = static_cast<GtkWindowResource *>(data);
     resource->hovered = crossing->type == GDK_ENTER_NOTIFY;
+    resource->pointer_x = crossing->x;
+    resource->pointer_y = crossing->y;
     if (resource->hovered) {
         // A button release outside an unsuccessful grab has no button event
         // for this window. The crossing state reflects the actual buttons at
@@ -2039,13 +2079,15 @@ gboolean on_pointer_crossing(GtkWidget *, GdkEventCrossing *crossing, gpointer d
         for (nk_pointer_button button = 0; button < 5; ++button)
             resource->buttons[button] =
                 (crossing->state & button_masks[button]) ? NK_INPUT_PRESS : NK_INPUT_RELEASE;
-        apply_pointer_cursor(*resource);
     }
+    apply_pointer_cursor(*resource);
     nk::core::QueuedEvent event;
     event.kind = NK_EVENT_POINTER_ENTER;
     event.source = resource->handle;
     event.flags = resource->hovered ? 1u : 0u;
     nk::core::push_event(std::move(event));
+    if (resource->hovered)
+        queue_pointer_position(*resource);
     return FALSE;
 }
 
@@ -2234,6 +2276,8 @@ gboolean on_window_configure(GtkWidget *, GdkEventConfigure *configure, gpointer
             nk::core::push_event(std::move(event));
         }
         resource->geometry_known = true;
+        refresh_pointer_position(*resource);
+        apply_pointer_cursor(*resource);
     });
     return FALSE;
 }
@@ -2865,7 +2909,11 @@ GdkCursor *decoration_cursor(GtkWindowResource &resource, GdkDisplay *display, u
 }
 
 nk_result apply_pointer_cursor(GtkWindowResource &resource) {
-    if (resource.cursor_mode != NK_CURSOR_MODE_NORMAL || resource.decorated || resource.wrapped)
+    // This is the sole resolver for client intent versus decoration hover.
+    // Captured/hidden cursors belong to the client; a departed pointer cannot
+    // retain decoration ownership just because its last position was an edge.
+    if (resource.cursor_mode != NK_CURSOR_MODE_NORMAL || resource.decorated || resource.wrapped ||
+        !resource.hovered)
         return apply_cursor(resource);
     GdkWindow *native = native_window(resource);
     if (!native)
@@ -2879,6 +2927,8 @@ nk_result apply_pointer_cursor(GtkWindowResource &resource) {
                                             static_cast<float>(resource.pointer_y));
     if (shape == 0)
         shape = default_decoration_cursor_shape(kind);
+    if (!resource.resizable && kind >= NK_WINDOW_DECORATION_RESIZE_NORTH)
+        shape = 0;
     if (shape == 0) {
         decoration_cursor(resource, display, 0);
         return apply_cursor(resource);
@@ -2920,8 +2970,7 @@ nk_result apply_cursor_mode(GtkWindowResource &resource, nk_cursor_mode mode) {
         }
         resource.pointer_grabbed = true;
     }
-    gdk_window_set_cursor(native, native_cursor);
-    return NK_OK;
+    return apply_pointer_cursor(resource);
 }
 
 template <typename Header>
