@@ -444,6 +444,75 @@ void local_pipe_security() {
     CloseHandle(squatter);
     std::fprintf(stderr, "local pipe: peer process and first-instance checks passed\n");
 }
+
+/**
+ * A Windows pipe is written with PIPE_NOWAIT, where WriteFile takes the whole request or nothing: a message larger
+ * than the pipe's 64 KiB buffer used to spin the worker thread and stall the connection. Both directions must carry
+ * messages well over that size, in order, followed by a small one.
+ */
+void local_pipe_large_messages() {
+    const std::string path =
+        "\\\\.\\pipe\\nativekit-large-" + std::to_string(GetCurrentProcessId());
+    nk_transport_options options{};
+    options.struct_size = sizeof(options);
+    options.kind = NK_TRANSPORT_LOCAL;
+    options.path = path.c_str();
+    nk_listener listener = NK_INVALID_HANDLE;
+    assert(nk_transport_listen(&options, &listener) == NK_OK);
+    options.timeout_ms = 2000;
+    nk_transport client = NK_INVALID_HANDLE;
+    assert(nk_transport_connect(&options, &client) == NK_OK);
+    nk_transport server = NK_INVALID_HANDLE;
+    bool client_connected = false;
+    bool server_connected = false;
+    assert(poll_transport_events(client, &server, &client_connected, &server_connected));
+
+    auto pattern = [](std::size_t size, unsigned seed) {
+        std::vector<std::uint8_t> bytes(size);
+        for (std::size_t i = 0; i != size; ++i)
+            bytes[i] = static_cast<std::uint8_t>((i * 31u + seed + (i >> 8)) & 0xff);
+        return bytes;
+    };
+    auto receive_all = [](nk_transport transport, const std::vector<std::uint8_t> &expected) {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        std::vector<std::uint8_t> collected;
+        std::vector<std::uint8_t> buffer(64u * 1024u);
+        while (collected.size() < expected.size() && std::chrono::steady_clock::now() < deadline) {
+            std::uint64_t received = 0;
+            const auto result = nk_transport_receive(transport, buffer.data(), buffer.size(), &received);
+            if (result == NK_OK && received > 0) {
+                collected.insert(collected.end(), buffer.begin(),
+                                 buffer.begin() + static_cast<std::ptrdiff_t>(received));
+                continue;
+            }
+            assert(nk_wait_events_timeout(0.02) == NK_OK);
+            for (;;) {
+                nk_event event{};
+                event.struct_size = sizeof(event);
+                assert(nk_poll_event(&event) == NK_OK);
+                const bool none = event.kind == NK_EVENT_NONE;
+                nk_event_release(&event);
+                if (none)
+                    break;
+            }
+        }
+        return collected == expected;
+    };
+
+    // 64 KiB + 1 is the smallest size the old code could not write; the larger ones span many pipe buffers.
+    for (const std::size_t size : {64u * 1024u + 1u, 256u * 1024u, 1024u * 1024u}) {
+        const auto up = pattern(size, 1), down = pattern(size, 7);
+        assert(nk_transport_send(client, up.data(), up.size()) == NK_OK);
+        assert(nk_transport_send(server, down.data(), down.size()) == NK_OK);
+        assert(receive_all(server, up));
+        assert(receive_all(client, down));
+    }
+    // The connection is still usable afterwards.
+    assert(nk_transport_send(client, "after", 5) == NK_OK);
+    assert(receive_message(server, "after"));
+    std::fprintf(stderr, "local pipe: messages over 64 KiB pass in both directions\n");
+    assert(nk_listener_close(listener) == NK_OK);
+}
 #endif
 
 } // namespace
@@ -464,6 +533,7 @@ int main() {
     roundtrip(NK_TRANSPORT_WEBSOCKET, "/nativekit", "nativekit.v2,nativekit.v1");
 #if defined(_WIN32)
     local_pipe_security();
+    local_pipe_large_messages();
 #else
     local_security();
 #endif
