@@ -272,6 +272,9 @@ struct GtkSurfaceResource final : nk::core::Resource {
     GtkWidget *frame_tick_widget = nullptr;
     nk::core::FrameRequestState frame_requests;
     bool frame_render_scheduled = false;
+    /* NK_EVENT_SURFACE_READY was queued: at the GL area's first resize, when its buffers have their
+       real size, or at creation for a hidden surface, which GTK never allocates. */
+    bool ready_queued = false;
     std::shared_ptr<GtkSurfaceResource> shared_surface;
     std::unordered_map<nk_accessibility_node_id, GtkAccessibilityNode> accessibility_nodes;
     nk_accessibility_node_id accessibility_focus = NK_ACCESSIBILITY_ROOT;
@@ -2210,11 +2213,21 @@ GdkGLContext *on_surface_create_context(GtkGLArea *area, gpointer data) {
     return context;
 }
 
+void queue_surface_ready(GtkSurfaceResource &resource) {
+    if (std::exchange(resource.ready_queued, true))
+        return;
+    nk::core::QueuedEvent ready;
+    ready.kind = NK_EVENT_SURFACE_READY;
+    ready.source = resource.handle;
+    nk::core::push_event(std::move(ready));
+}
+
 void on_surface_resize(GtkGLArea *area, gint width, gint height, gpointer data) {
     nk::core::callback_boundary([&] {
         auto *resource = static_cast<GtkSurfaceResource *>(data);
         if (!nk::core::is_runtime_generation(resource->generation))
             return;
+        queue_surface_ready(*resource);
         const int scale = gtk_widget_get_scale_factor(GTK_WIDGET(area));
         const nk_surface_resize_event payload{width, height, width * scale, height * scale};
         nk::core::QueuedEvent event;
@@ -5190,10 +5203,10 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
                     --resource->shared_surface->share_dependents;
                 return fail(NK_ERROR_UNSUPPORTED, error->message);
             }
-            nk::core::QueuedEvent ready;
-            ready.kind = NK_EVENT_SURFACE_READY;
-            ready.source = resource->handle;
-            nk::core::push_event(std::move(ready));
+            /* A shown surface is ready once GTK has allocated it (the first resize); until then its
+               buffers have no real size and a frame rendered into them is lost. */
+            if ((options->flags & NK_SURFACE_HIDDEN) != 0)
+                queue_surface_ready(*resource);
             *out_surface = resource->handle;
             return NK_OK;
         });
