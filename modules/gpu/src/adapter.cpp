@@ -3073,6 +3073,20 @@ nkgpu_result nkgpu_pipeline_cull_mode(nkgpu_pipeline_builder h, nkgpu_cull_mode 
         winding == NKGPU_FACEWINDING_CCW ? SG_FACEWINDING_CCW : SG_FACEWINDING_CW;
     return NKGPU_OK;
 }
+/* sokol reads a zero mask as "default" (all channels); NKGPU_COLORMASK_NONE must write nothing. */
+static sg_color_mask convert_color_mask(nkgpu_color_write_mask mask) {
+    uint32_t native_mask = SG_COLORMASK_NONE;
+    if (mask & NKGPU_COLORMASK_R)
+        native_mask |= SG_COLORMASK_R;
+    if (mask & NKGPU_COLORMASK_G)
+        native_mask |= SG_COLORMASK_G;
+    if (mask & NKGPU_COLORMASK_B)
+        native_mask |= SG_COLORMASK_B;
+    if (mask & NKGPU_COLORMASK_A)
+        native_mask |= SG_COLORMASK_A;
+    return static_cast<sg_color_mask>(native_mask);
+}
+
 nkgpu_result nkgpu_pipeline_color_target(nkgpu_pipeline_builder h, uint32_t color_index,
                                          nkgpu_image_format format,
                                          nkgpu_color_write_mask write_mask,
@@ -3094,7 +3108,7 @@ nkgpu_result nkgpu_pipeline_color_target(nkgpu_pipeline_builder h, uint32_t colo
         return idle;
     auto &color = s->value.desc.colors[color_index];
     color.pixel_format = native_format;
-    color.write_mask = static_cast<sg_color_mask>(write_mask);
+    color.write_mask = convert_color_mask(write_mask);
     if (blend) {
         color.blend.enabled = blend->enabled != 0;
         color.blend.src_factor_rgb = convert_blend_factor(blend->src_rgb);
@@ -3128,16 +3142,10 @@ nkgpu_result nkgpu_pipeline_color_write_mask(nkgpu_pipeline_builder h,
     const nkgpu_result idle = require_idle_renderer(s->value.owner);
     if (idle != NKGPU_OK)
         return idle;
-    uint32_t native_mask = SG_COLORMASK_NONE;
-    if (mask & NKGPU_COLORMASK_R)
-        native_mask |= SG_COLORMASK_R;
-    if (mask & NKGPU_COLORMASK_G)
-        native_mask |= SG_COLORMASK_G;
-    if (mask & NKGPU_COLORMASK_B)
-        native_mask |= SG_COLORMASK_B;
-    if (mask & NKGPU_COLORMASK_A)
-        native_mask |= SG_COLORMASK_A;
-    s->value.desc.colors[0].write_mask = static_cast<sg_color_mask>(native_mask);
+    // Every colour target: a pipeline-wide mask that left extra targets writable would let a "write
+    // nothing" step (a stencil pass) overwrite them.
+    for (auto &color : s->value.desc.colors)
+        color.write_mask = convert_color_mask(mask);
     return NKGPU_OK;
 }
 nkgpu_result nkgpu_pipeline_end(nkgpu_pipeline_builder h, nkgpu_pipeline *out) {

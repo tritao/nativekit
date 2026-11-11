@@ -229,6 +229,17 @@ if(NK_BUILD_TESTS)
                 TIMEOUT 120
                 ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1;NO_AT_BRIDGE=1")
 
+            add_executable(nativekit_gpu_color_mask_smoke_test tests/color_mask_smoke.cpp)
+            target_compile_features(nativekit_gpu_color_mask_smoke_test PRIVATE cxx_std_17)
+            target_link_libraries(nativekit_gpu_color_mask_smoke_test PRIVATE NativeKit::gpu
+                NativeKit::nativekit)
+            add_test(NAME nativekit_gpu_color_mask_smoke
+                COMMAND ${NKGPU_XVFB_RUN} -a $<TARGET_FILE:nativekit_gpu_color_mask_smoke_test>)
+            set_tests_properties(nativekit_gpu_color_mask_smoke PROPERTIES
+                LABELS "graphics;gpu"
+                TIMEOUT 120
+                ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1;NO_AT_BRIDGE=1")
+
             add_executable(nativekit_gpu_contract_smoke_test tests/contract_smoke.cpp)
             target_compile_features(nativekit_gpu_contract_smoke_test PRIVATE cxx_std_17)
             target_compile_definitions(nativekit_gpu_contract_smoke_test PRIVATE NKGPU_TESTING=1)

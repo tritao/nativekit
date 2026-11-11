@@ -1295,7 +1295,9 @@ NKGPU_API nkgpu_result nkgpu_pipeline_stencil(nkgpu_pipeline_builder builder,
 NKGPU_API nkgpu_result nkgpu_pipeline_cull_mode(nkgpu_pipeline_builder builder,
                                                 nkgpu_cull_mode mode, nkgpu_face_winding winding);
 
-/** Selects the color channels written by a pipeline. */
+/** Selects the color channels written by a pipeline, for every color target; a later
+    nkgpu_pipeline_color_target call sets its own target's mask. NKGPU_COLORMASK_NONE writes
+   nothing. */
 NKGPU_API nkgpu_result nkgpu_pipeline_color_write_mask(nkgpu_pipeline_builder builder,
                                                        nkgpu_color_write_mask mask);
 
