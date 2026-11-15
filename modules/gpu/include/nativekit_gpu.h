@@ -489,9 +489,11 @@ enum NK_FLAGS(nkgpu_image_usage) {
     NKGPU_IMAGE_STORAGE = 1u << 3,
 };
 
-/** Basic image shape used by nkgpu_image_desc. A zero descriptor value keeps the 2D default. */
+/** Image shape used by nkgpu_image_desc and sampled-image shader bindings. */
 typedef uint32_t nkgpu_image_type;
 enum NK_ENUM(nkgpu_image_type) {
+    /** The default shape: 2D, or a 2D array when an image descriptor has several layers. */
+    NKGPU_IMAGETYPE_AUTO = 0,
     NKGPU_IMAGETYPE_2D = 1,
     NKGPU_IMAGETYPE_ARRAY = 2,
     NKGPU_IMAGETYPE_CUBE = 3,
@@ -518,7 +520,7 @@ typedef struct nkgpu_image_desc {
     uint32_t data_size;
     uint32_t row_pitch;
     uint32_t dynamic_update;
-    /** Zero selects the legacy 2D/array behavior. */
+    /** NKGPU_IMAGETYPE_AUTO selects 2D, or a 2D array when layer_count is above one. */
     nkgpu_image_type type;
 } nkgpu_image_desc;
 
@@ -735,7 +737,7 @@ typedef struct nkgpu_shader_binding_desc {
     uint32_t writeonly;
     /** GLSL combined image/sampler name for sampled-image metadata. */
     const char *name NKGPU_UTF8;
-    /** Image shape for NKGPU_SHADERBINDING_SAMPLED_IMAGE; zero means 2D. */
+    /** Image shape for NKGPU_SHADERBINDING_SAMPLED_IMAGE; NKGPU_IMAGETYPE_AUTO means 2D. */
     nkgpu_image_type image_type;
 } nkgpu_shader_binding_desc;
 
