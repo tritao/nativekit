@@ -169,18 +169,22 @@ int main() {
     assert(nk_audio_dsp_patch_create(&patch_options, &patch) == NK_OK);
     nk_audio_dsp_instrument instrument = NK_INVALID_HANDLE;
     assert(nk_audio_dsp_instrument_create_from_patch(engine, patch, &instrument) == NK_OK);
-    assert(nk_audio_dsp_instrument_set_parameter(instrument,
-                                                 NK_AUDIO_DSP_PARAMETER_OSCILLATOR_LEVEL,
-                                                 0.2f) == NK_ERROR_INVALID_ARGUMENT);
-    float invalid_oscillator_level = 0.0f;
-    assert(nk_audio_dsp_instrument_get_parameter(
-               instrument, NK_AUDIO_DSP_PARAMETER_OSCILLATOR_LEVEL, &invalid_oscillator_level) ==
+    const auto past_last_parameter =
+        static_cast<nk_audio_dsp_parameter>(NK_AUDIO_DSP_PARAMETER_FILTER_RESONANCE + 1);
+    assert(nk_audio_dsp_instrument_set_parameter(instrument, past_last_parameter, 0.2f) ==
            NK_ERROR_INVALID_ARGUMENT);
+    float invalid_parameter = 0.0f;
+    assert(nk_audio_dsp_instrument_get_parameter(instrument, past_last_parameter,
+                                                 &invalid_parameter) == NK_ERROR_INVALID_ARGUMENT);
+    const auto past_last_oscillator_parameter = static_cast<nk_audio_dsp_oscillator_parameter>(
+        NK_AUDIO_DSP_OSCILLATOR_PARAMETER_PHASE + 1);
     assert(nk_audio_dsp_instrument_set_oscillator_parameter(
-               instrument, 1, NK_AUDIO_DSP_PARAMETER_OSCILLATOR_LEVEL, 0.2f) == NK_OK);
+               instrument, 1, past_last_oscillator_parameter, 0.2f) == NK_ERROR_INVALID_ARGUMENT);
+    assert(nk_audio_dsp_instrument_set_oscillator_parameter(
+               instrument, 1, NK_AUDIO_DSP_OSCILLATOR_PARAMETER_LEVEL, 0.2f) == NK_OK);
     float oscillator_level = 0.0f;
     assert(nk_audio_dsp_instrument_get_oscillator_parameter(
-               instrument, 1, NK_AUDIO_DSP_PARAMETER_OSCILLATOR_LEVEL, &oscillator_level) == NK_OK);
+               instrument, 1, NK_AUDIO_DSP_OSCILLATOR_PARAMETER_LEVEL, &oscillator_level) == NK_OK);
     assert(oscillator_level == 0.2f);
     nk_audio_dsp_engine second_engine = NK_INVALID_HANDLE;
     assert(nk_audio_dsp_engine_create(&engine_options, &second_engine) == NK_OK);
@@ -324,10 +328,10 @@ int main() {
     note_on.velocity = 1.0f;
     nk_audio_dsp_event phase_automation{};
     phase_automation.struct_size = sizeof(phase_automation);
-    phase_automation.kind = NK_AUDIO_DSP_EVENT_PARAMETER;
+    phase_automation.kind = NK_AUDIO_DSP_EVENT_OSCILLATOR_PARAMETER;
     phase_automation.frame_offset = 16;
     phase_automation.instrument = instrument;
-    phase_automation.parameter = NK_AUDIO_DSP_PARAMETER_OSCILLATOR_PHASE;
+    phase_automation.oscillator_parameter = NK_AUDIO_DSP_OSCILLATOR_PARAMETER_PHASE;
     phase_automation.oscillator_index = 1;
     phase_automation.value = 0.25f;
     nk_audio_dsp_event note_on_events[] = {note_on, phase_automation};
@@ -358,6 +362,32 @@ int main() {
     gain_ramp.duration_frames = 64;
     assert(nk_audio_dsp_engine_render(engine, &target, &gain_ramp, 1) == NK_OK);
     assert(contains_signal(samples + 1, 63));
+
+    // Each parameter event names its domain: a source index belongs only to oscillator events,
+    // and a waveform cannot be ramped in either domain.
+    nk_audio_dsp_event indexed_gain = gain_off;
+    indexed_gain.frame_offset = 0;
+    indexed_gain.oscillator_index = 1;
+    assert(nk_audio_dsp_engine_render(engine, &target, &indexed_gain, 1) ==
+           NK_ERROR_INVALID_ARGUMENT);
+    nk_audio_dsp_event level_ramp{};
+    level_ramp.struct_size = sizeof(level_ramp);
+    level_ramp.kind = NK_AUDIO_DSP_EVENT_OSCILLATOR_PARAMETER_RAMP;
+    level_ramp.instrument = instrument;
+    level_ramp.oscillator_parameter = NK_AUDIO_DSP_OSCILLATOR_PARAMETER_LEVEL;
+    level_ramp.oscillator_index = 1;
+    level_ramp.value = 0.0f;
+    level_ramp.end_value = 0.5f;
+    level_ramp.duration_frames = 64;
+    assert(nk_audio_dsp_engine_render(engine, &target, &level_ramp, 1) == NK_OK);
+    float ramped_level = 0.0f;
+    assert(nk_audio_dsp_instrument_get_oscillator_parameter(
+               instrument, 1, NK_AUDIO_DSP_OSCILLATOR_PARAMETER_LEVEL, &ramped_level) == NK_OK);
+    assert(ramped_level > 0.4f && ramped_level <= 0.5f);
+    nk_audio_dsp_event waveform_ramp = level_ramp;
+    waveform_ramp.oscillator_parameter = NK_AUDIO_DSP_OSCILLATOR_PARAMETER_WAVEFORM;
+    assert(nk_audio_dsp_engine_render(engine, &target, &waveform_ramp, 1) ==
+           NK_ERROR_INVALID_ARGUMENT);
     float ramp_gain = 0.0f;
     assert(nk_audio_dsp_instrument_get_parameter(instrument, NK_AUDIO_DSP_PARAMETER_GAIN,
                                                  &ramp_gain) == NK_OK);

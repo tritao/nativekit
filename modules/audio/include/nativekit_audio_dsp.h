@@ -167,7 +167,7 @@ enum { NK_AUDIO_DSP_MAX_OSCILLATORS = 4 };
 /** Primary patch LFO plus two additional LFOs in extended voice options. */
 enum { NK_AUDIO_DSP_MAX_LFOS = 3 };
 
-/** Instrument parameter identifiers; oscillator-specific values require a source index. */
+/** Instrument-wide parameter identifiers; see nk_audio_dsp_oscillator_parameter for per-source ones. */
 typedef uint32_t nk_audio_dsp_parameter;
 enum NK_ENUM(nk_audio_dsp_parameter) {
     NK_AUDIO_DSP_PARAMETER_WAVEFORM = 0,
@@ -181,15 +181,20 @@ enum NK_ENUM(nk_audio_dsp_parameter) {
     /** State-variable low-pass cutoff in Hz; zero bypasses the filter. */
     NK_AUDIO_DSP_PARAMETER_FILTER_CUTOFF_HZ = 7,
     /** State-variable low-pass resonance in the inclusive range [0, 1]. */
-    NK_AUDIO_DSP_PARAMETER_FILTER_RESONANCE = 8,
-    /** Per-source waveform; the event oscillator index selects the source. */
-    NK_AUDIO_DSP_PARAMETER_OSCILLATOR_WAVEFORM = 9,
-    /** Per-source linear level in the inclusive range [0, 1]. */
-    NK_AUDIO_DSP_PARAMETER_OSCILLATOR_LEVEL = 10,
-    /** Per-source tuning offset in cents. */
-    NK_AUDIO_DSP_PARAMETER_OSCILLATOR_DETUNE_CENTS = 11,
-    /** Per-source normalized phase offset in the inclusive range [0, 1]. */
-    NK_AUDIO_DSP_PARAMETER_OSCILLATOR_PHASE = 12
+    NK_AUDIO_DSP_PARAMETER_FILTER_RESONANCE = 8
+};
+
+/** Parameters of one oscillator source; every use names the source by its zero-based index. */
+typedef uint32_t nk_audio_dsp_oscillator_parameter;
+enum NK_ENUM(nk_audio_dsp_oscillator_parameter) {
+    /** Source waveform, one of nk_audio_dsp_waveform. */
+    NK_AUDIO_DSP_OSCILLATOR_PARAMETER_WAVEFORM = 0,
+    /** Source linear level in the inclusive range [0, 1]. */
+    NK_AUDIO_DSP_OSCILLATOR_PARAMETER_LEVEL = 1,
+    /** Source tuning offset in cents. */
+    NK_AUDIO_DSP_OSCILLATOR_PARAMETER_DETUNE_CENTS = 2,
+    /** Source normalized phase offset in the inclusive range [0, 1]. */
+    NK_AUDIO_DSP_OSCILLATOR_PARAMETER_PHASE = 3
 };
 
 /* ------------------------------------------------------------------------- */
@@ -397,9 +402,14 @@ typedef uint32_t nk_audio_dsp_event_kind;
 enum NK_ENUM(nk_audio_dsp_event_kind) {
     NK_AUDIO_DSP_EVENT_NOTE_ON = 0,
     NK_AUDIO_DSP_EVENT_NOTE_OFF = 1,
+    /** Sets one instrument parameter. */
     NK_AUDIO_DSP_EVENT_PARAMETER = 2,
-    /** Linearly changes one parameter over duration_frames. */
-    NK_AUDIO_DSP_EVENT_PARAMETER_RAMP = 3
+    /** Linearly changes one instrument parameter over duration_frames. */
+    NK_AUDIO_DSP_EVENT_PARAMETER_RAMP = 3,
+    /** Sets one parameter of the oscillator source at oscillator_index. */
+    NK_AUDIO_DSP_EVENT_OSCILLATOR_PARAMETER = 4,
+    /** Linearly changes one oscillator source parameter over duration_frames. */
+    NK_AUDIO_DSP_EVENT_OSCILLATOR_PARAMETER_RAMP = 5
 };
 
 /* ------------------------------------------------------------------------- */
@@ -466,7 +476,7 @@ typedef struct nk_audio_dsp_event {
     nk_audio_dsp_event_kind kind;
     /** Frame offset within the render target; frame_count is allowed. */
     uint32_t frame_offset;
-    /** Instrument for NOTE_ON, PARAMETER, and PARAMETER_RAMP; ignored for NOTE_OFF. */
+    /** Instrument for NOTE_ON and the parameter events; ignored for NOTE_OFF. */
     nk_audio_dsp_instrument instrument;
     /** Caller-owned voice identity for NOTE_ON/NOTE_OFF; ignored for parameter events. */
     uint32_t voice_id;
@@ -474,14 +484,17 @@ typedef struct nk_audio_dsp_event {
     uint32_t note;
     /** NOTE_ON velocity in the inclusive range [0, 1]. */
     float velocity;
-    /** Parameter ID and start value for PARAMETER and PARAMETER_RAMP. */
+    /** Instrument parameter for PARAMETER and PARAMETER_RAMP; ignored for other event kinds. */
     nk_audio_dsp_parameter parameter;
-    float value;
-    /** Zero-based oscillator source for oscillator-specific parameters. */
+    /** Source parameter for OSCILLATOR_PARAMETER and OSCILLATOR_PARAMETER_RAMP; ignored otherwise. */
+    nk_audio_dsp_oscillator_parameter oscillator_parameter;
+    /** Zero-based oscillator source for the oscillator parameter events; zero for other event kinds. */
     uint32_t oscillator_index;
-    /** End value for PARAMETER_RAMP; ignored for other event kinds. */
+    /** New value, or the start value of a ramp, for the parameter events. */
+    float value;
+    /** End value for the ramp events; ignored for other event kinds. */
     float end_value;
-    /** Number of frames from value to end_value for PARAMETER_RAMP. */
+    /** Number of frames from value to end_value for the ramp events. */
     uint32_t duration_frames;
     /** Reserved for compatible extensions; set all elements to zero. */
     uint64_t reserved2[1];
@@ -672,15 +685,15 @@ NKAUDIO_API nk_result NK_CALL nk_audio_dsp_instrument_set_parameter(
     nk_audio_dsp_instrument instrument, nk_audio_dsp_parameter parameter, float value);
 /** Sets one oscillator-specific parameter between render calls. */
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_instrument_set_oscillator_parameter(
-    nk_audio_dsp_instrument instrument, uint32_t oscillator_index, nk_audio_dsp_parameter parameter,
-    float value);
+    nk_audio_dsp_instrument instrument, uint32_t oscillator_index,
+    nk_audio_dsp_oscillator_parameter parameter, float value);
 /** Reads one current instrument parameter. */
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_instrument_get_parameter(
     nk_audio_dsp_instrument instrument, nk_audio_dsp_parameter parameter, float *out_value NK_OUT);
 /** Reads one oscillator-specific parameter. */
 NKAUDIO_API nk_result NK_CALL nk_audio_dsp_instrument_get_oscillator_parameter(
-    nk_audio_dsp_instrument instrument, uint32_t oscillator_index, nk_audio_dsp_parameter parameter,
-    float *out_value NK_OUT);
+    nk_audio_dsp_instrument instrument, uint32_t oscillator_index,
+    nk_audio_dsp_oscillator_parameter parameter, float *out_value NK_OUT);
 
 /* ------------------------------------------------------------------------- */
 /* Rendering                                                                 */

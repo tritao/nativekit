@@ -46,6 +46,10 @@ using DspParameters = nk::audio_dsp::PatchParameters;
 struct DspEngineResource;
 struct DspPatchResource;
 struct DspWavetableResource;
+/** Instrument and per-source parameter identifiers are dense from zero. */
+constexpr uint32_t dsp_parameter_count = NK_AUDIO_DSP_PARAMETER_FILTER_RESONANCE + 1;
+constexpr uint32_t dsp_oscillator_parameter_count = NK_AUDIO_DSP_OSCILLATOR_PARAMETER_PHASE + 1;
+
 struct DspInstrumentResource;
 constexpr uint32_t scheduled_event_capacity = 8192;
 constexpr uint32_t scheduled_event_mask = scheduled_event_capacity - 1;
@@ -86,8 +90,9 @@ struct DspInstrumentResource final : nk::core::Resource {
     DspParameters current;
     std::atomic<uint32_t> choke_group{0};
     uint64_t parameters_version = 1;
-    std::array<std::atomic<float>, 9> published{};
-    std::array<std::array<std::atomic<float>, 4>, NK_AUDIO_DSP_MAX_OSCILLATORS>
+    std::array<std::atomic<float>, dsp_parameter_count> published{};
+    std::array<std::array<std::atomic<float>, dsp_oscillator_parameter_count>,
+               NK_AUDIO_DSP_MAX_OSCILLATORS>
         published_oscillators{};
     bool retired = false;
 };
@@ -144,10 +149,38 @@ struct DspVoice {
     }
 };
 
+/** What a parameter event, ramp or control call changes: an instrument parameter or one of a source's. */
+struct ParameterTarget {
+    bool oscillator = false;
+    nk_audio_dsp_parameter parameter = NK_AUDIO_DSP_PARAMETER_WAVEFORM;
+    nk_audio_dsp_oscillator_parameter oscillator_parameter = NK_AUDIO_DSP_OSCILLATOR_PARAMETER_WAVEFORM;
+    uint32_t oscillator_index = 0;
+};
+
+bool is_parameter_event(nk_audio_dsp_event_kind kind) {
+    return kind == NK_AUDIO_DSP_EVENT_PARAMETER || kind == NK_AUDIO_DSP_EVENT_PARAMETER_RAMP ||
+           kind == NK_AUDIO_DSP_EVENT_OSCILLATOR_PARAMETER ||
+           kind == NK_AUDIO_DSP_EVENT_OSCILLATOR_PARAMETER_RAMP;
+}
+
+bool is_ramp_event(nk_audio_dsp_event_kind kind) {
+    return kind == NK_AUDIO_DSP_EVENT_PARAMETER_RAMP ||
+           kind == NK_AUDIO_DSP_EVENT_OSCILLATOR_PARAMETER_RAMP;
+}
+
+ParameterTarget event_target(const nk_audio_dsp_event &event) {
+    ParameterTarget target;
+    target.oscillator = event.kind == NK_AUDIO_DSP_EVENT_OSCILLATOR_PARAMETER ||
+                        event.kind == NK_AUDIO_DSP_EVENT_OSCILLATOR_PARAMETER_RAMP;
+    target.parameter = event.parameter;
+    target.oscillator_parameter = event.oscillator_parameter;
+    target.oscillator_index = event.oscillator_index;
+    return target;
+}
+
 struct ActiveParameterRamp {
     std::shared_ptr<DspInstrumentResource> instrument;
-    nk_audio_dsp_parameter parameter;
-    uint32_t oscillator_index;
+    ParameterTarget target;
     float start_value;
     float end_value;
     uint64_t start_frame;
@@ -665,14 +698,11 @@ nk_result normalize_instrument_options(const nk_audio_dsp_instrument_options *in
 }
 
 bool valid_parameter(nk_audio_dsp_parameter parameter) {
-    return parameter <= NK_AUDIO_DSP_PARAMETER_OSCILLATOR_PHASE;
+    return parameter < dsp_parameter_count;
 }
 
-bool valid_oscillator_parameter(nk_audio_dsp_parameter parameter) {
-    return parameter == NK_AUDIO_DSP_PARAMETER_OSCILLATOR_WAVEFORM ||
-           parameter == NK_AUDIO_DSP_PARAMETER_OSCILLATOR_LEVEL ||
-           parameter == NK_AUDIO_DSP_PARAMETER_OSCILLATOR_DETUNE_CENTS ||
-           parameter == NK_AUDIO_DSP_PARAMETER_OSCILLATOR_PHASE;
+bool valid_oscillator_parameter(nk_audio_dsp_oscillator_parameter parameter) {
+    return parameter < dsp_oscillator_parameter_count;
 }
 
 bool replacement_source(const DspParameters &parameters) {
@@ -682,33 +712,33 @@ bool replacement_source(const DspParameters &parameters) {
 }
 
 nk_result set_oscillator_parameter(DspParameters &parameters, uint32_t oscillator_index,
-                                   nk_audio_dsp_parameter parameter, float value) {
+                                   nk_audio_dsp_oscillator_parameter parameter, float value) {
     if (!valid_oscillator_parameter(parameter) || oscillator_index >= parameters.oscillator_count ||
         !std::isfinite(value))
         return invalid_argument("audio DSP oscillator parameter target is invalid");
     if (replacement_source(parameters) &&
-        (parameter == NK_AUDIO_DSP_PARAMETER_OSCILLATOR_WAVEFORM ||
-         parameter == NK_AUDIO_DSP_PARAMETER_OSCILLATOR_PHASE))
+        (parameter == NK_AUDIO_DSP_OSCILLATOR_PARAMETER_WAVEFORM ||
+         parameter == NK_AUDIO_DSP_OSCILLATOR_PARAMETER_PHASE))
         return invalid_argument("specialized source has no waveform or phase control");
     auto &oscillator = parameters.oscillators[oscillator_index];
     switch (parameter) {
-    case NK_AUDIO_DSP_PARAMETER_OSCILLATOR_WAVEFORM:
+    case NK_AUDIO_DSP_OSCILLATOR_PARAMETER_WAVEFORM:
         if (value < 0.0f || value > static_cast<float>(NK_AUDIO_DSP_WAVEFORM_SQUARE) ||
             std::floor(value) != value)
             return invalid_argument("audio DSP oscillator waveform parameter is invalid");
         oscillator.waveform = static_cast<nk_audio_dsp_waveform>(value);
         break;
-    case NK_AUDIO_DSP_PARAMETER_OSCILLATOR_LEVEL:
+    case NK_AUDIO_DSP_OSCILLATOR_PARAMETER_LEVEL:
         if (value < 0.0f || value > 1.0f)
             return invalid_argument("audio DSP oscillator level parameter is invalid");
         oscillator.level = value;
         break;
-    case NK_AUDIO_DSP_PARAMETER_OSCILLATOR_DETUNE_CENTS:
+    case NK_AUDIO_DSP_OSCILLATOR_PARAMETER_DETUNE_CENTS:
         if (!std::isfinite(value))
             return invalid_argument("audio DSP oscillator detune parameter is invalid");
         oscillator.detune_cents = value;
         break;
-    case NK_AUDIO_DSP_PARAMETER_OSCILLATOR_PHASE:
+    case NK_AUDIO_DSP_OSCILLATOR_PARAMETER_PHASE:
         if (value < 0.0f || value > 1.0f)
             return invalid_argument("audio DSP oscillator phase parameter is invalid");
         oscillator.phase = value;
@@ -809,18 +839,18 @@ float get_parameter(const DspParameters &parameters, nk_audio_dsp_parameter para
 }
 
 float get_oscillator_parameter(const DspParameters &parameters, uint32_t oscillator_index,
-                               nk_audio_dsp_parameter parameter) {
+                               nk_audio_dsp_oscillator_parameter parameter) {
     if (!valid_oscillator_parameter(parameter) || oscillator_index >= parameters.oscillator_count)
         return 0.0f;
     const auto &oscillator = parameters.oscillators[oscillator_index];
     switch (parameter) {
-    case NK_AUDIO_DSP_PARAMETER_OSCILLATOR_WAVEFORM:
+    case NK_AUDIO_DSP_OSCILLATOR_PARAMETER_WAVEFORM:
         return static_cast<float>(oscillator.waveform);
-    case NK_AUDIO_DSP_PARAMETER_OSCILLATOR_LEVEL:
+    case NK_AUDIO_DSP_OSCILLATOR_PARAMETER_LEVEL:
         return oscillator.level;
-    case NK_AUDIO_DSP_PARAMETER_OSCILLATOR_DETUNE_CENTS:
+    case NK_AUDIO_DSP_OSCILLATOR_PARAMETER_DETUNE_CENTS:
         return oscillator.detune_cents;
-    case NK_AUDIO_DSP_PARAMETER_OSCILLATOR_PHASE:
+    case NK_AUDIO_DSP_OSCILLATOR_PARAMETER_PHASE:
         return oscillator.phase;
     default:
         return 0.0f;
@@ -828,23 +858,23 @@ float get_oscillator_parameter(const DspParameters &parameters, uint32_t oscilla
 }
 
 void publish_parameters(DspInstrumentResource &instrument) noexcept {
-    for (uint32_t p = 0; p < 9; ++p)
+    for (uint32_t p = 0; p < dsp_parameter_count; ++p)
         instrument.published[p].store(get_parameter(instrument.current, p),
                                       std::memory_order_relaxed);
     for (uint32_t o = 0; o < NK_AUDIO_DSP_MAX_OSCILLATORS; ++o)
-        for (uint32_t p = 0; p < 4; ++p)
+        for (uint32_t p = 0; p < dsp_oscillator_parameter_count; ++p)
             instrument.published_oscillators[o][p].store(
-                get_oscillator_parameter(instrument.current, o, p + 9), std::memory_order_relaxed);
+                get_oscillator_parameter(instrument.current, o, p), std::memory_order_relaxed);
 }
 
 DspParameters control_parameters(const DspInstrumentResource &instrument) {
     auto parameters = instrument.defaults;
-    for (uint32_t p = 0; p < 9; ++p)
+    for (uint32_t p = 0; p < dsp_parameter_count; ++p)
         (void)set_parameter(parameters, p, instrument.published[p].load(std::memory_order_relaxed));
     for (uint32_t o = 0; o < parameters.oscillator_count; ++o)
-        for (uint32_t p = 0; p < 4; ++p)
+        for (uint32_t p = 0; p < dsp_oscillator_parameter_count; ++p)
             (void)set_oscillator_parameter(
-                parameters, o, p + 9,
+                parameters, o, p,
                 instrument.published_oscillators[o][p].load(std::memory_order_relaxed));
     return parameters;
 }
@@ -1160,20 +1190,28 @@ nk::audio_dsp::StereoSample mix_voices(DspEngineResource &engine, uint64_t frame
     return mixed;
 }
 
+/** Sets the target's value; a sampled instrument exposes only its instrument gain. */
+nk_result set_target(DspParameters &parameters, const ParameterTarget &target, float value) {
+    return target.oscillator ? set_oscillator_parameter(parameters, target.oscillator_index,
+                                                        target.oscillator_parameter, value)
+                             : set_parameter(parameters, target.parameter, value);
+}
+
+bool sampled_instrument_target(const ParameterTarget &target) {
+    return !target.oscillator && target.parameter == NK_AUDIO_DSP_PARAMETER_GAIN;
+}
+
 nk_result apply_parameter_value(DspEngineResource &engine,
                                 const std::shared_ptr<DspInstrumentResource> &instrument,
-                                nk_audio_dsp_parameter parameter, uint32_t oscillator_index,
-                                float value) {
+                                const ParameterTarget &target, float value) {
     if (!instrument)
         return NK_ERROR_INVALID_HANDLE;
     if (!instrument_belongs_to(instrument, engine))
         return invalid_request("audio DSP instrument belongs to another engine");
-    if (instrument->provider && parameter != NK_AUDIO_DSP_PARAMETER_GAIN)
+    if (instrument->provider && !sampled_instrument_target(target))
         return invalid_argument("Sampled instruments expose only output gain as a DSP parameter");
     auto parameters = instrument->current;
-    auto result = valid_oscillator_parameter(parameter)
-                      ? set_oscillator_parameter(parameters, oscillator_index, parameter, value)
-                      : set_parameter(parameters, parameter, value);
+    auto result = set_target(parameters, target, value);
     if (result == NK_OK)
         result = validate_engine_parameters(parameters, engine);
     if (result == NK_OK)
@@ -1202,10 +1240,10 @@ nk_result apply_event(DspEngineResource &engine, const nk_audio_dsp_event &event
         release_note(voice, 0, event.voice_id);
         return NK_OK;
     }
-    case NK_AUDIO_DSP_EVENT_PARAMETER: {
+    case NK_AUDIO_DSP_EVENT_PARAMETER:
+    case NK_AUDIO_DSP_EVENT_OSCILLATOR_PARAMETER: {
         auto instrument = get_instrument(event.instrument);
-        return apply_parameter_value(engine, instrument, event.parameter, event.oscillator_index,
-                                     event.value);
+        return apply_parameter_value(engine, instrument, event_target(event), event.value);
     }
     default:
         return invalid_argument("audio DSP event kind is invalid");
@@ -1215,26 +1253,23 @@ nk_result apply_event(DspEngineResource &engine, const nk_audio_dsp_event &event
 nk_result begin_parameter_ramp(DspEngineResource &engine, const nk_audio_dsp_event &event,
                                std::vector<ActiveParameterRamp> &ramps) {
     auto instrument = get_instrument(event.instrument);
-    const auto result = apply_parameter_value(engine, instrument, event.parameter,
-                                              event.oscillator_index, event.value);
+    const auto target = event_target(event);
+    const auto result = apply_parameter_value(engine, instrument, target, event.value);
     if (result != NK_OK)
         return result;
-    ramps.push_back({std::move(instrument), event.parameter, event.oscillator_index, event.value,
-                     event.end_value, event.frame_offset,
-                     event.frame_offset + event.duration_frames});
+    ramps.push_back({std::move(instrument), target, event.value, event.end_value,
+                     event.frame_offset, event.frame_offset + event.duration_frames});
     return NK_OK;
 }
 
 nk_result apply_parameter_ramp(DspEngineResource &engine, const ActiveParameterRamp &ramp,
                                uint32_t frame) {
     if (frame >= ramp.end_frame)
-        return apply_parameter_value(engine, ramp.instrument, ramp.parameter, ramp.oscillator_index,
-                                     ramp.end_value);
+        return apply_parameter_value(engine, ramp.instrument, ramp.target, ramp.end_value);
     const auto progress = static_cast<float>(frame - ramp.start_frame) /
                           static_cast<float>(ramp.end_frame - ramp.start_frame);
     const auto value = ramp.start_value + (ramp.end_value - ramp.start_value) * progress;
-    return apply_parameter_value(engine, ramp.instrument, ramp.parameter, ramp.oscillator_index,
-                                 value);
+    return apply_parameter_value(engine, ramp.instrument, ramp.target, value);
 }
 
 nk_result validate_event(const DspEngineResource &engine, const nk_audio_dsp_event &event,
@@ -1243,8 +1278,7 @@ nk_result validate_event(const DspEngineResource &engine, const nk_audio_dsp_eve
         return invalid_argument("audio DSP event is missing or too small");
     if (event.frame_offset > frame_count || event.frame_offset < previous_frame)
         return invalid_argument("audio DSP events must be frame sorted within the block");
-    if (event.kind != NK_AUDIO_DSP_EVENT_PARAMETER &&
-        event.kind != NK_AUDIO_DSP_EVENT_PARAMETER_RAMP && event.voice_id == 0)
+    if (!is_parameter_event(event.kind) && event.voice_id == 0)
         return invalid_argument("audio DSP voice ID must be non-zero");
     switch (event.kind) {
     case NK_AUDIO_DSP_EVENT_NOTE_ON:
@@ -1257,21 +1291,29 @@ nk_result validate_event(const DspEngineResource &engine, const nk_audio_dsp_eve
     case NK_AUDIO_DSP_EVENT_PARAMETER:
         if (!valid_parameter(event.parameter) || !std::isfinite(event.value))
             return invalid_argument("audio DSP parameter event is invalid");
-        if (!valid_oscillator_parameter(event.parameter) && event.oscillator_index != 0)
-            return invalid_argument("audio DSP parameter event source index is invalid");
+        if (event.oscillator_index != 0)
+            return invalid_argument("audio DSP instrument parameter events take no source index");
+        break;
+    case NK_AUDIO_DSP_EVENT_OSCILLATOR_PARAMETER:
+        if (!valid_oscillator_parameter(event.oscillator_parameter) || !std::isfinite(event.value))
+            return invalid_argument("audio DSP oscillator parameter event is invalid");
         break;
     case NK_AUDIO_DSP_EVENT_PARAMETER_RAMP:
-        if (!valid_parameter(event.parameter) || !std::isfinite(event.value) ||
-            !std::isfinite(event.end_value) || event.duration_frames == 0 ||
-            event.frame_offset >= frame_count ||
+    case NK_AUDIO_DSP_EVENT_OSCILLATOR_PARAMETER_RAMP: {
+        const auto oscillator = event.kind == NK_AUDIO_DSP_EVENT_OSCILLATOR_PARAMETER_RAMP;
+        if (!(oscillator ? valid_oscillator_parameter(event.oscillator_parameter)
+                         : valid_parameter(event.parameter)) ||
+            !std::isfinite(event.value) || !std::isfinite(event.end_value) ||
+            event.duration_frames == 0 || event.frame_offset >= frame_count ||
             event.duration_frames > frame_count - event.frame_offset)
             return invalid_argument("audio DSP parameter ramp event is invalid");
-        if (event.parameter == NK_AUDIO_DSP_PARAMETER_WAVEFORM ||
-            event.parameter == NK_AUDIO_DSP_PARAMETER_OSCILLATOR_WAVEFORM)
+        if (oscillator ? event.oscillator_parameter == NK_AUDIO_DSP_OSCILLATOR_PARAMETER_WAVEFORM
+                       : event.parameter == NK_AUDIO_DSP_PARAMETER_WAVEFORM)
             return invalid_argument("audio DSP parameter ramp cannot target a waveform");
-        if (!valid_oscillator_parameter(event.parameter) && event.oscillator_index != 0)
-            return invalid_argument("audio DSP parameter ramp source index is invalid");
+        if (!oscillator && event.oscillator_index != 0)
+            return invalid_argument("audio DSP instrument parameter ramps take no source index");
         break;
+    }
     default:
         return invalid_argument("audio DSP event kind is invalid");
     }
@@ -1281,26 +1323,19 @@ nk_result validate_event(const DspEngineResource &engine, const nk_audio_dsp_eve
             return NK_ERROR_INVALID_HANDLE;
         if (!instrument_belongs_to(instrument, engine))
             return invalid_request("audio DSP instrument belongs to another engine");
-        if (event.kind == NK_AUDIO_DSP_EVENT_PARAMETER ||
-            event.kind == NK_AUDIO_DSP_EVENT_PARAMETER_RAMP) {
-            if (instrument->provider && event.parameter != NK_AUDIO_DSP_PARAMETER_GAIN)
+        if (is_parameter_event(event.kind)) {
+            const auto target = event_target(event);
+            if (instrument->provider && !sampled_instrument_target(target))
                 return invalid_argument("unsupported sampled-instrument DSP parameter");
             auto parameters = control_parameters(*instrument);
-            const auto result = valid_oscillator_parameter(event.parameter)
-                                    ? set_oscillator_parameter(parameters, event.oscillator_index,
-                                                               event.parameter, event.value)
-                                    : set_parameter(parameters, event.parameter, event.value);
+            const auto result = set_target(parameters, target, event.value);
             if (result != NK_OK)
                 return result;
             if (const auto result = validate_engine_parameters(parameters, engine); result != NK_OK)
                 return result;
-            if (event.kind == NK_AUDIO_DSP_EVENT_PARAMETER_RAMP) {
+            if (is_ramp_event(event.kind)) {
                 parameters = control_parameters(*instrument);
-                const auto end_result =
-                    valid_oscillator_parameter(event.parameter)
-                        ? set_oscillator_parameter(parameters, event.oscillator_index,
-                                                   event.parameter, event.end_value)
-                        : set_parameter(parameters, event.parameter, event.end_value);
+                const auto end_result = set_target(parameters, target, event.end_value);
                 if (end_result != NK_OK)
                     return end_result;
                 if (const auto end_validation = validate_engine_parameters(parameters, engine);
@@ -1341,8 +1376,8 @@ nk_result apply_scheduled_event(DspEngineResource &engine, const ScheduledDspEve
         return NK_OK;
     }
     case NK_AUDIO_DSP_EVENT_PARAMETER:
-        return apply_parameter_value(engine, scheduled.instrument, event.parameter,
-                                     event.oscillator_index, event.value);
+    case NK_AUDIO_DSP_EVENT_OSCILLATOR_PARAMETER:
+        return apply_parameter_value(engine, scheduled.instrument, event_target(event), event.value);
     default:
         return invalid_argument("audio DSP scheduled event kind is invalid");
     }
@@ -1354,13 +1389,13 @@ nk_result begin_attached_parameter_ramp(DspEngineResource &engine,
     if (engine.output_ramp_count >= max_attached_parameter_ramps)
         return NK_ERROR_QUEUE_FULL;
     auto instrument = scheduled.instrument;
-    const auto result = apply_parameter_value(engine, instrument, event.parameter,
-                                              event.oscillator_index, event.value);
+    const auto target = event_target(event);
+    const auto result = apply_parameter_value(engine, instrument, target, event.value);
     if (result != NK_OK)
         return result;
     engine.output_ramps[engine.output_ramp_count++] = ActiveParameterRamp{
-        std::move(instrument), event.parameter, event.oscillator_index,       event.value,
-        event.end_value,       frame,           frame + event.duration_frames};
+        std::move(instrument), target, event.value, event.end_value, frame,
+        frame + event.duration_frames};
     return NK_OK;
 }
 
@@ -1945,7 +1980,7 @@ void consume_attached_events(DspEngineResource &engine, uint64_t frame) noexcept
         }
         if (scheduled.frame > frame)
             break;
-        if (scheduled.event.kind == NK_AUDIO_DSP_EVENT_PARAMETER_RAMP)
+        if (is_ramp_event(scheduled.event.kind))
             (void)begin_attached_parameter_ramp(engine, scheduled, frame);
         else
             (void)apply_scheduled_event(engine, scheduled);
@@ -1967,8 +2002,7 @@ void render_attached_block(DspEngineResource &engine, uint64_t start_frame,
         for (uint32_t index = 0; index < engine.output_ramp_count;) {
             auto &ramp = engine.output_ramps[index];
             if (absolute_frame >= ramp.end_frame) {
-                (void)apply_parameter_value(engine, ramp.instrument, ramp.parameter,
-                                            ramp.oscillator_index, ramp.end_value);
+                (void)apply_parameter_value(engine, ramp.instrument, ramp.target, ramp.end_value);
                 const auto last = --engine.output_ramp_count;
                 if (index != last)
                     ramp = std::move(engine.output_ramps[last]);
@@ -1978,7 +2012,7 @@ void render_attached_block(DspEngineResource &engine, uint64_t start_frame,
             const auto progress = static_cast<float>(absolute_frame - ramp.start_frame) /
                                   static_cast<float>(ramp.end_frame - ramp.start_frame);
             (void)apply_parameter_value(
-                engine, ramp.instrument, ramp.parameter, ramp.oscillator_index,
+                engine, ramp.instrument, ramp.target,
                 ramp.start_value + (ramp.end_value - ramp.start_value) * progress);
             ++index;
         }
@@ -2877,9 +2911,7 @@ nk_result NK_CALL nk_audio_dsp_engine_schedule(nk_audio_dsp_engine engine_handle
                         *engine, event, std::numeric_limits<uint32_t>::max(), previous_frame);
                     result != NK_OK)
                     return result;
-                if (event.kind == NK_AUDIO_DSP_EVENT_NOTE_ON ||
-                    event.kind == NK_AUDIO_DSP_EVENT_PARAMETER ||
-                    event.kind == NK_AUDIO_DSP_EVENT_PARAMETER_RAMP) {
+                if (event.kind == NK_AUDIO_DSP_EVENT_NOTE_ON || is_parameter_event(event.kind)) {
                     auto instrument = get_instrument(event.instrument);
                     if (!instrument)
                         return NK_ERROR_INVALID_HANDLE;
@@ -3245,7 +3277,7 @@ nk_result NK_CALL nk_audio_dsp_instrument_set_parameter(nk_audio_dsp_instrument 
 
 nk_result NK_CALL nk_audio_dsp_instrument_set_oscillator_parameter(
     nk_audio_dsp_instrument instrument_handle, uint32_t oscillator_index,
-    nk_audio_dsp_parameter parameter, float value) {
+    nk_audio_dsp_oscillator_parameter parameter, float value) {
     return nk::core::result_boundary(
         "unexpected error while setting an audio DSP oscillator parameter", [&]() -> nk_result {
             if (const auto result = enter_dsp(); result != NK_OK)
@@ -3268,8 +3300,8 @@ nk_result NK_CALL nk_audio_dsp_instrument_set_oscillator_parameter(
             if (result == NK_OK && engine->attached.load(std::memory_order_acquire)) {
                 TransportCommand command;
                 command.kind = TransportCommand::queued_note;
-                command.note.event.kind = NK_AUDIO_DSP_EVENT_PARAMETER;
-                command.note.event.parameter = parameter;
+                command.note.event.kind = NK_AUDIO_DSP_EVENT_OSCILLATOR_PARAMETER;
+                command.note.event.oscillator_parameter = parameter;
                 command.note.event.oscillator_index = oscillator_index;
                 command.note.event.value = value;
                 command.note.instrument = instrument;
@@ -3298,8 +3330,6 @@ nk_result NK_CALL nk_audio_dsp_instrument_get_parameter(nk_audio_dsp_instrument 
                 return invalid_argument("audio DSP parameter output is missing");
             if (!valid_parameter(parameter))
                 return invalid_argument("audio DSP parameter is invalid");
-            if (valid_oscillator_parameter(parameter))
-                return invalid_argument("audio DSP oscillator parameter requires a source index");
             auto instrument = get_instrument(instrument_handle);
             if (!instrument)
                 return NK_ERROR_INVALID_HANDLE;
@@ -3318,7 +3348,7 @@ nk_result NK_CALL nk_audio_dsp_instrument_get_parameter(nk_audio_dsp_instrument 
 
 nk_result NK_CALL nk_audio_dsp_instrument_get_oscillator_parameter(
     nk_audio_dsp_instrument instrument_handle, uint32_t oscillator_index,
-    nk_audio_dsp_parameter parameter, float *out_value) {
+    nk_audio_dsp_oscillator_parameter parameter, float *out_value) {
     return nk::core::result_boundary(
         "unexpected error while getting an audio DSP oscillator parameter", [&]() -> nk_result {
             if (const auto result = enter_dsp(); result != NK_OK)
@@ -3340,7 +3370,7 @@ nk_result NK_CALL nk_audio_dsp_instrument_get_oscillator_parameter(
                 return invalid_argument("Sampled instrument has no DSP oscillators");
             if (oscillator_index >= instrument->defaults.oscillator_count)
                 return invalid_argument("audio DSP oscillator parameter target is invalid");
-            *out_value = instrument->published_oscillators[oscillator_index][parameter - 9].load(
+            *out_value = instrument->published_oscillators[oscillator_index][parameter].load(
                 std::memory_order_relaxed);
             return NK_OK;
         });
@@ -3405,7 +3435,7 @@ nk_result NK_CALL nk_audio_dsp_engine_render(nk_audio_dsp_engine engine_handle,
                 advance_transport(*engine, engine->offline_frame + frame);
                 while (event_index < event_count && events[event_index].frame_offset == frame) {
                     const auto result =
-                        events[event_index].kind == NK_AUDIO_DSP_EVENT_PARAMETER_RAMP
+                        is_ramp_event(events[event_index].kind)
                             ? begin_parameter_ramp(*engine, events[event_index], ramps)
                             : apply_event(*engine, events[event_index]);
                     if (result != NK_OK)
