@@ -753,11 +753,13 @@ nk_result NK_CALL nk_pty_spawn(const char *program, const char *const *argv, uin
         int master = -1;
         // Resolve the fallback descriptor limit before fork: the child may only
         // use async-signal-safe operations until exec in this threaded runtime.
+#if defined(__APPLE__)
+        // macOS has no closefrom or close_range; descriptors stop below the table size.
+        const int descriptor_count = ::getdtablesize();
+#else
         rlimit descriptor_limit{};
         if (::getrlimit(RLIMIT_NOFILE, &descriptor_limit) != 0)
             return fail(NK_ERROR_UNKNOWN, "could not read descriptor limit");
-#if defined(__APPLE__)
-        const int descriptor_count = ::getdtablesize();
 #endif
         const pid_t child = ::forkpty(&master, nullptr, nullptr, &size);
         if (child < 0)

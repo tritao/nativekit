@@ -357,6 +357,7 @@ elseif(APPLE)
     target_sources(nativekit PRIVATE
         src/macos/nativekit_osx.mm
         src/macos/nativekit_mac_menu.mm
+        src/macos/nativekit_mac_tray.mm
         src/macos/nativekit_mac_joystick.mm)
     target_compile_definitions(nativekit PRIVATE NK_BACKEND_MACOS=1)
     set_target_properties(nativekit PROPERTIES

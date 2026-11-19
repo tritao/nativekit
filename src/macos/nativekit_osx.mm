@@ -35,6 +35,7 @@
 #include "core/resource_events.hpp"
 #include "core/text_edit_transaction.hpp"
 #include "core/text_input_geometry.hpp"
+#include "macos/nativekit_mac_application.hpp"
 #include "macos/joystick.hpp"
 
 #include <algorithm>
@@ -378,7 +379,6 @@ std::mutex notifications_mutex;
 std::unordered_map<nk_request_id, uint64_t> notifications;
 __strong NKNotificationDelegate *notification_delegate = nil;
 __strong NKApplicationDelegate *application_delegate = nil;
-__strong id<NSApplicationDelegate> previous_application_delegate = nil;
 __strong NSMutableSet<NSSharingServicePicker *> *sharing_pickers = nil;
 __strong NSMutableDictionary<NSString *, NSURL *> *security_scoped_urls = nil;
 bool notification_center_initialized = false;
@@ -2656,19 +2656,17 @@ void emit_window_state(MacWindowResource &resource) noexcept {
 @implementation NKApplicationDelegate
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender {
     (void)sender;
-    // Let the host close its windows and join its workers before process exit. The host pumps
+    // Cmd-Q, the Dock and logout reach the host as the same quit request a menu's Quit role
+    // sends, so it can close its windows and join its workers before exiting. The host pumps
     // events itself, so NSTerminateLater would trap it in AppKit's modal reply loop; cancel and
-    // let the windows' close events end the process. A logout or shutdown is therefore
-    // interrupted once and goes through on the next attempt, after the host has exited.
-    const auto windows = nk::core::handles().handles_of_type(nk::core::ResourceType::window);
-    if (windows.empty())
+    // let the host end the process. A logout or shutdown is therefore interrupted once and goes
+    // through on the next attempt, after the host has exited. With no window open there is
+    // nothing to ask, and nk_shutdown's work is done by exit-time cleanup.
+    if (nk::core::handles().handles_of_type(nk::core::ResourceType::window).empty())
         return NSTerminateNow;
-    for (const auto handle : windows) {
-        nk::core::QueuedEvent event;
-        event.kind = NK_EVENT_WINDOW_CLOSE;
-        event.source = handle;
-        nk::core::push_event(std::move(event));
-    }
+    nk::core::QueuedEvent event;
+    event.kind = NK_EVENT_APPLICATION_QUIT_REQUESTED;
+    nk::core::push_event(std::move(event));
     return NSTerminateCancel;
 }
 @end
@@ -3907,10 +3905,9 @@ void pump_events() noexcept {
 }
 
 void shutdown() noexcept {
-    if (NSApp.delegate == application_delegate)
-        NSApp.delegate = previous_application_delegate;
+    if (application_delegate && NSApp.delegate == application_delegate)
+        NSApp.delegate = nil;
     application_delegate = nil;
-    previous_application_delegate = nil;
     nk::backend::menu_backend_shutdown();
     nk::macos_joystick::shutdown();
     NSMutableArray<NSString *> *notification_identifiers = [NSMutableArray array];
@@ -3954,6 +3951,55 @@ void shutdown() noexcept {
 }
 } // namespace nk::backend
 
+namespace {
+
+/** The application menu with Hide and Quit, named after the application. */
+void install_default_main_menu(const char *window_title) {
+    NSString *name = string(nk::core::system_application_name().c_str());
+    if (name.length == 0)
+        name = string(window_title);
+    if (name.length == 0)
+        name = NSProcessInfo.processInfo.processName;
+    NSMenu *main_menu = [[NSMenu alloc] initWithTitle:@""];
+    NSMenuItem *application_item = [[NSMenuItem alloc] initWithTitle:name
+                                                               action:nil
+                                                        keyEquivalent:@""];
+    NSMenu *application_menu = [[NSMenu alloc] initWithTitle:name];
+    [application_menu addItemWithTitle:[@"Hide " stringByAppendingString:name]
+                                action:@selector(hide:)
+                         keyEquivalent:@"h"];
+    [application_menu addItem:[NSMenuItem separatorItem]];
+    [application_menu addItemWithTitle:[@"Quit " stringByAppendingString:name]
+                                action:@selector(terminate:)
+                         keyEquivalent:@"q"];
+    application_item.submenu = application_menu;
+    [main_menu addItem:application_item];
+    NSApp.mainMenu = main_menu;
+}
+
+} // namespace
+
+namespace nk::macos {
+
+namespace {
+bool launched_here = false;
+}
+
+bool owns_application() noexcept {
+    return launched_here || !NSRunningApplication.currentApplication.finishedLaunching;
+}
+
+bool launch_application() noexcept {
+    [NSApplication sharedApplication];
+    if (!NSRunningApplication.currentApplication.finishedLaunching) {
+        [NSApp finishLaunching];
+        launched_here = true;
+    }
+    return launched_here;
+}
+
+} // namespace nk::macos
+
 extern "C" {
 
 nk_capabilities NK_CALL nk_get_capabilities(void) {
@@ -3984,36 +4030,18 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
         // A standalone host pumps Cocoa itself instead of entering NSApplication.run, so it owns
         // launch and quit. An embedding Cocoa app that already launched keeps its own lifecycle.
-        if (!NSRunningApplication.currentApplication.finishedLaunching) {
-            if (!application_delegate && !NSApp.delegate) {
-                previous_application_delegate = nil;
+        // Install both before finishLaunching, which gives an unbundled app an empty main menu.
+        if (nk::macos::owns_application()) {
+            if (!NSApp.delegate) {
                 application_delegate = [NKApplicationDelegate new];
                 NSApp.delegate = application_delegate;
             }
             // Cmd-Q and Cmd-H come from the main menu. Give a host that sets no menu of its own
             // the standard application items; nk menus replace this one when installed.
-            if (!NSApp.mainMenu) {
-                NSString *name = string(options->title);
-                if (name.length == 0)
-                    name = NSProcessInfo.processInfo.processName;
-                NSMenu *main_menu = [[NSMenu alloc] initWithTitle:@""];
-                NSMenuItem *application_item = [[NSMenuItem alloc] initWithTitle:name
-                                                                           action:nil
-                                                                    keyEquivalent:@""];
-                NSMenu *application_menu = [[NSMenu alloc] initWithTitle:name];
-                [application_menu addItemWithTitle:[@"Hide " stringByAppendingString:name]
-                                            action:@selector(hide:)
-                                     keyEquivalent:@"h"];
-                [application_menu addItem:[NSMenuItem separatorItem]];
-                [application_menu addItemWithTitle:[@"Quit " stringByAppendingString:name]
-                                            action:@selector(terminate:)
-                                     keyEquivalent:@"q"];
-                application_item.submenu = application_menu;
-                [main_menu addItem:application_item];
-                NSApp.mainMenu = main_menu;
-            }
-            [NSApp finishLaunching];
+            if (!NSApp.mainMenu || NSApp.mainMenu.numberOfItems == 0)
+                install_default_main_menu(options->title);
         }
+        nk::macos::launch_application();
         auto owner = options->owner ? window(options->owner) : nullptr;
         if (options->owner && !owner)
             return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale owner window handle");
@@ -5608,6 +5636,8 @@ nk_result NK_CALL nk_surface_set_frame_callback(nk_handle handle,
                                            !nk::core::surface_has_open_frame(handle))
                                            nk_surface_present(handle);
                                    });
+                                   // A drawn frame is work even when no input event arrived.
+                                   nk::core::wake_events();
                                  }];
     if (!resource->frame_timer)
         return fail(NK_ERROR_UNKNOWN, "could not start the Metal frame timer");

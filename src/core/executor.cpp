@@ -11,6 +11,7 @@
 #include <deque>
 #include <mutex>
 #include <new>
+#include <cstdlib>
 #include <thread>
 #include <utility>
 
@@ -35,22 +36,16 @@ bool render_stopping = false;
 std::size_t render_task_bytes = 0;
 
 /*
- * A host that calls exit() without nk_shutdown() destroys this at static destruction. A
- * joinable std::thread would call std::terminate there, so stop and join the render loop
- * instead. Declared after the state the loop uses, so that state outlives it.
+ * A host may call exit() without nk_shutdown(). start_render_executor registers an atexit
+ * handler that stops and joins the loop before any library's statics are destroyed, so a task
+ * still running finishes against live state. If the thread is somehow still joinable when this
+ * is destroyed, detach it: a joinable std::thread would call std::terminate here.
  */
 struct RenderThreadOwner {
     std::thread thread;
     ~RenderThreadOwner() {
-        if (!thread.joinable())
-            return;
-        {
-            std::lock_guard lock(render_task_mutex);
-            render_accepting = false;
-            render_stopping = true;
-        }
-        render_task_condition.notify_all();
-        thread.join();
+        if (thread.joinable())
+            thread.detach();
     }
 };
 RenderThreadOwner render_thread_owner;
@@ -153,6 +148,9 @@ nk_result start_render_executor() noexcept {
         render_task_bytes = 0;
     }
     render_thread = std::thread(render_loop);
+    // Registered after the libraries' statics are constructed, so it runs before they are destroyed.
+    static std::once_flag exit_cleanup;
+    std::call_once(exit_cleanup, [] { std::atexit([] { nk::core::stop_render_executor(); }); });
     std::unique_lock lock(render_task_mutex);
     render_started_condition.wait(lock, [] { return render_started; });
     {
@@ -173,8 +171,13 @@ void stop_render_executor() noexcept {
         render_stopping = true;
     }
     render_task_condition.notify_all();
-    if (render_thread.joinable())
-        render_thread.join();
+    if (render_thread.joinable()) {
+        // A task that exits the process runs this on the render thread itself, which cannot join.
+        if (render_thread.get_id() == std::this_thread::get_id())
+            render_thread.detach();
+        else
+            render_thread.join();
+    }
     std::lock_guard lock(executor_mutex);
     render_executor_exclusive = false;
 }

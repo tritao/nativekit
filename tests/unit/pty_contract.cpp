@@ -3,6 +3,8 @@
 
 #include <cassert>
 #include <chrono>
+#include <climits>
+#include <cstdlib>
 #include <csignal>
 #include <cstring>
 #include <fcntl.h>
@@ -90,7 +92,11 @@ int main() {
     const char *command[] = {"-c", "printf '%s:%s\\n' \"$PT_MARKER\" \"$(pwd)\""};
     const char *environment[] = {"PT_MARKER=environment-ok", "PATH=/usr/bin:/bin"};
     assert(nk_pty_spawn("/bin/sh", command, 2, "/tmp", environment, 2, 80, 24, &pty) == NK_OK);
-    collect(pty, "environment-ok:/tmp");
+    // The shell reports the physical directory: /tmp is a symlink to /private/tmp on macOS.
+    char temporary[PATH_MAX] = {};
+    assert(realpath("/tmp", temporary) != nullptr);
+    const std::string expected = std::string("environment-ok:") + temporary;
+    collect(pty, expected.c_str());
     while (nk_pty_exit_status(pty, &code, &signal) == NK_PENDING &&
            std::chrono::steady_clock::now() < deadline + std::chrono::seconds(5))
         assert(nk_wait_events_timeout(0.05) == NK_OK);

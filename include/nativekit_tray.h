@@ -20,13 +20,15 @@ extern "C" {
 /* ------------------------------------------------------------------------- */
 
 /**
- * A status icon in the desktop notification area (the Windows system tray).
- * Only the Windows backend implements trays; other backends return
+ * A status icon in the desktop notification area (the Windows system tray,
+ * the macOS menu bar). Windows and macOS implement trays; other backends return
  * NK_ERROR_UNSUPPORTED. Events carry the tray handle as their source:
  * NK_EVENT_TRAY_ACTIVATED for a primary click (flags is 1 for a double click)
  * and NK_EVENT_TRAY_MENU_REQUESTED for a secondary click or the keyboard
- * context-menu gesture. The application answers a menu request by building a
- * menu and calling nk_tray_show_menu, so the menu reflects current state.
+ * context-menu gesture. On macOS every click is a menu request, the platform
+ * convention for status items. The application answers a menu request by
+ * building a menu and calling nk_tray_show_menu, so the menu reflects current
+ * state.
  */
 typedef uint32_t nk_tray NK_HANDLE NK_HANDLE_DESTROY(nk_tray_destroy);
 
@@ -52,9 +54,10 @@ NK_API nk_result NK_CALL nk_tray_destroy(nk_tray tray);
 /** Replaces the hover text. */
 NK_API nk_result NK_CALL nk_tray_set_tooltip(nk_tray tray, const char *tooltip NK_UTF8);
 /**
- * Shows `menu` as a popup at the pointer and returns at once: the popup's modal
- * loop runs on its own thread, so the application's event loop keeps running
- * while the menu is open. A chosen item is reported later as
+ * Shows `menu` as a popup at the pointer and returns at once. On Windows the
+ * popup's modal loop runs on its own thread, so the application's event loop
+ * keeps running while the menu is open; AppKit tracks menus on the main thread
+ * only, so on macOS the loop pauses until the menu closes. A chosen item is reported later as
  * NK_EVENT_MENU_ITEM_ACTIVATED, as for application menus. The menu is copied;
  * the caller may destroy it after this returns. While a tray menu is open,
  * another call shows nothing and returns NK_OK. Destroying the tray closes its

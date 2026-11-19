@@ -2,8 +2,24 @@
 #include "nativekit.h"
 #include "nativekit_window.h"
 #include <cstdio>
+#include <cstdlib>
+#include <unistd.h>
+
+namespace {
+bool finished = false;
+
+// [NSApp terminate:] exits the process when quit is not routed to the host. That must fail the
+// test, not look like a clean pass.
+void fail_on_unexpected_exit() {
+    if (!finished) {
+        std::fprintf(stderr, "Cocoa quit exited the process instead of asking the host\n");
+        _exit(5);
+    }
+}
+} // namespace
 
 int main() {
+    std::atexit(fail_on_unexpected_exit);
     nk_init_options init{};
     init.struct_size = sizeof(init);
     init.api_version = NK_API_VERSION;
@@ -23,16 +39,16 @@ int main() {
         return 3;
     }
     [NSApp terminate:nil];
-    bool close_requested = false;
-    for (int i = 0; i < 100; ++i) {
+    bool quit_requested = false;
+    for (int i = 0; i < 100 && !quit_requested; ++i) {
         nk_event event{};
         event.struct_size = sizeof(event);
         nk_poll_event(&event);
-        close_requested |= event.kind == NK_EVENT_WINDOW_CLOSE && event.source == window;
+        quit_requested = event.kind == NK_EVENT_APPLICATION_QUIT_REQUESTED;
         nk_event_release(&event);
-        if (close_requested) break;
     }
     nk_window_destroy(window);
     nk_shutdown();
-    return close_requested ? 0 : 4;
+    finished = true;
+    return quit_requested ? 0 : 4;
 }

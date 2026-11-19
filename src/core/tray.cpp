@@ -3,9 +3,10 @@
 #include "core/error.hpp"
 #include "core/runtime.hpp"
 
-// The Windows backend implements trays in nativekit_win.cpp. Every other
-// backend reports them as unsupported so applications can degrade cleanly.
-#if !defined(NK_BACKEND_WINDOWS)
+// The Windows backend implements trays in nativekit_win.cpp and macOS in
+// nativekit_mac_tray.mm. Every other backend reports them as unsupported so
+// applications can degrade cleanly.
+#if !defined(NK_BACKEND_WINDOWS) && !defined(NK_BACKEND_MACOS)
 namespace {
 
 nk_result unsupported() {
