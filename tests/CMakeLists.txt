@@ -11,6 +11,10 @@ target_link_libraries(nativekit_c_abi PRIVATE NativeKit::nativekit)
 set_target_properties(nativekit_c_abi PROPERTIES LINKER_LANGUAGE CXX)
 add_test(NAME c_abi COMMAND nativekit_c_abi)
 
+add_executable(nativekit_exit_without_shutdown unit/exit_without_shutdown.c)
+target_link_libraries(nativekit_exit_without_shutdown PRIVATE NativeKit::nativekit)
+add_test(NAME exit_without_shutdown COMMAND nativekit_exit_without_shutdown)
+
 add_executable(nativekit_core_tests
     unit/core_tests.cpp
     ${PROJECT_SOURCE_DIR}/src/core/error.cpp
@@ -422,6 +426,12 @@ if(WIN32)
 endif()
 
 if(APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    add_executable(nativekit_macos_quit_tests integration/macos_quit.mm)
+    target_compile_options(nativekit_macos_quit_tests PRIVATE -fobjc-arc)
+    target_link_libraries(nativekit_macos_quit_tests PRIVATE NativeKit::nativekit "-framework Cocoa")
+    add_test(NAME macos_quit COMMAND nativekit_macos_quit_tests)
+    set_tests_properties(macos_quit PROPERTIES LABELS "macos;lifecycle" TIMEOUT 30)
+
     add_executable(nativekit_osx_integration integration/osx_create_destroy.c)
     target_link_libraries(nativekit_osx_integration PRIVATE NativeKit::nativekit)
     set_target_properties(nativekit_osx_integration PROPERTIES LINKER_LANGUAGE OBJCXX)

@@ -24,6 +24,7 @@
 #include "core/boundary.hpp"
 #include "core/error.hpp"
 #include "core/frame_request.hpp"
+#include "core/surface_frame.hpp"
 #include "core/frame_backend.hpp"
 #include "core/graphics_frame_target.hpp"
 #include "core/graphics_image_registry.h"
@@ -55,6 +56,23 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+
+@interface NKApplicationDelegate : NSObject <NSApplicationDelegate>
+@end
+
+/* A borderless NSWindow refuses key and main status, so a custom-chrome window would get no
+   keyboard input. */
+@interface NKWindow : NSWindow
+@end
+
+@implementation NKWindow
+- (BOOL)canBecomeKeyWindow {
+    return YES;
+}
+- (BOOL)canBecomeMainWindow {
+    return YES;
+}
+@end
 
 @interface NKWindowDelegate : NSObject <NSWindowDelegate>
 @property(nonatomic, assign) void *resource;
@@ -359,6 +377,8 @@ std::unordered_map<nk_request_id, nk_handle> evaluations;
 std::mutex notifications_mutex;
 std::unordered_map<nk_request_id, uint64_t> notifications;
 __strong NKNotificationDelegate *notification_delegate = nil;
+__strong NKApplicationDelegate *application_delegate = nil;
+__strong id<NSApplicationDelegate> previous_application_delegate = nil;
 __strong NSMutableSet<NSSharingServicePicker *> *sharing_pickers = nil;
 __strong NSMutableDictionary<NSString *, NSURL *> *security_scoped_urls = nil;
 bool notification_center_initialized = false;
@@ -612,6 +632,14 @@ bool is_decoration_resize_kind(nk_window_decoration_region_kind kind) {
 std::shared_ptr<MacSurfaceResource> surface(nk_handle handle) {
     return std::dynamic_pointer_cast<MacSurfaceResource>(
         nk::core::handles().get(handle, nk::core::ResourceType::surface));
+}
+
+// Desktop text input is hosted by the surface's owning Cocoa window.
+std::shared_ptr<MacWindowResource> text_input_window(nk_handle handle) {
+    if (auto direct = window(handle))
+        return direct;
+    auto target = surface(handle);
+    return target ? window(target->parent) : nullptr;
 }
 
 /* An on-demand surface parks its repeating timer instead of tearing it down. */
@@ -2067,13 +2095,14 @@ void release_cursor_capture(MacWindowResource &resource) {
 
 bool apply_cursor_mode(MacWindowResource &resource, nk_cursor_mode mode) {
     const auto old_mode = resource.cursor_mode;
-    if (resource.pointer_captured && mode != NK_CURSOR_MODE_CAPTURED &&
-        mode != NK_CURSOR_MODE_DISABLED) {
+    // CAPTURED keeps pointer events flowing to the window during a drag (Win32 SetCapture);
+    // Cocoa already sends a drag's events to the view that took mouseDown, so it needs nothing.
+    // Only DISABLED detaches the cursor and reports relative motion.
+    if (resource.pointer_captured && mode != NK_CURSOR_MODE_DISABLED) {
         CGAssociateMouseAndMouseCursorPosition(true);
         resource.pointer_captured = false;
     }
-    if ((mode == NK_CURSOR_MODE_CAPTURED || mode == NK_CURSOR_MODE_DISABLED) &&
-        !resource.pointer_captured) {
+    if (mode == NK_CURSOR_MODE_DISABLED && !resource.pointer_captured) {
         if (CGAssociateMouseAndMouseCursorPosition(false) != kCGErrorSuccess) {
             resource.cursor_mode = old_mode;
             if (resource.cursor_mode != NK_CURSOR_MODE_NORMAL)
@@ -2624,6 +2653,26 @@ void emit_window_state(MacWindowResource &resource) noexcept {
 }
 @end
 
+@implementation NKApplicationDelegate
+- (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender {
+    (void)sender;
+    // Let the host close its windows and join its workers before process exit. The host pumps
+    // events itself, so NSTerminateLater would trap it in AppKit's modal reply loop; cancel and
+    // let the windows' close events end the process. A logout or shutdown is therefore
+    // interrupted once and goes through on the next attempt, after the host has exited.
+    const auto windows = nk::core::handles().handles_of_type(nk::core::ResourceType::window);
+    if (windows.empty())
+        return NSTerminateNow;
+    for (const auto handle : windows) {
+        nk::core::QueuedEvent event;
+        event.kind = NK_EVENT_WINDOW_CLOSE;
+        event.source = handle;
+        nk::core::push_event(std::move(event));
+    }
+    return NSTerminateCancel;
+}
+@end
+
 @implementation NKWindowDelegate
 - (BOOL)windowShouldClose:(NSWindow *)sender {
     (void)sender;
@@ -2774,8 +2823,9 @@ void emit_window_state(MacWindowResource &resource) noexcept {
         return;
     nk::core::callback_boundary([&] {
         if (resource->pointer_captured) {
+            // Cocoa's mouse deltaY grows downward, matching this flipped view.
             resource->pointer_x += event.deltaX;
-            resource->pointer_y -= event.deltaY;
+            resource->pointer_y += event.deltaY;
         } else {
             const NSPoint point = local_pointer_position(self, event);
             resource->pointer_x = point.x;
@@ -3849,12 +3899,18 @@ void pump_events() noexcept {
                                               inMode:NSDefaultRunLoopMode
                                              dequeue:YES]))
             [NSApp sendEvent:event];
+        // Nonblocking nextEvent calls do not service the NSTimer used for frames.
+        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.0, true);
         [NSApp updateWindows];
     }
     poll_monitor_orientations();
 }
 
 void shutdown() noexcept {
+    if (NSApp.delegate == application_delegate)
+        NSApp.delegate = previous_application_delegate;
+    application_delegate = nil;
+    previous_application_delegate = nil;
     nk::backend::menu_backend_shutdown();
     nk::macos_joystick::shutdown();
     NSMutableArray<NSString *> *notification_identifiers = [NSMutableArray array];
@@ -3926,6 +3982,38 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
         *out_window = NK_INVALID_HANDLE;
         [NSApplication sharedApplication];
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+        // A standalone host pumps Cocoa itself instead of entering NSApplication.run, so it owns
+        // launch and quit. An embedding Cocoa app that already launched keeps its own lifecycle.
+        if (!NSRunningApplication.currentApplication.finishedLaunching) {
+            if (!application_delegate && !NSApp.delegate) {
+                previous_application_delegate = nil;
+                application_delegate = [NKApplicationDelegate new];
+                NSApp.delegate = application_delegate;
+            }
+            // Cmd-Q and Cmd-H come from the main menu. Give a host that sets no menu of its own
+            // the standard application items; nk menus replace this one when installed.
+            if (!NSApp.mainMenu) {
+                NSString *name = string(options->title);
+                if (name.length == 0)
+                    name = NSProcessInfo.processInfo.processName;
+                NSMenu *main_menu = [[NSMenu alloc] initWithTitle:@""];
+                NSMenuItem *application_item = [[NSMenuItem alloc] initWithTitle:name
+                                                                           action:nil
+                                                                    keyEquivalent:@""];
+                NSMenu *application_menu = [[NSMenu alloc] initWithTitle:name];
+                [application_menu addItemWithTitle:[@"Hide " stringByAppendingString:name]
+                                            action:@selector(hide:)
+                                     keyEquivalent:@"h"];
+                [application_menu addItem:[NSMenuItem separatorItem]];
+                [application_menu addItemWithTitle:[@"Quit " stringByAppendingString:name]
+                                            action:@selector(terminate:)
+                                     keyEquivalent:@"q"];
+                application_item.submenu = application_menu;
+                [main_menu addItem:application_item];
+                NSApp.mainMenu = main_menu;
+            }
+            [NSApp finishLaunching];
+        }
         auto owner = options->owner ? window(options->owner) : nullptr;
         if (options->owner && !owner)
             return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale owner window handle");
@@ -3943,7 +4031,7 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
         if (options->flags & NK_WINDOW_RESIZABLE)
             style |= NSWindowStyleMaskResizable;
         resource->window =
-            [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, options->width, options->height)
+            [[NKWindow alloc] initWithContentRect:NSMakeRect(0, 0, options->width, options->height)
                                         styleMask:style
                                           backing:NSBackingStoreBuffered
                                             defer:NO];
@@ -3980,6 +4068,9 @@ nk_result NK_CALL nk_window_create(const nk_window_options *options, nk_handle *
                     resource->child_attached = true;
                 }
                 [resource->window makeKeyAndOrderFront:nil];
+                // Bring a launched-from-terminal app forward, but never let a child window steal focus.
+                if (!owner)
+                    [NSApp activateIgnoringOtherApps:YES];
             }
         }
         *out_window = resource->handle;
@@ -4526,10 +4617,10 @@ nk_result NK_CALL nk_surface_set_text_input_state(nk_handle handle,
                 state->action > NK_TEXT_INPUT_ACTION_NONE || !valid_cursor)
                 return fail(NK_ERROR_INVALID_ARGUMENT,
                             "text input state ranges or hints are invalid");
-            auto resource = window(handle);
+            auto resource = text_input_window(handle);
             if (!resource)
                 return fail(NK_ERROR_INVALID_HANDLE,
-                            "text input state requires a desktop window on this backend");
+                            "text input state requires a live surface or window");
             if (!resource->owns_window)
                 return unsupported("wrapped Cocoa windows do not own NativeKit text input views");
             resource->text_input_text = state->text;
@@ -4574,7 +4665,7 @@ nk_result NK_CALL nk_surface_set_text_input_geometry(
         "unexpected error while setting macOS text input geometry", [&]() -> nk_result {
             if (const auto result = enter_ui(); result != NK_OK)
                 return result;
-            auto resource = window(handle);
+            auto resource = text_input_window(handle);
             if (!resource)
                 return NK_ERROR_INVALID_HANDLE;
             if (resource->text_input_state.struct_size < sizeof(nk_text_input_state))
@@ -4603,10 +4694,10 @@ nk_result NK_CALL nk_surface_set_text_input_active(nk_handle handle, uint32_t ac
             if (active > 1)
                 return fail(NK_ERROR_INVALID_ARGUMENT,
                             "text input active state must be zero or one");
-            auto resource = window(handle);
+            auto resource = text_input_window(handle);
             if (!resource)
                 return fail(NK_ERROR_INVALID_HANDLE,
-                            "text input activation requires a desktop window on this backend");
+                            "text input activation requires a live surface or window");
             if (!resource->owns_window)
                 return unsupported("wrapped Cocoa windows do not own NativeKit text input views");
             if (active) {
@@ -5504,16 +5595,17 @@ nk_result NK_CALL nk_surface_set_frame_callback(nk_handle handle,
                                        active->frame_timer.fireDate = [NSDate distantFuture];
                                        return;
                                    }
+                                   // Keep the next request pending until RENDER returns its ticket.
+                                   if (nk::core::surface_has_open_frame(handle))
+                                       return;
                                    active->frame_requests.begin_frame();
-                                   // TODO(trace): draw through nk::core::run_surface_frame
-                                   // (core/surface_frame.hpp), as Windows and GTK do, so each drawn
-                                   // frame is an nk.frame zone.
-                                   nk::core::callback_boundary([&] {
+                                   nk::core::run_surface_frame([&] {
                                        if (nk_surface_make_current(handle) != NK_OK)
                                            return;
                                        callback(handle, active->framebuffer_width,
                                                 active->framebuffer_height, user_data);
-                                       if (active->frame_prepared)
+                                       if (active->frame_prepared &&
+                                           !nk::core::surface_has_open_frame(handle))
                                            nk_surface_present(handle);
                                    });
                                  }];

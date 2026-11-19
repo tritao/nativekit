@@ -29,11 +29,32 @@ std::mutex render_task_mutex;
 std::condition_variable render_task_condition;
 std::condition_variable render_started_condition;
 std::deque<nk::core::AppTask> render_tasks;
-std::thread render_thread;
 bool render_started = false;
 bool render_accepting = false;
 bool render_stopping = false;
 std::size_t render_task_bytes = 0;
+
+/*
+ * A host that calls exit() without nk_shutdown() destroys this at static destruction. A
+ * joinable std::thread would call std::terminate there, so stop and join the render loop
+ * instead. Declared after the state the loop uses, so that state outlives it.
+ */
+struct RenderThreadOwner {
+    std::thread thread;
+    ~RenderThreadOwner() {
+        if (!thread.joinable())
+            return;
+        {
+            std::lock_guard lock(render_task_mutex);
+            render_accepting = false;
+            render_stopping = true;
+        }
+        render_task_condition.notify_all();
+        thread.join();
+    }
+};
+RenderThreadOwner render_thread_owner;
+std::thread &render_thread = render_thread_owner.thread;
 
 std::mutex task_mutex;
 std::deque<nk::core::AppTask> pending_tasks;

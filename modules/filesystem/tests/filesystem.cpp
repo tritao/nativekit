@@ -1,6 +1,7 @@
 #include "nativekit_filesystem.h"
 
 #include <array>
+#include <cerrno>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -63,9 +64,17 @@ int main() {
         return 1;
     const char invalid_name[] = {static_cast<char>(0xff), 'x', '\0'};
     const int invalid_fd = open((root_path / invalid_name).c_str(), O_CREAT | O_WRONLY, 0600);
-    if (invalid_fd < 0)
+    bool has_invalid_filename = invalid_fd >= 0;
+#if defined(__APPLE__)
+    // APFS rejects malformed UTF-8 before it reaches directory enumeration.
+    if (!has_invalid_filename && errno != EILSEQ)
         return 1;
-    close(invalid_fd);
+#else
+    if (!has_invalid_filename)
+        return 1;
+#endif
+    if (has_invalid_filename)
+        close(invalid_fd);
 
     nk_filesystem_handle root = 0;
     if (!require(nk_filesystem_root_open(root_path.c_str(), &root) == NK_OK && root != 0,
@@ -93,6 +102,15 @@ int main() {
                      entry.kind == NK_FILESYSTEM_ENTRY_OTHER,
                  "special file was not classified as other"))
         return 1;
+    // Metadata needs no read access to the file itself (Linux O_PATH; macOS stats via the parent).
+    if (!require(write_file(root_path / "nested" / "locked.txt", "locked") &&
+                     ::chmod((root_path / "nested" / "locked.txt").c_str(), 0) == 0,
+                 "could not create unreadable fixture") ||
+        !require(stat_path(root, "nested/locked.txt", entry) == NK_OK &&
+                     entry.kind == NK_FILESYSTEM_ENTRY_REGULAR && entry.size == 6,
+                 "stat of an unreadable file failed"))
+        return 1;
+    ::chmod((root_path / "nested" / "locked.txt").c_str(), 0600);
 
     nk_filesystem_handle file = 0;
     if (!require(nk_filesystem_file_open(root, "nested/hello.txt", &file) == NK_OK && file != 0,
@@ -142,7 +160,11 @@ int main() {
     if (stat((root_path / "safe.txt").c_str(), &original_info) != 0 ||
         !write_file(root_path / "safe.txt", "xx"))
         return 1;
+#if defined(__APPLE__)
+    struct timespec preserved_times[2] = {original_info.st_atimespec, original_info.st_mtimespec};
+#else
     struct timespec preserved_times[2] = {original_info.st_atim, original_info.st_mtim};
+#endif
     if (utimensat(AT_FDCWD, (root_path / "safe.txt").c_str(), preserved_times, 0) != 0)
         return 1;
     entry = {};
@@ -217,7 +239,7 @@ int main() {
         if (name_size == 4 && std::memcmp(name_buffer.data(), "pipe", 4) == 0)
             saw_pipe = true;
     }
-    if (!require(saw_unsupported_name, "invalid native filename bytes were silently accepted") ||
+    if (!require(!has_invalid_filename || saw_unsupported_name, "invalid native filename bytes were silently accepted") ||
         !require(saw_pipe, "directory enumeration omitted the FIFO entry") ||
         !require(nk_filesystem_directory_close(cursor) == NK_OK,
                  "root directory cursor close failed"))

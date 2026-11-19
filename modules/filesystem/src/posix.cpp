@@ -11,10 +11,19 @@
 #include <shared_mutex>
 #include <string>
 #include <sys/stat.h>
-#include <sys/syscall.h>
 #include <vector>
 #include <unistd.h>
+#if defined(__APPLE__)
+// Apple uses event-only descriptors for metadata without opening file contents.
+#define O_PATH O_EVTONLY
+// Public SDK errno headers can lag the kernel; see XNU tests/vfs/resolve_beneath.c.
+#ifndef ENOTCAPABLE
+#define ENOTCAPABLE 107
+#endif
+#else
+#include <sys/syscall.h>
 #include <linux/openat2.h>
+#endif
 
 namespace {
 
@@ -212,6 +221,9 @@ nk_result map_errno(int error, bool directory_operation = false) {
     case EACCES:
     case EPERM:
     case EXDEV:
+#if defined(__APPLE__)
+    case ENOTCAPABLE:
+#endif
     case ELOOP:
         return NK_ERROR_PERMISSION_DENIED;
     case ENOTDIR:
@@ -233,6 +245,9 @@ const char *errno_message(int error) {
     case EPERM:
         return "access to the requested path was denied";
     case EXDEV:
+#if defined(__APPLE__)
+    case ENOTCAPABLE:
+#endif
     case ELOOP:
         return "path resolution would leave the authorized root";
     case ENOTDIR:
@@ -267,19 +282,38 @@ void fill_entry(const struct stat &info, nk_filesystem_entry &entry) {
     else
         entry.kind = NK_FILESYSTEM_ENTRY_OTHER;
     entry.size = info.st_size < 0 ? 0 : static_cast<uint64_t>(info.st_size);
-    entry.modified_unix_ns = static_cast<int64_t>(info.st_mtim.tv_sec) * 1000000000LL +
-                             static_cast<int64_t>(info.st_mtim.tv_nsec);
+#if defined(__APPLE__)
+    const auto modified = info.st_mtimespec;
+    const auto changed = info.st_ctimespec;
+#else
+    const auto modified = info.st_mtim;
+    const auto changed = info.st_ctim;
+#endif
+    entry.modified_unix_ns = static_cast<int64_t>(modified.tv_sec) * 1000000000LL +
+                             static_cast<int64_t>(modified.tv_nsec);
     entry.file_id_high = static_cast<uint64_t>(info.st_dev);
     entry.file_id_low = static_cast<uint64_t>(info.st_ino);
-    entry.changed_unix_ns = static_cast<int64_t>(info.st_ctim.tv_sec) * 1000000000LL +
-                            static_cast<int64_t>(info.st_ctim.tv_nsec);
+    entry.changed_unix_ns = static_cast<int64_t>(changed.tv_sec) * 1000000000LL +
+                            static_cast<int64_t>(changed.tv_nsec);
 }
 
 int open_beneath(int root_fd, const char *path, uint64_t flags) {
+#if defined(__APPLE__)
+#ifdef O_RESOLVE_BENEATH
+    if ((flags & O_EVTONLY) && (flags & O_NOFOLLOW))
+        flags = (flags & ~O_NOFOLLOW) | O_SYMLINK;
+    return openat(root_fd, path, static_cast<int>(flags) | O_RESOLVE_BENEATH | O_NONBLOCK);
+#else
+    // Never fall back to an unconstrained open on SDKs without this guarantee.
+    errno = ENOSYS;
+    return -1;
+#endif
+#else
     struct open_how how {};
     how.flags = flags;
     how.resolve = RESOLVE_BENEATH | RESOLVE_NO_MAGICLINKS;
     return static_cast<int>(syscall(SYS_openat2, root_fd, path, &how, sizeof(how)));
+#endif
 }
 
 std::shared_ptr<Root> get_root(nk_filesystem_handle handle) {
@@ -335,6 +369,22 @@ nk_result NK_CALL nk_filesystem_root_open(const char *absolute_path,
     const int fd = open(absolute_path, O_PATH | O_DIRECTORY | O_CLOEXEC);
     if (fd < 0)
         return fail(map_errno(errno, true), errno_message(errno));
+#if defined(__APPLE__)
+    // Older kernels may ignore an unknown open flag. Require a rejected escape
+    // before exposing a root handle, rather than silently losing confinement.
+#ifdef O_RESOLVE_BENEATH
+    const int escaped = openat(fd, "..", O_EVTONLY | O_DIRECTORY | O_CLOEXEC | O_RESOLVE_BENEATH);
+    const int probe_error = errno;
+    if (escaped >= 0) close(escaped);
+    if (escaped >= 0 || probe_error != ENOTCAPABLE) {
+        close(fd);
+        return fail(NK_ERROR_UNSUPPORTED, "this macOS kernel lacks root-relative confinement");
+    }
+#else
+    close(fd);
+    return fail(NK_ERROR_UNSUPPORTED, "this macOS SDK lacks root-relative confinement");
+#endif
+#endif
     auto root = std::make_shared<Root>(fd);
     const auto handle = registry.insert(HandleKind::root, root);
     if (handle == 0)
@@ -376,6 +426,25 @@ nk_result NK_CALL nk_filesystem_stat(nk_filesystem_handle handle, const char *re
         if (fstat(root->fd, &info) != 0)
             return fail(map_errno(errno), errno_message(errno));
     } else {
+#if defined(__APPLE__)
+        // O_EVTONLY, unlike Linux O_PATH, needs read access to the file itself. Open the parent
+        // beneath the root instead and stat the last component without following it; a
+        // canonical relative path never ends in "..", so this stays confined.
+        const char *slash = std::strrchr(relative_path, '/');
+        int parent = root->fd;
+        if (slash) {
+            const std::string parent_path(relative_path, static_cast<size_t>(slash - relative_path));
+            parent = open_beneath(root->fd, parent_path.c_str(), O_EVTONLY | O_DIRECTORY | O_CLOEXEC);
+            if (parent < 0)
+                return fail(map_errno(errno), errno_message(errno));
+        }
+        const int status = fstatat(parent, slash ? slash + 1 : relative_path, &info, AT_SYMLINK_NOFOLLOW);
+        const int saved_errno = errno;
+        if (parent != root->fd)
+            close(parent);
+        if (status != 0)
+            return fail(map_errno(saved_errno), errno_message(saved_errno));
+#else
         const int fd = open_beneath(root->fd, relative_path, O_PATH | O_NOFOLLOW | O_CLOEXEC);
         if (fd < 0)
             return fail(map_errno(errno), errno_message(errno));
@@ -384,6 +453,7 @@ nk_result NK_CALL nk_filesystem_stat(nk_filesystem_handle handle, const char *re
         close(fd);
         if (status != 0)
             return fail(map_errno(saved_errno), errno_message(saved_errno));
+#endif
     }
     out_entry->struct_size = sizeof(nk_filesystem_entry);
     fill_entry(info, *out_entry);

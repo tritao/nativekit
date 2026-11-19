@@ -18,8 +18,8 @@ target_include_directories(nativekit_filesystem
 
 if(WIN32)
     target_sources(nativekit_filesystem PRIVATE src/windows.cpp)
-elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    target_sources(nativekit_filesystem PRIVATE src/linux.cpp)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR APPLE)
+    target_sources(nativekit_filesystem PRIVATE src/posix.cpp)
 else()
     target_sources(nativekit_filesystem PRIVATE src/unsupported.cpp)
 endif()
@@ -42,7 +42,7 @@ install(TARGETS nativekit_filesystem EXPORT NativeKitTargets
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 if(NK_BUILD_TESTS)
-    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR APPLE)
         add_executable(nativekit_filesystem_tests tests/filesystem.cpp)
     else()
         add_executable(nativekit_filesystem_tests tests/unsupported.cpp)

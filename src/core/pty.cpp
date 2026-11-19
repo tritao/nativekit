@@ -756,6 +756,9 @@ nk_result NK_CALL nk_pty_spawn(const char *program, const char *const *argv, uin
         rlimit descriptor_limit{};
         if (::getrlimit(RLIMIT_NOFILE, &descriptor_limit) != 0)
             return fail(NK_ERROR_UNKNOWN, "could not read descriptor limit");
+#if defined(__APPLE__)
+        const int descriptor_count = ::getdtablesize();
+#endif
         const pid_t child = ::forkpty(&master, nullptr, nullptr, &size);
         if (child < 0)
             return fail(NK_ERROR_UNKNOWN, "forkpty failed");
@@ -763,7 +766,8 @@ nk_result NK_CALL nk_pty_spawn(const char *program, const char *const *argv, uin
             // PTY programs inherit only stdin/stdout/stderr, never host locks,
             // listener sockets or another terminal's master descriptor.
 #if defined(__APPLE__)
-            ::closefrom(3);
+            for (int fd = 3; fd < descriptor_count; ++fd)
+                ::close(fd);
 #else
 #if defined(SYS_close_range)
             if (::syscall(SYS_close_range, 3u, ~0u, 0u) != 0)

@@ -53,8 +53,9 @@ int32_t set(const Request &request, const uint8_t *secret, uint32_t secret_size)
             (__bridge id)kSecValueData : data,
             (__bridge id)kSecAttrAccessible : (__bridge id)kSecAttrAccessibleAfterFirstUnlock,
         };
-        OSStatus status = SecItemAdd((__bridge CFDictionaryRef)[query
-            dictionaryByAddingEntriesFromDictionary:values], nullptr);
+        NSMutableDictionary *add_query = [query mutableCopy];
+        [add_query addEntriesFromDictionary:values];
+        OSStatus status = SecItemAdd((__bridge CFDictionaryRef)add_query, nullptr);
         if (status == errSecDuplicateItem)
             status = SecItemUpdate((__bridge CFDictionaryRef)query,
                                    (__bridge CFDictionaryRef)values);
