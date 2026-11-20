@@ -451,6 +451,13 @@ if(APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     set_target_properties(nativekit_osx_surface_metal PROPERTIES LINKER_LANGUAGE OBJCXX)
     add_test(NAME osx_surface_metal COMMAND nativekit_osx_surface_metal)
     set_tests_properties(osx_surface_metal PROPERTIES LABELS "macos;graphics" SKIP_RETURN_CODE 77)
+    add_executable(nativekit_osx_surface_resize integration/osx_surface_resize.mm)
+    target_link_libraries(nativekit_osx_surface_resize PRIVATE NativeKit::nativekit
+                          "-framework Cocoa" "-framework QuartzCore")
+    set_target_properties(nativekit_osx_surface_resize PROPERTIES LINKER_LANGUAGE OBJCXX)
+    add_test(NAME osx_surface_resize COMMAND nativekit_osx_surface_resize)
+    set_tests_properties(osx_surface_resize PROPERTIES LABELS "macos;graphics" SKIP_RETURN_CODE 77
+                         TIMEOUT 60)
     add_executable(nativekit_osx_text_input integration/osx_text_input.mm)
     target_link_libraries(nativekit_osx_text_input PRIVATE NativeKit::nativekit "-framework Cocoa")
     set_target_properties(nativekit_osx_text_input PROPERTIES LINKER_LANGUAGE OBJCXX)

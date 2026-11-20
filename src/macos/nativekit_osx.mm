@@ -5242,6 +5242,11 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
             resource->layer.framebufferOnly = YES;
             resource->layer.opaque = (options->flags & NK_SURFACE_ALPHA) == 0;
             resource->view.layer = resource->layer;
+            // Until a frame at the new size is presented, the layer shows the previous drawable.
+            // AppKit's default placement scales it into the new bounds, so a window being resized
+            // shows the whole UI shrinking or growing with it. Pinning it to the top-left keeps
+            // the stale frame at its own size, clipped or uncovered, as other backends do.
+            resource->view.layerContentsPlacement = NSViewLayerContentsPlacementTopLeft;
             resource->view.hidden = (options->flags & NK_SURFACE_HIDDEN) != 0;
             resource->accessibility_container = [[NKMacAccessibilityContainer alloc]
                 initWithFrame:NSMakeRect(resource->x, resource->y, resource->width,
