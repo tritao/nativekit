@@ -44,7 +44,18 @@ void NK_CALL event(void *user_data, nk_trace_event_kind kind, uint64_t, int64_t,
 const nk_trace_sink sink{
     sizeof(nk_trace_sink), 0, &recorder, &enabled, zone_begin, zone_end, event};
 
+/* A wait returns at once, before its zone, while events are queued; a platform may queue some at
+ * nk_init (macOS does), so take them first. */
 void wait_briefly() {
+    for (;;) {
+        nk_event event{};
+        event.struct_size = sizeof(event);
+        assert(nk_poll_event(&event) == NK_OK);
+        const bool none = event.kind == NK_EVENT_NONE;
+        nk_event_release(&event);
+        if (none)
+            break;
+    }
     assert(nk_wait_events_timeout(0.002) == NK_OK);
 }
 
@@ -69,7 +80,9 @@ int main() {
 
     // An installed sink sees each wait as a zone.
     nk_set_trace_sink(&sink);
-    wait_briefly();
+    /* A platform may queue another event while the test drains; one real wait is enough. */
+    for (int attempt = 0; attempt < 20 && !waited_in_zone(); ++attempt)
+        wait_briefly();
     assert(waited_in_zone());
 
     // While the host's switch is off, nothing is called.
