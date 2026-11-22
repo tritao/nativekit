@@ -107,7 +107,38 @@ endif()
 add_executable(nativekit_transport_contract_test unit/transport_contract.cpp)
 target_compile_features(nativekit_transport_contract_test PRIVATE cxx_std_17)
 target_link_libraries(nativekit_transport_contract_test PRIVATE NativeKit::nativekit)
-add_test(NAME transport_contract COMMAND nativekit_transport_contract_test)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID)
+    # Secure clients load libcurl at run time. The second run puts a libcurl.so.4 without
+    # curl's symbols first on the library path, as on a system whose libcurl is unusable.
+    find_library(NK_TEST_SYSTEM_CURL NAMES libcurl.so.4 libcurl-gnutls.so.4)
+    if(NK_TEST_SYSTEM_CURL)
+        add_test(NAME transport_contract COMMAND nativekit_transport_contract_test --secure-client)
+    else()
+        add_test(NAME transport_contract COMMAND nativekit_transport_contract_test)
+    endif()
+    add_library(nativekit_unusable_curl SHARED unit/unusable_library.c)
+    set_target_properties(nativekit_unusable_curl PROPERTIES
+        OUTPUT_NAME curl
+        SOVERSION 4
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/unusable-curl")
+    add_dependencies(nativekit_transport_contract_test nativekit_unusable_curl)
+    add_test(NAME transport_contract_without_tls
+        COMMAND nativekit_transport_contract_test --no-secure-client)
+    set_tests_properties(transport_contract_without_tls PROPERTIES
+        LABELS "network" TIMEOUT 30
+        ENVIRONMENT "LD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}/unusable-curl")
+    find_path(NK_CURL_INCLUDE_DIR curl/curl.h)
+    if(NK_CURL_INCLUDE_DIR)
+        # NativeKit declares the libcurl ABI it uses; compare it with curl's own header.
+        add_executable(nativekit_curl_abi_test unit/curl_abi.cpp)
+        target_compile_features(nativekit_curl_abi_test PRIVATE cxx_std_17)
+        target_include_directories(nativekit_curl_abi_test PRIVATE
+            ${PROJECT_SOURCE_DIR}/src ${NK_CURL_INCLUDE_DIR})
+        add_test(NAME curl_abi COMMAND nativekit_curl_abi_test)
+    endif()
+else()
+    add_test(NAME transport_contract COMMAND nativekit_transport_contract_test)
+endif()
 set_tests_properties(transport_contract PROPERTIES LABELS "network" TIMEOUT 30)
 
 if(UNIX AND NOT ANDROID AND NOT EMSCRIPTEN)

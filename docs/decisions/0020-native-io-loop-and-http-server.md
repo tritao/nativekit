@@ -11,7 +11,7 @@ Every native I/O resource in NativeKit owns a thread today:
 | Subsystem | Today |
 | --- | --- |
 | TCP, WebSocket and local-socket transports and listeners | one thread per connection and per listener, blocking `poll`/`select` |
-| Secure WebSocket client (libwebsockets) | one thread per connection, `lws_service` every 25 ms |
+| Secure WebSocket client (platform TLS) | one or two threads per connection (WinHTTP, URLSession, a libcurl or Java TLS pump) |
 | Linux HTTP client (libcurl) | one detached thread per request, `curl_easy_perform` |
 | File watching | one thread per watch |
 | PTY | one monitor thread per PTY, polling every 20 ms |
@@ -69,10 +69,9 @@ Each step is independent and lands only when it is measured to be no worse:
 1. `nk_http_server`: new code, nothing migrates.
 2. TCP, WebSocket and local-socket transports move onto the loop, ending the
    thread per connection. llhttp parses the WebSocket handshake on both sides.
-3. The secure WebSocket client runs on the same loop through libwebsockets'
-   libuv integration (`LWS_WITH_LIBUV`), or is replaced by a simpler client
-   if one proves sufficient. libuv is the only libwebsockets event-loop
-   backend NativeKit uses.
+3. The secure WebSocket client keeps the platform's TLS. On Linux and
+   Android, where NativeKit frames over a TLS byte stream, the stream's pump
+   can move onto the loop; WinHTTP and URLSession keep their own threads.
 4. PTY I/O uses `uv_poll` on the PTY's descriptor, ending the 20 ms poll.
 5. The Linux libcurl client may move to the loop through the `multi_socket`
    API. Android, Apple and Windows keep their platform HTTP stacks (ADR 0011).

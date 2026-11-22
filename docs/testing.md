@@ -181,7 +181,9 @@ reliable CI interaction surface.
 ## WebSocket message-mode regressions
 
 `transport_contract` checks byte-stream compatibility plus opt-in text/message mode on both client and listener: back-to-back
-messages, an empty message, short-buffer size reporting without consumption, and invalid text/options. `net_contract` checks
+messages, an empty message, short-buffer size reporting without consumption, and invalid text/options. On Linux it requires a
+secure client when libcurl is installed, and `transport_contract_without_tls` runs it again with an unusable `libcurl.so.4`
+first on the library path to check that the capability disappears and secure connects return `NK_ERROR_UNSUPPORTED`. `net_contract` checks
 HTTP and `c_abi` checks the public C ABI.
 
 Two optional loopback fixtures require Python's `websockets` package. They never contact an external service:
@@ -195,8 +197,8 @@ python3 tools/test-web-transport.py build-web
 ```
 
 The WSS fixture creates a temporary localhost certificate and passes its CA file only to the probe process; it does not alter
-system trust or disable verification. It checks text writes, empty messages, ping handling, and a 20 kB message fragmented
-across libwebsockets callbacks. The Chrome fixture checks text sends, fragmented replies, empty messages and atomic receives
+system trust or disable verification. It checks text writes, empty messages, ping handling, and a 20 kB reply the server
+fragments into 1000-byte frames. The Chrome fixture checks text sends, fragmented replies, empty messages and atomic receives
 through Emscripten. Both fixtures clean up their owned processes and temporary files.
 
 `NK_TRANSPORT_MESSAGES` preserves complete WebSocket messages. `NK_TRANSPORT_TEXT` selects UTF-8 text sends without embedded

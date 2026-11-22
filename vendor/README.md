@@ -14,7 +14,6 @@ Materia projects rather than NativeKit vendor dependencies.
 
 | Path | Purpose |
 |---|---|
-| `libwebsockets` | Native WebSocket client/server and platform-default TLS integration |
 | `sokol` | Shared graphics implementation source |
 | `SDL_GameControllerDB` | Generated controller mapping database source |
 | `miniaudio` | Audio playback backend |

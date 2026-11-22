@@ -1001,6 +1001,19 @@ and Web/WASM uses Fetch. If a transport is unavailable, HTTP calls return
 `NK_ERROR_UNSUPPORTED` and the corresponding capability bits are not reported.
 Query `NK_CAP_HTTP_STREAMING` before using streaming requests.
 
+### Secure WebSocket clients
+
+`NK_TRANSPORT_SECURE` (wss://) uses the platform's TLS and certificate trust:
+Windows uses WinHTTP's WebSocket client, Apple platforms use
+`NSURLSessionWebSocketTask`, Android uses a `javax.net.ssl` socket with
+NativeKit's own WebSocket framing, Linux uses libcurl for the TLS connection
+with NativeKit's framing, and Web/WASM uses the browser's `WebSocket`. Linux
+loads libcurl when it is first needed and honors `SSL_CERT_FILE` and
+`SSL_CERT_DIR`. When the platform provides no TLS client,
+`nk_transport_query_capabilities()` omits `NK_TRANSPORT_CAP_SECURE_CLIENT` and
+`nk_transport_connect()` with `NK_TRANSPORT_SECURE` returns
+`NK_ERROR_UNSUPPORTED`.
+
 ## URI resources and sharing
 
 `nk_resource` carries an absolute URI plus optional MIME type and display name.
