@@ -26,6 +26,7 @@ add_executable(nativekit_core_tests
 )
 target_compile_features(nativekit_core_tests PRIVATE cxx_std_17)
 target_include_directories(nativekit_core_tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
+target_compile_definitions(nativekit_core_tests PRIVATE NK_INTERNAL_SOURCE_COPY)
 target_link_libraries(nativekit_core_tests PRIVATE NativeKit::nativekit)
 if(MSVC)
     target_compile_options(nativekit_core_tests PRIVATE /EHsc)
@@ -94,6 +95,7 @@ add_executable(nativekit_worker_pool_tests
     ${PROJECT_SOURCE_DIR}/src/core/worker_pool.cpp)
 target_compile_features(nativekit_worker_pool_tests PRIVATE cxx_std_17)
 target_include_directories(nativekit_worker_pool_tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
+target_compile_definitions(nativekit_worker_pool_tests PRIVATE NK_INTERNAL_SOURCE_COPY)
 target_link_libraries(nativekit_worker_pool_tests PRIVATE NativeKit::nativekit)
 add_test(NAME worker_pool COMMAND nativekit_worker_pool_tests)
 

@@ -1,3 +1,8 @@
+if(NOT EXISTS "${NK_VENDOR_DIR}/miniaudio/miniaudio.h" OR
+   NOT EXISTS "${NK_VENDOR_DIR}/miniaudio/miniaudio.c")
+    message(FATAL_ERROR "miniaudio submodule is missing; run git submodule update --init")
+endif()
+
 if(NOT EXISTS "${NK_VENDOR_DIR}/daisysp/Source/daisysp.h")
     message(FATAL_ERROR "DaisySP submodule is missing; run git submodule update --init")
 endif()
@@ -13,6 +18,21 @@ foreach(NK_SIGNALSMITH_FILE
         message(FATAL_ERROR "Signalsmith submodules are missing; run git submodule update --init --recursive")
     endif()
 endforeach()
+
+add_library(nativekit_miniaudio OBJECT "${NK_VENDOR_DIR}/miniaudio/miniaudio.c")
+target_include_directories(nativekit_miniaudio PRIVATE "${NK_VENDOR_DIR}/miniaudio")
+target_compile_definitions(nativekit_miniaudio PRIVATE MA_NO_ENCODING)
+set_target_properties(nativekit_miniaudio PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    C_VISIBILITY_PRESET hidden)
+if(EMSCRIPTEN)
+    target_compile_definitions(nativekit_miniaudio PRIVATE
+        MA_NO_RUNTIME_LINKING MA_ENABLE_ONLY_SPECIFIC_BACKENDS MA_ENABLE_WEBAUDIO)
+    if(NK_AUDIO_WEB_WORKLETS)
+        target_compile_definitions(nativekit_miniaudio PRIVATE MA_ENABLE_AUDIO_WORKLETS)
+        target_compile_options(nativekit_miniaudio PRIVATE -pthread)
+    endif()
+endif()
 
 add_library(nativekit_daisysp OBJECT
     "${NK_VENDOR_DIR}/daisysp/Source/Dynamics/crossfade.cpp"
@@ -47,8 +67,10 @@ add_library(nativekit_daisysp OBJECT
 target_compile_features(nativekit_daisysp PRIVATE cxx_std_17)
 # All Daisy headers and compiled sources must share the host random binding.
 target_compile_definitions(nativekit_daisysp PRIVATE DAISYSP_SCOPED_RANDOM)
-target_compile_definitions(nativekit PRIVATE DAISYSP_SCOPED_RANDOM)
-set_target_properties(nativekit_daisysp PROPERTIES POSITION_INDEPENDENT_CODE ON)
+set_target_properties(nativekit_daisysp PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN YES)
 target_include_directories(nativekit_daisysp SYSTEM PRIVATE
     "${NK_VENDOR_DIR}/daisysp/Source"
     "${NK_VENDOR_DIR}/daisysp/Source/Utility"
@@ -57,8 +79,14 @@ target_include_directories(nativekit_daisysp SYSTEM PRIVATE
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
     target_compile_options(nativekit_daisysp PRIVATE -Wno-enum-compare-conditional)
 endif()
+if(NK_AUDIO_WEB_WORKLETS)
+    target_compile_options(nativekit_daisysp PRIVATE -pthread)
+endif()
 
-target_sources(nativekit PRIVATE
+# Audio is its own library on top of the public NativeKit runtime, so the core
+# library is the same whether or not audio is built. It reaches NativeKit's
+# handles, events, errors and workers through the internal module bridge.
+add_library(nativekit_audio ${NK_LIBRARY_TYPE}
     src/audio.cpp
     src/audio_effect_processor.cpp
     src/audio_delay_processor.cpp
@@ -67,31 +95,65 @@ target_sources(nativekit PRIVATE
     src/audio_soundfont.cpp
     src/audio_dsp_backend.cpp
     src/audio_daisy_source.cpp
+    $<TARGET_OBJECTS:nativekit_miniaudio>
     $<TARGET_OBJECTS:nativekit_daisysp>)
-
-target_compile_definitions(nativekit PRIVATE NKAUDIO_BUILDING_LIBRARY)
-target_include_directories(nativekit PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/include"
-    "${NK_VENDOR_DIR}/miniaudio")
-target_include_directories(nativekit SYSTEM PRIVATE
+add_library(NativeKit::audio ALIAS nativekit_audio)
+target_compile_features(nativekit_audio PRIVATE cxx_std_17)
+target_compile_definitions(nativekit_audio PRIVATE NKAUDIO_BUILDING_LIBRARY DAISYSP_SCOPED_RANDOM)
+if(NK_ENABLE_NO_EXCEPTIONS)
+    target_compile_definitions(nativekit_audio PRIVATE NK_ENABLE_NO_EXCEPTIONS=1)
+    if(MSVC)
+        target_compile_options(nativekit_audio PRIVATE /EHs-c-)
+    else()
+        target_compile_options(nativekit_audio PRIVATE -fno-exceptions)
+    endif()
+endif()
+target_include_directories(nativekit_audio
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    PRIVATE
+        "${PROJECT_SOURCE_DIR}/src"
+        "${NK_VENDOR_DIR}/miniaudio")
+target_include_directories(nativekit_audio SYSTEM PRIVATE
     "${NK_VENDOR_DIR}/daisysp/Source"
     "${NK_VENDOR_DIR}/daisysp/Source/Utility"
     "${NK_VENDOR_DIR}/signalsmith-basics/include"
     "${NK_VENDOR_DIR}/signalsmith-dsp/include"
     "${NK_VENDOR_DIR}/tinysoundfont")
-if(APPLE)
-    target_link_libraries(nativekit PRIVATE "-framework CoreAudio" "-framework AudioToolbox")
+target_link_libraries(nativekit_audio PUBLIC NativeKit::nativekit)
+if(MSVC)
+    target_compile_options(nativekit_audio PRIVATE /W4 /permissive-)
+else()
+    target_compile_options(nativekit_audio PRIVATE -Wall -Wextra -Wpedantic)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        target_compile_options(nativekit_audio PRIVATE
+            -Wno-nullability-extension -Wno-nullability-completeness)
+    endif()
 endif()
-
-add_library(nativekit_audio INTERFACE)
-add_library(NativeKit::audio ALIAS nativekit_audio)
-target_include_directories(nativekit_audio
-    INTERFACE
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
-target_link_libraries(nativekit_audio INTERFACE NativeKit::nativekit)
-set_target_properties(nativekit_audio PROPERTIES EXPORT_NAME audio)
+if(APPLE)
+    target_link_libraries(nativekit_audio PRIVATE "-framework CoreAudio" "-framework AudioToolbox")
+elseif(UNIX AND NOT EMSCRIPTEN)
+    find_package(Threads REQUIRED)
+    target_link_libraries(nativekit_audio PRIVATE ${CMAKE_DL_LIBS} Threads::Threads m)
+endif()
+if(NK_AUDIO_WEB_WORKLETS)
+    target_compile_options(nativekit_audio PUBLIC -pthread)
+    target_link_options(nativekit_audio INTERFACE
+        -pthread -sAUDIO_WORKLET=1 -sWASM_WORKERS=1 -sASYNCIFY)
+endif()
+if(NK_ENABLE_SANITIZERS AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(nativekit_audio PRIVATE
+        -fsanitize=address,undefined -fno-omit-frame-pointer)
+    target_link_options(nativekit_audio PRIVATE -fsanitize=address,undefined)
+endif()
+set_target_properties(nativekit_audio PROPERTIES
+    EXPORT_NAME audio
+    C_VISIBILITY_PRESET hidden
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN YES
+    VERSION ${PROJECT_VERSION}
+    SOVERSION 0)
 
 add_library(nativekit_audio_graph INTERFACE)
 add_library(NativeKit::audio_graph ALIAS nativekit_audio_graph)
@@ -123,7 +185,7 @@ if(NK_BUILD_TESTS)
     add_test(NAME miniaudio_detach COMMAND nativekit_miniaudio_detach_tests)
     set_tests_properties(miniaudio_detach PROPERTIES LABELS "audio" TIMEOUT 15)
 
-    target_compile_definitions(nativekit PRIVATE NK_AUDIO_TESTING)
+    target_compile_definitions(nativekit_audio PRIVATE NK_AUDIO_TESTING)
     add_executable(nativekit_audio_multi_dsp_tests tests/audio_multi_dsp.cpp)
     target_compile_features(nativekit_audio_multi_dsp_tests PRIVATE cxx_std_17)
     target_link_libraries(nativekit_audio_multi_dsp_tests PRIVATE NativeKit::audio_graph)
@@ -226,6 +288,9 @@ if(NK_BUILD_EXAMPLES)
 endif()
 
 install(TARGETS nativekit_audio nativekit_audio_graph nativekit_audio_dsp EXPORT NativeKitTargets
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES "${NK_VENDOR_DIR}/miniaudio/LICENSE"

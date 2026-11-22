@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/internal_api.hpp"
 #include "nativekit.h"
 
 #include <cstdint>
@@ -56,11 +57,11 @@ struct Resource {
 
 class HandleRegistry {
   public:
-    nk_handle insert(ResourceType type, std::shared_ptr<Resource> resource);
-    std::shared_ptr<Resource> get(nk_handle handle, ResourceType type) const;
-    std::vector<nk_handle> handles_of_type(ResourceType type) const;
+    NK_INTERNAL_API nk_handle insert(ResourceType type, std::shared_ptr<Resource> resource);
+    NK_INTERNAL_API std::shared_ptr<Resource> get(nk_handle handle, ResourceType type) const;
+    NK_INTERNAL_API std::vector<nk_handle> handles_of_type(ResourceType type) const;
     // Removal invalidates handles under the lock; resource destruction occurs outside it.
-    bool erase(nk_handle handle, ResourceType type);
+    NK_INTERNAL_API bool erase(nk_handle handle, ResourceType type);
     void clear();
 
   private:
