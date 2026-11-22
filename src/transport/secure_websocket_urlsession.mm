@@ -178,7 +178,7 @@ class API_AVAILABLE(macos(10.15), ios(13.0)) URLSessionWebSocket final : public 
     }
 
     nk_result receive(std::vector<uint8_t> &message, std::size_t max_size) noexcept override {
-        NSURLSessionWebSocketTask *task = current_task();
+        NSURLSessionWebSocketTask *task = active_task();
         if (!task)
             return NK_TRANSPORT_ERROR_CLOSED;
         struct Received {
@@ -218,7 +218,7 @@ class API_AVAILABLE(macos(10.15), ios(13.0)) URLSessionWebSocket final : public 
     }
 
     nk_result send(const uint8_t *data, std::size_t size, bool text) noexcept override {
-        NSURLSessionWebSocketTask *task = current_task();
+        NSURLSessionWebSocketTask *task = active_task();
         if (!task)
             return NK_TRANSPORT_ERROR_CLOSED;
         NSURLSessionWebSocketMessage *message = nil;
@@ -267,7 +267,7 @@ class API_AVAILABLE(macos(10.15), ios(13.0)) URLSessionWebSocket final : public 
     }
 
   private:
-    NSURLSessionWebSocketTask *current_task() noexcept {
+    NSURLSessionWebSocketTask *active_task() noexcept {
         std::lock_guard lock(state_->mutex);
         return state_->cancelled ? nil : task_;
     }
