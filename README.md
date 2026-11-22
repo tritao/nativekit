@@ -94,8 +94,11 @@ maintained in the [platform parity contract](docs/platform-parity.md).
   of the window's resizable flag. Set `data-nativekit-sizing="native"` on an
   existing canvas to opt into pixel dimensions controlled by NativeKit's window
   and surface APIs. Canvases created by NativeKit default to this native policy.
-- Linux desktop support requires GTK 3 and WebKitGTK 4.1. Without them, the
-  library builds with a stub backend and reports the services as unsupported.
+- Linux desktop support is built against GTK 3; without its development files
+  the library builds with a stub backend and reports the services as
+  unsupported. WebKitGTK 4.1 is opened at run time when the first WebView is
+  created: without it, `NK_CAP_WEBVIEW` is not reported and WebView calls
+  return `NK_ERROR_UNSUPPORTED`.
 - Windows WebViews require the Microsoft Edge WebView2 Evergreen Runtime.
   The pinned WebView2 SDK is fetched at configure time unless
   `-DNK_ENABLE_WEBVIEW2=OFF` is used.
@@ -145,9 +148,10 @@ links to the stripped libraries.
 The experimental low-level GPU module remains optional so the core platform
 library stays compact; enable it with `-DNK_BUILD_GPU=ON`. HTTP networking is
 part of the main NativeKit library and is available as a runtime capability.
-On Linux, opt into the system libcurl backend with
-`-DNK_USE_SYSTEM_CURL=ON`; when curl is unavailable, the API remains present
-but reports `NK_ERROR_UNSUPPORTED`. Module architecture and build notes live
+On Linux, NativeKit opens the system libcurl (`libcurl.so.4`) the first time
+HTTP or a secure WebSocket is used; building needs no curl development files.
+Without libcurl the API remains present but reports `NK_ERROR_UNSUPPORTED`.
+Module architecture and build notes live
 under [`modules/`](modules/). The UI framework, browser showcase, and visual
 test tooling now live in the sibling `uikit` project.
 

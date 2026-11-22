@@ -27,8 +27,6 @@ option(NK_BUILD_CREDENTIALS "Build the optional OS credential-store module" OFF)
 option(NK_BUILD_FILESYSTEM "Build the optional root-scoped filesystem module" OFF)
 option(NK_BUILD_GPU_BACKEND_MATRIX
     "Enable runtime GLCore/GLES3 Sokol dispatch (desktop Linux only)" OFF)
-option(NK_USE_SYSTEM_CURL "Use the system libcurl for the Linux networking backend" OFF)
-set(NK_NET_BACKEND_CURL OFF)
 # STL containers remain in use while this migration is staged. With this option
 # enabled, production targets use a fail-fast C ABI: C++ allocation and thread
 # failures are not translated because exceptions are disabled. Turn it off for
@@ -252,7 +250,6 @@ if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
     find_package(PkgConfig QUIET)
     if(PkgConfig_FOUND)
         pkg_check_modules(GTK3 QUIET IMPORTED_TARGET gtk+-3.0)
-        pkg_check_modules(WEBKITGTK QUIET IMPORTED_TARGET webkit2gtk-4.1)
     endif()
 endif()
 
@@ -345,18 +342,15 @@ elseif(APPLE)
         "-framework CoreHaptics")
 elseif(TARGET PkgConfig::GTK3)
     set(NK_BACKEND_GTK_AVAILABLE TRUE)
+    # WebKitGTK is opened when the first WebView is created (src/linux/webkitgtk_runtime.hpp),
+    # so WebViews depend on the running system, not on the build machine.
     target_sources(nativekit PRIVATE
         src/linux/nativekit_gtk.cpp
         src/linux/nativekit_gtk_menu.cpp
-        src/linux/nativekit_linux_joystick.cpp)
+        src/linux/nativekit_linux_joystick.cpp
+        src/linux/webkitgtk_runtime.cpp)
     target_link_libraries(nativekit PRIVATE PkgConfig::GTK3 ${CMAKE_DL_LIBS})
     target_compile_definitions(nativekit PRIVATE NK_BACKEND_GTK=1)
-    if(TARGET PkgConfig::WEBKITGTK)
-        target_link_libraries(nativekit PRIVATE PkgConfig::WEBKITGTK)
-        target_compile_definitions(nativekit PRIVATE NK_HAS_WEBKITGTK=1)
-    else()
-        message(STATUS "WebKitGTK is unavailable; GTK windowing remains enabled without WebView")
-    endif()
 else()
     target_sources(nativekit PRIVATE src/core/stub.cpp)
 endif()
@@ -385,19 +379,9 @@ elseif(WIN32)
     target_sources(nativekit PRIVATE src/net/net_winhttp.cpp)
     target_link_libraries(nativekit PRIVATE winhttp ws2_32)
 elseif(UNIX)
-    if(NK_USE_SYSTEM_CURL)
-        find_package(CURL QUIET)
-    endif()
-    if(NK_USE_SYSTEM_CURL AND CURL_FOUND)
-        target_sources(nativekit PRIVATE src/net/net_curl.cpp)
-        target_link_libraries(nativekit PRIVATE CURL::libcurl)
-        set(NK_NET_BACKEND_CURL ON)
-    else()
-        target_sources(nativekit PRIVATE src/net/net_unsupported.cpp)
-        if(NK_USE_SYSTEM_CURL)
-            message(STATUS "System libcurl is unavailable; HTTP capability is disabled")
-        endif()
-    endif()
+    # libcurl is opened when HTTP or a secure WebSocket is first used, so building needs no
+    # curl development files and a system without libcurl reports both as unavailable.
+    target_sources(nativekit PRIVATE src/net/net_curl.cpp src/net/curl_runtime.cpp)
 else()
     target_sources(nativekit PRIVATE src/net/net_unsupported.cpp)
 endif()
@@ -414,7 +398,7 @@ elseif(ANDROID)
     target_sources(nativekit PRIVATE src/transport/tls_stream_android.cpp)
     target_compile_definitions(nativekit PRIVATE NK_SECURE_WEBSOCKET_STREAM=1)
 elseif(UNIX AND NOT EMSCRIPTEN)
-    target_sources(nativekit PRIVATE src/net/curl_runtime.cpp src/transport/tls_stream_curl.cpp)
+    target_sources(nativekit PRIVATE src/transport/tls_stream_curl.cpp)
     target_compile_definitions(nativekit PRIVATE NK_SECURE_WEBSOCKET_STREAM=1)
 endif()
 

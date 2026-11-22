@@ -27,6 +27,7 @@
 #include "core/text_input_geometry.hpp"
 #include "core/surface_frame.hpp"
 #include "core/trace.hpp"
+#include "linux/webkitgtk_runtime.hpp"
 
 #include <clocale>
 #include <gtk/gtk.h>
@@ -37,9 +38,6 @@
 #endif
 #ifdef GDK_WINDOWING_X11
 #include <gdk/gdkx.h>
-#endif
-#if defined(NK_HAS_WEBKITGTK)
-#include <webkit2/webkit2.h>
 #endif
 
 #include <dlfcn.h>
@@ -1431,7 +1429,6 @@ void remove_gtk_accessibility_descendants(
         nodes.erase(id);
 }
 
-#if defined(NK_HAS_WEBKITGTK)
 struct GtkWebViewResource final : nk::core::Resource {
     GtkWidget *widget = nullptr;
     WebKitUserContentManager *content_manager = nullptr;
@@ -1480,7 +1477,6 @@ struct EvalContext {
     nk_request_id request;
     uint64_t generation;
 };
-#endif
 
 struct DialogContext {
     GtkWidget *checkbox = nullptr;
@@ -1559,12 +1555,10 @@ void on_clipboard_owner_change(GtkClipboard *, GdkEventOwnerChange *event, gpoin
         watch->changed(event);
 }
 
-#if defined(NK_HAS_WEBKITGTK)
 struct NavigationDecision {
     nk_handle source;
     WebKitPolicyDecision *decision;
 };
-#endif
 
 struct NotificationRequest {
     uint32_t server_id = 0;
@@ -1585,10 +1579,8 @@ gulong monitor_removed_signal = 0;
 std::unordered_map<GdkMonitor *, nk_handle> monitor_handles;
 std::unordered_map<GdkMonitor *, nk_orientation> monitor_orientations;
 std::unordered_map<nk_request_id, DialogContext *> dialogs;
-#if defined(NK_HAS_WEBKITGTK)
 std::unordered_map<nk_request_id, NavigationDecision> navigation_decisions;
 std::unordered_map<nk_request_id, nk_handle> evaluations;
-#endif
 std::unordered_map<nk_request_id, NotificationRequest> notifications;
 std::unordered_map<uint32_t, nk_request_id> notification_ids;
 GDBusConnection *notification_bus = nullptr;
@@ -1605,6 +1597,20 @@ nk_result fail(nk_result result, std::string_view message) {
 nk_result enter_ui() {
     nk::core::clear_error();
     return nk::core::require_ui_thread();
+}
+
+/** WebKitGTK is loaded on first use; WebViews exist only where it loaded. */
+nk_result require_webkit() {
+    return nk::webkitgtk::api()
+               ? NK_OK
+               : fail(
+                     NK_ERROR_UNSUPPORTED,
+                     "GTK WebView support is unavailable: libwebkit2gtk-4.1.so.0 is not installed");
+}
+
+/** The loaded WebKitGTK; call only where a WebView exists or require_webkit() succeeded. */
+const nk::webkitgtk::Api &webkit() noexcept {
+    return *nk::webkitgtk::api();
 }
 
 // gtk_init_check installs the user's locale for every category. Numbers in this process (JSON,
@@ -2371,31 +2377,29 @@ gboolean on_window_state(GtkWidget *, GdkEventWindowState *state, gpointer data)
     return FALSE;
 }
 
-#if defined(NK_HAS_WEBKITGTK)
 uint32_t navigation_error_category(const GError *error) {
-    if (error->domain == WEBKIT_NETWORK_ERROR) {
+    if (error->domain == webkit().webkit_network_error_quark()) {
         switch (error->code) {
-        case WEBKIT_NETWORK_ERROR_UNKNOWN_PROTOCOL:
+        case nk::webkitgtk::network_error_unknown_protocol:
             return NK_NAVIGATION_ERROR_REQUEST;
-        case WEBKIT_NETWORK_ERROR_CANCELLED:
+        case nk::webkitgtk::network_error_cancelled:
             return NK_NAVIGATION_ERROR_CANCELLED;
-        case WEBKIT_NETWORK_ERROR_FILE_DOES_NOT_EXIST:
+        case nk::webkitgtk::network_error_file_does_not_exist:
             return NK_NAVIGATION_ERROR_NOT_FOUND;
-        case WEBKIT_NETWORK_ERROR_TRANSPORT:
+        case nk::webkitgtk::network_error_transport:
             return NK_NAVIGATION_ERROR_CONNECTION;
         default:
             break;
         }
-    } else if (error->domain == WEBKIT_POLICY_ERROR) {
-        return error->code == WEBKIT_POLICY_ERROR_CANNOT_USE_RESTRICTED_PORT
+    } else if (error->domain == webkit().webkit_policy_error_quark()) {
+        return error->code == nk::webkitgtk::policy_error_cannot_use_restricted_port
                    ? NK_NAVIGATION_ERROR_SECURITY
                    : NK_NAVIGATION_ERROR_REQUEST;
     }
     return NK_NAVIGATION_ERROR_OTHER;
 }
 
-gboolean on_webview_load_failed(WebKitWebView *, WebKitLoadEvent, const char *, GError *error,
-                                gpointer data) {
+gboolean on_webview_load_failed(WebKitWebView *, int, const char *, GError *error, gpointer data) {
     nk::core::callback_boundary([&] {
         const auto *resource = static_cast<GtkWebViewResource *>(data);
         if (!nk::core::is_runtime_generation(resource->generation))
@@ -2411,8 +2415,7 @@ gboolean on_webview_load_failed(WebKitWebView *, WebKitLoadEvent, const char *, 
     return FALSE;
 }
 
-void on_webview_process_terminated(WebKitWebView *, WebKitWebProcessTerminationReason reason,
-                                   gpointer data) {
+void on_webview_process_terminated(WebKitWebView *, int reason, gpointer data) {
     const auto *resource = static_cast<GtkWebViewResource *>(data);
     if (!nk::core::is_runtime_generation(resource->generation))
         return;
@@ -2424,8 +2427,8 @@ void on_webview_process_terminated(WebKitWebView *, WebKitWebProcessTerminationR
     nk::core::push_event(std::move(event));
 }
 
-void on_webview_load(WebKitWebView *view, WebKitLoadEvent load_event, gpointer data) {
-    if (load_event != WEBKIT_LOAD_FINISHED)
+void on_webview_load(WebKitWebView *view, int load_event, gpointer data) {
+    if (load_event != nk::webkitgtk::load_finished)
         return;
     nk::core::callback_boundary([&] {
         const auto *resource = static_cast<GtkWebViewResource *>(data);
@@ -2434,7 +2437,7 @@ void on_webview_load(WebKitWebView *view, WebKitLoadEvent load_event, gpointer d
         nk::core::QueuedEvent event;
         event.kind = NK_EVENT_WEBVIEW_NAVIGATED;
         event.source = resource->handle;
-        event.data = bytes(webkit_web_view_get_uri(view));
+        event.data = bytes(webkit().webkit_web_view_get_uri(view));
         nk::core::push_event(std::move(event));
     });
 }
@@ -2447,7 +2450,7 @@ void on_webview_title(WebKitWebView *view, GParamSpec *, gpointer data) {
         nk::core::QueuedEvent event;
         event.kind = NK_EVENT_WEBVIEW_TITLE_CHANGED;
         event.source = resource->handle;
-        event.data = bytes(webkit_web_view_get_title(view));
+        event.data = bytes(webkit().webkit_web_view_get_title(view));
         nk::core::push_event(std::move(event));
     });
 }
@@ -2458,8 +2461,8 @@ void on_webview_message(WebKitUserContentManager *, WebKitJavascriptResult *resu
         const auto *resource = static_cast<GtkWebViewResource *>(data);
         if (!nk::core::is_runtime_generation(resource->generation))
             return;
-        JSCValue *value = webkit_javascript_result_get_js_value(result);
-        string = jsc_value_to_json(value, 0);
+        JSCValue *value = webkit().webkit_javascript_result_get_js_value(result);
+        string = webkit().jsc_value_to_json(value, 0);
         nk::core::QueuedEvent event;
         event.kind = NK_EVENT_WEBVIEW_MESSAGE;
         event.source = resource->handle;
@@ -2474,34 +2477,35 @@ void on_webview_message(WebKitUserContentManager *, WebKitJavascriptResult *resu
     g_free(string);
 }
 
-gboolean on_webview_policy(WebKitWebView *, WebKitPolicyDecision *decision,
-                           WebKitPolicyDecisionType type, gpointer data) {
+gboolean on_webview_policy(WebKitWebView *, WebKitPolicyDecision *decision, int type,
+                           gpointer data) {
     auto *resource = static_cast<GtkWebViewResource *>(data);
     if (!nk::core::is_runtime_generation(resource->generation))
         return FALSE;
-    if (!resource->navigation_policy || type != WEBKIT_POLICY_DECISION_TYPE_NAVIGATION_ACTION)
+    if (!resource->navigation_policy ||
+        type != nk::webkitgtk::policy_decision_type_navigation_action)
         return FALSE;
     bool completed = false;
     nk_request_id request_id = NK_INVALID_REQUEST_ID;
     WebKitPolicyDecision *retained = nullptr;
     bool inserted = false;
     nk::core::callback_boundary([&] {
-        auto *navigation = WEBKIT_NAVIGATION_POLICY_DECISION(decision);
-        auto *action = webkit_navigation_policy_decision_get_navigation_action(navigation);
-        auto *request = webkit_navigation_action_get_request(action);
+        auto *navigation = nk::webkitgtk::navigation_policy_decision(decision);
+        auto *action = webkit().webkit_navigation_policy_decision_get_navigation_action(navigation);
+        auto *request = webkit().webkit_navigation_action_get_request(action);
         request_id = nk::core::next_request_id();
         nk::core::QueuedEvent event;
         event.kind = NK_EVENT_WEBVIEW_NAVIGATION_REQUEST;
         event.source = resource->handle;
         event.request_id = request_id;
-        event.data = bytes(webkit_uri_request_get_uri(request));
-        retained = WEBKIT_POLICY_DECISION(g_object_ref(decision));
+        event.data = bytes(webkit().webkit_uri_request_get_uri(request));
+        retained = nk::webkitgtk::policy_decision(g_object_ref(decision));
         navigation_decisions.emplace(request_id, NavigationDecision{resource->handle, retained});
         inserted = true;
         if (nk::core::push_event(std::move(event)) != NK_OK) {
             navigation_decisions.erase(request_id);
             inserted = false;
-            webkit_policy_decision_use(decision);
+            webkit().webkit_policy_decision_use(decision);
             g_object_unref(retained);
             retained = nullptr;
         }
@@ -2512,7 +2516,7 @@ gboolean on_webview_policy(WebKitWebView *, WebKitPolicyDecision *decision,
             navigation_decisions.erase(request_id);
         if (retained)
             g_object_unref(retained);
-        webkit_policy_decision_use(decision);
+        webkit().webkit_policy_decision_use(decision);
     }
     return TRUE;
 }
@@ -2520,7 +2524,7 @@ gboolean on_webview_policy(WebKitWebView *, WebKitPolicyDecision *decision,
 void cancel_navigation_decisions(nk_handle source) {
     for (auto item = navigation_decisions.begin(); item != navigation_decisions.end();) {
         if (item->second.source == source) {
-            webkit_policy_decision_ignore(item->second.decision);
+            webkit().webkit_policy_decision_ignore(item->second.decision);
             g_object_unref(item->second.decision);
             item = navigation_decisions.erase(item);
         } else {
@@ -2540,8 +2544,8 @@ void on_eval_complete(GObject *object, GAsyncResult *result, gpointer data) {
     if (!nk::core::handles().get(context->source, nk::core::ResourceType::webview))
         return;
     GError *error = nullptr;
-    JSCValue *value =
-        webkit_web_view_evaluate_javascript_finish(WEBKIT_WEB_VIEW(object), result, &error);
+    JSCValue *value = webkit().webkit_web_view_evaluate_javascript_finish(
+        nk::webkitgtk::web_view(object), result, &error);
     char *string = nullptr;
     nk::core::callback_boundary([&] {
         nk::core::QueuedEvent event;
@@ -2552,7 +2556,7 @@ void on_eval_complete(GObject *object, GAsyncResult *result, gpointer data) {
             event.result = NK_ERROR_UNKNOWN;
             event.data = bytes(error->message);
         } else if (value) {
-            string = jsc_value_to_string(value);
+            string = webkit().jsc_value_to_string(value);
             event.data = bytes(string);
         }
         nk::core::push_event(std::move(event));
@@ -2579,7 +2583,6 @@ void cancel_evaluations(nk_handle source) noexcept {
         item = evaluations.erase(item);
     }
 }
-#endif
 
 std::shared_ptr<GtkWindowResource> window(nk_handle handle) {
     return std::dynamic_pointer_cast<GtkWindowResource>(
@@ -2684,12 +2687,10 @@ void apply_geometry_hints(const GtkWindowResource &resource) {
         gtk_window_set_geometry_hints(GTK_WINDOW(resource.window), nullptr, &geometry, hints);
 }
 
-#if defined(NK_HAS_WEBKITGTK)
 std::shared_ptr<GtkWebViewResource> webview(nk_handle handle) {
     return std::dynamic_pointer_cast<GtkWebViewResource>(
         nk::core::handles().get(handle, nk::core::ResourceType::webview));
 }
-#endif
 
 std::shared_ptr<GtkViewResource> view(nk_handle handle) {
     return std::dynamic_pointer_cast<GtkViewResource>(
@@ -3754,15 +3755,13 @@ void shutdown() noexcept {
     nk::linux_joystick::shutdown();
     while (!dialogs.empty())
         cancel_dialog(dialogs.begin()->second, false);
-#if defined(NK_HAS_WEBKITGTK)
     while (!navigation_decisions.empty()) {
         auto item = navigation_decisions.begin();
-        webkit_policy_decision_ignore(item->second.decision);
+        webkit().webkit_policy_decision_ignore(item->second.decision);
         g_object_unref(item->second.decision);
         navigation_decisions.erase(item);
     }
     cancel_evaluations(NK_INVALID_HANDLE);
-#endif
     for (const auto &[request, notification] : notifications) {
         (void)request;
         close_server_notification(notification.server_id);
@@ -3819,9 +3818,8 @@ nk_capabilities NK_CALL nk_get_capabilities(void) {
         NK_CAP_DISPLAY_ORIENTATION | NK_CAP_ACCESSIBILITY | NK_CAP_WRAP_NATIVE_WINDOW |
         NK_CAP_SURFACE_FRAME_CALLBACK | NK_CAP_WINDOW_CUSTOM_DECORATIONS | NK_CAP_NATIVE_VIEW |
         NK_CAP_FILE_WATCH | NK_CAP_CLIPBOARD_WATCH | NK_CAP_APPLICATION_MENU;
-#if defined(NK_HAS_WEBKITGTK)
-    capabilities |= NK_CAP_WEBVIEW;
-#endif
+    if (nk::webkitgtk::api())
+        capabilities |= NK_CAP_WEBVIEW;
     if (nk::core::system_backend::keep_awake_supported())
         capabilities |= NK_CAP_KEEP_AWAKE;
     return capabilities | nk::core::optional_capabilities();
@@ -3934,10 +3932,8 @@ nk_result NK_CALL nk_window_destroy(nk_handle handle) {
         nk_window_destroy(owned);
     cancel_dialogs_for_parent(handle, true);
     const auto children = resource->children;
-#if defined(NK_HAS_WEBKITGTK)
     for (const auto child : children)
         nk_webview_destroy(child);
-#endif
     const auto views = resource->views;
     for (const auto child : views)
         nk_view_destroy(child);
@@ -5661,17 +5657,19 @@ nk_result NK_CALL nk_surface_get_proc_address(nk_handle handle, const char *name
     return NK_OK;
 }
 
-#if defined(NK_HAS_WEBKITGTK)
 nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_options *options,
                                     nk_handle *out_webview) {
     return nk::core::result_boundary("unexpected error while creating WebView", [&]() -> nk_result {
+        if (out_webview)
+            *out_webview = NK_INVALID_HANDLE;
         if (const auto result = enter_ui(); result != NK_OK)
+            return result;
+        if (const auto result = require_webkit(); result != NK_OK)
             return result;
         if (!options || options->struct_size < sizeof(*options) || !out_webview ||
             options->width <= 0 || options->height <= 0) {
             return fail(NK_ERROR_INVALID_ARGUMENT, "invalid WebView options");
         }
-        *out_webview = NK_INVALID_HANDLE;
         auto parent = window(parent_handle);
         if (!parent)
             return invalid_handle("parent window");
@@ -5679,12 +5677,13 @@ nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_op
             return fail(NK_ERROR_UNSUPPORTED, "GTK WebViews cannot attach to wrapped windows");
         auto resource = std::make_shared<GtkWebViewResource>();
         resource->generation = nk::core::runtime_generation();
-        resource->content_manager = webkit_user_content_manager_new();
-        if (!webkit_user_content_manager_register_script_message_handler(resource->content_manager,
-                                                                         "nativekit")) {
+        resource->content_manager = webkit().webkit_user_content_manager_new();
+        if (!webkit().webkit_user_content_manager_register_script_message_handler(
+                resource->content_manager, "nativekit")) {
             return fail(NK_ERROR_UNKNOWN, "could not register the NativeKit JavaScript bridge");
         }
-        resource->widget = webkit_web_view_new_with_user_content_manager(resource->content_manager);
+        resource->widget =
+            webkit().webkit_web_view_new_with_user_content_manager(resource->content_manager);
         g_object_add_weak_pointer(G_OBJECT(resource->widget),
                                   reinterpret_cast<gpointer *>(&resource->widget));
         resource->parent = parent_handle;
@@ -5709,15 +5708,17 @@ nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_op
                          G_CALLBACK(on_webview_message), resource.get());
         g_signal_connect(resource->widget, "decide-policy", G_CALLBACK(on_webview_policy),
                          resource.get());
-        auto *settings = webkit_web_view_get_settings(WEBKIT_WEB_VIEW(resource->widget));
-        webkit_settings_set_enable_developer_extras(settings,
-                                                    (options->flags & NK_WEBVIEW_DEVTOOLS) != 0);
+        auto *settings =
+            webkit().webkit_web_view_get_settings(nk::webkitgtk::web_view(resource->widget));
+        webkit().webkit_settings_set_enable_developer_extras(
+            settings, (options->flags & NK_WEBVIEW_DEVTOOLS) != 0);
         nk::core::QueuedEvent ready;
         ready.kind = NK_EVENT_WEBVIEW_READY;
         ready.source = resource->handle;
         nk::core::push_event(std::move(ready));
         if (options->initial_url)
-            webkit_web_view_load_uri(WEBKIT_WEB_VIEW(resource->widget), options->initial_url);
+            webkit().webkit_web_view_load_uri(nk::webkitgtk::web_view(resource->widget),
+                                              options->initial_url);
         if ((options->flags & NK_WEBVIEW_HIDDEN) == 0)
             gtk_widget_show(resource->widget);
         *out_webview = resource->handle;
@@ -5727,6 +5728,8 @@ nk_result NK_CALL nk_webview_create(nk_handle parent_handle, const nk_webview_op
 
 nk_result NK_CALL nk_webview_destroy(nk_handle handle) {
     if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (const auto result = require_webkit(); result != NK_OK)
         return result;
     auto resource = webview(handle);
     if (!resource)
@@ -5748,6 +5751,8 @@ nk_result NK_CALL nk_webview_destroy(nk_handle handle) {
 nk_result NK_CALL nk_webview_show(nk_handle handle, uint32_t visible) {
     if (const auto result = enter_ui(); result != NK_OK)
         return result;
+    if (const auto result = require_webkit(); result != NK_OK)
+        return result;
     auto resource = webview(handle);
     if (!resource)
         return invalid_handle("WebView");
@@ -5758,6 +5763,8 @@ nk_result NK_CALL nk_webview_show(nk_handle handle, uint32_t visible) {
 nk_result NK_CALL nk_webview_set_bounds(nk_handle handle, int32_t x, int32_t y, int32_t width,
                                         int32_t height) {
     if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    if (const auto result = require_webkit(); result != NK_OK)
         return result;
     if (width <= 0 || height <= 0)
         return fail(NK_ERROR_INVALID_ARGUMENT, "WebView dimensions must be positive");
@@ -5775,87 +5782,105 @@ nk_result NK_CALL nk_webview_set_bounds(nk_handle handle, int32_t x, int32_t y, 
 nk_result NK_CALL nk_webview_navigate(nk_handle handle, const char *url) {
     if (const auto result = enter_ui(); result != NK_OK)
         return result;
+    if (const auto result = require_webkit(); result != NK_OK)
+        return result;
     if (!url)
         return fail(NK_ERROR_INVALID_ARGUMENT, "URL must not be null");
     auto resource = webview(handle);
     if (!resource)
         return invalid_handle("WebView");
-    webkit_web_view_load_uri(WEBKIT_WEB_VIEW(resource->widget), url);
+    webkit().webkit_web_view_load_uri(nk::webkitgtk::web_view(resource->widget), url);
     return NK_OK;
 }
 
 nk_result NK_CALL nk_webview_set_html(nk_handle handle, const char *html, const char *base_url) {
     if (const auto result = enter_ui(); result != NK_OK)
         return result;
+    if (const auto result = require_webkit(); result != NK_OK)
+        return result;
     if (!html)
         return fail(NK_ERROR_INVALID_ARGUMENT, "HTML must not be null");
     auto resource = webview(handle);
     if (!resource)
         return invalid_handle("WebView");
-    webkit_web_view_load_html(WEBKIT_WEB_VIEW(resource->widget), html, base_url);
+    webkit().webkit_web_view_load_html(nk::webkitgtk::web_view(resource->widget), html, base_url);
     return NK_OK;
 }
 
 nk_result NK_CALL nk_webview_can_go_back(nk_handle handle, uint32_t *out_can_go_back) {
     if (const auto result = enter_ui(); result != NK_OK)
         return result;
+    if (const auto result = require_webkit(); result != NK_OK)
+        return result;
     auto resource = webview(handle);
     if (!resource || !out_can_go_back)
         return !resource ? invalid_handle("WebView")
                          : fail(NK_ERROR_INVALID_ARGUMENT, "history output is null");
-    *out_can_go_back = webkit_web_view_can_go_back(WEBKIT_WEB_VIEW(resource->widget)) ? 1u : 0u;
+    *out_can_go_back =
+        webkit().webkit_web_view_can_go_back(nk::webkitgtk::web_view(resource->widget)) ? 1u : 0u;
     return NK_OK;
 }
 
 nk_result NK_CALL nk_webview_can_go_forward(nk_handle handle, uint32_t *out_can_go_forward) {
     if (const auto result = enter_ui(); result != NK_OK)
         return result;
+    if (const auto result = require_webkit(); result != NK_OK)
+        return result;
     auto resource = webview(handle);
     if (!resource || !out_can_go_forward)
         return !resource ? invalid_handle("WebView")
                          : fail(NK_ERROR_INVALID_ARGUMENT, "history output is null");
     *out_can_go_forward =
-        webkit_web_view_can_go_forward(WEBKIT_WEB_VIEW(resource->widget)) ? 1u : 0u;
+        webkit().webkit_web_view_can_go_forward(nk::webkitgtk::web_view(resource->widget)) ? 1u
+                                                                                           : 0u;
     return NK_OK;
 }
 
 nk_result NK_CALL nk_webview_go_back(nk_handle handle) {
     if (const auto result = enter_ui(); result != NK_OK)
         return result;
+    if (const auto result = require_webkit(); result != NK_OK)
+        return result;
     auto resource = webview(handle);
     if (!resource)
         return invalid_handle("WebView");
-    webkit_web_view_go_back(WEBKIT_WEB_VIEW(resource->widget));
+    webkit().webkit_web_view_go_back(nk::webkitgtk::web_view(resource->widget));
     return NK_OK;
 }
 
 nk_result NK_CALL nk_webview_go_forward(nk_handle handle) {
     if (const auto result = enter_ui(); result != NK_OK)
         return result;
+    if (const auto result = require_webkit(); result != NK_OK)
+        return result;
     auto resource = webview(handle);
     if (!resource)
         return invalid_handle("WebView");
-    webkit_web_view_go_forward(WEBKIT_WEB_VIEW(resource->widget));
+    webkit().webkit_web_view_go_forward(nk::webkitgtk::web_view(resource->widget));
     return NK_OK;
 }
 
 nk_result NK_CALL nk_webview_reload(nk_handle handle) {
     if (const auto result = enter_ui(); result != NK_OK)
         return result;
+    if (const auto result = require_webkit(); result != NK_OK)
+        return result;
     auto resource = webview(handle);
     if (!resource)
         return invalid_handle("WebView");
-    webkit_web_view_reload(WEBKIT_WEB_VIEW(resource->widget));
+    webkit().webkit_web_view_reload(nk::webkitgtk::web_view(resource->widget));
     return NK_OK;
 }
 
 nk_result NK_CALL nk_webview_stop(nk_handle handle) {
     if (const auto result = enter_ui(); result != NK_OK)
         return result;
+    if (const auto result = require_webkit(); result != NK_OK)
+        return result;
     auto resource = webview(handle);
     if (!resource)
         return invalid_handle("WebView");
-    webkit_web_view_stop_loading(WEBKIT_WEB_VIEW(resource->widget));
+    webkit().webkit_web_view_stop_loading(nk::webkitgtk::web_view(resource->widget));
     return NK_OK;
 }
 
@@ -5864,6 +5889,8 @@ nk_result NK_CALL nk_webview_eval(nk_handle handle, const char *script,
     return nk::core::result_boundary(
         "unexpected error while evaluating JavaScript", [&]() -> nk_result {
             if (const auto result = enter_ui(); result != NK_OK)
+                return result;
+            if (const auto result = require_webkit(); result != NK_OK)
                 return result;
             if (!script || !out_request)
                 return fail(NK_ERROR_INVALID_ARGUMENT, "invalid JavaScript evaluation arguments");
@@ -5877,9 +5904,9 @@ nk_result NK_CALL nk_webview_eval(nk_handle handle, const char *script,
                                 ");const j=JSON.stringify(v);if(j===undefined)throw new TypeError("
                                 "'JavaScript result is not JSON-serializable');return j;})()";
             evaluations.emplace(request, handle);
-            webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(resource->widget), source.c_str(),
-                                                -1, nullptr, nullptr, nullptr, on_eval_complete,
-                                                context.release());
+            webkit().webkit_web_view_evaluate_javascript(
+                nk::webkitgtk::web_view(resource->widget), source.c_str(), -1, nullptr, nullptr,
+                nullptr, on_eval_complete, context.release());
             *out_request = request;
             return NK_OK;
         });
@@ -5888,80 +5915,18 @@ nk_result NK_CALL nk_webview_eval(nk_handle handle, const char *script,
 nk_result NK_CALL nk_webview_navigation_decide(nk_request_id request, uint32_t allow) {
     if (const auto result = enter_ui(); result != NK_OK)
         return result;
+    if (const auto result = require_webkit(); result != NK_OK)
+        return result;
     const auto item = navigation_decisions.find(request);
     if (item == navigation_decisions.end())
         return fail(NK_ERROR_INVALID_REQUEST, "invalid or completed navigation request");
     auto *decision = item->second.decision;
     navigation_decisions.erase(item);
-    allow ? webkit_policy_decision_use(decision) : webkit_policy_decision_ignore(decision);
+    allow ? webkit().webkit_policy_decision_use(decision)
+          : webkit().webkit_policy_decision_ignore(decision);
     g_object_unref(decision);
     return NK_OK;
 }
-#else
-nk_result NK_CALL nk_webview_create(nk_handle, const nk_webview_options *, nk_handle *out_webview) {
-    if (out_webview)
-        *out_webview = NK_INVALID_HANDLE;
-    return fail(NK_ERROR_UNSUPPORTED, "GTK WebView support is unavailable");
-}
-
-nk_result NK_CALL nk_webview_destroy(nk_handle) {
-    return fail(NK_ERROR_UNSUPPORTED, "GTK WebView support is unavailable");
-}
-
-nk_result NK_CALL nk_webview_show(nk_handle, uint32_t) {
-    return fail(NK_ERROR_UNSUPPORTED, "GTK WebView support is unavailable");
-}
-
-nk_result NK_CALL nk_webview_set_bounds(nk_handle, int32_t, int32_t, int32_t, int32_t) {
-    return fail(NK_ERROR_UNSUPPORTED, "GTK WebView support is unavailable");
-}
-
-nk_result NK_CALL nk_webview_navigate(nk_handle, const char *) {
-    return fail(NK_ERROR_UNSUPPORTED, "GTK WebView support is unavailable");
-}
-
-nk_result NK_CALL nk_webview_set_html(nk_handle, const char *, const char *) {
-    return fail(NK_ERROR_UNSUPPORTED, "GTK WebView support is unavailable");
-}
-
-nk_result NK_CALL nk_webview_can_go_back(nk_handle, uint32_t *out_can_go_back) {
-    if (out_can_go_back)
-        *out_can_go_back = 0;
-    return fail(NK_ERROR_UNSUPPORTED, "GTK WebView support is unavailable");
-}
-
-nk_result NK_CALL nk_webview_can_go_forward(nk_handle, uint32_t *out_can_go_forward) {
-    if (out_can_go_forward)
-        *out_can_go_forward = 0;
-    return fail(NK_ERROR_UNSUPPORTED, "GTK WebView support is unavailable");
-}
-
-nk_result NK_CALL nk_webview_go_back(nk_handle) {
-    return fail(NK_ERROR_UNSUPPORTED, "GTK WebView support is unavailable");
-}
-
-nk_result NK_CALL nk_webview_go_forward(nk_handle) {
-    return fail(NK_ERROR_UNSUPPORTED, "GTK WebView support is unavailable");
-}
-
-nk_result NK_CALL nk_webview_reload(nk_handle) {
-    return fail(NK_ERROR_UNSUPPORTED, "GTK WebView support is unavailable");
-}
-
-nk_result NK_CALL nk_webview_stop(nk_handle) {
-    return fail(NK_ERROR_UNSUPPORTED, "GTK WebView support is unavailable");
-}
-
-nk_result NK_CALL nk_webview_eval(nk_handle, const char *, nk_request_id *out_request) {
-    if (out_request)
-        *out_request = NK_INVALID_REQUEST_ID;
-    return fail(NK_ERROR_UNSUPPORTED, "GTK WebView support is unavailable");
-}
-
-nk_result NK_CALL nk_webview_navigation_decide(nk_request_id, uint32_t) {
-    return fail(NK_ERROR_UNSUPPORTED, "GTK WebView support is unavailable");
-}
-#endif
 
 /*
  * Applies a view's committed state: the widget only ever occupies the

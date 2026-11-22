@@ -34,7 +34,12 @@ bool load(Api &api) noexcept {
                           resolve(library, "curl_easy_getinfo", api.easy_getinfo) &&
                           resolve(library, "curl_easy_recv", api.easy_recv) &&
                           resolve(library, "curl_easy_send", api.easy_send) &&
-                          resolve(library, "curl_easy_cleanup", api.easy_cleanup);
+                          resolve(library, "curl_easy_cleanup", api.easy_cleanup) &&
+                          resolve(library, "curl_slist_append", api.slist_append) &&
+                          resolve(library, "curl_slist_free_all", api.slist_free_all) &&
+                          resolve(library, "curl_share_init", api.share_init) &&
+                          resolve(library, "curl_share_setopt", api.share_setopt) &&
+                          resolve(library, "curl_share_cleanup", api.share_cleanup);
     /* The library stays loaded and initialized for the life of the process: libcurl's global
        state cannot be released while another thread may still use it. */
     if (!resolved || global_init(global_default) != ok) {

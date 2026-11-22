@@ -15,9 +15,25 @@ bool require(bool condition, const char *message) {
     return false;
 }
 
+/** With no usable OS store every operation is refused as unsupported, never served elsewhere. */
+int require_unavailable() {
+    const uint8_t secret = 1;
+    uint32_t size = 0;
+    if (!require(nk_credentials_set("service", "account", &secret, 1) == NK_ERROR_UNSUPPORTED,
+                 "store without a credential store was not unsupported") ||
+        !require(nk_credentials_get("service", "account", nullptr, &size) == NK_ERROR_UNSUPPORTED,
+                 "lookup without a credential store was not unsupported") ||
+        !require(nk_credentials_delete("service", "account") == NK_ERROR_UNSUPPORTED,
+                 "delete without a credential store was not unsupported"))
+        return 1;
+    return 0;
+}
+
 } // namespace
 
-int main() {
+int main(int argc, char **argv) {
+    if (argc == 2 && std::strcmp(argv[1], "--unavailable") == 0)
+        return require_unavailable();
     const char invalid_utf8[] = {static_cast<char>(0xc0), static_cast<char>(0x80), '\0'};
     const uint8_t one_byte = 1;
     if (!require(nk_credentials_set(invalid_utf8, "account", &one_byte, 1) ==
@@ -40,7 +56,8 @@ int main() {
     }
 
     const std::array<uint8_t, 5> secret{0x00, 0x42, 0xff, 0x00, 0x7e};
-    if (!require(nk_credentials_set(service.c_str(), account, secret.data(), secret.size()) == NK_OK,
+    if (!require(nk_credentials_set(service.c_str(), account, secret.data(), secret.size()) ==
+                     NK_OK,
                  "store failed"))
         return 1;
 
@@ -72,8 +89,7 @@ int main() {
         return 1;
     }
 
-    if (!require(nk_credentials_delete(service.c_str(), account) == NK_OK,
-                 "delete failed") ||
+    if (!require(nk_credentials_delete(service.c_str(), account) == NK_OK, "delete failed") ||
         !require((size = 0, nk_credentials_get(service.c_str(), account, nullptr, &size)) ==
                      NK_ERROR_NOT_FOUND,
                  "deleted credential remained available"))

@@ -155,7 +155,7 @@ elseif(WIN32)
     set_tests_properties(pty_contract PROPERTIES LABELS "core" TIMEOUT 60)
 endif()
 
-if(NK_NET_BACKEND_CURL)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID AND NK_TEST_SYSTEM_CURL)
     add_executable(nativekit_net_contract_test unit/net_contract.cpp)
     target_compile_features(nativekit_net_contract_test PRIVATE cxx_std_17)
     target_include_directories(nativekit_net_contract_test PRIVATE ${PROJECT_SOURCE_DIR}/src)
@@ -258,8 +258,21 @@ if(NK_BACKEND_GTK_AVAILABLE)
 
     find_program(XVFB_RUN xvfb-run)
     find_program(DBUS_RUN_SESSION dbus-run-session)
+    # WebView tests need WebKitGTK installed where they run; NativeKit opens it at run time.
+    find_library(NK_TEST_SYSTEM_WEBKITGTK NAMES libwebkit2gtk-4.1.so.0)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(NK_TEST_WEBKITGTK QUIET IMPORTED_TARGET webkit2gtk-4.1)
+    endif()
+    if(TARGET PkgConfig::NK_TEST_WEBKITGTK)
+        # NativeKit declares the WebKitGTK ABI it uses; compare it with WebKit's own headers.
+        add_executable(nativekit_webkitgtk_abi_test unit/webkitgtk_abi.cpp)
+        target_compile_features(nativekit_webkitgtk_abi_test PRIVATE cxx_std_17)
+        target_include_directories(nativekit_webkitgtk_abi_test PRIVATE ${PROJECT_SOURCE_DIR}/src)
+        target_link_libraries(nativekit_webkitgtk_abi_test PRIVATE PkgConfig::NK_TEST_WEBKITGTK)
+        add_test(NAME webkitgtk_abi COMMAND nativekit_webkitgtk_abi_test)
+    endif()
     if(XVFB_RUN)
-        if(TARGET PkgConfig::WEBKITGTK)
+        if(NK_TEST_SYSTEM_WEBKITGTK)
             add_executable(nativekit_gtk_integration integration/gtk_create_destroy.c)
             target_link_libraries(nativekit_gtk_integration PRIVATE NativeKit::nativekit PkgConfig::GTK3)
             set_target_properties(nativekit_gtk_integration PROPERTIES LINKER_LANGUAGE CXX)
@@ -317,7 +330,20 @@ if(NK_BACKEND_GTK_AVAILABLE)
         set_target_properties(nativekit_gtk_accessibility PROPERTIES LINKER_LANGUAGE CXX)
         add_test(NAME gtk_accessibility
             COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_accessibility>)
-        if(TARGET PkgConfig::WEBKITGTK)
+        add_library(nativekit_unusable_webkitgtk SHARED unit/unusable_library.c)
+        set_target_properties(nativekit_unusable_webkitgtk PROPERTIES
+            OUTPUT_NAME webkit2gtk-4.1
+            SOVERSION 0
+            LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/unusable-webkitgtk")
+        add_executable(nativekit_gtk_webview_unavailable integration/gtk_webview_unavailable.c)
+        target_link_libraries(nativekit_gtk_webview_unavailable PRIVATE NativeKit::nativekit)
+        set_target_properties(nativekit_gtk_webview_unavailable PROPERTIES LINKER_LANGUAGE CXX)
+        add_dependencies(nativekit_gtk_webview_unavailable nativekit_unusable_webkitgtk)
+        add_test(NAME gtk_webview_unavailable
+            COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_webview_unavailable>)
+        set_tests_properties(gtk_webview_unavailable PROPERTIES
+            ENVIRONMENT "LD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}/unusable-webkitgtk")
+        if(NK_TEST_SYSTEM_WEBKITGTK)
             add_executable(nativekit_gtk_webview_resize integration/gtk_webview_resize.c)
             target_link_libraries(nativekit_gtk_webview_resize PRIVATE NativeKit::nativekit)
             set_target_properties(nativekit_gtk_webview_resize PROPERTIES LINKER_LANGUAGE CXX)
