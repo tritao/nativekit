@@ -1356,21 +1356,7 @@ class ListenerResource final : public nk::core::Resource,
     std::mutex socket_mutex;
     std::thread worker;
 
-    ~ListenerResource() override {
-        stop_and_join();
-        std::lock_guard lock(socket_mutex);
-        close_socket(socket);
-        socket = invalid_socket;
-#if defined(_WIN32)
-        close_pipe(pipe);
-        pipe = invalid_pipe;
-#endif
-        if (!local_path.empty()) {
-#if !defined(_WIN32)
-            ::unlink(local_path.c_str());
-#endif
-        }
-    }
+    ~ListenerResource() override { stop_and_join(); }
 
     bool start() noexcept {
 #if NK_ENABLE_NO_EXCEPTIONS
@@ -1400,10 +1386,20 @@ class ListenerResource final : public nk::core::Resource,
         }
         if (worker.joinable() && worker.get_id() != std::this_thread::get_id())
             worker.join();
-#if defined(_WIN32)
+        /* The endpoint goes with the close, not with the last reference: an accepted transport's
+         * thread may still hold the listener briefly, and the socket file must be gone when
+         * nk_listener_close returns. */
         std::lock_guard lock(socket_mutex);
+        close_socket(socket);
+        socket = invalid_socket;
+#if defined(_WIN32)
         close_pipe(pipe);
         pipe = invalid_pipe;
+#else
+        if (!local_path.empty()) {
+            ::unlink(local_path.c_str());
+            local_path.clear();
+        }
 #endif
     }
 
