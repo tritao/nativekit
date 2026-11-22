@@ -184,7 +184,10 @@ reliable CI interaction surface.
 messages, an empty message, short-buffer size reporting without consumption, and invalid text/options. On Linux it requires a
 secure client when libcurl is installed, and `transport_contract_without_tls` runs it again with an unusable `libcurl.so.4`
 first on the library path to check that the capability disappears and secure connects return `NK_ERROR_UNSUPPORTED`. `net_contract` checks
-HTTP and `c_abi` checks the public C ABI.
+HTTP and `c_abi` checks the public C ABI. On Linux, `net_protocols` (Python and `openssl` required) runs loopback HTTPS
+and HTTP servers through `tools/test-curl-protocols.py` and checks that plain HTTP and HTTPS-to-HTTP redirects are refused
+unless the client allows them, once through libcurl's protocol-string options and once through the bitmask options that
+libcurl older than 7.85 needs (selected with a test hook).
 
 Two optional loopback fixtures require Python's `websockets` package. They never contact an external service:
 

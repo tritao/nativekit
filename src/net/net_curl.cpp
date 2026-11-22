@@ -6,6 +6,7 @@
 #include "core/thread_name.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cctype>
 #include <cstddef>
@@ -21,8 +22,14 @@ namespace {
 
 namespace curl = nk::curl;
 
-/* curl::opt_protocols_str and curl::opt_redir_protocols_str arrived in 7.85. */
-constexpr unsigned int minimum_curl = 0x075500;
+/* CURLINFO_CONTENT_LENGTH_DOWNLOAD_T, the newest libcurl symbol this backend needs, arrived in
+   7.55 (CURLPROXY_HTTPS and CURL_SSLVERSION_TLSv1_3 in 7.52). The newer error codes it maps
+   are only compared against; an older libcurl never returns them. */
+constexpr unsigned int minimum_curl = 0x073700;
+/* CURLOPT_PROTOCOLS_STR and CURLOPT_REDIR_PROTOCOLS_STR arrived in 7.85, which deprecated the
+   bitmask options older libcurl versions need instead. */
+constexpr unsigned int protocols_str_curl = 0x075500;
+std::atomic<bool> force_protocol_bitmask{false};
 
 std::mutex curl_share_data_mutex;
 
@@ -431,15 +438,26 @@ nk_result perform_impl(const curl::Api &api, nk::net::RequestPtr request) {
                 set_option(curl::opt_timeout_ms, static_cast<long>(request->request.timeout_ms)) &&
                 set_option(curl::opt_connecttimeout_ms,
                            static_cast<long>(request->request.timeout_ms)) &&
-                set_option(curl::opt_nosignal, 1L) && set_option(curl::opt_failonerror, 0L) &&
-                set_option(curl::opt_protocols_str,
-                           (request->client->config.flags & NK_HTTP_CLIENT_ALLOW_HTTP)
-                               ? "http,https"
-                               : "https") &&
-                set_option(curl::opt_redir_protocols_str,
-                           (request->client->config.flags & NK_HTTP_CLIENT_ALLOW_HTTPS_TO_HTTP)
-                               ? "http,https"
-                               : "https");
+                set_option(curl::opt_nosignal, 1L) && set_option(curl::opt_failonerror, 0L);
+            const bool allow_http =
+                (request->client->config.flags & NK_HTTP_CLIENT_ALLOW_HTTP) != 0;
+            const bool allow_http_redirect =
+                (request->client->config.flags & NK_HTTP_CLIENT_ALLOW_HTTPS_TO_HTTP) != 0;
+            if (api.version_num >= protocols_str_curl &&
+                !force_protocol_bitmask.load(std::memory_order_relaxed)) {
+                options_ok =
+                    set_option(curl::opt_protocols_str, allow_http ? "http,https" : "https") &&
+                    set_option(curl::opt_redir_protocols_str,
+                               allow_http_redirect ? "http,https" : "https") &&
+                    options_ok;
+            } else {
+                const long https = curl::proto_https;
+                const long http_and_https = curl::proto_http | curl::proto_https;
+                options_ok = set_option(curl::opt_protocols, allow_http ? http_and_https : https) &&
+                             set_option(curl::opt_redir_protocols,
+                                        allow_http_redirect ? http_and_https : https) &&
+                             options_ok;
+            }
             if (header_list)
                 options_ok = set_option(curl::opt_httpheader, header_list) && options_ok;
             options_ok = set_option(curl::opt_writefunction, write_function) && options_ok;
@@ -597,3 +615,9 @@ void backend_cancel(const RequestPtr &) noexcept {}
 void backend_shutdown() noexcept {}
 
 } // namespace nk::net
+
+namespace nk::core {
+void use_curl_protocol_bitmask_for_testing(bool enabled) noexcept {
+    force_protocol_bitmask.store(enabled, std::memory_order_relaxed);
+}
+} // namespace nk::core

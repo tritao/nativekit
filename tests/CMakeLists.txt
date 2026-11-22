@@ -167,6 +167,20 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID AND NK_TEST_SYSTEM_CURL)
             -fsanitize=address,undefined -fno-omit-frame-pointer)
         target_link_options(nativekit_net_contract_test PRIVATE -fsanitize=address,undefined)
     endif()
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    find_program(NK_TEST_OPENSSL openssl)
+    if(Python3_Interpreter_FOUND AND NK_TEST_OPENSSL)
+        # Protocol restrictions through both the string options (libcurl 7.85 and later) and
+        # the bitmask options older libcurl needs, against loopback HTTPS and HTTP servers.
+        add_executable(nativekit_net_protocols_test unit/net_protocols.cpp)
+        target_compile_features(nativekit_net_protocols_test PRIVATE cxx_std_17)
+        target_include_directories(nativekit_net_protocols_test PRIVATE ${PROJECT_SOURCE_DIR}/src)
+        target_link_libraries(nativekit_net_protocols_test PRIVATE NativeKit::nativekit)
+        add_test(NAME net_protocols
+            COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tools/test-curl-protocols.py
+                $<TARGET_FILE:nativekit_net_protocols_test>)
+        set_tests_properties(net_protocols PROPERTIES LABELS "network;linux" TIMEOUT 120)
+    endif()
     add_executable(nativekit_curl_progress_test unit/curl_progress.cpp)
     target_compile_features(nativekit_curl_progress_test PRIVATE cxx_std_17)
     target_include_directories(nativekit_curl_progress_test PRIVATE ${PROJECT_SOURCE_DIR}/src)

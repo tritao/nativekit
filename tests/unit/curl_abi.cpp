@@ -1,5 +1,7 @@
 #include "net/curl_runtime.hpp"
 
+/* The bitmask protocol options are deprecated but still checked: older libcurl needs them. */
+#define CURL_DISABLE_DEPRECATION
 #include <curl/curl.h>
 
 #include <cstddef>
@@ -79,6 +81,10 @@ static_assert(curl::opt_proxyusername == CURLOPT_PROXYUSERNAME);
 static_assert(curl::opt_proxypassword == CURLOPT_PROXYPASSWORD);
 static_assert(curl::opt_protocols_str == CURLOPT_PROTOCOLS_STR);
 static_assert(curl::opt_redir_protocols_str == CURLOPT_REDIR_PROTOCOLS_STR);
+static_assert(curl::opt_protocols == CURLOPT_PROTOCOLS);
+static_assert(curl::opt_redir_protocols == CURLOPT_REDIR_PROTOCOLS);
+static_assert(curl::proto_http == CURLPROTO_HTTP);
+static_assert(curl::proto_https == CURLPROTO_HTTPS);
 
 static_assert(curl::proxy_http == CURLPROXY_HTTP);
 static_assert(curl::proxy_https == CURLPROXY_HTTPS);

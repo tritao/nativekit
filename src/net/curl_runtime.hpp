@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/internal_api.hpp"
+
 #include <cstddef>
 #include <cstdint>
 
@@ -84,6 +86,8 @@ constexpr Option opt_share = option_pointer + 100;
 constexpr Option opt_proxytype = option_long + 101;
 constexpr Option opt_infilesize_large = option_offset + 115;
 constexpr Option opt_postfieldsize_large = option_offset + 120;
+constexpr Option opt_protocols = option_long + 181;
+constexpr Option opt_redir_protocols = option_long + 182;
 constexpr Option opt_connect_only = option_long + 141;
 constexpr Option opt_timeout_ms = option_long + 155;
 constexpr Option opt_connecttimeout_ms = option_long + 156;
@@ -99,6 +103,9 @@ constexpr long proxy_https = 2;
 constexpr long proxy_socks5_hostname = 7;
 constexpr long sslversion_tlsv1_2 = 6;
 constexpr long sslversion_tlsv1_3 = 7;
+/* CURLOPT_PROTOCOLS and CURLOPT_REDIR_PROTOCOLS bits. */
+constexpr long proto_http = 1 << 0;
+constexpr long proto_https = 1 << 1;
 /* A read callback's return value that aborts the transfer. */
 constexpr std::size_t readfunc_abort = 0x10000000;
 
@@ -169,3 +176,11 @@ struct Api {
 const Api *api() noexcept;
 
 } // namespace nk::curl
+
+namespace nk::core {
+/**
+ * Test hook, not public API: makes the HTTP backend restrict protocols with the bitmask
+ * options it uses for libcurl older than 7.85, whatever version is loaded.
+ */
+NK_INTERNAL_API void use_curl_protocol_bitmask_for_testing(bool enabled) noexcept;
+} // namespace nk::core
