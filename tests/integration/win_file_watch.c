@@ -335,7 +335,12 @@ static void check_recursive_upgrade(const char *root) {
 }
 
 /* Re-adding a registered directory is a lookup that must not touch the
- * disk. */
+ * disk. It costs a few microseconds (handle and registration lookups, path
+ * folding, and the event queue check that finds the READY already queued),
+ * so 10000 re-adds take tens of milliseconds on a shared CI runner's Debug
+ * build. One disk access per re-add (tens of microseconds or more) would take
+ * hundreds of milliseconds, so 250 ms catches that without failing on runner
+ * noise. */
 static void check_rearm_cost(const char *root) {
     nk_file_watch watch = create_watch();
     CHECK(nk_file_watch_add_directory(watch, root, 1) == NK_OK);
@@ -344,7 +349,7 @@ static void check_rearm_cost(const char *root) {
         CHECK(nk_file_watch_add_directory(watch, root, 1) == NK_OK);
     const double elapsed = now() - start;
     printf("win_file_watch: 10000 re-adds in %.2f ms\n", elapsed * 1000.0);
-    CHECK(elapsed < 0.05);
+    CHECK(elapsed < 0.25);
     CHECK(nk_file_watch_destroy(watch) == NK_OK);
 }
 
