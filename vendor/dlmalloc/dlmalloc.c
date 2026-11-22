@@ -597,8 +597,13 @@ _Static_assert(MALLOC_ALIGNMENT == 8, "max_align_t must be 8");
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <tchar.h>
+/* NativeKit: keep an includer's choice; src/wasm/host_mspace.c sets both to 0. */
+#ifndef HAVE_MMAP
 #define HAVE_MMAP 1
+#endif /* HAVE_MMAP */
+#ifndef HAVE_MORECORE
 #define HAVE_MORECORE 0
+#endif /* HAVE_MORECORE */
 #define LACKS_UNISTD_H
 #define LACKS_SYS_PARAM_H
 #define LACKS_SYS_MMAN_H
