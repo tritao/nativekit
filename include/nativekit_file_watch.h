@@ -81,6 +81,12 @@ NK_API nk_result NK_CALL nk_file_watch_create(const nk_file_watch_options *optio
  * `recursive`. Returns once the directory itself is watched. A recursive add may register the
  * directories under it afterwards, off the calling thread: NK_EVENT_FILE_WATCH_READY names the
  * directory once all of it is watched.
+ *
+ * Adding a directory again re-checks it, and its subtree when `recursive`, registering whatever is
+ * not watched (for example directories created while changes were lost to an overflow), and
+ * reports NK_EVENT_FILE_WATCH_READY once all of it is watched. A watcher keeps at most one READY
+ * per directory waiting in the event queue: one already queued and not yet read stands for every
+ * later add of that directory, so repeated adds neither queue nor wake anything more.
  */
 NK_API nk_result NK_CALL nk_file_watch_add_directory(nk_file_watch watch, const char *path NK_UTF8,
                                                      nk_bool recursive);

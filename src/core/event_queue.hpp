@@ -26,7 +26,9 @@ struct QueuedEvent {
 class EventQueue {
   public:
     explicit EventQueue(std::size_t capacity, std::size_t byte_capacity = 16u * 1024u * 1024u);
-    nk_result push(QueuedEvent event);
+    /** Queues an event. `coalesced`, when given, is set when an already queued event stands for
+     * it, so nothing new was queued. */
+    nk_result push(QueuedEvent event, bool *coalesced = nullptr);
     /** Takes the oldest event. `os_time_ns`, when given, receives its OS timestamp (0 for none). */
     nk_result poll(nk_event &output, std::uint64_t *os_time_ns = nullptr);
     bool empty();

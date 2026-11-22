@@ -286,7 +286,8 @@ struct FileWatchResource final : nk::core::Resource {
 
     /* --- Registration (UI thread) --- */
 
-    /* Registration is synchronous here, so a successful add is ready at once. */
+    /* Registration is synchronous here, so a successful add, including a re-add, is ready at
+     * once. */
     nk_result add_directory(const char *raw_path, bool recursive) {
         const auto result = register_directory(raw_path, recursive);
         if (result == NK_OK && nk::core::is_runtime_generation(generation)) {
@@ -295,9 +296,14 @@ struct FileWatchResource final : nk::core::Resource {
                 std::lock_guard lock(mutex);
                 registration = ++next_registration;
             }
-            (void)nk::core::push_event(
-                nk::core::file_watch_ready_event(handle, trimmed_original(raw_path), registration));
-            nk::core::wake_events();
+            /* A READY still queued for this directory stands for this add: nothing is queued
+             * or woken, so repeated adds cost a lookup. */
+            bool coalesced = false;
+            if (nk::core::push_event(nk::core::file_watch_ready_event(
+                                         handle, trimmed_original(raw_path), registration),
+                                     coalesced) == NK_OK &&
+                !coalesced)
+                nk::core::wake_events();
         }
         return result;
     }

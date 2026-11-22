@@ -20,6 +20,9 @@ using ResourceDataHandlerCleanup = void (*)(void *user_data) noexcept;
 NK_INTERNAL_API nk_result require_ui_thread() noexcept;
 NK_INTERNAL_API HandleRegistry &handles() noexcept;
 NK_INTERNAL_API nk_result push_event(QueuedEvent event) noexcept;
+/** As push_event, and sets `coalesced` when a queued event stood for this one: then nothing was
+ * queued and nothing was woken. */
+nk_result push_event(QueuedEvent event, bool &coalesced) noexcept;
 nk_request_id next_request_id() noexcept;
 NK_INTERNAL_API std::uint64_t runtime_generation() noexcept;
 NK_INTERNAL_API bool is_runtime_generation(std::uint64_t generation) noexcept;

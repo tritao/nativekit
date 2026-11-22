@@ -65,15 +65,21 @@ HandleRegistry &handles() noexcept {
 }
 
 nk_result push_event(QueuedEvent event) noexcept {
+    bool coalesced = false;
+    return push_event(std::move(event), coalesced);
+}
+
+nk_result push_event(QueuedEvent event, bool &coalesced) noexcept {
+    coalesced = false;
     nk_result result = NK_ERROR_NOT_INITIALIZED;
     {
         std::lock_guard lock(state_mutex);
         if (event_queue) {
 #if NK_ENABLE_NO_EXCEPTIONS
-            result = event_queue->push(std::move(event));
+            result = event_queue->push(std::move(event), &coalesced);
 #else
             try {
-                result = event_queue->push(std::move(event));
+                result = event_queue->push(std::move(event), &coalesced);
             } catch (const std::bad_alloc &) {
                 result = NK_ERROR_OUT_OF_MEMORY;
             } catch (...) {
@@ -82,7 +88,7 @@ nk_result push_event(QueuedEvent event) noexcept {
 #endif
         }
     }
-    if (result == NK_OK) {
+    if (result == NK_OK && !coalesced) {
         event_wake_condition.notify_all();
 #if defined(NK_BACKEND_GTK) || defined(NK_BACKEND_WINDOWS)
         nk::backend::wake_event_wait();
