@@ -19,6 +19,10 @@ Materia projects rather than NativeKit vendor dependencies.
 | `miniaudio` | Audio playback backend |
 | `daisysp` | DSP oscillators, envelopes, and filters |
 
+`webview2` is not a submodule: it carries the WebView2 SDK header and loader
+DLLs from Microsoft's NuGet package, unmodified, with their license and notice
+(see its README).
+
 Each submodule retains its upstream license. Build glue in the parent project
 must keep third-party targets private and must not expose their types through a
 NativeKit ABI.

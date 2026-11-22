@@ -1,1 +1,3 @@
 vendor/SDL_GameControllerDB/** -whitespace
+vendor/webview2/include/** -text -whitespace
+vendor/webview2/**/*.dll binary

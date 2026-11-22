@@ -287,11 +287,20 @@ if(NK_BUILD_EXAMPLES)
     set_target_properties(nativekit_audio_example PROPERTIES LINKER_LANGUAGE CXX)
 endif()
 
-install(TARGETS nativekit_audio nativekit_audio_graph nativekit_audio_dsp EXPORT NativeKitTargets
+install(TARGETS nativekit_audio nativekit_audio_graph nativekit_audio_dsp
+    EXPORT NativeKitAudioTargets
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+nk_install_component(Audio)
+if(NOT NK_LIBRARY_TYPE STREQUAL "SHARED" AND UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
+    # A static audio module carries its Threads::Threads link dependency to the consumer.
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/NativeKitAudioDependencies.cmake"
+        "include(CMakeFindDependencyMacro)\nfind_dependency(Threads)\n")
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/NativeKitAudioDependencies.cmake"
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NativeKit)
+endif()
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES "${NK_VENDOR_DIR}/miniaudio/LICENSE"
     DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/NativeKit

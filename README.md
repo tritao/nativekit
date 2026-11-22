@@ -100,8 +100,9 @@ maintained in the [platform parity contract](docs/platform-parity.md).
   created: without it, `NK_CAP_WEBVIEW` is not reported and WebView calls
   return `NK_ERROR_UNSUPPORTED`.
 - Windows WebViews require the Microsoft Edge WebView2 Evergreen Runtime.
-  The pinned WebView2 SDK is fetched at configure time unless
-  `-DNK_ENABLE_WEBVIEW2=OFF` is used.
+  The WebView2 SDK header and loader are carried in `vendor/webview2`, so
+  configuring needs no network access; `-DNK_ENABLE_WEBVIEW2=OFF` leaves them
+  out.
 - Android attaches to a caller-owned `ViewGroup`; it deliberately does not
   create or own an `Activity` or desktop-style top-level window.
 - Capability bits describe complete API groups. Some common window operations
@@ -127,7 +128,10 @@ them only when building those modules:
 git submodule update --init
 ```
 
-Configure, build, and test a desktop build with CMake:
+Configure, build, and test a desktop build with CMake (tests and examples are
+built by default only when NativeKit is the top-level project; as a
+subdirectory of another project, set `NK_BUILD_TESTS` or `NK_BUILD_EXAMPLES`
+to build them):
 
 ```sh
 cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=Debug

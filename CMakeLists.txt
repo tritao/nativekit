@@ -16,12 +16,22 @@ if(APPLE)
 endif()
 
 include(GNUInstallDirs)
-include(CTest)
 include(CMakePackageConfigHelpers)
 
+# Tests and examples are NativeKit's own: a project that adds NativeKit as a subdirectory
+# builds neither unless it asks for them.
+if(PROJECT_IS_TOP_LEVEL)
+    include(CTest)
+    set(_nk_default_tests ${BUILD_TESTING})
+else()
+    set(_nk_default_tests OFF)
+endif()
 option(NK_BUILD_SHARED "Build NativeKit as a shared library" ON)
-option(NK_BUILD_TESTS "Build NativeKit tests" ${BUILD_TESTING})
-option(NK_BUILD_EXAMPLES "Build NativeKit examples" ON)
+option(NK_BUILD_TESTS "Build NativeKit tests" ${_nk_default_tests})
+option(NK_BUILD_EXAMPLES "Build NativeKit examples" ${PROJECT_IS_TOP_LEVEL})
+if(NK_BUILD_TESTS AND NOT PROJECT_IS_TOP_LEVEL)
+    enable_testing()
+endif()
 option(NK_BUILD_GPU "Build the experimental GPU graphics module" OFF)
 option(NK_BUILD_CREDENTIALS "Build the optional OS credential-store module" OFF)
 option(NK_BUILD_FILESYSTEM "Build the optional root-scoped filesystem module" OFF)
@@ -266,16 +276,12 @@ elseif(ANDROID)
     target_link_libraries(nativekit PRIVATE android EGL GLESv2 log)
 elseif(WIN32)
     if(NK_ENABLE_WEBVIEW2)
-        include(FetchContent)
-        FetchContent_Declare(nativekit_webview2
-            URL https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/1.0.4191.47
-            URL_HASH SHA256=f492bbf547d0da329553b6727435b677579b1e9f91cc9e4a1ad029366d5f23d0
-            DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
-        FetchContent_MakeAvailable(nativekit_webview2)
+        # The WebView2 SDK header and loader are carried in vendor/webview2 (see its README),
+        # so configuring needs no download. nativekit opens the loader at run time.
+        set(NK_WEBVIEW2_DIR "${NK_VENDOR_DIR}/webview2")
         target_include_directories(nativekit PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}/cmake/compat/webview2")
-        target_include_directories(nativekit SYSTEM PRIVATE
-            "${nativekit_webview2_SOURCE_DIR}/build/native/include")
+        target_include_directories(nativekit SYSTEM PRIVATE "${NK_WEBVIEW2_DIR}/include")
         target_compile_definitions(nativekit PRIVATE NK_HAS_WEBVIEW2=1)
         if(CMAKE_GENERATOR_PLATFORM MATCHES "^[Aa][Rr][Mm]64$" OR
            CMAKE_SYSTEM_PROCESSOR MATCHES "^[Aa][Rr][Mm]64$")
@@ -285,10 +291,9 @@ elseif(WIN32)
         else()
             set(NK_WEBVIEW2_ARCH x64)
         endif()
-        set(NK_WEBVIEW2_LOADER_DLL
-            "${nativekit_webview2_SOURCE_DIR}/build/native/${NK_WEBVIEW2_ARCH}/WebView2Loader.dll")
-        set(NK_WEBVIEW2_LICENSE "${nativekit_webview2_SOURCE_DIR}/LICENSE.txt")
-        set(NK_WEBVIEW2_NOTICE "${nativekit_webview2_SOURCE_DIR}/NOTICE.txt")
+        set(NK_WEBVIEW2_LOADER_DLL "${NK_WEBVIEW2_DIR}/${NK_WEBVIEW2_ARCH}/WebView2Loader.dll")
+        set(NK_WEBVIEW2_LICENSE "${NK_WEBVIEW2_DIR}/LICENSE.txt")
+        set(NK_WEBVIEW2_NOTICE "${NK_WEBVIEW2_DIR}/NOTICE.txt")
         add_custom_command(TARGET nativekit POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "${NK_WEBVIEW2_LOADER_DLL}" "$<TARGET_FILE_DIR:nativekit>")
@@ -503,6 +508,16 @@ if(NK_BUILD_GPU)
         find_library(NK_SOKOL_MATRIX_GLES3_LIBRARY NAMES GLESv2 REQUIRED)
     endif()
 endif()
+# Each module is a package component with its own export file (NativeKit<Name>Targets.cmake),
+# so packages configured separately can install their modules into one prefix around one
+# shared core. The module installs its targets with EXPORT NativeKit<Name>Targets.
+function(nk_install_component name)
+    install(EXPORT NativeKit${name}Targets
+        FILE NativeKit${name}Targets.cmake
+        NAMESPACE NativeKit::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NativeKit)
+endfunction()
+
 if(NK_BUILD_GPU)
     add_subdirectory(modules/gpu)
 endif()

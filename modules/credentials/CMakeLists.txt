@@ -49,10 +49,11 @@ set_target_properties(nativekit_credentials PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION 0)
 
-install(TARGETS nativekit_credentials EXPORT NativeKitTargets
+install(TARGETS nativekit_credentials EXPORT NativeKitCredentialsTargets
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+nk_install_component(Credentials)
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 if(NK_BUILD_TESTS)
