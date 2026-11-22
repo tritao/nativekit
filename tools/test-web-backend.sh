@@ -51,8 +51,15 @@ server_pid=
 browser_pid=
 cleanup() {
     if [[ -n "$browser_pid" ]]; then
-        kill "$browser_pid" 2>/dev/null || true
+        # Chrome's renderer, GPU and utility processes outlive the browser process and keep
+        # writing to the profile, so stop the whole process group before removing it.
+        kill -TERM -- "-$browser_pid" 2>/dev/null || true
         wait "$browser_pid" 2>/dev/null || true
+        for attempt in $(seq 1 50); do
+            kill -0 -- "-$browser_pid" 2>/dev/null || break
+            sleep 0.1
+        done
+        kill -KILL -- "-$browser_pid" 2>/dev/null || true
     fi
     if [[ -n "$server_pid" ]]; then
         kill "$server_pid" 2>/dev/null || true
@@ -85,7 +92,9 @@ if ! curl --fail --silent "$page_url" >/dev/null; then
     exit 1
 fi
 
-"$chrome_bin" \
+# Its own process group (setsid execs Chrome in place, so $! is the group id) lets cleanup stop
+# every process Chrome starts.
+setsid "$chrome_bin" \
     --headless=new \
     --no-sandbox \
     --disable-dev-shm-usage \
