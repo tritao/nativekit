@@ -67,3 +67,11 @@ nk_result NK_CALL nk_frame_backend_finish(nk_handle, const nk_surface_frame_targ
 }
 }
 #endif
+
+#if !defined(NK_BACKEND_GTK)
+extern "C" nk_result NK_CALL nk_surface_get_presentation_feedback(
+    nk_surface, int64_t, int64_t *, double *) {
+    nk::core::set_error("surface presentation feedback is unavailable on this backend");
+    return NK_ERROR_UNSUPPORTED;
+}
+#endif

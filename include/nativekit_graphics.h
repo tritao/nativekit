@@ -308,6 +308,17 @@ NK_API nk_result NK_CALL nk_surface_set_frame_mode(nk_surface surface, nk_surfac
  */
 NK_API nk_result NK_CALL nk_surface_request_frame(nk_surface surface);
 
+/**
+ * Queries presentation feedback in the monotonic time domain. Pass -1 to
+ * select the current frame and retrieve its ID. Pass that ID on a later
+ * call to read the presentation timestamp. Zero means feedback is pending
+ * or unavailable for that frame. Backends without feedback return unsupported.
+ */
+NK_API nk_result NK_CALL nk_surface_get_presentation_feedback(
+    nk_surface surface, int64_t frame_id, int64_t *out_frame_id NK_OUT,
+    double *out_presentation_seconds NK_OUT);
+
+
 /* ------------------------------------------------------------------------- */
 /* Frame transactions                                                        */
 /* ------------------------------------------------------------------------- */

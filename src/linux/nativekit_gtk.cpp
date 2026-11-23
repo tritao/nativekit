@@ -5562,6 +5562,26 @@ nk_result NK_CALL nk_surface_request_frame(nk_handle handle) {
     return NK_OK;
 }
 
+nk_result NK_CALL nk_surface_get_presentation_feedback(
+    nk_surface handle, int64_t frame_id, int64_t *out_frame_id, double *out_presentation_seconds) {
+    if (const auto result = enter_ui(); result != NK_OK)
+        return result;
+    auto resource = surface(handle);
+    if (!resource)
+        return invalid_handle("graphics surface");
+    if (!out_frame_id || !out_presentation_seconds || frame_id < -1)
+        return fail(NK_ERROR_INVALID_ARGUMENT, "invalid surface presentation feedback arguments");
+    auto *clock = gtk_widget_get_frame_clock(resource->widget);
+    if (!clock)
+        return fail(NK_ERROR_UNSUPPORTED, "surface has no presentation frame clock");
+    *out_frame_id = frame_id == -1 ? gdk_frame_clock_get_frame_counter(clock) : frame_id;
+    *out_presentation_seconds = 0;
+    auto *timings = gdk_frame_clock_get_timings(clock, *out_frame_id);
+    if (timings && gdk_frame_timings_get_complete(timings))
+        *out_presentation_seconds = gdk_frame_timings_get_presentation_time(timings) / 1000000.0;
+    return NK_OK;
+}
+
 nk_result NK_CALL nk_surface_get_framebuffer_size(nk_handle handle, int32_t *out_width,
                                                   int32_t *out_height) {
     if (const auto result = enter_ui(); result != NK_OK)

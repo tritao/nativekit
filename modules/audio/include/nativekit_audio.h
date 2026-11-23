@@ -243,6 +243,21 @@ nk_audio_clip_create_from_file(const char *path NK_UTF8, nk_audio_clip *out_clip
 NKAUDIO_API nk_result NK_CALL nk_audio_clip_create_from_memory(
     const void *data, uint64_t data_size, nk_audio_clip *out_clip NK_OUT NK_OWNED);
 
+/** Sample encoding for interleaved PCM clip data. */
+typedef enum nk_audio_pcm_format {
+    NK_AUDIO_PCM_U8 = 1,
+    NK_AUDIO_PCM_S16_LE = 2,
+    NK_AUDIO_PCM_F32_LE = 3
+} nk_audio_pcm_format;
+
+/**
+ * Creates a clip from complete interleaved mono or stereo PCM frames. NativeKit
+ * copies the samples. Each voice has an independent cursor over the shared data.
+ */
+NKAUDIO_API nk_result NK_CALL nk_audio_clip_create_from_pcm(
+    const void *data, uint64_t data_size, uint32_t sample_rate, uint32_t channels,
+    nk_audio_pcm_format format, nk_audio_clip *out_clip NK_OUT NK_OWNED);
+
 /**
  * Creates a reusable clip from a ready asset in the core resource cache.
  * NativeKit retains the immutable encoded bytes; the asset may be destroyed

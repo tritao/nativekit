@@ -212,6 +212,11 @@ struct AudioClipResource final : nk::core::Resource {
     std::string resource_uri;
     nk_resource_flags resource_flags = NK_RESOURCE_READABLE;
     nk::core::ResourceAssetBytes encoded_data;
+    nk::core::ResourceAssetBytes pcm_data;
+    uint64_t pcm_frames = 0;
+    uint32_t pcm_sample_rate = 0;
+    uint32_t pcm_channels = 0;
+    ma_format pcm_format = ma_format_unknown;
     bool resource_stream = false;
     std::atomic<nk_audio_clip> handle{NK_INVALID_HANDLE};
 
@@ -324,6 +329,8 @@ struct AudioVoiceResource final : nk::core::Resource {
     AudioVoiceLoadNotification load_notification{};
     ma_decoder decoder{};
     bool decoder_initialized = false;
+    ma_audio_buffer_ref pcm_buffer{};
+    bool pcm_buffer_initialized = false;
     std::unique_ptr<AudioStreamingSource> streaming_source;
     AudioResourceReader resource_reader{};
     ma_sound sound{};
@@ -733,6 +740,8 @@ AudioVoiceResource::~AudioVoiceResource() {
     streaming_source.reset();
     if (decoder_initialized)
         ma_decoder_uninit(&decoder);
+    if (pcm_buffer_initialized)
+        ma_audio_buffer_ref_uninit(&pcm_buffer);
     if (resource_reader.stream != NK_INVALID_HANDLE)
         nk_resource_close(resource_reader.stream);
 }
@@ -1645,7 +1654,7 @@ std::shared_ptr<AudioVoiceResource> create_voice_from_clip(std::shared_ptr<Audio
         return {};
     }
 
-    if (clip->encoded_data && (flags & NK_AUDIO_VOICE_ASYNC)) {
+    if ((clip->encoded_data || clip->pcm_data) && (flags & NK_AUDIO_VOICE_ASYNC)) {
         out_result =
             invalid_argument("asynchronous audio loading is unavailable for memory-backed clips");
         return {};
@@ -1660,7 +1669,20 @@ std::shared_ptr<AudioVoiceResource> create_voice_from_clip(std::shared_ptr<Audio
         voice->load_state.store(NK_AUDIO_VOICE_LOADING, std::memory_order_relaxed);
 
     ma_result result = MA_SUCCESS;
-    if (voice->clip->encoded_data) {
+    if (voice->clip->pcm_data) {
+        const auto &pcm = *voice->clip;
+        result = ma_audio_buffer_ref_init(pcm.pcm_format, pcm.pcm_channels,
+                                          pcm.pcm_data->data(), pcm.pcm_frames, &voice->pcm_buffer);
+        if (result != MA_SUCCESS) {
+            out_result = map_miniaudio_result(result, "could not initialize PCM clip voice");
+            return {};
+        }
+        voice->pcm_buffer_initialized = true;
+        voice->pcm_buffer.sampleRate = pcm.pcm_sample_rate;
+        const uint32_t sound_flags = (flags & NK_AUDIO_VOICE_LOOPING) ? MA_SOUND_FLAG_LOOPING : 0;
+        result = ma_sound_init_from_data_source(&voice->engine->engine, &voice->pcm_buffer,
+                                                sound_flags, nullptr, &voice->sound);
+    } else if (voice->clip->encoded_data) {
         result =
             ma_decoder_init_memory(voice->clip->encoded_data->data(),
                                    voice->clip->encoded_data->size(), nullptr, &voice->decoder);
@@ -3983,6 +4005,45 @@ nk_result NK_CALL nk_audio_clip_create_from_memory(const void *data, uint64_t da
                 return clip_result;
             return insert_clip(std::move(clip), out_clip);
         });
+}
+
+nk_result NK_CALL nk_audio_clip_create_from_pcm(const void *data, uint64_t data_size,
+                                                uint32_t sample_rate, uint32_t channels,
+                                                nk_audio_pcm_format format, nk_audio_clip *out_clip) {
+    return nk::core::result_boundary("unexpected error while creating a PCM audio clip", [&]() -> nk_result {
+        if (const auto result = enter_audio_ui(); result != NK_OK)
+            return result;
+        if (!out_clip)
+            return invalid_argument("PCM clip output is missing");
+        *out_clip = NK_INVALID_HANDLE;
+        ma_format sample_format = ma_format_unknown;
+        switch (format) {
+        case NK_AUDIO_PCM_U8: sample_format = ma_format_u8; break;
+        case NK_AUDIO_PCM_S16_LE: sample_format = ma_format_s16; break;
+        case NK_AUDIO_PCM_F32_LE: sample_format = ma_format_f32; break;
+        default: return invalid_argument("unknown PCM sample format");
+        }
+        if (!data || data_size == 0 || sample_rate == 0 || (channels != 1 && channels != 2) ||
+            data_size > static_cast<uint64_t>(std::numeric_limits<std::size_t>::max()))
+            return invalid_argument("PCM clip data, sample rate, or channel count is invalid");
+        const auto frame_size = ma_get_bytes_per_frame(sample_format, channels);
+        if (data_size % frame_size != 0)
+            return invalid_argument("PCM clip contains an incomplete frame");
+        nk_result engine_result = NK_OK;
+        auto engine = ensure_engine(engine_result);
+        if (!engine)
+            return engine_result;
+        auto samples = std::make_shared<std::vector<std::byte>>(static_cast<std::size_t>(data_size));
+        std::memcpy(samples->data(), data, samples->size());
+        auto clip = std::make_shared<AudioClipResource>();
+        clip->engine = std::move(engine);
+        clip->pcm_data = std::move(samples);
+        clip->pcm_frames = data_size / frame_size;
+        clip->pcm_channels = channels;
+        clip->pcm_sample_rate = sample_rate;
+        clip->pcm_format = sample_format;
+        return insert_clip(std::move(clip), out_clip);
+    });
 }
 
 nk_result NK_CALL nk_audio_clip_destroy(nk_audio_clip clip) {
