@@ -75,9 +75,13 @@ struct FrameTicket {
 struct FrameStep {
     std::shared_ptr<void> payload;
     nk_result (*execute)(void *, const FrameTicket &) = nullptr;
+    void (*complete)(void *, nk_result result, bool replaced) noexcept = nullptr;
 };
 
 NK_INTERNAL_API nk_result register_frame_step(FrameStep step, nk_surface_frame_step *out_step);
+/** Queues module work, replacing pending work with the same non-null key. */
+NK_INTERNAL_API nk_result submit_latest_frame(nk_surface_frame frame, FrameStep step, const void *key);
+NK_INTERNAL_API void drain_standalone_frame_completions() noexcept;
 bool frame_completions_pending() noexcept;
 bool poll_frame_completion(nk_event &event) noexcept;
 

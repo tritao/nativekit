@@ -3320,33 +3320,6 @@ nkgpu_result nkgpu_frame_begin_with_target(nkgpu_renderer h,
     return begin_frame_with_target(h, *frame_target);
 }
 
-nkgpu_result nkgpu_frame_begin_on(nkgpu_renderer h, const nk_surface_frame_target *target,
-                                 uint32_t clear) {
-    if (!target || target->struct_size < sizeof(*target) || clear > 1)
-        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid acquired window-pass arguments");
-    if (!nk_executor_is_current(NK_EXECUTOR_RENDER))
-        return fail(NKGPU_ERROR_WRONG_THREAD, "acquired window pass requires the render executor");
-    nk::core::FrameTicket ticket{};
-    if (!nk::core::lookup_frame_ticket(target->frame, &ticket))
-        return fail(NKGPU_ERROR_INVALID_HANDLE, "render frame ticket is unavailable");
-    const auto *renderer = renderer_pool.get(h);
-    if (!renderer)
-        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
-    if (renderer->value.surface != ticket.surface)
-        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "acquired frame belongs to another surface");
-    const nkgpu_result begun = begin_frame_with_target(h, ticket.target);
-    if (begun != NKGPU_OK)
-        return begun;
-    const nkgpu_result pass =
-        nkgpu_begin_window_pass(h, ticket.target.width, ticket.target.height, clear);
-    if (pass != NKGPU_OK) {
-        const std::string detail = nkgpu_last_error();
-        nkgpu_frame_abort(h);
-        return fail(pass, "%s", detail.c_str());
-    }
-    return NKGPU_OK;
-}
-
 nkgpu_result nkgpu_begin_window_pass(nkgpu_renderer h, uint32_t width, uint32_t height,
                                      uint32_t clear) {
     auto *s = renderer_pool.get(h);
@@ -5789,19 +5762,6 @@ static nkgpu_result end_frame(nkgpu_renderer r, bool present_surface) {
 
 nkgpu_result nkgpu_end_frame(nkgpu_renderer r) {
     return end_frame(r, true);
-}
-
-nkgpu_result nkgpu_frame_end_on(nkgpu_renderer r) {
-    if (!nk_executor_is_current(NK_EXECUTOR_RENDER))
-        return fail(NKGPU_ERROR_WRONG_THREAD, "acquired window pass requires the render executor");
-    const auto *renderer = renderer_pool.get(r);
-    if (!renderer)
-        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
-    if (renderer->value.state == RendererState::Lost)
-        return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
-    if (renderer->value.frame_target.frame == NK_INVALID_HANDLE)
-        return fail(NKGPU_ERROR_WRONG_STATE, "renderer has no acquired frame to finish");
-    return end_frame(r, false);
 }
 
 nkgpu_result nkgpu_end_frame_deferred_present(nkgpu_renderer r) {

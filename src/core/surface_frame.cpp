@@ -41,6 +41,11 @@ struct FrameSubmission {
     std::unique_ptr<FrameSubmission> next;
 };
 
+struct LatestFrameTask {
+    const void *key;
+    std::unique_ptr<FrameSubmission> work;
+};
+std::unordered_map<const void *, LatestFrameTask *> latest_frame_tasks;
 std::unique_ptr<FrameSubmission> completed_frames;
 FrameSubmission *completed_tail = nullptr;
 
@@ -88,6 +93,30 @@ void destroy_frame_submission(void *data) noexcept {
     delete static_cast<std::unique_ptr<FrameSubmission> *>(data);
 }
 
+
+void NK_CALL run_latest_frame(void *data) {
+    auto &task = *static_cast<LatestFrameTask *>(data);
+    std::unique_ptr<FrameSubmission> work;
+    {
+        std::lock_guard lock(frame_mutex);
+        latest_frame_tasks.erase(task.key);
+        work = std::move(task.work);
+    }
+    execute_steps(*work);
+    enqueue_completion(std::move(work));
+}
+
+void destroy_latest_frame(void *data) noexcept {
+    std::unique_ptr<LatestFrameTask> task(static_cast<LatestFrameTask *>(data));
+    if (!task->work)
+        return;
+    {
+        std::lock_guard lock(frame_mutex);
+        latest_frame_tasks.erase(task->key);
+    }
+    task->work->result = NK_ERROR_CANCELLED;
+    enqueue_completion(std::move(task->work));
+}
 
 constexpr uint32_t surface_frame_target_min_size =
     static_cast<uint32_t>(offsetof(nk_surface_frame_target, frame) + sizeof(nk_surface_frame));
@@ -207,30 +236,118 @@ static nk_result finish_queued_frame(const FrameSubmission &submission) noexcept
                                                             : nk_surface_present(ticket.surface);
 }
 
+static void complete_frame_steps(FrameSubmission &submission, bool replaced) noexcept {
+    for (const auto &step : submission.steps)
+        if (step.complete)
+            step.complete(step.payload.get(), submission.result, replaced);
+}
+
+nk_result submit_latest_frame(nk_surface_frame frame, FrameStep step, const void *key) {
+    return result_boundary("could not submit latest surface frame", [&]() -> nk_result {
+        if (const auto affinity = require_executor(NK_EXECUTOR_PLATFORM); affinity != NK_OK)
+            return affinity;
+        if (!key || !step.payload || !step.execute)
+            return NK_ERROR_INVALID_ARGUMENT;
+        auto work = std::make_unique<FrameSubmission>();
+        work->steps.push_back(std::move(step));
+        std::unique_ptr<FrameSubmission> replaced;
+        std::unique_ptr<LatestFrameTask> task;
+        {
+            std::lock_guard lock(frame_mutex);
+            const auto ticket = ticket_by_frame.find(frame);
+            if (ticket == ticket_by_frame.end() || ticket->second.queue_owned)
+                return NK_ERROR_INVALID_HANDLE;
+            work->ticket = ticket->second;
+            const auto pending = latest_frame_tasks.find(key);
+            if (pending != latest_frame_tasks.end()) {
+                replaced = std::move(pending->second->work);
+                pending->second->work = std::move(work);
+            } else {
+                task = std::make_unique<LatestFrameTask>();
+                task->key = key;
+                task->work = std::move(work);
+                latest_frame_tasks.emplace(key, task.get());
+            }
+            ticket->second.queue_owned = true;
+        }
+        if (task) {
+            const auto queued = dispatch_to_render(run_latest_frame, task.get(), destroy_latest_frame,
+                                                   sizeof(FrameSubmission));
+            if (queued != NK_OK) {
+                std::lock_guard lock(frame_mutex);
+                latest_frame_tasks.erase(key);
+                ticket_by_frame.at(frame).queue_owned = false;
+                return queued;
+            }
+            (void)task.release();
+        }
+        if (replaced) {
+            replaced->result = NK_ERROR_CANCELLED;
+            replaced->result = finish_queued_frame(*replaced);
+            complete_frame_steps(*replaced, true);
+        }
+        return NK_OK;
+    });
+}
+
 bool frame_completions_pending() noexcept {
     std::lock_guard lock(frame_mutex);
     return completed_frames != nullptr;
 }
 
-bool poll_frame_completion(nk_event &event) noexcept {
-    std::unique_ptr<FrameSubmission> submission;
-    {
-        std::lock_guard lock(frame_mutex);
-        if (!completed_frames)
-            return false;
-        submission = std::move(completed_frames);
-        completed_frames = std::move(submission->next);
-        if (!completed_frames)
-            completed_tail = nullptr;
+static bool standalone(const FrameSubmission &submission) noexcept {
+    return submission.steps.size() == 1 && submission.steps.front().complete;
+}
+
+void drain_standalone_frame_completions() noexcept {
+    for (;;) {
+        std::unique_ptr<FrameSubmission> submission;
+        {
+            std::lock_guard lock(frame_mutex);
+            auto *link = &completed_frames;
+            FrameSubmission *previous = nullptr;
+            while (*link && !standalone(**link)) {
+                previous = link->get();
+                link = &previous->next;
+            }
+            if (!*link)
+                return;
+            submission = std::move(*link);
+            *link = std::move(submission->next);
+            if (!*link)
+                completed_tail = previous;
+        }
+        submission->result = finish_queued_frame(*submission);
+        complete_frame_steps(*submission, false);
     }
-    const auto result = submission->finished ? submission->result : finish_queued_frame(*submission);
-    event = {};
-    event.struct_size = sizeof(event);
-    event.kind = NK_EVENT_SURFACE_FRAME_COMPLETE;
-    event.source = submission->ticket.surface;
-    event.request_id = submission->ticket.frame;
-    event.result = result;
-    return true;
+}
+
+bool poll_frame_completion(nk_event &event) noexcept {
+    for (;;) {
+        std::unique_ptr<FrameSubmission> submission;
+        {
+            std::lock_guard lock(frame_mutex);
+            if (!completed_frames)
+                return false;
+            submission = std::move(completed_frames);
+            completed_frames = std::move(submission->next);
+            if (!completed_frames)
+                completed_tail = nullptr;
+        }
+        if (!submission->finished) {
+            submission->result = finish_queued_frame(*submission);
+            complete_frame_steps(*submission, false);
+        }
+        if (standalone(*submission))
+            continue;
+        event = {};
+        event.struct_size = sizeof(event);
+        event.kind = NK_EVENT_SURFACE_FRAME_COMPLETE;
+        event.source = submission->ticket.surface;
+        event.request_id = submission->ticket.frame;
+        event.result = submission->result;
+        return true;
+    }
 }
 
 std::size_t frame_ticket_count() noexcept {
@@ -244,6 +361,7 @@ bool surface_has_open_frame(nk_surface surface) noexcept {
 }
 
 void clear_frame_tickets() noexcept {
+    drain_standalone_frame_completions();
     std::vector<FrameTicket> tickets;
     std::unordered_map<nk_surface_frame_step, FrameStep> discarded_steps;
     std::unique_ptr<FrameSubmission> discarded_completions;
