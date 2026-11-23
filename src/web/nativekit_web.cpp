@@ -1270,6 +1270,8 @@ nk_key key_from_dom(uint32_t key_code, uint32_t location) {
         return NK_KEY_LEFT;
     case 38:
         return NK_KEY_UP;
+    case 39:
+        return NK_KEY_RIGHT;
     case 40:
         return NK_KEY_DOWN;
     case 44:
