@@ -263,6 +263,8 @@ nk_result NK_CALL nk_poll_event(nk_event *event) {
     if (thread_result != NK_OK)
         return thread_result;
     nk::core::drain_app_tasks();
+    if (nk::core::poll_frame_completion(*event))
+        return NK_OK;
     /* Return the events already queued before pumping again: a pump can render frames, and
      * rendering between the events of one burst delays the rest of it. Background threads keep
      * queueing too, so the pump never waits for more than a bounded number of polls. */
@@ -271,6 +273,8 @@ nk_result NK_CALL nk_poll_event(nk_event *event) {
         nk::backend::pump_events();
     }
     nk::core::run_cooperative_tasks();
+    if (nk::core::poll_frame_completion(*event))
+        return NK_OK;
     nk_result result = NK_OK;
     std::uint64_t os_time_ns = 0;
     {

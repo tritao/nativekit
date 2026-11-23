@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 
 namespace nk::core {
 
@@ -67,14 +68,26 @@ struct FrameTicket {
     BackendRenderBinding binding{};
     FrameBackend backend{};
     bool render_submitted = false;
+    bool queue_owned = false;
 };
+
+/** Module-owned immutable work. Its payload keeps every execution dependency alive. */
+struct FrameStep {
+    std::shared_ptr<void> payload;
+    nk_result (*execute)(void *, const FrameTicket &) = nullptr;
+};
+
+NK_INTERNAL_API nk_result register_frame_step(FrameStep step, nk_surface_frame_step *out_step);
+bool frame_completions_pending() noexcept;
+bool poll_frame_completion(nk_event &event) noexcept;
 
 /** Copies an open platform-owned ticket for render-side scheduling. */
 NK_INTERNAL_API bool lookup_frame_ticket(nk_surface_frame frame, FrameTicket *out_ticket) noexcept;
 NK_INTERNAL_API FrameBackend
 frame_backend_for_target(const nk_surface_frame_target &target) noexcept;
 NK_INTERNAL_API bool mark_frame_render_submitted(nk_surface_frame frame) noexcept;
-NK_INTERNAL_API bool take_frame_ticket(nk_surface_frame frame, FrameTicket *out_ticket) noexcept;
+bool take_frame_ticket(nk_surface_frame frame, FrameTicket *out_ticket,
+                       bool queue_owned = false) noexcept;
 /** Returns the number of open frame tickets in the current runtime. */
 NK_INTERNAL_API std::size_t frame_ticket_count() noexcept;
 /** True until an acquired surface frame is presented or cancelled on PLATFORM. */

@@ -330,6 +330,8 @@ enum NK_ENUM(nk_event_kind) {
     NK_EVENT_SURFACE_LOST = 702,
     /** A custom-surface accessibility action was requested. */
     NK_EVENT_ACCESSIBILITY_ACTION = 703,
+    /** A submitted surface frame finished. source is the surface and request_id is the frame token. */
+    NK_EVENT_SURFACE_FRAME_COMPLETE = 704,
     /** A mobile host opened one or more resources. */
     NK_EVENT_RESOURCE_OPENED = 800,
     /** A mobile host received a share operation. */

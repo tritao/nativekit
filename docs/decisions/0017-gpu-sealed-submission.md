@@ -10,10 +10,12 @@ and replays one frame; UI render-plan execution records frames into a batch
 instead of drawing them inline; and submission declares render-executor
 affinity while acquisition and presentation keep platform-executor affinity.
 
-The render thread itself is still not enabled: the platform, application, and
-render executors remain aliases of the `nk_init()` thread, so submission runs on
-that thread today. The affinity contract is enforced now, which makes moving
-submission a change of dispatch rather than a redesign.
+GTK and web alias the platform, application, and render executors. Other
+backends dispatch render work to a dedicated executor. On the platform executor,
+`nkgpu_frame_step_batch` retains a sealed batch for `nk_surface_frame_submit`.
+Submission transfers the frame and its ordered steps. NativeKit runs those
+steps on the render executor, then presents or cancels on the platform executor.
+`NK_EVENT_SURFACE_FRAME_COMPLETE` reports the outcome when the app polls events.
 
 ## Context
 

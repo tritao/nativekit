@@ -154,6 +154,7 @@ enum NK_ENUM(nk_surface_frame_mode) {
  * already ended, is rejected with NK_ERROR_INVALID_HANDLE. Zero is never valid.
  */
 typedef uint32_t nk_surface_frame NK_HANDLE;
+typedef uint32_t nk_surface_frame_step NK_HANDLE;
 
 /** Payload of NK_EVENT_SURFACE_RESIZE. */
 typedef struct nk_surface_resize_event {
@@ -374,6 +375,18 @@ NK_API nk_result NK_CALL nk_surface_present_frame(nk_surface_frame frame);
  *         NK_ERROR_INVALID_HANDLE for a token that is not open.
  */
 NK_API nk_result NK_CALL nk_surface_cancel_frame(nk_surface_frame frame);
+
+/**
+ * Submits module-prepared steps in order. Call on the platform executor.
+ * Success consumes the frame and every step. On failure, ownership stays with
+ * the caller. Handle NK_EVENT_SURFACE_FRAME_COMPLETE for the render or present result.
+ */
+NK_API nk_result NK_CALL nk_surface_frame_submit(
+    nk_surface_frame frame,
+    const uint32_t *steps NK_IN_ARRAY(count), uint32_t count);
+
+/** Releases an unsubmitted step on the platform executor. */
+NK_API nk_result NK_CALL nk_surface_frame_step_destroy(nk_surface_frame_step step);
 
 /* ------------------------------------------------------------------------- */
 /* Surface queries                                                           */

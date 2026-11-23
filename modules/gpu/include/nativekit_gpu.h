@@ -1742,6 +1742,14 @@ NKGPU_API nkgpu_result nkgpu_batch_append_command_stream(nkgpu_batch batch,
 NKGPU_API nkgpu_result nkgpu_batch_seal(nkgpu_batch batch);
 
 /**
+ * Prepares a sealed batch as a surface-frame submission step on the platform executor.
+ * The batch and renderer stay live until the step is destroyed or the frame completes.
+ * Destroying either while retained returns NKGPU_ERROR_WRONG_STATE.
+ */
+NKGPU_API nkgpu_result nkgpu_frame_step_batch(nkgpu_renderer renderer, nkgpu_batch batch,
+                                             nk_surface_frame_step *out_step NKGPU_OUT);
+
+/**
  * Binds the render-side context represented by an acquired frame target.
  *
  * This must be called on the render executor. Explicit APIs validate the
