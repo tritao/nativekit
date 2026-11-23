@@ -163,11 +163,13 @@ def main():
         pointer_sent = args.skip_pointer
         touch_sent = args.skip_touch
         resize_sent = args.skip_resize
+        # NativeKit must create the context first so the requested framebuffer attributes take effect.
         expression = (
             "JSON.stringify({"
             "result:document.documentElement?.dataset.nativekitResult || '',"
             "status:document.getElementById('status')?.textContent || '',"
-            "webgl2:!!document.getElementById('canvas')?.getContext('webgl2'),"
+            "webgl2:!!document.documentElement?.dataset.nativekitResult && "
+            "!!document.getElementById('canvas')?.getContext('webgl2'),"
             "width:document.getElementById('canvas')?.width || 0,"
             "height:document.getElementById('canvas')?.height || 0"
             "})"
