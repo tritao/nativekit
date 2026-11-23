@@ -5732,6 +5732,19 @@ nkgpu_result nkgpu_end_frame(nkgpu_renderer r) {
     return end_frame(r, true);
 }
 
+nkgpu_result nkgpu_frame_end_on(nkgpu_renderer r) {
+    if (!nk_executor_is_current(NK_EXECUTOR_RENDER))
+        return fail(NKGPU_ERROR_WRONG_THREAD, "acquired window pass requires the render executor");
+    const auto *renderer = renderer_pool.get(r);
+    if (!renderer)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
+    if (renderer->value.state == RendererState::Lost)
+        return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
+    if (renderer->value.frame_target.frame == NK_INVALID_HANDLE)
+        return fail(NKGPU_ERROR_WRONG_STATE, "renderer has no acquired frame to finish");
+    return end_frame(r, false);
+}
+
 nkgpu_result nkgpu_end_frame_deferred_present(nkgpu_renderer r) {
     return end_frame(r, false);
 }

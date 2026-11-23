@@ -7,6 +7,9 @@
 extern "C" {
 #endif
 
+/* Commits UI and batch work independently of who acquired the target. */
+NKGPU_API nkgpu_result NK_CALL nkgpu_end_frame_deferred_present(nkgpu_renderer renderer);
+
 /* Begins a multi-pass frame from an immutable platform-acquired target. */
 NKGPU_API nkgpu_result NK_CALL
 nkgpu_frame_begin_with_target(nkgpu_renderer renderer, const nk_surface_frame_target *frame_target);

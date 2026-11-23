@@ -1378,7 +1378,7 @@ NKGPU_API nkgpu_result nkgpu_begin_frame(nkgpu_renderer renderer);
  * Begins an immediate window pass on an open, caller-acquired frame target.
  * Call on the render executor. A clear value of one clears color, and zero
  * preserves the previous color contents. Depth and stencil are reset.
- * Finish with nkgpu_end_frame_deferred_present(). The caller presents or
+ * Finish with nkgpu_frame_end_on(). The caller presents or
  * cancels the surface frame on the platform executor.
  */
 NKGPU_API nkgpu_result nkgpu_frame_begin_on(nkgpu_renderer renderer,
@@ -1788,8 +1788,8 @@ NKGPU_API nkgpu_result nkgpu_batch_destroy(nkgpu_batch batch);
  */
 NKGPU_API nkgpu_result nkgpu_end_frame(nkgpu_renderer renderer);
 
-/** Finishes GPU work and leaves presentation of the acquired frame to the caller. */
-NKGPU_API nkgpu_result nkgpu_end_frame_deferred_present(nkgpu_renderer renderer);
+/** Finishes the GPU pass on an acquired frame. The caller owns presentation. */
+NKGPU_API nkgpu_result nkgpu_frame_end_on(nkgpu_renderer renderer);
 
 #ifdef __cplusplus
 }
