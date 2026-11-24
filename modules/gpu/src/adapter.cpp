@@ -1,4 +1,8 @@
 #include "nativekit_gpu.h"
+#include "nativekit_gpu_shader_table.h"
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
 #include "nativekit_graphics.h"
 #include "nativekit_sokol_api.h"
 #include "nativekit_sokol_runtime.h"
@@ -2818,6 +2822,55 @@ nkgpu_result nkgpu_shader_binding(nkgpu_shader_builder h, const nkgpu_shader_bin
     default:
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "unknown shader binding kind");
     }
+}
+
+nkgpu_result nkgpu_shader_create_from_table(nkgpu_renderer renderer,
+    const nkgpu_shader_table_entry *entries, uint32_t count, nkgpu_shader *out) {
+    if (!entries || !out || !count)
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "a shader table and output are required");
+    const auto backend = nkgpu_query_backend(renderer);
+    if (!backend)
+        return fail(NKGPU_ERROR_INVALID_HANDLE, "stale shader renderer");
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+    constexpr bool metal_ios = true;
+#else
+    constexpr bool metal_ios = false;
+#endif
+    for (uint32_t i = 0; i < count; ++i) {
+        const auto &entry = entries[i];
+        if (entry.backend != backend || (backend == NKGPU_BACKEND_METAL &&
+                                        (entry.metal_ios != 0) != metal_ios))
+            continue;
+        if ((entry.attribute_count && !entry.attributes) || (entry.block_count && !entry.blocks) ||
+            (entry.uniform_count && !entry.uniforms) || (entry.texture_count && !entry.textures))
+            return fail(NKGPU_ERROR_INVALID_ARGUMENT, "shader table bindings are missing");
+        nkgpu_shader_builder builder{};
+        auto result = nkgpu_shader_begin(renderer, entry.language, entry.vertex, entry.fragment, &builder);
+        if (result != NKGPU_OK)
+            return result;
+        for (uint32_t j = 0; j < entry.attribute_count && result == NKGPU_OK; ++j) {
+            const auto &a = entry.attributes[j];
+            result = nkgpu_shader_attribute(builder, a.slot, a.glsl_name, a.hlsl_semantic, a.semantic_index);
+        }
+        for (uint32_t j = 0; j < entry.block_count && result == NKGPU_OK; ++j) {
+            const auto &b = entry.blocks[j];
+            result = nkgpu_shader_uniform_block(builder, b.slot, b.stage, b.size);
+        }
+        for (uint32_t j = 0; j < entry.uniform_count && result == NKGPU_OK; ++j) {
+            const auto &u = entry.uniforms[j];
+            result = nkgpu_shader_uniform(builder, u.block, u.member, u.name, u.type, u.count);
+        }
+        for (uint32_t j = 0; j < entry.texture_count && result == NKGPU_OK; ++j) {
+            const auto &t = entry.textures[j];
+            result = nkgpu_shader_texture_type(builder, t.view, t.sampler, t.stage, t.type, t.name);
+        }
+        if (result == NKGPU_OK)
+            result = nkgpu_shader_end(builder, out);
+        if (auto *remaining = shader_builder_pool.get(builder))
+            shader_builder_pool.remove(*remaining);
+        return result;
+    }
+    return fail(NKGPU_ERROR_UNSUPPORTED, "shader table has no variant for the renderer backend");
 }
 
 nkgpu_result nkgpu_shader_end(nkgpu_shader_builder h, nkgpu_shader *out) {
