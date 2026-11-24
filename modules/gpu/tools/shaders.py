@@ -8,7 +8,6 @@ import json
 import os
 from pathlib import Path
 import platform
-import shlex
 import shutil
 import struct
 import subprocess
@@ -266,7 +265,15 @@ def shader_source(path):
     return Path(path).read_text(encoding="utf-8")
 
 
-def build(manifest_path, shdc, validator, check):
+def dependency_path(path, directory):
+    try:
+        return Path(os.path.relpath(path, directory)).as_posix()
+    except ValueError:
+        # A Windows source can be on a different drive than the build directory.
+        return path.as_posix()
+
+
+def build(manifest_path, shdc, validator, check, run=subprocess.run):
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     directory = manifest_path.parent
     slangs = manifest.get("slangs", SLANGS)
@@ -318,10 +325,11 @@ def build(manifest_path, shdc, validator, check):
                            "-f", "bare_yaml", "--no-log-cmdline", "--save-intermediate-spirv", f"--dependency-file={dependencies}"]
                 if defines:
                     command.append("--defines=" + ":".join(defines))
-                subprocess.run(command, check=True)
+                run(command, check=True)
                 dependency_text = dependencies.read_text(encoding="utf-8").partition(": ")[2]
-                paths = (Path(p).resolve() for p in shlex.split(dependency_text.replace("\\\n", " ")))
-                includes = sorted(Path(os.path.relpath(staged.get(path, path), directory)).as_posix()
+                # The compiler emits one path per continuation line, without escaping spaces.
+                paths = (Path(path.strip()).resolve() for path in dependency_text.split("\\\n") if path.strip())
+                includes = sorted(dependency_path(staged.get(path, path), directory)
                                   for path in paths)
                 reflected = yaml.safe_load((invocation / "shader_reflection.yaml").read_text(encoding="utf-8"))
                 canonical = "glsl410" if "glsl410" in slangs else slangs[0]
@@ -333,7 +341,7 @@ def build(manifest_path, shdc, validator, check):
                         members[block] = fields
                 for target in reflected["shaders"]:
                     slang = target["slang"]
-                    if {p["name"] for p in target["programs"]} != set(group["programs"]):
+                    if "programs" in group and {p["name"] for p in target["programs"]} != set(group["programs"]):
                         raise ValueError(f"{source}: manifest programs differ from @program declarations")
                     for shader in target["programs"]:
                         name = shader["name"]
