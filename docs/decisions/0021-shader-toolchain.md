@@ -32,8 +32,9 @@ VM and Beartooth's planned renderer would add more. Both scripts run
 
 ### One tool in `modules/gpu/tools`
 
-NativeKit GPU owns a single generator. Each consumer keeps its shaders and a
-manifest next to them; the tool is shared.
+NativeKit GPU owns `nkgpu-shaders`, a C++ host executable. C consumers keep
+a manifest next to their shaders. Build systems can pass one source file,
+target list and define sets and receive reflection JSON and dependencies.
 
 - It pins `sokol-shdc` (by `sokol-tools-bin` commit) and `glslangValidator`,
   and validates every OpenGL variant.
@@ -96,8 +97,7 @@ Only if upstream declines a required change do we carry that patch against
 the pinned revision and build the compiler in CI.
 
 The SDK ships or fetches the pinned upstream binary, verifies its SHA-256
-for the host before executing it, and will ship this driver as a native
-tool. We can offer a generic `bare_json` output upstream to remove the
+for the host before executing it, and ships this driver as a native tool. We can offer a generic `bare_json` output upstream to remove the
 driver's YAML dependency.
 
 The tool's first step settles four things:

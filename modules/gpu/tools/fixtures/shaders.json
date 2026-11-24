@@ -1,0 +1,13 @@
+{
+  "slangs": ["glsl410", "glsl300es"],
+  "reflection": "fixture.json",
+  "embed_sources": true,
+  "tables": "fixture.h",
+  "sources": [
+    {
+      "file": "fixture.glsl",
+      "programs": ["fixture"],
+      "variants": {"default": [], "preview": ["PREVIEW"]}
+    }
+  ]
+}

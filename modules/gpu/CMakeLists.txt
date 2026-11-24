@@ -350,3 +350,8 @@ if(NOT NK_LIBRARY_TYPE STREQUAL "SHARED" AND
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NativeKit)
 endif()
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+option(NK_BUILD_SHADER_TOOLS "Build the native GPU shader driver" ON)
+if(NK_BUILD_SHADER_TOOLS AND NOT CMAKE_CROSSCOMPILING)
+    add_subdirectory(tools)
+endif()
