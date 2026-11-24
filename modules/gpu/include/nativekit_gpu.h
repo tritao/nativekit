@@ -1771,10 +1771,9 @@ NKGPU_API nkgpu_result nkgpu_batch_submit(nkgpu_renderer renderer, nkgpu_batch b
 );
 
 /**
- * Destroys a batch and releases every resource it retained.
- *
- * The handle becomes invalid after this call and must not be reused. Destroying
- * a renderer also destroys its batches.
+ * Releases the caller's batch handle. A frame step retains the sealed batch
+ * and its resources until that step is released. Destroying a renderer also
+ * destroys its remaining batches.
  */
 NKGPU_API nkgpu_result nkgpu_batch_destroy(nkgpu_batch batch);
 

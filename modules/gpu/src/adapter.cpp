@@ -354,6 +354,7 @@ struct Batch {
     std::vector<uint32_t> retained_images;
     bool sealed = false;
     uint32_t frame_steps = 0;
+    bool client_released = false;
 };
 
 static Pool<Renderer, RendererKind, 8> renderer_pool;
@@ -5400,8 +5401,9 @@ static bool retain_batch_render_pass(Batch &batch, const nkgpu_render_pass_desc 
 }
 
 nkgpu_result nkgpu_batch_append_pass(nkgpu_batch batch, const nkgpu_batch_pass *pass) {
+    std::lock_guard lock(batch_submission_mutex);
     auto *slot = batch_pool.get(batch);
-    if (!slot)
+    if (!slot || slot->value.client_released)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale batch");
     if (slot->value.sealed)
         return fail(NKGPU_ERROR_WRONG_STATE, "batch is sealed");
@@ -5446,8 +5448,9 @@ nkgpu_result nkgpu_batch_append_render_pass(nkgpu_batch batch, const nkgpu_rende
 }
 
 nkgpu_result nkgpu_batch_append_command(nkgpu_batch batch, const uint8_t *commands, uint32_t size) {
+    std::lock_guard lock(batch_submission_mutex);
     auto *slot = batch_pool.get(batch);
-    if (!slot)
+    if (!slot || slot->value.client_released)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale batch");
     if (slot->value.sealed)
         return fail(NKGPU_ERROR_WRONG_STATE, "batch is sealed");
@@ -5482,8 +5485,9 @@ nkgpu_result nkgpu_batch_append_command_stream(nkgpu_batch batch,
 }
 
 nkgpu_result nkgpu_batch_seal(nkgpu_batch batch) {
+    std::lock_guard lock(batch_submission_mutex);
     auto *slot = batch_pool.get(batch);
-    if (!slot)
+    if (!slot || slot->value.client_released)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale batch");
     if (slot->value.sealed)
         return NKGPU_OK;
@@ -5493,12 +5497,12 @@ nkgpu_result nkgpu_batch_seal(nkgpu_batch batch) {
     return NKGPU_OK;
 }
 
-nkgpu_result nkgpu_batch_submit(nkgpu_renderer renderer, nkgpu_batch batch,
-                                const nk_surface_frame_target *frame_target) {
+static nkgpu_result submit_batch(nkgpu_renderer renderer, nkgpu_batch batch,
+                                  const nk_surface_frame_target *frame_target, bool retained) {
     std::lock_guard batch_lock(batch_submission_mutex);
     auto *rs = renderer_pool.get(renderer);
     auto *bs = batch_pool.get(batch);
-    if (!rs || !bs)
+    if (!rs || !bs || (!retained && bs->value.client_released))
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer or batch");
     if (rs->value.state == RendererState::Lost)
         return fail(NKGPU_ERROR_DEVICE_LOST, "renderer device is lost");
@@ -5598,16 +5602,26 @@ nkgpu_result nkgpu_bind_frame_target(const nk_surface_frame_target *frame_target
     return NKGPU_OK;
 }
 
+nkgpu_result nkgpu_batch_submit(nkgpu_renderer renderer, nkgpu_batch batch,
+                                const nk_surface_frame_target *frame_target) {
+    return submit_batch(renderer, batch, frame_target, false);
+}
+
+static void release_batch_if_unused(nkgpu_batch batch) {
+    if (auto *slot = batch_pool.get(batch); slot && slot->value.client_released && !slot->value.frame_steps) {
+        release_batch_retention(slot->value, 0);
+        release_batch_images(slot->value, 0);
+        batch_pool.remove(*slot);
+    }
+}
+
 nkgpu_result nkgpu_batch_destroy(nkgpu_batch batch) {
     std::lock_guard batch_lock(batch_submission_mutex);
     auto *slot = batch_pool.get(batch);
-    if (!slot)
+    if (!slot || slot->value.client_released)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale batch");
-    if (slot->value.frame_steps)
-        return fail(NKGPU_ERROR_WRONG_STATE, "batch is retained by a frame step");
-    release_batch_retention(slot->value, 0);
-    release_batch_images(slot->value, 0);
-    batch_pool.remove(*slot);
+    slot->value.client_released = true;
+    release_batch_if_unused(batch);
     return NKGPU_OK;
 }
 
@@ -5623,6 +5637,7 @@ struct GpuFrameStep {
         std::lock_guard lock(batch_submission_mutex);
         if (auto *slot = batch_pool.get(batch))
             --slot->value.frame_steps;
+        release_batch_if_unused(batch);
     }
 };
 
@@ -5637,7 +5652,7 @@ nkgpu_result nkgpu_frame_step_batch(nkgpu_renderer renderer, nkgpu_batch batch,
         std::lock_guard lock(batch_submission_mutex);
         const auto *owner = renderer_pool.get(renderer);
         auto *batch_slot = batch_pool.get(batch);
-        if (!owner || !batch_slot || batch_slot->value.owner != renderer)
+        if (!owner || !batch_slot || batch_slot->value.client_released || batch_slot->value.owner != renderer)
             return fail(NKGPU_ERROR_INVALID_HANDLE, "invalid frame step renderer or batch");
         if (!batch_slot->value.sealed)
             return fail(NKGPU_ERROR_WRONG_STATE, "frame step requires a sealed batch");
@@ -5651,7 +5666,7 @@ nkgpu_result nkgpu_frame_step_batch(nkgpu_renderer renderer, nkgpu_batch batch,
         const auto &gpu = *static_cast<const GpuFrameStep *>(data);
         if (gpu.surface != ticket.surface)
             return NK_ERROR_INVALID_ARGUMENT;
-        return nkgpu_batch_submit(gpu.renderer, gpu.batch, &ticket.target) == NKGPU_OK
+        return submit_batch(gpu.renderer, gpu.batch, &ticket.target, true) == NKGPU_OK
             ? NK_OK : NK_ERROR_UNKNOWN;
     };
     const auto result = nk::core::register_frame_step({std::move(step), execute}, out_step);
