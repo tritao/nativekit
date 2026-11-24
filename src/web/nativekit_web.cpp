@@ -3338,7 +3338,7 @@ nk_result NK_CALL nk_surface_present(nk_handle handle) {
     if (!surface)
         return invalid_handle("invalid web surface handle");
     if (surface->context_lost)
-        return NK_ERROR_INVALID_REQUEST;
+        return NK_ERROR_SURFACE_LOST;
     /* WebGL's default framebuffer is presented by the browser's compositor. */
     return NK_OK;
 }

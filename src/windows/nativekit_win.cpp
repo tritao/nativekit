@@ -2122,10 +2122,10 @@ void emit_surface_resize(WinSurfaceResource &surface) {
     nk::core::push_event(std::move(event));
 }
 
-bool d3d11_device_failure(const WinSurfaceResource &surface, HRESULT result) {
+bool d3d11_device_failure(ID3D11Device *device, HRESULT result) {
     return result == DXGI_ERROR_DEVICE_REMOVED || result == DXGI_ERROR_DEVICE_RESET ||
            result == DXGI_ERROR_DEVICE_HUNG || result == DXGI_ERROR_DRIVER_INTERNAL_ERROR ||
-           (surface.device && FAILED(surface.device->GetDeviceRemovedReason()));
+           (device && FAILED(device->GetDeviceRemovedReason()));
 }
 
 bool create_d3d11_device(WinSurfaceResource &surface) {
@@ -2200,7 +2200,7 @@ bool rebuild_surface_targets(WinSurfaceResource &surface, int32_t width, int32_t
             emit_surface_resize(surface);
         return true;
     }
-    if (surface.device && FAILED(surface.device->GetDeviceRemovedReason())) {
+    if (device && FAILED(device->GetDeviceRemovedReason())) {
         emit_surface_lost(surface);
         nk::core::set_error("the Direct3D 11 device was removed");
         return false;
@@ -2216,7 +2216,7 @@ bool rebuild_surface_targets(WinSurfaceResource &surface, int32_t width, int32_t
         const HRESULT result = surface.swapchain->ResizeBuffers(
             0, static_cast<UINT>(width), static_cast<UINT>(height), DXGI_FORMAT_UNKNOWN, 0);
         if (FAILED(result)) {
-            if (d3d11_device_failure(surface, result))
+            if (d3d11_device_failure(surface.device.Get(), result))
                 emit_surface_lost(surface);
             nk::core::set_error("could not resize the Direct3D DXGI swapchain");
             return false;
@@ -5195,8 +5195,10 @@ nk_result NK_CALL nk_surface_present(nk_handle handle) {
     if (result == DXGI_STATUS_OCCLUDED)
         return apply_pending_resize(*resource) ? NK_OK : NK_ERROR_UNKNOWN;
     if (FAILED(result)) {
-        if (d3d11_device_failure(*resource, result))
+        if (d3d11_device_failure(resource->device.Get(), result)) {
             emit_surface_lost(*resource);
+            return fail(NK_ERROR_SURFACE_LOST, "the Direct3D surface device was lost");
+        }
         return fail(NK_ERROR_UNKNOWN, "could not present the Direct3D surface");
     }
     if (!apply_pending_resize(*resource))
@@ -5213,8 +5215,13 @@ nk_result NK_CALL nk_frame_backend_submit(const nk_surface_frame_target *target)
     const HRESULT result = swapchain->Present(1, 0);
     if (result == DXGI_STATUS_OCCLUDED)
         return NK_OK;
-    if (FAILED(result))
-        return NK_ERROR_UNKNOWN;
+    if (FAILED(result)) {
+        Microsoft::WRL::ComPtr<ID3D11Device> device;
+        swapchain->GetDevice(IID_PPV_ARGS(&device));
+        if (d3d11_device_failure(device.Get(), result))
+            return fail(NK_ERROR_SURFACE_LOST, "the Direct3D surface device was lost");
+        return fail(NK_ERROR_UNKNOWN, "could not present the Direct3D surface");
+    }
     return NK_OK;
 }
 
@@ -5235,8 +5242,12 @@ nk_result NK_CALL nk_frame_backend_finish(nk_handle handle, const nk_surface_fra
     if (!resource->frame_prepared)
         return fail(NK_ERROR_INVALID_REQUEST, "Direct3D surface has no prepared frame");
     resource->frame_prepared = false;
+    if (resource->device && FAILED(resource->device->GetDeviceRemovedReason())) {
+        emit_surface_lost(*resource);
+        return fail(NK_ERROR_SURFACE_LOST, "the Direct3D surface device was lost");
+    }
     if (!apply_pending_resize(*resource))
-        return NK_ERROR_UNKNOWN;
+        return resource->lost_reported ? NK_ERROR_SURFACE_LOST : NK_ERROR_UNKNOWN;
     arm_surface_frames(*resource);
     return NK_OK;
 }
