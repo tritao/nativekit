@@ -834,18 +834,31 @@ void sync_surface_drawable_size(MacSurfaceResource &resource) {
 bool set_surface_native_bounds(MacSurfaceResource &resource) {
     if (!resource.view)
         return false;
-    [resource.view setFrame:NSMakeRect(resource.x, resource.y, resource.width, resource.height)];
+    NSRect bounds = NSMakeRect(resource.x, resource.y, resource.width, resource.height);
+    if (resource.flags & NK_SURFACE_FILL_WINDOW) {
+        auto parent = window(resource.parent);
+        if (!parent)
+            return false;
+        NSView *content = window_content_view(*parent);
+        if (!content)
+            return false;
+        bounds = content.bounds;
+    }
+    [resource.view setFrame:bounds];
     if (resource.accessibility_container)
-        [resource.accessibility_container
-            setFrame:NSMakeRect(resource.x, resource.y, resource.width, resource.height)];
+        [resource.accessibility_container setFrame:bounds];
     sync_surface_drawable_size(resource);
     return true;
 }
 
 void update_window_surfaces(MacWindowResource &resource) {
     for (const nk_handle handle : resource.surfaces)
-        if (auto child = surface(handle))
-            sync_surface_drawable_size(*child);
+        if (auto child = surface(handle)) {
+            if (child->flags & NK_SURFACE_FILL_WINDOW)
+                (void)set_surface_native_bounds(*child);
+            else
+                sync_surface_drawable_size(*child);
+        }
 }
 
 bool surface_frame_available(const MacSurfaceResource &resource) {
@@ -5189,7 +5202,7 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
                 return result;
             constexpr nk_surface_flags supported_flags = NK_SURFACE_HIDDEN | NK_SURFACE_ALPHA |
                                                          NK_SURFACE_DEPTH | NK_SURFACE_STENCIL |
-                                                         NK_SURFACE_DEBUG_CONTEXT;
+                                                         NK_SURFACE_DEBUG_CONTEXT | NK_SURFACE_FILL_WINDOW;
             if (!options || options->struct_size < sizeof(*options) || !out_surface ||
                 options->width <= 0 || options->height <= 0 || options->api != NK_GRAPHICS_METAL ||
                 (options->flags & ~supported_flags) != 0)
@@ -5342,6 +5355,8 @@ nk_result NK_CALL nk_surface_set_bounds(nk_handle handle, int32_t x, int32_t y, 
     auto resource = surface(handle);
     if (!resource)
         return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale graphics surface handle");
+    if (resource->flags & NK_SURFACE_FILL_WINDOW)
+        return fail(NK_ERROR_INVALID_REQUEST, "a window-filling surface has automatic bounds");
     resource->x = x;
     resource->y = y;
     resource->width = width;

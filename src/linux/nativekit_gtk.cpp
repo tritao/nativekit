@@ -253,6 +253,7 @@ constexpr const char *k_accessibility_resource_data = "nativekit-surface-resourc
 struct GtkSurfaceResource final : nk::core::Resource {
     GtkWidget *widget = nullptr;
     nk_handle handle = NK_INVALID_HANDLE;
+    bool fill_window = false;
     nk_handle parent = NK_INVALID_HANDLE;
     uint64_t generation = 0;
     nk_graphics_api api = NK_GRAPHICS_OPENGL;
@@ -5150,6 +5151,7 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
             parent->surfaces.reserve(parent->surfaces.size() + 1);
             auto resource = std::make_shared<GtkSurfaceResource>();
             resource->parent = parent_handle;
+            resource->fill_window = (options->flags & NK_SURFACE_FILL_WINDOW) != 0;
             resource->generation = nk::core::runtime_generation();
             resource->api = options->api;
             resource->major_version = options->major_version;
@@ -5171,8 +5173,20 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
             gtk_gl_area_set_has_alpha(area, (options->flags & NK_SURFACE_ALPHA) != 0);
             gtk_gl_area_set_has_depth_buffer(area, (options->flags & NK_SURFACE_DEPTH) != 0);
             gtk_gl_area_set_has_stencil_buffer(area, (options->flags & NK_SURFACE_STENCIL) != 0);
-            gtk_widget_set_size_request(resource->widget, options->width, options->height);
-            gtk_fixed_put(GTK_FIXED(parent->container), resource->widget, options->x, options->y);
+            gint width = options->width, height = options->height;
+            if (resource->fill_window) {
+                gtk_window_get_size(GTK_WINDOW(parent->window), &width, &height);
+                g_signal_connect_object(parent->container, "size-allocate",
+                    G_CALLBACK(+[](GtkWidget *, GtkAllocation *bounds, GtkWidget *child) {
+                        GtkAllocation child_bounds = *bounds;
+                        child_bounds.x = child_bounds.y = 0;
+                        gtk_widget_size_allocate(child, &child_bounds);
+                    }), resource->widget, G_CONNECT_AFTER);
+            }
+            gtk_widget_set_size_request(resource->widget, width, height);
+            gtk_fixed_put(GTK_FIXED(parent->container), resource->widget,
+                          resource->fill_window ? 0 : options->x,
+                          resource->fill_window ? 0 : options->y);
             resource->handle =
                 nk::core::handles().insert(nk::core::ResourceType::surface, resource);
             if (resource->handle == NK_INVALID_HANDLE) {
@@ -5271,6 +5285,8 @@ nk_result NK_CALL nk_surface_set_bounds(nk_handle handle, int32_t x, int32_t y, 
     auto resource = surface(handle);
     if (!resource)
         return invalid_handle("graphics surface");
+    if (resource->fill_window)
+        return fail(NK_ERROR_INVALID_REQUEST, "a window-filling surface has automatic bounds");
     auto parent = window(resource->parent);
     if (!parent)
         return invalid_handle("parent window");

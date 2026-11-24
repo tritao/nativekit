@@ -1983,6 +1983,11 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
                 const int dpi = static_cast<int>(query_window_dpi(window));
                 const nk_window_resize_event size{MulDiv(framebuffer_width, 96, dpi),
                                                   MulDiv(framebuffer_height, 96, dpi)};
+                if (framebuffer_width > 0 && framebuffer_height > 0) {
+                    for (const auto handle : resource->surfaces)
+                        if (auto child = get_surface(handle); child && (child->flags & NK_SURFACE_FILL_WINDOW))
+                            (void)set_surface_native_bounds(*child);
+                }
                 nk::core::QueuedEvent event;
                 event.kind = NK_EVENT_WINDOW_RESIZE;
                 event.source = resource->handle;
@@ -2351,6 +2356,12 @@ bool set_surface_native_bounds(WinSurfaceResource &surface) {
     auto parent = get_window(surface.parent);
     if (!parent)
         return false;
+    if (surface.flags & NK_SURFACE_FILL_WINDOW) {
+        RECT client{};
+        return GetClientRect(parent->window, &client) &&
+               SetWindowPos(surface.window, nullptr, 0, 0, client.right, client.bottom,
+                            SWP_NOACTIVATE | SWP_NOZORDER) != 0;
+    }
     const UINT dpi = query_window_dpi(parent->window);
     const int x = MulDiv(surface.x, static_cast<int>(dpi), 96);
     const int y = MulDiv(surface.y, static_cast<int>(dpi), 96);
@@ -5009,7 +5020,7 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
             return result;
         constexpr nk_surface_flags supported_flags = NK_SURFACE_HIDDEN | NK_SURFACE_ALPHA |
                                                      NK_SURFACE_DEPTH | NK_SURFACE_STENCIL |
-                                                     NK_SURFACE_DEBUG_CONTEXT;
+                                                     NK_SURFACE_DEBUG_CONTEXT | NK_SURFACE_FILL_WINDOW;
         if (!options || options->struct_size < sizeof(*options) || !out_surface ||
             options->width <= 0 || options->height <= 0 || options->api != NK_GRAPHICS_D3D11 ||
             (options->flags & ~supported_flags) != 0)
@@ -5050,10 +5061,14 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
         const int y = MulDiv(resource->y, static_cast<int>(dpi), 96);
         const int width = MulDiv(resource->width, static_cast<int>(dpi), 96);
         const int height = MulDiv(resource->height, static_cast<int>(dpi), 96);
+        RECT client{};
+        const bool fills = (options->flags & NK_SURFACE_FILL_WINDOW) &&
+                           GetClientRect(parent->window, &client);
         const DWORD style = WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS |
                             ((options->flags & NK_SURFACE_HIDDEN) ? 0 : WS_VISIBLE);
         resource->window =
-            CreateWindowExW(WS_EX_NOACTIVATE, surface_class_name, L"", style, x, y, width, height,
+            CreateWindowExW(WS_EX_NOACTIVATE, surface_class_name, L"", style, fills ? 0 : x,
+                            fills ? 0 : y, fills ? client.right : width, fills ? client.bottom : height,
                             parent->window, nullptr, GetModuleHandleW(nullptr), resource.get());
         if (!resource->window)
             return fail(NK_ERROR_UNKNOWN, "could not create the Direct3D child surface");
@@ -5137,6 +5152,8 @@ nk_result NK_CALL nk_surface_set_bounds(nk_handle handle, int32_t x, int32_t y, 
     auto resource = get_surface(handle);
     if (!resource)
         return fail(NK_ERROR_INVALID_HANDLE, "invalid or stale graphics surface handle");
+    if (resource->flags & NK_SURFACE_FILL_WINDOW)
+        return fail(NK_ERROR_INVALID_REQUEST, "a window-filling surface has automatic bounds");
     resource->x = x;
     resource->y = y;
     resource->width = width;

@@ -81,7 +81,9 @@ enum NK_FLAGS(nk_surface_flags) {
     /** Request additional graphics validation or debug output. */
     NK_SURFACE_DEBUG_CONTEXT = 1u << 4,
     /** Request a forward-compatible OpenGL context. */
-    NK_SURFACE_FORWARD_COMPATIBLE = 1u << 5
+    NK_SURFACE_FORWARD_COMPATIBLE = 1u << 5,
+    /** Follows the parent window content area instead of using fixed bounds. */
+    NK_SURFACE_FILL_WINDOW = 1u << 6
 };
 
 /** Options used to create a NativeKit graphics surface. */
