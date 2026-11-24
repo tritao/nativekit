@@ -1,3 +1,4 @@
+#include "nativekit_time.h"
 #include "nativekit_window.h"
 #include "shader_table_target.h"
 
