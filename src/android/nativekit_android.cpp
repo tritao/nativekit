@@ -3165,7 +3165,7 @@ nk_result NK_CALL nk_graphics_bind_frame_target(const nk_surface_frame_target *t
     if (const auto resource = frame_target_surface(target);
         resource && resource->surface_destroy_pending.load(std::memory_order_acquire)) {
         nk::core::set_error("Android surface was destroyed before render binding");
-        return NK_ERROR_CANCELLED;
+        return NK_ERROR_SURFACE_LOST;
     }
     const auto display =
         reinterpret_cast<EGLDisplay>(static_cast<uintptr_t>(target->native_device));
@@ -3179,7 +3179,7 @@ nk_result NK_CALL nk_graphics_bind_frame_target(const nk_surface_frame_target *t
         const EGLint error = eglGetError();
         if (error == EGL_BAD_SURFACE || error == EGL_BAD_NATIVE_WINDOW) {
             nk::core::set_error("Android EGL frame drawable is no longer available");
-            return NK_ERROR_CANCELLED;
+            return NK_ERROR_SURFACE_LOST;
         }
         nk::core::set_error("could not bind the Android EGL frame target");
         return NK_ERROR_UNKNOWN;
@@ -3206,7 +3206,7 @@ nk_result NK_CALL nk_frame_backend_submit(const nk_surface_frame_target *target)
     if (const auto resource = frame_target_surface(target);
         resource && resource->surface_destroy_pending.load(std::memory_order_acquire)) {
         nk::core::set_error("Android surface was destroyed before render submit");
-        return NK_ERROR_CANCELLED;
+        return NK_ERROR_SURFACE_LOST;
     }
     const auto display =
         reinterpret_cast<EGLDisplay>(static_cast<uintptr_t>(target->native_device));
@@ -3216,7 +3216,7 @@ nk_result NK_CALL nk_frame_backend_submit(const nk_surface_frame_target *target)
         const EGLint error = eglGetError();
         if (error == EGL_BAD_SURFACE || error == EGL_BAD_NATIVE_WINDOW) {
             nk::core::set_error("Android EGL frame drawable is no longer available");
-            return NK_ERROR_CANCELLED;
+            return NK_ERROR_SURFACE_LOST;
         }
         nk::core::set_error("could not present the Android EGL surface");
         return NK_ERROR_UNKNOWN;

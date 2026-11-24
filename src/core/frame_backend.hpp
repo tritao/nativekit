@@ -68,7 +68,7 @@ struct FrameTicket {
     BackendRenderBinding binding{};
     FrameBackend backend{};
     bool render_submitted = false;
-    bool render_cancelled = false;
+    bool surface_lost = false;
     bool queue_owned = false;
 };
 
@@ -81,6 +81,7 @@ struct FrameStep {
 
 NK_INTERNAL_API nk_result register_frame_step(FrameStep step, nk_surface_frame_step *out_step);
 NK_INTERNAL_API void drain_standalone_frame_completions() noexcept;
+void mark_surface_frames_lost(nk_surface surface) noexcept;
 bool frame_completions_pending() noexcept;
 bool poll_frame_completion(nk_event &event) noexcept;
 
@@ -89,7 +90,7 @@ NK_INTERNAL_API bool lookup_frame_ticket(nk_surface_frame frame, FrameTicket *ou
 NK_INTERNAL_API FrameBackend
 frame_backend_for_target(const nk_surface_frame_target &target) noexcept;
 NK_INTERNAL_API bool mark_frame_render_submitted(nk_surface_frame frame) noexcept;
-NK_INTERNAL_API void mark_frame_render_cancelled(nk_surface_frame frame) noexcept;
+NK_INTERNAL_API void mark_frame_surface_lost(nk_surface_frame frame) noexcept;
 bool take_frame_ticket(nk_surface_frame frame, FrameTicket *out_ticket,
                        bool queue_owned = false) noexcept;
 /** Returns the number of open frame tickets in the current runtime. */

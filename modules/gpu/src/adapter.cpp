@@ -5736,8 +5736,8 @@ static nkgpu_result end_frame(nkgpu_renderer r, bool present_surface) {
         if (submitted == NK_OK) {
             nk::core::mark_frame_render_submitted(ticket.frame);
         } else {
-            if (submitted == NK_ERROR_CANCELLED)
-                nk::core::mark_frame_render_cancelled(ticket.frame);
+            if (submitted == NK_ERROR_SURFACE_LOST)
+                nk::core::mark_frame_surface_lost(ticket.frame);
             submit_result = fail(NKGPU_ERROR_UNKNOWN, "render submit: %s", nk_last_error());
         }
     }

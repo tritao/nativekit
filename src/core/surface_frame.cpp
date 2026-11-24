@@ -59,6 +59,11 @@ void enqueue_completion(std::unique_ptr<FrameSubmission> submission) noexcept {
 
 void execute_steps(FrameSubmission &submission) noexcept {
     const auto &ticket = submission.ticket;
+    FrameTicket latest{};
+    if (lookup_frame_ticket(ticket.frame, &latest) && latest.surface_lost) {
+        submission.result = NK_ERROR_SURFACE_LOST;
+        return;
+    }
     if (!ticket.backend.bind) {
         submission.result = NK_ERROR_UNSUPPORTED;
         return;
@@ -72,8 +77,8 @@ void execute_steps(FrameSubmission &submission) noexcept {
         });
         if (submission.result != NK_OK) {
             FrameTicket current{};
-            if (lookup_frame_ticket(ticket.frame, &current) && current.render_cancelled)
-                submission.result = NK_ERROR_CANCELLED;
+            if (lookup_frame_ticket(ticket.frame, &current) && current.surface_lost)
+                submission.result = NK_ERROR_SURFACE_LOST;
             break;
         }
     }
@@ -167,11 +172,11 @@ bool mark_frame_render_submitted(nk_surface_frame frame) noexcept {
     return true;
 }
 
-void mark_frame_render_cancelled(nk_surface_frame frame) noexcept {
+void mark_frame_surface_lost(nk_surface_frame frame) noexcept {
     std::lock_guard lock(frame_mutex);
     const auto entry = ticket_by_frame.find(frame);
     if (entry != ticket_by_frame.end())
-        entry->second.render_cancelled = true;
+        entry->second.surface_lost = true;
 }
 
 bool take_frame_ticket(nk_surface_frame frame, FrameTicket *out_ticket, bool queue_owned) noexcept {
@@ -214,10 +219,10 @@ static nk_result finish_queued_frame(const FrameSubmission &submission) noexcept
     FrameTicket ticket{};
     if (!take_frame_ticket(submission.ticket.frame, &ticket, true))
         return NK_ERROR_INVALID_HANDLE;
-    if (submission.result != NK_OK) {
+    if (ticket.surface_lost || submission.result != NK_OK) {
         if (render_executor_physical() && ticket.backend.cancel)
             (void)ticket.backend.cancel(ticket);
-        return submission.result;
+        return ticket.surface_lost ? NK_ERROR_SURFACE_LOST : submission.result;
     }
     return ticket.render_submitted && ticket.backend.finish ? ticket.backend.finish(ticket)
                                                             : nk_surface_present(ticket.surface);
@@ -227,6 +232,16 @@ static void complete_frame_steps(FrameSubmission &submission) noexcept {
     for (const auto &step : submission.steps)
         if (step.complete)
             step.complete(step.payload.get(), submission.result);
+}
+
+void mark_surface_frames_lost(nk_surface surface) noexcept {
+    std::lock_guard lock(frame_mutex);
+    const auto frame = frame_by_surface.find(surface);
+    if (frame == frame_by_surface.end())
+        return;
+    const auto ticket = ticket_by_frame.find(frame->second);
+    if (ticket != ticket_by_frame.end())
+        ticket->second.surface_lost = true;
 }
 
 bool frame_completions_pending() noexcept {

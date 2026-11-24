@@ -192,7 +192,9 @@ enum NK_ENUM(nk_result) {
     /** A task or asynchronous operation was cancelled before completion. */
     NK_ERROR_CANCELLED = -14,
     /** The user or operating system denied access required by the operation. */
-    NK_ERROR_PERMISSION_DENIED = -15
+    NK_ERROR_PERMISSION_DENIED = -15,
+    /** A graphics surface lost its drawable or context during frame execution. */
+    NK_ERROR_SURFACE_LOST = -16
 };
 
 /* ------------------------------------------------------------------------- */

@@ -70,6 +70,8 @@ nk_result push_event(QueuedEvent event) noexcept {
 }
 
 nk_result push_event(QueuedEvent event, bool &coalesced) noexcept {
+    if (event.kind == NK_EVENT_SURFACE_LOST)
+        mark_surface_frames_lost(event.source);
     coalesced = false;
     nk_result result = NK_ERROR_NOT_INITIALIZED;
     {

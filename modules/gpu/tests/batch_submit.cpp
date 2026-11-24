@@ -1,8 +1,10 @@
 #include "nativekit.h"
 #include "nativekit_gpu.h"
+#include "nativekit_time.h"
 #include "nativekit_window.h"
 #include "adapter_internal.h"
 #include "core/frame_backend.hpp"
+#include "core/runtime.hpp"
 #include "testing.h"
 
 #if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
@@ -521,6 +523,40 @@ int main() {
         EXPECT_RESULT(nk_surface_cancel_frame(frame), NK_OK);
         EXPECT_RESULT(nk_surface_cancel_frame(frame), NK_ERROR_INVALID_HANDLE);
         EXPECT_RESULT(nk_surface_present_frame(frame), NK_ERROR_INVALID_HANDLE);
+    }
+    /* Report drawable loss during a queued step and keep the real backend ticket lifecycle. */
+    {
+        nk_surface_frame frame = NK_INVALID_HANDLE;
+        nk_surface_frame_target target{};
+        target.struct_size = sizeof(target);
+        EXPECT_RESULT(nk_surface_acquire_frame(surface, &frame, &target), NK_OK);
+        nk_surface_frame_step step = NK_INVALID_HANDLE;
+        auto execute = [](void *, const nk::core::FrameTicket &ticket) -> nk_result {
+            nk::core::QueuedEvent event;
+            event.kind = NK_EVENT_SURFACE_LOST;
+            event.source = ticket.surface;
+            (void)nk::core::push_event(std::move(event));
+            return NK_ERROR_UNKNOWN;
+        };
+        EXPECT_RESULT(nk::core::register_frame_step({std::make_shared<int>(0), execute}, &step),
+                      NK_OK);
+        EXPECT_RESULT(nk_surface_frame_submit(frame, &step, 1), NK_OK);
+        nk_result completion = NK_ERROR_UNKNOWN;
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (std::chrono::steady_clock::now() < deadline) {
+            nk_event event{};
+            event.struct_size = sizeof(event);
+            EXPECT_RESULT(nk_poll_event(&event), NK_OK);
+            const bool matched = event.kind == NK_EVENT_SURFACE_FRAME_COMPLETE &&
+                                 event.request_id == frame && event.source == surface;
+            if (matched)
+                completion = event.result;
+            nk_event_release(&event);
+            if (matched)
+                break;
+            EXPECT_RESULT(nk_wait_events_timeout(0.01), NK_OK);
+        }
+        EXPECT_RESULT(completion, NK_ERROR_SURFACE_LOST);
     }
     /* A sealed batch can be replayed. */
     EXPECT_RESULT(nkgpu_batch_submit(renderer, batch), NKGPU_OK);
