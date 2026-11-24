@@ -1,23 +1,57 @@
 @PACKAGE_INIT@
 
+# NativeKit::nativekit is always present. Each optional module is a component with its own
+# export file, so packages configured separately can install their modules into one prefix
+# around one shared core:
+#
+#   find_package(NativeKit REQUIRED COMPONENTS gpu audio)
+#
+# Without COMPONENTS every module installed in this prefix is loaded.
+
 include(CMakeFindDependencyMacro)
-if("@NK_BACKEND_GTK_AVAILABLE@")
+if(NOT @NK_BUILD_SHARED@ AND "@NK_BACKEND_GTK_AVAILABLE@")
+    # A static core carries its GTK link dependency to the consumer.
     find_dependency(PkgConfig)
     pkg_check_modules(GTK3 REQUIRED IMPORTED_TARGET gtk+-3.0)
-    pkg_check_modules(WEBKITGTK REQUIRED IMPORTED_TARGET webkit2gtk-4.1)
-endif()
-if(@NK_NET_BACKEND_CURL@)
-    find_dependency(CURL)
-endif()
-if(@NK_BUILD_GPU@)
-    if(NOT @NK_BUILD_SHARED@ AND
-       ("@NK_SOKOL_BACKEND@" STREQUAL "glcore" OR @NK_BUILD_GPU_BACKEND_MATRIX@))
-        find_dependency(OpenGL)
-    endif()
-endif()
-if(@NK_BUILD_CREDENTIALS@ AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    find_dependency(PkgConfig)
-    pkg_check_modules(LIBSECRET REQUIRED IMPORTED_TARGET libsecret-1>=0.19)
 endif()
 include("${CMAKE_CURRENT_LIST_DIR}/NativeKitTargets.cmake")
+
+set(_nativekit_known_components gpu audio credentials filesystem)
+if(NativeKit_FIND_COMPONENTS)
+    set(_nativekit_components ${NativeKit_FIND_COMPONENTS})
+else()
+    set(_nativekit_components ${_nativekit_known_components})
+endif()
+foreach(_nativekit_component IN LISTS _nativekit_components)
+    string(SUBSTRING "${_nativekit_component}" 0 1 _nativekit_first)
+    string(SUBSTRING "${_nativekit_component}" 1 -1 _nativekit_rest)
+    string(TOUPPER "${_nativekit_first}" _nativekit_first)
+    set(_nativekit_file "${CMAKE_CURRENT_LIST_DIR}/NativeKit${_nativekit_first}${_nativekit_rest}")
+    if(NOT _nativekit_component IN_LIST _nativekit_known_components)
+        set(NativeKit_${_nativekit_component}_FOUND FALSE)
+        string(APPEND NativeKit_NOT_FOUND_MESSAGE
+            "NativeKit has no component \"${_nativekit_component}\" "
+            "(known: ${_nativekit_known_components}). ")
+    elseif(EXISTS "${_nativekit_file}Targets.cmake")
+        if(EXISTS "${_nativekit_file}Dependencies.cmake")
+            include("${_nativekit_file}Dependencies.cmake")
+        endif()
+        include("${_nativekit_file}Targets.cmake")
+        set(NativeKit_${_nativekit_component}_FOUND TRUE)
+    else()
+        set(NativeKit_${_nativekit_component}_FOUND FALSE)
+        if(NativeKit_FIND_REQUIRED_${_nativekit_component})
+            string(APPEND NativeKit_NOT_FOUND_MESSAGE
+                "NativeKit component \"${_nativekit_component}\" is not installed in "
+                "${PACKAGE_PREFIX_DIR}; build NativeKit with its module enabled. ")
+        endif()
+    endif()
+endforeach()
+unset(_nativekit_component)
+unset(_nativekit_components)
+unset(_nativekit_known_components)
+unset(_nativekit_file)
+unset(_nativekit_first)
+unset(_nativekit_rest)
+
 check_required_components(NativeKit)

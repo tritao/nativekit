@@ -1,12 +1,12 @@
 #include "net_backend.hpp"
 #include "net/curl_progress.hpp"
+#include "net/curl_runtime.hpp"
 
 #include "core/error.hpp"
 #include "core/thread_name.hpp"
 
-#include <curl/curl.h>
-
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cctype>
 #include <cstddef>
@@ -20,44 +20,58 @@
 
 namespace {
 
-std::mutex curl_mutex;
-bool curl_initialized = false;
+namespace curl = nk::curl;
+
+/* CURLINFO_CONTENT_LENGTH_DOWNLOAD_T, the newest libcurl symbol this backend needs, arrived in
+   7.55 (CURLPROXY_HTTPS and CURL_SSLVERSION_TLSv1_3 in 7.52). The newer error codes it maps
+   are only compared against; an older libcurl never returns them. */
+constexpr unsigned int minimum_curl = 0x073700;
+/* CURLOPT_PROTOCOLS_STR and CURLOPT_REDIR_PROTOCOLS_STR arrived in 7.85, which deprecated the
+   bitmask options older libcurl versions need instead. */
+constexpr unsigned int protocols_str_curl = 0x075500;
+std::atomic<bool> force_protocol_bitmask{false};
+
 std::mutex curl_share_data_mutex;
 
+/** The loaded libcurl when it is recent enough for this backend, otherwise null. */
+const curl::Api *curl_api() noexcept {
+    const auto *api = curl::api();
+    return api && api->version_num >= minimum_curl ? api : nullptr;
+}
+
 struct CurlClientState {
-    CURLSH *share = nullptr;
+    const curl::Api *api = nullptr;
+    curl::Share *share = nullptr;
 
     ~CurlClientState() {
         if (share)
-            curl_share_cleanup(share);
+            api->share_cleanup(share);
     }
 };
 
-void curl_share_lock(CURL *, curl_lock_data, curl_lock_access, void *) {
+void curl_share_lock(curl::Handle *, curl::LockData, curl::LockAccess, void *) {
     curl_share_data_mutex.lock();
 }
 
-void curl_share_unlock(CURL *, curl_lock_data, void *) {
+void curl_share_unlock(curl::Handle *, curl::LockData, void *) {
     curl_share_data_mutex.unlock();
 }
 
-bool initialize_curl() {
-    if (curl_initialized)
-        return true;
-    curl_initialized = curl_global_init(CURL_GLOBAL_DEFAULT) == CURLE_OK;
-    return curl_initialized;
-}
-
-std::shared_ptr<CurlClientState> client_state(const nk::net::RequestPtr &request) {
+std::shared_ptr<CurlClientState> client_state(const curl::Api &api,
+                                              const nk::net::RequestPtr &request) {
     std::lock_guard lock(request->client->backend_mutex);
     if (request->client->backend_state)
         return std::static_pointer_cast<CurlClientState>(request->client->backend_state);
     auto state = std::make_shared<CurlClientState>();
-    state->share = curl_share_init();
+    state->api = &api;
+    state->share = api.share_init();
+    const curl::LockCallback lock_share = curl_share_lock;
+    const curl::UnlockCallback unlock_share = curl_share_unlock;
     if (!state->share ||
-        curl_share_setopt(state->share, CURLSHOPT_SHARE, CURL_LOCK_DATA_COOKIE) != CURLSHE_OK ||
-        curl_share_setopt(state->share, CURLSHOPT_LOCKFUNC, curl_share_lock) != CURLSHE_OK ||
-        curl_share_setopt(state->share, CURLSHOPT_UNLOCKFUNC, curl_share_unlock) != CURLSHE_OK) {
+        api.share_setopt(state->share, curl::shareopt_share, curl::lock_data_cookie) !=
+            curl::share_ok ||
+        api.share_setopt(state->share, curl::shareopt_lockfunc, lock_share) != curl::share_ok ||
+        api.share_setopt(state->share, curl::shareopt_unlockfunc, unlock_share) != curl::share_ok) {
         return {};
     }
     request->client->backend_state = state;
@@ -269,12 +283,12 @@ std::size_t read_callback_impl(char *data, std::size_t size, std::size_t count, 
     auto &request = *static_cast<nk::net::RequestContext *>(user_data);
     const auto capacity = size * count;
     if (request.canceled.load(std::memory_order_acquire))
-        return CURL_READFUNC_ABORT;
+        return curl::readfunc_abort;
     uint64_t amount = 0;
     const auto result = nk_resource_read(request.request.upload_stream, data, capacity, &amount);
     if (result != NK_OK) {
         request.upload_result = result;
-        return CURL_READFUNC_ABORT;
+        return curl::readfunc_abort;
     }
     request.upload_position += amount;
     return static_cast<std::size_t>(amount);
@@ -290,13 +304,13 @@ std::size_t read_callback(char *data, std::size_t size, std::size_t count,
     } catch (...) {
         auto &request = *static_cast<nk::net::RequestContext *>(user_data);
         request.upload_result = NK_ERROR_UNKNOWN;
-        return CURL_READFUNC_ABORT;
+        return curl::readfunc_abort;
     }
 #endif
 }
 
-int progress_callback_impl(void *user_data, curl_off_t download_total, curl_off_t downloaded,
-                           curl_off_t upload_total, curl_off_t uploaded) {
+int progress_callback_impl(void *user_data, curl::Offset download_total, curl::Offset downloaded,
+                           curl::Offset upload_total, curl::Offset uploaded) {
     auto &request = *static_cast<nk::net::RequestContext *>(user_data);
     if (request.canceled.load(std::memory_order_acquire))
         return 1;
@@ -312,8 +326,8 @@ int progress_callback_impl(void *user_data, curl_off_t download_total, curl_off_
     return 0;
 }
 
-int progress_callback(void *user_data, curl_off_t download_total, curl_off_t downloaded,
-                      curl_off_t upload_total, curl_off_t uploaded) noexcept {
+int progress_callback(void *user_data, curl::Offset download_total, curl::Offset downloaded,
+                      curl::Offset upload_total, curl::Offset uploaded) noexcept {
 #if NK_ENABLE_NO_EXCEPTIONS
     return progress_callback_impl(user_data, download_total, downloaded, upload_total, uploaded);
 #else
@@ -326,7 +340,7 @@ int progress_callback(void *user_data, curl_off_t download_total, curl_off_t dow
 #endif
 }
 
-nk_result map_curl_error(CURLcode code, const nk::net::RequestContext &request) {
+nk_result map_curl_error(curl::Code code, const nk::net::RequestContext &request) {
     if (request.canceled.load(std::memory_order_acquire))
         return NK_HTTP_ERROR_CANCELED;
     if (request.timed_out.load(std::memory_order_acquire))
@@ -336,62 +350,63 @@ nk_result map_curl_error(CURLcode code, const nk::net::RequestContext &request) 
     if (request.upload_result != NK_OK)
         return NK_HTTP_ERROR_PROTOCOL;
     switch (code) {
-    case CURLE_COULDNT_RESOLVE_HOST:
+    case curl::couldnt_resolve_host:
         return NK_HTTP_ERROR_DNS;
-    case CURLE_COULDNT_RESOLVE_PROXY:
+    case curl::couldnt_resolve_proxy:
         return NK_HTTP_ERROR_PROXY;
-    case CURLE_PROXY:
+    case curl::proxy:
         return NK_HTTP_ERROR_PROXY;
-    case CURLE_COULDNT_CONNECT:
-    case CURLE_INTERFACE_FAILED:
-    case CURLE_NO_CONNECTION_AVAILABLE:
+    case curl::couldnt_connect:
+    case curl::interface_failed:
+    case curl::no_connection_available:
         return NK_HTTP_ERROR_CONNECTION;
-    case CURLE_SSL_CONNECT_ERROR:
-    case CURLE_SSL_CERTPROBLEM:
-    case CURLE_SSL_CIPHER:
-    case CURLE_SSL_ISSUER_ERROR:
-    case CURLE_PEER_FAILED_VERIFICATION:
-    case CURLE_USE_SSL_FAILED:
+    case curl::ssl_connect_error:
+    case curl::ssl_certproblem:
+    case curl::ssl_cipher:
+    case curl::ssl_issuer_error:
+    case curl::peer_failed_verification:
+    case curl::use_ssl_failed:
         return NK_HTTP_ERROR_TLS;
-    case CURLE_OPERATION_TIMEDOUT:
+    case curl::operation_timedout:
         return NK_HTTP_ERROR_TIMEOUT;
-    case CURLE_TOO_MANY_REDIRECTS:
+    case curl::too_many_redirects:
         return NK_HTTP_ERROR_REDIRECT;
-    case CURLE_HTTP_RETURNED_ERROR:
-    case CURLE_HTTP2:
-    case CURLE_HTTP3:
-    case CURLE_PARTIAL_FILE:
-    case CURLE_RECV_ERROR:
-    case CURLE_SEND_ERROR:
+    case curl::http_returned_error:
+    case curl::http2:
+    case curl::http3:
+    case curl::partial_file:
+    case curl::recv_error:
+    case curl::send_error:
         return NK_HTTP_ERROR_PROTOCOL;
-    case CURLE_OK:
+    case curl::ok:
         return NK_OK;
     default:
         return NK_HTTP_ERROR_CONNECTION;
     }
 }
 
-nk_result perform_impl(nk::net::RequestPtr request) {
+nk_result perform_impl(const curl::Api &api, nk::net::RequestPtr request) {
     nk_result result = NK_HTTP_ERROR_CONNECTION;
-    CURL *curl = curl_easy_init();
-    curl_slist *header_list = nullptr;
+    curl::Handle *handle = api.easy_init();
+    curl::Slist *header_list = nullptr;
     struct CurlCleanup {
-        CURL *&curl;
-        curl_slist *&header_list;
+        const curl::Api &api;
+        curl::Handle *&handle;
+        curl::Slist *&header_list;
 
         ~CurlCleanup() {
             if (header_list)
-                curl_slist_free_all(header_list);
-            if (curl)
-                curl_easy_cleanup(curl);
+                api.slist_free_all(header_list);
+            if (handle)
+                api.easy_cleanup(handle);
         }
-    } cleanup{curl, header_list};
+    } cleanup{api, handle, header_list};
     std::shared_ptr<CurlClientState> state;
-    if (curl) {
+    if (handle) {
         auto add_headers = [&](const std::vector<nk::net::OwnedHeader> &headers) {
             for (const auto &header : headers) {
                 std::string line = header.name + ": " + header.value;
-                auto *next = curl_slist_append(header_list, line.c_str());
+                auto *next = api.slist_append(header_list, line.c_str());
                 if (!next)
                     return false;
                 header_list = next;
@@ -407,114 +422,122 @@ nk_result perform_impl(nk::net::RequestPtr request) {
             else
                 result = static_cast<nk_result>(NK_HTTP_ERROR_PROTOCOL);
         } else {
-            auto set_option = [&](CURLoption option, auto value) {
-                return curl_easy_setopt(curl, option, value) == CURLE_OK;
+            auto set_option = [&](curl::Option option, auto value) {
+                return api.easy_setopt(handle, option, value) == curl::ok;
             };
+            const curl::DataCallback write_function = write_callback;
+            const curl::DataCallback header_function = header_callback;
+            const curl::DataCallback read_function = read_callback;
+            const curl::XferInfoCallback progress_function = progress_callback;
             bool options_ok =
-                set_option(CURLOPT_URL, request->request.url.c_str()) &&
-                set_option(CURLOPT_CUSTOMREQUEST, method) &&
-                set_option(CURLOPT_FOLLOWLOCATION, 1L) &&
-                set_option(CURLOPT_MAXREDIRS, static_cast<long>(request->request.redirect_limit)) &&
-                set_option(CURLOPT_TIMEOUT_MS, static_cast<long>(request->request.timeout_ms)) &&
-                set_option(CURLOPT_CONNECTTIMEOUT_MS,
+                set_option(curl::opt_url, request->request.url.c_str()) &&
+                set_option(curl::opt_customrequest, method) &&
+                set_option(curl::opt_followlocation, 1L) &&
+                set_option(curl::opt_maxredirs,
+                           static_cast<long>(request->request.redirect_limit)) &&
+                set_option(curl::opt_timeout_ms, static_cast<long>(request->request.timeout_ms)) &&
+                set_option(curl::opt_connecttimeout_ms,
                            static_cast<long>(request->request.timeout_ms)) &&
-                set_option(CURLOPT_NOSIGNAL, 1L) && set_option(CURLOPT_FAILONERROR, 0L) &&
-                set_option(CURLOPT_PROTOCOLS_STR,
-                           (request->client->config.flags & NK_HTTP_CLIENT_ALLOW_HTTP)
-                               ? "http,https"
-                               : "https") &&
-                set_option(CURLOPT_REDIR_PROTOCOLS_STR,
-                           (request->client->config.flags & NK_HTTP_CLIENT_ALLOW_HTTPS_TO_HTTP)
-                               ? "http,https"
-                               : "https");
+                set_option(curl::opt_nosignal, 1L) && set_option(curl::opt_failonerror, 0L);
+            const bool allow_http =
+                (request->client->config.flags & NK_HTTP_CLIENT_ALLOW_HTTP) != 0;
+            const bool allow_http_redirect =
+                (request->client->config.flags & NK_HTTP_CLIENT_ALLOW_HTTPS_TO_HTTP) != 0;
+            if (api.version_num >= protocols_str_curl &&
+                !force_protocol_bitmask.load(std::memory_order_relaxed)) {
+                options_ok =
+                    set_option(curl::opt_protocols_str, allow_http ? "http,https" : "https") &&
+                    set_option(curl::opt_redir_protocols_str,
+                               allow_http_redirect ? "http,https" : "https") &&
+                    options_ok;
+            } else {
+                const long https = curl::proto_https;
+                const long http_and_https = curl::proto_http | curl::proto_https;
+                options_ok = set_option(curl::opt_protocols, allow_http ? http_and_https : https) &&
+                             set_option(curl::opt_redir_protocols,
+                                        allow_http_redirect ? http_and_https : https) &&
+                             options_ok;
+            }
             if (header_list)
-                options_ok = set_option(CURLOPT_HTTPHEADER, header_list) && options_ok;
-            options_ok = set_option(CURLOPT_WRITEFUNCTION, write_callback) && options_ok;
-            options_ok = set_option(CURLOPT_WRITEDATA, request.get()) && options_ok;
-            options_ok = set_option(CURLOPT_HEADERFUNCTION, header_callback) && options_ok;
-            options_ok = set_option(CURLOPT_HEADERDATA, request.get()) && options_ok;
-            options_ok = set_option(CURLOPT_XFERINFOFUNCTION, progress_callback) && options_ok;
-            options_ok = set_option(CURLOPT_XFERINFODATA, request.get()) && options_ok;
-            options_ok = set_option(CURLOPT_NOPROGRESS, 0L) && options_ok;
+                options_ok = set_option(curl::opt_httpheader, header_list) && options_ok;
+            options_ok = set_option(curl::opt_writefunction, write_function) && options_ok;
+            options_ok = set_option(curl::opt_writedata, request.get()) && options_ok;
+            options_ok = set_option(curl::opt_headerfunction, header_function) && options_ok;
+            options_ok = set_option(curl::opt_headerdata, request.get()) && options_ok;
+            options_ok = set_option(curl::opt_xferinfofunction, progress_function) && options_ok;
+            options_ok = set_option(curl::opt_xferinfodata, request.get()) && options_ok;
+            options_ok = set_option(curl::opt_noprogress, 0L) && options_ok;
 
             const auto &tls = request->client->config.tls;
-            bool unsupported_security_policy = false;
             options_ok =
-                set_option(CURLOPT_SSL_VERIFYPEER,
+                set_option(curl::opt_ssl_verifypeer,
                            (tls.flags & NK_HTTP_TLS_DISABLE_PEER_VERIFICATION) ? 0L : 1L) &&
                 options_ok;
             options_ok =
-                set_option(CURLOPT_SSL_VERIFYHOST,
+                set_option(curl::opt_ssl_verifyhost,
                            (tls.flags & NK_HTTP_TLS_DISABLE_HOSTNAME_VERIFICATION) ? 0L : 2L) &&
                 options_ok;
             if (!tls.ca_bundle_path.empty())
-                options_ok = set_option(CURLOPT_CAINFO, tls.ca_bundle_path.c_str()) && options_ok;
+                options_ok = set_option(curl::opt_cainfo, tls.ca_bundle_path.c_str()) && options_ok;
             if (tls.minimum_version == NK_HTTP_TLS_1_2)
-                options_ok = set_option(CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2) && options_ok;
-#if LIBCURL_VERSION_NUM >= 0x073400
+                options_ok =
+                    set_option(curl::opt_sslversion, curl::sslversion_tlsv1_2) && options_ok;
             if (tls.minimum_version == NK_HTTP_TLS_1_3)
-                options_ok = set_option(CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_3) && options_ok;
-#else
-            if (tls.minimum_version == NK_HTTP_TLS_1_3) {
-                unsupported_security_policy = true;
-                options_ok = false;
-            }
-#endif
+                options_ok =
+                    set_option(curl::opt_sslversion, curl::sslversion_tlsv1_3) && options_ok;
 
             const auto &proxy = request->client->config.proxy;
             if (proxy.kind != NK_HTTP_PROXY_NONE) {
-                options_ok = set_option(CURLOPT_PROXY, proxy.url.c_str()) && options_ok;
-                options_ok =
-                    set_option(CURLOPT_PROXYTYPE, proxy.kind == NK_HTTP_PROXY_HTTP ? CURLPROXY_HTTP
-                                                  : proxy.kind == NK_HTTP_PROXY_HTTPS
-                                                      ? CURLPROXY_HTTPS
-                                                      : CURLPROXY_SOCKS5_HOSTNAME) &&
-                    options_ok;
+                options_ok = set_option(curl::opt_proxy, proxy.url.c_str()) && options_ok;
+                options_ok = set_option(curl::opt_proxytype, proxy.kind == NK_HTTP_PROXY_HTTP
+                                                                 ? curl::proxy_http
+                                                             : proxy.kind == NK_HTTP_PROXY_HTTPS
+                                                                 ? curl::proxy_https
+                                                                 : curl::proxy_socks5_hostname) &&
+                             options_ok;
                 if (!proxy.username.empty())
                     options_ok =
-                        set_option(CURLOPT_PROXYUSERNAME, proxy.username.c_str()) && options_ok;
+                        set_option(curl::opt_proxyusername, proxy.username.c_str()) && options_ok;
                 if (!proxy.password.empty())
                     options_ok =
-                        set_option(CURLOPT_PROXYPASSWORD, proxy.password.c_str()) && options_ok;
+                        set_option(curl::opt_proxypassword, proxy.password.c_str()) && options_ok;
             }
             if (request->client->config.cookie_policy == NK_HTTP_COOKIES_SESSION) {
-                state = client_state(request);
-                options_ok = state && set_option(CURLOPT_SHARE, state->share) && options_ok;
-                options_ok = set_option(CURLOPT_COOKIEFILE, "") && options_ok;
+                state = client_state(api, request);
+                options_ok = state && set_option(curl::opt_share, state->share) && options_ok;
+                options_ok = set_option(curl::opt_cookiefile, "") && options_ok;
             }
 
             if (request->request.method == NK_HTTP_METHOD_HEAD)
-                options_ok = set_option(CURLOPT_NOBODY, 1L) && options_ok;
+                options_ok = set_option(curl::opt_nobody, 1L) && options_ok;
             if (!request->request.body.empty()) {
                 options_ok =
-                    set_option(CURLOPT_POSTFIELDS, request->request.body.data()) && options_ok;
-                options_ok = set_option(CURLOPT_POSTFIELDSIZE_LARGE,
-                                        static_cast<curl_off_t>(request->request.body.size())) &&
+                    set_option(curl::opt_postfields, request->request.body.data()) && options_ok;
+                options_ok = set_option(curl::opt_postfieldsize_large,
+                                        static_cast<curl::Offset>(request->request.body.size())) &&
                              options_ok;
             }
             if (request->request.upload_stream != NK_INVALID_HANDLE) {
-                options_ok = set_option(CURLOPT_UPLOAD, 1L) && options_ok;
-                options_ok = set_option(CURLOPT_READFUNCTION, read_callback) && options_ok;
-                options_ok = set_option(CURLOPT_READDATA, request.get()) && options_ok;
+                options_ok = set_option(curl::opt_upload, 1L) && options_ok;
+                options_ok = set_option(curl::opt_readfunction, read_function) && options_ok;
+                options_ok = set_option(curl::opt_readdata, request.get()) && options_ok;
                 if (request->request.upload_size != 0)
                     options_ok =
-                        set_option(CURLOPT_INFILESIZE_LARGE,
-                                   static_cast<curl_off_t>(request->request.upload_size)) &&
+                        set_option(curl::opt_infilesize_large,
+                                   static_cast<curl::Offset>(request->request.upload_size)) &&
                         options_ok;
             }
 
             if (!options_ok) {
-                result = unsupported_security_policy
-                             ? NK_ERROR_UNSUPPORTED
-                             : static_cast<nk_result>(NK_HTTP_ERROR_PROTOCOL);
+                result = static_cast<nk_result>(NK_HTTP_ERROR_PROTOCOL);
             } else {
-                const auto curl_result = curl_easy_perform(curl);
+                const auto curl_result = api.easy_perform(handle);
                 long response_code = 0;
-                curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
+                api.easy_getinfo(handle, curl::info_response_code, &response_code);
                 long redirect_count = 0;
-                curl_easy_getinfo(curl, CURLINFO_REDIRECT_COUNT, &redirect_count);
-                curl_off_t content_length = -1;
-                curl_easy_getinfo(curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD_T, &content_length);
+                api.easy_getinfo(handle, curl::info_redirect_count, &redirect_count);
+                curl::Offset content_length = -1;
+                api.easy_getinfo(handle, curl::info_content_length_download_t, &content_length);
                 {
                     std::lock_guard lock(request->mutex);
                     if (response_code >= 100 && response_code <= 599)
@@ -535,13 +558,13 @@ nk_result perform_impl(nk::net::RequestPtr request) {
     return result;
 }
 
-void perform(nk::net::RequestPtr request) noexcept {
+void perform(const curl::Api &api, nk::net::RequestPtr request) noexcept {
 #if NK_ENABLE_NO_EXCEPTIONS
-    const auto result = perform_impl(request);
+    const auto result = perform_impl(api, request);
 #else
     nk_result result = NK_ERROR_UNKNOWN;
     try {
-        result = perform_impl(request);
+        result = perform_impl(api, request);
     } catch (const std::bad_alloc &) {
         result = NK_ERROR_OUT_OF_MEMORY;
     } catch (...) {
@@ -558,27 +581,24 @@ void perform(nk::net::RequestPtr request) noexcept {
 namespace nk::net {
 
 nk_capabilities capabilities() noexcept {
-    std::lock_guard lock(curl_mutex);
-    return initialize_curl() ? NK_CAP_HTTP_CLIENT | NK_CAP_HTTP_STREAMING : 0;
+    return curl_api() ? NK_CAP_HTTP_CLIENT | NK_CAP_HTTP_STREAMING : 0;
 }
 
 nk_result backend_start(const RequestPtr &request) noexcept {
-    {
-        std::lock_guard lock(curl_mutex);
-        if (!initialize_curl())
-            return NK_ERROR_UNSUPPORTED;
-    }
+    const auto *api = curl_api();
+    if (!api)
+        return NK_ERROR_UNSUPPORTED;
 #if NK_ENABLE_NO_EXCEPTIONS
-    std::thread([request] {
+    std::thread([api, request] {
         nk::core::name_current_thread("nk.net.request");
-        perform(request);
+        perform(*api, request);
     }).detach();
     return NK_OK;
 #else
     try {
-        std::thread([request] {
+        std::thread([api, request] {
             nk::core::name_current_thread("nk.net.request");
-            perform(request);
+            perform(*api, request);
         }).detach();
         return NK_OK;
     } catch (const std::bad_alloc &) {
@@ -591,12 +611,13 @@ nk_result backend_start(const RequestPtr &request) noexcept {
 
 void backend_cancel(const RequestPtr &) noexcept {}
 
-void backend_shutdown() noexcept {
-    std::lock_guard lock(curl_mutex);
-    if (curl_initialized) {
-        curl_global_cleanup();
-        curl_initialized = false;
-    }
-}
+/* libcurl stays loaded and initialized for the process (see curl_runtime.hpp). */
+void backend_shutdown() noexcept {}
 
 } // namespace nk::net
+
+namespace nk::core {
+void use_curl_protocol_bitmask_for_testing(bool enabled) noexcept {
+    force_protocol_bitmask.store(enabled, std::memory_order_relaxed);
+}
+} // namespace nk::core

@@ -12,10 +12,11 @@ application pairing policy. Calls are synchronous and may block, so use them
 from a worker thread rather than a UI thread.
 
 Current backends are Windows Credential Manager, macOS/iOS Keychain, and the
-freedesktop Secret Service on Linux. Linux builds require the `libsecret-1`
-development package; GNOME Keyring and compatible Secret Service providers can
-serve requests at runtime. On other targets, calls return
-`NK_ERROR_UNSUPPORTED`. Browser storage needs a separate WebCrypto-backed
+freedesktop Secret Service on Linux. The Linux backend opens libsecret
+(`libsecret-1.so.0`, 0.19 or later) on first use, so building needs no
+development package; GNOME Keyring and compatible Secret Service providers
+serve requests at runtime. Without libsecret, and on other targets, calls
+return `NK_ERROR_UNSUPPORTED`. Browser storage needs a separate WebCrypto-backed
 implementation and is not represented as an OS keyring.
 
 If the operating-system store cannot be reached or denies access, the API

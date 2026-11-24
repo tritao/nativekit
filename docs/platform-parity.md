@@ -33,7 +33,8 @@ advertised only when the selected transport supports them.
 behavior tests must be in place. A runtime-dependent component may cause a
 required capability to be absent at runtime; the backend must document that
 dependency and report the capability accurately, as Windows does for the
-optional WebView2 runtime.
+optional WebView2 runtime and Linux does for WebKitGTK (WebView) and libcurl
+(HTTP and secure WebSockets), which it opens at run time.
 
 ## Target contract
 

@@ -35,10 +35,9 @@ elseif(APPLE)
     target_link_libraries(nativekit_credentials PRIVATE
         "-framework Foundation" "-framework Security")
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(LIBSECRET REQUIRED IMPORTED_TARGET libsecret-1>=0.19)
+    # libsecret (0.19 or later) is opened on first use; building needs no development files.
     target_sources(nativekit_credentials PRIVATE src/linux.cpp)
-    target_link_libraries(nativekit_credentials PRIVATE PkgConfig::LIBSECRET)
+    target_link_libraries(nativekit_credentials PRIVATE ${CMAKE_DL_LIBS})
 else()
     target_sources(nativekit_credentials PRIVATE src/unsupported.cpp)
 endif()
@@ -50,10 +49,11 @@ set_target_properties(nativekit_credentials PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION 0)
 
-install(TARGETS nativekit_credentials EXPORT NativeKitTargets
+install(TARGETS nativekit_credentials EXPORT NativeKitCredentialsTargets
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+nk_install_component(Credentials)
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 if(NK_BUILD_TESTS)
@@ -62,4 +62,35 @@ if(NK_BUILD_TESTS)
     target_link_libraries(nativekit_credentials_tests PRIVATE NativeKit::credentials)
     add_test(NAME credentials COMMAND nativekit_credentials_tests)
     set_tests_properties(credentials PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 30 LABELS "credentials")
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        # A libsecret-1.so.0 without libsecret's symbols first on the library path stands in
+        # for a system without libsecret.
+        add_library(nativekit_unusable_libsecret SHARED
+            "${PROJECT_SOURCE_DIR}/tests/unit/unusable_library.c")
+        set_target_properties(nativekit_unusable_libsecret PROPERTIES
+            OUTPUT_NAME secret-1
+            SOVERSION 0
+            LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/unusable-libsecret")
+        add_dependencies(nativekit_credentials_tests nativekit_unusable_libsecret)
+        add_test(NAME credentials_without_libsecret
+            COMMAND nativekit_credentials_tests --unavailable)
+        set_tests_properties(credentials_without_libsecret PROPERTIES
+            TIMEOUT 30 LABELS "credentials"
+            ENVIRONMENT "LD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}/unusable-libsecret")
+        find_package(PkgConfig QUIET)
+        if(PkgConfig_FOUND)
+            pkg_check_modules(NKC_TEST_LIBSECRET QUIET IMPORTED_TARGET libsecret-1)
+        endif()
+        if(TARGET PkgConfig::NKC_TEST_LIBSECRET)
+            # The backend declares the libsecret ABI it uses; compare it with libsecret's headers.
+            add_executable(nativekit_libsecret_abi_test tests/libsecret_abi.cpp)
+            target_compile_features(nativekit_libsecret_abi_test PRIVATE cxx_std_17)
+            target_include_directories(nativekit_libsecret_abi_test PRIVATE
+                "${CMAKE_CURRENT_SOURCE_DIR}/src")
+            target_link_libraries(nativekit_libsecret_abi_test PRIVATE
+                PkgConfig::NKC_TEST_LIBSECRET)
+            add_test(NAME libsecret_abi COMMAND nativekit_libsecret_abi_test)
+            set_tests_properties(libsecret_abi PROPERTIES LABELS "credentials")
+        endif()
+    endif()
 endif()

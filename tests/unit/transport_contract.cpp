@@ -281,13 +281,16 @@ void message_contract() {
     assert(nk_transport_connect(&options, &client) == NK_ERROR_INVALID_ARGUMENT);
 }
 
-void contract_extensions() {
+/* secure_client: 1 requires the secure client capability, 0 requires its absence (a system
+   without a usable TLS client), -1 accepts what the platform reports. */
+void contract_extensions(int secure_client) {
     nk_transport_capabilities capabilities = 0;
     assert(nk_transport_query_capabilities(NK_TRANSPORT_WEBSOCKET, &capabilities) == NK_OK);
     assert((capabilities & NK_TRANSPORT_CAP_CLIENT) != 0);
     assert((capabilities & NK_TRANSPORT_CAP_LISTENER) != 0);
     assert((capabilities & NK_TRANSPORT_CAP_SUBPROTOCOL) != 0);
-    assert((capabilities & NK_TRANSPORT_CAP_SECURE_CLIENT) != 0);
+    const bool secure = (capabilities & NK_TRANSPORT_CAP_SECURE_CLIENT) != 0;
+    assert(secure_client < 0 || secure == (secure_client != 0));
     assert(nk_transport_query_capabilities(0, &capabilities) == NK_ERROR_INVALID_ARGUMENT);
     assert(capabilities == 0);
     assert(nk_transport_query_capabilities(NK_TRANSPORT_LOCAL, &capabilities) == NK_OK);
@@ -302,8 +305,14 @@ void contract_extensions() {
     options.host = "127.0.0.1";
     options.port = 443;
     nk_transport transport = NK_INVALID_HANDLE;
-    assert(nk_transport_connect(&options, &transport) == NK_OK);
-    assert(nk_transport_close(transport) == NK_OK);
+    if (secure) {
+        assert(nk_transport_connect(&options, &transport) == NK_OK);
+        assert(nk_transport_close(transport) == NK_OK);
+    } else {
+        /* Without a TLS client the request fails before any connection starts. */
+        assert(nk_transport_connect(&options, &transport) == NK_ERROR_UNSUPPORTED);
+        assert(transport == NK_INVALID_HANDLE);
+    }
 
     options = {};
     options.struct_size = sizeof(options);
@@ -446,9 +455,10 @@ void local_pipe_security() {
 }
 
 /**
- * A Windows pipe is written with PIPE_NOWAIT, where WriteFile takes the whole request or nothing: a message larger
- * than the pipe's 64 KiB buffer used to spin the worker thread and stall the connection. Both directions must carry
- * messages well over that size, in order, followed by a small one.
+ * A Windows pipe is written with PIPE_NOWAIT, where WriteFile takes the whole request or nothing: a
+ * message larger than the pipe's 64 KiB buffer used to spin the worker thread and stall the
+ * connection. Both directions must carry messages well over that size, in order, followed by a
+ * small one.
  */
 void local_pipe_large_messages() {
     const std::string path =
@@ -479,7 +489,8 @@ void local_pipe_large_messages() {
         std::vector<std::uint8_t> buffer(64u * 1024u);
         while (collected.size() < expected.size() && std::chrono::steady_clock::now() < deadline) {
             std::uint64_t received = 0;
-            const auto result = nk_transport_receive(transport, buffer.data(), buffer.size(), &received);
+            const auto result =
+                nk_transport_receive(transport, buffer.data(), buffer.size(), &received);
             if (result == NK_OK && received > 0) {
                 collected.insert(collected.end(), buffer.begin(),
                                  buffer.begin() + static_cast<std::ptrdiff_t>(received));
@@ -499,7 +510,8 @@ void local_pipe_large_messages() {
         return collected == expected;
     };
 
-    // 64 KiB + 1 is the smallest size the old code could not write; the larger ones span many pipe buffers.
+    // 64 KiB + 1 is the smallest size the old code could not write; the larger ones span many pipe
+    // buffers.
     for (const std::size_t size : {64u * 1024u + 1u, 256u * 1024u, 1024u * 1024u}) {
         const auto up = pattern(size, 1), down = pattern(size, 7);
         assert(nk_transport_send(client, up.data(), up.size()) == NK_OK);
@@ -517,7 +529,12 @@ void local_pipe_large_messages() {
 
 } // namespace
 
-int main() {
+int main(int argc, char **argv) {
+    int secure_client = -1;
+    if (argc == 2 && std::strcmp(argv[1], "--secure-client") == 0)
+        secure_client = 1;
+    else if (argc == 2 && std::strcmp(argv[1], "--no-secure-client") == 0)
+        secure_client = 0;
     nk_init_options init{};
     init.struct_size = sizeof(init);
     init.api_version = NK_API_VERSION;
@@ -525,7 +542,7 @@ int main() {
     assert(nk_init(&init) == NK_OK);
     assert((nk_get_capabilities() & NK_CAP_TRANSPORT) != 0);
 
-    contract_extensions();
+    contract_extensions(secure_client);
     message_contract();
 
     roundtrip(NK_TRANSPORT_TCP);

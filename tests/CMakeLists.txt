@@ -26,6 +26,7 @@ add_executable(nativekit_core_tests
 )
 target_compile_features(nativekit_core_tests PRIVATE cxx_std_17)
 target_include_directories(nativekit_core_tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
+target_compile_definitions(nativekit_core_tests PRIVATE NK_INTERNAL_SOURCE_COPY)
 target_link_libraries(nativekit_core_tests PRIVATE NativeKit::nativekit)
 if(MSVC)
     target_compile_options(nativekit_core_tests PRIVATE /EHsc)
@@ -94,6 +95,7 @@ add_executable(nativekit_worker_pool_tests
     ${PROJECT_SOURCE_DIR}/src/core/worker_pool.cpp)
 target_compile_features(nativekit_worker_pool_tests PRIVATE cxx_std_17)
 target_include_directories(nativekit_worker_pool_tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
+target_compile_definitions(nativekit_worker_pool_tests PRIVATE NK_INTERNAL_SOURCE_COPY)
 target_link_libraries(nativekit_worker_pool_tests PRIVATE NativeKit::nativekit)
 add_test(NAME worker_pool COMMAND nativekit_worker_pool_tests)
 
@@ -105,7 +107,38 @@ endif()
 add_executable(nativekit_transport_contract_test unit/transport_contract.cpp)
 target_compile_features(nativekit_transport_contract_test PRIVATE cxx_std_17)
 target_link_libraries(nativekit_transport_contract_test PRIVATE NativeKit::nativekit)
-add_test(NAME transport_contract COMMAND nativekit_transport_contract_test)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID)
+    # Secure clients load libcurl at run time. The second run puts a libcurl.so.4 without
+    # curl's symbols first on the library path, as on a system whose libcurl is unusable.
+    find_library(NK_TEST_SYSTEM_CURL NAMES libcurl.so.4 libcurl-gnutls.so.4)
+    if(NK_TEST_SYSTEM_CURL)
+        add_test(NAME transport_contract COMMAND nativekit_transport_contract_test --secure-client)
+    else()
+        add_test(NAME transport_contract COMMAND nativekit_transport_contract_test)
+    endif()
+    add_library(nativekit_unusable_curl SHARED unit/unusable_library.c)
+    set_target_properties(nativekit_unusable_curl PROPERTIES
+        OUTPUT_NAME curl
+        SOVERSION 4
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/unusable-curl")
+    add_dependencies(nativekit_transport_contract_test nativekit_unusable_curl)
+    add_test(NAME transport_contract_without_tls
+        COMMAND nativekit_transport_contract_test --no-secure-client)
+    set_tests_properties(transport_contract_without_tls PROPERTIES
+        LABELS "network" TIMEOUT 30
+        ENVIRONMENT "LD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}/unusable-curl")
+    find_path(NK_CURL_INCLUDE_DIR curl/curl.h)
+    if(NK_CURL_INCLUDE_DIR)
+        # NativeKit declares the libcurl ABI it uses; compare it with curl's own header.
+        add_executable(nativekit_curl_abi_test unit/curl_abi.cpp)
+        target_compile_features(nativekit_curl_abi_test PRIVATE cxx_std_17)
+        target_include_directories(nativekit_curl_abi_test PRIVATE
+            ${PROJECT_SOURCE_DIR}/src ${NK_CURL_INCLUDE_DIR})
+        add_test(NAME curl_abi COMMAND nativekit_curl_abi_test)
+    endif()
+else()
+    add_test(NAME transport_contract COMMAND nativekit_transport_contract_test)
+endif()
 set_tests_properties(transport_contract PROPERTIES LABELS "network" TIMEOUT 30)
 
 if(UNIX AND NOT ANDROID AND NOT EMSCRIPTEN)
@@ -122,7 +155,7 @@ elseif(WIN32)
     set_tests_properties(pty_contract PROPERTIES LABELS "core" TIMEOUT 60)
 endif()
 
-if(NK_NET_BACKEND_CURL)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID AND NK_TEST_SYSTEM_CURL)
     add_executable(nativekit_net_contract_test unit/net_contract.cpp)
     target_compile_features(nativekit_net_contract_test PRIVATE cxx_std_17)
     target_include_directories(nativekit_net_contract_test PRIVATE ${PROJECT_SOURCE_DIR}/src)
@@ -133,6 +166,20 @@ if(NK_NET_BACKEND_CURL)
         target_compile_options(nativekit_net_contract_test PRIVATE
             -fsanitize=address,undefined -fno-omit-frame-pointer)
         target_link_options(nativekit_net_contract_test PRIVATE -fsanitize=address,undefined)
+    endif()
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    find_program(NK_TEST_OPENSSL openssl)
+    if(Python3_Interpreter_FOUND AND NK_TEST_OPENSSL)
+        # Protocol restrictions through both the string options (libcurl 7.85 and later) and
+        # the bitmask options older libcurl needs, against loopback HTTPS and HTTP servers.
+        add_executable(nativekit_net_protocols_test unit/net_protocols.cpp)
+        target_compile_features(nativekit_net_protocols_test PRIVATE cxx_std_17)
+        target_include_directories(nativekit_net_protocols_test PRIVATE ${PROJECT_SOURCE_DIR}/src)
+        target_link_libraries(nativekit_net_protocols_test PRIVATE NativeKit::nativekit)
+        add_test(NAME net_protocols
+            COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tools/test-curl-protocols.py
+                $<TARGET_FILE:nativekit_net_protocols_test>)
+        set_tests_properties(net_protocols PROPERTIES LABELS "network;linux" TIMEOUT 120)
     endif()
     add_executable(nativekit_curl_progress_test unit/curl_progress.cpp)
     target_compile_features(nativekit_curl_progress_test PRIVATE cxx_std_17)
@@ -225,8 +272,21 @@ if(NK_BACKEND_GTK_AVAILABLE)
 
     find_program(XVFB_RUN xvfb-run)
     find_program(DBUS_RUN_SESSION dbus-run-session)
+    # WebView tests need WebKitGTK installed where they run; NativeKit opens it at run time.
+    find_library(NK_TEST_SYSTEM_WEBKITGTK NAMES libwebkit2gtk-4.1.so.0)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(NK_TEST_WEBKITGTK QUIET IMPORTED_TARGET webkit2gtk-4.1)
+    endif()
+    if(TARGET PkgConfig::NK_TEST_WEBKITGTK)
+        # NativeKit declares the WebKitGTK ABI it uses; compare it with WebKit's own headers.
+        add_executable(nativekit_webkitgtk_abi_test unit/webkitgtk_abi.cpp)
+        target_compile_features(nativekit_webkitgtk_abi_test PRIVATE cxx_std_17)
+        target_include_directories(nativekit_webkitgtk_abi_test PRIVATE ${PROJECT_SOURCE_DIR}/src)
+        target_link_libraries(nativekit_webkitgtk_abi_test PRIVATE PkgConfig::NK_TEST_WEBKITGTK)
+        add_test(NAME webkitgtk_abi COMMAND nativekit_webkitgtk_abi_test)
+    endif()
     if(XVFB_RUN)
-        if(TARGET PkgConfig::WEBKITGTK)
+        if(NK_TEST_SYSTEM_WEBKITGTK)
             add_executable(nativekit_gtk_integration integration/gtk_create_destroy.c)
             target_link_libraries(nativekit_gtk_integration PRIVATE NativeKit::nativekit PkgConfig::GTK3)
             set_target_properties(nativekit_gtk_integration PROPERTIES LINKER_LANGUAGE CXX)
@@ -284,7 +344,20 @@ if(NK_BACKEND_GTK_AVAILABLE)
         set_target_properties(nativekit_gtk_accessibility PROPERTIES LINKER_LANGUAGE CXX)
         add_test(NAME gtk_accessibility
             COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_accessibility>)
-        if(TARGET PkgConfig::WEBKITGTK)
+        add_library(nativekit_unusable_webkitgtk SHARED unit/unusable_library.c)
+        set_target_properties(nativekit_unusable_webkitgtk PROPERTIES
+            OUTPUT_NAME webkit2gtk-4.1
+            SOVERSION 0
+            LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/unusable-webkitgtk")
+        add_executable(nativekit_gtk_webview_unavailable integration/gtk_webview_unavailable.c)
+        target_link_libraries(nativekit_gtk_webview_unavailable PRIVATE NativeKit::nativekit)
+        set_target_properties(nativekit_gtk_webview_unavailable PROPERTIES LINKER_LANGUAGE CXX)
+        add_dependencies(nativekit_gtk_webview_unavailable nativekit_unusable_webkitgtk)
+        add_test(NAME gtk_webview_unavailable
+            COMMAND ${XVFB_RUN} -a $<TARGET_FILE:nativekit_gtk_webview_unavailable>)
+        set_tests_properties(gtk_webview_unavailable PROPERTIES
+            ENVIRONMENT "LD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}/unusable-webkitgtk")
+        if(NK_TEST_SYSTEM_WEBKITGTK)
             add_executable(nativekit_gtk_webview_resize integration/gtk_webview_resize.c)
             target_link_libraries(nativekit_gtk_webview_resize PRIVATE NativeKit::nativekit)
             set_target_properties(nativekit_gtk_webview_resize PROPERTIES LINKER_LANGUAGE CXX)

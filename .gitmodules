@@ -1,9 +1,6 @@
 [submodule "vendor/sokol"]
 	path = vendor/sokol
 	url = https://github.com/tritao/sokol.git
-[submodule "vendor/libwebsockets"]
-	path = vendor/libwebsockets
-	url = https://github.com/warmcat/libwebsockets.git
 [submodule "vendor/miniaudio"]
 	path = vendor/miniaudio
 	url = https://github.com/tritao/miniaudio.git

@@ -16,19 +16,27 @@ if(APPLE)
 endif()
 
 include(GNUInstallDirs)
-include(CTest)
 include(CMakePackageConfigHelpers)
 
+# Tests and examples are NativeKit's own: a project that adds NativeKit as a subdirectory
+# builds neither unless it asks for them.
+if(PROJECT_IS_TOP_LEVEL)
+    include(CTest)
+    set(_nk_default_tests ${BUILD_TESTING})
+else()
+    set(_nk_default_tests OFF)
+endif()
 option(NK_BUILD_SHARED "Build NativeKit as a shared library" ON)
-option(NK_BUILD_TESTS "Build NativeKit tests" ${BUILD_TESTING})
-option(NK_BUILD_EXAMPLES "Build NativeKit examples" ON)
+option(NK_BUILD_TESTS "Build NativeKit tests" ${_nk_default_tests})
+option(NK_BUILD_EXAMPLES "Build NativeKit examples" ${PROJECT_IS_TOP_LEVEL})
+if(NK_BUILD_TESTS AND NOT PROJECT_IS_TOP_LEVEL)
+    enable_testing()
+endif()
 option(NK_BUILD_GPU "Build the experimental GPU graphics module" OFF)
 option(NK_BUILD_CREDENTIALS "Build the optional OS credential-store module" OFF)
 option(NK_BUILD_FILESYSTEM "Build the optional root-scoped filesystem module" OFF)
 option(NK_BUILD_GPU_BACKEND_MATRIX
     "Enable runtime GLCore/GLES3 Sokol dispatch (desktop Linux only)" OFF)
-option(NK_USE_SYSTEM_CURL "Use the system libcurl for the Linux networking backend" OFF)
-set(NK_NET_BACKEND_CURL OFF)
 # STL containers remain in use while this migration is staged. With this option
 # enabled, production targets use a fail-fast C ABI: C++ allocation and thread
 # failures are not translated because exceptions are disabled. Turn it off for
@@ -47,37 +55,6 @@ if(NK_AUDIO_WEB_WORKLETS AND (NOT EMSCRIPTEN OR NOT NK_BUILD_AUDIO))
 endif()
 option(NK_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 option(NK_ENABLE_WEBVIEW2 "Enable the Windows WebView2 backend" ON)
-
-if(NOT EMSCRIPTEN)
-    if(NOT EXISTS "${NK_VENDOR_DIR}/libwebsockets/CMakeLists.txt")
-        message(FATAL_ERROR
-            "libwebsockets submodule is missing; run git submodule update --init")
-    endif()
-    set(LWS_WITH_STATIC ON CACHE BOOL "" FORCE)
-    set(LWS_WITH_SHARED OFF CACHE BOOL "" FORCE)
-    set(LWS_WITHOUT_TESTAPPS ON CACHE BOOL "" FORCE)
-    set(LWS_WITH_HTTP2 OFF CACHE BOOL "" FORCE)
-    set(LWS_WITH_HTTP3 OFF CACHE BOOL "" FORCE)
-    set(LWS_WITH_LIBUV OFF CACHE BOOL "" FORCE)
-    set(LWS_WITH_LIBEVENT OFF CACHE BOOL "" FORCE)
-    set(LWS_WITH_LIBEV OFF CACHE BOOL "" FORCE)
-    set(LWS_WITH_GLIB OFF CACHE BOOL "" FORCE)
-    set(LWS_WITH_ZLIB OFF CACHE BOOL "" FORCE)
-    set(LWS_WITH_SOCKS5 OFF CACHE BOOL "" FORCE)
-    set(LWS_WITH_SECURE_STREAMS OFF CACHE BOOL "" FORCE)
-    set(LWS_WITH_DLO OFF CACHE BOOL "" FORCE)
-    set(LWS_WITH_LEJP OFF CACHE BOOL "" FORCE)
-    set(LWS_WITH_LHP OFF CACHE BOOL "" FORCE)
-    set(LWS_WITH_DIR OFF CACHE BOOL "" FORCE)
-    set(LWS_WITH_LEJP_CONF OFF CACHE BOOL "" FORCE)
-    set(LWS_WITH_DHT OFF CACHE BOOL "" FORCE)
-    add_subdirectory(vendor/libwebsockets EXCLUDE_FROM_ALL)
-    set_target_properties(websockets PROPERTIES POSITION_INDEPENDENT_CODE ON)
-    if(ANDROID)
-        # Android Clang rejects one unused-but-set variable in libwebsockets' Mbed TLS backend.
-        target_compile_options(websockets PRIVATE -Wno-error=unused-but-set-variable)
-    endif()
-endif()
 
 if(WIN32)
     set(_nk_default_sokol_backend d3d11)
@@ -198,10 +175,7 @@ if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
     endif()
 endif()
 
-if(NOT EMSCRIPTEN)
-    target_link_libraries(nativekit PRIVATE websockets)
-    target_compile_definitions(nativekit PRIVATE NK_HAS_LIBWEBSOCKETS=1)
-else()
+if(EMSCRIPTEN)
     target_link_libraries(nativekit PRIVATE websocket)
 endif()
 
@@ -274,13 +248,18 @@ if(EMSCRIPTEN)
         endif()
     endif()
     target_link_options(nativekit_wasm_host_allocator INTERFACE "-sMALLOC=none")
+    if(NK_AUDIO_WEB_WORKLETS)
+        # AudioWorklets share linear memory with the rest of the module, so
+        # every object that touches it is built for threads.
+        target_compile_options(nativekit PUBLIC -pthread)
+        target_compile_options(nativekit_wasm_host_allocator PUBLIC -pthread)
+    endif()
 endif()
 
 if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
     find_package(PkgConfig QUIET)
     if(PkgConfig_FOUND)
         pkg_check_modules(GTK3 QUIET IMPORTED_TARGET gtk+-3.0)
-        pkg_check_modules(WEBKITGTK QUIET IMPORTED_TARGET webkit2gtk-4.1)
     endif()
 endif()
 
@@ -297,16 +276,12 @@ elseif(ANDROID)
     target_link_libraries(nativekit PRIVATE android EGL GLESv2 log)
 elseif(WIN32)
     if(NK_ENABLE_WEBVIEW2)
-        include(FetchContent)
-        FetchContent_Declare(nativekit_webview2
-            URL https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/1.0.4191.47
-            URL_HASH SHA256=f492bbf547d0da329553b6727435b677579b1e9f91cc9e4a1ad029366d5f23d0
-            DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
-        FetchContent_MakeAvailable(nativekit_webview2)
+        # The WebView2 SDK header and loader are carried in vendor/webview2 (see its README),
+        # so configuring needs no download. nativekit opens the loader at run time.
+        set(NK_WEBVIEW2_DIR "${NK_VENDOR_DIR}/webview2")
         target_include_directories(nativekit PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}/cmake/compat/webview2")
-        target_include_directories(nativekit SYSTEM PRIVATE
-            "${nativekit_webview2_SOURCE_DIR}/build/native/include")
+        target_include_directories(nativekit SYSTEM PRIVATE "${NK_WEBVIEW2_DIR}/include")
         target_compile_definitions(nativekit PRIVATE NK_HAS_WEBVIEW2=1)
         if(CMAKE_GENERATOR_PLATFORM MATCHES "^[Aa][Rr][Mm]64$" OR
            CMAKE_SYSTEM_PROCESSOR MATCHES "^[Aa][Rr][Mm]64$")
@@ -316,10 +291,9 @@ elseif(WIN32)
         else()
             set(NK_WEBVIEW2_ARCH x64)
         endif()
-        set(NK_WEBVIEW2_LOADER_DLL
-            "${nativekit_webview2_SOURCE_DIR}/build/native/${NK_WEBVIEW2_ARCH}/WebView2Loader.dll")
-        set(NK_WEBVIEW2_LICENSE "${nativekit_webview2_SOURCE_DIR}/LICENSE.txt")
-        set(NK_WEBVIEW2_NOTICE "${nativekit_webview2_SOURCE_DIR}/NOTICE.txt")
+        set(NK_WEBVIEW2_LOADER_DLL "${NK_WEBVIEW2_DIR}/${NK_WEBVIEW2_ARCH}/WebView2Loader.dll")
+        set(NK_WEBVIEW2_LICENSE "${NK_WEBVIEW2_DIR}/LICENSE.txt")
+        set(NK_WEBVIEW2_NOTICE "${NK_WEBVIEW2_DIR}/NOTICE.txt")
         add_custom_command(TARGET nativekit POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "${NK_WEBVIEW2_LOADER_DLL}" "$<TARGET_FILE_DIR:nativekit>")
@@ -373,18 +347,15 @@ elseif(APPLE)
         "-framework CoreHaptics")
 elseif(TARGET PkgConfig::GTK3)
     set(NK_BACKEND_GTK_AVAILABLE TRUE)
+    # WebKitGTK is opened when the first WebView is created (src/linux/webkitgtk_runtime.hpp),
+    # so WebViews depend on the running system, not on the build machine.
     target_sources(nativekit PRIVATE
         src/linux/nativekit_gtk.cpp
         src/linux/nativekit_gtk_menu.cpp
-        src/linux/nativekit_linux_joystick.cpp)
+        src/linux/nativekit_linux_joystick.cpp
+        src/linux/webkitgtk_runtime.cpp)
     target_link_libraries(nativekit PRIVATE PkgConfig::GTK3 ${CMAKE_DL_LIBS})
     target_compile_definitions(nativekit PRIVATE NK_BACKEND_GTK=1)
-    if(TARGET PkgConfig::WEBKITGTK)
-        target_link_libraries(nativekit PRIVATE PkgConfig::WEBKITGTK)
-        target_compile_definitions(nativekit PRIVATE NK_HAS_WEBKITGTK=1)
-    else()
-        message(STATUS "WebKitGTK is unavailable; GTK windowing remains enabled without WebView")
-    endif()
 else()
     target_sources(nativekit PRIVATE src/core/stub.cpp)
 endif()
@@ -413,27 +384,35 @@ elseif(WIN32)
     target_sources(nativekit PRIVATE src/net/net_winhttp.cpp)
     target_link_libraries(nativekit PRIVATE winhttp ws2_32)
 elseif(UNIX)
-    if(NK_USE_SYSTEM_CURL)
-        find_package(CURL QUIET)
-    endif()
-    if(NK_USE_SYSTEM_CURL AND CURL_FOUND)
-        target_sources(nativekit PRIVATE src/net/net_curl.cpp)
-        target_link_libraries(nativekit PRIVATE CURL::libcurl)
-        set(NK_NET_BACKEND_CURL ON)
-    else()
-        target_sources(nativekit PRIVATE src/net/net_unsupported.cpp)
-        if(NK_USE_SYSTEM_CURL)
-            message(STATUS "System libcurl is unavailable; HTTP capability is disabled")
-        endif()
-    endif()
+    # libcurl is opened when HTTP or a secure WebSocket is first used, so building needs no
+    # curl development files and a system without libcurl reports both as unavailable.
+    target_sources(nativekit PRIVATE src/net/net_curl.cpp src/net/curl_runtime.cpp)
 else()
     target_sources(nativekit PRIVATE src/net/net_unsupported.cpp)
+endif()
+
+# Secure WebSocket clients use the platform's own TLS; see src/transport/secure_websocket.hpp.
+# Browsers provide wss:// through their WebSocket API (transport_web.cpp).
+if(WIN32)
+    target_sources(nativekit PRIVATE src/transport/secure_websocket_winhttp.cpp)
+    target_compile_definitions(nativekit PRIVATE NK_SECURE_WEBSOCKET_MESSAGES=1)
+elseif(APPLE)
+    target_sources(nativekit PRIVATE src/transport/secure_websocket_urlsession.mm)
+    target_compile_definitions(nativekit PRIVATE NK_SECURE_WEBSOCKET_MESSAGES=1)
+elseif(ANDROID)
+    target_sources(nativekit PRIVATE src/transport/tls_stream_android.cpp)
+    target_compile_definitions(nativekit PRIVATE NK_SECURE_WEBSOCKET_STREAM=1)
+elseif(UNIX AND NOT EMSCRIPTEN)
+    target_sources(nativekit PRIVATE src/transport/tls_stream_curl.cpp)
+    target_compile_definitions(nativekit PRIVATE NK_SECURE_WEBSOCKET_STREAM=1)
 endif()
 
 if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
     target_link_options(nativekit PRIVATE
         "LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/cmake/nativekit.exports"
     )
+    set_property(TARGET nativekit APPEND PROPERTY
+        LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/nativekit.exports")
 endif()
 
 if(MSVC)
@@ -529,38 +508,21 @@ if(NK_BUILD_GPU)
         find_library(NK_SOKOL_MATRIX_GLES3_LIBRARY NAMES GLESv2 REQUIRED)
     endif()
 endif()
+# Each module is a package component with its own export file (NativeKit<Name>Targets.cmake),
+# so packages configured separately can install their modules into one prefix around one
+# shared core. The module installs its targets with EXPORT NativeKit<Name>Targets.
+function(nk_install_component name)
+    install(EXPORT NativeKit${name}Targets
+        FILE NativeKit${name}Targets.cmake
+        NAMESPACE NativeKit::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NativeKit)
+endfunction()
+
 if(NK_BUILD_GPU)
     add_subdirectory(modules/gpu)
 endif()
 if(NK_BUILD_AUDIO)
-    if(NOT EXISTS "${NK_VENDOR_DIR}/miniaudio/miniaudio.h" OR
-       NOT EXISTS "${NK_VENDOR_DIR}/miniaudio/miniaudio.c")
-        message(FATAL_ERROR "miniaudio submodule is missing; run git submodule update --init")
-    endif()
-    add_library(nativekit_miniaudio OBJECT "${NK_VENDOR_DIR}/miniaudio/miniaudio.c")
-    target_include_directories(nativekit_miniaudio PRIVATE "${NK_VENDOR_DIR}/miniaudio")
-    target_compile_definitions(nativekit_miniaudio PRIVATE MA_NO_ENCODING)
-    set_target_properties(nativekit_miniaudio PROPERTIES POSITION_INDEPENDENT_CODE ON)
-    if(EMSCRIPTEN)
-        target_compile_definitions(nativekit_miniaudio PRIVATE
-            MA_NO_RUNTIME_LINKING MA_ENABLE_ONLY_SPECIFIC_BACKENDS MA_ENABLE_WEBAUDIO)
-        if(NK_AUDIO_WEB_WORKLETS)
-            target_compile_definitions(nativekit_miniaudio PRIVATE MA_ENABLE_AUDIO_WORKLETS)
-            target_compile_options(nativekit_miniaudio PRIVATE -pthread)
-            target_compile_options(nativekit PUBLIC -pthread)
-            target_compile_options(nativekit_wasm_host_allocator PUBLIC -pthread)
-            target_link_options(nativekit INTERFACE
-                -pthread -sAUDIO_WORKLET=1 -sWASM_WORKERS=1 -sASYNCIFY)
-        endif()
-    endif()
-    target_sources(nativekit PRIVATE $<TARGET_OBJECTS:nativekit_miniaudio>)
-    if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
-        target_link_libraries(nativekit PRIVATE ${CMAKE_DL_LIBS} pthread m)
-    endif()
     add_subdirectory(modules/audio)
-    if(NK_AUDIO_WEB_WORKLETS)
-        target_compile_options(nativekit_daisysp PRIVATE -pthread)
-    endif()
 endif()
 if(NK_BUILD_CREDENTIALS)
     add_subdirectory(modules/credentials)

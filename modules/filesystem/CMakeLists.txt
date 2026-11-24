@@ -35,10 +35,11 @@ set_target_properties(nativekit_filesystem PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION 0)
 
-install(TARGETS nativekit_filesystem EXPORT NativeKitTargets
+install(TARGETS nativekit_filesystem EXPORT NativeKitFilesystemTargets
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+nk_install_component(Filesystem)
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 if(NK_BUILD_TESTS)

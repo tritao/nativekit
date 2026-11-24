@@ -10,7 +10,11 @@ basic voice controls, spatialization, and the engine clock. The higher-level
 mixer graph is exposed separately by `nativekit_audio_graph.h` and the
 `NativeKit::audio_graph` target, which depends on `NativeKit::audio` and adds
 buses, effects, snapshots, concurrency, virtualization, and global mix policy.
-Both targets currently link the same NativeKit runtime and miniaudio backend.
+Both targets name the same `nativekit_audio` library, which contains the
+miniaudio backend and the DSP sources and links the NativeKit runtime. The core
+`nativekit` library is identical whether or not audio is built, so several
+packages can share one copy of it and add `nativekit_audio` only when they play
+sound.
 
 The standalone DSP API is exposed by `nativekit_audio_dsp.h` and the
 `NativeKit::audio_dsp` target. Create a device-independent `nk_audio_dsp_engine`,

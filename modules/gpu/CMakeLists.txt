@@ -317,8 +317,17 @@ if(NK_BUILD_EXAMPLES)
     target_link_libraries(nativekit_gpu_frame_pacing PRIVATE NativeKit::gpu)
 endif()
 
-install(TARGETS nativekit_gpu EXPORT NativeKitTargets
+install(TARGETS nativekit_gpu EXPORT NativeKitGpuTargets
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+nk_install_component(Gpu)
+if(NOT NK_LIBRARY_TYPE STREQUAL "SHARED" AND
+   (NK_SOKOL_BACKEND STREQUAL "glcore" OR NK_BUILD_GPU_BACKEND_MATRIX))
+    # A static GPU module carries its OpenGL link dependency to the consumer.
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/NativeKitGpuDependencies.cmake"
+        "include(CMakeFindDependencyMacro)\nfind_dependency(OpenGL)\n")
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/NativeKitGpuDependencies.cmake"
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/NativeKit)
+endif()
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})

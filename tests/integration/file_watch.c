@@ -135,6 +135,75 @@ static void recursive_ready_and_exclusion(const char *root) {
     remove_directory(tree);
 }
 
+/* Counts READY events naming `path` over `polls` polls. */
+static int count_ready(const char *path, int polls) {
+    int seen = 0;
+    for (int poll = 0; poll < polls; ++poll) {
+        nk_event event = {0};
+        event.struct_size = sizeof(event);
+        assert(nk_poll_event(&event) == NK_OK);
+        if (event.kind == NK_EVENT_FILE_WATCH_READY && has_path(&event, path))
+            ++seen;
+        nk_event_release(&event);
+        sleep_briefly();
+    }
+    return seen;
+}
+
+static void sleep_for_walks(void) {
+    for (int step = 0; step < 50; ++step)
+        sleep_briefly();
+}
+
+/* Re-adding a directory re-checks it and reports READY, but one READY waiting in the queue stands
+ * for every add of that directory until it is read. */
+static void readd_rechecks_and_coalesces(const char *root) {
+    char directory[512], sub[512];
+    assert(make_child_directory(root, "readd", directory, sizeof(directory)));
+    nk_file_watch_options options = {0};
+    options.struct_size = sizeof(options);
+    nk_file_watch watch = NK_INVALID_HANDLE;
+    assert(nk_file_watch_create(&options, &watch) == NK_OK);
+
+    /* 1000 quick adds, read only afterwards, report exactly one READY. Recursive and
+     * non-recursive adds alternate: a non-recursive one is ready at once on every backend. */
+    for (int add = 0; add < 1000; ++add)
+        assert(nk_file_watch_add_directory(watch, directory, add % 2 == 0) == NK_OK);
+    sleep_for_walks();
+    assert(count_ready(directory, 60) == 1);
+
+    /* Once READY is read, a re-add reports a new one, as a host re-arming its watches waits for. */
+    assert(nk_file_watch_add_directory(watch, directory, 1) == NK_OK);
+    assert(await_path(NK_EVENT_FILE_WATCH_READY, directory, 200, NULL, NULL));
+
+    /* A subdirectory the watcher missed is registered by a re-add. Removing it from the watcher
+     * stands in for a creation lost to an overflow where the backend watches each directory;
+     * where a recursive watch covers its subtree natively, it is not a registration at all. */
+    assert(make_child_directory(directory, "sub", sub, sizeof(sub)));
+    sleep_for_walks();
+    char missed[600], seen[600];
+    snprintf(missed, sizeof(missed), "%s/missed.txt", sub);
+    snprintf(seen, sizeof(seen), "%s/seen.txt", sub);
+    const nk_result removed = nk_file_watch_remove_directory(watch, sub);
+    assert(removed == NK_OK || removed == NK_ERROR_INVALID_ARGUMENT);
+    if (removed == NK_OK) {
+        int unwanted = 0;
+        write_file(missed);
+        (void)await_path(NK_EVENT_FILE_CHANGED, NULL, 20, missed, &unwanted);
+        assert(unwanted == 0);
+    }
+    assert(nk_file_watch_add_directory(watch, directory, 1) == NK_OK);
+    assert(await_path(NK_EVENT_FILE_WATCH_READY, directory, 200, NULL, NULL));
+    write_file(seen);
+    assert(await_path(NK_EVENT_FILE_CHANGED, seen, 200, NULL, NULL));
+
+    assert(nk_file_watch_destroy(watch) == NK_OK);
+    remove(missed);
+    remove(seen);
+    remove_directory(sub);
+    remove_directory(directory);
+}
+
 static int has_rename(const nk_event *event, const char *path, const char *old_path) {
     if (event->kind != NK_EVENT_FILE_CHANGED || !event->data ||
         event->data_size < sizeof(nk_file_changed_event))
@@ -205,6 +274,7 @@ int main(void) {
     assert(nk_file_watch_destroy(watch) == NK_OK);
     assert(nk_file_watch_destroy(watch) == NK_ERROR_INVALID_HANDLE);
     recursive_ready_and_exclusion(directory);
+    readd_rechecks_and_coalesces(directory);
     nk_shutdown();
     remove(path);
     remove(renamed_path);

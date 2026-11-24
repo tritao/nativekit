@@ -65,6 +65,27 @@ bool is_persistent_readiness(nk_event_kind kind) {
            kind == NK_EVENT_FILE_WATCH_READY;
 }
 
+/* A watcher keeps at most one READY per directory waiting in the queue: a queued one stands for
+ * every later add of that directory until it is taken off the queue. */
+bool same_ready_directory(const QueuedEvent &first, const QueuedEvent &second) {
+    if (first.kind != NK_EVENT_FILE_WATCH_READY || second.kind != NK_EVENT_FILE_WATCH_READY ||
+        first.source != second.source || first.data.size() < sizeof(nk_file_changed_event) ||
+        second.data.size() < sizeof(nk_file_changed_event))
+        return false;
+    nk_file_changed_event first_file{};
+    nk_file_changed_event second_file{};
+    std::memcpy(&first_file, first.data.data(), sizeof(first_file));
+    std::memcpy(&second_file, second.data.data(), sizeof(second_file));
+    if (first_file.path_length != second_file.path_length ||
+        first_file.path_offset > first.data.size() ||
+        second_file.path_offset > second.data.size() ||
+        first_file.path_length > first.data.size() - first_file.path_offset ||
+        second_file.path_length > second.data.size() - second_file.path_offset)
+        return false;
+    return std::memcmp(first.data.data() + first_file.path_offset,
+                       second.data.data() + second_file.path_offset, first_file.path_length) == 0;
+}
+
 bool same_readiness_target(const QueuedEvent &first, const QueuedEvent &second) {
     return first.kind == second.kind && first.source == second.source &&
            first.request_id == second.request_id;
@@ -148,8 +169,21 @@ void promote_readiness_for_request(std::deque<QueuedEvent> &queue,
     }
 }
 
-nk_result EventQueue::push(QueuedEvent event) {
+nk_result EventQueue::push(QueuedEvent event, bool *coalesced) {
+    if (coalesced)
+        *coalesced = false;
     std::lock_guard lock(mutex_);
+    if (event.kind == NK_EVENT_FILE_WATCH_READY) {
+        const auto same = [&event](const QueuedEvent &queued) {
+            return same_ready_directory(queued, event);
+        };
+        if (std::any_of(queue_.begin(), queue_.end(), same) ||
+            std::any_of(deferred_readiness_.begin(), deferred_readiness_.end(), same)) {
+            if (coalesced)
+                *coalesced = true;
+            return NK_OK;
+        }
+    }
     const std::size_t event_bytes = event.data.size();
     const bool terminal = is_terminal_request_event(event);
     const bool readiness = is_persistent_readiness(event.kind);

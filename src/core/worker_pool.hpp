@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/internal_api.hpp"
 #include "nativekit.h"
 
 #include <condition_variable>
@@ -66,11 +67,11 @@ struct WorkerTaskState final {
 nk_result submit_worker_task(WorkerTask task, WorkerTask cleanup = {}) noexcept;
 
 /** Initializes a reusable work item. The item must remain alive until cleanup runs. */
-nk_result initialize_worker_task(WorkerTaskState &task, WorkerTask run,
-                                 WorkerTask cleanup = {}) noexcept;
+NK_INTERNAL_API nk_result initialize_worker_task(WorkerTaskState &task, WorkerTask run,
+                                                 WorkerTask cleanup = {}) noexcept;
 
 /** Signals a reusable work item without allocating when it is already active. */
-nk_result schedule_worker_task(WorkerTaskState &task) noexcept;
+NK_INTERNAL_API nk_result schedule_worker_task(WorkerTaskState &task) noexcept;
 
 /** Stops accepting work, drops queued tasks, and joins all worker threads. */
 void shutdown_worker_pool() noexcept;
