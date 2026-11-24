@@ -2831,21 +2831,51 @@ nkgpu_result nkgpu_shader_create_from_table(nkgpu_renderer renderer,
     const auto backend = nkgpu_query_backend(renderer);
     if (!backend)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale shader renderer");
+    nkgpu_shader_target target;
+    nkgpu_shader_language language;
+    switch (backend) {
+    case NKGPU_BACKEND_GLCORE:
+        target = NKGPU_SHADER_TARGET_GLSL410;
+        language = NKGPU_SHADERLANGUAGE_GLSL;
+        break;
+    case NKGPU_BACKEND_GLES3:
+        target = NKGPU_SHADER_TARGET_GLSL300ES;
+        language = NKGPU_SHADERLANGUAGE_GLSL;
+        break;
+    case NKGPU_BACKEND_D3D11:
+        target = NKGPU_SHADER_TARGET_HLSL5;
+        language = NKGPU_SHADERLANGUAGE_HLSL5;
+        break;
+    case NKGPU_BACKEND_METAL:
 #if defined(__APPLE__) && TARGET_OS_IPHONE
-    constexpr bool metal_ios = true;
+        target = NKGPU_SHADER_TARGET_METAL_IOS;
 #else
-    constexpr bool metal_ios = false;
+        target = NKGPU_SHADER_TARGET_METAL_MACOS;
 #endif
+        language = NKGPU_SHADERLANGUAGE_MSL;
+        break;
+    default:
+        return fail(NKGPU_ERROR_UNSUPPORTED, "renderer has no shader table target");
+    }
+    uint32_t targets_seen = 0;
+    for (uint32_t i = 0; i < count; ++i) {
+        const auto entry_target = entries[i].target;
+        if (entry_target < NKGPU_SHADER_TARGET_GLSL410 || entry_target > NKGPU_SHADER_TARGET_METAL_IOS)
+            return fail(NKGPU_ERROR_INVALID_ARGUMENT, "shader table has an invalid target");
+        const uint32_t bit = 1u << entry_target;
+        if (targets_seen & bit)
+            return fail(NKGPU_ERROR_INVALID_ARGUMENT, "shader table has a duplicate target");
+        targets_seen |= bit;
+    }
     for (uint32_t i = 0; i < count; ++i) {
         const auto &entry = entries[i];
-        if (entry.backend != backend || (backend == NKGPU_BACKEND_METAL &&
-                                        (entry.metal_ios != 0) != metal_ios))
+        if (entry.target != target)
             continue;
         if ((entry.attribute_count && !entry.attributes) || (entry.block_count && !entry.blocks) ||
             (entry.uniform_count && !entry.uniforms) || (entry.texture_count && !entry.textures))
             return fail(NKGPU_ERROR_INVALID_ARGUMENT, "shader table bindings are missing");
         nkgpu_shader_builder builder{};
-        auto result = nkgpu_shader_begin(renderer, entry.language, entry.vertex, entry.fragment, &builder);
+        auto result = nkgpu_shader_begin(renderer, language, entry.vertex, entry.fragment, &builder);
         if (result != NKGPU_OK)
             return result;
         for (uint32_t j = 0; j < entry.attribute_count && result == NKGPU_OK; ++j) {

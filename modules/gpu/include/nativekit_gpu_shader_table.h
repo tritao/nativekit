@@ -37,10 +37,16 @@ typedef struct nkgpu_shader_table_texture {
     const char *name;
 } nkgpu_shader_table_texture;
 
+typedef enum nkgpu_shader_target {
+    NKGPU_SHADER_TARGET_GLSL410 = 1,
+    NKGPU_SHADER_TARGET_GLSL300ES,
+    NKGPU_SHADER_TARGET_HLSL5,
+    NKGPU_SHADER_TARGET_METAL_MACOS,
+    NKGPU_SHADER_TARGET_METAL_IOS,
+} nkgpu_shader_target;
+
 typedef struct nkgpu_shader_table_entry {
-    nkgpu_backend backend;
-    uint32_t metal_ios;
-    nkgpu_shader_language language;
+    nkgpu_shader_target target;
     const char *vertex;
     const char *fragment;
     const nkgpu_shader_table_attribute *attributes;

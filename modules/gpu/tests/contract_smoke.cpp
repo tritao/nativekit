@@ -1,3 +1,4 @@
+#include "nativekit_gpu_shader_table.h"
 #include "nativekit.h"
 #include "nativekit_gpu.h"
 #include "nativekit_window.h"
@@ -142,6 +143,34 @@ int main() {
 
     EXPECT_RESULT(nkgpu_renderer_create(surface, &first), NKGPU_OK);
     EXPECT_RESULT(nkgpu_renderer_create(surface, &second), NKGPU_OK);
+
+    {
+        const bool gles = nkgpu_query_backend(first) == NKGPU_BACKEND_GLES3;
+        const auto live = gles ? NKGPU_SHADER_TARGET_GLSL300ES : NKGPU_SHADER_TARGET_GLSL410;
+        const char *vs = gles ? "#version 300 es\nvoid main(){gl_Position=vec4(0.0);}"
+                              : "#version 410\nvoid main(){gl_Position=vec4(0.0);}";
+        const char *fs = gles ? "#version 300 es\nprecision mediump float;out vec4 c;void main(){c=vec4(1.0);}"
+                              : "#version 410\nout vec4 c;void main(){c=vec4(1.0);}";
+        nkgpu_shader tabletop{};
+        nkgpu_shader_table_entry entries[] = {
+            {NKGPU_SHADER_TARGET_GLSL410}, {NKGPU_SHADER_TARGET_GLSL300ES},
+            {NKGPU_SHADER_TARGET_HLSL5}, {NKGPU_SHADER_TARGET_METAL_MACOS},
+            {NKGPU_SHADER_TARGET_METAL_IOS},
+        };
+        auto &selected = entries[live - 1];
+        selected.vertex = vs;
+        selected.fragment = fs;
+        EXPECT_RESULT(nkgpu_shader_create_from_table(first, entries, 5, &tabletop), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_shader_destroy(first, tabletop), NKGPU_OK);
+        EXPECT_RESULT(nkgpu_shader_create_from_table(first, entries + 2, 3, &tabletop), NKGPU_ERROR_UNSUPPORTED);
+        selected.attribute_count = 1;
+        EXPECT_RESULT(nkgpu_shader_create_from_table(first, entries, 5, &tabletop), NKGPU_ERROR_INVALID_ARGUMENT);
+        selected.attribute_count = 0;
+        entries[4].target = live;
+        EXPECT_RESULT(nkgpu_shader_create_from_table(first, entries, 5, &tabletop), NKGPU_ERROR_INVALID_ARGUMENT);
+        entries[4].target = static_cast<nkgpu_shader_target>(0);
+        EXPECT_RESULT(nkgpu_shader_create_from_table(first, entries, 5, &tabletop), NKGPU_ERROR_INVALID_ARGUMENT);
+    }
 
     // Overflow must not poison earlier uploads or prevent a smaller append.
     {

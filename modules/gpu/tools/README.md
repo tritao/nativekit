@@ -19,3 +19,31 @@ is desktop GLSL, GLSL ES, HLSL 5, macOS Metal and iOS Metal.
 - `header` can export source strings separately for C++ consumers.
 - `include_roots` adds include directories with explicit prefixes. The
   reflection lists the source dependencies for each program variant.
+
+## Reflection schema
+
+A file with `schema: nkgpu-shader-reflection/1` contains `programs`, keyed by
+program and then variant name. Each variant has `defines`, `dependencies`
+(paths relative to the manifest) and `targets`, keyed by shader target.
+
+Each target has:
+
+- `attributes` with `slot`, `name`, `format` and `semantic`
+  (`name` and `index`). An empty semantic name means no HLSL semantic.
+- `uniform_blocks` with `stage`, `slot`, `name`, byte `size` and
+  `members`. A member has `name`, `type`, `array_count`, byte `offset`
+  and, for arrays, byte `array_stride`. `gl_uniforms` describes the actual
+  names, types and counts used to upload GLSL uniforms after lowering.
+- `images` with `name`, `stage`, `slot`, `type`, `sample_type` and
+  `multisampled`. `samplers` have `name`, `stage`, `slot` and `type`.
+  `image_sampler_pairs` connect an `image_slot` and `sampler_slot` with
+  the combined binding `name`.
+- `storage_buffers` with `name`, `stage`, `slot` and `readonly`.
+- `stages`, keyed by stage name, with `source` (the generated symbol)
+  and `entry_point`. When present, the top-level `sources` map contains
+  shader text keyed by that symbol.
+
+The distributed shader compiler is verified using its host checksum. Linux
+x86-64 has a default validator checksum. When building the validator from
+the pinned upstream source, set `NATIVEKIT_GLSLANG_SHA256` to the trusted
+build's executable digest.

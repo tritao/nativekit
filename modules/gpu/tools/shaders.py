@@ -2,6 +2,7 @@
 """Build checked-in shader sources and reflection from a NativeKit shader manifest."""
 
 import argparse
+import hashlib
 import itertools
 import json
 import os
@@ -28,10 +29,61 @@ UNIFORM_TYPES = {
     "int": "INT", "ivec2": "INT2", "ivec3": "INT3", "ivec4": "INT4", "mat4": "MAT4",
 }
 IMAGE_TYPES = {"2d": "2D", "array": "ARRAY", "cube": "CUBE", "cube_array": "CUBE_ARRAY"}
-BACKENDS = {
-    "glsl410": ("GLCORE", "GLSL"), "glsl300es": ("GLES3", "GLSL"),
-    "hlsl5": ("D3D11", "HLSL5"), "metal_macos": ("METAL", "MSL"), "metal_ios": ("METAL", "MSL"),
+VERTEX_FORMATS = {"float": "float", "vec2": "float2", "vec3": "float3", "vec4": "float4"}
+SHDC_SHA256 = {
+    "linux": "2554534631a7c7c6c2261dc6d20a603cdabf0cc1390e293f5ca06d345bb48c13",
+    "linux_arm64": "da5e56ec9dc736b9fb7b43c881b2fe5616b2dd4beef7518dcfb5d60deb0eb50c",
+    "osx": "8d8b74e0f612f556a0f57ea5a49c1c64bf990eed518001db626332a9ef887afc",
+    "osx_arm64": "54b98765886f4abd3bb86ffcf8c75c5073073a7fb009e7f693fb2f4d9ce3baa6",
+    "win32": "10bd643a869cbacff606c28aa44f79a55ad545981c907889b6fb28bc8977b380",
 }
+VALIDATOR_SHA256 = {
+    ("Linux", "x86_64"): "f0a8e48614b36de3ebc79ab1c3b3f110ff6f5b4ec93d8c7c86cf1612da9953d1",
+}
+
+
+def normalize(shader, members):
+    """Translate compiler fields into NativeKit's reflection vocabulary."""
+    def binding(row, **fields):
+        stage, slot = row["stage"], row["slot"]
+        if stage not in STAGES or type(slot) is not int or slot < 0:
+            raise ValueError(f"invalid {stage} resource slot {slot}")
+        return dict(stage=stage, slot=slot, **fields)
+
+    attributes = []
+    for row in shader.get("attrs", []):
+        slot, format_type = row["slot"], row["type"]
+        if type(slot) is not int or slot < 0 or format_type not in VERTEX_FORMATS:
+            raise ValueError(f"unsupported vertex attribute {format_type} at slot {slot}")
+        attributes.append(dict(slot=slot, name=row.get("glsl_name", ""), format=VERTEX_FORMATS[format_type],
+                               semantic=dict(name=row.get("hlsl_sem_name", ""), index=row.get("hlsl_sem_index", 0))))
+    blocks = []
+    for row in shader.get("uniform_blocks", []):
+        name, size = row["struct_name"], row["size"]
+        fields = members[name]
+        if type(size) is not int or size <= 0 or any(
+                field["array_count"] < 1 or not 0 <= field["offset"] < size for field in fields):
+            raise ValueError(f"invalid std140 layout for {name}")
+        uniforms = [dict(name=field["glsl_name"], type=field["type"], array_count=field["array_count"])
+                    for field in row.get("glsl_uniforms", [])]
+        blocks.append(binding(row, name=name, size=size, members=fields, gl_uniforms=uniforms))
+    images, storage_buffers = [], []
+    for resource in shader.get("views", []):
+        if "texture" in resource:
+            row = resource["texture"]
+            images.append(binding(row, name=row["name"], type=row["type"],
+                                  sample_type=row["sample_type"], multisampled=row["multisampled"]))
+        elif "storage_buffer" in resource:
+            row = resource["storage_buffer"]
+            storage_buffers.append(binding(row, name=row["name"], readonly=row["readonly"]))
+        else:
+            raise ValueError(f"unsupported shader resource {list(resource)}")
+    return dict(attributes=attributes, uniform_blocks=blocks, images=images, storage_buffers=storage_buffers,
+                samplers=[binding(row, name=row["name"], type=row["sampler_type"])
+                          for row in shader.get("samplers", [])],
+                image_sampler_pairs=[dict(image_slot=row["view_slot"], sampler_slot=row["sampler_slot"],
+                                          name=row.get("glsl_name", row["name"]))
+                                     for row in shader.get("texture_sampler_pairs", [])])
 
 
 def uniform_members(path):
@@ -125,41 +177,39 @@ def c_tables(programs, sources, header_name, header_symbols):
 
     for name, variants in sorted(programs.items()):
         for variant, program in sorted(variants.items()):
-            backends = program["backends"]
+            backends = program["targets"]
             symbol = f"{name}_{variant}"
             gl = backends.get("glsl410", backends.get("glsl300es", {}))
             dx = backends.get("hlsl5", {})
-            semantic = {a["slot"]: a for a in dx.get("attrs", [])}
+            semantic = {a["slot"]: a for a in dx.get("attributes", [])}
             attributes = array(symbol + "_attributes", "attribute", [
-                (a["slot"], json.dumps(a["glsl_name"]),
-                 json.dumps(semantic.get(a["slot"], {}).get("hlsl_sem_name", "")),
-                 semantic.get(a["slot"], {}).get("hlsl_sem_index", 0))
-                for a in gl.get("attrs", [])])
+                (a["slot"], json.dumps(a["name"]),
+                 json.dumps(semantic.get(a["slot"], {}).get("semantic", {}).get("name", "")),
+                 semantic.get(a["slot"], {}).get("semantic", {}).get("index", 0))
+                for a in gl.get("attributes", [])])
             entries = []
             for slang, backend in sorted(backends.items()):
-                tag, language = BACKENDS[slang]
                 stem = f"{symbol}_{slang}"
                 blocks = backend.get("uniform_blocks", [])
                 block_ref = array(stem + "_blocks", "block", [
                     (b["slot"], stage(b["stage"]), b["size"]) for b in blocks])
                 uniforms = array(stem + "_uniforms", "uniform", [
-                    (b["slot"], i, json.dumps(u["glsl_name"]), "NKGPU_UNIFORMTYPE_" + UNIFORM_TYPES[u["type"]],
-                     u["array_count"]) for b in blocks for i, u in enumerate(b.get("glsl_uniforms", []))])
-                views = {v["texture"]["slot"]: v["texture"] for v in backend.get("views", []) if "texture" in v}
+                    (b["slot"], i, json.dumps(u["name"]), "NKGPU_UNIFORMTYPE_" + UNIFORM_TYPES[u["type"]],
+                     u["array_count"]) for b in blocks for i, u in enumerate(b["gl_uniforms"])])
+                views = {v["slot"]: v for v in backend["images"]}
                 textures = []
-                for pair in backend.get("texture_sampler_pairs", []):
-                    view = views[pair["view_slot"]]
+                for pair in backend["image_sampler_pairs"]:
+                    view = views[pair["image_slot"]]
                     if view["sample_type"] != "float" or view["multisampled"]:
                         raise ValueError(f"{name}: unsupported GPU table texture type")
                     textures.append((view["slot"], pair["sampler_slot"], stage(view["stage"]),
                                      "NKGPU_IMAGETYPE_" + IMAGE_TYPES[view["type"]],
-                                     json.dumps(pair.get("glsl_name", pair["name"]))))
-                if any("texture" not in v for v in backend.get("views", [])):
+                                     json.dumps(pair["name"])))
+                if backend["storage_buffers"]:
                     raise ValueError(f"{name}: unsupported GPU table resource")
                 texture_ref = array(stem + "_textures", "texture", textures)
                 funcs = backend["stages"]
-                entries.append((f"NKGPU_BACKEND_{tag}", int(slang == "metal_ios"),
-                                f"NKGPU_SHADERLANGUAGE_{language}", funcs["vertex"]["source"],
+                entries.append((f"NKGPU_SHADER_TARGET_{slang.upper()}", funcs["vertex"]["source"],
                                 funcs["fragment"]["source"], attributes, block_ref, uniforms, texture_ref))
             array(symbol + "_table", "entry", entries)
     if header_name:
@@ -167,7 +217,12 @@ def c_tables(programs, sources, header_name, header_symbols):
     return "\n".join(lines) + "\n"
 
 
-def pinned_shdc():
+def verify_digest(data, expected, label):
+    if not expected or hashlib.sha256(data).hexdigest() != expected:
+        raise ValueError(f"SHA-256 mismatch for {label}")
+
+
+def pinned_shdc(override):
     os_name, machine = platform.system(), platform.machine().lower()
     architecture = {"arm64": "arm64", "aarch64": "arm64", "amd64": "x86_64", "x86_64": "x86_64"}
     folders = {
@@ -180,17 +235,21 @@ def pinned_shdc():
         raise ValueError(f"no pinned sokol-shdc binary for {os_name}/{machine}")
     executable = "sokol-shdc.exe" if os_name == "Windows" else "sokol-shdc"
     path = Path.home() / ".cache" / "nativekit" / SHDC_REVISION / folder / executable
-    if not path.is_file():
+    if override:
+        path = Path(shutil.which(override) or override)
+    if not path.is_file() and not override:
         path.parent.mkdir(parents=True, exist_ok=True)
         url = f"https://raw.githubusercontent.com/floooh/sokol-tools-bin/{SHDC_REVISION}/bin/{folder}/{executable}"
         with urllib.request.urlopen(url, timeout=60) as response:
             binary = response.read()
+        verify_digest(binary, SHDC_SHA256[folder], url)
         with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as output:
             output.write(binary)
             temporary = Path(output.name)
         temporary.chmod(0o755)
         temporary.replace(path)
-    return str(path)
+    verify_digest(path.read_bytes(), SHDC_SHA256[folder], path)
+    return str(path.resolve())
 
 
 def write_or_check(path, data, check):
@@ -215,6 +274,10 @@ def build(manifest_path, shdc, validator, check):
         raise ValueError("invalid shader target list")
     sources, programs = {}, {}
     if validator:
+        validator = shutil.which(validator) or validator
+        host = (platform.system(), platform.machine().lower())
+        digest = os.environ.get("NATIVEKIT_GLSLANG_SHA256", VALIDATOR_SHA256.get(host))
+        verify_digest(Path(validator).read_bytes(), digest, validator)
         version = subprocess.check_output([validator, "--version"], text=True)
         if ":15.1.0" not in version:
             raise ValueError("shader validation requires glslang 15.1.0")
@@ -275,14 +338,11 @@ def build(manifest_path, shdc, validator, check):
                     for shader in target["programs"]:
                         name = shader["name"]
                         program = programs.setdefault(name, {}).setdefault(variant, {
-                            "defines": defines, "dependencies": includes, "backends": {}
+                            "defines": defines, "dependencies": includes, "targets": {}
                         })
-                        if slang in program["backends"]:
+                        if slang in program["targets"]:
                             raise ValueError(f"duplicate shader {name}/{variant}/{slang}")
-                        reflection = {key: value for key, value in shader.items()
-                                      if key not in {"name", *(f"{stage}_func" for stage in STAGES)}}
-                        for block in reflection.get("uniform_blocks", []):
-                            block["members"] = members[block["struct_name"]]
+                        reflection = normalize(shader, members)
                         reflection["stages"] = {}
                         for stage in STAGES:
                             function = shader.get(f"{stage}_func")
@@ -297,12 +357,27 @@ def build(manifest_path, shdc, validator, check):
                                 subprocess.run([validator, "-S", {"vertex": "vert", "fragment": "frag",
                                                 "compute": "comp"}[stage], str(destination)], check=True)
                             sources[symbol] = shader_source(destination)
-                            reflection["stages"][stage] = {"source": symbol, "entry": function["entry_point"]}
-                        program["backends"][slang] = reflection
+                            reflection["stages"][stage] = {"source": symbol, "entry_point": function["entry_point"]}
+                        program["targets"][slang] = reflection
     for variants in programs.values():
         for program in variants.values():
-            if set(program["backends"]) != set(slangs):
+            targets = program["targets"]
+            if set(targets) != set(slangs):
                 raise ValueError("incomplete backend output")
+            attributes = {}
+            for target in targets.values():
+                for attribute in target["attributes"]:
+                    canonical = attributes.setdefault(attribute["slot"], dict(attribute))
+                    if attribute["format"] != canonical["format"]:
+                        raise ValueError("vertex format differs across shader targets")
+                    if attribute["name"]:
+                        canonical["name"] = attribute["name"]
+                    if attribute["semantic"]["name"]:
+                        canonical["semantic"] = attribute["semantic"]
+            for target in targets.values():
+                target["attributes"] = [attributes[a["slot"]] for a in target["attributes"]]
+                if any(not a["name"] for a in target["attributes"]):
+                    raise ValueError("vertex names require one GLSL reflection target")
     header_symbols = {}
     if "header" in manifest:
         header = manifest["header"]
@@ -336,7 +411,7 @@ def main():
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
     try:
-        build(args.manifest.resolve(), args.shdc or pinned_shdc(), args.validator, args.check)
+        build(args.manifest.resolve(), pinned_shdc(args.shdc), args.validator, args.check)
     except (OSError, ValueError, KeyError, subprocess.CalledProcessError, yaml.YAMLError) as error:
         print(f"shader generation failed: {error}", file=sys.stderr)
         return 1

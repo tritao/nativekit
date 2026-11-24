@@ -91,8 +91,14 @@ bindings are generated and checked; NativeKit ships no Haxeon tooling.
 
 Output formats for NativeKit or Haxeon are not added inside `sokol-shdc`:
 upstream would not take them, and a fork would carry glslang, SPIRV-Tools,
-SPIRV-Cross and Tint. A gap in the YAML reflection is fixed by a small,
-generic patch offered upstream.
+SPIRV-Cross and Tint. A gap in reflection is addressed by offering a small generic patch upstream.
+Only if upstream declines a required change do we carry that patch against
+the pinned revision and build the compiler in CI.
+
+The SDK ships or fetches the pinned upstream binary, verifies its SHA-256
+for the host before executing it, and will ship this driver as a native
+tool. We can offer a generic `bare_json` output upstream to remove the
+driver's YAML dependency.
 
 The tool's first step settles four things:
 
