@@ -41,11 +41,6 @@ struct FrameSubmission {
     std::unique_ptr<FrameSubmission> next;
 };
 
-struct LatestFrameTask {
-    const void *key;
-    std::unique_ptr<FrameSubmission> work;
-};
-std::unordered_map<const void *, LatestFrameTask *> latest_frame_tasks;
 std::unique_ptr<FrameSubmission> completed_frames;
 FrameSubmission *completed_tail = nullptr;
 
@@ -90,33 +85,14 @@ void NK_CALL run_frame_submission(void *data) {
 }
 
 void destroy_frame_submission(void *data) noexcept {
-    delete static_cast<std::unique_ptr<FrameSubmission> *>(data);
-}
-
-
-void NK_CALL run_latest_frame(void *data) {
-    auto &task = *static_cast<LatestFrameTask *>(data);
-    std::unique_ptr<FrameSubmission> work;
-    {
-        std::lock_guard lock(frame_mutex);
-        latest_frame_tasks.erase(task.key);
-        work = std::move(task.work);
+    std::unique_ptr<std::unique_ptr<FrameSubmission>> task(
+        static_cast<std::unique_ptr<FrameSubmission> *>(data));
+    if (*task) {
+        (*task)->result = NK_ERROR_CANCELLED;
+        enqueue_completion(std::move(*task));
     }
-    execute_steps(*work);
-    enqueue_completion(std::move(work));
 }
 
-void destroy_latest_frame(void *data) noexcept {
-    std::unique_ptr<LatestFrameTask> task(static_cast<LatestFrameTask *>(data));
-    if (!task->work)
-        return;
-    {
-        std::lock_guard lock(frame_mutex);
-        latest_frame_tasks.erase(task->key);
-    }
-    task->work->result = NK_ERROR_CANCELLED;
-    enqueue_completion(std::move(task->work));
-}
 
 constexpr uint32_t surface_frame_target_min_size =
     static_cast<uint32_t>(offsetof(nk_surface_frame_target, frame) + sizeof(nk_surface_frame));
@@ -236,58 +212,10 @@ static nk_result finish_queued_frame(const FrameSubmission &submission) noexcept
                                                             : nk_surface_present(ticket.surface);
 }
 
-static void complete_frame_steps(FrameSubmission &submission, bool replaced) noexcept {
+static void complete_frame_steps(FrameSubmission &submission) noexcept {
     for (const auto &step : submission.steps)
         if (step.complete)
-            step.complete(step.payload.get(), submission.result, replaced);
-}
-
-nk_result submit_latest_frame(nk_surface_frame frame, FrameStep step, const void *key) {
-    return result_boundary("could not submit latest surface frame", [&]() -> nk_result {
-        if (const auto affinity = require_executor(NK_EXECUTOR_PLATFORM); affinity != NK_OK)
-            return affinity;
-        if (!key || !step.payload || !step.execute)
-            return NK_ERROR_INVALID_ARGUMENT;
-        auto work = std::make_unique<FrameSubmission>();
-        work->steps.push_back(std::move(step));
-        std::unique_ptr<FrameSubmission> replaced;
-        std::unique_ptr<LatestFrameTask> task;
-        {
-            std::lock_guard lock(frame_mutex);
-            const auto ticket = ticket_by_frame.find(frame);
-            if (ticket == ticket_by_frame.end() || ticket->second.queue_owned)
-                return NK_ERROR_INVALID_HANDLE;
-            work->ticket = ticket->second;
-            const auto pending = latest_frame_tasks.find(key);
-            if (pending != latest_frame_tasks.end()) {
-                replaced = std::move(pending->second->work);
-                pending->second->work = std::move(work);
-            } else {
-                task = std::make_unique<LatestFrameTask>();
-                task->key = key;
-                task->work = std::move(work);
-                latest_frame_tasks.emplace(key, task.get());
-            }
-            ticket->second.queue_owned = true;
-        }
-        if (task) {
-            const auto queued = dispatch_to_render(run_latest_frame, task.get(), destroy_latest_frame,
-                                                   sizeof(FrameSubmission));
-            if (queued != NK_OK) {
-                std::lock_guard lock(frame_mutex);
-                latest_frame_tasks.erase(key);
-                ticket_by_frame.at(frame).queue_owned = false;
-                return queued;
-            }
-            (void)task.release();
-        }
-        if (replaced) {
-            replaced->result = NK_ERROR_CANCELLED;
-            replaced->result = finish_queued_frame(*replaced);
-            complete_frame_steps(*replaced, true);
-        }
-        return NK_OK;
-    });
+            step.complete(step.payload.get(), submission.result);
 }
 
 bool frame_completions_pending() noexcept {
@@ -317,8 +245,10 @@ void drain_standalone_frame_completions() noexcept {
             if (!*link)
                 completed_tail = previous;
         }
-        submission->result = finish_queued_frame(*submission);
-        complete_frame_steps(*submission, false);
+        if (!submission->finished) {
+            submission->result = finish_queued_frame(*submission);
+            complete_frame_steps(*submission);
+        }
     }
 }
 
@@ -336,7 +266,7 @@ bool poll_frame_completion(nk_event &event) noexcept {
         }
         if (!submission->finished) {
             submission->result = finish_queued_frame(*submission);
-            complete_frame_steps(*submission, false);
+            complete_frame_steps(*submission);
         }
         if (standalone(*submission))
             continue;
@@ -572,6 +502,7 @@ nk_result NK_CALL nk_surface_frame_submit(nk_surface_frame frame,
         if (!threaded) {
             execute_steps(*submission);
             submission->result = finish_queued_frame(*submission);
+            complete_frame_steps(*submission);
             submission->finished = true;
             enqueue_completion(std::move(submission));
         }
