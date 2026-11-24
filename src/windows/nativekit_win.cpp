@@ -2287,8 +2287,11 @@ void draw_surface_frame(WinSurfaceResource &surface) {
         return;
     active->frame_requests.begin_frame();
     nk::core::run_surface_frame([&] {
-        if (nk_surface_make_current(active->handle) != NK_OK)
+        if (nk_surface_make_current(active->handle) != NK_OK) {
+            // Retry the frame rather than drop it: its caller waits for this callback.
+            active->frame_requests.request();
             return;
+        }
         const auto callback = active->frame_callback;
         void *user_data = active->frame_user_data;
         callback(active->handle, active->framebuffer_width, active->framebuffer_height, user_data);

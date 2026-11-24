@@ -5646,10 +5646,20 @@ nk_result NK_CALL nk_surface_set_frame_callback(nk_handle handle,
                                    // Keep the next request pending until RENDER returns its ticket.
                                    if (nk::core::surface_has_open_frame(handle))
                                        return;
+                                   // A covered, hidden or minimized window has no drawable. Keep the
+                                   // request pending until it can draw: consuming it here dropped the
+                                   // frame, and the caller, still waiting for this frame's callback,
+                                   // never asked again.
+                                   if (!surface_frame_available(*active))
+                                       return;
                                    active->frame_requests.begin_frame();
                                    nk::core::run_surface_frame([&] {
-                                       if (nk_surface_make_current(handle) != NK_OK)
+                                       if (nk_surface_make_current(handle) != NK_OK) {
+                                           // No drawable this tick (Metal can run out): retry the
+                                           // frame rather than drop it.
+                                           active->frame_requests.request();
                                            return;
+                                       }
                                        callback(handle, active->framebuffer_width,
                                                 active->framebuffer_height, user_data);
                                        if (active->frame_prepared &&
