@@ -1229,8 +1229,9 @@ NKGPU_API nkgpu_result nkgpu_shader_end(nkgpu_shader_builder builder,
 /**
  * Starts building a pipeline for a shader.
  *
- * `stride` is the byte distance between vertices in vertex buffer slot zero.
- * The shader must belong to `renderer`. Add vertex attributes and, when
+ * `stride` is the byte distance between vertices in vertex buffer slot zero,
+ * or 0 for a pipeline without vertex buffers whose shader reads its inputs
+ * from storage buffers or builtins. The shader must belong to `renderer`. Add vertex attributes and, when
  * needed, an index type before calling nkgpu_pipeline_end().
  */
 NKGPU_API nkgpu_result nkgpu_pipeline_begin(nkgpu_renderer renderer, nkgpu_shader shader,

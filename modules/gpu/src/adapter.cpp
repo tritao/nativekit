@@ -2840,49 +2840,66 @@ nkgpu_result nkgpu_shader_create_from_table(nkgpu_renderer renderer,
     if (!selection.target)
         return fail(NKGPU_ERROR_UNSUPPORTED, "renderer has no shader table target");
     uint32_t targets_seen = 0;
+    const nkgpu_shader_table_entry *preferred = nullptr, *fallback = nullptr;
     for (uint32_t i = 0; i < count; ++i) {
         const auto entry_target = entries[i].target;
-        if (entry_target < NKGPU_SHADER_TARGET_GLSL410 || entry_target > NKGPU_SHADER_TARGET_METAL_IOS)
+        if (entry_target < NKGPU_SHADER_TARGET_GLSL410 || entry_target > NKGPU_SHADER_TARGET_GLSL310ES)
             return fail(NKGPU_ERROR_INVALID_ARGUMENT, "shader table has an invalid target");
         const uint32_t bit = 1u << entry_target;
         if (targets_seen & bit)
             return fail(NKGPU_ERROR_INVALID_ARGUMENT, "shader table has a duplicate target");
         targets_seen |= bit;
+        if (entry_target == selection.target)
+            preferred = &entries[i];
+        else if (entry_target == selection.fallback)
+            fallback = &entries[i];
     }
-    for (uint32_t i = 0; i < count; ++i) {
-        const auto &entry = entries[i];
-        if (entry.target != selection.target)
-            continue;
-        if ((entry.attribute_count && !entry.attributes) || (entry.block_count && !entry.blocks) ||
-            (entry.uniform_count && !entry.uniforms) || (entry.texture_count && !entry.textures))
-            return fail(NKGPU_ERROR_INVALID_ARGUMENT, "shader table bindings are missing");
-        nkgpu_shader_builder builder{};
-        auto result = nkgpu_shader_begin(renderer, selection.language, entry.vertex, entry.fragment, &builder);
-        if (result != NKGPU_OK)
-            return result;
-        for (uint32_t j = 0; j < entry.attribute_count && result == NKGPU_OK; ++j) {
-            const auto &a = entry.attributes[j];
-            result = nkgpu_shader_attribute(builder, a.slot, a.glsl_name, a.hlsl_semantic, a.semantic_index);
-        }
-        for (uint32_t j = 0; j < entry.block_count && result == NKGPU_OK; ++j) {
-            const auto &b = entry.blocks[j];
-            result = nkgpu_shader_uniform_block(builder, b.slot, b.stage, b.size);
-        }
-        for (uint32_t j = 0; j < entry.uniform_count && result == NKGPU_OK; ++j) {
-            const auto &u = entry.uniforms[j];
-            result = nkgpu_shader_uniform(builder, u.block, u.member, u.name, u.type, u.count);
-        }
-        for (uint32_t j = 0; j < entry.texture_count && result == NKGPU_OK; ++j) {
-            const auto &t = entry.textures[j];
-            result = nkgpu_shader_texture_type(builder, t.view, t.sampler, t.stage, t.type, t.name);
-        }
-        if (result == NKGPU_OK)
-            result = nkgpu_shader_end(builder, out);
-        if (auto *remaining = shader_builder_pool.get(builder))
-            shader_builder_pool.remove(*remaining);
+    const auto *selected = preferred ? preferred : fallback;
+    if (!selected)
+        return fail(NKGPU_ERROR_UNSUPPORTED, "shader table has no variant for the renderer backend");
+    const auto &entry = *selected;
+    if ((entry.attribute_count && !entry.attributes) || (entry.block_count && !entry.blocks) ||
+        (entry.uniform_count && !entry.uniforms) || (entry.texture_count && !entry.textures) ||
+        (entry.storage_buffer_count && !entry.storage_buffers))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT, "shader table bindings are missing");
+    const bool compute = entry.compute != nullptr;
+    if (compute ? (entry.vertex || entry.fragment || entry.attribute_count)
+                : (!entry.vertex || !entry.fragment))
+        return fail(NKGPU_ERROR_INVALID_ARGUMENT,
+                    "a shader table entry needs vertex and fragment sources or one compute source");
+    nkgpu_shader_builder builder{};
+    auto result = compute
+        ? nkgpu_shader_begin_compute(renderer, selection.language, entry.compute, &builder)
+        : nkgpu_shader_begin(renderer, selection.language, entry.vertex, entry.fragment, &builder);
+    if (result != NKGPU_OK)
         return result;
+    if (compute && (entry.threads_x || entry.threads_y || entry.threads_z))
+        result = nkgpu_shader_compute_threads(builder, entry.threads_x, entry.threads_y, entry.threads_z);
+    for (uint32_t j = 0; j < entry.attribute_count && result == NKGPU_OK; ++j) {
+        const auto &a = entry.attributes[j];
+        result = nkgpu_shader_attribute(builder, a.slot, a.glsl_name, a.hlsl_semantic, a.semantic_index);
     }
-    return fail(NKGPU_ERROR_UNSUPPORTED, "shader table has no variant for the renderer backend");
+    for (uint32_t j = 0; j < entry.block_count && result == NKGPU_OK; ++j) {
+        const auto &b = entry.blocks[j];
+        result = nkgpu_shader_uniform_block(builder, b.slot, b.stage, b.size);
+    }
+    for (uint32_t j = 0; j < entry.uniform_count && result == NKGPU_OK; ++j) {
+        const auto &u = entry.uniforms[j];
+        result = nkgpu_shader_uniform(builder, u.block, u.member, u.name, u.type, u.count);
+    }
+    for (uint32_t j = 0; j < entry.texture_count && result == NKGPU_OK; ++j) {
+        const auto &t = entry.textures[j];
+        result = nkgpu_shader_texture_type(builder, t.view, t.sampler, t.stage, t.type, t.name);
+    }
+    for (uint32_t j = 0; j < entry.storage_buffer_count && result == NKGPU_OK; ++j) {
+        const auto &b = entry.storage_buffers[j];
+        result = nkgpu_shader_storage_buffer(builder, b.view, b.stage, b.readonly);
+    }
+    if (result == NKGPU_OK)
+        result = nkgpu_shader_end(builder, out);
+    if (auto *remaining = shader_builder_pool.get(builder))
+        shader_builder_pool.remove(*remaining);
+    return result;
 }
 
 nkgpu_result nkgpu_shader_end(nkgpu_shader_builder h, nkgpu_shader *out) {
@@ -2920,7 +2937,7 @@ nkgpu_result nkgpu_pipeline_begin(nkgpu_renderer r, nkgpu_shader shader, uint32_
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale renderer");
     if (!sh || sh->value.owner != r)
         return fail(NKGPU_ERROR_INVALID_HANDLE, "stale or foreign shader");
-    if (!stride || !out)
+    if (!out)
         return fail(NKGPU_ERROR_INVALID_ARGUMENT, "invalid pipeline builder");
     const nkgpu_result idle = require_idle_renderer(r);
     if (idle != NKGPU_OK)

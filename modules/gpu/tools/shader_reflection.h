@@ -23,6 +23,7 @@ struct Target {
     std::vector<Sampler> samplers;
     std::vector<Pair> pairs;
     std::map<std::string, Stage> stages;
+    int threads[3] = {0, 0, 0};
 };
 struct Program {
     std::vector<std::string> defines, dependencies;

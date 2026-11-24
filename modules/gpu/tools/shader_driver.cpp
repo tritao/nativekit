@@ -19,7 +19,8 @@
 
 namespace shader {
 namespace {
-const std::vector<std::string> all_targets{"glsl410", "glsl300es", "hlsl5", "metal_macos", "metal_ios"};
+const std::vector<std::string> all_targets{"glsl410", "glsl300es", "hlsl5", "metal_macos", "metal_ios", "glsl430", "glsl310es"};
+const std::set<std::string> gl_targets{"glsl410", "glsl300es", "glsl430", "glsl310es"};
 const std::string revision = "4f5b2796806875dcf0a5a5dfa9f9dab462726a5e";
 const std::map<std::string, std::string> pins{
     {"linux","2554534631a7c7c6c2261dc6d20a603cdabf0cc1390e293f5ca06d345bb48c13"},
@@ -234,8 +235,7 @@ std::string tables(const Programs &programs, const Sources &sources, const std::
         for (const auto &[variant, program] : variants) {
             const auto symbol = name + "_" + variant;
             const auto &targets = program.targets;
-            auto gl = targets.find("glsl410");
-            if (gl == targets.end()) gl = targets.find("glsl300es");
+            auto gl = std::find_if(targets.begin(), targets.end(), [](const auto &t) { return gl_targets.count(t.first) != 0; });
             std::vector<std::string> rows;
             if (gl != targets.end())
                 for (const auto &a : gl->second.attributes)
@@ -260,12 +260,20 @@ std::string tables(const Programs &programs, const Sources &sources, const std::
                     textures.push_back(join({std::to_string(v->slot), std::to_string(p.sampler_slot), stage(v->stage),
                         "NKGPU_IMAGETYPE_" + upper(v->type), quote(p.name)}, ", "));
                 }
-                if (!target.storage.empty()) throw std::runtime_error(name + ": unsupported GPU table resource");
+                std::vector<std::string> storage;
+                for (const auto &b : target.storage)
+                    storage.push_back(join({std::to_string(b.slot), stage(b.stage), b.readonly ? "1" : "0", quote(b.name)}, ", "));
                 const auto block_ref = array(stem + "_blocks", "block", blocks);
                 const auto uniform_ref = array(stem + "_uniforms", "uniform", members);
                 const auto texture_ref = array(stem + "_textures", "texture", textures);
-                entries.push_back(join({"NKGPU_SHADER_TARGET_" + upper(slang), target.stages.at("vertex").source,
-                    target.stages.at("fragment").source, attrs, block_ref, uniform_ref, texture_ref}, ", "));
+                const auto storage_ref = array(stem + "_storage_buffers", "storage_buffer", storage);
+                const auto source = [&](const std::string &stage_name) {
+                    const auto found = target.stages.find(stage_name);
+                    return found == target.stages.end() ? std::string("NULL") : found->second.source;
+                };
+                entries.push_back(join({"NKGPU_SHADER_TARGET_" + upper(slang), source("vertex"), source("fragment"),
+                    source("compute"), std::to_string(target.threads[0]), std::to_string(target.threads[1]),
+                    std::to_string(target.threads[2]), attrs, block_ref, uniform_ref, texture_ref, storage_ref}, ", "));
             }
             array(symbol + "_table", "entry", entries);
         }
@@ -288,12 +296,13 @@ void build(const Json &manifest, const fs::path &directory, const fs::path &comp
     if (slangs.empty() || std::set<std::string>(slangs.begin(), slangs.end()).size() != slangs.size()
         || std::any_of(slangs.begin(), slangs.end(), [](const auto &s) { return std::find(all_targets.begin(), all_targets.end(), s) == all_targets.end(); }))
         throw std::runtime_error("invalid shader targets");
-    const bool supplemental = !dep_output.empty() && std::find(slangs.begin(), slangs.end(), "glsl410") == slangs.end()
-        && std::find(slangs.begin(), slangs.end(), "glsl300es") == slangs.end();
+    // Reflection reads a GLSL compile; without a GL target, GLSL 4.3 is added since it accepts every stage.
+    const bool supplemental = !dep_output.empty()
+        && std::none_of(slangs.begin(), slangs.end(), [](const auto &s) { return gl_targets.count(s) != 0; });
     auto compiler_targets = slangs;
-    if (supplemental) compiler_targets.push_back("glsl410");
-    const auto canonical = std::find(compiler_targets.begin(), compiler_targets.end(), "glsl410") != compiler_targets.end()
-        ? std::string("glsl410") : compiler_targets.front();
+    if (supplemental) compiler_targets.push_back("glsl430");
+    const auto canonical = *std::find_if(compiler_targets.begin(), compiler_targets.end(),
+        [](const auto &s) { return gl_targets.count(s) != 0; });
     Work work(fs::temp_directory_path());
     if (!validator.empty()) {
         auto expected = environment("NATIVEKIT_GLSLANG_SHA256");
@@ -368,7 +377,7 @@ void build(const Json &manifest, const fs::path &directory, const fs::path &comp
                         data.source = manifest.get("prefix", "shader_").string() + name + suffix + "_" + slang + "_" + stage;
                         if (!validator.empty() && slang.rfind("glsl", 0) == 0)
                             run({validator.u8string(), "-S", stage == "vertex" ? "vert" : stage == "fragment" ? "frag" : "comp", data.path.u8string()});
-                        if (!supplemental || slang != "glsl410") sources[data.source] = text_file(data.path);
+                        if (!supplemental || slang != canonical) sources[data.source] = text_file(data.path);
                     }
                     if (!program.targets.emplace(slang, std::move(target)).second)
                         throw std::runtime_error("duplicate shader " + name + "/" + variant + "/" + slang);
@@ -395,7 +404,7 @@ void build(const Json &manifest, const fs::path &directory, const fs::path &comp
                     attribute = attributes.at(attribute.slot);
                     if (attribute.name.empty()) throw std::runtime_error("vertex names require one GLSL reflection target");
                 }
-            if (supplemental) program.targets.erase("glsl410");
+            if (supplemental) program.targets.erase(canonical);
         }
     std::set<std::string> existing;
     std::string header_name;

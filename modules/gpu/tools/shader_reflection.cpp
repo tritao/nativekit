@@ -201,13 +201,26 @@ Targets read_compiler_reflection(const fs::path &prefix, const std::string &cano
                         row.at("type").string(), row.at("sample_type").string(), row.at("multisampled").boolean()});
                 } else if (view.has("storage_buffer")) {
                     const auto &row = view.at("storage_buffer");
-                    program.storage.push_back({slot(row, "slot"), stage(row), row.at("name").string(), row.at("readonly").boolean()});
+                    const auto view_slot = slot(row, "slot");
+                    // NativeKit binds storage view n at GLSL binding n, HLSL register n and Metal buffer 8 + n.
+                    for (const auto &[field, expected] : std::map<std::string, int>{{"glsl_binding_n", view_slot},
+                             {"hlsl_register_t_n", view_slot}, {"hlsl_register_u_n", view_slot}, {"msl_buffer_n", 8 + view_slot}})
+                        if (row.has(field) && row.at(field).integer() != expected)
+                            throw std::runtime_error("storage buffer " + row.at("struct_name").string() + " has " + field + " "
+                                + std::to_string(row.at(field).integer()) + ", expected " + std::to_string(expected));
+                    program.storage.push_back({view_slot, stage(row), row.at("struct_name").string(), row.at("readonly").boolean()});
                 } else throw std::runtime_error("unsupported compiler shader resource");
             }
             for (const auto &row : items(raw, "samplers"))
                 program.samplers.push_back({slot(row, "slot"), stage(row), row.at("name").string(), row.at("sampler_type").string()});
             for (const auto &row : items(raw, "texture_sampler_pairs"))
                 program.pairs.push_back({slot(row, "view_slot"), slot(row, "sampler_slot"), row.get("glsl_name", row.at("name")).string()});
+            if (raw.has("mtl_threads_per_threadgroup")) {
+                const auto &threads = raw.at("mtl_threads_per_threadgroup");
+                program.threads[0] = slot(threads, "x");
+                program.threads[1] = slot(threads, "y");
+                program.threads[2] = slot(threads, "z");
+            }
             for (const std::string stage : {"vertex", "fragment", "compute"}) {
                 if (!raw.has(stage + "_func")) continue;
                 const auto &func = raw.at(stage + "_func");
@@ -229,7 +242,11 @@ Json reflect(const Programs &programs) {
                 Json::Object stages;
                 for (const auto &[key, stage] : target.stages)
                     stages[key] = Json::Object{{"source", stage.source}, {"entry_point", stage.entry_point}};
+                Json::Object threads;
+                if (target.threads[0])
+                    threads = Json::Object{{"x", target.threads[0]}, {"y", target.threads[1]}, {"z", target.threads[2]}};
                 targets[slang] = Json::Object{
+                    {"threads", std::move(threads)},
                     {"attributes", mapped(target.attributes, [](const Attribute &a) {
                         return Json::Object{{"slot", a.slot}, {"name", a.name}, {"format", a.format},
                             {"semantic", Json::Object{{"name", a.semantic}, {"index", a.semantic_index}}}};
