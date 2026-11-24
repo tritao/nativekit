@@ -70,8 +70,12 @@ void execute_steps(FrameSubmission &submission) noexcept {
         submission.result = result_boundary("surface frame step failed", [&] {
             return step.execute(step.payload.get(), ticket);
         });
-        if (submission.result != NK_OK)
+        if (submission.result != NK_OK) {
+            FrameTicket current{};
+            if (lookup_frame_ticket(ticket.frame, &current) && current.render_cancelled)
+                submission.result = NK_ERROR_CANCELLED;
             break;
+        }
     }
     if (render_executor_physical() &&
         (ticket.target.api == NK_GRAPHICS_OPENGL || ticket.target.api == NK_GRAPHICS_OPENGL_ES))
@@ -161,6 +165,13 @@ bool mark_frame_render_submitted(nk_surface_frame frame) noexcept {
         return false;
     entry->second.render_submitted = true;
     return true;
+}
+
+void mark_frame_render_cancelled(nk_surface_frame frame) noexcept {
+    std::lock_guard lock(frame_mutex);
+    const auto entry = ticket_by_frame.find(frame);
+    if (entry != ticket_by_frame.end())
+        entry->second.render_cancelled = true;
 }
 
 bool take_frame_ticket(nk_surface_frame frame, FrameTicket *out_ticket, bool queue_owned) noexcept {

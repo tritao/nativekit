@@ -5724,6 +5724,7 @@ static nkgpu_result end_frame(nkgpu_renderer r, bool present_surface) {
         sg_end_pass();
     end_frame_timing(rs->value);
     sg_commit();
+    nkgpu_result submit_result = NKGPU_OK;
     if (!present_surface && rs->value.frame_target.frame != NK_INVALID_HANDLE) {
         nk_result submitted = NK_OK;
         nk::core::FrameTicket ticket{};
@@ -5732,9 +5733,13 @@ static nkgpu_result end_frame(nkgpu_renderer r, bool present_surface) {
         if (!ticket.backend.submit)
             return fail(NKGPU_ERROR_UNKNOWN, "render frame ticket has no submit operation");
         submitted = ticket.backend.submit(ticket);
-        if (submitted != NK_OK)
-            return fail(NKGPU_ERROR_UNKNOWN, "render submit: %s", nk_last_error());
-        nk::core::mark_frame_render_submitted(rs->value.frame_target.frame);
+        if (submitted == NK_OK) {
+            nk::core::mark_frame_render_submitted(ticket.frame);
+        } else {
+            if (submitted == NK_ERROR_CANCELLED)
+                nk::core::mark_frame_render_cancelled(ticket.frame);
+            submit_result = fail(NKGPU_ERROR_UNKNOWN, "render submit: %s", nk_last_error());
+        }
     }
     rs->value.state = RendererState::Ready;
     rs->value.in_pass = false;
@@ -5745,6 +5750,8 @@ static nkgpu_result end_frame(nkgpu_renderer r, bool present_surface) {
     rs->value.has_frame_target = false;
     rs->value.frame_target = {};
     active_renderer = 0;
+    if (submit_result != NKGPU_OK)
+        return submit_result;
     nk_result present_result = NK_OK;
     if (present_surface && had_frame_target) {
 #if defined(NKGPU_TESTING)
