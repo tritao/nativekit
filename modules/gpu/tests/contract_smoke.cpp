@@ -46,13 +46,17 @@ static uint32_t image_format_bytes(nkgpu_image_format format) {
 }
 
 int main() {
-    if (!nkgpu_test_generation_exhaustion())
+    if (!nkgpu_test_generation_exhaustion()) {
+        std::fprintf(stderr, "GPU handle generation exhaustion check failed: %s\n", nkgpu_last_error());
         return 1;
+    }
     nk_init_options init{};
     init.struct_size = sizeof(init);
     init.api_version = NK_API_VERSION;
-    if (nk_init(&init) != NK_OK)
+    if (nk_init(&init) != NK_OK) {
+        std::fprintf(stderr, "nk_init failed: %s\n", nk_last_error());
         return 1;
+    }
 
     int result = 0;
     bool window_created = false;
@@ -261,6 +265,12 @@ int main() {
         nkgpu_renderer_state state = NKGPU_RENDERER_LOST;
         EXPECT_RESULT(nkgpu_renderer_get_state(first, &state), NKGPU_OK);
         if (state != NKGPU_RENDERER_READY) {
+            nkgpu_renderer_stats stats{};
+            stats.struct_size = sizeof(stats);
+            nkgpu_renderer_get_stats(first, &stats);
+            std::fprintf(stderr, "renderer state %u after a frame, %llu device losses, %llu surface recreations: %s\n",
+                         state, (unsigned long long)stats.device_losses,
+                         (unsigned long long)stats.surface_recreations, nkgpu_last_error());
             result = __LINE__;
             goto cleanup;
         }
@@ -765,14 +775,18 @@ int main() {
                       NKGPU_OK);
         nkgpu_readback_info readback_info{};
         readback_info.struct_size = sizeof(readback_info);
-        for (int attempt = 0; attempt < 100; ++attempt) {
+        // The GPU finishes the copy on its own schedule: wait for it, not for a number of queries.
+        const auto transfer_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (std::chrono::steady_clock::now() < transfer_deadline) {
             EXPECT_RESULT(nkgpu_readback_query(first, transfer_readback, &readback_info), NKGPU_OK);
             if (readback_info.state != NKGPU_READBACK_PENDING)
                 break;
-            std::this_thread::yield();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
         if (readback_info.state != NKGPU_READBACK_READY ||
             readback_info.size != sizeof(transfer_pixels)) {
+            std::fprintf(stderr, "image readback ended in state %u with %u bytes\n", readback_info.state,
+                         readback_info.size);
             result = __LINE__;
             goto cleanup;
         }
