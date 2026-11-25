@@ -2200,7 +2200,7 @@ bool rebuild_surface_targets(WinSurfaceResource &surface, int32_t width, int32_t
             emit_surface_resize(surface);
         return true;
     }
-    if (device && FAILED(device->GetDeviceRemovedReason())) {
+    if (surface.device && FAILED(surface.device->GetDeviceRemovedReason())) {
         emit_surface_lost(surface);
         nk::core::set_error("the Direct3D 11 device was removed");
         return false;
