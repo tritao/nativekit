@@ -38,6 +38,28 @@ bool poll_audio_voice_event(nk_event_kind kind, nk_audio_voice source) {
     return false;
 }
 
+// The device and the decode workers run on the machine's schedule, and a loaded machine can take seconds to play a clip or finish
+// a decode, so a wait gets a deadline rather than a count of polls. A passing run returns as soon as its condition holds.
+template <typename Done> bool within_deadline(Done done) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (!done()) {
+        if (std::chrono::steady_clock::now() >= deadline)
+            return false;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return true;
+}
+
+/** Waits briefly for an event, then hands the next one, possibly NK_EVENT_NONE, to `handle`. */
+template <typename Handle> void next_event(Handle handle) {
+    assert(nk_wait_events_timeout(0.01) == NK_OK);
+    nk_event event{};
+    event.struct_size = sizeof(event);
+    assert(nk_poll_event(&event) == NK_OK);
+    handle(event);
+    nk_event_release(&event);
+}
+
 } // namespace
 
 int main() {
@@ -110,16 +132,12 @@ int main() {
     uint64_t clock_before = 0;
     uint64_t clock_after = 0;
     assert(nk_audio_get_time_pcm_frames(&clock_before) == NK_OK);
-    // Starting a device can prime its buffers before the backend begins regular
-    // callbacks. Wait for actual playback progress instead of assuming that the
-    // backend resumes within one fixed 50 ms sleep.
-    const auto clock_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-    do {
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        assert(nk_audio_get_time_pcm_frames(&clock_after) == NK_OK);
-    } while (clock_after <= clock_before && std::chrono::steady_clock::now() < clock_deadline);
-    if (clock_after <= clock_before)
-        std::fprintf(stderr, "audio device clock did not advance within 2 seconds: %llu -> %llu frames\n",
+    // Starting a device can prime its buffers before the backend begins regular callbacks: wait for playback to progress.
+    if (!within_deadline([&] {
+            assert(nk_audio_get_time_pcm_frames(&clock_after) == NK_OK);
+            return clock_after > clock_before;
+        }))
+        std::fprintf(stderr, "audio device clock did not advance: %llu -> %llu frames\n",
                      static_cast<unsigned long long>(clock_before),
                      static_cast<unsigned long long>(clock_after));
     assert(clock_after > clock_before);
@@ -134,20 +152,16 @@ int main() {
     assert(device_state == NK_AUDIO_DEVICE_STARTED);
     nk_bool started_event = 0;
     nk_bool stopped_event = 0;
-    for (int attempt = 0; attempt < 20 && (!started_event || !stopped_event); ++attempt) {
-        assert(nk_wait_events_timeout(0.01) == NK_OK);
-        nk_event event{};
-        event.struct_size = sizeof(event);
-        assert(nk_poll_event(&event) == NK_OK);
-        if (event.kind == NK_EVENT_AUDIO_DEVICE_STARTED ||
-            event.kind == NK_EVENT_AUDIO_DEVICE_STOPPED) {
-            assert(event.source == NK_INVALID_HANDLE);
-            started_event |= event.kind == NK_EVENT_AUDIO_DEVICE_STARTED;
-            stopped_event |= event.kind == NK_EVENT_AUDIO_DEVICE_STOPPED;
-        }
-        nk_event_release(&event);
-    }
-    assert(started_event && stopped_event);
+    assert(within_deadline([&] {
+        next_event([&](const nk_event &event) {
+            if (event.kind == NK_EVENT_AUDIO_DEVICE_STARTED || event.kind == NK_EVENT_AUDIO_DEVICE_STOPPED) {
+                assert(event.source == NK_INVALID_HANDLE);
+                started_event |= event.kind == NK_EVENT_AUDIO_DEVICE_STARTED;
+                stopped_event |= event.kind == NK_EVENT_AUDIO_DEVICE_STOPPED;
+            }
+        });
+        return started_event && stopped_event;
+    }));
 
     nk_audio_bus parent_bus = NK_INVALID_HANDLE;
     nk_audio_bus_options bus_options{};
@@ -480,17 +494,14 @@ int main() {
     assert(nk_audio_voice_is_looping(first_voice, &state) == NK_OK && state == 1);
     assert(nk_audio_voice_get_length_seconds(first_voice, &value) == NK_OK && value > 0);
     nk_bool completion_seen = 0;
-    for (int attempt = 0; attempt < 20 && !completion_seen; ++attempt) {
-        assert(nk_wait_events_timeout(0.05) == NK_OK);
-        nk_event event{};
-        event.struct_size = sizeof(event);
-        assert(nk_poll_event(&event) == NK_OK);
-        if (event.kind == NK_EVENT_AUDIO_VOICE_COMPLETE && event.source == completion_voice)
-            completion_seen = 1;
-        assert(event.data_size == 0);
-        nk_event_release(&event);
-    }
-    assert(completion_seen == 1);
+    assert(within_deadline([&] {
+        next_event([&](const nk_event &event) {
+            if (event.kind == NK_EVENT_AUDIO_VOICE_COMPLETE && event.source == completion_voice)
+                completion_seen = 1;
+            assert(event.data_size == 0);
+        });
+        return completion_seen;
+    }));
     assert(nk_audio_voice_destroy(completion_voice) == NK_OK);
 
     const auto audio_path =
@@ -549,10 +560,10 @@ int main() {
     nk_audio_voice async_resource_stream_voice = NK_INVALID_HANDLE;
     assert(nk_audio_voice_create(stream_clip, &voice_options, &async_resource_stream_voice) ==
            NK_OK);
-    for (int attempt = 0; attempt < 100 && load_state == NK_AUDIO_VOICE_LOADING; ++attempt) {
+    assert(within_deadline([&] {
         assert(nk_audio_voice_get_load_state(async_resource_stream_voice, &load_state) == NK_OK);
-        std::this_thread::yield();
-    }
+        return load_state != NK_AUDIO_VOICE_LOADING;
+    }));
     assert(load_state == NK_AUDIO_VOICE_READY);
     assert(nk_audio_voice_start(stream_voice) == NK_OK);
     assert(nk_audio_voice_stop(stream_voice) == NK_OK);
@@ -575,31 +586,21 @@ int main() {
     nk_bool stream_ready = 0;
     nk_bool decode_event_seen = 0;
     nk_bool stream_event_seen = 0;
-    for (int attempt = 0; attempt < 40 && (!decode_event_seen || !stream_event_seen); ++attempt) {
+    assert(within_deadline([&] {
         assert(nk_audio_voice_get_load_state(async_decode_voice, &load_state) == NK_OK);
-        if (load_state == NK_AUDIO_VOICE_READY)
-            decode_ready = 1;
+        decode_ready |= load_state == NK_AUDIO_VOICE_READY;
         assert(nk_audio_voice_get_load_state(async_stream_voice, &load_state) == NK_OK);
-        if (load_state == NK_AUDIO_VOICE_READY)
-            stream_ready = 1;
-
-        assert(nk_wait_events_timeout(0.05) == NK_OK);
-        nk_event event{};
-        event.struct_size = sizeof(event);
-        assert(nk_poll_event(&event) == NK_OK);
-        if (event.kind == NK_EVENT_AUDIO_VOICE_READY) {
-            assert(event.result == NK_OK);
-            if (event.source == async_decode_voice)
-                decode_event_seen = 1;
-            if (event.source == async_stream_voice)
-                stream_event_seen = 1;
-        }
-        if (event.kind == NK_EVENT_AUDIO_VOICE_LOAD_FAILED)
-            assert(false);
-        nk_event_release(&event);
-    }
-    assert(decode_ready == 1 && stream_ready == 1 && decode_event_seen == 1 &&
-           stream_event_seen == 1);
+        stream_ready |= load_state == NK_AUDIO_VOICE_READY;
+        next_event([&](const nk_event &event) {
+            assert(event.kind != NK_EVENT_AUDIO_VOICE_LOAD_FAILED);
+            if (event.kind == NK_EVENT_AUDIO_VOICE_READY) {
+                assert(event.result == NK_OK);
+                decode_event_seen |= event.source == async_decode_voice;
+                stream_event_seen |= event.source == async_stream_voice;
+            }
+        });
+        return decode_ready && stream_ready && decode_event_seen && stream_event_seen;
+    }));
     assert(nk_audio_voice_get_load_state(async_decode_voice, &load_state) == NK_OK);
     assert(load_state == NK_AUDIO_VOICE_READY);
     assert(nk_audio_voice_get_load_state(async_stream_voice, &load_state) == NK_OK);
