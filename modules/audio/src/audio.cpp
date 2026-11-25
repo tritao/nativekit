@@ -376,6 +376,7 @@ struct AudioStreamingSource final {
     ma_result schedule_decode() noexcept;
     void decode_job() noexcept;
     void job_finished() noexcept;
+    void release_job() noexcept;
     void fail(ma_result result) noexcept;
 };
 
@@ -624,9 +625,16 @@ ma_result AudioStreamingSource::schedule_decode() noexcept {
         return MA_SUCCESS;
 
     job_scheduled.store(false, std::memory_order_release);
+    release_job();
+    return resource_result(submit_result);
+}
+
+// Releases one job. The count changes under the mutex stop() waits with, so its wait cannot miss the change, and nothing
+// touches the source afterwards: once the count reaches zero, stop() may return and the source be destroyed.
+void AudioStreamingSource::release_job() noexcept {
+    std::lock_guard lock(worker_mutex);
     pending_jobs.fetch_sub(1, std::memory_order_acq_rel);
     worker_condition.notify_all();
-    return resource_result(submit_result);
 }
 
 void AudioStreamingSource::fail(ma_result result) noexcept {
@@ -713,18 +721,17 @@ void AudioStreamingSource::decode_job() noexcept {
 
 void AudioStreamingSource::job_finished() noexcept {
     job_scheduled.store(false, std::memory_order_release);
-    pending_jobs.fetch_sub(1, std::memory_order_acq_rel);
-    worker_condition.notify_all();
-    if (stop_requested.load(std::memory_order_acquire) || ended.load(std::memory_order_acquire))
-        return;
-
-    const bool seek_requested = seek_pending.load(std::memory_order_acquire) ||
-                                requested_seek.load(std::memory_order_acquire) != no_stream_seek;
-    if (!seek_requested && ma_pcm_rb_available_write(&pcm) == 0)
-        return;
-    const auto result = schedule_decode();
-    if (result != MA_SUCCESS && result != MA_INVALID_OPERATION)
-        fail(result);
+    // The next decode is scheduled while this job still counts, so stop() waits for both.
+    if (!stop_requested.load(std::memory_order_acquire) && !ended.load(std::memory_order_acquire)) {
+        const bool seek_requested = seek_pending.load(std::memory_order_acquire) ||
+                                    requested_seek.load(std::memory_order_acquire) != no_stream_seek;
+        if (seek_requested || ma_pcm_rb_available_write(&pcm) != 0) {
+            const auto result = schedule_decode();
+            if (result != MA_SUCCESS && result != MA_INVALID_OPERATION)
+                fail(result);
+        }
+    }
+    release_job();
 }
 
 AudioStreamingSource::~AudioStreamingSource() {
