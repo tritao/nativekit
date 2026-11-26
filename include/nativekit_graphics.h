@@ -198,9 +198,17 @@ typedef struct nk_surface_frame_target {
     nk_graphics_device device;
     /** Reserved for compatibility with the original frame-target descriptor; set to zero. */
     uint32_t reserved[3];
-    /** Borrowed native device token (ID3D11Device* or id<MTLDevice> where applicable). */
+    /**
+     * Borrowed native device token (ID3D11Device* or id<MTLDevice> where applicable). Direct3D 11
+     * and Metal surfaces share one device per process, so other surfaces' frames use it too.
+     */
     uint64_t native_device;
-    /** Borrowed execution token (ID3D11DeviceContext* or id<MTLCommandQueue> where applicable). */
+    /**
+     * Borrowed execution token (ID3D11DeviceContext* or id<MTLCommandQueue> where applicable).
+     * A Direct3D 11 immediate context is shared like its device and is the render thread's: use it
+     * only there, and leave no view bound when the frame ends (`ClearState`), since the platform
+     * resizes and releases a surface's swapchain without unbinding it.
+     */
     uint64_t native_context;
     /** Borrowed depth/stencil target token; zero when no attachment is requested. */
     uint64_t native_depth_stencil_target;
