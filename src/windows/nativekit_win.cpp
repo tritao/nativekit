@@ -459,6 +459,17 @@ std::unordered_map<HMONITOR, nk_orientation> monitor_orientations;
 
 void poll_monitor_orientations();
 
+/*
+ * A Direct3D 11 device and its immediate context, shared by the surfaces that render with it. The
+ * GPU module's Sokol runtime renders with one device, so surfaces share one per process unless a
+ * surface names another to share, as Metal surfaces share the system device. The immediate context
+ * belongs to the render thread: the platform thread never calls it.
+ */
+struct D3D11Device {
+    ComPtr<ID3D11Device> device;
+    ComPtr<ID3D11DeviceContext> context;
+};
+
 struct WinSurfaceResource final : nk::core::Resource {
     HWND window = nullptr;
     nk_handle handle = NK_INVALID_HANDLE;
@@ -472,6 +483,7 @@ struct WinSurfaceResource final : nk::core::Resource {
     int32_t height = 0;
     int32_t framebuffer_width = 0;
     int32_t framebuffer_height = 0;
+    std::shared_ptr<D3D11Device> shared_device;
     ComPtr<ID3D11Device> device;
     ComPtr<ID3D11DeviceContext> context;
     ComPtr<IDXGISwapChain1> swapchain;
@@ -2128,24 +2140,42 @@ bool d3d11_device_failure(ID3D11Device *device, HRESULT result) {
            (device && FAILED(device->GetDeviceRemovedReason()));
 }
 
-bool create_d3d11_device(WinSurfaceResource &surface) {
-    UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
-    if (surface.flags & NK_SURFACE_DEBUG_CONTEXT)
-        flags |= D3D11_CREATE_DEVICE_DEBUG;
-    D3D_FEATURE_LEVEL level{};
-    HRESULT result =
-        D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags, nullptr, 0,
-                          D3D11_SDK_VERSION, &surface.device, &level, &surface.context);
-    if (FAILED(result) && !(surface.flags & NK_SURFACE_DEBUG_CONTEXT)) {
-        surface.device.Reset();
-        surface.context.Reset();
-        result = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, flags, nullptr, 0,
-                                   D3D11_SDK_VERSION, &surface.device, &level, &surface.context);
+/* The process's devices while a surface uses one: index 1 has the debug layer. */
+std::weak_ptr<D3D11Device> process_d3d11_devices[2];
+
+/* The process's device for `surface`, created when no surface uses one or after the last was lost. */
+bool use_process_d3d11_device(WinSurfaceResource &surface) {
+    const bool debug = (surface.flags & NK_SURFACE_DEBUG_CONTEXT) != 0;
+    auto &slot = process_d3d11_devices[debug ? 1 : 0];
+    auto shared = slot.lock();
+    if (shared && FAILED(shared->device->GetDeviceRemovedReason()))
+        shared.reset();
+    if (!shared) {
+        UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
+        if (debug)
+            flags |= D3D11_CREATE_DEVICE_DEBUG;
+        auto created = std::make_shared<D3D11Device>();
+        D3D_FEATURE_LEVEL level{};
+        HRESULT result =
+            D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags, nullptr, 0,
+                              D3D11_SDK_VERSION, &created->device, &level, &created->context);
+        if (FAILED(result) && !debug) {
+            created->device.Reset();
+            created->context.Reset();
+            result = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, flags, nullptr, 0,
+                                       D3D11_SDK_VERSION, &created->device, &level,
+                                       &created->context);
+        }
+        if (FAILED(result)) {
+            nk::core::set_error("could not create a Direct3D 11 device");
+            return false;
+        }
+        shared = std::move(created);
+        slot = shared;
     }
-    if (FAILED(result)) {
-        nk::core::set_error("could not create a Direct3D 11 device");
-        return false;
-    }
+    surface.shared_device = shared;
+    surface.device = shared->device;
+    surface.context = shared->context;
     return true;
 }
 
@@ -2209,7 +2239,7 @@ bool rebuild_surface_targets(WinSurfaceResource &surface, int32_t width, int32_t
         if (!create_d3d11_swapchain(surface, width, height))
             return false;
     } else if (surface.framebuffer_width != width || surface.framebuffer_height != height) {
-        surface.context->OMSetRenderTargets(0, nullptr, nullptr);
+        /* A finished frame leaves no view bound: the renderer clears the context after each pass. */
         surface.render_target.Reset();
         surface.depth_stencil_target.Reset();
         surface.depth_texture.Reset();
@@ -5052,10 +5082,11 @@ nk_result NK_CALL nk_surface_create(nk_handle parent_handle, const nk_surface_op
         resource->height = options->height;
         resource->shared_surface = shared;
         if (shared) {
+            resource->shared_device = shared->shared_device;
             resource->device = shared->device;
             resource->context = shared->context;
             resource->device_handle = shared->device_handle;
-        } else if (!create_d3d11_device(*resource)) {
+        } else if (!use_process_d3d11_device(*resource)) {
             return NK_ERROR_UNSUPPORTED;
         }
 
@@ -5115,7 +5146,6 @@ nk_result NK_CALL nk_surface_destroy(nk_handle handle) {
         return fail(NK_ERROR_INVALID_REQUEST, "graphics surface still owns retained GPU resources");
     resource->destroying = true;
     resource->frame_prepared = false;
-    resource->context->OMSetRenderTargets(0, nullptr, nullptr);
     resource->render_target.Reset();
     resource->depth_stencil_target.Reset();
     resource->depth_texture.Reset();
