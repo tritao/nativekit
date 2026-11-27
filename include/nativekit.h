@@ -165,7 +165,8 @@ enum NK_ENUM(nk_result) {
     NK_PENDING = 1,
     /** The backend encountered an unspecified failure. */
     NK_ERROR_UNKNOWN = -1,
-    /** A caller-provided pointer, value, size, or combination is invalid. */
+    /** A caller-provided pointer, value, size, or combination is invalid: the caller's mistake.
+     * Content that cannot be read is NK_ERROR_INVALID_DATA instead. */
     NK_ERROR_INVALID_ARGUMENT = -2,
     /** A handle is zero, stale, or belongs to a different resource kind. */
     NK_ERROR_INVALID_HANDLE = -3,
@@ -194,7 +195,10 @@ enum NK_ENUM(nk_result) {
     /** The user or operating system denied access required by the operation. */
     NK_ERROR_PERMISSION_DENIED = -15,
     /** A graphics surface lost its drawable or context during frame execution. */
-    NK_ERROR_SURFACE_LOST = -16
+    NK_ERROR_SURFACE_LOST = -16,
+    /** Well-formed call, but the content it was given (encoded media, a bank, a document) is
+     * malformed or in a format the operation does not read. */
+    NK_ERROR_INVALID_DATA = -17
 };
 
 /* ------------------------------------------------------------------------- */

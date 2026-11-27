@@ -807,6 +807,31 @@ nk_result map_miniaudio_result(ma_result result, const char *message) {
     return mapped;
 }
 
+/* A decoder that cannot open its source says why: the file is missing or unreadable, or the
+ * bytes are not audio it reads. miniaudio's own codes for the second are several (no decoder
+ * claimed it, a corrupt stream, a short one), and none of them is the caller's mistake. */
+nk_result map_decoder_result(ma_result result, const char *message) {
+    if (result == MA_SUCCESS)
+        return NK_OK;
+    nk::core::set_error(message);
+    switch (result) {
+    case MA_DOES_NOT_EXIST: return NK_ERROR_NOT_FOUND;
+    case MA_ACCESS_DENIED: return NK_ERROR_PERMISSION_DENIED;
+    case MA_OUT_OF_MEMORY: return NK_ERROR_OUT_OF_MEMORY;
+    case MA_INVALID_ARGS:
+    case MA_INVALID_FILE:
+    case MA_INVALID_DATA:
+    case MA_NO_BACKEND:
+    case MA_NOT_IMPLEMENTED:
+    case MA_FORMAT_NOT_SUPPORTED:
+    case MA_AT_END:
+    case MA_CRC_MISMATCH:
+    case MA_BAD_SEEK:
+    case MA_IS_DIRECTORY: return NK_ERROR_INVALID_DATA;
+    default: return NK_ERROR_UNKNOWN;
+    }
+}
+
 struct EnumeratedAudioDevice {
     ma_device_id id{};
     std::string name;
@@ -1372,7 +1397,7 @@ std::shared_ptr<AudioClipResource> create_clip_from_file(const char *path, nk_re
     ma_decoder decoder{};
     const auto result = ma_decoder_init_file(path, nullptr, &decoder);
     if (result != MA_SUCCESS) {
-        out_result = map_miniaudio_result(result, "could not validate audio clip file");
+        out_result = map_decoder_result(result, "could not validate audio clip file");
         return {};
     }
     ma_decoder_uninit(&decoder);
@@ -1404,7 +1429,7 @@ std::shared_ptr<AudioClipResource> create_clip_from_asset(nk_resource_asset asse
     const auto result =
         ma_decoder_init_memory(encoded_data->data(), encoded_data->size(), nullptr, &decoder);
     if (result != MA_SUCCESS) {
-        out_result = map_miniaudio_result(result, "could not validate cached audio asset");
+        out_result = map_decoder_result(result, "could not validate cached audio asset");
         return {};
     }
     ma_decoder_uninit(&decoder);
@@ -1437,7 +1462,7 @@ std::shared_ptr<AudioClipResource> create_clip_from_stream(const nk_resource *re
         ma_decoder_init(audio_resource_read, audio_resource_seek, &reader, nullptr, &decoder);
     if (result != MA_SUCCESS) {
         nk_resource_close(reader.stream);
-        out_result = map_miniaudio_result(result, "could not validate streaming audio resource");
+        out_result = map_decoder_result(result, "could not validate streaming audio resource");
         return {};
     }
     ma_decoder_uninit(&decoder);
@@ -1468,7 +1493,7 @@ nk_result initialize_clip_from_memory(AudioClipResource &clip, const void *data,
     const auto result = ma_decoder_init_memory(clip.encoded_data->data(), clip.encoded_data->size(),
                                                nullptr, &decoder);
     if (result != MA_SUCCESS)
-        return map_miniaudio_result(result, "could not validate audio clip memory");
+        return map_decoder_result(result, "could not validate audio clip memory");
     ma_decoder_uninit(&decoder);
     return NK_OK;
 }
@@ -1694,7 +1719,7 @@ std::shared_ptr<AudioVoiceResource> create_voice_from_clip(std::shared_ptr<Audio
             ma_decoder_init_memory(voice->clip->encoded_data->data(),
                                    voice->clip->encoded_data->size(), nullptr, &voice->decoder);
         if (result != MA_SUCCESS) {
-            out_result = map_miniaudio_result(result, "could not initialize audio clip decoder");
+            out_result = map_decoder_result(result, "could not initialize audio clip decoder");
             return {};
         }
         voice->decoder_initialized = true;

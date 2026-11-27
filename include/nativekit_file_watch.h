@@ -87,6 +87,9 @@ NK_API nk_result NK_CALL nk_file_watch_create(const nk_file_watch_options *optio
  * reports NK_EVENT_FILE_WATCH_READY once all of it is watched. A watcher keeps at most one READY
  * per directory waiting in the event queue: one already queued and not yet read stands for every
  * later add of that directory, so repeated adds neither queue nor wake anything more.
+ *
+ * A path that is not absolute is NK_ERROR_INVALID_ARGUMENT. An absolute path with no directory
+ * there is NK_ERROR_NOT_FOUND, and one that cannot be read is NK_ERROR_PERMISSION_DENIED.
  */
 NK_API nk_result NK_CALL nk_file_watch_add_directory(nk_file_watch watch, const char *path NK_UTF8,
                                                      nk_bool recursive);

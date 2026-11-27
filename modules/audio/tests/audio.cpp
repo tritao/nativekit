@@ -314,6 +314,15 @@ int main() {
     }
     assert(clip_result == NK_OK);
 
+    /* Content a decoder cannot read is the data's fault, not the call's. */
+    const unsigned char not_audio[] = {'n', 'o', 't', ' ', 'a', 'u', 'd', 'i', 'o', 0, 1, 2};
+    nk_audio_clip refused = NK_INVALID_HANDLE;
+    assert(nk_audio_clip_create_from_memory(not_audio, sizeof(not_audio), &refused) ==
+               NK_ERROR_INVALID_DATA &&
+           refused == NK_INVALID_HANDLE);
+    assert(nk_audio_clip_create_from_file("/nonexistent/nativekit-audio-test.wav", &refused) ==
+           NK_ERROR_NOT_FOUND);
+
     nk_audio_voice_options voice_options{};
     voice_options.struct_size = sizeof(voice_options);
     voice_options.flags = 1u << 31;

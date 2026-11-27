@@ -2221,8 +2221,10 @@ nk_result NK_CALL nk_audio_soundfont_load_memory(const uint8_t *bytes, uint32_t 
             return invalid_argument("SoundFont output is missing");
         *out_soundfont = NK_INVALID_HANDLE;
         auto bank = nk::audio_dsp::SoundFontBank::load(bytes, byte_count);
-        if (!bank)
-            return invalid_argument("invalid or unsupported SF2 bank");
+        if (!bank) {
+            nk::core::set_error("invalid or unsupported SF2 bank");
+            return NK_ERROR_INVALID_DATA;
+        }
         auto resource = std::make_shared<SoundFontResource>();
         resource->bank = std::move(bank);
         resource->presets.resize(resource->bank->preset_count());

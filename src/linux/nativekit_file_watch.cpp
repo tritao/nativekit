@@ -136,8 +136,15 @@ struct FileWatchResource final : nk::core::Resource {
                               IN_CREATE | IN_DELETE | IN_MODIFY | IN_ATTRIB | IN_MOVED_FROM |
                                   IN_MOVED_TO | IN_DELETE_SELF | IN_MOVE_SELF | IN_CLOSE_WRITE);
         if (watch_descriptor < 0) {
-            if (errno == ENOENT || errno == ENOTDIR || errno == EACCES)
-                return NK_ERROR_INVALID_ARGUMENT;
+            if (errno == ENOENT || errno == ENOTDIR) {
+                nk::core::set_error("no directory at the file-watch path");
+                return NK_ERROR_NOT_FOUND;
+            }
+            if (errno == EACCES) {
+                nk::core::set_error("the file-watch directory is not readable");
+                return NK_ERROR_PERMISSION_DENIED;
+            }
+            nk::core::set_error("could not watch the directory");
             return NK_ERROR_UNKNOWN;
         }
         // The kernel returns an existing descriptor for an inode already watched under another
@@ -180,10 +187,19 @@ struct FileWatchResource final : nk::core::Resource {
 
     nk_result add_directory(const char *raw_path, bool recursive) {
         const auto path = normalize(raw_path);
-        std::error_code error;
-        if (path.empty() || !std::filesystem::is_directory(path, error) || error) {
-            nk::core::set_error("file-watch path must be an accessible absolute directory");
+        if (path.empty()) {
+            nk::core::set_error("file-watch path must be an absolute UTF-8 directory");
             return NK_ERROR_INVALID_ARGUMENT;
+        }
+        std::error_code error;
+        const auto status = std::filesystem::status(path, error);
+        if (error == std::errc::permission_denied) {
+            nk::core::set_error("the file-watch directory is not accessible");
+            return NK_ERROR_PERMISSION_DENIED;
+        }
+        if (error || !std::filesystem::is_directory(status)) {
+            nk::core::set_error("no directory at the file-watch path");
+            return NK_ERROR_NOT_FOUND;
         }
         std::uint64_t registration = 0;
         {

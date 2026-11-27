@@ -122,14 +122,14 @@ int main() {
     const auto bytes=fixture();
     for (uint32_t length=0;length<bytes.size();++length) {
         nk_audio_soundfont invalid=0;
-        assert(nk_audio_soundfont_load_memory(bytes.data(),length,&invalid)!=NK_OK && invalid==0);
+        assert(nk_audio_soundfont_load_memory(bytes.data(),length,&invalid)==NK_ERROR_INVALID_DATA && invalid==0);
     }
     auto invalid=bytes;
     // Corrupt the instrument generator index without disturbing RIFF bounds.
     for (uint32_t p=0;p+12<invalid.size();++p) if (!std::memcmp(invalid.data()+p,"pgen",4)) {
         invalid[p+10]=255; invalid[p+11]=255; break;
     }
-    nk_audio_soundfont bad=0; assert(nk_audio_soundfont_load_memory(invalid.data(),invalid.size(),&bad)!=NK_OK);
+    nk_audio_soundfont bad=0; assert(nk_audio_soundfont_load_memory(invalid.data(),invalid.size(),&bad)==NK_ERROR_INVALID_DATA);
     // One-shot sample generators can leave unused loop addresses reversed.
     // Those addresses must remain invalid when looping is enabled.
     invalid=bytes;

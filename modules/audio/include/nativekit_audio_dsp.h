@@ -42,6 +42,7 @@ typedef struct nk_audio_soundfont_preset_info {
     const char *name NK_UTF8;
 } nk_audio_soundfont_preset_info;
 
+/** Loads an SF2 bank from memory; bytes that are not a bank it reads are NK_ERROR_INVALID_DATA. */
 NKAUDIO_API nk_result NK_CALL
 nk_audio_soundfont_load_memory(const uint8_t *bytes NK_IN_ARRAY(byte_count), uint32_t byte_count,
                                nk_audio_soundfont *out_soundfont NK_OUT NK_OWNED);

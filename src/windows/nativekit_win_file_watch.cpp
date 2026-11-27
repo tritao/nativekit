@@ -183,6 +183,38 @@ bool is_directory(const std::wstring &path) {
     return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY);
 }
 
+/* What an absolute path that cannot be watched is: no directory there, or one that is not
+ * readable. */
+nk_result unwatchable(DWORD error) {
+    switch (error) {
+    case ERROR_ACCESS_DENIED:
+    case ERROR_SHARING_VIOLATION:
+        nk::core::set_error("the file-watch directory is not accessible");
+        return NK_ERROR_PERMISSION_DENIED;
+    case ERROR_FILE_NOT_FOUND:
+    case ERROR_PATH_NOT_FOUND:
+    case ERROR_INVALID_NAME:
+    case ERROR_DIRECTORY:
+    case ERROR_BAD_NETPATH:
+    case ERROR_BAD_NET_NAME:
+        nk::core::set_error("no directory at the file-watch path");
+        return NK_ERROR_NOT_FOUND;
+    default:
+        nk::core::set_error("file-watch directory could not be opened");
+        return NK_ERROR_UNKNOWN;
+    }
+}
+
+/* NK_OK for a directory, else why it cannot be watched. */
+nk_result directory_status(const std::wstring &path) {
+    const DWORD attributes = GetFileAttributesW(openable(path).c_str());
+    if (attributes == INVALID_FILE_ATTRIBUTES)
+        return unwatchable(GetLastError());
+    if (!(attributes & FILE_ATTRIBUTE_DIRECTORY))
+        return unwatchable(ERROR_DIRECTORY);
+    return NK_OK;
+}
+
 bool is_within(const std::wstring &key, const std::wstring &ancestor) {
     return key.size() > ancestor.size() && key.compare(0, ancestor.size(), ancestor) == 0 &&
            key[ancestor.size()] == L'\\';
@@ -344,17 +376,20 @@ struct FileWatchResource final : nk::core::Resource {
                 return result;
             }
         }
-        const auto native = is_absolute(path) ? full_path(path) : std::wstring{};
+        if (!is_absolute(path)) {
+            nk::core::set_error("file-watch path must be an absolute UTF-8 directory");
+            return NK_ERROR_INVALID_ARGUMENT;
+        }
+        const auto native = full_path(path);
         const auto key = key_of(native);
-        const bool accessible = !native.empty() && is_directory(native);
+        const auto status = directory_status(native);
         std::lock_guard lock(mutex);
         if (!running)
             return worker_stopped();
-        if (!accessible) {
-            if (!key.empty() && registrations.count(key))
+        if (status != NK_OK) {
+            if (registrations.count(key))
                 forget_locked(key);
-            nk::core::set_error("file-watch path must be an accessible absolute directory");
-            return NK_ERROR_INVALID_ARGUMENT;
+            return status;
         }
         const auto [entry, inserted] = registrations.try_emplace(key);
         const auto previous = entry->second;
@@ -521,11 +556,11 @@ struct FileWatchResource final : nk::core::Resource {
                 } else if (current && !want.subtree) {
                     /* Narrowing failed; the wider handle still filters correctly. */
                 } else if (key == required_top) {
+                    const DWORD error = GetLastError();
                     for (auto *watch : opened)
                         close_watch_locked(*watch);
                     erase_closed_locked();
-                    nk::core::set_error("file-watch directory could not be opened");
-                    return NK_ERROR_INVALID_ARGUMENT;
+                    return unwatchable(error);
                 } else {
                     mark_stale_locked(key);
                     current = nullptr;

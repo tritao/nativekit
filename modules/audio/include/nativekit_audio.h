@@ -231,6 +231,10 @@ NKAUDIO_API nk_result NK_CALL nk_audio_device_get_state(nk_audio_device_state *o
  * Creates a reusable clip from a UTF-8 native filesystem path. NativeKit
  * copies the path and validates the source before returning. The clip is
  * stopped and has no playback state; create a voice to play it.
+ *
+ * A missing file is NK_ERROR_NOT_FOUND, an unreadable one NK_ERROR_PERMISSION_DENIED, and
+ * content that is not audio the decoder reads NK_ERROR_INVALID_DATA. The other clip sources
+ * answer NK_ERROR_INVALID_DATA the same way.
  */
 NKAUDIO_API nk_result NK_CALL
 nk_audio_clip_create_from_file(const char *path NK_UTF8, nk_audio_clip *out_clip NK_OUT NK_OWNED);

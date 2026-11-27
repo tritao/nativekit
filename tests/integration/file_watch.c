@@ -238,9 +238,16 @@ int main(void) {
     options.struct_size = sizeof(options);
     nk_file_watch watch = NK_INVALID_HANDLE;
     assert(nk_file_watch_create(&options, &watch) == NK_OK);
+
+    /* A relative path is the caller's mistake; no directory at an absolute one is not. */
+    char path[512];
+    assert(nk_file_watch_add_directory(watch, "relative/directory", 1) ==
+           NK_ERROR_INVALID_ARGUMENT);
+    snprintf(path, sizeof(path), "%s/missing", directory);
+    assert(nk_file_watch_add_directory(watch, path, 1) == NK_ERROR_NOT_FOUND);
+
     assert(nk_file_watch_add_directory(watch, directory, 1) == NK_OK);
 
-    char path[512];
     snprintf(path, sizeof(path), "%s/item.txt", directory);
     FILE *file = fopen(path, "wb");
     assert(file != NULL);
