@@ -56,7 +56,7 @@ typedef struct nk_notification_options {
  * `icon` is an optional platform-resolved icon name or absolute file path.
  */
 NK_API nk_result NK_CALL nk_notification_show(const nk_notification_options *options,
-                                              nk_request_id *out_request);
+                                              nk_request_id *out_request NK_OUT);
 
 /** Removes a delivered notification. A successful close emits DISMISSED. */
 NK_API nk_result NK_CALL nk_notification_close(nk_request_id request);
